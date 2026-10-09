@@ -1,5 +1,9 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdtemp as fsMkdtemp, realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { findPlansByParent, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
@@ -30,9 +34,9 @@ async function register(root: string, path: string, id: string, planName: string
 }
 
 for (const event of ["manual_user_verified", "validation_passed"] as const) {
-    Deno.test(`${event} reads independently added siblings from their own worktrees`, async () => {
+    test(`${event} reads independently added siblings from their own worktrees`, async () => {
         const root = await fixture.checkout();
-        const temp = await Deno.makeTempDir({ prefix: "rw-sibling-authority-" });
+        const temp = await fsMkdtemp(join(tmpdir(), "rw-sibling-authority-"));
         const a = join(temp, "a");
         const b = join(temp, "b");
         try {
@@ -95,16 +99,16 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
             assertEquals((await loadPlan(root, "epic"))?.markdown, primary.markdown);
         } finally {
             for (const tree of [a, b]) await git(root, ["worktree", "remove", "--force", tree]).catch(() => {});
-            await Deno.remove(root, { recursive: true });
-            await Deno.remove(temp, { recursive: true });
+            await fsRm(root, { recursive: true });
+            await fsRm(temp, { recursive: true });
         }
     });
 }
 
 for (const surface of ["primary", "execution"]) {
-    Deno.test(`validation from ${surface} ignores a retired Session directory and runs CI in the registered successor`, async () => {
+    test(`validation from ${surface} ignores a retired Session directory and runs CI in the registered successor`, async () => {
         const root = await fixture.checkout();
-        const temp = await Deno.makeTempDir({ prefix: "rw-validation-authority-" });
+        const temp = await fsMkdtemp(join(tmpdir(), "rw-validation-authority-"));
         const retired = join(temp, "retired");
         const current = join(temp, "current");
         const session = attachRecorder(
@@ -131,7 +135,7 @@ for (const surface of ["primary", "execution"]) {
             await updatePlanFrontMatter(current, "demo", { status: "implemented" }, {}, {
                 expectedRevision: plan.revision,
             });
-            await Deno.writeTextFile(join(current, "app.ts"), "// implemented\n");
+            await fsWriteFile(join(current, "app.ts"), "// implemented\n");
             const implemented = await loadPlan(current, "demo");
             assert(implemented);
             session.setActiveExecutionWorkflow({
@@ -153,7 +157,7 @@ for (const surface of ["primary", "execution"]) {
                 git: createGitPort(),
                 localCI: {
                     run: async ({ cwd }) => {
-                        assertEquals(cwd, await Deno.realPath(current));
+                        assertEquals(cwd, await fsRealpath(current));
                         ciRuns++;
                         return { kind: "completed", exitCode: 0, output: "ok" };
                     },
@@ -171,8 +175,8 @@ for (const surface of ["primary", "execution"]) {
             for (const tree of [retired, current]) {
                 await git(root, ["worktree", "remove", "--force", tree]).catch(() => {});
             }
-            await Deno.remove(root, { recursive: true });
-            await Deno.remove(temp, { recursive: true });
+            await fsRm(root, { recursive: true });
+            await fsRm(temp, { recursive: true });
         }
     });
 }

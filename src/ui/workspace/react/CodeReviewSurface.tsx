@@ -14,6 +14,7 @@ import { renderMarkdownProse } from "@plannotator/guide-viewer/renderMarkdownPro
 import { ThemeProvider } from "@plannotator/ui/components/ThemeProvider.tsx";
 import { TooltipProvider } from "@plannotator/ui/components/Tooltip.tsx";
 import { ApproveButton, FeedbackButton } from "@plannotator/ui/components/ToolbarButtons.tsx";
+import { StandaloneCodeReviewActions } from "./StandaloneCodeReviewActions.tsx";
 import { ReviewCompletion } from "./ReviewCompletion.tsx";
 import { CommentPopover } from "@plannotator/ui/components/CommentPopover.tsx";
 import { configStore, setReviewPanelView, useConfigValue } from "@plannotator/ui/config/index.ts";
@@ -28,6 +29,7 @@ import { WorkspaceHeaderActionsPortal } from "./WorkspaceHeaderActionsPortal.tsx
 import { ReviewContextBar } from "./ReviewContextBar.tsx";
 import { ArtifactConversationSidebar } from "./ArtifactConversationSidebar.tsx";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
+import { useReviewAnnotations } from "./use-review-annotations.ts";
 import { useCodeReviewHighlighting } from "./code-review-highlighting.ts";
 import { formatGuidedReviewGenerator, formatGuidedReviewUsageStatus } from "./guided-review-status.ts";
 import "./plannotator.css";
@@ -135,11 +137,25 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [pendingSelection, setPendingSelection] = useState(null);
     const [globalCommentOpen, setGlobalCommentOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [compactLayout, setCompactLayout] = useState(false);
     const [fileTreeOpen, setFileTreeOpen] = useState(true);
+    useEffect(() => {
+        const media = globalThis.matchMedia("(max-width: 980px)");
+        const syncLayout = () => {
+            setCompactLayout(media.matches);
+            if (media.matches) setFileTreeOpen(false);
+        };
+        syncLayout();
+        media.addEventListener("change", syncLayout);
+        return () => media.removeEventListener("change", syncLayout);
+    }, []);
     const [filePanelMode, setFilePanelMode] = useState(getInitialFilePanelMode);
     const [filePanelWidth, setFilePanelWidth] = useState(FILE_PANEL_DEFAULT_WIDTH);
     const [resizingFilePanel, setResizingFilePanel] = useState(false);
-    const [annotationsOpen, setAnnotationsOpen] = useState(true);
+    const [annotationsOpen, setAnnotationsOpen] = useReviewAnnotations(annotations.length);
+    useEffect(() => {
+        if (compactLayout && annotationsOpen) setFileTreeOpen(false);
+    }, [compactLayout, annotationsOpen]);
     const [rightSidebarView, setRightSidebarView] = useState("annotations");
     const [submitting, setSubmitting] = useState(null);
     const [submitted, setSubmitted] = useState(null);
@@ -179,7 +195,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const navigationLockRef = useRef(null);
     const configuredDiffStyle = useConfigValue("diffStyle") || "split";
     const [diffStyle, setLocalDiffStyle] = useState(getInitialDiffStyle);
-    const diffOverflow = useConfigValue("diffOverflow") || "scroll";
+    const diffOverflow = "wrap";
     const diffIndicators = useConfigValue("diffIndicators") || "bars";
     const diffLineDiffType = useConfigValue("diffLineDiffType") || "word-alt";
     const diffShowLineNumbers = useConfigValue("diffShowLineNumbers") !== false;
@@ -216,6 +232,19 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         () => annotations.length > 0 ? exportReviewFeedbackWithImages(annotations) : "",
         [annotations],
     );
+    const [standaloneReview, setStandaloneReview] = useState(initialPayload.standaloneReview);
+    const [reviewDestination, setReviewDestination] = useState("forge");
+    useEffect(() => {
+        if (!initialPayload.standaloneReview || !initialPayload.token) return;
+        const exit = () =>
+            navigator.sendBeacon(
+                `/api/review/exit?token=${encodeURIComponent(initialPayload.token)}`,
+                new Blob(["{}"], { type: "application/json" }),
+            );
+        globalThis.addEventListener("pagehide", exit);
+        return () => globalThis.removeEventListener("pagehide", exit);
+    }, [initialPayload.standaloneReview, initialPayload.token]);
+    const [standaloneResult, setStandaloneResult] = useState("");
     const agentLabel = initialPayload.agentLabel || "Reviewer Feedback Engineer";
     const conversationEnabled = initialPayload.mode === "dev" || Boolean(initialPayload.conversationStatusUrl) ||
         Boolean(initialPayload.operationStatusUrl && initialPayload.interactionAnswerBaseUrl);
@@ -231,7 +260,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         : Boolean(guideCapabilities?.available);
 
     useEffect(() => {
-        if (!readStoredDiffStyle()) setLocalDiffStyle(configuredDiffStyle);
+        // Read again after hydration: SSR cannot see this browser's saved layout.
+        setLocalDiffStyle(readStoredDiffStyle() || configuredDiffStyle);
     }, [configuredDiffStyle]);
 
     useEffect(() => {
@@ -593,6 +623,51 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         };
     }
 
+    async function submitStandaloneAction(reviewAction) {
+        setSubmitting(reviewAction);
+        try {
+            const response = await fetch(initialPayload.conversationStatusUrl);
+            const status = await response.json();
+            await submit("feedback", { reviewAction, annotations: toWorkflowAnnotations(annotations), feedback: "" });
+            while (reviewMountedRef.current) {
+                const response = await fetch(initialPayload.conversationStatusUrl);
+                const next = await response.json();
+                if (next.completed) {
+                    setStandaloneResult(next.resultMessage || "Review complete.");
+                    setSubmitted("standalone");
+                    return;
+                }
+                if (next.revision > status.revision) {
+                    setStandaloneReview(next.standaloneReview);
+                    setStandaloneResult(next.standaloneReview?.resultMessage || "");
+                    if (next.rawPatch !== activeRawPatch || next.gitRef !== status.gitRef) {
+                        setAnnotations([]);
+                        setSelectedAnnotationId(null);
+                        setScrollTargetAnnotation(null);
+                        setPendingSelection(null);
+                        setFileNavigationTarget(null);
+                        setViewedFiles(new Set());
+                        setConversationContextAttached(false);
+                        setGuide((current) => current ? { ...current, moved: true } : current);
+                        setStandaloneResult(
+                            `${
+                                next.standaloneReview?.resultMessage || "Review changed."
+                            } Annotations cleared. Select the current lines to add them again.`,
+                        );
+                    }
+                    setActiveRawPatch(next.rawPatch);
+                    setActiveReviewStatus(next.reviewStatus);
+                    return;
+                }
+                await pause(300);
+            }
+        } catch (error) {
+            setError(error.message || "Review action failed.");
+        } finally {
+            setSubmitting(null);
+        }
+    }
+
     async function submitApprove() {
         setSubmitting("approve");
         try {
@@ -723,6 +798,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             const response = await fetch(initialPayload.conversationStatusUrl);
             const conversation = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(conversation.error || `${agentLabel} status is unavailable.`);
+            if (conversation.standaloneReview) setStandaloneReview(conversation.standaloneReview);
             const events = Array.isArray(conversation.events) ? conversation.events : [];
             const reply = collectArtifactConversationReply(events, options.eventStartIndex);
             if (reply.text) upsertAgentReply(options.agentMessageId, reply.text);
@@ -803,9 +879,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setGuide((current) => current ? { ...current, moved: true } : current);
         setViewedFiles(new Set());
         setFileNavigationTarget(null);
-        if (options.clearAttachedContext) {
+        if (options.clearAttachedContext || initialPayload.standaloneReview) {
             setAnnotations([]);
             setSelectedAnnotationId(null);
+            setScrollTargetAnnotation(null);
+            setPendingSelection(null);
             setConversationContextAttached(false);
         }
     }
@@ -826,19 +904,35 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             fileTreeOpen={fileTreeOpen}
             onOpenSettings={() => setSettingsOpen(true)}
             onToggleAnnotations={() => animateSidebarUpdate(() => setAnnotationsOpen((open) => !open))}
-            onToggleFileTree={() => animateSidebarUpdate(() => setFileTreeOpen((open) => !open))}
+            onToggleFileTree={() =>
+                animateSidebarUpdate(() => {
+                    if (compactLayout && !fileTreeOpen) setAnnotationsOpen(false);
+                    setFileTreeOpen((open) => !open);
+                })}
         />
     );
 
     const reviewActions = (
         <div className="rw-plannotator-actions">
             {presentation === "workspace" && reviewOptions}
-            <ApproveButton
-                loadingLabel={<RunWieldThinkingDots label="Approving" />}
-                mobileLoadingLabel={<RunWieldThinkingDots label="Approving" showLabel={false} />}
-                onClick={submitApprove}
-                disabled={submitting !== null || agentWorking}
-                isLoading={submitting === "approve"}
+            {!standaloneReview && (
+                <ApproveButton
+                    loadingLabel={<RunWieldThinkingDots label="Approving" />}
+                    mobileLoadingLabel={<RunWieldThinkingDots label="Approving" showLabel={false} />}
+                    onClick={submitApprove}
+                    disabled={submitting !== null || agentWorking}
+                    isLoading={submitting === "approve"}
+                />
+            )}
+            <StandaloneCodeReviewActions
+                review={standaloneReview}
+                destination={reviewDestination}
+                busy={submitting !== null || agentWorking}
+                hasAnnotations={annotations.length > 0}
+                resultMessage={standaloneResult}
+                onDestination={setReviewDestination}
+                onAction={submitStandaloneAction}
+                onEngineer={submitFeedback}
             />
         </div>
     );
@@ -985,7 +1079,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                 onChange={setDiffStyle}
                                 fileTreeOpen={fileTreeOpen}
                                 annotationsOpen={annotationsOpen}
-                                onRestoreFiles={() => animateSidebarUpdate(() => setFileTreeOpen(true))}
+                                onRestoreFiles={() =>
+                                    animateSidebarUpdate(() => {
+                                        if (compactLayout) setAnnotationsOpen(false);
+                                        setFileTreeOpen(true);
+                                    })}
                                 onRestoreAnnotations={() => animateSidebarUpdate(() => setAnnotationsOpen(true))}
                                 guideReady={guideReady}
                                 guideOpen={guideOpen}
@@ -1178,30 +1276,36 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                 {rightSidebarView === "annotations"
                                     ? (
                                         <>
-                                            <div className="rw-review-feedback-action rw-review-action">
-                                                <FeedbackButton
-                                                    onClick={submitFeedback}
-                                                    disabled={annotations.length === 0 || submitting !== null ||
-                                                        agentWorking}
-                                                    isLoading={submitting === "feedback"}
-                                                    label="Send Annotations"
-                                                    loadingLabel={<RunWieldThinkingDots label="Sending Annotations" />}
-                                                    title={annotations.length === 0
-                                                        ? "Add an annotation before sending annotations"
-                                                        : "Send annotations"}
-                                                />
-                                                {conversationEnabled && (
-                                                    <button
-                                                        className="rw-review-context-to-chat"
-                                                        type="button"
-                                                        disabled={annotations.length === 0 || agentWorking}
-                                                        onClick={attachReviewContextToConversation}
-                                                    >
-                                                        <CommentIcon />
-                                                        Add to {agentLabel} chat
-                                                    </button>
-                                                )}
-                                            </div>
+                                            {(standaloneReview?.mode !== "pr" || reviewDestination === "engineer") && (
+                                                <div className="rw-review-feedback-action rw-review-action">
+                                                    <FeedbackButton
+                                                        onClick={submitFeedback}
+                                                        disabled={annotations.length === 0 || submitting !== null ||
+                                                            agentWorking}
+                                                        isLoading={submitting === "feedback"}
+                                                        label={standaloneReview
+                                                            ? "Send to Engineer"
+                                                            : "Send Annotations"}
+                                                        loadingLabel={
+                                                            <RunWieldThinkingDots label="Sending Annotations" />
+                                                        }
+                                                        title={annotations.length === 0
+                                                            ? "Add an annotation before sending annotations"
+                                                            : "Send annotations"}
+                                                    />
+                                                    {conversationEnabled && (
+                                                        <button
+                                                            className="rw-review-context-to-chat"
+                                                            type="button"
+                                                            disabled={annotations.length === 0 || agentWorking}
+                                                            onClick={attachReviewContextToConversation}
+                                                        >
+                                                            <CommentIcon />
+                                                            Add to {agentLabel} chat
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                             <ReviewSidebar
                                                 isOpen
                                                 width={352}
@@ -1251,6 +1355,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                         />
                     )}
                     <PlanReviewSettings
+                        codeDiffStyle={diffStyle}
+                        onCodeDiffStyleChange={setDiffStyle}
                         mode="code"
                         open={settingsOpen}
                         onClose={() => setSettingsOpen(false)}
@@ -1258,7 +1364,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     <ReviewCompletion
                         payload={initialPayload}
                         submitted={submitted}
-                        title={submitted === "approved" ? "Changes approved" : "Feedback sent"}
+                        title={submitted === "standalone"
+                            ? standaloneResult
+                            : submitted === "approved"
+                            ? "Changes approved"
+                            : "Feedback sent"}
                         subtitle="You can return to RunWield."
                         agentLabel="RunWield"
                     />
@@ -1469,8 +1579,8 @@ function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, onR
             unplacedFiles: remaining,
         };
     }, [guide, files]);
-    const sectionNotes = (guide.sections || []).map((section) => (
-        <div className="rw-guide-notes">
+    const sectionNotes = (guide.sections || []).map((section, index) => (
+        <div key={index} className="rw-guide-notes">
             {(section.blocks || []).filter((block) => !["prose", "diff"].includes(block.type))
                 .map((block, index) => <GuideBlock key={index} block={block} token={token} />)}
         </div>

@@ -1,4 +1,8 @@
-#!/usr/bin/env -S deno run --allow-read --allow-run
+#!/usr/bin/env bun
+import { fileURLToPath } from "node:url";
+import { captureScriptProcess } from "./script-process.ts";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import process from "node:process";
 
 /**
  * Ratchet: every relative Markdown link in a tracked `.md` file must resolve to
@@ -9,9 +13,9 @@
  * `../architecture.md` from inside `docs/`. Neither resolved, and nothing noticed.
  */
 
-import { dirname, join, normalize } from "@std/path";
+import { join, posix } from "node:path";
 
-const REPO_ROOT = new URL("../", import.meta.url).pathname;
+const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const EXCLUDED_PREFIXES = ["node_modules/", ".history/", "dist/", "third_party/"];
 const LINK_PATTERN = /\[(?:[^\]\\]|\\.)*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const HEADING_PATTERN = /^#{1,6}\s+(.+?)\s*$/;
@@ -28,17 +32,17 @@ const FRONT_MATTER_DELIMITER_PATTERN = /^---\s*$/;
 
 /** @returns {Promise<string[]>} */
 async function trackedMarkdownFiles() {
-    const command = new Deno.Command("git", {
+    const output = await captureScriptProcess("git", {
         args: ["ls-files", "-z", "*.md"],
         cwd: REPO_ROOT,
         stdout: "piped",
         stderr: "piped",
     });
-    const output = await command.output();
     if (!output.success) {
         throw new Error(new TextDecoder().decode(output.stderr).trim() || "git ls-files failed");
     }
-    return new TextDecoder().decode(output.stdout)
+    return new TextDecoder()
+        .decode(output.stdout)
         .split("\0")
         .filter((path) => path && !EXCLUDED_PREFIXES.some((prefix) => path.startsWith(prefix)))
         .sort();
@@ -142,10 +146,10 @@ export function extractRelativeLinks(markdown) {
  */
 export async function findBrokenLinks(
     files,
-    readTextFile = (path) => Deno.readTextFile(join(REPO_ROOT, path)),
+    readTextFile = (path) => fsReadFile(join(REPO_ROOT, path), "utf8"),
     pathExists = async (path) => {
         try {
-            await Deno.stat(join(REPO_ROOT, path));
+            await fsStat(join(REPO_ROOT, path));
             return true;
         } catch {
             return false;
@@ -164,7 +168,9 @@ export async function findBrokenLinks(
         const markdown = await readTextFile(sourceFile);
         for (const { line, target } of extractRelativeLinks(markdown)) {
             const [pathPart, fragment] = target.split("#");
-            const resolved = pathPart ? normalize(join(dirname(sourceFile), decodeURIComponent(pathPart))) : sourceFile;
+            const resolved = pathPart
+                ? posix.normalize(posix.join(posix.dirname(sourceFile), decodeURIComponent(pathPart)))
+                : sourceFile;
 
             if (resolved.startsWith("..")) {
                 broken.push({ sourceFile, line, target, reason: "resolves outside the repository" });
@@ -208,7 +214,7 @@ if (import.meta.main) {
             `Broken relative Markdown links (${broken.length}):\n${formatBrokenLinks(broken)}\n\n` +
                 "Links resolve relative to the file they appear in, not the repository root.",
         );
-        Deno.exit(1);
+        process.exit(1);
     }
 
     console.log(`Checked relative Markdown links in ${files.length} tracked files.`);

@@ -1,4 +1,6 @@
-import { assertEquals, assertInstanceOf, assertNotEquals } from "@std/assert";
+import { test } from "node:test";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertInstanceOf } from "../../testing/assertions.ts";
 import { Spacer } from "@earendil-works/pi-tui";
 import { createFooterOnlyUiApi, createSilentUiApi, createUiApi } from "./api.js";
 import {
@@ -66,7 +68,7 @@ function makeTuiHarness() {
     return { tui, messageList, renders: () => renderCount, focus: () => focused };
 }
 
-Deno.test("createSilentUiApi implements the full no-op surface", async () => {
+test("createSilentUiApi implements the full no-op surface", async () => {
     const ui = /** @type {any} */ (createSilentUiApi());
     ui.appendThinkingStart().appendDelta("ignored");
     ui.appendThinkingStart().end();
@@ -99,7 +101,7 @@ Deno.test("createSilentUiApi implements the full no-op surface", async () => {
     assertEquals(ui.isOutputSuppressed(), true);
 });
 
-Deno.test("createFooterOnlyUiApi suppresses message bodies but forwards footer renders", () => {
+test("createFooterOnlyUiApi suppresses message bodies but forwards footer renders", () => {
     let renders = 0;
     const ui = createFooterOnlyUiApi({ requestRender: () => renders++ });
 
@@ -111,7 +113,7 @@ Deno.test("createFooterOnlyUiApi suppresses message bodies but forwards footer r
     assertEquals(renders, 1);
 });
 
-Deno.test("ThinkingBlock hides markdown comments and unwraps emphasis markers", () => {
+test("ThinkingBlock hides markdown comments and unwraps emphasis markers", () => {
     const block = new ThinkingBlock();
     block.appendText(
         "**Planning page layout and token guard**\n\n<!-- -->\n\n**Inspecting server for static theme assets**",
@@ -122,7 +124,7 @@ Deno.test("ThinkingBlock hides markdown comments and unwraps emphasis markers", 
     assertEquals(rendered, "Planning page layout and token guard\n\nInspecting server for static theme assets");
 });
 
-Deno.test("thinking ends with one blank row before the next thinking block or tool call", () => {
+test("thinking ends with one blank row before the next thinking block or tool call", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = createUiApi(null, tui, messageList, new SpinnerBlock());
     if (!ui.appendThinkingStart || !ui.startToolExecution) throw new Error("TUI API is incomplete.");
@@ -142,7 +144,7 @@ Deno.test("thinking ends with one blank row before the next thinking block or to
     assertEquals(toolLine - secondLine, 2);
 });
 
-Deno.test("createUiApi appends visible blocks, merges compatible system messages, and controls tools", () => {
+test("createUiApi appends visible blocks, merges compatible system messages, and controls tools", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const spinner = new SpinnerBlock();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
@@ -185,7 +187,7 @@ Deno.test("createUiApi appends visible blocks, merges compatible system messages
     assertEquals(messageList.children, []);
 });
 
-Deno.test("createUiApi opens local commands by default and falls back to toggling the latest block", () => {
+test("createUiApi opens local commands by default and falls back to toggling the latest block", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -208,7 +210,7 @@ Deno.test("createUiApi opens local commands by default and falls back to togglin
     assertEquals(collapsed.includes("ephemeral 7"), false);
 });
 
-Deno.test("createUiApi does not hide duplicate tool-start events", () => {
+test("createUiApi does not hide duplicate tool-start events", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -224,7 +226,7 @@ Deno.test("createUiApi does not hide duplicate tool-start events", () => {
     second.endExecution(false, 1);
 });
 
-Deno.test("createUiApi keeps workflow tools as single custom blocks", () => {
+test("createUiApi keeps workflow tools as single custom blocks", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -248,7 +250,7 @@ Deno.test("createUiApi keeps workflow tools as single custom blocks", () => {
     );
 });
 
-Deno.test("createUiApi groups contiguous tool calls and closes the group at conversation boundaries", () => {
+test("createUiApi groups contiguous tool calls and closes the group at conversation boundaries", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -264,7 +266,7 @@ Deno.test("createUiApi groups contiguous tool calls and closes the group at conv
     assertEquals(messageList.children.filter((/** @type {any} */ child) => child instanceof Spacer).length, 3);
 });
 
-Deno.test("createUiApi toggles only visible tool groups", () => {
+test("createUiApi toggles only visible tool groups", () => {
     const { tui, messageList } = makeTuiHarness();
     /** @type {Array<ToolExecutionGroupBlock | ToolExecutionBlock>} */
     let visibleToolBlocks = [];
@@ -312,7 +314,7 @@ Deno.test("createUiApi toggles only visible tool groups", () => {
     );
 });
 
-Deno.test("createUiApi keeps an active tool group while pruning bounded history", () => {
+test("createUiApi keeps an active tool group while pruning bounded history", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -330,7 +332,7 @@ Deno.test("createUiApi keeps an active tool group while pruning bounded history"
     active.endExecution(false, 1);
 });
 
-Deno.test("createUiApi bounds completed children in a long contiguous tool group", () => {
+test("createUiApi bounds completed children in a long contiguous tool group", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
     /** @type {Array<import('./types.js').ToolExecutionBlockApi>} */
@@ -347,7 +349,7 @@ Deno.test("createUiApi bounds completed children in a long contiguous tool group
     assertEquals(group.children[0].headerText, "$ echo 5");
 });
 
-Deno.test("createUiApi releases old message blocks during long-running TUI sessions", () => {
+test("createUiApi releases old message blocks during long-running TUI sessions", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -359,7 +361,7 @@ Deno.test("createUiApi releases old message blocks during long-running TUI sessi
     assertEquals(messageList.children[0] instanceof UserPromptBlock, true);
 });
 
-Deno.test("createUiApi toggles one transient keyboard-help block outside the message list", () => {
+test("createUiApi toggles one transient keyboard-help block outside the message list", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const inputAccessory = makeContainer();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
@@ -381,7 +383,7 @@ Deno.test("createUiApi toggles one transient keyboard-help block outside the mes
     assertEquals(renders() > 0, true);
 });
 
-Deno.test("createUiApi does not flash a managed sync block for benign syncing", () => {
+test("createUiApi does not flash a managed sync block for benign syncing", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const inputAccessory = makeContainer();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
@@ -413,7 +415,7 @@ Deno.test("createUiApi does not flash a managed sync block for benign syncing", 
     );
 });
 
-Deno.test("createUiApi does not repaint for repeated visible managed sync state", () => {
+test("createUiApi does not repaint for repeated visible managed sync state", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const inputAccessory = makeContainer();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
@@ -436,7 +438,7 @@ Deno.test("createUiApi does not repaint for repeated visible managed sync state"
     assertEquals(renders(), 1);
 });
 
-Deno.test("createUiApi clearMessages removes input accessory resources", () => {
+test("createUiApi clearMessages removes input accessory resources", () => {
     const { tui, messageList } = makeTuiHarness();
     const inputAccessory = makeContainer();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
@@ -454,7 +456,7 @@ Deno.test("createUiApi clearMessages removes input accessory resources", () => {
     assertEquals(inputAccessory.children, []);
 });
 
-Deno.test("createUiApi adds and removes exact queued-message blocks by runtime id", () => {
+test("createUiApi adds and removes exact queued-message blocks by runtime id", () => {
     const { tui, messageList } = makeTuiHarness();
     const queuedInput = makeContainer();
     const ui = /** @type {any} */ (
@@ -474,7 +476,7 @@ Deno.test("createUiApi adds and removes exact queued-message blocks by runtime i
     assertEquals(queuedInput.children, []);
 });
 
-Deno.test("createUiApi renders live elapsed tool time immediately and stops after completion", async () => {
+test("createUiApi renders live elapsed tool time immediately and stops after completion", async () => {
     const harness = makeTuiHarness();
     const timedUi = /** @type {any} */ (createUiApi(null, harness.tui, harness.messageList, new SpinnerBlock()));
     const tool = /** @type {import('./blocks.js').ToolExecutionBlock} */ (
@@ -503,7 +505,7 @@ Deno.test("createUiApi renders live elapsed tool time immediately and stops afte
     assertEquals(harness.renders(), afterEndRenders);
 });
 
-Deno.test("createUiApi keeps semantic status messages independent from active tool output", () => {
+test("createUiApi keeps semantic status messages independent from active tool output", () => {
     const { tui, messageList } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -523,7 +525,7 @@ Deno.test("createUiApi keeps semantic status messages independent from active to
     assertEquals(messageList.children[2] instanceof SystemMessageBlock, true);
 });
 
-Deno.test("createUiApi leaves a long-open Plan review idle and resumes tool updates after a decision", async () => {
+test("createUiApi leaves a long-open Plan review idle and resumes tool updates after a decision", async () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const spinner = new SpinnerBlock();
     const ui = createUiApi(null, tui, messageList, spinner);
@@ -559,7 +561,7 @@ Deno.test("createUiApi leaves a long-open Plan review idle and resumes tool upda
     }
 });
 
-Deno.test("createUiApi pauses tool timers for terminal prompts, including tools started during the wait", async () => {
+test("createUiApi pauses tool timers for terminal prompts, including tools started during the wait", async () => {
     const { tui, messageList, renders, focus } = makeTuiHarness();
     const spinner = new SpinnerBlock();
     const ui = createUiApi(null, tui, messageList, spinner);
@@ -587,7 +589,7 @@ Deno.test("createUiApi pauses tool timers for terminal prompts, including tools 
     }
 });
 
-Deno.test("createUiApi setBusy animates while Runtime remains busy and stops when idle", async () => {
+test("createUiApi setBusy animates while Runtime remains busy and stops when idle", async () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const spinner = new SpinnerBlock();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
@@ -609,7 +611,7 @@ Deno.test("createUiApi setBusy animates while Runtime remains busy and stops whe
     assertEquals(renders(), stoppedRenderCount);
 });
 
-Deno.test("createUiApi suppresses focused cursor while busy animation repaints", () => {
+test("createUiApi suppresses focused cursor while busy animation repaints", () => {
     const { tui, messageList } = makeTuiHarness();
     const spinner = new SpinnerBlock();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
@@ -627,7 +629,7 @@ Deno.test("createUiApi suppresses focused cursor while busy animation repaints",
     assertEquals(editor.focused, true);
 });
 
-Deno.test("createUiApi pauses the busy animation while waiting for prompt input", async () => {
+test("createUiApi pauses the busy animation while waiting for prompt input", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
     const spinner = new SpinnerBlock();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
@@ -644,7 +646,7 @@ Deno.test("createUiApi pauses the busy animation while waiting for prompt input"
     ui.setBusy(false);
 });
 
-Deno.test("createUiApi renders validation panel separately from active prompt placement", async () => {
+test("createUiApi renders validation panel separately from active prompt placement", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
     const validationPanelContainer = makeContainer();
     const activeInteractionContainer = makeContainer();
@@ -680,7 +682,7 @@ Deno.test("createUiApi renders validation panel separately from active prompt pl
     assertEquals(validationPanelContainer.children[0] instanceof ValidationHandoffBlock, true);
 });
 
-Deno.test("createUiApi marks stale reviewer feedback by report order instead of wall clock", () => {
+test("createUiApi marks stale reviewer feedback by report order instead of wall clock", () => {
     const { tui, messageList } = makeTuiHarness();
     const validationPanelContainer = makeContainer();
     const ui = /** @type {any} */ (
@@ -708,7 +710,7 @@ Deno.test("createUiApi marks stale reviewer feedback by report order instead of 
     }
 });
 
-Deno.test("createUiApi promptSelect resolves selection, cancellation, and selection-change hook", async () => {
+test("createUiApi promptSelect resolves selection, cancellation, and selection-change hook", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
     /** @type {string[]} */
@@ -747,7 +749,7 @@ Deno.test("createUiApi promptSelect resolves selection, cancellation, and select
     assertEquals(messageList.children.length, childCountBeforeTransient);
 });
 
-Deno.test("createUiApi promptText resolves submit, rejects empty required submit, and aborts", async () => {
+test("createUiApi promptText resolves submit, rejects empty required submit, and aborts", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -780,7 +782,7 @@ Deno.test("createUiApi promptText resolves submit, rejects empty required submit
     assertEquals(await abortPromise, null);
 });
 
-Deno.test("createUiApi clearMessages settles active prompt without orphaned interaction state", async () => {
+test("createUiApi clearMessages settles active prompt without orphaned interaction state", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
     const activeInteractionContainer = makeContainer();
     const ui = /** @type {any} */ (
@@ -799,7 +801,7 @@ Deno.test("createUiApi clearMessages settles active prompt without orphaned inte
     assertEquals(focus(), null);
 });
 
-Deno.test("createUiApi suppressOutput settles active prompt without stale interaction components", async () => {
+test("createUiApi suppressOutput settles active prompt without stale interaction components", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
     const activeInteractionContainer = makeContainer();
     const ui = /** @type {any} */ (
@@ -819,7 +821,7 @@ Deno.test("createUiApi suppressOutput settles active prompt without stale intera
     assertEquals(ui.isOutputSuppressed(), true);
 });
 
-Deno.test("createUiApi suppressOutput silences later UI mutations except clearing existing messages", () => {
+test("createUiApi suppressOutput silences later UI mutations except clearing existing messages", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
@@ -845,7 +847,7 @@ Deno.test("createUiApi suppressOutput silences later UI mutations except clearin
     assertEquals(messageList.children, []);
 });
 
-Deno.test("createUiApi dispose clears prompts, timers, focus, and validation containers", async () => {
+test("createUiApi dispose clears prompts, timers, focus, and validation containers", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
     const spinner = new SpinnerBlock();
     const inputAccessoryContainer = makeContainer();
@@ -863,9 +865,20 @@ Deno.test("createUiApi dispose clears prompts, timers, focus, and validation con
 
     const prompt = ui.promptText("Prompt", { persistResult: false });
     assertNotEquals(focus(), null);
-    ui.updateValidationProgress?.({ outcome: "running", stage: "testing", message: "Testing" });
+    ui.updateValidationProgress?.({
+        kind: "workflow",
+        outcome: "running",
+        stage: "ci",
+        message: "Testing",
+        checks: { ci: "running", semanticReview: "pending", humanReview: "pending", merge: "pending" },
+    });
     ui.showKeyboardHelp?.({ title: "Keyboard shortcuts", items: [{ key: "?", description: "show help" }] });
-    ui.setManagedSyncStatus?.({ status: "behind", owningSurfaceKind: "workspace", owningSurfaceLabel: "Workspace" });
+    ui.setManagedSyncStatus?.({
+        status: "degraded",
+        localGeneration: 1,
+        latestGeneration: 2,
+        owningSurfaceKind: "workspace",
+    });
     ui.startToolExecution?.("tool-1", "bash", "bash");
     assertEquals(inputAccessoryContainer.children.length, 4);
     ui.dispose?.();

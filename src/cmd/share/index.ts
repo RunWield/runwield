@@ -1,3 +1,9 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { getCwd } from "../../constants.js";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { rm as fsRm } from "node:fs/promises";
 /**
  * @module cmd/share
  * Share current session JSONL as a secret GitHub Gist.
@@ -27,8 +33,8 @@ export interface ShareCommandOptions {
  * Run a command and return success + stdout.
  */
 async function runGitHubCli(args: string[]): Promise<CommandResult> {
-    const command = new Deno.Command("gh", { args, stdout: "piped", stderr: "piped" });
-    const { success, stdout, stderr } = await command.output();
+    const command = captureForegroundProcess("gh", { args, cwd: getCwd() });
+    const { success, stdout, stderr } = await command;
     return {
         success,
         stdout: new TextDecoder().decode(stdout),
@@ -71,7 +77,9 @@ export async function runShareCommand(_argv: string[], options: ShareCommandOpti
         }
 
         // 3. Export the currently persisted session shape to a temporary JSONL file.
-        tmpFile = await Deno.makeTempFile({ prefix: "runwield-session-", suffix: ".jsonl" });
+        const candidate = join(tmpdir(), `runwield-session-${crypto.randomUUID()}.jsonl`);
+        await writeFile(candidate, "", { flag: "wx", mode: 0o600 });
+        tmpFile = candidate;
         await sessionRuntime.exportSession(runtimeSessionId, tmpFile);
 
         // 4. Upload to secret Gist
@@ -91,6 +99,6 @@ export async function runShareCommand(_argv: string[], options: ShareCommandOpti
         uiAPI.appendSystemMessage(`Unexpected error while sharing session: ${msg}`, true);
         return "failed";
     } finally {
-        if (tmpFile) await Deno.remove(tmpFile).catch(() => {});
+        if (tmpFile) await fsRm(tmpFile).catch(() => {});
     }
 }

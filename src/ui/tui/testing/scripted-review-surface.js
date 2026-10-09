@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { writeFileSync as fsWriteFileSync } from "node:fs";
 /**
  * @module ui/tui/testing/scripted-review-surface
  * Protocol-checked Plan Review and Runtime interaction fixtures.
@@ -18,6 +20,7 @@ import { getCwd } from "../../../constants.js";
 
 /**
  * @typedef {Object} ScriptedHumanReviewDecision
+ * @property {boolean} [manual] Leave the real browser review unanswered for terminal-driven cancellation.
  * @property {boolean} [approved]
  * @property {string} [feedback]
  * @property {boolean} [canceled]
@@ -87,6 +90,7 @@ export class ScriptedHumanReviewSurface {
         if (!decision) throw new Error("Unexpected Code Review interaction: no scripted decisions remain.");
         this.consumed.push({ request, decision });
         return {
+            manual: decision.manual === true,
             approved: decision.approved === true,
             feedback: decision.feedback || "",
             canceled: decision.canceled === true,
@@ -145,17 +149,13 @@ export class ScriptedInteractionSurface {
                 : getCwd();
             if (!cwd) throw new Error("The interaction did not name a publication repair checkout.");
             const target = `${cwd}/${interaction.userFixesFirst.path}`;
-            Deno.writeTextFileSync(target, interaction.userFixesFirst.text);
+            fsWriteFileSync(target, interaction.userFixesFirst.text);
             consumed.userFixCwd = cwd;
             consumed.userFixPath = target;
             for (const command of interaction.userFixesFirst.commands || []) {
-                const output = new Deno.Command("bash", {
-                    cwd,
-                    args: ["-lc", command],
-                    stdout: "piped",
-                    stderr: "piped",
-                }).outputSync();
-                if (!output.success) {
+                const output = spawnSync("bash", ["-lc", command], { cwd, stdio: "pipe" });
+                if (output.error) throw output.error;
+                if (output.status !== 0) {
                     throw new Error(new TextDecoder().decode(output.stderr) || `User fix command failed: ${command}`);
                 }
             }

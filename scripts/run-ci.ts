@@ -1,4 +1,6 @@
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env bun
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
 
 import { runWithSnip, writeSnipCommandResult } from "./run-with-snip.ts";
 
@@ -13,9 +15,12 @@ export const PRE_TEST_TASKS = [
     "doc-links:check",
     "docs:check",
     "skills:sync:check",
+    // The suites below skip the build their everyday tasks run first; building
+    // here overlaps it with the checks instead of serializing it before tests.
+    "workspace:build",
 ] as const;
 
-export type CiTaskName = typeof PRE_TEST_TASKS[number] | "test" | "test:all";
+export type CiTaskName = (typeof PRE_TEST_TASKS)[number] | "test:suite" | "test:all:suite";
 
 export interface CiTaskResult {
     name: CiTaskName;
@@ -68,17 +73,17 @@ export async function runCi(executeTask: ExecuteCiTask, options: CiOptions = {})
         return { exitCode: 1, failures: preTestFailures };
     }
 
-    const testResult = await settleTask(options.sourceOnly ? "test" : "test:all", executeTask);
+    const testResult = await settleTask(options.sourceOnly ? "test:suite" : "test:all:suite", executeTask);
     const testFailures = failedTasks([testResult]);
     printFailureSummary(testFailures);
     return { exitCode: testResult.code, failures: testFailures };
 }
 
-async function executeDenoTask(taskName: CiTaskName, failFast: boolean): Promise<CiTaskResult> {
+async function executeRuntimeTask(taskName: CiTaskName, failFast: boolean): Promise<CiTaskResult> {
     const start = performance.now();
-    const args = ["task", "-q", taskName];
-    if (failFast && (taskName === "test" || taskName === "test:all")) args.push("--fail-fast");
-    const result = await runWithSnip("deno", args, {
+    const args = ["run", "--silent", taskName];
+    if (failFast && (taskName === "test:suite" || taskName === "test:all:suite")) args.push("--fail-fast");
+    const result = await runWithSnip(process.execPath, args, {
         stdin: "inherit",
         failureLabel: `ci ${taskName}`,
         quietOnSuccess: true,
@@ -93,18 +98,21 @@ function formatElapsed(elapsedMs: number): string {
 }
 
 if (import.meta.main) {
-    if (Deno.args.some((arg) => arg !== "--source-only" && arg !== "--fail-fast")) {
-        throw new Error("usage: deno task ci [--source-only] [--fail-fast]");
+    if (process.argv.slice(2).some((arg) => arg !== "--source-only" && arg !== "--fail-fast")) {
+        throw new Error("usage: bun run ci [--source-only] [--fail-fast]");
     }
     const start = performance.now();
     const timings: CiTaskResult[] = [];
-    const result = await runCi(async (name) => {
-        const task = await executeDenoTask(name, Deno.args.includes("--fail-fast"));
-        timings.push(task);
-        return task;
-    }, { sourceOnly: Deno.args.includes("--source-only") });
-    await Deno.mkdir(".ci-cache", { recursive: true });
-    await Deno.writeTextFile(
+    const result = await runCi(
+        async (name) => {
+            const task = await executeRuntimeTask(name, process.argv.slice(2).includes("--fail-fast"));
+            timings.push(task);
+            return task;
+        },
+        { sourceOnly: process.argv.slice(2).includes("--source-only") },
+    );
+    await fsMkdir(".ci-cache", { recursive: true });
+    await fsWriteFile(
         ".ci-cache/ci-timings.json",
         JSON.stringify(
             {
@@ -116,5 +124,5 @@ if (import.meta.main) {
         ) + "\n",
     );
     if (result.exitCode === 0) console.log(`CI passed (${formatElapsed(performance.now() - start)})`);
-    Deno.exit(result.exitCode);
+    process.exit(result.exitCode);
 }

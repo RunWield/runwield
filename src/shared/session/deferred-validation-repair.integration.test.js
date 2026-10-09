@@ -1,5 +1,14 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -14,14 +23,14 @@ const repository = defineCommittedGitFixture({
 });
 
 for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compaction"]) {
-    Deno.test(`first-command validation survives repair ${interruption} and accepts continue in the worktree`, async () => {
+    test(`first-command validation survives repair ${interruption} and accepts continue in the worktree`, async () => {
         await withRuntimeCommandFixture("deferred-validation-repair-", async (fixture) => {
             const { setModelResponseFactories, settingsPath } = fixture;
-            const settings = JSON.parse(await Deno.readTextFile(settingsPath));
+            const settings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
             settings.retry = { enabled: false };
-            await Deno.writeTextFile(settingsPath, JSON.stringify(settings));
+            await fsWriteFile(settingsPath, JSON.stringify(settings));
             const root = await repository.checkout();
-            const worktreeRoot = await Deno.makeTempDir({ prefix: "deferred-repair-tree-" });
+            const worktreeRoot = await fsMkdtemp(join(tmpdir(), "deferred-repair-tree-"));
             const store = openFileSessionStore();
             const runtime = createSessionRuntime({ sessionStore: store });
             try {
@@ -43,7 +52,7 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                     planId: "interrupted-repair-plan",
                     worktreeRoot,
                 });
-                await Deno.writeTextFile(join(tree.path, "implementation.txt"), "implemented\n");
+                await fsWriteFile(join(tree.path, "implementation.txt"), "implemented\n");
                 const plan = await loadPlan(tree.path, name);
                 assertExists(plan);
                 assertEquals(plan.attrs.status, "implemented");
@@ -129,7 +138,7 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                 const segments = store.listSessionTranscriptSegments(managed.runwieldSessionId);
                 assertEquals(segments.map((segment) => segment.kind), ["planning", "semantic_repair"]);
                 const repairSegment = segments[1];
-                const transcript = await Deno.readTextFile(repairSegment.transcriptPath);
+                const transcript = await fsReadFile(repairSegment.transcriptPath, "utf8");
                 if (interruption.startsWith("disconnect")) assertStringIncludes(transcript, "Unexpected EOF");
                 if (interruption === "disconnect_compaction") {
                     assertEquals(
@@ -148,7 +157,7 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                 const followUp = await runtime.promptUserTurn(id, { initialRequest: "continue" });
                 assertEquals(followUp.ok, true);
                 assertEquals(replies, 1);
-                assertEquals(runtime.getSessionSnapshot(id)?.cwd, await Deno.realPath(tree.path));
+                assertEquals(runtime.getSessionSnapshot(id)?.cwd, await fsRealpath(tree.path));
                 assertExists(runtime.getSessionSnapshot(id)?.managed);
                 await runtime.closeAllSessionsWhenIdle();
                 const restarted = createSessionRuntime({ sessionStore: store });
@@ -167,7 +176,7 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                         (await restarted.promptUserTurn(loaded.sessionId, { initialRequest: "continue" })).ok,
                         true,
                     );
-                    assertEquals(restarted.getSessionSnapshot(loaded.sessionId)?.cwd, await Deno.realPath(tree.path));
+                    assertEquals(restarted.getSessionSnapshot(loaded.sessionId)?.cwd, await fsRealpath(tree.path));
                     assertEquals(replies, 2);
                 } finally {
                     await restarted.closeAllSessionsWhenIdle();
@@ -175,8 +184,8 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
                 store.close();
-                await Deno.remove(worktreeRoot, { recursive: true });
-                await Deno.remove(root, { recursive: true });
+                await fsRm(worktreeRoot, { recursive: true });
+                await fsRm(root, { recursive: true });
             }
         });
     });

@@ -1,19 +1,29 @@
-import { assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../http-server.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    rm as fsRm,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { createProvider, InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 
-Deno.test("bounded Pi loader rejects a personal prompt link into a server file", async () => {
-    const root = await Deno.makeTempDir();
+test("bounded Pi loader rejects a personal prompt link into a server file", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const project = join(root, "project");
     const personal = join(root, "personal");
-    await Deno.mkdir(project);
-    await Deno.mkdir(join(personal, "prompts"), { recursive: true });
+    await fsMkdir(project);
+    await fsMkdir(join(personal, "prompts"), { recursive: true });
     const serverFile = join(root, "server-secret.md");
-    await Deno.writeTextFile(serverFile, "server-only");
-    await Deno.symlink(serverFile, join(personal, "prompts", "example.md"));
+    await fsWriteFile(serverFile, "server-only");
+    await fsSymlink(serverFile, join(personal, "prompts", "example.md"));
     const runtime = await ModelRuntime.create({
         credentials: new InMemoryCredentialStore(),
         modelsPath: null,
@@ -54,7 +64,7 @@ Deno.test("bounded Pi loader rejects a personal prompt link into a server file",
     await runtime.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(runtime);
     const credential = "a".repeat(64);
-    const server = Deno.serve(
+    const server = serveHttp(
         { hostname: "127.0.0.1", port: 0, onListen() {} },
         (request) =>
             request.headers.get("Authorization") === `Bearer ${credential}`
@@ -77,6 +87,6 @@ Deno.test("bounded Pi loader rejects a personal prompt link into a server file",
     } finally {
         bridge.close();
         await server.shutdown();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module cmd/remove
  * RunWield remove command wrapping Pi's PackageManager.
@@ -13,7 +14,7 @@ const DEFAULT_THEME = "catppuccin-mocha";
 export async function runRemoveCommand(argv: string[]): Promise<void> {
     if (argv.length === 0) {
         console.error("Usage: wld remove <source>");
-        Deno.exitCode = 1;
+        process.exitCode = 1;
         return;
     }
 
@@ -47,6 +48,6 @@ export async function runRemoveCommand(argv: string[]): Promise<void> {
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`Removal failed: ${message}`);
-        Deno.exitCode = 1;
+        process.exitCode = 1;
     }
 }

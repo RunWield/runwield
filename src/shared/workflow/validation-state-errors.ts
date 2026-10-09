@@ -1,4 +1,5 @@
-import { join } from "@std/path";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 
 export type ValidationStateProblem = "plan_missing" | "unknown_plan_status";
@@ -14,8 +15,8 @@ export class ValidationStateError extends Error {
 export async function logValidationFailure(error: Error, operation: string): Promise<void> {
     try {
         const directory = join(getHomeDir(), ".wld", "debug");
-        await Deno.mkdir(directory, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(directory, { recursive: true });
+        await fsWriteFile(
             join(directory, "validation-errors.jsonl"),
             JSON.stringify({
                 at: new Date().toISOString(),
@@ -24,7 +25,7 @@ export async function logValidationFailure(error: Error, operation: string): Pro
                 message: error.message,
                 stack: error.stack,
             }) + "\n",
-            { append: true },
+            { flag: "a" },
         );
     } catch {
         // A full disk or unavailable home must not mask the original failure.

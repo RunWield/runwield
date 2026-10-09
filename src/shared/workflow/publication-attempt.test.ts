@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import {
     advancePublicationAttempt,
     assertPublicationAttempt,
@@ -23,7 +24,7 @@ function candidate() {
     });
 }
 
-Deno.test("publication phases advance only with the Git evidence required by that phase", () => {
+test("publication phases advance only with the Git evidence required by that phase", () => {
     const sealed = candidate();
     const artifacts = advancePublicationAttempt(
         sealed,
@@ -54,7 +55,7 @@ Deno.test("publication phases advance only with the Git evidence required by tha
     assertEquals(publicationPhaseAtLeast(complete.phase, "target_published"), true);
 });
 
-Deno.test("publication phases reject missing evidence, skipped phases, and backward movement", () => {
+test("publication phases reject missing evidence, skipped phases, and backward movement", () => {
     const sealed = candidate();
     assertThrows(
         () => advancePublicationAttempt(sealed, "artifacts_committed", {}),
@@ -77,7 +78,7 @@ Deno.test("publication phases reject missing evidence, skipped phases, and backw
     );
 });
 
-Deno.test("only cleanup-complete publication attempts are safe for runtime migration", () => {
+test("only cleanup-complete publication attempts are safe for runtime migration", () => {
     const sealed = candidate();
     const artifacts = advancePublicationAttempt(sealed, "artifacts_committed", {
         artifactCommit: "b".repeat(40),
@@ -109,7 +110,7 @@ Deno.test("only cleanup-complete publication attempts are safe for runtime migra
     assertEquals(isPublicationAttemptCleanupComplete(repaired), false);
 });
 
-Deno.test("publication failures annotate the current phase without changing proven progress", () => {
+test("publication failures annotate the current phase without changing proven progress", () => {
     const sealed = candidate();
     const failed = recordPublicationFailure(sealed, {
         kind: "remote_unavailable",

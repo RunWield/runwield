@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     validationCheckLabel,
     validationProgressCheckSummary,
@@ -28,20 +29,20 @@ function progress(
     };
 }
 
-Deno.test("validation progress labels use owner terms", () => {
-    assertEquals(validationStageLabel("ci"), "Tests and CI");
+test("validation progress labels use owner terms", () => {
+    assertEquals(validationStageLabel("ci"), "Verification Command");
     assertEquals(validationStageLabel("semantic_review"), "AI review");
     assertEquals(validationStageLabel("human_review"), "Code review");
     assertEquals(validationStageLabel("engineer_repair"), "Repair");
-    assertEquals(validationStageLabel("merge"), "Combining commits");
+    assertEquals(validationStageLabel("merge"), "Merge worktree");
     assertEquals(validationStageLabel("terminal"), "Validation result");
-    assertEquals(validationCheckLabel("ci"), "Tests and CI");
+    assertEquals(validationCheckLabel("ci"), "Verification Command");
     assertEquals(validationCheckLabel("semanticReview"), "AI review");
     assertEquals(validationCheckLabel("humanReview"), "Code review");
-    assertEquals(validationCheckLabel("merge"), "Combining commits");
+    assertEquals(validationCheckLabel("merge"), "Merge worktree");
 });
 
-Deno.test("validation progress headings hide raw stages and counters", () => {
+test("validation progress headings hide raw stages and counters", () => {
     const cases: RuntimeValidationProgress[] = [
         progress({ kind: "mechanical", outcome: "running", stage: "ci" }),
         progress({ kind: "workflow", outcome: "running", stage: "semantic_review" }),
@@ -64,13 +65,13 @@ Deno.test("validation progress headings hide raw stages and counters", () => {
     const headings = cases.map(validationProgressHeading);
 
     assertEquals(headings, [
-        "Tests and CI running",
+        "Verification Command running",
         "AI review running",
         "Code review paused",
         "Validation failed",
         "Validation passed",
-        "Tests and CI failed",
-        "Tests and CI passed",
+        "Verification Command failed",
+        "Verification Command done",
     ]);
     for (const heading of headings) {
         assertEquals(heading.includes("semantic_review"), false, heading);
@@ -80,7 +81,7 @@ Deno.test("validation progress headings hide raw stages and counters", () => {
     }
 });
 
-Deno.test("validation check summary uses shared labels without raw check names", () => {
+test("validation check summary uses shared labels without raw check names", () => {
     const summary = validationProgressCheckSummary(progress({
         kind: "workflow",
         outcome: "running",
@@ -95,7 +96,7 @@ Deno.test("validation check summary uses shared labels without raw check names",
 
     assertEquals(
         summary,
-        "Tests and CI passed, AI review passed, Code review skipped, Combining commits running",
+        "Verification Command done, AI review passed, Code review skipped, Merge worktree running",
     );
     assertEquals(summary.includes("semanticReview"), false);
 });

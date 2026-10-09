@@ -1,9 +1,11 @@
+import { rmdir } from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/snip-filters
  * Installs RunWield-bundled Snip filters into Snip's user filter directory.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getCwd, getHomeDir, SNIP_FILTERS_DIR } from "../constants.js";
 
 export interface SnipFilterOptions {
@@ -49,11 +51,11 @@ const HARNS_MANAGED_SNIP_FILTER_MARKER = "# Managed by Harns. Remove with: hns s
 /** Return true when a write happened. */
 async function writeIfChanged(path: string, content: string): Promise<boolean> {
     try {
-        if (await Deno.readTextFile(path) === content) return false;
+        if (await fsReadFile(path, "utf8") === content) return false;
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    await Deno.writeTextFile(path, content);
+    await fsWriteFile(path, content);
     return true;
 }
 
@@ -78,15 +80,15 @@ async function removeLegacyHarnsFilterDirectory(homeDir: string): Promise<string
     for (const fileName of FILTER_FILE_NAMES) {
         const path = join(legacyFiltersDir, fileName);
         try {
-            await Deno.remove(path);
+            await fsRm(path);
             removed.push(path);
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
     }
     for (const path of [legacyFiltersDir, join(homeDir, ".config", "snip", "harns")]) {
         try {
-            await Deno.remove(path);
+            await rmdir(path);
         } catch {
             // Leave a non-empty or unavailable legacy directory intact. Only
             // the exact filter files above are owned by this cleanup.
@@ -114,20 +116,20 @@ export async function installRunWieldSnipFiltersForUser(
     const installed = [];
     const skipped = [];
 
-    await Deno.mkdir(paths.userFiltersDir, { recursive: true });
+    await fsMkdir(paths.userFiltersDir, { recursive: true });
 
     for (const fileName of FILTER_FILE_NAMES) {
         const sourcePath = join(bundledDir, fileName);
         const targetPath = join(paths.userFiltersDir, fileName);
-        const content = withManagedMarker(await Deno.readTextFile(sourcePath));
+        const content = withManagedMarker(await fsReadFile(sourcePath, "utf8"));
         try {
-            const existing = await Deno.readTextFile(targetPath);
+            const existing = await fsReadFile(targetPath, "utf8");
             if (!isRunWieldOrHarnsManaged(existing)) {
                 skipped.push({ path: targetPath, reason: "existing non-RunWield filter" });
                 continue;
             }
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
 
         if (await writeIfChanged(targetPath, content)) installed.push(targetPath);
@@ -152,15 +154,15 @@ export async function cleanupRunWieldSnipFiltersForUser(
     for (const fileName of FILTER_FILE_NAMES) {
         const targetPath = join(paths.userFiltersDir, fileName);
         try {
-            const existing = await Deno.readTextFile(targetPath);
+            const existing = await fsReadFile(targetPath, "utf8");
             if (!isRunWieldOrHarnsManaged(existing)) {
                 skipped.push({ path: targetPath, reason: "existing non-RunWield filter" });
                 continue;
             }
-            await Deno.remove(targetPath);
+            await fsRm(targetPath);
             removed.push(targetPath);
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) continue;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
             throw error;
         }
     }
@@ -181,11 +183,11 @@ export async function getRunWieldSnipFilterInstallStatus(
     for (const fileName of FILTER_FILE_NAMES) {
         const targetPath = join(paths.userFiltersDir, fileName);
         try {
-            const existing = await Deno.readTextFile(targetPath);
+            const existing = await fsReadFile(targetPath, "utf8");
             if (existing.startsWith(RUNWIELD_MANAGED_SNIP_FILTER_MARKER)) installed.push(targetPath);
             else conflicts.push(targetPath);
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") {
                 missing.push(targetPath);
                 continue;
             }

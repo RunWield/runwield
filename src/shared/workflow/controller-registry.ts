@@ -1,5 +1,17 @@
+import { recoverWindowsRename } from "../native-file-replace-windows.ts";
+import { platform } from "node:process";
+import { open as fsOpen } from "node:fs/promises";
+import { openNativeFileLock } from "../native-file-lock.ts";
+import { realpathSync as fsRealpathSync } from "node:fs";
+import {
+    mkdir as fsMkdir,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rename as fsRename,
+    rm as fsRm,
+} from "node:fs/promises";
 /** File-backed controller state shared by all worktrees of one project. */
-import { dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import {
@@ -47,7 +59,8 @@ export async function restoreOwnControllerWrite(
     if (
         controllerStatesEqual(current?.state || {}, state) &&
         JSON.stringify(recovery) === JSON.stringify(current?.recovery)
-    ) return true;
+    )
+        return true;
     if (!current || scope?.revisions.get(path) !== current.revision) {
         return false;
     }
@@ -89,9 +102,9 @@ export class StaleControllerWriteError extends Error {
 
 function canonicalPath(path: string): string {
     try {
-        return Deno.realPathSync(path);
+        return fsRealpathSync(path);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return resolve(path);
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return resolve(path);
         throw error;
     }
 }
@@ -127,7 +140,7 @@ export async function readControllerRecordAtPath(
     const key = identity.planId || `name:${identity.planName}`;
     try {
         const record: ControllerRecord = JSON.parse(
-            await Deno.readTextFile(join(controllerPlansDir, `${encodeURIComponent(key)}.json`)),
+            await fsReadFile(join(controllerPlansDir, `${encodeURIComponent(key)}.json`), "utf8"),
         );
         if (record.version !== 1 || !Number.isInteger(record.revision) || !record.state) {
             throw new Error(
@@ -136,7 +149,7 @@ export async function readControllerRecordAtPath(
         }
         return record;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
@@ -155,8 +168,8 @@ export async function findRecordingControllerByName(cwd: string, planName: strin
     const directory = resolveProjectRuntimeLayout(projectRoot(cwd)).primary.controllerPlansDir;
     let match: ControllerRecord | null = null;
     try {
-        for await (const entry of Deno.readDir(directory)) {
-            if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+        for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
+            if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
             const key = decodeURIComponent(entry.name.slice(0, -5));
             if (key.startsWith("name:")) continue;
             const record = await readControllerRecordAtPath(directory, { planId: key, planName });
@@ -165,7 +178,7 @@ export async function findRecordingControllerByName(cwd: string, planName: strin
             match = record;
         }
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     return match;
 }
@@ -174,24 +187,30 @@ async function atomicWrite(path: string, record: ControllerRecord): Promise<void
     const temporary = `${path}.${crypto.randomUUID()}.tmp`;
     const data = new TextEncoder().encode(`${JSON.stringify(record, null, 2)}\n`);
     try {
-        const file = await Deno.open(temporary, { createNew: true, write: true });
+        const file = await fsOpen(temporary, "wx");
         try {
-            let offset = 0;
-            while (offset < data.length) offset += await file.write(data.subarray(offset));
+            await file.writeFile(data);
             await file.sync();
         } finally {
-            file.close();
+            await file.close();
         }
-        await Deno.rename(temporary, path);
-        const directory = await Deno.open(dirname(path), { read: true });
         try {
-            await directory.sync();
-        } finally {
-            directory.close();
+            await fsRename(temporary, path);
+        } catch (error) {
+            if (!(error instanceof Error && recoverWindowsRename(error, temporary, path))) throw error;
+        }
+        // Windows cannot fsync a directory; the file was flushed before atomic rename.
+        if (platform !== "win32") {
+            const directory = await fsOpen(dirname(path), "r");
+            try {
+                await directory.sync();
+            } finally {
+                await directory.close();
+            }
         }
     } finally {
-        await Deno.remove(temporary).catch((error) => {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+        await fsRm(temporary).catch((error) => {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         });
     }
 }
@@ -205,11 +224,11 @@ export interface ControllerWriteOptions {
 
 /** Move pre-onboarding state to its stable identity exactly once. */
 export async function bindControllerPlanIdentity(cwd: string, identity: WorkflowIdentity): Promise<void> {
-    if (!identity.planId || await readControllerRecord(cwd, identity)) return;
+    if (!identity.planId || (await readControllerRecord(cwd, identity))) return;
     const temporaryIdentity = { planName: identity.planName };
-    if (!await readControllerRecord(cwd, temporaryIdentity)) return;
+    if (!(await readControllerRecord(cwd, temporaryIdentity))) return;
     const path = await enteredControllerRecordPath(cwd, temporaryIdentity);
-    const lock = await Deno.open(`${path}.lock`, { create: true, read: true, write: true });
+    const lock = openNativeFileLock(`${path}.lock`);
     try {
         await lock.lock(true);
         const unnamed = await readControllerRecord(cwd, temporaryIdentity);
@@ -222,10 +241,10 @@ export async function bindControllerPlanIdentity(cwd: string, identity: Workflow
 
 /** Called under the Plan lock only after the document's stable identity was saved. */
 export async function finishControllerPlanIdentity(cwd: string, identity: WorkflowIdentity): Promise<void> {
-    if (!identity.planId || !await readControllerRecord(cwd, identity)) return;
+    if (!identity.planId || !(await readControllerRecord(cwd, identity))) return;
     const path = await enteredControllerRecordPath(cwd, { planName: identity.planName });
-    await Deno.remove(path).catch((error) => {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+    await fsRm(path).catch((error) => {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     });
 }
 
@@ -238,10 +257,10 @@ export async function writeControllerState(
     invalidateProjectRuntimeReadScope();
     try {
         const path = await enteredControllerRecordPath(cwd, identity);
-        await Deno.mkdir(dirname(path), { recursive: true });
+        await fsMkdir(dirname(path), { recursive: true });
         // Keep this inode: deleting a lock file lets a third process lock a different
         // inode while an existing waiter still owns the original one.
-        const lock = await Deno.open(`${path}.lock`, { create: true, read: true, write: true });
+        const lock = openNativeFileLock(`${path}.lock`);
         try {
             await lock.lock(true);
             // Runtime entry precedes the inode lock. Re-entering migration here
@@ -260,9 +279,11 @@ export async function writeControllerState(
                 ...(recovery ? { recovery } : {}),
             };
             if (
-                before && controllerStatesEqual(before.state, record.state) &&
+                before &&
+                controllerStatesEqual(before.state, record.state) &&
                 JSON.stringify(before.recovery) === JSON.stringify(record.recovery)
-            ) return before;
+            )
+                return before;
             await atomicWrite(path, record);
             if (!options.initializeOnly) {
                 for (let scope = writes.getStore(); scope; scope = scope.parent) {
@@ -284,7 +305,7 @@ export async function inspectControllerWorktree(cwd: string, identity: WorkflowI
     const registry = await inspectWorktreeRegistry(selectedRoot(cwd));
     if (registry.readError) return { kind: "uncertain" as const };
     const candidates = registry.entries.filter((entry) =>
-        identity.planId && entry.planId ? entry.planId === identity.planId : entry.planName === identity.planName
+        identity.planId && entry.planId ? entry.planId === identity.planId : entry.planName === identity.planName,
     );
     const live = candidates.filter((entry) => entry.status !== "abandoned");
     if (live.length > 1) {
@@ -310,7 +331,8 @@ export async function listControllerDocumentWorktrees(cwd: string) {
         const active = registry.entries.filter((entry) => entry.status !== "abandoned");
         const selected = new Set(active.map((entry) => entry.planName));
         const live = active.filter((entry) => !isPublicationCleanupPending(entry.publication));
-        const retired = registry.entries.filter((entry) => entry.status === "abandoned")
+        const retired = registry.entries
+            .filter((entry) => entry.status === "abandoned")
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         for (const entry of retired) {
             if (selected.has(entry.planName)) continue;
@@ -336,59 +358,61 @@ export async function inspectControllerView(
     const candidates = registry.readError
         ? []
         : registry.entries.filter((entry) =>
-            identity.planId && entry.planId ? entry.planId === identity.planId : entry.planName === identity.planName
-        );
+              identity.planId && entry.planId ? entry.planId === identity.planId : entry.planName === identity.planName,
+          );
     const live = candidates.filter((entry) => entry.status !== "abandoned");
-    const lookup = registry.readError || live.length > 1
-        ? { kind: "uncertain" as const }
-        : live[0]
-        ? { kind: "live" as const, entry: live[0] }
-        : candidates.at(-1)
-        ? { kind: "retired" as const, entry: candidates.at(-1)! }
-        : { kind: "absent" as const };
+    const lookup =
+        registry.readError || live.length > 1
+            ? { kind: "uncertain" as const }
+            : live[0]
+              ? { kind: "live" as const, entry: live[0] }
+              : candidates.at(-1)
+                ? { kind: "retired" as const, entry: candidates.at(-1)! }
+                : { kind: "absent" as const };
     const liveEntry = lookup.kind === "live" ? lookup.entry : null;
     const attempt = liveEntry?.status === "planning" ? null : liveEntry;
-    const documentEntry = liveEntry?.status === "planning"
-        ? null
-        : liveEntry || (lookup.kind === "retired" ? lookup.entry : null);
+    const documentEntry =
+        liveEntry?.status === "planning" ? null : liveEntry || (lookup.kind === "retired" ? lookup.entry : null);
     const record = await readControllerRecordAtPath(layout.primary.controllerPlansDir, identity);
     const pendingRepairs: PendingControllerRepair[] = [];
     if ((attempt || lookup.kind === "retired") && record?.recovery) {
         pendingRepairs.push("clear_obsolete_recovery");
     }
     const legacyState = pickControllerState(legacy);
-    const mayImport = lookup.kind === "absent" ||
-        (attempt && canonicalPath(attempt.path) === canonicalPath(cwd));
-    const importsLegacy = !record && Boolean(
-        mayImport && (Object.values(legacyState).some((value) => value != null) || legacy.worktreeId),
-    );
+    const mayImport = lookup.kind === "absent" || (attempt && canonicalPath(attempt.path) === canonicalPath(cwd));
+    const importsLegacy =
+        !record &&
+        Boolean(mayImport && (Object.values(legacyState).some((value) => value != null) || legacy.worktreeId));
     if (importsLegacy) pendingRepairs.push("import_legacy_state");
-    const recovery = importsLegacy && !attempt && legacy.worktreeId
-        ? {
-            worktreeId: legacy.worktreeId,
-            worktreePath: legacy.worktreePath,
-            worktreeBranch: legacy.worktreeBranch,
-            worktreeBaseBranch: legacy.worktreeBaseBranch,
-            worktreeStatus: legacy.worktreeStatus,
-            executionBaselineTree: legacy.executionBaselineTree,
-        }
-        : undefined;
-    const worktree: WorkflowWorktreeContext = documentEntry && documentEntry.status !== "abandoned"
-        ? {
-            worktreeId: documentEntry.id,
-            worktreePath: documentEntry.path,
-            worktreeBranch: documentEntry.branch,
-            worktreeBaseBranch: documentEntry.baseBranch,
-            worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
-            executionBaselineTree: documentEntry.status === "planning"
-                ? undefined
-                : documentEntry.executionBaselineTree || documentEntry.baseTree,
-        }
-        : lookup.kind === "retired"
-        ? { worktreeStatus: "abandoned" }
-        : lookup.kind === "uncertain"
-        ? {}
-        : record?.recovery || recovery || {};
+    const recovery =
+        importsLegacy && !attempt && legacy.worktreeId
+            ? {
+                  worktreeId: legacy.worktreeId,
+                  worktreePath: legacy.worktreePath,
+                  worktreeBranch: legacy.worktreeBranch,
+                  worktreeBaseBranch: legacy.worktreeBaseBranch,
+                  worktreeStatus: legacy.worktreeStatus,
+                  executionBaselineTree: legacy.executionBaselineTree,
+              }
+            : undefined;
+    const worktree: WorkflowWorktreeContext =
+        documentEntry && documentEntry.status !== "abandoned"
+            ? {
+                  worktreeId: documentEntry.id,
+                  worktreePath: documentEntry.path,
+                  worktreeBranch: documentEntry.branch,
+                  worktreeBaseBranch: documentEntry.baseBranch,
+                  worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
+                  executionBaselineTree:
+                      documentEntry.status === "planning"
+                          ? undefined
+                          : documentEntry.executionBaselineTree || documentEntry.baseTree,
+              }
+            : lookup.kind === "retired"
+              ? { worktreeStatus: "abandoned" }
+              : lookup.kind === "uncertain"
+                ? {}
+                : record?.recovery || recovery || {};
     return {
         state: {
             ...(record?.state || (importsLegacy ? legacyState : {})),
@@ -409,9 +433,8 @@ export async function loadControllerView(
         const lookup = await inspectControllerWorktree(cwd, identity);
         const liveEntry = lookup.kind === "live" ? lookup.entry : null;
         const attempt = liveEntry?.status === "planning" ? null : liveEntry;
-        const documentEntry = liveEntry?.status === "planning"
-            ? null
-            : liveEntry || (lookup.kind === "retired" ? lookup.entry : null);
+        const documentEntry =
+            liveEntry?.status === "planning" ? null : liveEntry || (lookup.kind === "retired" ? lookup.entry : null);
         let record = await readControllerRecord(cwd, identity);
         if ((attempt || lookup.kind === "retired") && record?.recovery) {
             // Once the registry owns the attempt, old import hints are finished.
@@ -421,23 +444,24 @@ export async function loadControllerView(
         if (!record) {
             // Only the execution copy may seed legacy state once execution exists.
             // A stale primary document is never a fallback for missing runtime facts.
-            const mayImport = lookup.kind === "absent" ||
-                (attempt && canonicalPath(attempt.path) === canonicalPath(cwd));
+            const mayImport =
+                lookup.kind === "absent" || (attempt && canonicalPath(attempt.path) === canonicalPath(cwd));
             if (
                 mayImport &&
                 (Object.values(pickControllerState(legacy)).some((value) => value != null) || legacy.worktreeId)
             ) {
-                const recovery = !attempt && legacy.worktreeId
-                    ? {
-                        worktreeId: legacy.worktreeId,
-                        worktreePath: legacy.worktreePath,
-                        worktreeBranch: legacy.worktreeBranch,
-                        worktreeBaseBranch: legacy.worktreeBaseBranch,
-                        worktreeBaseCommit: legacy.worktreeBaseCommit,
-                        worktreeStatus: legacy.worktreeStatus,
-                        executionBaselineTree: legacy.executionBaselineTree,
-                    }
-                    : undefined;
+                const recovery =
+                    !attempt && legacy.worktreeId
+                        ? {
+                              worktreeId: legacy.worktreeId,
+                              worktreePath: legacy.worktreePath,
+                              worktreeBranch: legacy.worktreeBranch,
+                              worktreeBaseBranch: legacy.worktreeBaseBranch,
+                              worktreeBaseCommit: legacy.worktreeBaseCommit,
+                              worktreeStatus: legacy.worktreeStatus,
+                              executionBaselineTree: legacy.executionBaselineTree,
+                          }
+                        : undefined;
                 record = await writeControllerState(cwd, identity, pickControllerState(legacy), {
                     initializeOnly: true,
                     recovery,
@@ -445,23 +469,25 @@ export async function loadControllerView(
             }
         }
         const state = record?.state || {};
-        const worktree: WorkflowWorktreeContext = documentEntry && documentEntry.status !== "abandoned"
-            ? {
-                worktreeId: documentEntry.id,
-                worktreePath: documentEntry.path,
-                worktreeBranch: documentEntry.branch,
-                worktreeBaseBranch: documentEntry.baseBranch,
-                worktreeBaseCommit: documentEntry.baseCommit,
-                worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
-                executionBaselineTree: documentEntry.status === "planning"
-                    ? undefined
-                    : documentEntry.executionBaselineTree || documentEntry.baseTree,
-            }
-            : lookup.kind === "retired"
-            ? { worktreeStatus: "abandoned" }
-            : lookup.kind === "uncertain"
-            ? {}
-            : record?.recovery || {};
+        const worktree: WorkflowWorktreeContext =
+            documentEntry && documentEntry.status !== "abandoned"
+                ? {
+                      worktreeId: documentEntry.id,
+                      worktreePath: documentEntry.path,
+                      worktreeBranch: documentEntry.branch,
+                      worktreeBaseBranch: documentEntry.baseBranch,
+                      worktreeBaseCommit: documentEntry.baseCommit,
+                      worktreeStatus: documentEntry.status === "validated" ? "completed" : documentEntry.status,
+                      executionBaselineTree:
+                          documentEntry.status === "planning"
+                              ? undefined
+                              : documentEntry.executionBaselineTree || documentEntry.baseTree,
+                  }
+                : lookup.kind === "retired"
+                  ? { worktreeStatus: "abandoned" }
+                  : lookup.kind === "uncertain"
+                    ? {}
+                    : record?.recovery || {};
         return {
             state: {
                 ...state,

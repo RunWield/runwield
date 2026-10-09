@@ -1,4 +1,5 @@
 ---
+planId: "a65417c5-35b5-4192-9355-c5000440568f"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -28,7 +29,6 @@ dependencies:
     - "06-carry-remote-context-through-delivery-workflows"
     - "07-open-remote-reviews-in-the-local-browser"
 targetBranch: "epic/remote-ssh-development"
-planId: "a65417c5-35b5-4192-9355-c5000440568f"
 ---
 
 # Package and Qualify Remote SSH Support
@@ -92,21 +92,21 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - Required SSHFS and user-space helpers are pinned, verified, installed atomically in private versioned storage, and
   selected without replacing system packages or attempting root escalation; unavailable FUSE prerequisites fail clearly.
   The release qualifies the full laptop `~/.wld` mounted at a fresh private remote path, direct personal file edits,
-  remote project `.wld` ownership, and a separate guarded Session writer mount. It does not package copied personal
-  resources or a special resource synchronization service.
+  remote project `.wld` ownership, and the synchronous laptop-owned Session-save bridge selected on 2026-10-06. It does
+  not package copied personal resources or a special resource synchronization service.
 - Development builds require a matching development artifact, and released launchers require the same release/protocol
   identity; neither can silently downgrade or run an arbitrary remote PATH installation.
 - Interrupted setup, stale connection resources, and partial helper installs repair automatically without deleting
   remote project edits, local Session history, or package-managed installations.
-- The supported matrix names only laptop systems, remote GNU/Linux architectures, stock SFTP behavior, FUSE
-  prerequisites, and Pi providers exercised by the release evidence; untested platforms and CLI backends remain excluded
-  or deferred.
+- The supported matrix names only laptop systems, remote GNU/Linux architectures, personal-resource SFTP behavior, FUSE
+  prerequisites, Session-save Worker behavior, and Pi providers exercised by the release evidence; untested platforms
+  and CLI backends remain excluded or deferred.
 - The complete remote-only delivery journey passes with actual built artifacts: bootstrap, planning, local Plan Review,
   isolated execution, validation, AI review and repair, Code Review where selected, confirmed publication, disconnect,
   offline local history, reconnect, and saved continuation.
 - Failure qualification covers normal exit, Stop, browser close, transport kill, a blocked network path, launcher death,
-  serving-owner death, storage stall, interrupted setup, and loss during write, sync, rollover, commit, review, merge,
-  and publication.
+  personal-resource serving-owner death, Session-owner and Worker death, save-acknowledgement loss, storage stall,
+  interrupted setup, and loss during write, sync, rollover, commit, review, merge, and publication.
 - Lasting delivered and unresolved requirements, observable outcomes, and acceptance scenarios move into their Core
   capability owners; references are fixed and the transient Remote SSH PRD is removed only when nothing is lost.
 - ADR-018 is accepted, ADR-015 matches the implemented writer extension, and the glossary defines only shipped
@@ -132,10 +132,12 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 - One successful Fedora x64 run does not establish every GNU/Linux distribution or libc. Record the exact tested
   baseline.
-- Stock SFTP descriptor retention and sync behavior are release gates on each advertised laptop build. A custom proof
-  cannot substitute for them.
-- A killed SSH tunnel is not a real blocked-network-path test, and launcher death alone does not prove serving-owner
-  exclusion.
+- Strict per-entry laptop write/sync acknowledgements, native writer exclusion, sticky save faults,
+  duplicate/conflicting request reconciliation, and stale-operation refusal are Session-storage release gates on each
+  advertised build. SFTP/SSHFS qualification remains required for personal resources; Session history is not written
+  through that mount.
+- A killed SSH tunnel is not a real blocked-network-path test, and launcher death alone does not prove Session-owner
+  exclusion or sticky save-fault behavior.
 - SSHFS has maintenance risk. Keep Session ownership and bundle formats transport-independent enough that a later
   transport can replace it without changing authority.
 - Release qualification can uncover an architectural mismatch. Return that decision for review rather than shipping an

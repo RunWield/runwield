@@ -101,10 +101,12 @@ export const validationTreeHumanReviewNoAnswerRetryScenario = withValidationBran
             },
         ],
         humanReviewDecisions: [
-            { canceled: true },
+            { manual: true },
+            { manual: true },
             { approved: true, feedback: "Human approves after reopening the review." },
         ],
         scriptedInteractions: [
+            { type: "select", promptIncludes: "Pick Retry to open it again", value: "retry" },
             { type: "select", promptIncludes: "Pick Retry to open it again", value: "retry" },
         ],
         interactiveSelectPrompts: [
@@ -113,7 +115,14 @@ export const validationTreeHumanReviewNoAnswerRetryScenario = withValidationBran
         ],
         actions: [
             ...plannedChangeReviewRepairValidationScenario.actions.slice(0, 3),
-            // Keep the real question mounted until its visible text has been observed.
+            // Exercise actual terminal cancellation while the real HTTP review is live.
+            { type: "waitForScreen", text: "Waiting for code review decision", timeoutMs: 240000 },
+            { type: "escape" },
+            { type: "waitForScreen", text: "Pick Retry to open it again", timeoutMs: 60000 },
+            { type: "type", text: "Retry" },
+            { type: "enter" },
+            { type: "waitForScreen", text: "Waiting for code review decision", timeoutMs: 60000 },
+            { type: "escape" },
             { type: "waitForScreen", text: "Pick Retry to open it again", timeoutMs: 240000 },
             { type: "type", text: "Retry" },
             { type: "enter" },
@@ -165,7 +174,7 @@ export const validationTreeHumanReviewAskCloseScenario = withValidationBranches(
         scriptedInteractions: [{ type: "select", promptIncludes: "code review before merge", value: "close" }],
         actions: [
             ...plannedChangeReviewRepairValidationScenario.actions.slice(0, 3),
-            { type: "waitForScreen", text: "Code review is still waiting for your decision", timeoutMs: 240000 },
+            { type: "waitForScreen", text: "Code Review is still pending", timeoutMs: 240000 },
             { type: "waitForIdle", timeoutMs: 60000 },
             { type: "captureProjectState", planNames: ["plan"] },
         ],

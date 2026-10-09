@@ -27,27 +27,45 @@ Product and architecture guidance:
 
 ## Development setup
 
-Contributors use Deno. Common commands:
+Contributors use Bun 1.4.3. Install the pinned root and docs dependencies before running commands:
 
 ```bash
-deno task cli "your request"
-deno task check
-deno task test
-deno task ci
-deno task docs:dev
-deno task docs:check
-deno task compile
+bun run install:locked
 ```
 
-`deno task ci` runs all ten static gates, then the source tests and Golden TUI portfolio in one isolated worker queue.
-`deno task pr:check` is an alias for that complete local gate. Successful CI prints one summary; failure diagnostics are
-filtered through Snip and retained in the reported log. Use `deno task ci --source-only` when a separate required Golden
+Common commands:
+
+```bash
+bun run cli "your request"
+bun run check
+bun run test
+bun run ci
+bun run docs:dev
+bun run docs:check
+bun run compile
+```
+
+`bun run ci` runs all ten static gates, then the source tests and Golden TUI portfolio in one isolated worker queue.
+`bun run pr:check` is an alias for that complete local gate. Successful CI prints one summary; failure diagnostics are
+filtered through Snip and retained in the reported log. Use `bun run ci --source-only` when a separate required Golden
 job owns those scenarios, as the PR and release workflows do.
 
-`deno task test` remains the focused source suite. `deno task test:golden-tui` runs the composed TUI scenarios and their
+`bun run test` remains the focused source suite. `bun run test:golden-tui` runs the composed TUI scenarios and their
 harness tests; `test:golden-tui:extensive` runs the same complete portfolio. Always use these tasks or
-`deno run -A scripts/run-tests.js <deno test args>`; never invoke `deno test` directly. Each file gets a separate
+`bun scripts/run-tests.js <test paths or runner options>`; never invoke `bun test` directly. Each file gets a separate
 process, HOME, temporary directory, and Mnemoteca database.
+
+Workspace memory diagnostics use the same Bun compiler and embedded payload as the CLI:
+
+```bash
+bun run workspace:build
+bun scripts/workspace-memory-check.ts --scenario renderer
+bun scripts/workspace-memory-check.ts --scenario operations
+bun scripts/workspace-memory-check.ts --scenario combined
+```
+
+Each scenario measures source and standalone execution, with and without forced collection, in disposable homes.
+Historical Deno memory measurements remain historical baselines; the current diagnostic reports Bun measurements.
 
 Interactive RunWield sessions expect these helper binaries in `PATH`:
 
@@ -66,6 +84,23 @@ RunWield also ships bundled Snip filters for Deno validation output; install or 
 wld snip-filters install
 wld snip-filters cleanup
 ```
+
+## Task compatibility
+
+Use the established task names with Bun: `bun run compile`, `bun run ci`, `bun run workspace:build`, and so on.
+All 49 original Deno task names remain available. See the [complete task audit](plans/bun-task-compatibility.md) for
+per-task argument contracts and explicit runtime-specific exceptions.
+
+```bash
+bun run compile --output "bin/my wld" --target x86_64-unknown-linux-gnu
+bun run test:suite src/shared/example.test.ts --filter "test name"
+bun run test:suite src/shared/example.test.ts --filter '/^test name$/'
+```
+
+`compile --reload` has no frozen-install equivalent and fails explicitly; install locked dependencies before compiling.
+Deno-specific test flags are rejected, including permissions, coverage, watch and shuffle options. The portable runner
+options remain available. Workspace development/build commands require explicitly exported environment variables;
+ambient `.env` loading is disabled. Production-equivalent container sandboxing is deferred for the test images.
 
 ## Codebase guide
 
@@ -98,9 +133,9 @@ Golden TUI Scenarios are deterministic, Playwright-like regression tests for the
 runtime. Run them with:
 
 ```bash
-deno task test:golden-tui
+bun run test:golden-tui
 # release-tier alias
-deno task test:golden-tui:extensive
+bun run test:golden-tui:extensive
 ```
 
 Golden tests exercise the real TUI composition, Session Runtime, workflow transitions, storage, and Git repositories.
@@ -122,12 +157,12 @@ Timing does not require verbose output. Reports under `.ci-cache/` contain:
 - `ci-timings.json`: elapsed time for every CI task.
 - `tests[-N-of-M]-timings.json` and `golden[-N-of-M]-timings.json`: file timing history used for scheduling.
 - `*-report/run.json`: file durations, prewarm time, worker count, and pass/fail/skip totals for the latest run.
-- `*-report/*.xml`: Deno's JUnit results with each test's name, duration, failure, and ignored status.
+- `*-report/*.xml`: the isolated runner's JUnit results with each test's name, duration, failure, and ignored status.
 
 Use `--report-dir <directory>` for separate benchmark runs and `--timings-file <file>` for an explicit history. CI
 uploads these reports even on failure. Timing history starts slow files first from the first observation. Dependency
-caches can be reused with `WLD_TEST_DENO_DIR`; mutable RunWield state remains isolated per file. `deno task ci` collects
-all failures by default so an Agent can repair them together. Use `deno task ci --fail-fast` for quicker first-failure
+caches can be reused with `WLD_TEST_DENO_DIR`; mutable RunWield state remains isolated per file. `bun run ci` collects
+all failures by default so an Agent can repair them together. Use `bun run ci --fail-fast` for quicker first-failure
 feedback: it stops scheduling new files after a failure and lets active files finish. Passing runs still execute every
 selected test; failures and unexecuted files never produce a green gate.
 
@@ -170,8 +205,8 @@ rewriting, and focused tests.
 - New production source files should be TypeScript (`.ts` or `.tsx` as appropriate). Existing JavaScript with JSDoc is
   still valid; do not force-convert unrelated files, but migrate JS files when you are already touching them for source
   changes and the migration is reasonably bounded.
-- Keep Deno-native execution. Use real file extensions in imports, do not add a `tsc` emit pipeline for runtime code,
-  and let `deno check`/CI be the type gate.
+- Keep Bun-native execution. Use real file extensions in imports, do not add a `tsc` emit pipeline for runtime code,
+  and let `bun run check`/CI be the type gate.
 - Do not use `any`, `unknown`, or bare `object` in TypeScript types. Define named object shapes instead of inline
   complex types.
 - In remaining JavaScript, use JSDoc for types. Prefer `@typedef` for object shapes and type function parameters in the
@@ -195,7 +230,7 @@ rewriting, and focused tests.
   [Workflow Validation Authority](validation-authority.md), and the five central PRDs.
 
 `scripts/public-docs.ts` lists every published page. Plans, Work Records, audits, research, and other PRDs stay in the
-repository only. `deno task docs:dev` starts a preview at `http://localhost:4322`, and `deno task docs:check` validates
+repository only. `bun run docs:dev` starts a preview at `http://localhost:4322`, and `bun run docs:check` validates
 and builds the site.
 
 `docs/stable` is the source for `docs.runwield.dev`. It identifies the Stable release it describes. Make corrections to
@@ -210,10 +245,15 @@ Plan review and code review run inside Workspace using a vendored Plannotator. I
 checkout:
 
 - Check that `third_party/plannotator/` exists and matches `third_party/plannotator-revision.txt`.
-- Run `deno task workspace:dev` to open a catalog of the Plan Board, Plan Review, and Code Review with fixture data.
-- Run `deno task workspace:check` to confirm the `@plannotator/*` imports resolve.
+- Run `bun run workspace:dev` to open a catalog of the Plan Board, Plan Review, and Code Review with fixture data.
+- Run `bun run workspace:check` to confirm the `@plannotator/*` imports resolve.
 
 ## Plan Server development
+
+The checked-in Bun containers are for testing, with equivalent Deno runtime permission enforcement deferred.
+They are not hardened production definitions. Compose keeps loopback publishing, a nonroot process, a read-only root,
+dropped capabilities and no-new-privileges. These controls do not recreate Deno's filesystem or subprocess allowlists.
+Do not mount sensitive host paths or credentials into this test image.
 
 Run the collaboration Plan Server from source without a container:
 
@@ -221,7 +261,7 @@ Run the collaboration Plan Server from source without a container:
 RUNWIELD_REMOTE_HOST=127.0.0.1 \
 RUNWIELD_REMOTE_PORT=8080 \
 RUNWIELD_REMOTE_DB_PATH=.wld/remote-workspace.sqlite \
-deno task workspace:remote
+bun run workspace:remote
 ```
 
 After changing collaboration or its packaging, run this end-to-end check. See the user guide,
@@ -249,14 +289,14 @@ Use this checklist after changing packaging or collaboration behavior:
 1. Create a branch.
 2. Make focused changes.
 3. Update docs when behavior changes.
-4. Run `deno task ci` for code changes.
-5. For docs-only or config-only changes, run `deno fmt` at minimum.
+4. Run `bun run ci` for code changes.
+5. For docs-only or config-only changes, run `bun run fmt:check <changed-files>` at minimum.
 6. Open a PR with:
-   - a summary,
-   - the affected routing intent or flow (`INQUIRY`, `IDEATION`, `OPERATION`, `QUICK_FIX`, `PLANNED_CHANGE`, or
-     `PROJECT`),
-   - validation notes,
-   - any follow-up work or known gaps.
+    - a summary,
+    - the affected routing intent or flow (`INQUIRY`, `IDEATION`, `OPERATION`, `QUICK_FIX`, `PLANNED_CHANGE`, or
+      `PROJECT`),
+    - validation notes,
+    - any follow-up work or known gaps.
 
 ## Workflow expectations
 

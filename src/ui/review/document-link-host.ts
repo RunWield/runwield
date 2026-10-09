@@ -1,4 +1,6 @@
 /** Lazy, TUI-owned loopback reader for Project-relative Markdown mentions. */
+import { realpathSync, statSync } from "node:fs";
+import { type HttpServer, serveHttp } from "../../shared/http-server.ts";
 import { extname } from "node:path";
 import { PLAN_UI_TOKEN_QUERY } from "../../constants.js";
 import { createDocumentReadWorkspaceApp } from "../workspace/server.js";
@@ -10,7 +12,7 @@ export class DocumentLinkHost {
     #root: string | null = null;
     #token = "";
     #handler: DocumentRequestHandler | null = null;
-    #server: Deno.HttpServer<Deno.NetAddr> | null = null;
+    #server: HttpServer | null = null;
     #disposed = false;
     #disposePromise: Promise<void> | null = null;
 
@@ -23,8 +25,8 @@ export class DocumentLinkHost {
         if (this.#disposed) return;
         this.#token = crypto.randomUUID();
         try {
-            this.#root = Deno.realPathSync(projectRoot);
-            if (!Deno.statSync(this.#root).isDirectory) this.#root = null;
+            this.#root = realpathSync(projectRoot);
+            if (!statSync(this.#root).isDirectory()) this.#root = null;
         } catch {
             this.#root = null;
         }
@@ -45,7 +47,7 @@ export class DocumentLinkHost {
             const file = resolveWorkspaceFile(this.#root, filePath);
             if (!file || extname(file.absolutePath).toLowerCase() !== ".md") return null;
             if (!this.#server) {
-                this.#server = Deno.serve({
+                this.#server = serveHttp({
                     hostname: "127.0.0.1",
                     port: 0,
                     onListen() {},

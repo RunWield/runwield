@@ -1,6 +1,7 @@
+import { captureForegroundProcess } from "../captured-process.ts";
 import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
 /** Immutable recording input retained after delivery removes the execution worktree. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     canonicalizeStoredPlanName,
     isChildFeaturePlan,
@@ -21,8 +22,8 @@ import { isTerminalWorkRecordParent } from "./auto-generation.ts";
 type WorkRecordSource = import("./generation.js").WorkRecordSource;
 
 async function git(root: string, args: string[]): Promise<string> {
-    const result = await new Deno.Command("git", { cwd: root, args, stdout: "piped", stderr: "piped" }).output();
-    if (!result.success) throw new Error("The delivered Work Record source could not be read from Git.");
+    const result = await captureForegroundProcess("git", { cwd: root, args });
+    if (result.code !== 0) throw new Error("The delivered Work Record source could not be read from Git.");
     return new TextDecoder().decode(result.stdout);
 }
 

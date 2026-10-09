@@ -1,10 +1,13 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 
-Deno.test("Workspace retains a newly created Session until its task result is saved", async () => {
+test("Workspace retains a newly created Session until its task result is saved", async () => {
     await withRuntimeCommandFixture(
         "workspace-background-create-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
@@ -54,7 +57,7 @@ Deno.test("Workspace retains a newly created Session until its task result is sa
     );
 });
 
-Deno.test("Workspace history replay does not revive completed background operations after task_completed", async () => {
+test("Workspace history replay does not revive completed background operations after task_completed", async () => {
     await withRuntimeCommandFixture(
         "workspace-background-replay-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
@@ -103,7 +106,7 @@ Deno.test("Workspace history replay does not revive completed background operati
                 assertEquals(taskIds.length, 2);
                 const generatedIds = taskIds.map((taskId) => `background:${id}:${taskId}`);
                 for (const [index, gate] of gates.entries()) {
-                    await Deno.writeTextFile(gate, "ready");
+                    await fsWriteFile(gate, "ready");
                     await waitForCompletion(generatedIds[index]);
                 }
                 // Wait for real runtime disposal so continuation reloads the saved history.

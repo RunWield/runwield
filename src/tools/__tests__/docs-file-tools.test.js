@@ -1,5 +1,15 @@
-import { assertEquals, assertMatch, assertNotMatch, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import { match as assertMatch, doesNotMatch as assertNotMatch } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../docs-file-tools.js";
 
 /**
@@ -23,7 +33,7 @@ function toolText(result) {
     return (typed.content || []).map((item) => item.text || "").join("\n");
 }
 
-Deno.test("write_docs exposes Markdown-only metadata", () => {
+test("write_docs exposes Markdown-only metadata", () => {
     const tool = createWriteDocsToolDefinition("/tmp");
     assertEquals(tool.name, "write_docs");
     assertEquals(tool.label, "write_docs");
@@ -32,7 +42,7 @@ Deno.test("write_docs exposes Markdown-only metadata", () => {
     assertEquals(typeof tool.parameters, "object");
 });
 
-Deno.test("edit_docs exposes Markdown-only single-edit metadata", () => {
+test("edit_docs exposes Markdown-only single-edit metadata", () => {
     const tool = createEditDocsToolDefinition("/tmp");
     assertEquals(tool.name, "edit_docs");
     assertEquals(tool.label, "edit_docs");
@@ -44,12 +54,12 @@ Deno.test("edit_docs exposes Markdown-only single-edit metadata", () => {
     assertEquals(Object.keys(properties), ["path", "oldText", "newText"]);
 });
 
-Deno.test("edit_docs reports a failed match without dumping the document", async () => {
-    const dir = await Deno.makeTempDir();
+test("edit_docs reports a failed match without dumping the document", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const filePath = join(dir, "guide.md");
         const originalContent = "# Guide\n\nUnrelated document contents.\n";
-        await Deno.writeTextFile(filePath, originalContent);
+        await fsWriteFile(filePath, originalContent);
         const tool = createEditDocsToolDefinition(dir);
         const error = await assertRejects(() =>
             executeTool(tool, {
@@ -59,14 +69,14 @@ Deno.test("edit_docs reports a failed match without dumping the document", async
             }), Error);
         assertMatch(error.message, /not find|not found|match/i);
         assertNotMatch(error.message, /Unrelated document contents|File exists on disk/);
-        assertEquals(await Deno.readTextFile(filePath), originalContent);
+        assertEquals(await fsReadFile(filePath, "utf8"), originalContent);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("write_docs creates and overwrites relative Markdown files, including parent directories", async () => {
-    const dir = await Deno.makeTempDir();
+test("write_docs creates and overwrites relative Markdown files, including parent directories", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const tool = createWriteDocsToolDefinition(dir);
         const first = await executeTool(tool, {
@@ -74,7 +84,10 @@ Deno.test("write_docs creates and overwrites relative Markdown files, including 
             content: "# Walkthrough\n\nFirst version.\n",
         });
         assertMatch(toolText(first), /Successfully wrote/);
-        assertEquals(await Deno.readTextFile(join(dir, "docs", "walkthrough.md")), "# Walkthrough\n\nFirst version.\n");
+        assertEquals(
+            await fsReadFile(join(dir, "docs", "walkthrough.md"), "utf8"),
+            "# Walkthrough\n\nFirst version.\n",
+        );
 
         const second = await executeTool(tool, {
             path: "docs/walkthrough.md",
@@ -82,16 +95,16 @@ Deno.test("write_docs creates and overwrites relative Markdown files, including 
         });
         assertMatch(toolText(second), /Successfully wrote/);
         assertEquals(
-            await Deno.readTextFile(join(dir, "docs", "walkthrough.md")),
+            await fsReadFile(join(dir, "docs", "walkthrough.md"), "utf8"),
             "# Walkthrough\n\nSecond version.\n",
         );
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("write_docs accepts absolute .md paths and case-insensitive .MD suffix", async () => {
-    const dir = await Deno.makeTempDir();
+test("write_docs accepts absolute .md paths and case-insensitive .MD suffix", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const absolutePath = join(dir, "ABSOLUTE.MD");
         const tool = createWriteDocsToolDefinition("/tmp");
@@ -100,17 +113,17 @@ Deno.test("write_docs accepts absolute .md paths and case-insensitive .MD suffix
             content: "# Absolute\n",
         });
         assertMatch(toolText(result), /Successfully wrote/);
-        assertEquals(await Deno.readTextFile(absolutePath), "# Absolute\n");
+        assertEquals(await fsReadFile(absolutePath, "utf8"), "# Absolute\n");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("edit_docs replaces one exact block in Markdown", async () => {
-    const dir = await Deno.makeTempDir();
+test("edit_docs replaces one exact block in Markdown", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const filePath = join(dir, "guide.md");
-        await Deno.writeTextFile(filePath, "# Guide\n\nOld section.\n");
+        await fsWriteFile(filePath, "# Guide\n\nOld section.\n");
         const tool = createEditDocsToolDefinition(dir);
         const result = await executeTool(tool, {
             path: "guide.md",
@@ -118,17 +131,17 @@ Deno.test("edit_docs replaces one exact block in Markdown", async () => {
             newText: "New section.",
         });
         assertMatch(toolText(result), /Successfully replaced/);
-        assertEquals(await Deno.readTextFile(filePath), "# Guide\n\nNew section.\n");
+        assertEquals(await fsReadFile(filePath, "utf8"), "# Guide\n\nNew section.\n");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("edit_docs accepts absolute Markdown paths", async () => {
-    const dir = await Deno.makeTempDir();
+test("edit_docs accepts absolute Markdown paths", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const filePath = join(dir, "absolute.md");
-        await Deno.writeTextFile(filePath, "alpha\nbeta\n");
+        await fsWriteFile(filePath, "alpha\nbeta\n");
         const tool = createEditDocsToolDefinition("/tmp");
         const result = await executeTool(tool, {
             path: filePath,
@@ -136,14 +149,14 @@ Deno.test("edit_docs accepts absolute Markdown paths", async () => {
             newText: "gamma",
         });
         assertMatch(toolText(result), /Successfully replaced/);
-        assertEquals(await Deno.readTextFile(filePath), "alpha\ngamma\n");
+        assertEquals(await fsReadFile(filePath, "utf8"), "alpha\ngamma\n");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("write_docs rejects non-.md suffixes before creating files", async () => {
-    const dir = await Deno.makeTempDir();
+test("write_docs rejects non-.md suffixes before creating files", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const tool = createWriteDocsToolDefinition(dir);
         for (const path of ["report.txt", "report.markdown", "report.mdx", "report"]) {
@@ -152,23 +165,23 @@ Deno.test("write_docs rejects non-.md suffixes before creating files", async () 
             assertMatch(toolText(result), /only Markdown \.md files/i);
             let exists = true;
             try {
-                await Deno.stat(join(dir, path));
+                await fsStat(join(dir, path));
             } catch (error) {
-                if (error instanceof Deno.errors.NotFound) exists = false;
+                if ((error instanceof Error && "code" in error && error.code === "ENOENT")) exists = false;
                 else throw error;
             }
             assertEquals(exists, false, `${path} should not be created`);
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("edit_docs rejects non-.md suffixes before changing files", async () => {
-    const dir = await Deno.makeTempDir();
+test("edit_docs rejects non-.md suffixes before changing files", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const filePath = join(dir, "notes.txt");
-        await Deno.writeTextFile(filePath, "alpha\n");
+        await fsWriteFile(filePath, "alpha\n");
         const tool = createEditDocsToolDefinition(dir);
         const result = await executeTool(tool, {
             path: "notes.txt",
@@ -177,8 +190,8 @@ Deno.test("edit_docs rejects non-.md suffixes before changing files", async () =
         });
         assertEquals(result.isError, true);
         assertMatch(toolText(result), /only Markdown \.md files/i);
-        assertEquals(await Deno.readTextFile(filePath), "alpha\n");
+        assertEquals(await fsReadFile(filePath, "utf8"), "alpha\n");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

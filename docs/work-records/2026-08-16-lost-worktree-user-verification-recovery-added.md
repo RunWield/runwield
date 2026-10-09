@@ -22,7 +22,7 @@ failed. The change reuses the existing attestation flow and does not add a new v
 
 ## Deviations from Plan
 
-Full `deno task ci` did not pass because `src/ui/tui/golden-scenarios/project-workflow.test.js` failed under the full
+Full `deno task ci` did not pass because `src/ui/tui/golden-scenarios/project-workflow.test.ts` failed under the full
 suite twice, although that file passed when rerun standalone.
 
 ## Future Planning Notes

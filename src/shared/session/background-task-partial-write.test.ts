@@ -1,15 +1,27 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { type FileHandle, open } from "node:fs/promises";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
-Deno.test("a partial task log write reports stored bytes and a visible failure", async () => {
+interface FileWritePrototype {
+    write(this: FileHandle, data: Uint8Array): Promise<{ bytesWritten: number; buffer: Uint8Array }>;
+}
+
+test("a partial task log write reports stored bytes and a visible failure", async () => {
     await withProcessGlobalTestLock(async () => {
-        const cwd = await Deno.makeTempDir();
+        const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         const session = new HostedSession({ id: crypto.randomUUID(), cwd });
-        const original = Deno.FsFile.prototype.write;
+        const probe = await open(join(cwd, "prototype-probe"), "wx");
+        const prototype = Object.getPrototypeOf(probe) as FileWritePrototype;
+        await probe.close();
+        const original = prototype.write;
         let writes = 0;
         try {
-            Deno.FsFile.prototype.write = function (data) {
+            prototype.write = function (data) {
                 writes++;
                 if (writes === 1) return original.call(this, data.subarray(0, 3));
                 throw Error("disk full");
@@ -21,11 +33,11 @@ Deno.test("a partial task log write reports stored bytes and a visible failure",
             assertStringIncludes(result.error || "", "disk full");
             assertEquals(result.byte_count, 3);
             assertEquals(result.output, "par");
-            assertEquals(await Deno.readTextFile(result.log_path), "par");
+            assertEquals(await fsReadFile(result.log_path, "utf8"), "par");
         } finally {
-            Deno.FsFile.prototype.write = original;
+            prototype.write = original;
             await session.dispose();
-            await Deno.remove(cwd, { recursive: true });
+            await fsRm(cwd, { recursive: true });
         }
     });
 });

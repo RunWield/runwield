@@ -516,6 +516,48 @@ Left by the reviewers of individual children for the integration review. These a
 
 <!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/05-workspace-usage-page" -->
 
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/06-package-executable-approval-and-metrics-exporter-kind" -->
+
+**reliable-usage-dashboard-and-langfuse-export/06-package-executable-approval-and-metrics-exporter-kind**
+
+- Confirm that child 07's worker imports only entryPath from resolveApprovedMetricsExporters and never resolves
+  exporters through packageManager.resolve(), so Project precedence cannot replace approved code.
+  (src/shared/extensions/metrics-exporter.ts; child 07 export coordination)
+- Confirm that child 09's settings surface maps listInstalledMetricsExporters results to the three states (not
+  installed, installed unapproved, approved) and does not write metricsExporterApprovals outside approveMetricsExporter.
+  (src/shared/extensions/metrics-exporter.ts; child 09 Workspace settings)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/06-package-executable-approval-and-metrics-exporter-kind" -->
+
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states" -->
+
+**reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states**
+
+- Confirm that the Langfuse exporter's deliver/confirm results match contract 1. 'unsupported' is a scheduler-internal
+  confirm status, so the package must not depend on it. Confirm that read-back returns not_found_yet, never a rejection,
+  for asynchronous absence. (src/shared/workflow/metrics-exporter-worker.ts, metrics-export-scheduler.ts callExporter;
+  child 08 packages/langfuse-exporter)
+- Confirm that the Workspace export settings call grantMetricsExportDestination, updateMetricsExportProjects,
+  revokeMetricsExportDestination, and setMetricsExportCredentials. Confirm that they show readMetricsExportStatus
+  counts, including confirmed, without computing their own eligibility. Also update docs/user-documentation/settings.md
+  so that it no longer says that export is unavailable. (child 09; src/shared/workflow/metrics-export-grants.ts,
+  metrics-export-scheduler.ts readMetricsExportStatus)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states" -->
+
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
+
+**reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package**
+
+- Check that partial cost coverage survives recording and export mapping. Guided Review can record a known cost subtotal
+  with costSource=reported and measurementAvailability=partial. Contract 1 does not distinguish that case from partial
+  tokens with complete cost, and the exporter sends any supplied supported cost as native total. The assembled contract
+  must let partial cost omit cost_details and the pricing model without suppressing complete agy cost. (Children
+  02/07/08: src/ui/workspace/routes/api/review-agent-handlers.js recordGuideJobMetric;
+  src/shared/workflow/metrics-export-record.ts; packages/langfuse-exporter/exporter.ts map)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
+
 ## Edge Cases & Considerations
 
 ### Reviewable assumptions

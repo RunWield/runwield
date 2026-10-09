@@ -1,4 +1,19 @@
-import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";
+import { platform } from "node:process";
+import { chmodSync as fsChmodSync, readdirSync as fsReaddirSync } from "node:fs";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
 import {
     getProjectById,
@@ -18,14 +33,14 @@ function idFactory() {
     return () => `id-${++next}`;
 }
 
-Deno.test("Project registration converges symlink duplicates and re-adding after removal creates a new registration", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-reg-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+test("Project registration converges symlink duplicates and re-adding after removal creates a new registration", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-reg-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
-        const root = `${dir}/repo`;
-        const link = `${dir}/repo-link`;
-        await Deno.mkdir(root);
-        await Deno.symlink(root, link);
+        const root = join(dir, `repo`);
+        const link = join(dir, `repo-link`);
+        await fsMkdir(root);
+        await fsSymlink(root, link);
         const ids = idFactory();
         const direct = registerProject(database, { root, idFactory: ids, now: () => "t1" });
         const viaLink = registerProject(database, { root: link, idFactory: ids, now: () => "t2" });
@@ -45,19 +60,48 @@ Deno.test("Project registration converges symlink duplicates and re-adding after
         const restored = registerProject(database, { root, idFactory: ids, now: () => "t4" });
         assertNotEquals(restored.projectId, direct.projectId);
         assertEquals(restored.lifecycle, "enabled");
-        assertEquals(requireEnabledProjectRoot(database, restored.projectId), await Deno.realPath(root));
+        assertEquals(requireEnabledProjectRoot(database, restored.projectId), await fsRealpath(root));
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("disabled Projects stay disabled on duplicate registration", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-disabled-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+test(
+    "Windows Project aliases retain native canonical identity and health",
+    { skip: platform !== "win32" },
+    async () => {
+        const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-alias-"));
+        const database = openOwnerCoordinationDatabase({ dbPath: join(dir, "owner.sqlite3") });
+        try {
+            const root = join(dir, "Mixed Case Project");
+            await fsMkdir(root);
+            const canonicalRoot = await fsRealpath(root);
+            const enteredRoot = root.toLowerCase();
+            assertNotEquals(enteredRoot, canonicalRoot);
+            const project = registerProject(database, { root: enteredRoot });
+            assertEquals(project.currentRoot, canonicalRoot);
+            assertEquals(getProjectHealth(database, project.projectId).status, "available");
+            assertEquals(getProjectHealth(database, project.projectId).observedRealRoot, canonicalRoot);
+            assertEquals(registerProject(database, { root: canonicalRoot }).projectId, project.projectId);
+            assertEquals(listProjects(database).length, 1);
+            assertEquals(
+                listProjectRootEvidence(database, project.projectId).map((item) => item.canonicalRoot),
+                [canonicalRoot, canonicalRoot],
+            );
+        } finally {
+            database.close();
+            await fsRm(dir, { recursive: true });
+        }
+    },
+);
+
+test("disabled Projects stay disabled on duplicate registration", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-disabled-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
-        const root = `${dir}/repo`;
-        await Deno.mkdir(root);
+        const root = join(dir, `repo`);
+        await fsMkdir(root);
         const project = registerProject(database, { root, idFactory: idFactory(), now: () => "t1" });
         setProjectEnabled(database, project.projectId, false, { now: () => "t2" });
         const duplicate = registerProject(database, { root, idFactory: idFactory(), now: () => "t3" });
@@ -71,48 +115,48 @@ Deno.test("disabled Projects stay disabled on duplicate registration", async () 
         );
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Project health is filesystem-based and non-Git directories are available", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-health-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+test("Project health is filesystem-based and non-Git directories are available", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-health-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
-        const root = `${dir}/plain-directory`;
-        await Deno.mkdir(root);
+        const root = join(dir, `plain-directory`);
+        await fsMkdir(root);
         const project = registerProject(database, { root, idFactory: idFactory(), now: () => "t1" });
         assertEquals(getProjectHealth(database, project.projectId).status, "available");
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
         assertEquals(getProjectHealth(database, project.projectId).status, "missing");
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Project health reports unreadable registered roots distinctly from missing roots", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-unreadable-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
-    const root = `${dir}/repo`;
+test("Project health reports unreadable registered roots distinctly from missing roots", { skip: platform === "win32" }, async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-unreadable-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
+    const root = join(dir, `repo`);
     try {
-        await Deno.mkdir(root);
+        await fsMkdir(root);
         const project = registerProject(database, { root, idFactory: idFactory(), now: () => "t1" });
         try {
-            Deno.chmodSync(root, 0o000);
+            fsChmodSync(root, 0o000);
             assertEquals(getProjectHealth(database, project.projectId).status, "unreadable");
         } finally {
-            Deno.chmodSync(root, 0o700);
+            fsChmodSync(root, 0o700);
         }
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Project removal clears dependent database records and rolls back on failure", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-remove-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+test("Project removal clears dependent database records and rolls back on failure", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-remove-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
         const project = registerProject(database, { root: dir });
         const id = project.projectId;
@@ -165,19 +209,19 @@ Deno.test("Project removal clears dependent database records and rolls back on f
         assertThrows(() => removeProject(database, id), Error, "not found");
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("migration deletes previously removed registrations and preserves other Projects", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-removal-migration-" });
-    const dbPath = `${dir}/owner.sqlite3`;
+test("migration deletes previously removed registrations and preserves other Projects", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-removal-migration-"));
+    const dbPath = join(dir, `owner.sqlite3`);
     const database = openOwnerCoordinationDatabase({ dbPath });
     let keptId;
     try {
-        await Deno.mkdir(`${dir}/kept`);
+        await fsMkdir(join(dir, `kept`));
         const removed = registerProject(database, { root: dir });
-        keptId = registerProject(database, { root: `${dir}/kept` }).projectId;
+        keptId = registerProject(database, { root: join(dir, `kept`) }).projectId;
         database.handle.prepare("UPDATE projects SET lifecycle = 'removed' WHERE id = ?").run(removed.projectId);
         database.handle.exec("DELETE FROM schema_migrations WHERE version = 10");
     } finally {
@@ -187,25 +231,27 @@ Deno.test("migration deletes previously removed registrations and preserves othe
     try {
         assertEquals(listProjects(migrated).map((project) => project.projectId), [keptId]);
         assertEquals(migrated.handle.prepare("PRAGMA foreign_key_check").all(), []);
-        assertEquals((await Deno.stat(`${dir}/kept`)).isDirectory, true);
-        const backups = Array.from(Deno.readDirSync(dir)).filter((entry) => entry.name.includes("backup-v9"));
+        assertEquals((await fsStat(join(dir, `kept`))).isDirectory(), true);
+        const backups = Array.from(fsReaddirSync(dir, { withFileTypes: true })).filter((entry) =>
+            entry.name.includes("backup-v9")
+        );
         assertEquals(backups.length, 1);
     } finally {
         migrated.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Project relink preserves root history and rejects another Project root", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-relink-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+test("Project relink preserves root history and rejects another Project root", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-relink-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
-        const oldRoot = `${dir}/old`;
-        const newRoot = `${dir}/new`;
-        const otherRoot = `${dir}/other`;
-        await Deno.mkdir(oldRoot);
-        await Deno.mkdir(newRoot);
-        await Deno.mkdir(otherRoot);
+        const oldRoot = join(dir, `old`);
+        const newRoot = join(dir, `new`);
+        const otherRoot = join(dir, `other`);
+        await fsMkdir(oldRoot);
+        await fsMkdir(newRoot);
+        await fsMkdir(otherRoot);
         const ids = idFactory();
         const project = registerProject(database, { root: oldRoot, idFactory: ids, now: () => "t1" });
         const other = registerProject(database, { root: otherRoot, idFactory: ids, now: () => "t2" });
@@ -216,42 +262,42 @@ Deno.test("Project relink preserves root history and rejects another Project roo
             now: () => "t3",
         });
         assertEquals(relinked.projectId, project.projectId);
-        assertEquals(relinked.currentRoot, await Deno.realPath(newRoot));
+        assertEquals(relinked.currentRoot, await fsRealpath(newRoot));
         const roots = listProjectRootEvidence(database, project.projectId);
         assertEquals(roots.map((root) => root.rootState), ["current", "historical"]);
         const duplicateHistorical = registerProject(database, { root: oldRoot, idFactory: ids, now: () => "t4" });
-        assertEquals(duplicateHistorical.currentRoot, await Deno.realPath(newRoot));
+        assertEquals(duplicateHistorical.currentRoot, await fsRealpath(newRoot));
         assertEquals(
             listProjectRootEvidence(database, project.projectId).filter((root) => root.rootState === "current").map((
                 root,
             ) => root.canonicalRoot),
-            [await Deno.realPath(newRoot)],
+            [await fsRealpath(newRoot)],
         );
         assertThrows(
             () => relinkProject(database, { projectId: project.projectId, newRoot: otherRoot }),
             Error,
             "another Project",
         );
-        assertEquals(requireEnabledProjectRoot(database, other.projectId), await Deno.realPath(otherRoot));
+        assertEquals(requireEnabledProjectRoot(database, other.projectId), await fsRealpath(otherRoot));
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Project registration and relink report symlink path reuse conflicts", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-retarget-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+test("Project registration and relink report symlink path reuse conflicts", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-retarget-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
-        const firstRoot = `${dir}/first`;
-        const secondRoot = `${dir}/second`;
-        const link = `${dir}/project-link`;
-        await Deno.mkdir(firstRoot);
-        await Deno.mkdir(secondRoot);
-        await Deno.symlink(firstRoot, link);
+        const firstRoot = join(dir, `first`);
+        const secondRoot = join(dir, `second`);
+        const link = join(dir, `project-link`);
+        await fsMkdir(firstRoot);
+        await fsMkdir(secondRoot);
+        await fsSymlink(firstRoot, link);
         const project = registerProject(database, { root: link, idFactory: idFactory(), now: () => "t1" });
-        await Deno.remove(link);
-        await Deno.symlink(secondRoot, link);
+        await fsRm(link);
+        await fsSymlink(secondRoot, link);
 
         assertThrows(
             () => registerProject(database, { root: link, idFactory: idFactory(), now: () => "t2" }),
@@ -265,18 +311,18 @@ Deno.test("Project registration and relink report symlink path reuse conflicts",
         );
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("two database connections racing to register one Project converge on one stable ID", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-race-" });
-    const dbPath = `${dir}/owner.sqlite3`;
+test("two database connections racing to register one Project converge on one stable ID", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-race-"));
+    const dbPath = join(dir, `owner.sqlite3`);
     const firstDb = openOwnerCoordinationDatabase({ dbPath });
     const secondDb = openOwnerCoordinationDatabase({ dbPath });
     try {
-        const root = `${dir}/repo`;
-        await Deno.mkdir(root);
+        const root = join(dir, `repo`);
+        await fsMkdir(root);
         const [first, second] = await Promise.all([
             new Promise((resolvePromise) =>
                 setTimeout(
@@ -295,13 +341,13 @@ Deno.test("two database connections racing to register one Project converge on o
     } finally {
         firstDb.close();
         secondDb.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Project registration rejects relative roots before filesystem resolution", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-relative-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+test("Project registration rejects relative roots before filesystem resolution", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-relative-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
         assertThrows(
             () => registerProject(database, { root: "relative/project" }),
@@ -315,16 +361,16 @@ Deno.test("Project registration rejects relative roots before filesystem resolut
         );
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Project registration rejects files", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-file-" });
-    const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
+test("Project registration rejects files", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-file-"));
+    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
-        const file = `${dir}/not-directory`;
-        await Deno.writeTextFile(file, "x");
+        const file = join(dir, `not-directory`);
+        await fsWriteFile(file, "x");
         assertThrows(
             () => registerProject(database, { root: file }),
             Error,
@@ -332,6 +378,6 @@ Deno.test("Project registration rejects files", async () => {
         );
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

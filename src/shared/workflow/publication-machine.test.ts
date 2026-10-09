@@ -1,5 +1,14 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { ProjectRuntimeEntryRefusedError, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { addEntry } from "../worktree-registry.js";
@@ -18,9 +27,9 @@ const gitFixture = defineCommittedGitFixture({
     "docs/plans/demo.md": "# Demo\n",
 });
 
-Deno.test("publication operations reject newly staged runtime state without changing their receipt", async (test) => {
+test("publication operations reject newly staged runtime state without changing their receipt", async (test) => {
     const projectRoot = await gitFixture.checkout();
-    const directory = await Deno.makeTempDir({ prefix: "publication-safety-execution-" });
+    const directory = await fsMkdtemp(join(tmpdir(), "publication-safety-execution-"));
     const executionCwd = join(directory, "execution");
     try {
         const head = await git(projectRoot, ["rev-parse", "HEAD"]);
@@ -50,11 +59,11 @@ Deno.test("publication operations reject newly staged runtime state without chan
         };
         const started = await startPublicationAttempt(request);
         const layout = resolveProjectRuntimeLayout(projectRoot);
-        const before = await Deno.readTextFile(layout.primary.worktreeRegistryPath);
+        const before = await fsReadFile(layout.primary.worktreeRegistryPath, "utf8");
         const hazardDirectory = join(projectRoot, ".wld", "internal");
-        await Deno.mkdir(hazardDirectory, { recursive: true });
+        await fsMkdir(hazardDirectory, { recursive: true });
         const hazard = join(hazardDirectory, "staged-runtime.json");
-        await Deno.writeTextFile(hazard, "{}\n");
+        await fsWriteFile(hazard, "{}\n");
         await git(projectRoot, ["add", "-f", "--", hazard]);
 
         const operations = [
@@ -77,10 +86,10 @@ Deno.test("publication operations reject newly staged runtime state without chan
             { name: "cleanup", run: () => cleanupStoredPublication(projectRoot, started) },
         ];
         for (const operation of operations) {
-            await test.step(operation.name, async () => {
-                await assertRejects(operation.run, ProjectRuntimeEntryRefusedError);
-                assertEquals(await Deno.readTextFile(layout.primary.worktreeRegistryPath), before);
-                assertEquals(await Deno.readTextFile(hazard), "{}\n");
+            await test.test(operation.name, async () => {
+                await assertRejects(() => operation.run(), ProjectRuntimeEntryRefusedError);
+                assertEquals(await fsReadFile(layout.primary.worktreeRegistryPath, "utf8"), before);
+                assertEquals(await fsReadFile(hazard, "utf8"), "{}\n");
             });
         }
         // Restoring safe Git state must permit the next real registry write.
@@ -92,13 +101,13 @@ Deno.test("publication operations reject newly staged runtime state without chan
         assertEquals(advanced.phase, "artifacts_committed");
         assertEquals((await loadPublicationAttempt(projectRoot, "attempt-1"))?.revision, advanced.revision);
     } finally {
-        await Deno.remove(directory, { recursive: true });
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(directory, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
 async function fixture() {
-    const projectRoot = await Deno.makeTempDir({ prefix: "publication-machine-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "publication-machine-"));
     await addEntry(projectRoot, {
         id: "attempt-1",
         planId: "plan-1",
@@ -115,7 +124,7 @@ async function fixture() {
     return projectRoot;
 }
 
-Deno.test("publication machine persists one compare-and-swap attempt in the worktree registry", async () => {
+test("publication machine persists one compare-and-swap attempt in the worktree registry", async () => {
     const projectRoot = await fixture();
     try {
         const started = await startPublicationAttempt({
@@ -151,11 +160,11 @@ Deno.test("publication machine persists one compare-and-swap attempt in the work
         );
         assertEquals(artifacts.artifactCommit, "c".repeat(40));
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("publication machine resumes the existing attempt instead of replacing its sealed commit", async () => {
+test("publication machine resumes the existing attempt instead of replacing its sealed commit", async () => {
     const projectRoot = await fixture();
     try {
         const started = await startPublicationAttempt({
@@ -181,11 +190,11 @@ Deno.test("publication machine resumes the existing attempt instead of replacing
         assertEquals(resumed.validatedCommit, started.validatedCommit);
         assertEquals(resumed.revision, started.revision);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("publication machine can replace a stale integration before the target is published", async () => {
+test("publication machine can replace a stale integration before the target is published", async () => {
     const projectRoot = await fixture();
     try {
         const started = await startPublicationAttempt({
@@ -221,6 +230,6 @@ Deno.test("publication machine can replace a stale integration before the target
         assertEquals(refreshedIntegration.integrationCommit, "1".repeat(40));
         assertEquals(refreshedIntegration.revision, firstIntegration.revision + 1);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });

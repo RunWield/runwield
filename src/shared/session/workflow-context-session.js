@@ -11,6 +11,7 @@ export const SEGMENT_LINEAGE_CUSTOM_TYPE = "runwield.segment_lineage";
 export const PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE = "runwield.pending_segment_continuation";
 
 /** @typedef {import('../workflow/execution-segment-handoff.ts').SegmentHandoffPayload} SegmentHandoffPayload */
+/** @typedef {import('./session-runtime-events.js').RuntimeValidationProgress} RuntimeValidationProgress */
 
 /**
  * @typedef {Object} LineageSessionManager
@@ -30,6 +31,7 @@ export const PENDING_SEGMENT_CONTINUATION_CUSTOM_TYPE = "runwield.pending_segmen
  * @property {string} [status]
  * @property {string} [classification]
  * @property {Array<import('../workflow/workflow-presentation.ts').WorkflowProgressFact>} [progressFacts]
+ * @property {import('./session-runtime-events.js').RuntimeValidationProgress} [validationProgress]
  * @property {boolean} [canRun]
  * @property {boolean} [canResume]
  * @property {boolean} [canRecover]
@@ -138,6 +140,11 @@ export function normalizeWorkflowContext(value) {
             .filter((fact) => fact && typeof fact === "object")
             .map((fact) => ({ ...fact }));
     }
+    if (data.validationProgress && typeof data.validationProgress === "object") {
+        context.validationProgress = structuredClone(
+            /** @type {RuntimeValidationProgress} */ (data.validationProgress),
+        );
+    }
     if (typeof data.canRun === "boolean") context.canRun = data.canRun;
     if (typeof data.canResume === "boolean") context.canResume = data.canResume;
     if (typeof data.canRecover === "boolean") context.canRecover = data.canRecover;
@@ -171,7 +178,9 @@ export function recordWorkflowPlanName(sessionManager, planName) {
     if (!normalizedPlanName) return readPersistedWorkflowContext(sessionManager);
     try {
         const latest = readPersistedWorkflowContext(sessionManager) || {};
-        return recordNormalizedWorkflowContext(sessionManager, { ...latest, planName: normalizedPlanName });
+        const next = { ...latest, planName: normalizedPlanName };
+        if (latest.planName !== normalizedPlanName) delete next.validationProgress;
+        return recordNormalizedWorkflowContext(sessionManager, next);
     } catch (_e) {
         // Workflow-context persistence should never block planning.
         return { planName: normalizedPlanName };
@@ -417,7 +426,8 @@ export function workflowContextsEqual(left, right) {
         Boolean(left?.canRun) === Boolean(right?.canRun) &&
         Boolean(left?.canResume) === Boolean(right?.canResume) &&
         Boolean(left?.canRecover) === Boolean(right?.canRecover) &&
-        JSON.stringify(left?.progressFacts || []) === JSON.stringify(right?.progressFacts || []);
+        JSON.stringify(left?.progressFacts || []) === JSON.stringify(right?.progressFacts || []) &&
+        JSON.stringify(left?.validationProgress || null) === JSON.stringify(right?.validationProgress || null);
 }
 
 /**

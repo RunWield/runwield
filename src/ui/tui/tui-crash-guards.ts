@@ -19,7 +19,7 @@ export interface TuiCrashGuardRuntime {
     stop(): void;
     eventTarget: EventRuntime;
     signalRuntime: SignalRuntime;
-    os: typeof Deno.build.os;
+    os: string;
     exit(code: number): never;
     cleanup?: () => void;
 }

@@ -1,7 +1,9 @@
+import { rm } from "node:fs/promises";
+import { test } from "node:test";
 // Historical audit probe; run explicitly through scripts/run-tests.js.
 // See ../2026-09-07-plan-workflow-transitions.md. This is a controlled interruption,
 // not an OS process-kill test: a fresh Session consumes a real saved adapter state.
-import { assertEquals, assertExists } from "@std/assert";
+import { assertEquals, assertExists } from "../../../src/testing/assertions.ts";
 import { loadPlan } from "../../../src/plan-store.js";
 import { HostedSession } from "../../../src/shared/session/hosted-session.js";
 import type { SemanticReviewPort } from "../../../src/shared/workflow/validation-session-adapter.ts";
@@ -42,7 +44,7 @@ function runValidation(hostedSession: HostedSession, localCI: LocalCI, semanticR
     });
 }
 
-Deno.test("AUDIT A3: actual CI repair checkpoint resumes at mechanical validation", async () => {
+test("AUDIT A3: actual CI repair checkpoint resumes at mechanical validation", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "PLANNED_CHANGE",
         status: "implemented",
@@ -93,6 +95,6 @@ Deno.test("AUDIT A3: actual CI repair checkpoint resumes at mechanical validatio
         await firstRun;
         firstSession.dispose();
         resumedSession.dispose();
-        await Deno.remove(projectRoot, { recursive: true });
+        await rm(projectRoot, { recursive: true });
     }
 });

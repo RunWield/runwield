@@ -3,7 +3,7 @@
  * Pull encrypted remote Shared Space feedback into a local locked Plan.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
 import {
     createPulledCollaborationPlan,
@@ -14,7 +14,7 @@ import {
 import { MAINTAINER_SCOPE, redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
 import { decryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
-import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.js";
+import { COLLABORATION_LOCK_BYPASS, COLLABORATION_STATE_REMOTE_CANONICAL } from "../../shared/collaboration/lock.ts";
 import {
     normalizeDecryptedReviewCommentPayload,
     normalizeEncryptedCommentRecord,

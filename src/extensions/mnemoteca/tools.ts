@@ -1,4 +1,4 @@
-import { basename, dirname, isAbsolute, join, normalize } from "@std/path";
+import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";

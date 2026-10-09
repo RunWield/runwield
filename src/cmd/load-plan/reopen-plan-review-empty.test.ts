@@ -1,8 +1,9 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 
-Deno.test("a Session with no prior review reports no reference", async () => {
+test("a Session with no prior review reports no reference", async () => {
     await withRuntimeCommandFixture("reopen-empty-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         try {

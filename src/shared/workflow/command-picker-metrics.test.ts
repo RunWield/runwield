@@ -1,8 +1,9 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { SlashCommandMetricsTracker } from "./command-metrics.ts";
 
-Deno.test("picker cancellation has one opened command and no dispatch", async () => {
+test("picker cancellation has one opened command and no dispatch", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const tracker = new SlashCommandMetricsTracker({
             command: "agent",
@@ -21,7 +22,7 @@ Deno.test("picker cancellation has one opened command and no dispatch", async ()
     });
 });
 
-Deno.test("one selected picker command tracks dispatch and failed settlement", async () => {
+test("one selected picker command tracks dispatch and failed settlement", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const tracker = new SlashCommandMetricsTracker({
             command: "model",

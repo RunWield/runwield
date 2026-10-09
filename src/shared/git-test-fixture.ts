@@ -1,3 +1,8 @@
+import { tmpdir } from "node:os";
+import { captureForegroundProcess } from "./captured-process.ts";
+import { rmSync } from "node:fs";
+import process from "node:process";
+import { copyFile, mkdir, mkdtemp, readdir, readlink, symlink, writeFile } from "node:fs/promises";
 /**
  * @module shared/git-test-fixture
  * Real Git repositories for tests, built once per module and copied per test.
@@ -21,7 +26,7 @@
  * the production code it is meant to check.
  */
 
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 
 /**
  * Copy a directory tree.
@@ -31,19 +36,21 @@ import { dirname, join } from "@std/path";
  * one function.
  */
 async function copyTree(source: string, destination: string, insideGitDir = false) {
-    await Deno.mkdir(destination, { recursive: true });
-    for await (const entry of Deno.readDir(source)) {
+    await mkdir(destination, { recursive: true });
+    for await (const entry of await readdir(source, { withFileTypes: true })) {
         const from = join(source, entry.name);
         const to = join(destination, entry.name);
         const entryInsideGitDir = insideGitDir || entry.name === ".git";
         if (entryInsideGitDir && entry.name.endsWith(".lock")) continue;
-        if (entry.isDirectory) await copyTree(from, to, entryInsideGitDir);
-        else if (entry.isSymlink) await Deno.symlink(await Deno.readLink(from), to);
+        if (entry.isDirectory()) await copyTree(from, to, entryInsideGitDir);
+        else if (entry.isSymbolicLink()) await symlink(await readlink(from), to);
         else {
             try {
-                await Deno.copyFile(from, to);
+                await copyFile(from, to);
             } catch (error) {
-                if (entry.name.endsWith(".lock") && error instanceof Deno.errors.NotFound) continue;
+                if (
+                    entry.name.endsWith(".lock") && error instanceof Error && "code" in error && error.code === "ENOENT"
+                ) continue;
                 throw error;
             }
         }
@@ -52,12 +59,10 @@ async function copyTree(source: string, destination: string, insideGitDir = fals
 
 /** Run a Git command, throwing its stderr on failure. */
 export async function git(cwd: string, args: string[]): Promise<string> {
-    const { code, stdout, stderr } = await new Deno.Command("git", {
+    const { code, stdout, stderr } = await captureForegroundProcess("git", {
         cwd,
         args,
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    });
     const decoder = new TextDecoder();
     if (code !== 0) throw new Error(decoder.decode(stderr) || decoder.decode(stdout));
     return decoder.decode(stdout).trim();
@@ -67,6 +72,8 @@ export async function git(cwd: string, args: string[]): Promise<string> {
 async function configureFixtureIdentity(cwd: string) {
     await git(cwd, ["config", "user.email", "fixture@runwield.test"]);
     await git(cwd, ["config", "user.name", "RunWield Fixture"]);
+    // Fixtures own their byte format; CRLF-specific tests opt in explicitly.
+    await git(cwd, ["config", "core.autocrlf", "false"]);
     // Keep commits independent of the host's signing setup.
     await git(cwd, ["config", "commit.gpgsign", "false"]);
 }
@@ -77,10 +84,10 @@ let cleanupRegistered = false;
 function registerTemplateCleanup() {
     if (cleanupRegistered) return;
     cleanupRegistered = true;
-    globalThis.addEventListener("unload", () => {
+    process.on("exit", () => {
         for (const path of templatesToRemove) {
             try {
-                Deno.removeSync(path, { recursive: true });
+                rmSync(path, { recursive: true });
             } catch {
                 // Best effort: a leftover temp directory is harmless, and throwing here
                 // would fail an otherwise passing run.
@@ -111,7 +118,7 @@ export function defineGitFixture(build: (repoPath: string) => Promise<void>): Gi
     let template: Promise<string> | undefined;
 
     const buildTemplate = async () => {
-        const path = await Deno.makeTempDir({ prefix: "runwield-git-template-" });
+        const path = await mkdtemp(join(tmpdir(), "runwield-git-template-"));
         templatesToRemove.push(path);
         registerTemplateCleanup();
         await git(path, ["init", "-b", "main"]);
@@ -124,7 +131,7 @@ export function defineGitFixture(build: (repoPath: string) => Promise<void>): Gi
         checkout: async (options: { prefix?: string } = {}) => {
             template = template || buildTemplate();
             const source = await template;
-            const destination = await Deno.makeTempDir({ prefix: options.prefix || "runwield-git-fixture-" });
+            const destination = await mkdtemp(join(tmpdir(), options.prefix || "runwield-git-fixture-"));
             await copyTree(source, destination);
             return destination;
         },
@@ -136,8 +143,8 @@ export function defineCommittedGitFixture(files: Record<string, string> = { "REA
     return defineGitFixture(async (repoPath) => {
         for (const [relativePath, contents] of Object.entries(files)) {
             const target = join(repoPath, relativePath);
-            await Deno.mkdir(dirname(target), { recursive: true });
-            await Deno.writeTextFile(target, contents);
+            await mkdir(dirname(target), { recursive: true });
+            await writeFile(target, contents);
         }
         await git(repoPath, ["add", "."]);
         await git(repoPath, ["commit", "-m", "fixture base"]);

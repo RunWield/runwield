@@ -1,3 +1,6 @@
+import { readableStdin } from "../../shared/stdin-stream.ts";
+import { Writable } from "node:stream";
+import process from "node:process";
 /**
  * @module cmd/acp
  * ACP stdio command entrypoint.
@@ -13,13 +16,13 @@ function writeDiagnostic(message: string): void {
  * Run the ACP stdio adapter. stdout is reserved for ACP protocol frames only.
  */
 export async function runAcpCommand(_argv: string[] = []): Promise<void> {
-    const connection = startRunWieldAcpServer(Deno.stdin.readable, Deno.stdout.writable, {
+    const connection = startRunWieldAcpServer(readableStdin(), Writable.toWeb(process.stdout), {
         diagnostic: writeDiagnostic,
     });
 
     const abort = () => connection.close();
-    const signals: Deno.Signal[] = Deno.build.os === "windows" ? ["SIGINT"] : ["SIGINT", "SIGTERM"];
-    for (const signal of signals) Deno.addSignalListener(signal, abort);
+    const signals: NodeJS.Signals[] = process.platform === "win32" ? ["SIGINT"] : ["SIGINT", "SIGTERM"];
+    for (const signal of signals) process.on(signal, abort);
 
     try {
         await connection.closed;
@@ -27,7 +30,7 @@ export async function runAcpCommand(_argv: string[] = []): Promise<void> {
         writeDiagnostic(`fatal server error: ${err instanceof Error ? err.message : String(err)}`);
         throw err;
     } finally {
-        for (const signal of signals) Deno.removeSignalListener(signal, abort);
+        for (const signal of signals) process.off(signal, abort);
         connection.close();
     }
 }

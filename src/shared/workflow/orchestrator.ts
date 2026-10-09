@@ -66,10 +66,6 @@ interface TriageToolResultMessage {
     details?: TriageOutcomeInput;
 }
 
-interface RootAgentSessionState {
-    agent?: { state?: { messages?: AgentMessage[] } };
-}
-
 export interface DispatchPostTriageArgs {
     hostedSession: import("../session/hosted-session.js").HostedSession;
     triage: TriageOutcomeInput;

@@ -1,5 +1,14 @@
+import { rename as fsRename } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import {
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 /** Recover a changed, unpublished source without reusing stale validation evidence. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import { loadPlan, updatePlanFrontMatter, withPlanLock } from "../../plan-store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { recoverSealedPlanFormatting } from "../publication-plan-formatting.ts";
@@ -12,16 +21,16 @@ export const PUBLICATION_REVALIDATION_MESSAGE =
     "The source history or files changed. Checking the current work before publishing it.";
 
 async function git(cwd: string, args: string[]) {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     return { ...output, text: new TextDecoder().decode(output.stdout).trim() };
 }
 
 async function exists(path: string): Promise<boolean> {
     try {
-        await Deno.lstat(path);
+        await fsLstat(path);
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
@@ -49,22 +58,22 @@ async function sourceNeedsRevalidation(attempt: PublicationAttempt, head: string
 async function preserveAttempt(attempt: PublicationAttempt): Promise<void> {
     const recovery = attempt.revalidation;
     if (!recovery) throw new Error("Publication revalidation has no recovery record.");
-    await Deno.mkdir(recovery.archiveRoot, { recursive: true });
+    await fsMkdir(recovery.archiveRoot, { recursive: true });
     const recordPath = join(recovery.archiveRoot, "publication.json");
     const record = `${JSON.stringify(attempt, null, 2)}\n`;
     if (await exists(recordPath)) {
-        if (await Deno.readTextFile(recordPath) !== record) {
+        if (await fsReadFile(recordPath, "utf8") !== record) {
             throw new Error("Saved publication recovery evidence differs; keeping both checkouts intact.");
         }
     } else {
         const temporary = `${recordPath}.tmp`;
-        await Deno.writeTextFile(temporary, record);
-        await Deno.rename(temporary, recordPath);
+        await fsWriteFile(temporary, record);
+        await fsRename(temporary, recordPath);
     }
     const savedCheckout = join(recovery.archiveRoot, "checkout");
     if (await exists(attempt.publicationRoot)) {
         if (await exists(savedCheckout)) throw new Error("Saved publication checkout already exists.");
-        await Deno.rename(attempt.publicationRoot, savedCheckout);
+        await fsRename(attempt.publicationRoot, savedCheckout);
     }
 }
 
@@ -81,7 +90,7 @@ export async function preparePublicationRevalidation(projectRoot: string, planNa
             return null;
         }
         const executionCwd = publication.executionCwd;
-        if (await Deno.realPath(entry.path) !== await Deno.realPath(executionCwd)) {
+        if (await fsRealpath(entry.path) !== await fsRealpath(executionCwd)) {
             throw new Error("The publication source checkout no longer matches its registered location.");
         }
         // Formatting recovery takes this lock again. Use the recorded spelling

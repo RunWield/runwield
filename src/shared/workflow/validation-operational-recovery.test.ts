@@ -1,4 +1,5 @@
-import { assertEquals, assertLessOrEqual } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertLessOrEqual } from "../../testing/assertions.ts";
 
 import {
     calculateValidationRetryDelayMs,
@@ -8,7 +9,7 @@ import {
 } from "./validation-recovery.ts";
 import { classifyValidationOperationalError } from "./validation-operational-errors.ts";
 
-Deno.test("calculates capped exponential full jitter and honors bounded Retry-After", () => {
+test("calculates capped exponential full jitter and honors bounded Retry-After", () => {
     assertEquals(
         calculateValidationRetryDelayMs({ retryIndex: 0, baseDelayMs: 100, maxDelayMs: 1000, randomUnit: 1 }),
         100,
@@ -33,7 +34,7 @@ Deno.test("calculates capped exponential full jitter and honors bounded Retry-Af
     );
 });
 
-Deno.test("maps transient failures to retry and pauses after the retry budget", () => {
+test("maps transient failures to retry and pauses after the retry budget", () => {
     const failure = classifyValidationOperationalError({
         source: "provider",
         kind: "timeout",
@@ -59,7 +60,7 @@ Deno.test("maps transient failures to retry and pauses after the retry budget", 
     assertEquals(spent.result.kind, "retry_later");
 });
 
-Deno.test("transient Reviewer failures use jittered backoff without consuming semantic rounds", () => {
+test("transient Reviewer failures use jittered backoff without consuming semantic rounds", () => {
     const retry = decideValidationRecovery({
         failure: classifyValidationOperationalError({
             source: "provider",
@@ -83,7 +84,7 @@ Deno.test("transient Reviewer failures use jittered backoff without consuming se
     assertEquals(retry.delayMs, DEFAULT_VALIDATION_RETRY_POLICY.baseDelayMs * 0.5);
 });
 
-Deno.test("correctable Reviewer failures stay in the same session with structured feedback", () => {
+test("correctable Reviewer failures stay in the same session with structured feedback", () => {
     const correction = decideValidationRecovery({
         failure: classifyValidationOperationalError({
             source: "reviewer_protocol",
@@ -106,7 +107,7 @@ Deno.test("correctable Reviewer failures stay in the same session with structure
     assertEquals(correction.result.attempt, 1);
 });
 
-Deno.test("a missing optional Reviewer entity replans in the same session", () => {
+test("a missing optional Reviewer entity replans in the same session", () => {
     const correction = decideValidationRecovery({
         failure: classifyValidationOperationalError({
             source: "reviewer_protocol",
@@ -128,7 +129,7 @@ Deno.test("a missing optional Reviewer entity replans in the same session", () =
     assertEquals(correction.result.nextPhase, "semantic");
 });
 
-Deno.test("maps correctable, missing-information, and fatal failures to separate actions", () => {
+test("maps correctable, missing-information, and fatal failures to separate actions", () => {
     const correctable = decideValidationRecovery({
         failure: classifyValidationOperationalError({
             source: "reviewer_protocol",
@@ -168,7 +169,7 @@ Deno.test("maps correctable, missing-information, and fatal failures to separate
     assertEquals(fatal.action, "halt");
 });
 
-Deno.test("stops retry waits on cancellation", async () => {
+test("stops retry waits on cancellation", async () => {
     const controller = new AbortController();
     const result = waitForValidationRetry(1000, controller.signal);
     controller.abort();

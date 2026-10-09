@@ -1,3 +1,6 @@
+import { env } from "node:process";
+import { getCwd } from "../constants.js";
+import { captureForegroundProcess } from "./captured-process.ts";
 /**
  * @module shared/runtime-preflight
  * Shared startup/execution preflight checks.
@@ -20,19 +23,15 @@ const requiredBinaryCache = new Map<RuntimeBinary, BinaryCacheRecord>();
 
 async function hasBinary(binary: RuntimeBinary): Promise<boolean> {
     try {
-        const process = new Deno.Command(binary, {
-            args: ["--help"],
-            stdout: "null",
-            stderr: "null",
-        }).spawn();
-        return (await process.status).success;
+        const result = await captureForegroundProcess(binary, { args: ["--help"], cwd: getCwd() });
+        return result.code === 0;
     } catch {
         return false;
     }
 }
 
 async function hasRequiredBinary(binary: RuntimeBinary): Promise<boolean> {
-    const path = Deno.env.get("PATH") || "";
+    const path = env.PATH || "";
     const cached = requiredBinaryCache.get(binary);
     if (cached?.path === path) return cached.available;
 

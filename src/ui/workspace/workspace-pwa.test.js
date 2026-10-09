@@ -1,11 +1,16 @@
-import { assert, assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { runInNewContext } from "node:vm";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { WORKSPACE_MANIFEST, workspaceConnectionPage, workspaceWorkerSource } from "./server/workspace-pwa.ts";
 
-Deno.test("Workspace installation assets are public without exposing owner data", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "workspace-pwa-" });
+test("Workspace installation assets are public without exposing owner data", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "workspace-pwa-"));
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const ownerApp = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
     try {
@@ -41,7 +46,7 @@ Deno.test("Workspace installation assets are public without exposing owner data"
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
@@ -135,7 +140,7 @@ function navigation(path = "/projects/project/sessions/session") {
     return request;
 }
 
-Deno.test("installed Workspace opens a connection page offline and retries the original destination online", async () => {
+test("installed Workspace opens a connection page offline and retries the original destination online", async () => {
     const worker = workerHarness();
     const request = navigation();
     assertEquals(await (await worker.request(request)).text(), "current server content");
@@ -153,7 +158,7 @@ Deno.test("installed Workspace opens a connection page offline and retries the o
     assert(worker.requests.every((sent) => sent.url === request.url));
 });
 
-Deno.test("failed Workspace writes are reported once, never queued or replayed", async () => {
+test("failed Workspace writes are reported once, never queued or replayed", async () => {
     const worker = workerHarness();
     worker.offline();
     const write = new Request("https://workspace.test/api/owner/session/start", {
@@ -169,7 +174,7 @@ Deno.test("failed Workspace writes are reported once, never queued or replayed",
     assertEquals(worker.requests.filter((request) => request.method === "POST").length, 1);
 });
 
-Deno.test("Workspace worker preserves authentication and server errors and leaves other origins alone", async () => {
+test("Workspace worker preserves authentication and server errors and leaves other origins alone", async () => {
     const worker = workerHarness();
     worker.reply(new Response("Pairing required", { status: 401 }));
     assertEquals((await worker.request(navigation())).status, 401);
@@ -183,7 +188,7 @@ Deno.test("Workspace worker preserves authentication and server errors and leave
     assertEquals(worker.requests.length, 3);
 });
 
-Deno.test("connection fallback is self-contained and retries without changing the route", async () => {
+test("connection fallback is self-contained and retries without changing the route", async () => {
     const html = await workspaceConnectionPage();
     assertStringIncludes(html, "location.reload()");
     assertStringIncludes(html, "Tailscale");
@@ -198,7 +203,7 @@ Deno.test("connection fallback is self-contained and retries without changing th
  * @property {(task: Promise<void>) => void} waitUntil
  */
 
-Deno.test("notification clicks focus the originating Session or reopen it, and reject external URLs", async () => {
+test("notification clicks focus the originating Session or reopen it, and reject external URLs", async () => {
     /** @type {Map<string, (event: WorkerNotificationEvent) => void>} */
     const listeners = new Map();
     const sessionUrl = "https://workspace.test/projects/project/sessions/session";

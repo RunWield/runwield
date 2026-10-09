@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store.js";
@@ -58,7 +59,7 @@ async function runCiRepair(options) {
     });
 }
 
-Deno.test("CI repair pauses when Engineer does not report task completion", async () => {
+test("CI repair pauses when Engineer does not report task completion", async () => {
     const run = await runCiRepair({ reportCompletion: false });
     assertEquals(run.ciRuns, 1);
     assertEquals(run.result.kind, "paused");
@@ -68,14 +69,14 @@ Deno.test("CI repair pauses when Engineer does not report task completion", asyn
     assertEquals(run.plan?.attrs.validationCiAttempts, 1);
 });
 
-Deno.test("CI repair reruns CI and continues after task completion", async () => {
+test("CI repair reruns CI and continues after task completion", async () => {
     const run = await runCiRepair({ reportCompletion: true });
     assertEquals(run.ciRuns, 2);
     assertEquals(run.result.kind, "verified");
     assertEquals(run.plan?.attrs.status, "verified");
 });
 
-Deno.test("CI repair prompt verifies the repair without requiring a duplicate full CI run", async () => {
+test("CI repair prompt verifies the repair without requiring a duplicate full CI run", async () => {
     let capturedRequest = "";
     const context = {
         executionCwd: "/repair-checkout",

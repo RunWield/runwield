@@ -1,4 +1,6 @@
-import { assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
@@ -23,7 +25,7 @@ function makePair(): { terminal: CompatibleVirtualTerminal; tui: TUI } {
     return { terminal, tui: new TuiMainScreen(terminal) };
 }
 
-Deno.test("TUI singleton uses Pi TuiMainScreen regular mode", () => {
+test("TUI singleton uses Pi TuiMainScreen regular mode", () => {
     const { terminal, tui } = makePair();
     const initialized = initTUIWithPair({ terminal, tui });
     try {
@@ -38,7 +40,7 @@ Deno.test("TUI singleton uses Pi TuiMainScreen regular mode", () => {
     }
 });
 
-Deno.test("RunWield TUI opens a rendered hyperlink when clicked", async () => {
+test("RunWield TUI opens a rendered hyperlink when clicked", async () => {
     const terminal = new CompatibleVirtualTerminal({ columns: 100, rows: 30 });
     const opened: string[] = [];
     const browser: BrowserPort = {
@@ -68,7 +70,7 @@ Deno.test("RunWield TUI opens a rendered hyperlink when clicked", async () => {
     }
 });
 
-Deno.test("TUI singleton stop is idempotent and clears deterministic pair state", () => {
+test("TUI singleton stop is idempotent and clears deterministic pair state", () => {
     const { terminal, tui } = makePair();
     initTUIWithPair({ terminal, tui });
 
@@ -79,7 +81,7 @@ Deno.test("TUI singleton stop is idempotent and clears deterministic pair state"
     assertThrows(() => getTUI(), Error, "TUI not initialized. Call initTUI() first.");
 });
 
-Deno.test("TUI singleton accepts a second compatible pair after cleanup", () => {
+test("TUI singleton accepts a second compatible pair after cleanup", () => {
     const first = makePair();
     initTUIWithPair(first);
     stopTUI();
@@ -96,7 +98,7 @@ Deno.test("TUI singleton accepts a second compatible pair after cleanup", () => 
     }
 });
 
-Deno.test("RunWield TUI routes artifact clicks to the Session without opening a custom OS URL", async () => {
+test("RunWield TUI routes artifact clicks to the Session without opening a custom OS URL", async () => {
     const terminal = new CompatibleVirtualTerminal({ columns: 100, rows: 30 });
     const opened: string[] = [];
     const clicked: Array<{ sessionId: string; artifactId: string }> = [];

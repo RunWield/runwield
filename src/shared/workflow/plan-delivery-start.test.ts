@@ -1,4 +1,7 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
@@ -10,14 +13,14 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
 
 const repo = defineCommittedGitFixture();
 
-Deno.test("landing selection honors legacy target edits only when no delivery branch is recorded", () => {
+test("landing selection honors legacy target edits only when no delivery branch is recorded", () => {
     assertEquals(effectiveDeliveryBranch({ targetBranch: " release " }), "release");
     assertEquals(effectiveDeliveryBranch({ targetBranch: "release", deliveryBranch: " plan/saved " }), "plan/saved");
     assertEquals(effectiveDeliveryBranch({ targetBranch: "release", deliveryBranch: " " }), "release");
 });
 
 for (const autoMerge of [false, true]) {
-    Deno.test(`legacy standalone FEATURE records the configured default and resumes its landing (${autoMerge})`, async () => {
+    test(`legacy standalone FEATURE records the configured default and resumes its landing (${autoMerge})`, async () => {
         await withRuntimeCommandFixture("delivery-start-", async () => {
             const root = await repo.checkout();
             const first = new HostedSession({ id: crypto.randomUUID(), cwd: root });
@@ -61,14 +64,14 @@ for (const autoMerge of [false, true]) {
             } finally {
                 first.dispose();
                 resumed.dispose();
-                await Deno.remove(root, { recursive: true });
+                await fsRm(root, { recursive: true });
             }
         });
     });
 }
 
 for (const scenario of ["authored", "child", "quick-fix"] as const) {
-    Deno.test(`${scenario} retains its explicit target without automatic Plan Branch routing`, async () => {
+    test(`${scenario} retains its explicit target without automatic Plan Branch routing`, async () => {
         await withRuntimeCommandFixture("delivery-exclusions-", async () => {
             const root = await repo.checkout();
             const session = new HostedSession({ id: crypto.randomUUID(), cwd: root });
@@ -106,7 +109,7 @@ for (const scenario of ["authored", "child", "quick-fix"] as const) {
                 assertEquals(await git(root, ["branch", "--list", "plan/p"]), "");
             } finally {
                 session.dispose();
-                await Deno.remove(root, { recursive: true });
+                await fsRm(root, { recursive: true });
             }
         });
     });

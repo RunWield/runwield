@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     getCodeReviewMode,
@@ -31,7 +34,7 @@ interface SettingsFileRecord {
     activeModelPreset?: string | null;
 }
 
-Deno.test("settings exposes existing review policies and persists scope without replacing explicit overrides", async () => {
+test("settings exposes existing review policies and persists scope without replacing explicit overrides", async () => {
     await withRuntimeCommandFixture("runwield-policy-settings-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         const harness = makeUiHarness([
@@ -66,7 +69,7 @@ Deno.test("settings exposes existing review policies and persists scope without 
     });
 });
 
-Deno.test("settings saves Plan auto-merge booleans in the selected scope and keeps other Plan keys", async () => {
+test("settings saves Plan auto-merge booleans in the selected scope and keeps other Plan keys", async () => {
     await withRuntimeCommandFixture("runwield-plan-merge-policy-", async ({ projectRoot }) => {
         await setCustomSetting("plans", { archiveKeepLast: 7 }, "project", projectRoot);
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
@@ -94,7 +97,7 @@ Deno.test("settings saves Plan auto-merge booleans in the selected scope and kee
     });
 });
 
-Deno.test("cancelling review policy selection preserves persisted choices", async () => {
+test("cancelling review policy selection preserves persisted choices", async () => {
     await withRuntimeCommandFixture("runwield-policy-cancel-", async ({ projectRoot }) => {
         await setCustomSetting("codereview", "none", "project", projectRoot);
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
@@ -179,7 +182,7 @@ async function captureConsole(run: () => Promise<void>): Promise<{ logs: string[
     return { logs, errors };
 }
 
-Deno.test("runSettingsCommand prints real command help", async () => {
+test("runSettingsCommand prints real command help", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async () => {
         const output = await captureConsole(() => runSettingsCommand(["help"]));
 
@@ -189,7 +192,7 @@ Deno.test("runSettingsCommand prints real command help", async () => {
     });
 });
 
-Deno.test("runSettingsCommand exits a cancelled menu and restores the real editor surface", async () => {
+test("runSettingsCommand exits a cancelled menu and restores the real editor surface", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         const harness = makeUiHarness([null]);
@@ -210,7 +213,7 @@ Deno.test("runSettingsCommand exits a cancelled menu and restores the real edito
     });
 });
 
-Deno.test("runSettingsCommand persists numeric compaction settings in the fixture home", async () => {
+test("runSettingsCommand persists numeric compaction settings in the fixture home", async () => {
     await withRuntimeCommandFixture(
         "runwield-settings-command-",
         async ({ projectRoot, settingsPath }) => {
@@ -232,7 +235,7 @@ Deno.test("runSettingsCommand persists numeric compaction settings in the fixtur
                 assertEquals(settings.keepRecentTokens, 34000);
                 assert(harness.messages.includes("Reserve tokens set to 12,000."));
                 assert(harness.messages.includes("Keep recent tokens set to 34,000."));
-                const persisted = await Deno.readTextFile(settingsPath);
+                const persisted = await fsReadFile(settingsPath, "utf8");
                 assertStringIncludes(persisted, '"reserveTokens": 12000');
                 assertStringIncludes(persisted, '"keepRecentTokens": 34000');
             } finally {
@@ -242,7 +245,7 @@ Deno.test("runSettingsCommand persists numeric compaction settings in the fixtur
     );
 });
 
-Deno.test("runSettingsCommand toggles auto-compaction through the real Runtime session", async () => {
+test("runSettingsCommand toggles auto-compaction through the real Runtime session", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot, settingsPath }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         const before = runtime.getSessionSnapshot(sessionId)?.autoCompactionEnabled;
@@ -257,14 +260,14 @@ Deno.test("runSettingsCommand toggles auto-compaction through the real Runtime s
 
             assertEquals(runtime.getSessionSnapshot(sessionId)?.autoCompactionEnabled, !before);
             assert(harness.messages.includes(`Auto-compact ${!before ? "enabled" : "disabled"}.`));
-            assertStringIncludes(await Deno.readTextFile(settingsPath), `"enabled": ${String(!before)}`);
+            assertStringIncludes(await fsReadFile(settingsPath, "utf8"), `"enabled": ${String(!before)}`);
         } finally {
             runtime.closeAllSessions();
         }
     });
 });
 
-Deno.test("runSettingsCommand reports real compaction behavior", async () => {
+test("runSettingsCommand reports real compaction behavior", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         const settings = getSettingsManager(projectRoot).getCompactionSettings();
@@ -288,11 +291,11 @@ Deno.test("runSettingsCommand reports real compaction behavior", async () => {
     });
 });
 
-Deno.test("runSettingsCommand rejects invalid numeric input without changing persisted settings", async () => {
+test("runSettingsCommand rejects invalid numeric input without changing persisted settings", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot, settingsPath }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         const before = getSettingsManager(projectRoot).getCompactionSettings().reserveTokens;
-        const persistedBefore = await Deno.readTextFile(settingsPath);
+        const persistedBefore = await fsReadFile(settingsPath, "utf8");
         const harness = makeUiHarness(["compaction", "reserve", "back", "done"], ["nope"]);
         try {
             await runSettingsCommand([], {
@@ -303,14 +306,14 @@ Deno.test("runSettingsCommand rejects invalid numeric input without changing per
 
             assertEquals(harness.messages, ["Reserve tokens must be a positive integer."]);
             assertEquals(getSettingsManager(projectRoot).getCompactionSettings().reserveTokens, before);
-            assertEquals(await Deno.readTextFile(settingsPath), persistedBefore);
+            assertEquals(await fsReadFile(settingsPath, "utf8"), persistedBefore);
         } finally {
             runtime.closeAllSessions();
         }
     });
 });
 
-Deno.test("runSettingsCommand selects a model preset and persists activeModelPreset globally", async () => {
+test("runSettingsCommand selects a model preset and persists activeModelPreset globally", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot, settingsPath }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         await setCustomSetting(
@@ -352,7 +355,7 @@ Deno.test("runSettingsCommand selects a model preset and persists activeModelPre
                 "1 agent model override",
             );
 
-            const persisted = JSON.parse(await Deno.readTextFile(settingsPath)) as SettingsFileRecord;
+            const persisted = JSON.parse(await fsReadFile(settingsPath, "utf8")) as SettingsFileRecord;
             assertEquals(persisted.activeModelPreset, "quality");
         } finally {
             runtime.closeAllSessions();
@@ -360,7 +363,7 @@ Deno.test("runSettingsCommand selects a model preset and persists activeModelPre
     });
 });
 
-Deno.test("runSettingsCommand applies a selected model preset to the active Session immediately", async () => {
+test("runSettingsCommand applies a selected model preset to the active Session immediately", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         await setCustomSetting(
@@ -393,7 +396,7 @@ Deno.test("runSettingsCommand applies a selected model preset to the active Sess
     });
 });
 
-Deno.test("runSettingsCommand activates a bundled preset without persisting its definition", async () => {
+test("runSettingsCommand activates a bundled preset without persisting its definition", async () => {
     await withRuntimeCommandFixture("bundled-preset-selection-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         const harness = makeUiHarness(["model-presets", "preset:claude-opus", "back", "done"]);
@@ -413,7 +416,7 @@ Deno.test("runSettingsCommand activates a bundled preset without persisting its 
     });
 });
 
-Deno.test("runSettingsCommand applies a model preset to a new in-memory Session", async () => {
+test("runSettingsCommand applies a model preset to a new in-memory Session", async () => {
     await withRuntimeCommandFixture(
         "runwield-settings-command-",
         async ({ projectRoot, setModelResponse }) => {
@@ -466,7 +469,7 @@ Deno.test("runSettingsCommand applies a model preset to a new in-memory Session"
     );
 });
 
-Deno.test("runSettingsCommand clears activeModelPreset via None", async () => {
+test("runSettingsCommand clears activeModelPreset via None", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot, settingsPath }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         await setCustomSetting(
@@ -488,7 +491,7 @@ Deno.test("runSettingsCommand clears activeModelPreset via None", async () => {
 
             assertEquals(getCustomSetting("activeModelPreset", "global", projectRoot), null);
             assert(harness.messages.includes("Active model preset cleared; base agents config is used."));
-            const persisted = JSON.parse(await Deno.readTextFile(settingsPath)) as SettingsFileRecord;
+            const persisted = JSON.parse(await fsReadFile(settingsPath, "utf8")) as SettingsFileRecord;
             assertEquals(persisted.activeModelPreset, null);
         } finally {
             runtime.closeAllSessions();
@@ -496,7 +499,7 @@ Deno.test("runSettingsCommand clears activeModelPreset via None", async () => {
     });
 });
 
-Deno.test("runSettingsCommand offers bundled presets without personal preset settings", async () => {
+test("runSettingsCommand offers bundled presets without personal preset settings", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         const harness = makeUiHarness(["model-presets", "back", "done"]);
@@ -530,7 +533,7 @@ Deno.test("runSettingsCommand offers bundled presets without personal preset set
     });
 });
 
-Deno.test("runSettingsCommand reports unavailable interactive state", async () => {
+test("runSettingsCommand reports unavailable interactive state", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async () => {
         const output = await captureConsole(() => runSettingsCommand([]));
         assertEquals(output.errors, ["The /settings command is only available inside an interactive session."]);
@@ -544,7 +547,7 @@ Deno.test("runSettingsCommand reports unavailable interactive state", async () =
     });
 });
 
-Deno.test("Mascot menu toggles global visibility and reports project overrides", async () => {
+test("Mascot menu toggles global visibility and reports project overrides", async () => {
     await withRuntimeCommandFixture("settings-mascot-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         try {

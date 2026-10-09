@@ -1,4 +1,5 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { ok as assert } from "node:assert/strict";
 import type { GoldenScenario, GoldenScenarioResult } from "../testing/scenario-runner.js";
 import { assertEventIncludes } from "../testing/scenario-runner.js";
 import type { ScriptedInteractionSurface } from "../testing/scripted-review-surface.js";

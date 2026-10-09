@@ -1,9 +1,10 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 /**
  * @module ui/tui/testing/portfolio-assertions
  * Reusable semantic assertions for Golden TUI portfolio scenarios.
  */
 
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "./scenario-runner.js";
 
 /** @typedef {import('./scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */

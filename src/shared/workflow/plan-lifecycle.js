@@ -19,7 +19,7 @@ import {
     normalizeExecutionMode,
     updatePlanFrontMatter,
 } from "../../plan-store.js";
-import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "../collaboration/lock.js";
+import { SHARED_PLAN_LOCK_REPAIR, SharedPlanLockError } from "../collaboration/lock.ts";
 import { runPlanLifecycleEventTransition } from "./state-transition.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { findCompletionSiblings } from "./plan-family.ts";

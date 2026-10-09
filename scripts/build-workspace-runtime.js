@@ -1,15 +1,26 @@
+import process from "node:process";
+import { captureScriptProcess } from "./script-process.ts";
+import {
+    copyFile as fsCopyFile,
+    mkdir as fsMkdir,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 /**
  * Build opaque Workspace assets for the standalone RunWield executable.
  *
  * Astro's server output is collapsed into one self-contained module. Browser
- * JavaScript receives an `.asset` suffix so `deno compile --include` embeds it
- * as passive data instead of treating hundreds of chunks as graph roots.
+ * JavaScript receives an `.asset` suffix so the runtime serves it as passive
+ * data instead of tracing browser chunks as executable server modules.
  */
 
-import { basename, dirname, extname, join } from "@std/path";
+import { basename, dirname, extname, join } from "node:path";
 
-const DEFAULT_SERVER_ENTRY = "dist/workspace/server/entry.mjs";
-const DEFAULT_CLIENT_DIR = "dist/workspace/client";
+const DEFAULT_SERVER_ENTRY = "dist/workspace-bun/server/entry.mjs";
+const DEFAULT_CLIENT_DIR = "dist/workspace-bun/client";
 const DEFAULT_RUNTIME_DIR = "dist/workspace-runtime";
 const DEFAULT_CLIENT_ASSET_STABILITY_INTERVAL_MS = 100;
 const DEFAULT_CLIENT_ASSET_STABILITY_TIMEOUT_MS = 5000;
@@ -48,11 +59,11 @@ export function getOpaqueWorkspaceAssetName(name) {
  * @returns {Promise<void>}
  */
 async function runCommand(command, args) {
-    const result = await new Deno.Command(command, {
+    const result = await captureScriptProcess(command, {
         args,
         stdout: "piped",
         stderr: "piped",
-    }).output();
+    });
     if (result.success) return;
 
     const decoder = new TextDecoder();
@@ -80,18 +91,18 @@ function delay(ms) {
  * @returns {Promise<void>}
  */
 async function copyOpaqueAssets(sourceDir, destinationDir) {
-    await Deno.mkdir(destinationDir, { recursive: true });
-    for await (const entry of Deno.readDir(sourceDir)) {
+    await fsMkdir(destinationDir, { recursive: true });
+    for await (const entry of await fsReaddir(sourceDir, { withFileTypes: true })) {
         const sourcePath = join(sourceDir, entry.name);
         const destinationPath = join(destinationDir, getOpaqueWorkspaceAssetName(entry.name));
-        if (entry.isDirectory) {
+        if (entry.isDirectory()) {
             await copyOpaqueAssets(sourcePath, destinationPath);
             continue;
         }
-        if (!entry.isFile) {
+        if (!entry.isFile()) {
             throw new Error(`Unsupported Workspace asset entry: ${sourcePath}`);
         }
-        await Deno.copyFile(sourcePath, destinationPath);
+        await fsCopyFile(sourcePath, destinationPath);
     }
 }
 
@@ -102,17 +113,17 @@ async function copyOpaqueAssets(sourceDir, destinationDir) {
  */
 async function snapshotWorkspaceAssetDirectory(sourceDir, prefix = "") {
     const snapshot = [];
-    for await (const entry of Deno.readDir(sourceDir)) {
+    for await (const entry of await fsReaddir(sourceDir, { withFileTypes: true })) {
         const sourcePath = join(sourceDir, entry.name);
         const relativePath = prefix ? join(prefix, entry.name) : entry.name;
-        if (entry.isDirectory) {
-            snapshot.push(...await snapshotWorkspaceAssetDirectory(sourcePath, relativePath));
+        if (entry.isDirectory()) {
+            snapshot.push(...(await snapshotWorkspaceAssetDirectory(sourcePath, relativePath)));
             continue;
         }
-        if (!entry.isFile) {
+        if (!entry.isFile()) {
             throw new Error(`Unsupported Workspace asset entry: ${sourcePath}`);
         }
-        const stat = await Deno.stat(sourcePath);
+        const stat = await fsStat(sourcePath);
         snapshot.push(`${relativePath}:${stat.size}:${stat.mtime?.getTime() ?? 0}`);
     }
     return snapshot.sort();
@@ -136,12 +147,12 @@ export async function waitForStableWorkspaceClientAssets(clientDir, options = {}
     let stablePasses = 0;
 
     while (true) {
-        const current = await snapshotWorkspaceAssetDirectory(clientDir).then((snapshot) => snapshot.join("\n")).catch(
-            (error) => {
-                if (error instanceof Deno.errors.NotFound) return null;
+        const current = await snapshotWorkspaceAssetDirectory(clientDir)
+            .then((snapshot) => snapshot.join("\n"))
+            .catch((error) => {
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
                 throw error;
-            },
-        );
+            });
         if (current !== null && previous !== null && current === previous) {
             stablePasses += 1;
             if (stablePasses >= REQUIRED_CLIENT_ASSET_STABILITY_PASSES) return;
@@ -154,27 +165,6 @@ export async function waitForStableWorkspaceClientAssets(clientDir, options = {}
         previous = current;
         await delay(intervalMs);
     }
-}
-
-/**
- * Astro 7 can leave the Deno adapter shim import in entry.mjs. Replace it with
- * direct JSR imports before bundling so Deno does not type-strip node_modules.
- *
- * @param {string} serverEntry
- * @returns {Promise<void>}
- */
-async function replaceDenoAdapterShim(serverEntry) {
-    const shimImports = [
-        'import { fromFileUrl, serveFile } from "@deno/astro-adapter/__deno_imports.ts";',
-        'import { serveFile, fromFileUrl } from "@deno/astro-adapter/__deno_imports.ts";',
-        "import { fromFileUrl, serveFile } from '@deno/astro-adapter/__deno_imports.ts';",
-        "import { serveFile, fromFileUrl } from '@deno/astro-adapter/__deno_imports.ts';",
-    ];
-    const replacement =
-        'import { serveFile } from "jsr:@std/http@1.0/file-server";\nimport { fromFileUrl } from "jsr:@std/path@1.0";';
-    const source = await Deno.readTextFile(serverEntry);
-    const next = shimImports.reduce((text, shim) => text.replace(shim, replacement), source);
-    if (next !== source) await Deno.writeTextFile(serverEntry, next);
 }
 
 /**
@@ -204,36 +194,6 @@ export function getServerEntryImportPaths(source, entryDir) {
 }
 
 /**
- * Replace the Deno adapter shim with concrete JSR imports before bundling.
- * @deno/astro-adapter patches server chunks, but recent Astro/Vite output can
- * place the shim in the entrypoint itself.
- *
- * @param {string} source
- * @returns {string}
- */
-export function normalizeDenoAdapterShimImport(source) {
-    return source.replace(
-        /^import\s+\{\s*fromFileUrl\s*,\s*serveFile\s*\}\s+from\s+["']@deno\/astro-adapter\/__deno_imports\.ts["'];$/m,
-        'import { serveFile } from "jsr:@std/http@1.0/file-server";\nimport { fromFileUrl } from "jsr:@std/path@1.0";',
-    ).replace(
-        /^import\s+\{\s*serveFile\s*,\s*fromFileUrl\s*\}\s+from\s+["']@deno\/astro-adapter\/__deno_imports\.ts["'];$/m,
-        'import { serveFile } from "jsr:@std/http@1.0/file-server";\nimport { fromFileUrl } from "jsr:@std/path@1.0";',
-    );
-}
-
-/**
- * Deno adapter output can use deno:jsr: specifiers that work in generated
- * server output but not in the follow-up deno bundle step. Convert them to
- * normal JSR specifiers before bundling the standalone Workspace runtime.
- *
- * @param {string} source
- * @returns {string}
- */
-export function normalizeDenoRuntimeSpecifiers(source) {
-    return source.replaceAll("deno:jsr:", "jsr:");
-}
-
-/**
  * Some npm CommonJS shims in the bundled Astro server call the generated
  * dynamic require helper for `node:child_process` even though the Deno bundle
  * also emits static Node built-in imports. That works under `deno run`, but a
@@ -252,10 +212,12 @@ export function normalizeCompiledNodeChildProcessImports(source) {
 
     const [, spawnAlias, spawnSyncAlias] = match;
     const staticBinding = `({exec:__rwNodeChildProcessExec,spawn:${spawnAlias},spawnSync:${spawnSyncAlias}})`;
-    return source.replace(
-        importPattern,
-        `import{exec as __rwNodeChildProcessExec,spawn as ${spawnAlias},spawnSync as ${spawnSyncAlias}}from"node:child_process";`,
-    ).replaceAll('Ut("node:child_process")', staticBinding);
+    return source
+        .replace(
+            importPattern,
+            `import{exec as __rwNodeChildProcessExec,spawn as ${spawnAlias},spawnSync as ${spawnSyncAlias}}from"node:child_process";`,
+        )
+        .replaceAll('Ut("node:child_process")', staticBinding);
 }
 
 /**
@@ -268,9 +230,7 @@ export function normalizeCompiledNodeChildProcessImports(source) {
  * @returns {string}
  */
 export function unrefBundledMessageChannels(source) {
-    const channelNames = [
-        ...source.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new MessageChannel/g),
-    ].map(
+    const channelNames = [...source.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new MessageChannel/g)].map(
         (match) => match[1],
     );
     if (!channelNames.length) return source;
@@ -291,7 +251,8 @@ function removeBundledBuildEnvironment(source) {
     const snapshot = /Object\.assign\(\{ASSETS_PREFIX:[^{}]*SSR:!0\},\{(?:[^"{}]|"(?:\\.|[^"\\])*")*\}\)/g;
     const result = source.replace(snapshot, (match) => match.slice(0, match.indexOf("},{") + 3) + "})");
     if (
-        result.replace(/Object\.assign\(\{ASSETS_PREFIX:[^{}]*SSR:!0\},\{\}\)/g, "")
+        result
+            .replace(/Object\.assign\(\{ASSETS_PREFIX:[^{}]*SSR:!0\},\{\}\)/g, "")
             .includes("Object.assign({ASSETS_PREFIX:")
     ) {
         throw new Error("Workspace server bundle contains an unrecognized build environment snapshot");
@@ -319,16 +280,8 @@ function sortBundledManifestAssets(source) {
 /**
  * Astro can return before all generated server chunks are immediately visible to
  * a follow-up subprocess on every filesystem. Wait for entrypoint imports before
- * invoking `deno bundle`, so release builds do not race the server output.
- */
-/** @param {string} serverEntry */
-async function patchDenoAdapterShimImport(serverEntry) {
-    const source = await Deno.readTextFile(serverEntry);
-    const patched = normalizeDenoRuntimeSpecifiers(normalizeDenoAdapterShimImport(source));
-    if (patched !== source) await Deno.writeTextFile(serverEntry, patched);
-}
-
-/**
+ * invoking `bun build`, so release builds do not race the server output.
+ *
  * @param {string} serverEntry
  * @returns {Promise<void>}
  */
@@ -336,15 +289,14 @@ async function waitForServerEntryImports(serverEntry) {
     const entryDir = dirname(serverEntry);
     const deadline = Date.now() + 5000;
     while (true) {
-        const source = normalizeDenoAdapterShimImport(await Deno.readTextFile(serverEntry));
-        await Deno.writeTextFile(serverEntry, source);
+        const source = await fsReadFile(serverEntry, "utf8");
         const missing = [];
         for (const path of getServerEntryImportPaths(source, entryDir)) {
-            const stat = await Deno.stat(path).catch((error) => {
-                if (error instanceof Deno.errors.NotFound) return null;
+            const stat = await fsStat(path).catch((error) => {
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
                 throw error;
             });
-            if (!stat?.isFile) missing.push(path);
+            if (!stat?.isFile()) missing.push(path);
         }
         if (missing.length === 0) return;
         if (Date.now() >= deadline) {
@@ -356,16 +308,16 @@ async function waitForServerEntryImports(serverEntry) {
 
 /**
  * @param {string} path
- * @returns {Promise<Deno.FileInfo>}
+ * @returns {Promise<import("node:fs").Stats>}
  */
 async function waitForFile(path) {
     const deadline = Date.now() + 5000;
     while (true) {
-        const stat = await Deno.stat(path).catch((error) => {
-            if (error instanceof Deno.errors.NotFound) return null;
+        const stat = await fsStat(path).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
             throw error;
         });
-        if (stat?.isFile) return stat;
+        if (stat?.isFile()) return stat;
         if (Date.now() >= deadline) throw new Error(`Workspace runtime server was not created: ${path}`);
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
@@ -382,31 +334,23 @@ export async function buildWorkspaceRuntime(options, port) {
     const runtimeDir = options.runtimeDir || DEFAULT_RUNTIME_DIR;
     const serverOutput = join(runtimeDir, "server.mjs");
 
-    await Deno.remove(runtimeDir, { recursive: true }).catch((error) => {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+    await fsRm(runtimeDir, { recursive: true }).catch((error) => {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     });
-    await Deno.mkdir(dirname(serverOutput), { recursive: true });
+    await fsMkdir(dirname(serverOutput), { recursive: true });
 
-    await replaceDenoAdapterShim(serverEntry);
-    await patchDenoAdapterShimImport(serverEntry);
     await waitForServerEntryImports(serverEntry);
-    await port.run("deno", [
-        "bundle",
-        "--platform",
-        "deno",
-        "--packages",
-        "bundle",
-        "--minify",
-        "--output",
-        serverOutput,
-        serverEntry,
-    ]);
+    await port.run(process.execPath, ["build", "--target", "bun", "--minify", "--outfile", serverOutput, serverEntry]);
     await waitForFile(serverOutput);
-    await Deno.writeTextFile(
+    await fsWriteFile(
         serverOutput,
-        sortBundledManifestAssets(removeBundledBuildEnvironment(unrefBundledMessageChannels(
-            normalizeCompiledNodeChildProcessImports(await Deno.readTextFile(serverOutput)),
-        ))),
+        sortBundledManifestAssets(
+            removeBundledBuildEnvironment(
+                unrefBundledMessageChannels(
+                    normalizeCompiledNodeChildProcessImports(await fsReadFile(serverOutput, "utf8")),
+                ),
+            ),
+        ),
     );
     await waitForStableWorkspaceClientAssets(clientDir);
     await copyOpaqueAssets(clientDir, join(runtimeDir, "client"));

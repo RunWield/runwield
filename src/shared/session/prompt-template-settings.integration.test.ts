@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, type FauxResponseFactory, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { setCustomSetting } from "../settings.js";
@@ -20,11 +23,11 @@ function makeRuntime() {
 
 async function writeTemplate(root: string, fields: string[] = []) {
     const dir = join(root, ".wld", "prompts");
-    await Deno.mkdir(dir, { recursive: true });
-    await Deno.writeTextFile(join(dir, "fixture.md"), ["---", ...fields, "---", "TEMPLATE BODY"].join("\n"));
+    await fsMkdir(dir, { recursive: true });
+    await fsWriteFile(join(dir, "fixture.md"), ["---", ...fields, "---", "TEMPLATE BODY"].join("\n"));
 }
 
-Deno.test("new template sessions use Operator configuration and keep it on follow-up", async () => {
+test("new template sessions use Operator configuration and keep it on follow-up", async () => {
     await withRuntimeCommandFixture(
         "template-operator-defaults-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -70,7 +73,7 @@ Deno.test("new template sessions use Operator configuration and keep it on follo
     );
 });
 
-Deno.test("template omissions keep explicit new-session selections and ongoing Session settings", async () => {
+test("template omissions keep explicit new-session selections and ongoing Session settings", async () => {
     await withRuntimeCommandFixture("template-inherit-settings-", async ({ projectRoot, setModelResponse }) => {
         await writeTemplate(projectRoot);
         setModelResponse("done");
@@ -99,7 +102,7 @@ Deno.test("template omissions keep explicit new-session selections and ongoing S
     }, { reasoning: true, additionalModels: [{ id: "alternate", name: "Alternate", reasoning: true }] });
 });
 
-Deno.test("template settings override manual selections and survive resume", async () => {
+test("template settings override manual selections and survive resume", async () => {
     await withRuntimeCommandFixture("template-override-resume-", async ({ projectRoot, setModelResponse }) => {
         await writeTemplate(projectRoot, ["model: runtime-command-fixture/alternate", "thinkingLevel: high"]);
         setModelResponse("done");
@@ -128,7 +131,7 @@ Deno.test("template settings override manual selections and survive resume", asy
     }, { reasoning: true, additionalModels: [{ id: "alternate", name: "Alternate", reasoning: true }] });
 });
 
-Deno.test("a conflicting template can be canceled without changing planning or sending its body", async () => {
+test("a conflicting template can be canceled without changing planning or sending its body", async () => {
     await withRuntimeCommandFixture("template-planning-cancel-", async ({ projectRoot, setModelResponseFactories }) => {
         await writeTemplate(projectRoot, ["agent: engineer"]);
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
@@ -158,7 +161,7 @@ Deno.test("a conflicting template can be canceled without changing planning or s
             assertEquals(questions[0].options?.map((choice) => choice.label), ["Open in new session", "Cancel"]);
             assertEquals(requests.length, 1);
             await drainWorkflowMetrics();
-            const commandRows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim()
+            const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim()
                 .split("\n").map((line) => JSON.parse(line))
                 .filter((row) => row.category === "command" && row.command === "fixture");
             assertEquals(commandRows.map((row) => [row.event, row.outcome]), [["command_started", undefined], [
@@ -175,7 +178,7 @@ Deno.test("a conflicting template can be canceled without changing planning or s
     });
 });
 
-Deno.test("a conflicting template opens an ordinary new Session and preserves planning for resume", async () => {
+test("a conflicting template opens an ordinary new Session and preserves planning for resume", async () => {
     await withRuntimeCommandFixture("template-planning-new-", async ({ projectRoot, setModelResponseFactories }) => {
         await writeTemplate(projectRoot, ["agent: engineer"]);
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
@@ -220,7 +223,7 @@ Deno.test("a conflicting template opens an ordinary new Session and preserves pl
             assertEquals(runtime.getSessionSnapshot(id)?.workflowContext, before?.workflowContext);
             assertEquals(runtime.getSessionSnapshot(result.replacementSessionId)?.activeAgent, "engineer");
             await drainWorkflowMetrics();
-            const metrics = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim()
+            const metrics = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim()
                 .split("\n").map((line) => JSON.parse(line));
             const commands = metrics.filter((row) => row.category === "command" && row.command === "fixture");
             assertEquals(commands.map((row) => row.event), ["command_started", "command_finished"]);
@@ -245,7 +248,7 @@ Deno.test("a conflicting template opens an ordinary new Session and preserves pl
     });
 });
 
-Deno.test("a conflicting execution Agent is protected and invalid settings do not submit a message", async () => {
+test("a conflicting execution Agent is protected and invalid settings do not submit a message", async () => {
     await withRuntimeCommandFixture("template-invalid-settings-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("done");
         const runtime = makeRuntime();
@@ -278,7 +281,7 @@ Deno.test("a conflicting execution Agent is protected and invalid settings do no
     });
 });
 
-Deno.test("changing Agent through a template uses that Agent defaults, while a manual Router choice is retained", async () => {
+test("changing Agent through a template uses that Agent defaults, while a manual Router choice is retained", async () => {
     await withRuntimeCommandFixture("template-agent-defaults-", async ({ projectRoot, setModelResponse }) => {
         await writeTemplate(projectRoot, ["agent: engineer"]);
         await setCustomSetting(

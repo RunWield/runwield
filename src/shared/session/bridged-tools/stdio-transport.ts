@@ -1,3 +1,4 @@
+import process from "node:process";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
 import { Server } from "@modelcontextprotocol/sdk/server";
@@ -14,8 +15,8 @@ interface BridgeEnv {
 }
 
 function readBridgeEnv(): BridgeEnv {
-    const urlText = Deno.env.get(RUNWIELD_MCP_BRIDGE_URL_ENV) || "";
-    const token = Deno.env.get(RUNWIELD_MCP_BRIDGE_TOKEN_ENV) || "";
+    const urlText = process.env[RUNWIELD_MCP_BRIDGE_URL_ENV] || "";
+    const token = process.env[RUNWIELD_MCP_BRIDGE_TOKEN_ENV] || "";
     if (!urlText || !token) {
         throw new Error("RunWield MCP bridge is not available for this process.");
     }
@@ -43,6 +44,7 @@ export async function runRunWieldMcpStdioTransport(): Promise<void> {
     const server = new Server({ name: "runwield", version: "1.0.0" }, { capabilities: { tools: {} } });
     const stdio = new StdioServerTransport();
     let closed = false;
+    let onStdinEnd: (() => void) | undefined;
 
     async function close(): Promise<void> {
         if (closed) return;
@@ -96,8 +98,14 @@ export async function runRunWieldMcpStdioTransport(): Promise<void> {
             stdio.onerror = closeAndResolve;
             client.onclose = closeAndResolve;
             client.onerror = closeAndResolve;
+            // The SDK stdio transport does not close itself when the host ends stdin.
+            // Close the HTTP/SSE side too, so a disconnected host cannot leave an orphan CLI.
+            onStdinEnd = closeAndResolve;
+            process.stdin.once("end", onStdinEnd);
+            if (process.stdin.readableEnded) closeAndResolve();
         });
     } finally {
+        if (onStdinEnd) process.stdin.removeListener("end", onStdinEnd);
         await close();
     }
 }

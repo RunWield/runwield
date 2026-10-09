@@ -1,5 +1,9 @@
+import process from "node:process";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
 import { DEV_DELIVERY_REPORT } from "../workspace/server/dev-delivery-fixture.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { createChatView } from "./chat-view.ts";
@@ -19,10 +23,10 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 for (const columns of [60, 140]) {
     for (const choice of ["new", "load-plan", "escape", "record-failed", "record-retry"]) {
-        Deno.test(`completion choices stay visible at ${columns} columns and ${choice} works`, async () => {
+        test(`completion choices stay visible at ${columns} columns and ${choice} works`, async () => {
             await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
-                await Deno.mkdir(`${projectRoot}/docs/plans`, { recursive: true });
-                await Deno.writeTextFile(
+                await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
+                await fsWriteFile(
                     `${projectRoot}/docs/plans/next-change.md`,
                     "---\nstatus: draft\nclassification: PLANNED_CHANGE\nplanId: next-change\n---\n# Next change\n",
                 );
@@ -39,7 +43,7 @@ for (const columns of [60, 140]) {
                         },
                     });
                 }
-                const capture = Deno.env.get("RUNWIELD_DELIVERY_SCREENSHOT") && columns === 140 && choice === "new";
+                const capture = process.env["RUNWIELD_DELIVERY_SCREENSHOT"] && columns === 140 && choice === "new";
                 const terminal = new VirtualTerminal({ columns, rows: capture ? 54 : 30 });
                 let activeId = sessionId;
                 const tui = new TuiAltScreen(terminal);
@@ -135,8 +139,8 @@ for (const columns of [60, 140]) {
                     await waitFor(() => terminal.getScreenText().includes("What would you like to do next?"));
                     const screen = terminal.getScreenText();
                     if (capture) {
-                        await Deno.writeTextFile(
-                            Deno.env.get("RUNWIELD_DELIVERY_SCREENSHOT") || "",
+                        await fsWriteFile(
+                            process.env["RUNWIELD_DELIVERY_SCREENSHOT"] || "",
                             JSON.stringify({
                                 columns,
                                 lines: terminal.getViewportLines(),
@@ -206,7 +210,7 @@ for (const columns of [60, 140]) {
 }
 
 for (const choice of ["skip", "open", "dismiss"]) {
-    Deno.test(`Code Review offer ${choice} removes selection controls without inventing an outcome`, async () => {
+    test(`Code Review offer ${choice} removes selection controls without inventing an outcome`, async () => {
         await withSessionViewFixture(async ({ runtime, sessionId }) => {
             const terminal = new VirtualTerminal({ columns: 100, rows: 22 });
             const tui = new TuiAltScreen(terminal);
@@ -250,9 +254,9 @@ for (const choice of ["skip", "open", "dismiss"]) {
                 assertEquals(selected.outcome, choice === "dismiss" ? "canceled" : "selected");
                 if (choice === "skip") {
                     assertEquals(text.split("Code Review skipped").length - 1, 1);
-                    if (Deno.env.get("RUNWIELD_SKIP_SCREENSHOT")) {
-                        await Deno.writeTextFile(
-                            Deno.env.get("RUNWIELD_SKIP_SCREENSHOT") || "",
+                    if (process.env["RUNWIELD_SKIP_SCREENSHOT"]) {
+                        await fsWriteFile(
+                            process.env["RUNWIELD_SKIP_SCREENSHOT"] || "",
                             JSON.stringify({ columns: 100, lines: terminal.getViewportLines(), ansi: terminal.writes }),
                         );
                     }

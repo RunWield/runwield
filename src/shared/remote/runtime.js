@@ -1,3 +1,6 @@
+import { getCwd } from "../../constants.js";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { readFile as fsReadFile } from "node:fs/promises";
 import { verifyBuildArtifact } from "../../../scripts/build-metadata.js";
 import { fixedPythonCommand } from "./target.ts";
 
@@ -31,22 +34,25 @@ export async function verifyRemoteRuntimeArtifact(artifact, platform) {
     try {
         metadata = await verifyBuildArtifact(artifact);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
+        if (error instanceof Error && Reflect.get(error, "code") === "ENOENT") {
             throw new Error(
-                `Missing ${target} artifact: build it with deno run -A scripts/compile.js --target ${target} --output ${artifact}`,
+                `Missing ${target} artifact: build it with bun run compile --target ${target} --output ${artifact}`,
             );
         }
         throw error;
     }
     if (
-        metadata.target !== target || metadata.buildId !== identity.BUILD_ID ||
+        (metadata.target !== target &&
+            metadata.target !== `bun-linux-${platform.arch === "aarch64" ? "arm64" : "x64"}`) ||
+        metadata.buildId !== identity.BUILD_ID ||
         metadata.protocol !== identity.REMOTE_PROTOCOL_VERSION
     ) {
         throw new Error(`Remote artifact does not match launcher build, protocol or ${target} target`);
     }
     const { VERSION } = await import("../version.js");
     if (metadata.version !== VERSION) throw new Error("Remote artifact VERSION does not match launcher");
-    return metadata;
+    // Cache layout and the fixed remote preparation protocol use GNU target names.
+    return { ...metadata, target };
 }
 
 // The fixed remote source reads a JSON header then exact artifact bytes. Nothing
@@ -178,17 +184,19 @@ export async function prepareRemoteRuntime(host, platform, artifact, sshExecutab
     // deno-lint-ignore no-control-regex -- SSH destinations must not contain control or whitespace characters.
     if (!host || host.startsWith("-") || /[\x00-\x20\x7f]/.test(host)) throw new Error("Invalid SSH destination");
     const metadata = await verifyRemoteRuntimeArtifact(artifact, platform);
-    const bytes = await Deno.readFile(artifact);
+    const bytes = await fsReadFile(artifact);
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
-        .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
     if (digest !== metadata.sha256) throw new Error("Build artifact changed during transfer");
-    const process = new Deno.Command(sshExecutable, {
+    const process = spawnNativeProcess(sshExecutable, {
+        cwd: getCwd(),
         args: ["-T", "--", host, REMOTE_PREPARE_COMMAND],
         signal,
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const output = Promise.all([process.status, new Response(process.stderr).text()]);
     const reader = process.stdout.getReader();
     const writer = process.stdin.getWriter();
@@ -241,7 +249,9 @@ export async function prepareRemoteRuntime(host, platform, artifact, sshExecutab
     } catch (error) {
         try {
             process.kill();
-        } catch { /* Already exited. */ }
+        } catch {
+            /* Already exited. */
+        }
         await output.catch(() => undefined);
         throw error;
     } finally {

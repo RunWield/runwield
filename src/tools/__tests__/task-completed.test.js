@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { createPairCheckpointTool } from "../pair-checkpoint.ts";
@@ -46,7 +47,7 @@ function beginRequest(hostedSession, sessionManager, dispatchKind = "interactive
     });
 }
 
-Deno.test("task_completed emits one semantic assistant message and terminates", async () => {
+test("task_completed emits one semantic assistant message and terminates", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const events = /** @type {any[]} */ ([]);
         const hostedSession = new HostedSession({ id: "task-completed", cwd: projectRoot });
@@ -71,7 +72,7 @@ Deno.test("task_completed emits one semantic assistant message and terminates", 
     });
 });
 
-Deno.test("task_completed warns once for running work and cancels it before publishing acceptance", async () => {
+test("task_completed warns once for running work and cancels it before publishing acceptance", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         /** @type {any[]} */
         const events = [];
@@ -111,7 +112,7 @@ Deno.test("task_completed warns once for running work and cancels it before publ
     });
 });
 
-Deno.test("workflow metadata refresh preserves the warning but a new assignment gets its own warning", async () => {
+test("workflow metadata refresh preserves the warning but a new assignment gets its own warning", async () => {
     const session = new HostedSession({ id: `completion-workflow-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     /** @type {import("../../shared/session/hosted-session.js").ActiveExecutionWorkflow} */
     const workflow = {
@@ -141,7 +142,7 @@ Deno.test("workflow metadata refresh preserves the warning but a new assignment 
     }
 });
 
-Deno.test("later completion cycle warns again for new tasks", async () => {
+test("later completion cycle warns again for new tasks", async () => {
     const session = new HostedSession({ id: `completion-cycle-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     try {
         const firstTask = session.backgroundTasks.startShell({ command: "sleep 8", cwd: TASK_PROJECT_ROOT });
@@ -166,7 +167,7 @@ Deno.test("later completion cycle warns again for new tasks", async () => {
     }
 });
 
-Deno.test("a finished task after the first warning does not require another warning", async () => {
+test("a finished task after the first warning does not require another warning", async () => {
     const session = new HostedSession({ id: `completion-finish-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     try {
         const task = session.backgroundTasks.startShell({
@@ -188,7 +189,7 @@ Deno.test("a finished task after the first warning does not require another warn
     }
 });
 
-Deno.test("wrong owner does not consume the background completion warning", async () => {
+test("wrong owner does not consume the background completion warning", async () => {
     const session = new HostedSession({ id: `completion-owner-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     session.setActiveExecutionWorkflow({
         planName: "owner-plan",
@@ -212,7 +213,7 @@ Deno.test("wrong owner does not consume the background completion warning", asyn
     }
 });
 
-Deno.test("completion does not suppress another Session's background result", async () => {
+test("completion does not suppress another Session's background result", async () => {
     const first = new HostedSession({ id: `completion-isolation-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     const second = new HostedSession({ id: `other-isolation-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     try {
@@ -231,7 +232,7 @@ Deno.test("completion does not suppress another Session's background result", as
     }
 });
 
-Deno.test("task_completed suppresses a finished undelivered result and allows new work", async () => {
+test("task_completed suppresses a finished undelivered result and allows new work", async () => {
     const session = new HostedSession({ id: `completion-pending-${crypto.randomUUID()}`, cwd: TASK_PROJECT_ROOT });
     try {
         const task = session.backgroundTasks.startShell({ command: "printf 'finished'", cwd: TASK_PROJECT_ROOT });
@@ -252,7 +253,7 @@ Deno.test("task_completed suppresses a finished undelivered result and allows ne
     }
 });
 
-Deno.test("task_completed description uses planned-change workflow terminology", () => {
+test("task_completed description uses planned-change workflow terminology", () => {
     const hostedSession = new HostedSession({ id: "task-completed-description", cwd: TASK_PROJECT_ROOT });
     const tool = createTaskCompletedTool({ hostedSession, agentName: "engineer" });
 
@@ -260,7 +261,7 @@ Deno.test("task_completed description uses planned-change workflow terminology",
     assertEquals((tool.description || "").includes("For FEATURE and PROJECT workflows"), false);
 });
 
-Deno.test("task_completed records accepted completion on hosted session only after ownership checks", async () => {
+test("task_completed records accepted completion on hosted session only after ownership checks", async () => {
     const hostedSession = new HostedSession({ id: "task-completed-records-accepted", cwd: TASK_PROJECT_ROOT });
     hostedSession.setActiveExecutionWorkflow({
         planName: "implementation-plan",
@@ -298,7 +299,7 @@ Deno.test("task_completed records accepted completion on hosted session only aft
     assertEquals(hostedSession.consumePendingTaskCompletion(null), null);
 });
 
-Deno.test("task_completed rejects a mismatched active workflow owner without side effects", async () => {
+test("task_completed rejects a mismatched active workflow owner without side effects", async () => {
     const events = /** @type {any[]} */ ([]);
     const hostedSession = new HostedSession({ id: "task-completed-wrong-owner", cwd: TASK_PROJECT_ROOT });
     hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
@@ -317,7 +318,7 @@ Deno.test("task_completed rejects a mismatched active workflow owner without sid
     assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "frontend-engineer");
 });
 
-Deno.test("task_completed rejects a provisional workflow before execution starts", async () => {
+test("task_completed rejects a provisional workflow before execution starts", async () => {
     const events = /** @type {any[]} */ ([]);
     const hostedSession = new HostedSession({ id: "task-completed-not-started", cwd: TASK_PROJECT_ROOT });
     hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
@@ -337,7 +338,7 @@ Deno.test("task_completed rejects a provisional workflow before execution starts
     assertEquals(events, []);
 });
 
-Deno.test("task_completed rejects a paused Pair turn without terminal side effects", async () => {
+test("task_completed rejects a paused Pair turn without terminal side effects", async () => {
     const events = /** @type {any[]} */ ([]);
     const hostedSession = new HostedSession({ id: "task-completed-pair-paused", cwd: TASK_PROJECT_ROOT });
     hostedSession.setEventSink({ emit: (/** @type {any} */ event) => events.push(event) });
@@ -358,7 +359,7 @@ Deno.test("task_completed rejects a paused Pair turn without terminal side effec
     assertEquals(events, []);
 });
 
-Deno.test("task_completed records a final Pair checkpoint before accepting completion", async () => {
+test("task_completed records a final Pair checkpoint before accepting completion", async () => {
     const sessionManager = makeSessionManager(TASK_PROJECT_ROOT);
     const hostedSession = new HostedSession({
         id: "task-completed-final-pair",
@@ -420,7 +421,7 @@ Deno.test("task_completed records a final Pair checkpoint before accepting compl
     assertEquals(readCurrentPairCheckpoint(hostedSession), null);
 });
 
-Deno.test("a later revision revokes final Pair assent", async () => {
+test("a later revision revokes final Pair assent", async () => {
     const sessionManager = makeSessionManager(TASK_PROJECT_ROOT);
     const hostedSession = new HostedSession({
         id: "task-completed-revised-final-pair",
@@ -471,7 +472,7 @@ Deno.test("a later revision revokes final Pair assent", async () => {
     assertEquals(hostedSession.consumePendingTaskCompletion(null), null);
 });
 
-Deno.test("final Pair assent cannot authorize a different execution attempt", async () => {
+test("final Pair assent cannot authorize a different execution attempt", async () => {
     const sessionManager = makeSessionManager(TASK_PROJECT_ROOT);
     const hostedSession = new HostedSession({
         id: "task-completed-stale-final-assent",
@@ -516,7 +517,7 @@ Deno.test("final Pair assent cannot authorize a different execution attempt", as
     assertEquals(readCurrentPairCheckpoint(hostedSession)?.report.workflow.executionAttemptStartedAtMs, 2000);
 });
 
-Deno.test("task_completed message schema owns Engineer report format and accepts runtime display name", () => {
+test("task_completed message schema owns Engineer report format and accepts runtime display name", () => {
     const hostedSession = new HostedSession({ id: "task-completed-schema", cwd: TASK_PROJECT_ROOT });
     const engineerTool = createTaskCompletedTool({ hostedSession, agentName: "Engineer" });
     const frontendEngineerTool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
@@ -540,7 +541,7 @@ Deno.test("task_completed message schema owns Engineer report format and accepts
     assertEquals(operatorTool.parameters.properties.message.description.includes("Markdown bullet-point"), false);
 });
 
-Deno.test("task_completed tells every agent to stop in prose instead of reporting a blocker", () => {
+test("task_completed tells every agent to stop in prose instead of reporting a blocker", () => {
     const hostedSession = new HostedSession({ id: "task-completed-blocker-contract", cwd: TASK_PROJECT_ROOT });
 
     for (
@@ -560,7 +561,7 @@ Deno.test("task_completed tells every agent to stop in prose instead of reportin
     }
 });
 
-Deno.test("task_completed requires Frontend Engineer preflight outcome only", () => {
+test("task_completed requires Frontend Engineer preflight outcome only", () => {
     const hostedSession = new HostedSession({ id: "task-completed-preflight-schema", cwd: TASK_PROJECT_ROOT });
     const frontendEngineerTool = createTaskCompletedTool({ hostedSession, agentName: "Frontend Engineer" });
     const engineerTool = createTaskCompletedTool({ hostedSession, agentName: "Engineer" });
@@ -584,7 +585,7 @@ Deno.test("task_completed requires Frontend Engineer preflight outcome only", ()
 });
 
 for (const outcome of /** @type {const} */ (["succeeded", "failed", "externally_blocked"])) {
-    Deno.test(`task_completed records Frontend Engineer completion preflight outcome ${outcome}`, async () => {
+    test(`task_completed records Frontend Engineer completion preflight outcome ${outcome}`, async () => {
         await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
             const sessionManager = makeSessionManager(projectRoot);
             const hostedSession = new HostedSession({
@@ -669,7 +670,7 @@ for (const outcome of /** @type {const} */ (["succeeded", "failed", "externally_
     });
 }
 
-Deno.test("task_completed labels validation repair Frontend Engineer completion", async () => {
+test("task_completed labels validation repair Frontend Engineer completion", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const hostedSession = new HostedSession({ id: "task-completed-repair", cwd: projectRoot });
         hostedSession.setActiveExecutionWorkflow({
@@ -699,7 +700,7 @@ Deno.test("task_completed labels validation repair Frontend Engineer completion"
     });
 });
 
-Deno.test("task_completed accepts the Reviewer-Feedback Engineer completing on the owner's behalf", async () => {
+test("task_completed accepts the Reviewer-Feedback Engineer completing on the owner's behalf", async () => {
     // Validation keeps the execution owner on the active workflow while a repair agent
     // works, so an owner check alone rejects the completion the loop is waiting for and
     // the repair round can never finish.
@@ -727,7 +728,7 @@ Deno.test("task_completed accepts the Reviewer-Feedback Engineer completing on t
     );
 });
 
-Deno.test("an engineer-owned Plan is completed by Plan Engineer, not by the Quick Fix Engineer", async () => {
+test("an engineer-owned Plan is completed by Plan Engineer, not by the Quick Fix Engineer", async () => {
     // The workflow records `engineer` for both a Plan and a QUICK_FIX, so the
     // owner check has to resolve the runtime Agent rather than compare strings.
     const hostedSession = new HostedSession({ id: "task-completed-plan-owner", cwd: TASK_PROJECT_ROOT });
@@ -751,7 +752,7 @@ Deno.test("an engineer-owned Plan is completed by Plan Engineer, not by the Quic
     assertEquals(hostedSession.consumePendingTaskCompletion(null)?.agentName, "plan-engineer");
 });
 
-Deno.test("a QUICK_FIX is completed by the Quick Fix Engineer, not by Plan Engineer", async () => {
+test("a QUICK_FIX is completed by the Quick Fix Engineer, not by Plan Engineer", async () => {
     const hostedSession = new HostedSession({ id: "task-completed-quick-fix-owner", cwd: TASK_PROJECT_ROOT });
     hostedSession.setActiveExecutionWorkflow({
         planName: "quick-fix",

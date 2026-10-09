@@ -1,3 +1,4 @@
+import process from "node:process";
 import { getCwd } from "../../constants.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
@@ -14,18 +15,22 @@ interface RuntimeUsageEventLike {
     usage?: GuidedReviewUsage;
 }
 
-const encoder = new TextEncoder();
-
 async function readDefaultStdin(): Promise<string> {
-    return await new Response(Deno.stdin.readable).text();
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    return Buffer.concat(chunks).toString("utf8");
 }
 
 async function writeDefaultStdout(text: string): Promise<void> {
-    await Deno.stdout.write(encoder.encode(text));
+    await new Promise<void>((resolve, reject) =>
+        process.stdout.write(text, (error) => error ? reject(error) : resolve())
+    );
 }
 
 async function writeDefaultStderr(text: string): Promise<void> {
-    await Deno.stderr.write(encoder.encode(text));
+    await new Promise<void>((resolve, reject) =>
+        process.stderr.write(text, (error) => error ? reject(error) : resolve())
+    );
 }
 
 function isRuntimeUsageEvent(

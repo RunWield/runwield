@@ -1,11 +1,23 @@
+import { mkdirSync as fsMkdirSync, writeFileSync as fsWriteFileSync } from "node:fs";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
 import { getCwd, getHomeDir } from "../constants.js";
 import { normalizePlanServerUrl } from "./collaboration/urls.ts";
 /**
  * @module shared/settings.test
  */
 
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertThrows } from "../testing/assertions.ts";
+import { join } from "node:path";
 import {
     __resetSettingsForTests,
     getCodeReviewMode,
@@ -32,7 +44,7 @@ import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 
 // Use a temp dir for isolated file-based tests
-const TEMP_DIR = await Deno.makeTempDir({ prefix: "runwield-settings-test-" });
+const TEMP_DIR = await fsMkdtemp(join(tmpdir(), "runwield-settings-test-"));
 const TEMP_GLOBAL_SETTINGS = join(TEMP_DIR, "global-settings.json");
 const TEMP_PROJECT_SETTINGS = join(TEMP_DIR, "project-settings.json");
 
@@ -51,10 +63,10 @@ function delay(ms) {
 async function removeTempDir(path) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            await Deno.remove(path, { recursive: true });
+            await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return;
+            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
             const isRetryable = error instanceof Error &&
                 /Directory not empty|resource busy|os error 66|os error 16/i.test(error.message);
             if (!isRetryable || attempt === 4) throw error;
@@ -64,7 +76,7 @@ async function removeTempDir(path) {
 }
 
 const linkedWorktreeSettingsRepo = defineGitFixture(async (repoPath) => {
-    await Deno.writeTextFile(join(repoPath, "README.md"), "base\n");
+    await fsWriteFile(join(repoPath, "README.md"), "base\n");
     await git(repoPath, ["add", "."]);
     await git(repoPath, ["commit", "-m", "base"]);
 });
@@ -76,14 +88,13 @@ const linkedWorktreeSettingsRepo = defineGitFixture(async (repoPath) => {
 function settingsTest(testDefinition, fn) {
     if (typeof testDefinition === "string") {
         if (!fn) throw new Error("settingsTest requires a test function");
-        Deno.test(testDefinition, () => withProcessGlobalTestLock(async () => await fn()));
+        test(testDefinition, () => withProcessGlobalTestLock(async () => await fn()));
         return;
     }
-    Deno.test(
-        /** @type {any} */ ({
-            ...testDefinition,
-            fn: () => withProcessGlobalTestLock(async () => await testDefinition.fn()),
-        }),
+    test(
+        testDefinition.name,
+        { skip: testDefinition.ignore === true },
+        () => withProcessGlobalTestLock(async () => await testDefinition.fn()),
     );
 }
 
@@ -94,21 +105,21 @@ settingsTest({
         const cwd = await linkedWorktreeSettingsRepo.checkout();
         const worktreePath = `${cwd}-settings-worktree`;
         try {
-            await Deno.mkdir(join(cwd, ".wld"), { recursive: true });
-            await Deno.writeTextFile(join(cwd, ".wld", "settings.json"), JSON.stringify({ other: "kept" }, null, 4));
+            await fsMkdir(join(cwd, ".wld"), { recursive: true });
+            await fsWriteFile(join(cwd, ".wld", "settings.json"), JSON.stringify({ other: "kept" }, null, 4));
             await git(cwd, ["worktree", "add", "-b", "settings-side", worktreePath, "main"]);
 
             await setCustomSetting("verification_command", "true", "project", worktreePath);
 
-            const primarySettings = JSON.parse(await Deno.readTextFile(join(cwd, ".wld", "settings.json")));
+            const primarySettings = JSON.parse(await fsReadFile(join(cwd, ".wld", "settings.json"), "utf8"));
             assertEquals(primarySettings.other, "kept");
             assertEquals(primarySettings.verification_command, "true");
             assertEquals(await getCustomSetting("verification_command", "project", worktreePath), "true");
-            await assertRejects(() => Deno.stat(join(worktreePath, ".wld", "settings.json")), Deno.errors.NotFound);
+            await assertRejects(() => fsStat(join(worktreePath, ".wld", "settings.json")), Error, "ENOENT");
         } finally {
             __resetSettingsForTests();
             await git(cwd, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
-            await Deno.remove(cwd, { recursive: true }).catch(() => {});
+            await fsRm(cwd, { recursive: true }).catch(() => {});
         }
     },
 });
@@ -121,8 +132,8 @@ settingsTest({
         const worktreePath = `${cwd}-exact-settings-worktree`;
         const worktreeSettingsPath = join(worktreePath, ".wld", "settings.json");
         try {
-            await Deno.mkdir(join(cwd, ".wld"), { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(join(cwd, ".wld"), { recursive: true });
+            await fsWriteFile(
                 join(cwd, ".wld", "settings.json"),
                 JSON.stringify({ verification_command: "primary-command" }, null, 4),
             );
@@ -133,11 +144,11 @@ settingsTest({
             assertEquals(await getCustomSetting("verification_command", "project", worktreePath), "primary-command");
             assertEquals(getExactProjectCustomSetting("verification_command", worktreePath), "worktree-command");
             assertEquals(
-                JSON.parse(await Deno.readTextFile(worktreeSettingsPath)).verification_command,
+                JSON.parse(await fsReadFile(worktreeSettingsPath, "utf8")).verification_command,
                 "worktree-command",
             );
 
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 worktreeSettingsPath,
                 `{
                     // JSONC stays readable on each exact read.
@@ -148,7 +159,7 @@ settingsTest({
         } finally {
             __resetSettingsForTests();
             await git(cwd, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
-            await Deno.remove(cwd, { recursive: true }).catch(() => {});
+            await fsRm(cwd, { recursive: true }).catch(() => {});
         }
     },
 });
@@ -165,7 +176,7 @@ settingsTest({
                 "planner": { "model": "provider/planner-v1" },
             },
         }`;
-        await Deno.writeTextFileSync(TEMP_GLOBAL_SETTINGS, jsoncContent);
+        await fsWriteFileSync(TEMP_GLOBAL_SETTINGS, jsoncContent);
 
         // We test via the storage path directly by using getCustomSetting.
         // Since getCustomSetting uses the singleton, we need to reset between tests.
@@ -174,7 +185,7 @@ settingsTest({
 
         // Actually, the cleanest test: write to a temp dir and verify via
         // the module's helper by reading the file content directly.
-        const { parse: parseJsonc } = await import("@std/jsonc");
+        const { parse: parseJsonc } = await import("./jsonc.ts");
         const parsed = /** @type {Record<string, any>} */ (parseJsonc(jsoncContent));
         assertEquals(parsed.theme, "dark");
         assertEquals(parsed.agents.router.model, "provider/router-v2");
@@ -186,7 +197,7 @@ settingsTest({
     name: "getMergedCustomSetting merges global and project with project override",
     async fn() {
         // Write global settings
-        await Deno.writeTextFileSync(
+        await fsWriteFileSync(
             TEMP_GLOBAL_SETTINGS,
             JSON.stringify({
                 agents: {
@@ -197,7 +208,7 @@ settingsTest({
         );
 
         // Write project settings (overrides router, adds planner)
-        await Deno.writeTextFileSync(
+        await fsWriteFileSync(
             TEMP_PROJECT_SETTINGS,
             JSON.stringify({
                 agents: {
@@ -210,8 +221,8 @@ settingsTest({
         // Override settings dirs to point to our temp dirs
         // Import after setting up dirs
         const tempWldDir = join(TEMP_DIR, ".wld");
-        await Deno.mkdirSync(tempWldDir, { recursive: true });
-        await Deno.writeTextFileSync(
+        await fsMkdirSync(tempWldDir, { recursive: true });
+        await fsWriteFileSync(
             join(tempWldDir, "settings.json"),
             JSON.stringify({
                 agents: {
@@ -222,8 +233,8 @@ settingsTest({
         );
 
         const projectWldDir = join(TEMP_DIR, "project-wld");
-        await Deno.mkdirSync(projectWldDir, { recursive: true });
-        await Deno.writeTextFileSync(
+        await fsMkdirSync(projectWldDir, { recursive: true });
+        await fsWriteFileSync(
             join(projectWldDir, "settings.json"),
             JSON.stringify({
                 agents: {
@@ -374,13 +385,13 @@ settingsTest("preserveRunWieldCustomSettingsForWrite preserves codereview across
 settingsTest("getResolvedVisionFallbackModelSetting prefers active preset over top-level", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-vision-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-vision-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-vision-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-vision-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
-        await Deno.mkdir(".wld", { recursive: true });
-        await Deno.writeTextFile(
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
+        await fsMkdir(".wld", { recursive: true });
+        await fsWriteFile(
             ".wld/settings.json",
             JSON.stringify({
                 visionFallback: { model: "top/model" },
@@ -393,9 +404,9 @@ settingsTest("getResolvedVisionFallbackModelSetting prefers active preset over t
         assertEquals(getResolvedVisionFallbackModelSetting(tempProject), "preset/model");
     } finally {
         __resetSettingsForTests();
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
     }
@@ -404,34 +415,34 @@ settingsTest("getResolvedVisionFallbackModelSetting prefers active preset over t
 settingsTest("getResolvedVisionFallbackModelSetting reads the requested Project root", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-vision-root-home-" });
-    const projectA = await Deno.makeTempDir({ prefix: "runwield-vision-root-a-" });
-    const projectB = await Deno.makeTempDir({ prefix: "runwield-vision-root-b-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-vision-root-home-"));
+    const projectA = await fsMkdtemp(join(tmpdir(), "runwield-vision-root-a-"));
+    const projectB = await fsMkdtemp(join(tmpdir(), "runwield-vision-root-b-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        await Deno.mkdir(join(projectA, ".wld"), { recursive: true });
-        await Deno.writeTextFile(
+        process.env["HOME"] = tempHome;
+        await fsMkdir(join(projectA, ".wld"), { recursive: true });
+        await fsWriteFile(
             join(projectA, ".wld", "settings.json"),
             JSON.stringify({
                 visionFallback: { model: "wrong/model" },
             }),
         );
-        await Deno.mkdir(join(projectB, ".wld"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(projectB, ".wld"), { recursive: true });
+        await fsWriteFile(
             join(projectB, ".wld", "settings.json"),
             JSON.stringify({
                 visionFallback: { model: "right/model" },
             }),
         );
-        Deno.chdir(projectA);
+        process.chdir(projectA);
         __resetSettingsForTests();
 
         assertEquals(getResolvedVisionFallbackModelSetting(projectB), "right/model");
     } finally {
         __resetSettingsForTests();
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         await removeTempDir(tempHome);
         await removeTempDir(projectA);
         await removeTempDir(projectB);
@@ -439,36 +450,36 @@ settingsTest("getResolvedVisionFallbackModelSetting reads the requested Project 
 });
 
 settingsTest("migratePiSettingsOnce copies legacy Pi settings when RunWield settings are missing", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-settings-migration-" });
+    const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-settings-migration-"));
     try {
         const piPath = join(tempDir, ".pi", "agent", "settings.json");
         const runwieldPath = join(tempDir, ".wld", "settings.json");
-        await Deno.mkdir(join(tempDir, ".pi", "agent"), { recursive: true });
-        await Deno.writeTextFile(piPath, '{"theme":"legacy-pi"}');
+        await fsMkdir(join(tempDir, ".pi", "agent"), { recursive: true });
+        await fsWriteFile(piPath, '{"theme":"legacy-pi"}');
 
         const result = migratePiSettingsOnce({ runwieldPath, piPath });
 
         assertEquals(result, { copied: true, skipped: false });
-        assertEquals(await Deno.readTextFile(runwieldPath), '{"theme":"legacy-pi"}');
+        assertEquals(await fsReadFile(runwieldPath, "utf8"), '{"theme":"legacy-pi"}');
     } finally {
         await removeTempDir(tempDir);
     }
 });
 
 settingsTest("migratePiSettingsOnce leaves existing RunWield settings untouched", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-settings-migration-" });
+    const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-settings-migration-"));
     try {
         const piPath = join(tempDir, ".pi", "agent", "settings.json");
         const runwieldPath = join(tempDir, ".wld", "settings.json");
-        await Deno.mkdir(join(tempDir, ".pi", "agent"), { recursive: true });
-        await Deno.mkdir(join(tempDir, ".wld"), { recursive: true });
-        await Deno.writeTextFile(piPath, '{"theme":"legacy-pi"}');
-        await Deno.writeTextFile(runwieldPath, '{"theme":"runwield"}');
+        await fsMkdir(join(tempDir, ".pi", "agent"), { recursive: true });
+        await fsMkdir(join(tempDir, ".wld"), { recursive: true });
+        await fsWriteFile(piPath, '{"theme":"legacy-pi"}');
+        await fsWriteFile(runwieldPath, '{"theme":"runwield"}');
 
         const result = migratePiSettingsOnce({ runwieldPath, piPath });
 
         assertEquals(result, { copied: false, skipped: true });
-        assertEquals(await Deno.readTextFile(runwieldPath), '{"theme":"runwield"}');
+        assertEquals(await fsReadFile(runwieldPath, "utf8"), '{"theme":"runwield"}');
     } finally {
         await removeTempDir(tempDir);
     }
@@ -491,11 +502,11 @@ settingsTest("workRecords and plans settings are preserved across SettingsManage
 settingsTest("getPlanArchiveRetentionPolicy reads project settings only", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-plan-retention-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-plan-retention-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-plan-retention-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-plan-retention-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
 
         await setCustomSetting("plans", { archiveRetentionDays: 0, archiveKeepLast: 0 }, "global", tempProject);
@@ -504,9 +515,9 @@ settingsTest("getPlanArchiveRetentionPolicy reads project settings only", async 
         await setCustomSetting("plans", { archiveRetentionDays: 7, archiveKeepLast: 5 }, "project", tempProject);
         assertEquals(getPlanArchiveRetentionPolicy(tempProject), { retentionDays: 7, keepLast: 5 });
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         __resetSettingsForTests();
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
@@ -516,11 +527,11 @@ settingsTest("getPlanArchiveRetentionPolicy reads project settings only", async 
 settingsTest("getPlanArchiveRetentionPolicy names invalid keys", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-plan-retention-bad-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-plan-retention-bad-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-plan-retention-bad-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-plan-retention-bad-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
 
         await setCustomSetting("plans", { archiveRetentionDays: -1, archiveKeepLast: 10 }, "project", tempProject);
@@ -529,9 +540,9 @@ settingsTest("getPlanArchiveRetentionPolicy names invalid keys", async () => {
         await setCustomSetting("plans", { archiveRetentionDays: 14, archiveKeepLast: "many" }, "project", tempProject);
         assertThrows(() => getPlanArchiveRetentionPolicy(tempProject), Error, "plans.archiveKeepLast");
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         __resetSettingsForTests();
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
@@ -543,11 +554,11 @@ settingsTest(
     async () => {
         const originalHome = getHomeDir();
         const originalCwd = getCwd();
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-work-record-setting-home-" });
-        const tempProject = await Deno.makeTempDir({ prefix: "runwield-work-record-setting-project-" });
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-work-record-setting-home-"));
+        const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-work-record-setting-project-"));
         try {
-            Deno.env.set("HOME", tempHome);
-            Deno.chdir(tempProject);
+            process.env["HOME"] = tempHome;
+            process.chdir(tempProject);
             __resetSettingsForTests();
 
             assertEquals(shouldAutoGenerateWorkRecordsOnPlanCompletion(tempProject), true);
@@ -558,9 +569,9 @@ settingsTest(
             await setCustomSetting("workRecords", { autoGenerateOnPlanCompletion: false }, "project");
             assertEquals(shouldAutoGenerateWorkRecordsOnPlanCompletion(tempProject), false);
         } finally {
-            Deno.chdir(originalCwd);
-            if (originalHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", originalHome);
+            process.chdir(originalCwd);
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
             __resetSettingsForTests();
             await removeTempDir(tempHome);
             await removeTempDir(tempProject);
@@ -573,11 +584,11 @@ settingsTest(
     async () => {
         const originalHome = getHomeDir();
         const originalCwd = getCwd();
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-work-record-merge-home-" });
-        const tempProject = await Deno.makeTempDir({ prefix: "runwield-work-record-merge-project-" });
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-work-record-merge-home-"));
+        const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-work-record-merge-project-"));
         try {
-            Deno.env.set("HOME", tempHome);
-            Deno.chdir(tempProject);
+            process.env["HOME"] = tempHome;
+            process.chdir(tempProject);
             __resetSettingsForTests();
 
             await setCustomSetting("workRecords", { autoGenerateOnPlanCompletion: false }, "global");
@@ -586,9 +597,9 @@ settingsTest(
             await setCustomSetting("workRecords", { autoGenerateOnPlanCompletion: true }, "project");
             assertEquals(shouldAutoGenerateWorkRecordsOnPlanCompletion(tempProject), true);
         } finally {
-            Deno.chdir(originalCwd);
-            if (originalHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", originalHome);
+            process.chdir(originalCwd);
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
             __resetSettingsForTests();
             await removeTempDir(tempHome);
             await removeTempDir(tempProject);
@@ -599,11 +610,11 @@ settingsTest(
 settingsTest("shouldCleanupMergedWorktrees defaults true and honors false setting", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-cleanup-setting-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-cleanup-setting-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-cleanup-setting-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-cleanup-setting-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
 
         assertEquals(shouldCleanupMergedWorktrees(tempProject), true);
@@ -611,9 +622,9 @@ settingsTest("shouldCleanupMergedWorktrees defaults true and honors false settin
         await setCustomSetting("cleanupMergedWorktrees", false, "project");
         assertEquals(shouldCleanupMergedWorktrees(tempProject), false);
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         __resetSettingsForTests();
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
@@ -621,19 +632,19 @@ settingsTest("shouldCleanupMergedWorktrees defaults true and honors false settin
 });
 
 settingsTest("RunWield keeps Pi cache warming off without changing stored settings", async () => {
-    const originalHome = Deno.env.get("HOME");
-    const originalCwd = Deno.cwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-cache-warming-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-cache-warming-project-" });
+    const originalHome = process.env["HOME"];
+    const originalCwd = getCwd();
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-cache-warming-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-cache-warming-project-"));
     const settingsPath = join(tempHome, ".wld", "settings.json");
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
-        await Deno.mkdir(join(tempHome, ".wld"), { recursive: true });
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
+        await fsMkdir(join(tempHome, ".wld"), { recursive: true });
 
         for (const storedMode of [undefined, "streaming", "idle"]) {
             const stored = storedMode === undefined ? { theme: "dark" } : { theme: "dark", cacheWarming: storedMode };
-            await Deno.writeTextFile(settingsPath, JSON.stringify(stored));
+            await fsWriteFile(settingsPath, JSON.stringify(stored));
             __resetSettingsForTests();
 
             const manager = getSettingsManager(tempProject);
@@ -641,16 +652,16 @@ settingsTest("RunWield keeps Pi cache warming off without changing stored settin
             manager.setCompactionEnabled(false);
             await manager.flush();
 
-            const afterWrite = JSON.parse(await Deno.readTextFile(settingsPath));
+            const afterWrite = JSON.parse(await fsReadFile(settingsPath, "utf8"));
             assertEquals(afterWrite.cacheWarming, storedMode);
             __resetSettingsForTests();
             assertEquals(getSettingsManager(tempProject).getCacheWarmingMode(), "off");
-            assertEquals(JSON.parse(await Deno.readTextFile(settingsPath)).cacheWarming, storedMode);
+            assertEquals(JSON.parse(await fsReadFile(settingsPath, "utf8")).cacheWarming, storedMode);
         }
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         __resetSettingsForTests();
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
@@ -660,11 +671,11 @@ settingsTest("RunWield keeps Pi cache warming off without changing stored settin
 settingsTest("compaction token setters persist globally and preserve sibling compaction fields", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-compaction-setting-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-compaction-setting-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-compaction-setting-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-compaction-setting-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
 
         getSettingsManager().setCompactionEnabled(false);
@@ -674,15 +685,15 @@ settingsTest("compaction token setters persist globally and preserve sibling com
 
         const settings = getSettingsManager().getCompactionSettings();
         assertEquals(settings, { enabled: false, reserveTokens: 12000, keepRecentTokens: 34000 });
-        assertEquals(JSON.parse(await Deno.readTextFile(join(tempHome, ".wld", "settings.json"))).compaction, {
+        assertEquals(JSON.parse(await fsReadFile(join(tempHome, ".wld", "settings.json"), "utf8")).compaction, {
             enabled: false,
             reserveTokens: 12000,
             keepRecentTokens: 34000,
         });
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         __resetSettingsForTests();
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
@@ -692,11 +703,11 @@ settingsTest("compaction token setters persist globally and preserve sibling com
 settingsTest("compaction token setters reject invalid values before writing", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-compaction-invalid-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-compaction-invalid-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-compaction-invalid-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-compaction-invalid-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
 
         let message = "";
@@ -708,9 +719,9 @@ settingsTest("compaction token setters reject invalid values before writing", as
         assertEquals(message, "Reserve tokens must be a positive integer.");
         assertEquals(getSettingsManager().getCompactionSettings().reserveTokens, 16384);
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         __resetSettingsForTests();
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
@@ -720,11 +731,11 @@ settingsTest("compaction token setters reject invalid values before writing", as
 settingsTest("getGuidedReviewMode defaults auto, honors overrides, and rejects invalid values", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-guided-review-setting-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-guided-review-setting-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-guided-review-setting-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-guided-review-setting-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
 
         assertEquals(getGuidedReviewMode(tempProject), "auto");
@@ -741,9 +752,9 @@ settingsTest("getGuidedReviewMode defaults auto, honors overrides, and rejects i
         await setCustomSetting("guidedReview", "sometimes", "project");
         assertEquals(getGuidedReviewMode(tempProject), "none");
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         __resetSettingsForTests();
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
@@ -753,11 +764,11 @@ settingsTest("getGuidedReviewMode defaults auto, honors overrides, and rejects i
 settingsTest("getCodeReviewMode defaults ask and preserves explicit review choices", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-codereview-setting-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-codereview-setting-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-codereview-setting-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-codereview-setting-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
 
         assertEquals(getCodeReviewMode(tempProject), "ask");
@@ -774,9 +785,9 @@ settingsTest("getCodeReviewMode defaults ask and preserves explicit review choic
         await setCustomSetting("codereview", "sometimes", "project");
         assertEquals(getCodeReviewMode(tempProject), "none");
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         __resetSettingsForTests();
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
@@ -786,11 +797,11 @@ settingsTest("getCodeReviewMode defaults ask and preserves explicit review choic
 settingsTest("Plan Server URL setting uses global value and project override precedence", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-plan-server-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-plan-server-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-plan-server-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-plan-server-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
 
         await setDefaultPlanServerUrl("https://global.example.test/", "global");
@@ -799,9 +810,9 @@ settingsTest("Plan Server URL setting uses global value and project override pre
         assertEquals(getDefaultPlanServerUrl(), "https://project.example.test/base");
     } finally {
         __resetSettingsForTests();
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
     }
@@ -839,25 +850,25 @@ settingsTest("Plan Server URL setting is preserved across SettingsManager-shaped
 settingsTest("Plan Server URL setting stores only the normalized server URL", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-plan-server-clean-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-plan-server-clean-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-plan-server-clean-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-plan-server-clean-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
         __resetSettingsForTests();
         await setDefaultPlanServerUrl("https://plans.example.test/root/", "project");
-        const settings = await Deno.readTextFile(join(tempProject, ".wld", "settings.json"));
+        const settings = await fsReadFile(join(tempProject, ".wld", "settings.json"), "utf8");
         assertEquals(JSON.parse(settings)[PLAN_SERVER_URL_SETTING_KEY], "https://plans.example.test/root");
     } finally {
         __resetSettingsForTests();
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
     }
 });
 
-Deno.test("cleanup temp dirs", async () => {
+test("cleanup temp dirs", async () => {
     await removeTempDir(TEMP_DIR);
 });

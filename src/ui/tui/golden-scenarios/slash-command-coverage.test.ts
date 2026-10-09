@@ -1,6 +1,7 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { test } from "node:test";
 import { getSlashCommandDefinitions } from "../../../cmd/registry.js";
-import { goldenTuiPortfolioScenarios } from "./catalog.js";
+import { goldenTuiPortfolioScenarios } from "./catalog.ts";
 
 const EXPECTED_SLASH_COMMANDS = [
     "agent",
@@ -34,7 +35,7 @@ const EXPECTED_SLASH_COMMANDS = [
 
 type OwnedScenario = { name: string; slashCommands?: string[] };
 
-Deno.test("every canonical slash command has exactly one Golden scenario owner", () => {
+test("every canonical slash command has exactly one Golden scenario owner", () => {
     const registered = getSlashCommandDefinitions().map((definition) => definition.name).sort();
     assertEquals(registered, [...EXPECTED_SLASH_COMMANDS]);
 

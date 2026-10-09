@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertMatch, assertObjectMatch, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert, match as assertMatch, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -6,7 +8,7 @@ import { loadPlan, savePlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { runManualQaChecklistPrompt } from "./validation.ts";
 
-Deno.test("Manual QA runs the bundled isolated Operator and persists its visible checklist", async () => {
+test("Manual QA runs the bundled isolated Operator and persists its visible checklist", async () => {
     await withRuntimeCommandFixture(
         "validation-manual-qa-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -61,7 +63,7 @@ import {
     runValidationLoop,
 } from "./validation-test-helpers.js";
 
-Deno.test("Epic child Manual QA failure does not block verified delivery or continuation", async () => {
+test("Epic child Manual QA failure does not block verified delivery or continuation", async () => {
     const projectRoot = await makeValidationProjectRoot("epic/01-one", {
         classification: "PLANNED_CHANGE",
         status: "reviewed",

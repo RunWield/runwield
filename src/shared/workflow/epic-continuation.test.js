@@ -1,5 +1,13 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { loadPlan, updatePlanStatus } from "../../plan-store.js";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
@@ -11,7 +19,7 @@ import { recordPlanEvent } from "./plan-lifecycle.js";
  */
 async function writePlan(cwd, name, attrs) {
     const path = join(cwd, "docs", "plans", `${name}.md`);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const lines = ["---"];
     for (const [key, value] of Object.entries(attrs)) {
         if (Array.isArray(value)) {
@@ -22,12 +30,12 @@ async function writePlan(cwd, name, attrs) {
         }
     }
     lines.push("---", "", `# ${name}`, "");
-    await Deno.writeTextFile(path, lines.join("\n"));
+    await fsWriteFile(path, lines.join("\n"));
 }
 
 async function makeProject() {
-    const cwd = await Deno.makeTempDir();
-    await Deno.mkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
     await writePlan(cwd, "epic", {
         classification: "PROJECT",
         complexity: "HIGH",
@@ -39,7 +47,7 @@ async function makeProject() {
     return cwd;
 }
 
-Deno.test("resolveEpicContinuation selects the earliest non-terminal child by order", async () => {
+test("resolveEpicContinuation selects the earliest non-terminal child by order", async () => {
     const cwd = await makeProject();
     await writePlan(cwd, "epic/01-done", {
         classification: "FEATURE",
@@ -78,7 +86,7 @@ Deno.test("resolveEpicContinuation selects the earliest non-terminal child by or
     assertEquals(result.childPlanName, "epic/02-draft");
 });
 
-Deno.test("resolveEpicContinuation trusts the delivered child document over a stale controller status", async () => {
+test("resolveEpicContinuation trusts the delivered child document over a stale controller status", async () => {
     const cwd = await makeProject();
     await writePlan(cwd, "epic/01-done", {
         classification: "PLANNED_CHANGE",
@@ -105,9 +113,9 @@ Deno.test("resolveEpicContinuation trusts the delivered child document over a st
     if (!completed) throw new Error("Expected completed child Plan.");
     await updatePlanStatus(cwd, "epic/01-done", "ready_for_work", {}, { expectedRevision: completed.revision });
     const path = join(cwd, "docs", "plans", "epic", "01-done.md");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         path,
-        (await Deno.readTextFile(path)).replace('status: "ready_for_work"', 'status: "validated"'),
+        (await fsReadFile(path, "utf8")).replace('status: "ready_for_work"', 'status: "validated"'),
     );
 
     const result = await resolveEpicContinuation({ cwd, completedPlanName: "epic/01-done" });
@@ -116,7 +124,7 @@ Deno.test("resolveEpicContinuation trusts the delivered child document over a st
     assertEquals(result.childPlanName, "epic/02-next");
 });
 
-Deno.test("a completed sequence reports no remaining children after its final child", async () => {
+test("a completed sequence reports no remaining children after its final child", async () => {
     const cwd = await makeProject();
     await writePlan(cwd, "epic", {
         classification: "PROJECT",
@@ -158,7 +166,7 @@ Deno.test("a completed sequence reports no remaining children after its final ch
     assertEquals(result.reason, "parent_epic_not_active");
 });
 
-Deno.test("resolveEpicContinuation stops on the first blocked child instead of skipping later work", async () => {
+test("resolveEpicContinuation stops on the first blocked child instead of skipping later work", async () => {
     const cwd = await makeProject();
     await writePlan(cwd, "epic/01-done", {
         classification: "FEATURE",
@@ -197,7 +205,7 @@ Deno.test("resolveEpicContinuation stops on the first blocked child instead of s
     assertEquals(result.childPlanName, "epic/02-hold");
 });
 
-Deno.test("resolveEpicContinuation requires dependencies to be verified", async () => {
+test("resolveEpicContinuation requires dependencies to be verified", async () => {
     const cwd = await makeProject();
     await writePlan(cwd, "epic/01-done", {
         classification: "FEATURE",
@@ -237,10 +245,10 @@ function makeFakeHostedSession(cwd, events) {
     };
 }
 
-Deno.test("presentEpicChildPlan shows the loading notice and the same details as the manual load flow", async () => {
+test("presentEpicChildPlan shows the loading notice and the same details as the manual load flow", async () => {
     const cwd = await makeProject();
     const path = join(cwd, "docs", "plans", "epic", "02-next.md");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         path,
         [
             "---",
@@ -281,7 +289,7 @@ Deno.test("presentEpicChildPlan shows the loading notice and the same details as
     assertStringIncludes(statuses[1].message, "Child objective text.");
 });
 
-Deno.test("presentEpicChildPlan warns and returns null when the child Plan is missing", async () => {
+test("presentEpicChildPlan warns and returns null when the child Plan is missing", async () => {
     const cwd = await makeProject();
     /** @type {any[]} */
     const events = [];

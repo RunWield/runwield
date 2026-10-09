@@ -4,6 +4,7 @@ import { canonicalizeStoredPlanName, isCompletedPlanStatus, loadPlan } from "../
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
 import { isGitRepository } from "../git.ts";
+import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 import { findTargetBranchPlan, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
@@ -32,10 +33,19 @@ function inferParentPlanName(planName: string): string {
     return segments.join("/");
 }
 
+/** One Plan location lookup verifies each checkout's runtime layout once. */
 export async function resolveWorkflowPlanLocation(
     cwd: string,
     planName: string,
     options: ResolveWorkflowPlanLocationOptions = {},
+) {
+    return await withProjectRuntimeReadScope(() => resolveWorkflowPlanLocationInScope(cwd, planName, options));
+}
+
+async function resolveWorkflowPlanLocationInScope(
+    cwd: string,
+    planName: string,
+    options: ResolveWorkflowPlanLocationOptions,
 ) {
     planName = canonicalizeStoredPlanName(planName).name;
     const registryRoot = resolvePrimaryCheckoutRoot(cwd);

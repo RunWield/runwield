@@ -1,5 +1,8 @@
 // @ts-nocheck: Deno test imports browser-shell helpers with a small fake DOM.
-import { assert, assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     applyActiveRoute,
     applySessionName,
@@ -16,14 +19,14 @@ import {
     sidebarSessionOrder,
 } from "./static/workspace-shell.ts";
 
-Deno.test("Workspace sidebar resizing respects panel and conversation bounds", () => {
+test("Workspace sidebar resizing respects panel and conversation bounds", () => {
     assertEquals(clampSidebarWidth(100, 1440), 220);
     assertEquals(clampSidebarWidth(360, 1440), 360);
     assertEquals(clampSidebarWidth(700, 1440), 480);
     assertEquals(clampSidebarWidth(480, 870), 450);
 });
 
-Deno.test("Workspace home stays on the Attention Dashboard and reuses its sidebar", async () => {
+test("Workspace home stays on the Attention Dashboard and reuses its sidebar", async () => {
     const { document, sidebar } = installFakeBrowser("/");
     const stored = new Map([[
         LAST_SESSION_KEY,
@@ -287,7 +290,7 @@ function installFakeBrowser(pathname = "/projects/project-a/sessions/session-a")
     return { document, sidebar };
 }
 
-Deno.test("Workspace shell maps owner review and artifact routes back to the owning Session", () => {
+test("Workspace shell maps owner review and artifact routes back to the owning Session", () => {
     assertEquals(currentRouteFromUrl("http://workspace.local/projects/project-a/sessions/session-a"), {
         kind: "session",
         projectId: "project-a",
@@ -313,7 +316,7 @@ Deno.test("Workspace shell maps owner review and artifact routes back to the own
     });
 });
 
-Deno.test("an older Session uses its persisted name even outside the sidebar's first page", () => {
+test("an older Session uses its persisted name even outside the sidebar's first page", () => {
     const { document } = installFakeBrowser("/projects/project-a/sessions/older-session");
     const current = currentRouteFromUrl(globalThis.location.href);
     const payload = { projects: [{ projectId: "project-a", displayName: "Project A", enabled: true, sessions: [] }] };
@@ -328,13 +331,13 @@ Deno.test("an older Session uses its persisted name even outside the sidebar's f
     );
 });
 
-Deno.test("Workspace sidebar refreshes reject stale navigation responses", () => {
+test("Workspace sidebar refreshes reject stale navigation responses", () => {
     assertEquals(shouldApplySidebarRefresh(2, 2, "http://workspace.local/a", "http://workspace.local/a"), true);
     assertEquals(shouldApplySidebarRefresh(1, 2, "http://workspace.local/a", "http://workspace.local/a"), false);
     assertEquals(shouldApplySidebarRefresh(2, 2, "http://workspace.local/a", "http://workspace.local/b"), false);
 });
 
-Deno.test("Workspace sidebar reconciliation keeps only loaded older Sessions while inserting new server rows first", () => {
+test("Workspace sidebar reconciliation keeps only loaded older Sessions while inserting new server rows first", () => {
     const order = sidebarSessionOrder(
         {
             projectId: "project-a",
@@ -351,7 +354,7 @@ Deno.test("Workspace sidebar reconciliation keeps only loaded older Sessions whi
     assertEquals(order.map((session) => session.runwieldSessionId), ["new", "loaded-old"]);
 });
 
-Deno.test("Workspace sidebar drops active omitted Sessions after the user navigates away", () => {
+test("Workspace sidebar drops active omitted Sessions after the user navigates away", () => {
     const { sidebar } = installFakeBrowser("/projects/project-a/sessions/omitted");
     const payload = {
         projects: [{
@@ -377,7 +380,7 @@ Deno.test("Workspace sidebar drops active omitted Sessions after the user naviga
     assertEquals(sidebar.querySelector('[data-sidebar-session="omitted"]'), null);
 });
 
-Deno.test("Workspace sidebar project reconciliation removes Projects omitted by the server", () => {
+test("Workspace sidebar project reconciliation removes Projects omitted by the server", () => {
     const order = sidebarProjectOrder(
         [{ projectId: "project-a", sessions: [] }, { projectId: "loaded-project", sessions: [] }],
         [{ projectId: "project-a", displayName: "Project A", enabled: true, sessions: [] }],
@@ -385,7 +388,7 @@ Deno.test("Workspace sidebar project reconciliation removes Projects omitted by 
     assertEquals(order.map((project) => project.projectId), ["project-a"]);
 });
 
-Deno.test("Workspace sidebar updates rows in place, inserts new Sessions, removes stale rows, and preserves expansion", () => {
+test("Workspace sidebar updates rows in place, inserts new Sessions, removes stale rows, and preserves expansion", () => {
     const { sidebar } = installFakeBrowser();
     const current = { kind: "session", projectId: "project-a", runwieldSessionId: "session-a" };
     renderSidebar({
@@ -424,7 +427,7 @@ Deno.test("Workspace sidebar updates rows in place, inserts new Sessions, remove
     assertEquals(sidebar.querySelectorAll(":scope > .workspace-sidebar-empty").length, 0);
 });
 
-Deno.test("Workspace sidebar refresh keeps focus on Show more controls", () => {
+test("Workspace sidebar refresh keeps focus on Show more controls", () => {
     const { document, sidebar } = installFakeBrowser("/projects/project-a/plans/plan-1");
     const payload = {
         projects: [{
@@ -450,7 +453,7 @@ Deno.test("Workspace sidebar refresh keeps focus on Show more controls", () => {
     assertEquals(document.activeElement.getAttribute("data-sidebar-plan"), null);
 });
 
-Deno.test("Workspace sidebar active route uses both Project and Session keys", () => {
+test("Workspace sidebar active route uses both Project and Session keys", () => {
     installFakeBrowser("/projects/project-b/sessions/shared");
     renderSidebar({
         projects: [
@@ -474,7 +477,7 @@ Deno.test("Workspace sidebar active route uses both Project and Session keys", (
     assertStringIncludes(globalThis.document.querySelector("[data-workspace-main-session-name]").textContent, "Right");
 });
 
-Deno.test("Plan Board navigation stays active across board views and clears on Session navigation", () => {
+test("Plan Board navigation stays active across board views and clears on Session navigation", () => {
     const { document } = installFakeBrowser("/projects/project-a/plans");
     const payload = {
         projects: ["project-a", "project-b"].map((projectId) => ({
@@ -504,7 +507,7 @@ Deno.test("Plan Board navigation stays active across board views and clears on S
     assertEquals(currentRouteFromUrl("/projects/project-b/plans/a-plan").kind, "plan");
 });
 
-Deno.test("Workspace shell shares startup requests and preserves scroll across page swaps", async () => {
+test("Workspace shell shares startup requests and preserves scroll across page swaps", async () => {
     const { document, sidebar } = installFakeBrowser();
     let refreshes = 0;
     globalThis.fetch = () => {
@@ -527,7 +530,7 @@ Deno.test("Workspace shell shares startup requests and preserves scroll across p
     }
 });
 
-Deno.test("Workspace sidebar resize supports keyboard, pointer, and persisted width", () => {
+test("Workspace sidebar resize supports keyboard, pointer, and persisted width", () => {
     const { document } = installFakeBrowser();
     const stored = new Map();
     Object.defineProperty(globalThis, "localStorage", {
@@ -552,8 +555,8 @@ Deno.test("Workspace sidebar resize supports keyboard, pointer, and persisted wi
     assertEquals(shell.querySelector(".workspace-sidebar-resizer").getAttribute("aria-valuenow"), "380");
 });
 
-Deno.test("Workspace shell is event-driven and does not poll the sidebar", async () => {
-    const shell = await Deno.readTextFile(new URL("./static/workspace-shell.ts", import.meta.url));
+test("Workspace shell is event-driven and does not poll the sidebar", async () => {
+    const shell = await fsReadFile(new URL("./static/workspace-shell.ts", import.meta.url), "utf8");
     assertStringIncludes(shell, 'document.addEventListener("astro:page-load", installWorkspaceShell)');
     assertStringIncludes(shell, 'ownerJson("/api/owner/sidebar"');
     assertEquals(/setInterval\s*\(/.test(shell), false);
@@ -561,8 +564,8 @@ Deno.test("Workspace shell is event-driven and does not poll the sidebar", async
     assertEquals(/visibilitychange[^\n]+sidebar/.test(shell), false);
 });
 
-Deno.test("Workspace owner layout persists the real sidebar and owns navigation", async () => {
-    const layout = await Deno.readTextFile(new URL("./layouts/WorkspaceLayout.astro", import.meta.url));
+test("Workspace owner layout persists the real sidebar and owns navigation", async () => {
+    const layout = await fsReadFile(new URL("./layouts/WorkspaceLayout.astro", import.meta.url), "utf8");
     assertStringIncludes(layout, 'import { ClientRouter } from "astro:transitions";');
     assertStringIncludes(layout, "<ClientRouter />");
     assertStringIncludes(layout, 'transition:name="workspace-sidebar" transition:persist');
@@ -571,7 +574,7 @@ Deno.test("Workspace owner layout persists the real sidebar and owns navigation"
     assertStringIncludes(layout, '<script is:inline type="module" src="/workspace-shell.js"></script>');
 });
 
-Deno.test("artifact and review headers keep one surface title and a reachable Workspace restore control", () => {
+test("artifact and review headers keep one surface title and a reachable Workspace restore control", () => {
     const { document } = installFakeBrowser("/projects/project-a/sessions/session-a/artifacts/artifact-a");
     const header = document.querySelector("[data-workspace-main-header-left]");
     const title = document.createElement("strong");
@@ -588,7 +591,7 @@ Deno.test("artifact and review headers keep one surface title and a reachable Wo
     assertEquals(header.children[0].getAttribute("aria-label"), "Open Workspace sidebar");
 });
 
-Deno.test("Workspace mobile navigation fills each Project before slow workflow details arrive", async () => {
+test("Workspace mobile navigation fills each Project before slow workflow details arrive", async () => {
     const { document, sidebar } = installFakeBrowser("/");
     const originalFetch = globalThis.fetch;
     const originalMatchMedia = globalThis.matchMedia;
@@ -644,7 +647,7 @@ Deno.test("Workspace mobile navigation fills each Project before slow workflow d
     }
 });
 
-Deno.test("Workspace sidebar keeps controls when Projects fail to load", async () => {
+test("Workspace sidebar keeps controls when Projects fail to load", async () => {
     const { document, sidebar } = installFakeBrowser("/projects/project-a/sessions/session-a");
     const originalFetch = globalThis.fetch;
     globalThis.fetch = () => Promise.resolve(Response.json({ error: "Unavailable" }, { status: 503 }));
@@ -658,7 +661,7 @@ Deno.test("Workspace sidebar keeps controls when Projects fail to load", async (
     }
 });
 
-Deno.test("Show more loads five unseen Sessions, survives refresh and failure, and keeps paging", async () => {
+test("Show more loads five unseen Sessions, survives refresh and failure, and keeps paging", async () => {
     const { sidebar } = installFakeBrowser("/projects/project-a/sessions/s1");
     const sessions = Array.from(
         { length: 5 },
@@ -729,7 +732,7 @@ Deno.test("Show more loads five unseen Sessions, survives refresh and failure, a
     }
 });
 
-Deno.test("New Session link prefers current enabled Project, then remembered enabled Project", () => {
+test("New Session link prefers current enabled Project, then remembered enabled Project", () => {
     const { document } = installFakeBrowser("/projects/project-a/sessions/new");
     const projects = [
         { projectId: "project-a", displayName: "A", enabled: true, sessions: [] },
@@ -749,7 +752,7 @@ Deno.test("New Session link prefers current enabled Project, then remembered ena
     assertEquals(link(), "/projects");
 });
 
-Deno.test("Plan-associated sidebar Sessions keep open links and show Archived status", () => {
+test("Plan-associated sidebar Sessions keep open links and show Archived status", () => {
     const { document } = installFakeBrowser();
     renderSidebar({
         projects: [{

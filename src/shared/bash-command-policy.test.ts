@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
 import {
     checkBashCommand,
     describeBashAllowedCommands,
@@ -36,7 +37,7 @@ const inspection = [
     "readlink",
 ];
 
-Deno.test("inspection selectors match whole command tokens and execute forms", () => {
+test("inspection selectors match whole command tokens and execute forms", () => {
     for (const selector of inspection) checkBashCommand(selector, inspection);
     checkBashCommand("git -C 'directory with spaces' --no-pager status --short", inspection);
     checkBashCommand("grep 'literal ; && $HOME # comment' *.md", inspection);
@@ -57,7 +58,7 @@ Deno.test("inspection selectors match whole command tokens and execute forms", (
     }
 });
 
-Deno.test("single-command filter rejects shell starts that could bypass inspection", () => {
+test("single-command filter rejects shell starts that could bypass inspection", () => {
     for (
         const command of [
             "ls | cat",
@@ -90,7 +91,7 @@ Deno.test("single-command filter rejects shell starts that could bypass inspecti
     }
 });
 
-Deno.test("parent Git selector loads and intersects with a child subcommand", () => {
+test("parent Git selector loads and intersects with a child subcommand", () => {
     const parent = normalizeBashAllowedCommands(["git"], "parent");
     const child = normalizeBashAllowedCommands(["git status"], "child");
     assertEquals(intersectBashAllowedCommands(parent, child), ["git status"]);
@@ -98,7 +99,7 @@ Deno.test("parent Git selector loads and intersects with a child subcommand", ()
     assertThrows(() => checkBashCommand("git log", intersectBashAllowedCommands(parent, child)));
 });
 
-Deno.test("listing forms reject unbounded options and accept supported inspection options", () => {
+test("listing forms reject unbounded options and accept supported inspection options", () => {
     const allowed = ["git branch --list", "git remote -v", "git worktree list"];
     for (const command of ["git branch --list -a", "git remote -v", "git worktree list --porcelain"]) {
         checkBashCommand(command, allowed);
@@ -113,7 +114,7 @@ Deno.test("listing forms reject unbounded options and accept supported inspectio
     ) assertThrows(() => checkBashCommand(command, allowed), Error, "Allowed commands:");
 });
 
-Deno.test("combined short options and configured executable wrappers are denied", () => {
+test("combined short options and configured executable wrappers are denied", () => {
     for (const command of ["git grep -nOvi pattern", "file -bC -m rules"]) {
         assertThrows(() => checkBashCommand(command, ["git grep", "file"]), Error, "Allowed commands:");
     }
@@ -133,7 +134,7 @@ Deno.test("combined short options and configured executable wrappers are denied"
     );
 });
 
-Deno.test("metadata reset and delegation intersection retain parent authority", () => {
+test("metadata reset and delegation intersection retain parent authority", () => {
     assertEquals(normalizeBashAllowedCommands(null, "test"), undefined);
     assertEquals(normalizeBashAllowedCommands([], "test"), []);
     assertEquals(intersectBashAllowedCommands(["git"], ["git status"]), ["git status"]);

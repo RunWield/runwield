@@ -1,4 +1,5 @@
-import { assertEquals, assertInstanceOf, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, Image, Spacer, Text, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -59,7 +60,7 @@ function makeHarness(projectRoot = "/fixture/project"): OverridesHarness {
     return { container, editor, messageList, terminal, tui, uiAPI };
 }
 
-Deno.test("installUiApiOverrides disables and enables real editor submission", () => {
+test("installUiApiOverrides disables and enables real editor submission", () => {
     const harness = makeHarness();
     try {
         harness.editor.disableSubmit = false;
@@ -72,7 +73,7 @@ Deno.test("installUiApiOverrides disables and enables real editor submission", (
     }
 });
 
-Deno.test("installUiApiOverrides blocks the editor for real prompts and restores its prior state", async () => {
+test("installUiApiOverrides blocks the editor for real prompts and restores its prior state", async () => {
     const harness = makeHarness();
     try {
         harness.editor.disableSubmit = false;
@@ -95,7 +96,7 @@ Deno.test("installUiApiOverrides blocks the editor for real prompts and restores
     }
 });
 
-Deno.test("feedback prompt edits one row below a transcript taller than the terminal", async () => {
+test("feedback prompt edits one row below a transcript taller than the terminal", async () => {
     const harness = makeHarness();
     try {
         for (let index = 0; index < 40; index++) {
@@ -128,7 +129,7 @@ Deno.test("feedback prompt edits one row below a transcript taller than the term
     }
 });
 
-Deno.test("installUiApiOverrides appends real images unless output is suppressed", () => {
+test("installUiApiOverrides appends real images unless output is suppressed", () => {
     const harness = makeHarness();
     try {
         harness.uiAPI.appendImage?.(ONE_PIXEL_PNG, "image/png");
@@ -144,7 +145,7 @@ Deno.test("installUiApiOverrides appends real images unless output is suppressed
     }
 });
 
-Deno.test("installUiApiOverrides closes a visible tool group before appending an image", () => {
+test("installUiApiOverrides closes a visible tool group before appending an image", () => {
     const harness = makeHarness();
     try {
         harness.uiAPI.startToolExecution?.("tool-1", "read", "read before.png");
@@ -160,7 +161,7 @@ Deno.test("installUiApiOverrides closes a visible tool group before appending an
     }
 });
 
-Deno.test("installUiApiOverrides selects a configured fixture model through the real selector", async () => {
+test("installUiApiOverrides selects a configured fixture model through the real selector", async () => {
     await withRuntimeCommandFixture("ui-api-model-selector-", async ({ projectRoot }) => {
         const selectedModels: Array<{ model: string; provider?: string }> = [];
         const harness = makeHarness(projectRoot);
@@ -202,7 +203,7 @@ Deno.test("installUiApiOverrides selects a configured fixture model through the 
     });
 });
 
-Deno.test("installUiApiOverrides sends Claude selections through the runtime callback", async () => {
+test("installUiApiOverrides sends Claude selections through the runtime callback", async () => {
     await withRuntimeCommandFixture("ui-api-model-selector-claude-", async ({ projectRoot }) => {
         const selectedModels: Array<{ model: string; provider?: string }> = [];
         const harness = makeHarness(projectRoot);
@@ -233,7 +234,7 @@ Deno.test("installUiApiOverrides sends Claude selections through the runtime cal
     });
 });
 
-Deno.test("installUiApiOverrides reports Agy setup failures from model selection without rejecting", async () => {
+test("installUiApiOverrides reports Agy setup failures from model selection without rejecting", async () => {
     await withRuntimeCommandFixture("ui-api-model-selector-agy-setup-", async ({ projectRoot }) => {
         const harness = makeHarness(projectRoot);
         installUiApiOverrides({
@@ -271,7 +272,7 @@ Deno.test("installUiApiOverrides reports Agy setup failures from model selection
     });
 });
 
-Deno.test("installUiApiOverrides restores a missing editor after the real selector is cancelled", async () => {
+test("installUiApiOverrides restores a missing editor after the real selector is cancelled", async () => {
     await withRuntimeCommandFixture("ui-api-model-cancel-", async ({ projectRoot }) => {
         const harness = makeHarness(projectRoot);
         harness.container.removeChild(harness.editor);

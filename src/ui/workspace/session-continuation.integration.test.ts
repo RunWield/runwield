@@ -1,5 +1,16 @@
+import { fileURLToPath } from "node:url";
+import { openNativeFileLock } from "../../shared/native-file-lock.ts";
 // @ts-nocheck: Workspace service is JavaScript and returns projected event records.
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { makeTempFile } from "../../testing/temp-file.ts";
+import { test } from "node:test";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
+import fs from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     ownerNotificationsStreamApi,
@@ -69,11 +80,11 @@ async function waitForOperation(service, operationId) {
     return service.getOperation(operationId);
 }
 
-Deno.test("Workspace Session names prefer saved renames and fall back to the first user message", async () => {
-    const namedPath = await Deno.makeTempFile({ prefix: "runwield-named-session-", suffix: ".jsonl" });
-    const fallbackPath = await Deno.makeTempFile({ prefix: "runwield-fallback-session-", suffix: ".jsonl" });
+test("Workspace Session names prefer saved renames and fall back to the first user message", async () => {
+    const namedPath = await makeTempFile({ prefix: "runwield-named-session-", suffix: ".jsonl" });
+    const fallbackPath = await makeTempFile({ prefix: "runwield-fallback-session-", suffix: ".jsonl" });
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             namedPath,
             [
                 { type: "session", id: "pi-1", name: "Real Session Name", timestamp: "2026-01-01T00:00:00.000Z" },
@@ -81,7 +92,7 @@ Deno.test("Workspace Session names prefer saved renames and fall back to the fir
                 { type: "session_info", name: "Renamed Session" },
             ].map((entry) => JSON.stringify(entry)).join("\n"),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             fallbackPath,
             [
                 { type: "session", id: "pi-2", timestamp: "2026-01-01T00:00:00.000Z" },
@@ -93,12 +104,10 @@ Deno.test("Workspace Session names prefer saved renames and fall back to the fir
         );
 
         assertEquals(await readSessionName(namedPath), "Renamed Session");
-        await Deno.writeTextFile(namedPath, '\n{"type":"session_info","name":"Renamed again"}\n{"type":', {
-            append: true,
-        });
+        await fsWriteFile(namedPath, '\n{"type":"session_info","name":"Renamed again"}\n{"type":', { flag: "a" });
         assertEquals(await readSessionName(namedPath), "Renamed again");
         assertEquals(await readSessionName(fallbackPath), "fallback first message");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             fallbackPath,
             JSON.stringify({
                 type: "message",
@@ -107,19 +116,19 @@ Deno.test("Workspace Session names prefer saved renames and fall back to the fir
         );
         assertEquals(await readSessionName(fallbackPath), "/commit these changes");
     } finally {
-        await Deno.remove(namedPath).catch(() => undefined);
-        await Deno.remove(fallbackPath).catch(() => undefined);
+        await fsRm(namedPath).catch(() => undefined);
+        await fsRm(fallbackPath).catch(() => undefined);
     }
 });
 
-Deno.test("Workspace Session list prefers transcript name before stale catalog fallback", async () => {
+test("Workspace Session list prefers transcript name before stale catalog fallback", async () => {
     const fixture = await makeManagedSessionFixture();
     const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
     try {
         const path = manifestPath(fixture.sessionDir, fixture.session.runwieldSessionId);
-        const manifest = JSON.parse(await Deno.readTextFile(path));
+        const manifest = JSON.parse(await fsReadFile(path, "utf8"));
         manifest.displayName = "Hello";
-        await Deno.writeTextFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
+        await fsWriteFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
 
         const result = await service.listSessions(fixture.project.projectId);
         assertEquals(result.sessions[0].displayName, "Managed fixture");
@@ -130,7 +139,7 @@ Deno.test("Workspace Session list prefers transcript name before stale catalog f
     }
 });
 
-Deno.test("Workspace hides only unnamed empty Sessions and paginates the visible list", async () => {
+test("Workspace hides only unnamed empty Sessions and paginates the visible list", async () => {
     const fixture = await makeManagedSessionFixture();
     const store = fixture.openStore();
     const service = new WorkspaceSessionContinuationService({ store });
@@ -145,7 +154,7 @@ Deno.test("Workspace hides only unnamed empty Sessions and paginates the visible
             }];
             if (name) entries.push({ type: "session_info", name });
             if (content) entries.push({ type: "message", message: { role: "user", content } });
-            await Deno.writeTextFile(transcriptPath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+            await fsWriteFile(transcriptPath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
             await store.ensureSessionCatalogRecord({
                 projectId: fixture.project.projectId,
                 piSessionId: `list-${index}`,
@@ -154,11 +163,11 @@ Deno.test("Workspace hides only unnamed empty Sessions and paginates the visible
                 source: "catalog",
             });
         }
-        const readTextFile = Deno.readTextFile;
+        const readFile = fs.readFile;
         const transcriptsRead = [];
-        Deno.readTextFile = (path, options) => {
+        fs.readFile = (path, options) => {
             if (String(path).endsWith(".jsonl")) transcriptsRead.push(String(path));
-            return readTextFile(path, options);
+            return readFile(path, options);
         };
         try {
             const recent = await service.listSessions(fixture.project.projectId, { pageSize: 1, includeTotal: false });
@@ -179,7 +188,7 @@ Deno.test("Workspace hides only unnamed empty Sessions and paginates the visible
             assertEquals(navigation.sessions.map((session) => session.displayName), ["Hello"]);
             assert(transcriptsRead.length <= 2);
         } finally {
-            Deno.readTextFile = readTextFile;
+            fs.readFile = readFile;
         }
         const first = await service.listSessions(fixture.project.projectId, { pageSize: 1 });
         const second = await service.listSessions(fixture.project.projectId, { pageSize: 1, page: 1 });
@@ -204,7 +213,7 @@ Deno.test("Workspace hides only unnamed empty Sessions and paginates the visible
     }
 });
 
-Deno.test("Workspace snapshots deliver Agent-stop browser notifications once through the Session observer", async () => {
+test("Workspace snapshots deliver Agent-stop browser notifications once through the Session observer", async () => {
     const fixture = await makeManagedSessionFixture();
     const browser = installBrowserNotifications();
     await setCustomSetting(
@@ -305,7 +314,7 @@ Deno.test("Workspace snapshots deliver Agent-stop browser notifications once thr
     }
 });
 
-Deno.test("Workspace continuation publishes once and a TUI observer resumes from the new cursor", async () => {
+test("Workspace continuation publishes once and a TUI observer resumes from the new cursor", async () => {
     await withRuntimeCommandFixture(
         "workspace-continuation-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -441,7 +450,7 @@ Deno.test("Workspace continuation publishes once and a TUI observer resumes from
     );
 });
 
-Deno.test("Workspace Session options and timeline expose supported Agy model facts", async () => {
+test("Workspace Session options and timeline expose supported Agy model facts", async () => {
     await withRuntimeCommandFixture("workspace-agy-options-", async ({ homeDir, projectRoot }) => {
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
         const workspaceStore = fixture.openStore();
@@ -469,7 +478,7 @@ Deno.test("Workspace Session options and timeline expose supported Agy model fac
                 expectedCurrentSegmentId: activation.generation?.currentSegmentId ?? null,
                 phase: "checkpointing",
             });
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 fixture.transcriptPath,
                 [
                     { type: "model_change", id: "agy-model", provider: "agy-cli", modelId: "gemini-3.8-flash" },
@@ -489,7 +498,7 @@ Deno.test("Workspace Session options and timeline expose supported Agy model fac
                         },
                     },
                 ].map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-                { append: true },
+                { flag: "a" },
             );
             workspaceStore.publishGenerationAndRelease(proof, {
                 generation: 1,
@@ -521,12 +530,12 @@ Deno.test("Workspace Session options and timeline expose supported Agy model fac
     });
 });
 
-Deno.test("Workspace Agent defaults follow presets and manual choices expire on an Agent change", async () => {
+test("Workspace Agent defaults follow presets and manual choices expire on an Agent change", async () => {
     await withRuntimeCommandFixture("workspace-agent-defaults-", async ({ homeDir, projectRoot, setModelResponse }) => {
         const modelsPath = `${homeDir}/.wld/models.json`;
-        const modelConfiguration = JSON.parse(await Deno.readTextFile(modelsPath));
+        const modelConfiguration = JSON.parse(await fsReadFile(modelsPath, "utf8"));
         for (const model of modelConfiguration.providers["runtime-command-fixture"].models) model.reasoning = true;
-        await Deno.writeTextFile(modelsPath, JSON.stringify(modelConfiguration));
+        await fsWriteFile(modelsPath, JSON.stringify(modelConfiguration));
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
         const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
         try {
@@ -619,7 +628,7 @@ Deno.test("Workspace Agent defaults follow presets and manual choices expire on 
     }, { additionalModels: [{ id: "alternate-model", name: "Alternate" }] });
 });
 
-Deno.test("Workspace configuration stages Agent changes during a local active operation", async () => {
+test("Workspace configuration stages Agent changes during a local active operation", async () => {
     await withRuntimeCommandFixture(
         "workspace-active-config-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -684,7 +693,7 @@ Deno.test("Workspace configuration stages Agent changes during a local active op
     );
 });
 
-Deno.test("Workspace answers a live question in a separate TUI process", async () => {
+test("Workspace answers a live question in a separate TUI process", async () => {
     await withRuntimeCommandFixture("workspace-live-tui-", async ({ homeDir, projectRoot }) => {
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
         const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
@@ -712,13 +721,19 @@ Deno.test("Workspace answers a live question in a separate TUI process", async (
                 store.close();
             }
         `;
-        const child = new Deno.Command(Deno.execPath(), {
-            args: ["eval", "--config", new URL("../../../deno.json", import.meta.url).pathname, code],
+        const child = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs([
+                "eval",
+                "--config",
+                fileURLToPath(new URL("../../../deno.json", import.meta.url)),
+                code,
+            ]),
             cwd: projectRoot,
             stdout: "piped",
             stderr: "piped",
-        }).spawn();
-        const outputPromise = child.output();
+            stdin: "null",
+        });
+        const outputPromise = collectProcessOutput(child);
         let finished = false;
         try {
             let live;
@@ -773,7 +788,7 @@ Deno.test("Workspace answers a live question in a separate TUI process", async (
     });
 });
 
-Deno.test("long Workspace history stays sendable and an open TUI continues the new conversation", async () => {
+test("long Workspace history stays sendable and an open TUI continues the new conversation", async () => {
     await withRuntimeCommandFixture(
         "workspace-long-history-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -799,10 +814,10 @@ Deno.test("long Workspace history stays sendable and an open TUI continues the n
                         content: [{ type: "text", text: `History message ${index}` }],
                     },
                 }));
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     fixture.transcriptPath,
                     entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-                    { append: true },
+                    { flag: "a" },
                 );
                 proof = fixture.store.changeSessionActivationPhase(proof, "checkpointing");
                 fixture.store.publishGenerationAndRelease(proof, {
@@ -863,7 +878,7 @@ Deno.test("long Workspace history stays sendable and an open TUI continues the n
     );
 });
 
-Deno.test("Workspace steering reaches the running Agent once and appears in the conversation", async () => {
+test("Workspace steering reaches the running Agent once and appears in the conversation", async () => {
     await withRuntimeCommandFixture(
         "workspace-steering-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
@@ -927,14 +942,14 @@ Deno.test("Workspace steering reaches the running Agent once and appears in the 
     );
 });
 
-Deno.test("a new Workspace Session is discoverable before its first response finishes", async () => {
+test("a new Workspace Session is discoverable before its first response finishes", async () => {
     await withRuntimeCommandFixture(
         "workspace-first-message-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
             const modelsPath = `${homeDir}/.wld/models.json`;
-            const modelConfiguration = JSON.parse(await Deno.readTextFile(modelsPath));
+            const modelConfiguration = JSON.parse(await fsReadFile(modelsPath, "utf8"));
             modelConfiguration.providers["runtime-command-fixture"].models[0].reasoning = true;
-            await Deno.writeTextFile(modelsPath, JSON.stringify(modelConfiguration));
+            await fsWriteFile(modelsPath, JSON.stringify(modelConfiguration));
             const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
             const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
             let release = () => {};
@@ -1012,7 +1027,7 @@ Deno.test("a new Workspace Session is discoverable before its first response fin
     );
 });
 
-Deno.test("Workspace opens an interrupted Session directly from its saved conversation", async () => {
+test("Workspace opens an interrupted Session directly from its saved conversation", async () => {
     await withRuntimeCommandFixture("workspace-restart-", async ({ homeDir, projectRoot, setModelResponseFactory }) => {
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
         const writer = fixture.openStore();
@@ -1065,7 +1080,7 @@ Deno.test("Workspace opens an interrupted Session directly from its saved conver
     });
 });
 
-Deno.test("Workspace new image Session deduplicates concurrent prepared requests", async () => {
+test("Workspace new image Session deduplicates concurrent prepared requests", async () => {
     let releasePreflight = () => {};
     const preflightStarted = new Promise((resolve) => {
         releasePreflight = resolve;
@@ -1129,7 +1144,7 @@ Deno.test("Workspace new image Session deduplicates concurrent prepared requests
     assertEquals(submittedModels, ["runtime-command-fixture/fixture-model"]);
 });
 
-Deno.test("Workspace receives the final stop from TUI and ACP turns after steering, without polling", async () => {
+test("Workspace receives the final stop from TUI and ACP turns after steering, without polling", async () => {
     for (const ownerProcessKind of ["tui", "acp"]) {
         await withRuntimeCommandFixture(
             `workspace-alert-${ownerProcessKind}-`,
@@ -1201,7 +1216,7 @@ Deno.test("Workspace receives the final stop from TUI and ACP turns after steeri
     }
 });
 
-Deno.test("Workspace notification stream routes live events and closes when its device is revoked", async () => {
+test("Workspace notification stream routes live events and closes when its device is revoked", async () => {
     const fixture = await makeManagedSessionFixture();
     const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
     const connections = createOwnerConnectionRegistry();
@@ -1258,7 +1273,7 @@ Deno.test("Workspace notification stream routes live events and closes when its 
     }
 });
 
-Deno.test("Workspace image rejection returns 422 before accepting new or resumed turns", async () => {
+test("Workspace image rejection returns 422 before accepting new or resumed turns", async () => {
     await withRuntimeCommandFixture(
         "workspace-image-http-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -1359,12 +1374,12 @@ Deno.test("Workspace image rejection returns 422 before accepting new or resumed
     );
 });
 
-Deno.test("sidebar expansion reads only five unseen matching Session names plus lookahead", async () => {
+test("sidebar expansion reads only five unseen matching Session names plus lookahead", async () => {
     const fixture = await makeManagedSessionFixture();
     const store = fixture.openStore();
     const service = new WorkspaceSessionContinuationService({ store });
     const ids = new Map();
-    const readTextFile = Deno.readTextFile;
+    const readFile = fs.readFile;
     try {
         for (let i = 1; i <= 20; i++) {
             const timestamp = `2026-09-${String(i).padStart(2, "0")}T00:00:00.000Z`;
@@ -1374,7 +1389,7 @@ Deno.test("sidebar expansion reads only five unseen matching Session names plus 
                 id: `name-${i}`,
                 name: `Recent ${i}`,
             }];
-            await Deno.writeTextFile(transcriptPath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+            await fsWriteFile(transcriptPath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
             const session = await store.ensureSessionCatalogRecord({
                 projectId: fixture.project.projectId,
                 piSessionId: `expand-${i}`,
@@ -1385,7 +1400,7 @@ Deno.test("sidebar expansion reads only five unseen matching Session names plus 
             ids.set(i, session.runwieldSessionId);
             if (i === 15) {
                 const segmentId = store.getCurrentSessionSegment(session.runwieldSessionId).segmentId;
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     transcriptPath,
                     JSON.stringify({
                         type: "custom",
@@ -1400,7 +1415,7 @@ Deno.test("sidebar expansion reads only five unseen matching Session names plus 
                             recordedAt: timestamp,
                         },
                     }) + "\n",
-                    { append: true },
+                    { flag: "a" },
                 );
                 let proof = store.acquireSessionActivation({
                     runwieldSessionId: session.runwieldSessionId,
@@ -1427,9 +1442,9 @@ Deno.test("sidebar expansion reads only five unseen matching Session names plus 
             }
         }
         const reads = [];
-        Deno.readTextFile = (path, options) => {
+        fs.readFile = (path, options) => {
             if (String(path).endsWith(".jsonl")) reads.push(String(path));
-            return readTextFile(path, options);
+            return readFile(path, options);
         };
         const query = new URLSearchParams({
             pageSize: "5",
@@ -1457,7 +1472,7 @@ Deno.test("sidebar expansion reads only five unseen matching Session names plus 
         assertEquals(reads.length, 6);
         assertEquals(reads.some((path) => path.endsWith("expand-15.jsonl")), false);
     } finally {
-        Deno.readTextFile = readTextFile;
+        fs.readFile = readFile;
         service.close();
         store.close();
         await fixture.cleanup();
@@ -1472,15 +1487,11 @@ function archiveRouteContext(service, fixture, body = {}, projectId = fixture.pr
     };
 }
 
-Deno.test("Workspace archive API persists across restart and filters before pagination", async () => {
+test("Workspace archive API persists across restart and filters before pagination", async () => {
     const fixture = await makeManagedSessionFixture();
     let service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
     try {
-        const lock = Deno.openSync(lockPath(fixture.sessionDir, fixture.session.runwieldSessionId), {
-            create: true,
-            read: true,
-            write: true,
-        });
+        const lock = openNativeFileLock(lockPath(fixture.sessionDir, fixture.session.runwieldSessionId));
         try {
             lock.lockSync(true);
             assertEquals((await ownerSessionArchiveApi(archiveRouteContext(service, fixture))).status, 409);
@@ -1494,7 +1505,7 @@ Deno.test("Workspace archive API persists across restart and filters before pagi
         const archivedIds = [fixture.session.runwieldSessionId];
         for (let index = 0; index < 3; index++) {
             const transcriptPath = `${fixture.sessionDir}/2026-01-0${index + 2}T00-00-00-000Z_archive-${index}.jsonl`;
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 transcriptPath,
                 JSON.stringify({
                     type: "session",
@@ -1572,7 +1583,7 @@ Deno.test("Workspace archive API persists across restart and filters before pagi
     }
 });
 
-Deno.test("Workspace archive rejects foreign and disabled Projects before stopping work", async () => {
+test("Workspace archive rejects foreign and disabled Projects before stopping work", async () => {
     const fixture = await makeManagedSessionFixture();
     const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
     let proof;
@@ -1586,7 +1597,7 @@ Deno.test("Workspace archive rejects foreign and disabled Projects before stoppi
             ownerProcessKind: "test",
         });
         const foreignRoot = `${fixture.projectRoot}/foreign`;
-        await Deno.mkdir(foreignRoot);
+        await fsMkdir(foreignRoot);
         const foreign = service.store.registerProject({ root: foreignRoot });
         for (const projectId of [foreign.projectId, "missing-project"]) {
             assertEquals(
@@ -1624,7 +1635,7 @@ Deno.test("Workspace archive rejects foreign and disabled Projects before stoppi
     }
 });
 
-Deno.test("Workspace busy archive requires boolean confirmation and waits for settlement", async () => {
+test("Workspace busy archive requires boolean confirmation and waits for settlement", async () => {
     await withRuntimeCommandFixture(
         "workspace-archive-busy-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -1693,7 +1704,7 @@ Deno.test("Workspace busy archive requires boolean confirmation and waits for se
     );
 });
 
-Deno.test("Workspace archive stops a remote surface through the live connection", async () => {
+test("Workspace archive stops a remote surface through the live connection", async () => {
     await withRuntimeCommandFixture(
         "workspace-archive-remote-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -1742,7 +1753,7 @@ Deno.test("Workspace archive stops a remote surface through the live connection"
     );
 });
 
-Deno.test("Workspace Plan-filtered Session API explicitly includes archived associations", async () => {
+test("Workspace Plan-filtered Session API explicitly includes archived associations", async () => {
     const fixture = await makeManagedSessionFixture();
     const service = new WorkspaceSessionContinuationService({ store: fixture.openStore() });
     try {
@@ -1794,7 +1805,7 @@ Deno.test("Workspace Plan-filtered Session API explicitly includes archived asso
     }
 });
 
-Deno.test("Workspace Session options honor merged mascot visibility", async () => {
+test("Workspace Session options honor merged mascot visibility", async () => {
     await withRuntimeCommandFixture("workspace-mascot-options-", async ({ homeDir, projectRoot }) => {
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
         const store = fixture.openStore();
@@ -1806,8 +1817,8 @@ Deno.test("Workspace Session options honor merged mascot visibility", async () =
             await setCustomSetting("mascot", true, "project", projectRoot);
             assertEquals((await service.listSessionOptions(fixture.project.projectId)).mascot, true);
             const settingsPath = `${projectRoot}/.wld/settings.json`;
-            const settings = JSON.parse(await Deno.readTextFile(settingsPath));
-            await Deno.writeTextFile(settingsPath, JSON.stringify({ ...settings, mascot: false }));
+            const settings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
+            await fsWriteFile(settingsPath, JSON.stringify({ ...settings, mascot: false }));
             assertEquals((await service.listSessionOptions(fixture.project.projectId)).mascot, false);
         } finally {
             service.close();

@@ -1,4 +1,5 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
@@ -54,7 +55,7 @@ function setup(scope: "full" | "repair" = "full") {
 }
 
 for (const approved of [true, false]) {
-    Deno.test(`completion refuses ${approved ? "approval" : "rejection"} until every chunk is read`, async () => {
+    test(`completion refuses ${approved ? "approval" : "rejection"} until every chunk is read`, async () => {
         const { files, inspection, hostedSession, diff, complete } = setup();
         try {
             await diff.execute("list", { command: "list" });
@@ -90,7 +91,7 @@ for (const approved of [true, false]) {
     });
 }
 
-Deno.test("repair coverage requires repair reads, with precise 64KiB continuation", async () => {
+test("repair coverage requires repair reads, with precise 64KiB continuation", async () => {
     const large = DIFF + "+" + "é".repeat(40000) + "\n";
     const files = parseDiffFiles(large);
     const inspection = new ReviewInspection(
@@ -117,7 +118,7 @@ Deno.test("repair coverage requires repair reads, with precise 64KiB continuatio
     assertEquals(inspection.unread(), []);
 });
 
-Deno.test("coverage includes quoted paths and prefers exact paths over suffix matches", async () => {
+test("coverage includes quoted paths and prefers exact paths over suffix matches", async () => {
     const quoted = String.raw`diff --git "a/caf\303\251.ts" "b/caf\303\251.ts"
 --- "a/caf\303\251.ts"
 +++ "b/caf\303\251.ts"
@@ -139,7 +140,7 @@ Deno.test("coverage includes quoted paths and prefers exact paths over suffix ma
     assertEquals(inspection.unread(), []);
 });
 
-Deno.test("issue state retains its identity across claimed, rejected, reclaimed and confirmed repairs", () => {
+test("issue state retains its identity across claimed, rejected, reclaimed and confirmed repairs", () => {
     const initial = applyRoundFindings(createLedger(), [{
         title: "Missing guard",
         requirement: "Step 1",
@@ -178,7 +179,7 @@ Deno.test("issue state retains its identity across claimed, rejected, reclaimed 
     assertEquals(claimReviewFixes(confirmed).items[0].status, "fix_confirmed");
 });
 
-Deno.test("review completion requires valid identities and a reason for rejected fixes", async () => {
+test("review completion requires valid identities and a reason for rejected fixes", async () => {
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: ROOT });
     const ledger = applyRoundFindings(createLedger(), [{
         title: "Guard",
@@ -230,7 +231,7 @@ Deno.test("review completion requires valid identities and a reason for rejected
     }
 });
 
-Deno.test("normal session binding enforces coverage and supplies the Plan without losing receipts between calls", async () => {
+test("normal session binding enforces coverage and supplies the Plan without losing receipts between calls", async () => {
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: ROOT });
     const inspection = new ReviewInspection(
         parseDiffFiles(DIFF).map((file) => ({ scope: "full", path: file.path, byteLength: file.byteLength })),
@@ -290,7 +291,7 @@ Deno.test("normal session binding enforces coverage and supplies the Plan withou
     }
 });
 
-Deno.test("finding origin metrics stay separate from repair status", () => {
+test("finding origin metrics stay separate from repair status", () => {
     const base = { title: "Issue", requirement: "Step", evidence: "a.ts", resolved: false };
     assertEquals(
         reviewFindingMetrics([

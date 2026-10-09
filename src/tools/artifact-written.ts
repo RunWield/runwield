@@ -1,9 +1,10 @@
+import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 /**
  * @module artifact-written
  * Register a durable Markdown artifact with the active umbrella RunWield Session.
  */
 
-import { isAbsolute, relative, resolve, SEPARATOR } from "@std/path";
+import { isAbsolute, relative, resolve, sep as SEPARATOR } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";
@@ -71,16 +72,16 @@ async function resolveArtifact(
     requestedPath: string,
 ): Promise<{ relativePath: string; markdown: string }> {
     if (isAbsolute(requestedPath)) throw new Error("Artifact path must be relative to the Project root");
-    const root = await Deno.realPath(projectRoot);
-    const absolutePath = await Deno.realPath(resolve(root, requestedPath));
+    const root = await fsRealpath(projectRoot);
+    const absolutePath = await fsRealpath(resolve(root, requestedPath));
     const relativePath = portablePath(relative(root, absolutePath));
     if (!relativePath || relativePath === ".." || relativePath.startsWith("../")) {
         throw new Error("Artifact path must remain inside the Project root");
     }
     if (!relativePath.toLowerCase().endsWith(".md")) throw new Error("Session artifacts must be Markdown files");
-    const info = await Deno.stat(absolutePath);
-    if (!info.isFile) throw new Error("Artifact path must identify a file");
-    return { relativePath, markdown: await Deno.readTextFile(absolutePath) };
+    const info = await fsStat(absolutePath);
+    if (!info.isFile()) throw new Error("Artifact path must identify a file");
+    return { relativePath, markdown: await fsReadFile(absolutePath, "utf8") };
 }
 
 function assertKindPath(kind: SessionArtifactKind, path: string): void {

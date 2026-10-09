@@ -1,4 +1,16 @@
-import { dirname, join } from "@std/path";
+import { recoverWindowsRename } from "./native-file-replace-windows.ts";
+import { rename as fsRename } from "node:fs/promises";
+import { captureForegroundProcess } from "./captured-process.ts";
+import process from "node:process";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { isRunWieldOwnedGitignoreChange } from "./runwield-owned-paths.ts";
 import {
@@ -28,7 +40,7 @@ interface PublicationContextJournal {
 }
 
 async function git(root: string, args: string[]): Promise<string> {
-    const result = await new Deno.Command("git", { cwd: root, args, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureForegroundProcess("git", { cwd: root, args });
     if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
     return new TextDecoder().decode(result.stdout);
 }
@@ -80,10 +92,11 @@ export async function prepareProjectContextPublication(
         const indexed = index ? await git(root, ["cat-file", "blob", index.oid]) : null;
         if (content === headContent && indexed === headContent) continue;
         const incoming = await readProjectContextRevision(root, candidate, path);
-        const owned = path === ".gitignore"
-            ? isRunWieldOwnedGitignoreChange(headContent ?? "", content)
-            : await isOwnedProjectContext(root, path) ||
-                await isUnchangedTransferredSource(root, executionRoot, path);
+        const owned =
+            path === ".gitignore"
+                ? isRunWieldOwnedGitignoreChange(headContent ?? "", content)
+                : (await isOwnedProjectContext(root, path)) ||
+                  (await isUnchangedTransferredSource(root, executionRoot, path));
         if (!owned) {
             // Git may overwrite ignored untracked files without reporting a conflict.
             // Protect these known paths explicitly before any merge preparation.
@@ -95,20 +108,24 @@ export async function prepareProjectContextPublication(
             if (incoming !== headContent) throw userContextConflict(path);
             continue;
         }
-        files.push({ path, content, headContent, index, mode: (await Deno.stat(join(root, path))).mode });
+        files.push({ path, content, headContent, index, mode: (await fsStat(join(root, path))).mode });
     }
     if (!files.length) return;
     await enterProjectRuntime(root);
     const journal: PublicationContextJournal = { head, candidate, files };
     const path = journalPath(root);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-    await Deno.writeTextFile(temporary, JSON.stringify(journal) + "\n", { mode: 0o600 });
-    await Deno.rename(temporary, path);
+    await fsWriteFile(temporary, JSON.stringify(journal) + "\n", { mode: 0o600 });
+    try {
+        await fsRename(temporary, path);
+    } catch (error) {
+        if (!(error instanceof Error && recoverWindowsRename(error, temporary, path))) throw error;
+    }
     for (const file of files) {
         // Recheck before changing anything, so concurrent edits stay untouched.
         if (
-            await readProjectContextFile(root, file.path) !== file.content ||
+            (await readProjectContextFile(root, file.path)) !== file.content ||
             JSON.stringify(await indexEntry(root, file.path)) !== JSON.stringify(file.index)
         ) {
             throw new Error(`Project file changed while preparing publication: ${file.path}`);
@@ -117,7 +134,7 @@ export async function prepareProjectContextPublication(
             await git(root, ["restore", "--staged", "--worktree", `--source=${head}`, "--", file.path]);
         } else {
             await restoreIndex(root, file.path, null);
-            await Deno.remove(join(root, file.path));
+            await fsRm(join(root, file.path));
         }
     }
 }
@@ -127,9 +144,9 @@ export async function settleProjectContextPublication(root: string): Promise<voi
     const path = journalPath(root);
     let journal: PublicationContextJournal;
     try {
-        journal = JSON.parse(await Deno.readTextFile(path));
+        journal = JSON.parse(await fsReadFile(path, "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
         throw error;
     }
     if (!Array.isArray(journal.files) || journal.files.some((file) => !PATHS.includes(file.path))) {
@@ -154,10 +171,10 @@ export async function settleProjectContextPublication(root: string): Promise<voi
                 `Preserving a concurrent staged edit to ${file.path}; original staging is saved in ${path}.`,
             );
         }
-        await Deno.mkdir(dirname(join(root, file.path)), { recursive: true });
-        await Deno.writeTextFile(join(root, file.path), file.content);
-        if (file.mode !== null && Deno.build.os !== "windows") await Deno.chmod(join(root, file.path), file.mode);
+        await fsMkdir(dirname(join(root, file.path)), { recursive: true });
+        await fsWriteFile(join(root, file.path), file.content);
+        if (file.mode !== null && process.platform !== "win32") await fsChmod(join(root, file.path), file.mode);
         await restoreIndex(root, file.path, file.index);
     }
-    await Deno.remove(path);
+    await fsRm(path);
 }

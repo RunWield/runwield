@@ -3,8 +3,9 @@
  * Registered Project lifecycle and health APIs for owner coordination.
  */
 
+import { readdirSync, realpathSync, statSync } from "node:fs";
 import { deleteProjectRegistration } from "./project-removal.ts";
-import { basename, isAbsolute, resolve } from "@std/path";
+import { basename, isAbsolute, resolve } from "node:path";
 
 /**
  * @typedef {'enabled' | 'disabled' | 'removed'} ProjectLifecycle
@@ -72,16 +73,16 @@ function requireAbsoluteRoot(root, field) {
 function canonicalizeExistingDirectory(path) {
     let stat;
     try {
-        stat = Deno.statSync(path);
+        stat = statSync(path);
     } catch (error) {
         throw new Error(`Project root is not available: ${path}`, { cause: error });
     }
-    if (!stat.isDirectory) throw new Error(`Project root must be a directory: ${path}`);
-    return Deno.realPathSync(path);
+    if (!stat.isDirectory()) throw new Error(`Project root must be a directory: ${path}`);
+    return realpathSync.native(path);
 }
 
 /**
- * @param {import('node:sqlite').DatabaseSync} db
+ * @param {import('../sqlite.ts').DatabaseSync} db
  * @param {string} enteredRoot
  * @param {string} canonicalRoot
  * @param {string} [allowedProjectId]
@@ -101,7 +102,7 @@ function assertNoEnteredRootRetarget(db, enteredRoot, canonicalRoot, allowedProj
 }
 
 /**
- * @param {import('node:sqlite').DatabaseSync} db
+ * @param {import('../sqlite.ts').DatabaseSync} db
  * @param {{ projectId: string, enteredRoot: string, canonicalRoot: string, rootState: 'current' | 'historical', now: string, idFactory?: () => string }} options
  */
 function ensureProjectRootEvidence(db, options) {
@@ -320,19 +321,19 @@ export function getProjectHealth(database, projectId) {
     }
     let status = "available";
     try {
-        const stat = Deno.statSync(project.registeredRoot);
-        if (!stat.isDirectory) {
+        const stat = statSync(project.registeredRoot);
+        if (!stat.isDirectory()) {
             status = "not_directory";
             evidence.push("Registered root exists but is not a directory.");
         } else {
             try {
-                observedRealRoot = Deno.realPathSync(project.registeredRoot);
+                observedRealRoot = realpathSync.native(project.registeredRoot);
             } catch (error) {
                 status = "unreadable";
                 evidence.push(error instanceof Error ? error.message : "Registered root cannot be resolved.");
             }
             try {
-                for (const _entry of Deno.readDirSync(project.registeredRoot)) break;
+                for (const _entry of readdirSync(project.registeredRoot)) break;
             } catch (error) {
                 status = "unreadable";
                 evidence.push(error instanceof Error ? error.message : "Registered root is not readable.");
@@ -343,7 +344,7 @@ export function getProjectHealth(database, projectId) {
             }
         }
     } catch (error) {
-        if (error instanceof Deno.errors.PermissionDenied) {
+        if (error instanceof Error && "code" in error && ["EACCES", "EPERM"].includes(String(error.code))) {
             status = "unreadable";
             evidence.push(error.message);
         } else {

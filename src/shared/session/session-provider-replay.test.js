@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { createReplayEvents } from "./session-transcript-projection.js";
 
-Deno.test("saved interrupted attempts replay once per entry without a live retry claim", () => {
+test("saved interrupted attempts replay once per entry without a live retry claim", () => {
     const entries = [
         {
             type: "message",

@@ -349,6 +349,17 @@ beside its close control. Show one panel at a time; closing it restores the docu
 Contents entry or comparison version returns to the document. Resizing into the compact range collapses both panels;
 manual reopening remains available until the next breakpoint change.
 
+### Review panel defaults and diff layout
+
+Plan and Code Review start with Annotations collapsed. Reveal the panel when the first annotation is added (or a saved
+annotation draft is restored), or when the owner opens it from the toolbar. Later annotations respect a manual collapse.
+Use the shared `useReviewAnnotations` hook for this behavior.
+
+Code Review restores the browser's last Split/Unified selection after hydration, including choices made in Settings.
+Diffs wrap to their container width in both normal and Guided Review. At 980px and below, collapse Files automatically;
+the toolbar's Files button can reopen it. Compact panels overlay the workbench one at a time instead of stacking above
+the diff. Preserve the chosen diff layout while resizing.
+
 ### Session context sidebar
 
 Every persisted Session has one durable context sidebar beside its transcript. Do not show the sidebar for the

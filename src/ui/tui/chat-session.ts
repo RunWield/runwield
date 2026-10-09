@@ -158,12 +158,14 @@ export async function startInteractiveSession(
     const disposables: Array<() => void | Promise<void>> = [];
     let uiAPIForDispose: UiAPI | null = null;
     let lifecycleDisposed = false;
+    const historyReplay = new AbortController();
     let inputControllerForPause: ChatInputController | null = null;
     const lifecycleHandle: InteractiveLifecycleHandle = {
         isProcessingSubmission: () => inputControllerForPause?.isProcessingSubmission() || false,
         dispose: async () => {
             if (lifecycleDisposed) return;
             lifecycleDisposed = true;
+            historyReplay.abort();
             const cleanupErrors: Error[] = [];
             const recordCleanupError = (error: Error): void => {
                 cleanupErrors.push(error);
@@ -218,7 +220,7 @@ export async function startInteractiveSession(
         } catch {
             sessionStartedEmptyProjectDirectory = false;
         }
-        sessionRuntime.setProjectStateContext(
+        await sessionRuntime.setProjectStateContext(
             sessionId,
             sessionStartedEmptyProjectDirectory ? EMPTY_PROJECT_DIRECTORY_PROMPT_NOTE : "",
         );
@@ -235,24 +237,26 @@ export async function startInteractiveSession(
             setActiveModel: (model, provider) => setActiveSessionModel(sessionRuntime, sessionId, model, provider),
             configureUiAPI: options.configureUiAPI,
             onWorkflowAction: async (action, snapshot) => {
-                if (action.kind === "review_plan" || action.kind === "review_code") {
-                    const reviewUrl = snapshot.workflowContext?.liveReviewUrl || "";
-                    if (!reviewUrl || !await options.browser.open(reviewUrl)) {
-                        uiAPIForDispose?.appendSystemMessage(
-                            "The current review URL is unavailable.",
-                            true,
-                            "Workflow action",
-                        );
+                if (action.kind === "review_plan") {
+                    const result = await sessionRuntime.reopenPlanReview(sessionId);
+                    if ("url" in result && result.url) {
+                        if (!await options.browser.open(result.url)) {
+                            uiAPIForDispose?.appendSystemMessage(result.url, false, "Plan review");
+                        }
+                    } else if (result.message) {
+                        uiAPIForDispose?.appendSystemMessage(result.message, false, "Plan review");
                     }
                     return;
                 }
-                if (action.kind === "answer_agent") {
-                    const focused = uiAPIForDispose?.focusActivePrompt?.() || false;
-                    uiAPIForDispose?.appendSystemMessage(
-                        focused ? "Focused the waiting prompt." : "The waiting prompt is already active.",
-                        false,
-                        "Workflow action",
-                    );
+                if (action.kind === "review_code") {
+                    const reviewUrl = snapshot.workflowContext?.liveReviewUrl || "";
+                    if (!reviewUrl || !await options.browser.open(reviewUrl)) {
+                        uiAPIForDispose?.appendSystemMessage(
+                            reviewUrl || "The Code Review is starting. Try again when it is ready.",
+                            false,
+                            "Code Review",
+                        );
+                    }
                     return;
                 }
                 if (action.kind !== "run" && action.kind !== "resume" && action.kind !== "recover") return;
@@ -696,7 +700,7 @@ export async function startInteractiveSession(
             });
         }
         if (shouldReplaySessionHistory(options.sessionStartMode)) {
-            await sessionRuntime.replaySession(sessionId);
+            await sessionRuntime.replaySession(sessionId, { signal: historyReplay.signal });
             const tutorialContext = runtimeSnapshot().tutorialContext;
             if (tutorialContext?.recapShown) {
                 await restoreVerifiedTutorialRecap({ runtime: sessionRuntime, sessionId, uiAPI });

@@ -1,6 +1,6 @@
 /** @module ui/workspace/server/remote-db */
 
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { REMOTE_SCHEMA_V1_SQL, REMOTE_SCHEMA_V2_SQL, REMOTE_SCHEMA_VERSION } from "./remote-schema.ts";
 
 export interface RemoteDatabase {
@@ -15,9 +15,14 @@ export interface OpenRemoteDatabaseOptions {
 
 export function openRemoteDatabase(options: OpenRemoteDatabaseOptions = {}): RemoteDatabase {
     const db = new DatabaseSync(options.dbPath ?? ":memory:");
-    db.exec("PRAGMA foreign_keys = ON");
-    if (options.dbPath && options.dbPath !== ":memory:") db.exec("PRAGMA journal_mode = WAL");
-    runRemoteMigrations(db);
+    try {
+        db.exec("PRAGMA foreign_keys = ON");
+        if (options.dbPath && options.dbPath !== ":memory:") db.exec("PRAGMA journal_mode = WAL");
+        runRemoteMigrations(db);
+    } catch (error) {
+        db.close();
+        throw error;
+    }
     return {
         handle: db,
         close: () => db.close(),

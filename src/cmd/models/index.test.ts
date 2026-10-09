@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getSettingsManager, setCustomSetting } from "../../shared/settings.js";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
@@ -61,7 +62,7 @@ async function captureLogs(run: () => Promise<unknown>): Promise<string[]> {
     return logs;
 }
 
-Deno.test("runModelsCommand switches an explicit configured model through the real registry", async () => {
+test("runModelsCommand switches an explicit configured model through the real registry", async () => {
     await withRuntimeCommandFixture("runwield-model-command-", async ({ projectRoot }) => {
         const ui = makeUi();
         const runtime = createSessionRuntime();
@@ -87,7 +88,7 @@ Deno.test("runModelsCommand switches an explicit configured model through the re
     });
 });
 
-Deno.test("runModelsCommand switches a new in-memory Session before its first message", async () => {
+test("runModelsCommand switches a new in-memory Session before its first message", async () => {
     await withRuntimeCommandFixture(
         "runwield-model-command-",
         async ({ projectRoot, setModelResponse }) => {
@@ -131,7 +132,7 @@ Deno.test("runModelsCommand switches a new in-memory Session before its first me
     );
 });
 
-Deno.test("runModelsCommand keeps a manual model choice ahead of the active preset on the next turn", async () => {
+test("runModelsCommand keeps a manual model choice ahead of the active preset on the next turn", async () => {
     await withRuntimeCommandFixture(
         "runwield-model-command-",
         async ({ projectRoot, setModelResponse }) => {
@@ -176,7 +177,7 @@ Deno.test("runModelsCommand keeps a manual model choice ahead of the active pres
     );
 });
 
-Deno.test("runModelsCommand fallback selector lists and switches real configured models", async () => {
+test("runModelsCommand fallback selector lists and switches real configured models", async () => {
     await withRuntimeCommandFixture("runwield-model-command-", async ({ projectRoot }) => {
         const ui = makeUi(FIXTURE_MODEL);
         const runtime = createSessionRuntime();
@@ -202,7 +203,7 @@ Deno.test("runModelsCommand fallback selector lists and switches real configured
     });
 });
 
-Deno.test("runModelsCommand uses the shared picker and restores the editor", async () => {
+test("runModelsCommand uses the shared picker and restores the editor", async () => {
     await withRuntimeCommandFixture("runwield-model-command-", async () => {
         const ui = makeUi(FIXTURE_MODEL);
 
@@ -213,7 +214,7 @@ Deno.test("runModelsCommand uses the shared picker and restores the editor", asy
     });
 });
 
-Deno.test("runModelsCommand validates and resolves model references with real machinery", async () => {
+test("runModelsCommand validates and resolves model references with real machinery", async () => {
     await withRuntimeCommandFixture("runwield-model-command-", async () => {
         const ui = makeUi();
 
@@ -227,7 +228,7 @@ Deno.test("runModelsCommand validates and resolves model references with real ma
     });
 });
 
-Deno.test("runModelsCommand keeps the current model after unavailable selections and recovers", async () => {
+test("runModelsCommand keeps the current model after unavailable selections and recovers", async () => {
     await withRuntimeCommandFixture("runwield-model-command-", async ({ projectRoot }) => {
         const ui = makeUi();
         const runtime = createSessionRuntime();
@@ -283,7 +284,7 @@ Deno.test("runModelsCommand keeps the current model after unavailable selections
     });
 });
 
-Deno.test("runModelsCommand reports CLI usage without reading user configuration", async () => {
+test("runModelsCommand reports CLI usage without reading user configuration", async () => {
     await withRuntimeCommandFixture("runwield-model-command-", async () => {
         const logs = await captureLogs(() => runModelsCommand([]));
         assertEquals(logs.length, 1);
@@ -291,7 +292,7 @@ Deno.test("runModelsCommand reports CLI usage without reading user configuration
     });
 });
 
-Deno.test("runModelsCommand sets the fixture-scoped default from the standalone CLI", async () => {
+test("runModelsCommand sets the fixture-scoped default from the standalone CLI", async () => {
     await withRuntimeCommandFixture("runwield-model-command-", async ({ alternateRoot }) => {
         const logs = await captureLogs(() => runModelsCommand([FIXTURE_MODEL]));
         assertEquals(logs, [`Set default model to ${FIXTURE_MODEL}`]);
@@ -300,7 +301,7 @@ Deno.test("runModelsCommand sets the fixture-scoped default from the standalone 
     }, { providerState: "provider-no-model" });
 });
 
-Deno.test("runModelsCommand completes and accepts only supported Agy CLI base models", async () => {
+test("runModelsCommand completes and accepts only supported Agy CLI base models", async () => {
     await withRuntimeCommandFixture("runwield-model-command-agy-cli-", async ({ alternateRoot }) => {
         const completions = await getModelCompletions("agy-cli/");
         assertEquals(completions.map((completion) => completion.value), [
@@ -321,7 +322,7 @@ Deno.test("runModelsCommand completes and accepts only supported Agy CLI base mo
     }, { providerState: "provider-no-model" });
 });
 
-Deno.test("runModelsCommand rejects unsupported Agy CLI model selection for the current Session", async () => {
+test("runModelsCommand rejects unsupported Agy CLI model selection for the current Session", async () => {
     await withRuntimeCommandFixture("runwield-model-command-agy-reject-", async ({ projectRoot }) => {
         const ui = makeUi();
         const runtime = createSessionRuntime();
@@ -359,7 +360,7 @@ Deno.test("runModelsCommand rejects unsupported Agy CLI model selection for the 
     });
 });
 
-Deno.test("runModelsCommand reports canceled selection and failed explicit selection without changing command effects", async () => {
+test("runModelsCommand reports canceled selection and failed explicit selection without changing command effects", async () => {
     await withRuntimeCommandFixture("runwield-model-command-", async ({ projectRoot }) => {
         const ui = makeUi();
         const runtime = createSessionRuntime();

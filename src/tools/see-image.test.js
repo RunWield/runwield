@@ -1,5 +1,9 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../testing/assertions.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { env } from "node:process";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { getHomeDir } from "../constants.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";
@@ -15,7 +19,7 @@ const TEST_USAGE = Object.freeze({
     cost: TEST_COST,
 });
 
-Deno.test("extractAssistantText joins text blocks", () => {
+test("extractAssistantText joins text blocks", () => {
     assertEquals(
         extractAssistantText([{ type: "text", text: "one" }, { type: "image", data: "x" }, {
             type: "text",
@@ -27,8 +31,8 @@ Deno.test("extractAssistantText joins text blocks", () => {
 
 /** @param {string} cwd */
 async function writeVisionFallbackSetting(cwd) {
-    await Deno.mkdir(join(cwd, ".wld"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(cwd, ".wld"), { recursive: true });
+    await fsWriteFile(
         join(cwd, ".wld", "settings.json"),
         JSON.stringify({
             visionFallback: { model: "vision/model" },
@@ -38,8 +42,8 @@ async function writeVisionFallbackSetting(cwd) {
 
 /** @param {string} tempHome */
 async function writeVisionModelConfig(tempHome) {
-    await Deno.mkdir(join(tempHome, ".wld"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(tempHome, ".wld"), { recursive: true });
+    await fsWriteFile(
         join(tempHome, ".wld", "models.json"),
         JSON.stringify({
             providers: {
@@ -60,10 +64,10 @@ async function removeTempDir(path) {
     let lastError;
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            await Deno.remove(path, { recursive: true });
+            await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
             lastError = error;
             await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
         }
@@ -71,16 +75,16 @@ async function removeTempDir(path) {
     throw lastError;
 }
 
-Deno.test("see_image invokes fallback model with local image and default prompt", async () => {
+test("see_image invokes fallback model with local image and default prompt", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalHome = getHomeDir();
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-see-image-home-" });
-        const cwd = await Deno.makeTempDir({ prefix: "runwield-see-image-" });
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-home-"));
+        const cwd = await fsMkdtemp(join(tmpdir(), "runwield-see-image-"));
         try {
-            Deno.env.set("HOME", tempHome);
+            env.HOME = tempHome;
             await writeVisionModelConfig(tempHome);
             await writeVisionFallbackSetting(cwd);
-            await Deno.writeFile(join(cwd, "shot.png"), new Uint8Array([1, 2, 3]));
+            await fsWriteFile(join(cwd, "shot.png"), new Uint8Array([1, 2, 3]));
             /** @type {any[]} */
             const calls = [];
             const tool = /** @type {any} */ (createSeeImageTool({
@@ -108,22 +112,22 @@ Deno.test("see_image invokes fallback model with local image and default prompt"
             assertEquals(calls[0].context.messages[0].content[1].mimeType, "image/png");
             assertEquals(calls[0].options.apiKey, "key");
         } finally {
-            Deno.env.set("HOME", originalHome);
+            env.HOME = originalHome;
             await removeTempDir(tempHome);
             await removeTempDir(cwd);
         }
     });
 });
 
-Deno.test("see_image returns tool error on auth failure", async () => {
+test("see_image returns tool error on auth failure", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalHome = getHomeDir();
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-see-image-home-" });
-        const cwd = await Deno.makeTempDir({ prefix: "runwield-see-image-" });
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-home-"));
+        const cwd = await fsMkdtemp(join(tmpdir(), "runwield-see-image-"));
         try {
-            Deno.env.set("HOME", tempHome);
-            await Deno.mkdir(join(tempHome, ".wld"), { recursive: true });
-            await Deno.writeTextFile(
+            env.HOME = tempHome;
+            await fsMkdir(join(tempHome, ".wld"), { recursive: true });
+            await fsWriteFile(
                 join(tempHome, ".wld", "models.json"),
                 JSON.stringify({
                     providers: {
@@ -135,14 +139,14 @@ Deno.test("see_image returns tool error on auth failure", async () => {
                     },
                 }),
             );
-            await Deno.mkdir(join(cwd, ".wld"), { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(join(cwd, ".wld"), { recursive: true });
+            await fsWriteFile(
                 join(cwd, ".wld", "settings.json"),
                 JSON.stringify({
                     visionFallback: { model: "missing-vision/model" },
                 }),
             );
-            await Deno.writeFile(join(cwd, "shot.png"), new Uint8Array([1]));
+            await fsWriteFile(join(cwd, "shot.png"), new Uint8Array([1]));
             const tool = /** @type {any} */ (createSeeImageTool({
                 cwd,
                 completeSimpleFn: () => Promise.reject(new Error("should not call")),
@@ -154,20 +158,20 @@ Deno.test("see_image returns tool error on auth failure", async () => {
                 "No API key configured for visionFallback.model: missing-vision/model",
             );
         } finally {
-            Deno.env.set("HOME", originalHome);
+            env.HOME = originalHome;
             await removeTempDir(tempHome);
             await removeTempDir(cwd);
         }
     });
 });
 
-Deno.test("see_image resolves attachment refs from the session image directory", async () => {
+test("see_image resolves attachment refs from the session image directory", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalHome = getHomeDir();
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-see-image-home-" });
-        const cwd = await Deno.makeTempDir({ prefix: "runwield-see-image-attachment-" });
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-see-image-home-"));
+        const cwd = await fsMkdtemp(join(tmpdir(), "runwield-see-image-attachment-"));
         try {
-            Deno.env.set("HOME", tempHome);
+            env.HOME = tempHome;
             await writeVisionModelConfig(tempHome);
             await writeVisionFallbackSetting(cwd);
             const sessionManager = /** @type {any} */ ({ getSessionId: () => "session-abc" });
@@ -202,7 +206,7 @@ Deno.test("see_image resolves attachment refs from the session image directory",
             assertEquals(calls[0].mimeType, "image/png");
             assertEquals(calls[0].data, btoa("img"));
         } finally {
-            Deno.env.set("HOME", originalHome);
+            env.HOME = originalHome;
             await removeTempDir(tempHome);
             await removeTempDir(cwd);
         }

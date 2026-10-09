@@ -1,9 +1,13 @@
+import { isMissingExecutableError } from "../foreground-process.ts";
+import { open } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/git-snapshot
  * Git tree snapshots for workflow-scoped validation diffs.
  */
 
-import { dirname, isAbsolute, join } from "@std/path";
+import { dirname, isAbsolute, join } from "node:path";
 import { assertGitRepository, GitRepositoryRequiredError } from "../git.ts";
 
 class GitCommandError extends Error {
@@ -36,16 +40,13 @@ export class WorktreeReviewTargetError extends WorktreeReviewComparisonError {
 async function runGit(cwd: string, args: string[], env: Record<string, string> = {}): Promise<string> {
     let output;
     try {
-        const command = new Deno.Command("git", {
+        output = await captureForegroundProcess("git", {
             args,
             cwd,
             env,
-            stdout: "piped",
-            stderr: "piped",
         });
-        output = await command.output();
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
+        if (error instanceof Error && isMissingExecutableError(error)) {
             throw new GitRepositoryRequiredError(
                 `Git operation requires a Git repository: git ${args.join(" ")}. The git executable was not found.`,
                 { cwd, operation: `git ${args.join(" ")}`, state: "git_missing" },
@@ -90,9 +91,7 @@ export async function listCommitsTouchingPathsSince(
     since: string | undefined,
     paths: string[],
 ): Promise<GitCommitSummary[]> {
-    const pathspecs = (Array.isArray(paths) ? paths : [])
-        .map((path) => String(path || "").trim())
-        .filter(Boolean);
+    const pathspecs = (Array.isArray(paths) ? paths : []).map((path) => String(path || "").trim()).filter(Boolean);
     if (!since || pathspecs.length === 0) return [];
     await assertGitRepository(cwd, "Checking affected path commit history");
 
@@ -106,10 +105,14 @@ export async function listCommitsTouchingPathsSince(
         ...pathspecs,
     ]);
 
-    return output.trim().split("\n").filter(Boolean).map((line) => {
-        const [hash = "", date = "", ...subjectParts] = line.split("\x1f");
-        return { hash, date, subject: subjectParts.join("\x1f") };
-    });
+    return output
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+            const [hash = "", date = "", ...subjectParts] = line.split("\x1f");
+            return { hash, date, subject: subjectParts.join("\x1f") };
+        });
 }
 
 /**
@@ -120,20 +123,21 @@ export async function captureWorktreeTree(cwd: string): Promise<string> {
     await assertGitRepository(cwd, "Capturing an execution baseline tree");
     const realIndex = (await runGit(cwd, ["rev-parse", "--git-path", "index"])).trim();
     const realIndexPath = isAbsolute(realIndex) ? realIndex : join(cwd, realIndex);
-    const indexPath = await Deno.makeTempFile({ dir: dirname(realIndexPath), prefix: "runwield-index-" });
+    const indexPath = join(dirname(realIndexPath), `runwield-index-${crypto.randomUUID()}`);
+    await (await open(indexPath, "wx", 0o600)).close();
     const env = { GIT_INDEX_FILE: indexPath };
 
     try {
         try {
-            await Deno.writeFile(indexPath, await Deno.readFile(realIndexPath));
+            await fsWriteFile(indexPath, await fsReadFile(realIndexPath));
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
-            await Deno.remove(indexPath);
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+            await fsRm(indexPath);
         }
         await runGit(cwd, ["add", "-A", "--", "."], env);
         return (await runGit(cwd, ["write-tree"], env)).trim();
     } finally {
-        await Deno.remove(indexPath).catch(() => {});
+        await fsRm(indexPath).catch(() => {});
     }
 }
 
@@ -163,23 +167,37 @@ export async function getWorktreeReviewDiff(cwd: string, targetBranch: string): 
     const branch = String(targetBranch || "").trim();
     if (!branch) throw new WorktreeReviewTargetError(branch);
 
-    let targetCommit;
     try {
-        targetCommit = (await runGit(cwd, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`])).trim();
+        return await getReviewDiff(cwd, { baseRef: `refs/heads/${branch}`, head: { kind: "worktree" } });
     } catch (error) {
         if (error instanceof Error && isMissingRevisionError(error)) {
             throw new WorktreeReviewTargetError(branch);
         }
         throw error;
     }
+}
 
+export type ReviewHead = { kind: "ref"; ref: string } | { kind: "worktree" };
+
+export interface ReviewDiffOptions {
+    baseRef: string;
+    head: ReviewHead;
+}
+
+/** Compare the common ancestor with a commit or the complete working tree. */
+export async function getReviewDiff(cwd: string, { baseRef, head }: ReviewDiffOptions): Promise<string> {
+    await assertGitRepository(cwd, "Computing a review diff");
+    const targetCommit = (await runGit(cwd, ["rev-parse", "--verify", `${baseRef}^{commit}`])).trim();
+    const headRef = head.kind === "ref" ? head.ref : "HEAD";
     let executionCommit;
     try {
-        executionCommit = (await runGit(cwd, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
+        executionCommit = (await runGit(cwd, ["rev-parse", "--verify", `${headRef}^{commit}`])).trim();
     } catch (error) {
         if (error instanceof Error && isMissingRevisionError(error)) {
             throw new WorktreeReviewComparisonError(
-                "Cannot compute the worktree review diff because execution HEAD is unavailable.",
+                `Cannot compute the worktree review diff because ${
+                    head.kind === "worktree" ? "execution HEAD" : headRef
+                } is unavailable.`,
             );
         }
         throw error;
@@ -191,13 +209,17 @@ export async function getWorktreeReviewDiff(cwd: string, targetBranch: string): 
     } catch (error) {
         if (error instanceof GitCommandError && error.code === 1) {
             throw new WorktreeReviewComparisonError(
-                `Cannot compute the worktree review diff because refs/heads/${branch} and execution HEAD have no common ancestor.`,
+                `Cannot compute the worktree review diff because ${baseRef} and ${
+                    head.kind === "worktree" ? "execution HEAD" : headRef
+                } have no common ancestor.`,
             );
         }
         throw error;
     }
     const baseTree = (await runGit(cwd, ["rev-parse", "--verify", `${commonAncestor}^{tree}`])).trim();
-    const currentTree = await captureWorktreeTree(cwd);
+    const currentTree = head.kind === "worktree"
+        ? await captureWorktreeTree(cwd)
+        : (await runGit(cwd, ["rev-parse", "--verify", `${executionCommit}^{tree}`])).trim();
     return await diffTrees(cwd, baseTree, currentTree);
 }
 

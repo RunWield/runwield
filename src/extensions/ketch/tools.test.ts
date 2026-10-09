@@ -1,4 +1,6 @@
-import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { createKetchTools, type KetchToolHost, MAX_WEB_FETCH_CHARS } from "./tools.ts";
 import type { HelperBinaryExecResult } from "../helper-binary-exec.ts";
@@ -48,7 +50,7 @@ function firstText(result: Awaited<ReturnType<typeof executeTool>>): string {
     return result.content[0]?.type === "text" ? result.content[0].text : "";
 }
 
-Deno.test("web_search builds pinned search arguments and formats title URL rows", async () => {
+test("web_search builds pinned search arguments and formats title URL rows", async () => {
     const { calls, getTool } = setup(() => ({
         code: 0,
         stdout: JSON.stringify([{ title: "RunWield", url: "https://example.test/runwield" }]),
@@ -65,7 +67,7 @@ Deno.test("web_search builds pinned search arguments and formats title URL rows"
     assertEquals(firstText(result), "RunWield - https://example.test/runwield");
 });
 
-Deno.test("web_search can fuse page content and truncate it", async () => {
+test("web_search can fuse page content and truncate it", async () => {
     const longContent = "x".repeat(60);
     const { calls, getTool } = setup(() => ({
         code: 0,
@@ -93,7 +95,7 @@ Deno.test("web_search can fuse page content and truncate it", async () => {
     assertMatch(firstText(result), /web_search output truncated at 25 characters/);
 });
 
-Deno.test("web_fetch scrapes one URL and truncates Markdown", async () => {
+test("web_fetch scrapes one URL and truncates Markdown", async () => {
     const { calls, getTool } = setup(() => ({
         code: 0,
         stdout: JSON.stringify({ url: "https://example.test", title: "Example", markdown: "abcdef" }),
@@ -107,7 +109,7 @@ Deno.test("web_fetch scrapes one URL and truncates Markdown", async () => {
     assertMatch(firstText(result), /web_fetch output truncated at 3 characters/);
 });
 
-Deno.test("web_code_search builds pinned code arguments and formats code rows", async () => {
+test("web_code_search builds pinned code arguments and formats code rows", async () => {
     const { calls, getTool } = setup(() => ({
         code: 0,
         stdout: JSON.stringify([{
@@ -144,7 +146,7 @@ Deno.test("web_code_search builds pinned code arguments and formats code rows", 
     assertStringIncludes(firstText(result), "https://github.com/owner/repo/blob/main/src/main.ts#L12");
 });
 
-Deno.test("web_docs_search formats docs rows and returns setup guidance on missing Context7 key", async () => {
+test("web_docs_search formats docs rows and returns setup guidance on missing Context7 key", async () => {
     const { calls, getTool } = setup((_command, args) => {
         if (args.includes("needs-key")) {
             return {
@@ -182,7 +184,7 @@ Deno.test("web_docs_search formats docs rows and returns setup guidance on missi
     assertStringIncludes(firstText(missingKey), "ketch config set context7_api_key");
 });
 
-Deno.test("empty JSON arrays return no results and unknown JSON shapes return raw text", async () => {
+test("empty JSON arrays return no results and unknown JSON shapes return raw text", async () => {
     const { getTool } = setup((_command, args) => ({
         code: 0,
         stdout: args[0] === "code" ? JSON.stringify({ unexpected: true }) : "[]",
@@ -193,7 +195,7 @@ Deno.test("empty JSON arrays return no results and unknown JSON shapes return ra
     assertEquals(firstText(await executeTool(getTool("web_code_search"), { query: "raw" })), '{"unexpected":true}');
 });
 
-Deno.test("non-key failures include exit code, cleaned ketch message, and alternate backends", async () => {
+test("non-key failures include exit code, cleaned ketch message, and alternate backends", async () => {
     const { getTool } = setup(() => ({
         code: 4,
         stdout: "",
@@ -208,7 +210,7 @@ Deno.test("non-key failures include exit code, cleaned ketch message, and altern
     );
 });
 
-Deno.test("web_fetch default ceiling uses explicit truncation marker", async () => {
+test("web_fetch default ceiling uses explicit truncation marker", async () => {
     const { getTool } = setup(() => ({
         code: 0,
         stdout: JSON.stringify({ markdown: "x".repeat(MAX_WEB_FETCH_CHARS + 1) }),

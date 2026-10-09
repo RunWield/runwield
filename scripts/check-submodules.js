@@ -1,3 +1,5 @@
+import { captureScriptProcess } from "./script-process.ts";
+import { stat as fsStat } from "node:fs/promises";
 /**
  * Verify local submodule hygiene without network access.
  *
@@ -27,12 +29,11 @@
  * @returns {Promise<CommandResult>}
  */
 async function run(command, args) {
-    const child = new Deno.Command(command, {
+    const output = await captureScriptProcess(command, {
         args,
         stdout: "piped",
         stderr: "piped",
     });
-    const output = await child.output();
     const decoder = new TextDecoder();
     return {
         success: output.success,
@@ -47,10 +48,10 @@ async function run(command, args) {
  */
 async function hasGitmodules() {
     try {
-        const stat = await Deno.stat(".gitmodules");
-        return stat.isFile;
+        const stat = await fsStat(".gitmodules");
+        return stat.isFile();
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
         throw error;
     }
 }

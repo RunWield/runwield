@@ -1,35 +1,53 @@
-import { assertEquals, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { fileURLToPath } from "node:url";
+import { copyFile, rename } from "node:fs/promises";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { serveHttp } from "../http-server.ts";
+import process from "node:process";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.js";
 import { configureRemotePersonalResources, PersonalResourcePathError } from "./personal-resources.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
 
-Deno.test("remote synchronous settings refresh after a lost acknowledgement and an unrelated laptop write", async () => {
+test("remote synchronous settings refresh after a lost acknowledgement and an unrelated laptop write", async () => {
     await withProcessGlobalTestLock(async () => {
-        const home = await Deno.makeTempDir();
-        const project = await Deno.makeTempDir();
+        const home = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const project = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         const mounted = join(home, "mount");
-        const previous = Deno.env.get("HOME");
-        Deno.env.set("HOME", home);
-        await Deno.mkdir(join(home, ".wld"));
-        await Deno.mkdir(mounted);
+        const previous = process.env["HOME"];
+        process.env["HOME"] = home;
+        await fsMkdir(join(home, ".wld"));
+        await fsMkdir(mounted);
         const laptopPath = join(home, ".wld", "settings.json");
         const mountedPath = join(mounted, "settings.json");
-        await Deno.writeTextFile(laptopPath, JSON.stringify({ theme: "dark", other: 1 }));
-        await Deno.copyFile(laptopPath, mountedPath);
-        await Deno.mkdir(join(project, ".wld"));
-        await Deno.writeTextFile(
+        await fsWriteFile(laptopPath, JSON.stringify({ theme: "dark", other: 1 }));
+        await copyFile(laptopPath, mountedPath);
+        await fsMkdir(join(project, ".wld"));
+        await fsWriteFile(
             join(project, ".wld", "settings.json"),
             JSON.stringify({ defaultProvider: "project-provider" }),
         );
-        const service = new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "--no-check", new URL("./settings-service-fixture.ts", import.meta.url).pathname],
+        const service = spawnNativeProcess(process.execPath, {
+            cwd: getCwd(),
+            args: ["run", ...[], fileURLToPath(new URL("./settings-service-fixture.ts", import.meta.url))],
             env: { HOME: home },
             stdin: "piped",
             stdout: "piped",
             stderr: "piped",
-        }).spawn();
+        });
         const reader = service.stdout.getReader();
         let line = "";
         while (!line.includes("\n")) {
@@ -43,22 +61,14 @@ Deno.test("remote synchronous settings refresh after a lost acknowledgement and 
         const headers = { Authorization: `Bearer ${connection.credential}` };
         let dropped = 0;
         const writeOnLaptop = async () => {
-            const writer = new Deno.Command(Deno.execPath(), {
-                args: [
-                    "run",
-                    "-A",
-                    "--no-check",
-                    new URL("./settings-service-fixture.ts", import.meta.url).pathname,
-                    "write",
-                ],
+            const result = await captureForegroundProcess(process.execPath, {
+                cwd: getCwd(),
+                args: ["run", ...[], fileURLToPath(new URL("./settings-service-fixture.ts", import.meta.url)), "write"],
                 env: { HOME: home },
-                stdout: "piped",
-                stderr: "piped",
             });
-            const result = await writer.output();
-            if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
+            if (result.code !== 0) throw new Error(new TextDecoder().decode(result.stderr));
         };
-        const proxy = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+        const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
             const path = new URL(request.url).pathname;
             const response = await fetch(`${address}${path}`, {
                 method: request.method,
@@ -75,11 +85,13 @@ Deno.test("remote synchronous settings refresh after a lost acknowledgement and 
         try {
             const identity = { buildId: "b".repeat(64), protocol: 1 };
             assertEquals(
-                (await fetch(`${address}/handshake`, {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify(identity),
-                })).status,
+                (
+                    await fetch(`${address}/handshake`, {
+                        method: "POST",
+                        headers,
+                        body: JSON.stringify(identity),
+                    })
+                ).status,
                 200,
             );
             assertEquals((await fetch(`${address}/readiness`, { method: "POST", headers })).status, 200);
@@ -92,16 +104,16 @@ Deno.test("remote synchronous settings refresh after a lost acknowledgement and 
             assertEquals(manager.getTheme(), "dark");
             assertEquals(manager.getDefaultProvider(), "project-provider");
             // A healthy mount may not have a settings file yet.
-            await Deno.remove(mountedPath);
+            await fsRm(mountedPath);
             assertEquals(getCustomSetting("theme", "global", project), undefined);
             assertEquals(manager.getTheme(), undefined);
-            await Deno.copyFile(laptopPath, mountedPath);
+            await copyFile(laptopPath, mountedPath);
             assertEquals(manager.getTheme(), "dark");
             await setCustomSetting("marker", "remote", "global", project);
             assertEquals(getCustomSetting("marker", "global", project), "remote");
             assertEquals(manager.getTheme(), "dark");
             // The receipt is older than the laptop's independent write; the mount catches up.
-            await Deno.copyFile(laptopPath, mountedPath);
+            await copyFile(laptopPath, mountedPath);
             assertEquals(getCustomSetting("marker", "global", project), "remote");
             assertEquals(readTheme(), "light");
             assertEquals(manager.getTheme(), "light");
@@ -115,36 +127,36 @@ Deno.test("remote synchronous settings refresh after a lost acknowledgement and 
             assertEquals(manager.getDefaultProvider(), "project-provider");
             await setCustomSetting("theme", "project-theme", "project", project);
             assertEquals(manager.getTheme(), "project-theme");
-            await Deno.writeTextFile(mountedPath, JSON.stringify({ theme: "new-laptop-theme" }));
+            await fsWriteFile(mountedPath, JSON.stringify({ theme: "new-laptop-theme" }));
             assertEquals(manager.getTheme(), "project-theme");
             // A vanished mount cannot return the held manager's old personal values.
-            const mountedIdentity = await Deno.stat(mounted);
-            await Deno.rename(mounted, join(home, "detached-mount"));
+            const mountedIdentity = await fsStat(mounted, { bigint: true });
+            await rename(mounted, join(home, "detached-mount"));
             assertThrows(() => manager.getTheme(), PersonalResourcePathError);
             assertThrows(() => getSettingsManager(project), PersonalResourcePathError);
             // SSHFS can detach and leave its sealed local directory behind.
-            await Deno.mkdir(mounted);
-            await Deno.chmod(mounted, 0o500);
-            const detachedIdentity = await Deno.stat(mounted);
+            await fsMkdir(mounted);
+            await fsChmod(mounted, 0o500);
+            const detachedIdentity = await fsStat(mounted, { bigint: true });
             assertEquals(detachedIdentity.dev, mountedIdentity.dev);
             if (detachedIdentity.ino === mountedIdentity.ino) throw new Error("Replacement must have a new inode");
             assertThrows(() => getCustomSetting("theme", "global", project), PersonalResourcePathError);
             assertThrows(() => manager.getTheme(), PersonalResourcePathError);
             assertThrows(() => getSettingsManager(project), PersonalResourcePathError);
-            await Deno.chmod(mounted, 0o700);
-            await Deno.writeTextFile(mountedPath, JSON.stringify({ theme: "remote-account-theme" }));
-            await Deno.chmod(mounted, 0o500);
+            await fsChmod(mounted, 0o700);
+            await fsWriteFile(mountedPath, JSON.stringify({ theme: "remote-account-theme" }));
+            await fsChmod(mounted, 0o500);
             assertThrows(() => getCustomSetting("theme", "global", project), PersonalResourcePathError);
         } finally {
             await proxy.shutdown();
             await service.stdin.close();
             await service.status;
             __resetSettingsForTests();
-            if (previous === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previous);
-            await Deno.chmod(mounted, 0o700).catch(() => {});
-            await Deno.remove(home, { recursive: true });
-            await Deno.remove(project, { recursive: true });
+            if (previous === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previous;
+            await fsChmod(mounted, 0o700).catch(() => {});
+            await fsRm(home, { recursive: true });
+            await fsRm(project, { recursive: true });
         }
     });
 });

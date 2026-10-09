@@ -1,6 +1,20 @@
-import { assertEquals, assertMatch, assertRejects, assertStringIncludes } from "@std/assert";
-import { basename, dirname, join } from "@std/path";
-import { getHomeDir } from "../constants.js";
+import process from "node:process";
+import { readdir } from "node:fs/promises";
+import { captureForegroundProcess } from "./captured-process.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { basename, dirname, join } from "node:path";
 
 import { resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { addEntry, findByPlanId } from "./worktree-registry.js";
@@ -16,54 +30,54 @@ import {
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 
-Deno.test("resolveWorktreeParent keeps overrides and home placement while no-home fallback uses primary internal storage", async () => {
+test("resolveWorktreeParent keeps overrides and home placement while no-home fallback uses primary internal storage", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = getHomeDir();
+        const homeKeys = ["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA"];
+        const previousHome = new Map(homeKeys.map((key) => [key, process.env[key]]));
         const projectRoot = await makeRepo();
-        const linkedParent = await Deno.makeTempDir({ prefix: "runwield-worktree-parent-linked-" });
+        const linkedParent = await fsMkdtemp(join(tmpdir(), "runwield-worktree-parent-linked-"));
         const linkedRoot = join(linkedParent, "linked");
         try {
-            Deno.env.set("HOME", "/Users/alice");
+            process.env.HOME = "/Users/alice";
             assertEquals(
                 resolveWorktreeParent("/Users/alice/Documents/web/runwield", undefined),
-                "/Users/alice/.wld/worktrees/--Users-alice-Documents-web-runwield--",
+                join("/Users/alice", ".wld", "worktrees", "--Users-alice-Documents-web-runwield--"),
             );
             assertEquals(resolveWorktreeParent(projectRoot, "/tmp/worktrees"), "/tmp/worktrees");
 
             await git(projectRoot, ["worktree", "add", "-b", "linked-parent", linkedRoot]);
-            Deno.env.delete("HOME");
-            const expected =
-                resolveProjectRuntimeLayout(await Deno.realPath(projectRoot)).primary.fallbackWorktreesRoot;
+            for (const key of homeKeys) delete process.env[key];
+            const expected = resolveProjectRuntimeLayout(await fsRealpath(projectRoot)).primary.fallbackWorktreesRoot;
             assertEquals(resolveWorktreeParent(projectRoot, undefined), expected);
             assertEquals(resolveWorktreeParent(linkedRoot, undefined), expected);
             assertEquals(expected.endsWith(join(".wld", "internal", "worktrees")), true);
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            await new Deno.Command("git", {
+            for (const [key, value] of previousHome) {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            }
+            await captureForegroundProcess("git", {
                 cwd: projectRoot,
                 args: ["worktree", "remove", "--force", linkedRoot],
-                stdout: "null",
-                stderr: "null",
-            }).output().catch(() => {});
-            await Deno.remove(linkedParent, { recursive: true }).catch(() => {});
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+            }).catch(() => {});
+            await fsRm(linkedParent, { recursive: true }).catch(() => {});
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
         }
     });
 });
 
-Deno.test("resolveCurrentCheckoutBranch returns the primary checkout branch", async () => {
+test("resolveCurrentCheckoutBranch returns the primary checkout branch", async () => {
     const projectRoot = await makeRepo();
     try {
         assertEquals(await resolveCurrentCheckoutBranch(projectRoot), "main");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("createTestWorktreeAttempt creates a unique branch/path and registry entry", async () => {
+test("createTestWorktreeAttempt creates a unique branch/path and registry entry", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     let worktree;
     try {
         worktree = await createTestWorktreeAttempt({
@@ -91,20 +105,20 @@ Deno.test("createTestWorktreeAttempt creates a unique branch/path and registry e
                 force: true,
             });
         }
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("createTestWorktreeAttempt leaves dirty primary checkout unchanged", async () => {
+test("createTestWorktreeAttempt leaves dirty primary checkout unchanged", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     let worktree;
     try {
-        await Deno.writeTextFile(`${projectRoot}/README.md`, "base\nprimary work\n");
-        await Deno.writeTextFile(`${projectRoot}/untracked.txt`, "must stay\n");
-        const readmeBefore = await Deno.readTextFile(`${projectRoot}/README.md`);
-        const untrackedBefore = await Deno.readTextFile(`${projectRoot}/untracked.txt`);
+        await fsWriteFile(`${projectRoot}/README.md`, "base\nprimary work\n");
+        await fsWriteFile(`${projectRoot}/untracked.txt`, "must stay\n");
+        const readmeBefore = await fsReadFile(`${projectRoot}/README.md`, "utf8");
+        const untrackedBefore = await fsReadFile(`${projectRoot}/untracked.txt`, "utf8");
 
         worktree = await createTestWorktreeAttempt({
             projectRoot,
@@ -113,8 +127,8 @@ Deno.test("createTestWorktreeAttempt leaves dirty primary checkout unchanged", a
             worktreeRoot,
         });
 
-        assertEquals(await Deno.readTextFile(`${projectRoot}/README.md`), readmeBefore);
-        assertEquals(await Deno.readTextFile(`${projectRoot}/untracked.txt`), untrackedBefore);
+        assertEquals(await fsReadFile(`${projectRoot}/README.md`, "utf8"), readmeBefore);
+        assertEquals(await fsReadFile(`${projectRoot}/untracked.txt`, "utf8"), untrackedBefore);
         const statusAfter = await git(projectRoot, ["status", "--short"]);
         assertStringIncludes(statusAfter, "M README.md");
         assertStringIncludes(statusAfter, "?? untracked.txt");
@@ -126,14 +140,14 @@ Deno.test("createTestWorktreeAttempt leaves dirty primary checkout unchanged", a
                 force: true,
             });
         }
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("createTestWorktreeAttempt leaves created Git evidence when registry settlement fails", async () => {
+test("createTestWorktreeAttempt leaves created Git evidence when registry settlement fails", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     /** @type {string | undefined} */
     let createdPath;
     /** @type {string | undefined} */
@@ -168,8 +182,8 @@ Deno.test("createTestWorktreeAttempt leaves created Git evidence when registry s
         assertMatch(error.message, /inspect .* on branch worktree\/settled-plan-/);
 
         const created = [];
-        for await (const item of Deno.readDir(worktreeRoot)) {
-            if (item.isDirectory && item.name.includes("settled-plan")) created.push(item.name);
+        for await (const item of await readdir(worktreeRoot, { withFileTypes: true })) {
+            if (item.isDirectory() && item.name.includes("settled-plan")) created.push(item.name);
         }
         assertEquals(created.length, 1);
         createdPath = `${worktreeRoot}/${created[0]}`;
@@ -178,25 +192,25 @@ Deno.test("createTestWorktreeAttempt leaves created Git evidence when registry s
     } finally {
         if (createdPath) await git(projectRoot, ["worktree", "remove", "--force", createdPath]).catch(() => "");
         if (createdBranch) await git(projectRoot, ["branch", "-D", createdBranch]).catch(() => "");
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("createTestWorktreeAttempt initializes submodules", async () => {
+test("createTestWorktreeAttempt initializes submodules", async () => {
     // GIT_ALLOW_PROTOCOL is process-global and affects every concurrent git call.
     await withProcessGlobalTestLock(async () => {
         const projectRoot = await makeRepo();
         const submoduleRoot = await makeRepo();
-        const worktreeRoot = await Deno.makeTempDir();
-        const previousAllowedProtocols = Deno.env.get("GIT_ALLOW_PROTOCOL");
+        const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const previousAllowedProtocols = process.env.GIT_ALLOW_PROTOCOL;
         /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
         let worktree;
         try {
-            await Deno.writeTextFile(`${submoduleRoot}/module.css`, "body { color: red; }\n");
+            await fsWriteFile(`${submoduleRoot}/module.css`, "body { color: red; }\n");
             await git(submoduleRoot, ["add", "."]);
             await git(submoduleRoot, ["commit", "-m", "add module css"]);
-            Deno.env.set("GIT_ALLOW_PROTOCOL", "file");
+            process.env.GIT_ALLOW_PROTOCOL = "file";
             await git(projectRoot, ["submodule", "add", submoduleRoot, "third_party/demo"]);
             await git(projectRoot, ["commit", "-m", "add submodule"]);
 
@@ -208,7 +222,7 @@ Deno.test("createTestWorktreeAttempt initializes submodules", async () => {
             });
 
             assertEquals(
-                await Deno.readTextFile(`${worktree.path}/third_party/demo/module.css`),
+                (await fsReadFile(`${worktree.path}/third_party/demo/module.css`, "utf8")).replaceAll("\r\n", "\n"),
                 "body { color: red; }\n",
             );
             await removeWorktreeGitArtifacts({
@@ -216,13 +230,13 @@ Deno.test("createTestWorktreeAttempt initializes submodules", async () => {
                 path: worktree.path,
                 force: false,
             });
-            await assertRejects(() => Deno.stat(worktree?.path || ""), Deno.errors.NotFound);
+            await assertRejects(() => fsStat(worktree?.path || ""), Error, "ENOENT");
             worktree = undefined;
         } finally {
             if (previousAllowedProtocols === undefined) {
-                Deno.env.delete("GIT_ALLOW_PROTOCOL");
+                delete process.env.GIT_ALLOW_PROTOCOL;
             } else {
-                Deno.env.set("GIT_ALLOW_PROTOCOL", previousAllowedProtocols);
+                process.env.GIT_ALLOW_PROTOCOL = previousAllowedProtocols;
             }
             if (worktree) {
                 await removeWorktreeGitArtifacts({
@@ -231,16 +245,16 @@ Deno.test("createTestWorktreeAttempt initializes submodules", async () => {
                     force: true,
                 }).catch(() => {});
             }
-            await Deno.remove(projectRoot, { recursive: true });
-            await Deno.remove(submoduleRoot, { recursive: true });
-            await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+            await fsRm(projectRoot, { recursive: true });
+            await fsRm(submoduleRoot, { recursive: true });
+            await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
         }
     });
 });
 
-Deno.test("createTestWorktreeAttempt rejects duplicate live legacy plan-name attempts", async () => {
+test("createTestWorktreeAttempt rejects duplicate live legacy plan-name attempts", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.realPath(await Deno.makeTempDir());
+    const worktreeRoot = await fsRealpath(await fsMkdtemp(join(tmpdir(), "portable-fixture-")));
     /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>>[]} */
     const worktrees = [];
     try {
@@ -285,12 +299,12 @@ Deno.test("createTestWorktreeAttempt rejects duplicate live legacy plan-name att
                 force: true,
             }).catch(() => {});
         }
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("prepareTargetBranchRef returns an existing local branch", async () => {
+test("prepareTargetBranchRef returns an existing local branch", async () => {
     const projectRoot = await makeRepo();
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
@@ -301,16 +315,16 @@ Deno.test("prepareTargetBranchRef returns an existing local branch", async () =>
         assertEquals(prepared, { baseRef: "refs/heads/feature-base", baseBranch: "feature-base" });
         assertEquals(await git(projectRoot, ["branch", "--show-current"]), "main");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("prepareTargetBranchRef uses the remote ref without moving a local branch", async () => {
+test("prepareTargetBranchRef uses the remote ref without moving a local branch", async () => {
     const remoteRoot = await makeRepo();
-    const projectRoot = await Deno.makeTempDir();
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await git(remoteRoot, ["checkout", "-b", "feature-base"]);
-        await Deno.writeTextFile(`${remoteRoot}/remote.txt`, "remote\n");
+        await fsWriteFile(`${remoteRoot}/remote.txt`, "remote\n");
         await git(remoteRoot, ["add", "."]);
         await git(remoteRoot, ["commit", "-m", "remote branch"]);
         await git(remoteRoot, ["checkout", "main"]);
@@ -324,18 +338,18 @@ Deno.test("prepareTargetBranchRef uses the remote ref without moving a local bra
         await assertRejects(() => git(projectRoot, ["rev-parse", "refs/heads/feature-base"]));
         assertEquals(await git(projectRoot, ["show", "refs/remotes/origin/feature-base:remote.txt"]), "remote");
     } finally {
-        await Deno.remove(remoteRoot, { recursive: true });
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(remoteRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("prepareTargetBranchRef refreshes a remote target while the local checkout stays stale", async () => {
+test("prepareTargetBranchRef refreshes a remote target while the local checkout stays stale", async () => {
     const remoteRoot = await makeRepo();
-    const projectRoot = await Deno.makeTempDir();
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await git(projectRoot, ["clone", remoteRoot, "."]);
         const localHead = await git(projectRoot, ["rev-parse", "refs/heads/main"]);
-        await Deno.writeTextFile(`${remoteRoot}/new-remote.txt`, "new remote work\n");
+        await fsWriteFile(`${remoteRoot}/new-remote.txt`, "new remote work\n");
         await git(remoteRoot, ["add", "new-remote.txt"]);
         await git(remoteRoot, ["commit", "-m", "advance remote target"]);
         const remoteHead = await git(remoteRoot, ["rev-parse", "refs/heads/main"]);
@@ -346,17 +360,17 @@ Deno.test("prepareTargetBranchRef refreshes a remote target while the local chec
         assertEquals(await git(projectRoot, ["rev-parse", "refs/heads/main"]), localHead);
         assertEquals(await git(projectRoot, ["rev-parse", prepared.baseRef]), remoteHead);
     } finally {
-        await Deno.remove(remoteRoot, { recursive: true });
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(remoteRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("prepareTargetBranchRef accepts explicit origin branch input", async () => {
+test("prepareTargetBranchRef accepts explicit origin branch input", async () => {
     const remoteRoot = await makeRepo();
-    const projectRoot = await Deno.makeTempDir();
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await git(remoteRoot, ["checkout", "-b", "feature-explicit"]);
-        await Deno.writeTextFile(`${remoteRoot}/explicit.txt`, "remote\n");
+        await fsWriteFile(`${remoteRoot}/explicit.txt`, "remote\n");
         await git(remoteRoot, ["add", "."]);
         await git(remoteRoot, ["commit", "-m", "explicit remote branch"]);
         await git(remoteRoot, ["checkout", "main"]);
@@ -368,12 +382,12 @@ Deno.test("prepareTargetBranchRef accepts explicit origin branch input", async (
         assertEquals(prepared, { baseRef: "refs/remotes/origin/feature-explicit", baseBranch: "feature-explicit" });
         assertEquals(await git(projectRoot, ["show", "refs/remotes/origin/feature-explicit:explicit.txt"]), "remote");
     } finally {
-        await Deno.remove(remoteRoot, { recursive: true });
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(remoteRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("prepareTargetBranchRef creates a new target branch from main", async () => {
+test("prepareTargetBranchRef creates a new target branch from main", async () => {
     const projectRoot = await makeRepo();
     try {
         const mainCommit = await git(projectRoot, ["rev-parse", "refs/heads/main"]);
@@ -383,11 +397,11 @@ Deno.test("prepareTargetBranchRef creates a new target branch from main", async 
         assertEquals(prepared, { baseRef: "refs/heads/new-target", baseBranch: "new-target" });
         assertEquals(await git(projectRoot, ["rev-parse", "refs/heads/new-target"]), mainCommit);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("prepareTargetBranchRef rejects invalid and reserved branch names", async () => {
+test("prepareTargetBranchRef rejects invalid and reserved branch names", async () => {
     const projectRoot = await makeRepo();
     try {
         await assertRejects(() => prepareTargetBranchRef(projectRoot, "HEAD"), Error, "not HEAD");
@@ -403,17 +417,17 @@ Deno.test("prepareTargetBranchRef rejects invalid and reserved branch names", as
         );
         await assertRejects(() => prepareTargetBranchRef(projectRoot, "bad branch"), Error, "Invalid target branch");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("createTestWorktreeAttempt records supplied target branch independent of current checkout", async () => {
+test("createTestWorktreeAttempt records supplied target branch independent of current checkout", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     let worktree;
     try {
         await git(projectRoot, ["checkout", "-b", "feature-base"]);
-        await Deno.writeTextFile(`${projectRoot}/feature.txt`, "feature-base\n");
+        await fsWriteFile(`${projectRoot}/feature.txt`, "feature-base\n");
         await git(projectRoot, ["add", "."]);
         await git(projectRoot, ["commit", "-m", "feature base"]);
         await git(projectRoot, ["checkout", "main"]);
@@ -429,7 +443,7 @@ Deno.test("createTestWorktreeAttempt records supplied target branch independent 
 
         assertEquals(worktree.baseBranch, "feature-base");
         assertEquals(worktree.baseRef, "refs/heads/feature-base");
-        assertEquals(await Deno.readTextFile(`${worktree.path}/feature.txt`), "feature-base\n");
+        assertEquals(await fsReadFile(`${worktree.path}/feature.txt`, "utf8"), "feature-base\n");
     } finally {
         if (worktree) {
             await removeWorktreeGitArtifacts({
@@ -438,7 +452,44 @@ Deno.test("createTestWorktreeAttempt records supplied target branch independent 
                 force: true,
             });
         }
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
+    }
+});
+
+test("disposable Git configuration checks out long tracked paths beneath a short worktree root", async () => {
+    const projectRoot = await makeRepo();
+    const parent = await fsMkdtemp(join(tmpdir(), "rwlp-"));
+    let attempt;
+    try {
+        if (process.platform === "win32") {
+            assertEquals((await git(projectRoot, ["config", "--get", "core.longpaths"])).trim(), "true");
+        }
+        // Git's explicit GIT_DIR setup has a separate PATH_MAX - 40 guard even
+        // with core.longpaths enabled. Exercise long tracked files, not an
+        // unsupported oversized repository root; keep ordinary product naming.
+        const relativeFile = join("a".repeat(80), "b".repeat(80), "c".repeat(80), "proof.bin");
+        const sourceFile = join(projectRoot, relativeFile);
+        const contents = "long tracked file from committed primary";
+        await fsMkdir(dirname(sourceFile), { recursive: true });
+        await fsWriteFile(sourceFile, contents);
+        await git(projectRoot, ["add", "--", relativeFile]);
+        await git(projectRoot, ["commit", "-m", "Add nested tracked file"]);
+        attempt = await createTestWorktreeAttempt({ projectRoot, planName: "long-file", worktreeRoot: parent });
+        if (process.platform === "win32") {
+            assertEquals(join(attempt.path, ".git").length <= 220, true, "fixture Git root must remain short");
+        }
+        const checkedOutFile = join(attempt.path, relativeFile);
+        assertEquals(checkedOutFile.length > 260, true);
+        assertEquals(await fsReadFile(checkedOutFile, "utf8"), contents);
+        assertEquals(
+            await fsReadFile(join(attempt.path, "README.md"), "utf8"),
+            await fsReadFile(join(projectRoot, "README.md"), "utf8"),
+        );
+        assertEquals((await git(attempt.path, ["status", "--porcelain"])).trim(), "");
+    } finally {
+        if (attempt) await removeWorktreeGitArtifacts({ projectRoot, path: attempt.path, force: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(parent, { recursive: true });
     }
 });

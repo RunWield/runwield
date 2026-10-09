@@ -1,4 +1,10 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { getCwd } from "../../constants.js";
+import process from "node:process";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { resolveSelectedThemeJson } from "../theme/theme.js";
@@ -6,20 +12,20 @@ import { renderRunWieldThemeCss } from "../design-system/theme-bridge.ts";
 import { createWorkspaceApp } from "./server.js";
 import { GET } from "./pages/theme.css.ts";
 
-Deno.test("production and dev browser themes stay dark when a light TUI theme is selected", async () => {
+test("production and dev browser themes stay dark when a light TUI theme is selected", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const previousSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        const previousCwd = Deno.cwd();
-        const root = await Deno.makeTempDir({ prefix: "workspace-browser-theme-" });
+        const previousHome = process.env["HOME"];
+        const previousSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
+        const previousCwd = getCwd();
+        const root = await fsMkdtemp(join(tmpdir(), "workspace-browser-theme-"));
         const home = `${root}/home`;
         const project = `${root}/project`;
         const themePackage = `${root}/theme-package`;
         try {
-            await Deno.mkdir(`${home}/.wld`, { recursive: true });
-            await Deno.mkdir(project);
-            await Deno.mkdir(`${themePackage}/themes`, { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(`${home}/.wld`, { recursive: true });
+            await fsMkdir(project);
+            await fsMkdir(`${themePackage}/themes`, { recursive: true });
+            await fsWriteFile(
                 `${themePackage}/package.json`,
                 JSON.stringify({
                     name: "workspace-test-light-theme",
@@ -27,7 +33,7 @@ Deno.test("production and dev browser themes stay dark when a light TUI theme is
                     pi: { themes: ["themes/*.json"] },
                 }),
             );
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 `${themePackage}/themes/light.json`,
                 JSON.stringify({
                     name: "test-light-terminal",
@@ -35,16 +41,16 @@ Deno.test("production and dev browser themes stay dark when a light TUI theme is
                     export: { pageBg: "#ffffff", cardBg: "#eeeeee" },
                 }),
             );
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 `${home}/.wld/settings.json`,
                 JSON.stringify({
                     theme: "test-light-terminal",
                     packages: [themePackage],
                 }),
             );
-            Deno.env.set("HOME", home);
-            Deno.env.set("WLD_TEST_SANDBOX_HOME", home);
-            Deno.chdir(project);
+            process.env["HOME"] = home;
+            process.env["WLD_TEST_SANDBOX_HOME"] = home;
+            process.chdir(project);
             const terminalTheme = await resolveSelectedThemeJson();
             assertEquals(terminalTheme.name, "test-light-terminal");
             assertEquals(terminalTheme.export?.pageBg, "#ffffff");
@@ -68,12 +74,12 @@ Deno.test("production and dev browser themes stay dark when a light TUI theme is
             }
             assertEquals((await resolveSelectedThemeJson()).name, "test-light-terminal");
         } finally {
-            Deno.chdir(previousCwd);
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", previousSandboxHome);
-            await Deno.remove(root, { recursive: true });
+            process.chdir(previousCwd);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            if (previousSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = previousSandboxHome;
+            await fsRm(root, { recursive: true });
         }
     });
 });

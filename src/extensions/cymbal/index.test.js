@@ -1,4 +1,6 @@
-import { assert, assertArrayIncludes, assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertArrayIncludes, assertStringIncludes } from "../../testing/assertions.ts";
 import cymbalExtension from "./index.ts";
 
 /**
@@ -67,7 +69,7 @@ function firstText(result) {
     return first.text ?? "";
 }
 
-Deno.test("cymbal extension registers all tools", () => {
+test("cymbal extension registers all tools", () => {
     const { tools } = setup(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
 
     const names = tools.map((tool) => tool.name);
@@ -93,7 +95,7 @@ Deno.test("cymbal extension registers all tools", () => {
     }
 });
 
-Deno.test("code_search tool executes correctly", async () => {
+test("code_search tool executes correctly", async () => {
     const { getTool, calls } = setup(() => Promise.resolve({ code: 0, stdout: "search result", stderr: "" }));
     const tool = getTool("code_search");
 
@@ -108,7 +110,7 @@ Deno.test("code_search tool executes correctly", async () => {
     assertEquals(call?.args, ["--no-federate", "search", "AuthHandler"]);
 });
 
-Deno.test("cymbal tools disable sibling worktree federation", async () => {
+test("cymbal tools disable sibling worktree federation", async () => {
     const { getTool } = setup((_command, args) => {
         if (args[0] !== "--no-federate") {
             return Promise.resolve({
@@ -127,7 +129,7 @@ Deno.test("cymbal tools disable sibling worktree federation", async () => {
     );
 });
 
-Deno.test("cymbal tools map public params to cymbal commands", async () => {
+test("cymbal tools map public params to cymbal commands", async () => {
     const { getTool, calls, getHandler } = setup((_command, args) => {
         return Promise.resolve({ code: 0, stdout: `${args.join(" ")} output`, stderr: "" });
     });
@@ -163,7 +165,7 @@ Deno.test("cymbal tools map public params to cymbal commands", async () => {
     );
 });
 
-Deno.test("code_batch runs show and outline operations in order", async () => {
+test("code_batch runs show and outline operations in order", async () => {
     const { getTool, calls, getHandler } = setup((_command, args) => {
         return Promise.resolve({ code: 0, stdout: `${args.join(" ")} output`, stderr: "" });
     });
@@ -201,7 +203,7 @@ Deno.test("code_batch runs show and outline operations in order", async () => {
     );
 });
 
-Deno.test("code_batch isolates per-operation errors and normalizes empty output", async () => {
+test("code_batch isolates per-operation errors and normalizes empty output", async () => {
     const { getTool } = setup((_command, args) => {
         if (args[1] === "show") {
             return Promise.resolve({ code: 2, stdout: "", stderr: "bad target\nUsage: cymbal show" });
@@ -232,7 +234,7 @@ Deno.test("code_batch isolates per-operation errors and normalizes empty output"
     assertStringIncludes(text, "No results found.");
 });
 
-Deno.test("code_batch validates operation count", async () => {
+test("code_batch validates operation count", async () => {
     const { getTool, calls } = setup(() => Promise.resolve({ code: 0, stdout: "unused", stderr: "" }));
 
     const result = await executeTool(getTool("code_batch"), {
@@ -251,7 +253,7 @@ Deno.test("code_batch validates operation count", async () => {
     assertEquals(calls.length, 0);
 });
 
-Deno.test("code_batch truncates large combined output", async () => {
+test("code_batch truncates large combined output", async () => {
     const { getTool } = setup(() => Promise.resolve({ code: 0, stdout: "x".repeat(60_000), stderr: "" }));
 
     const result = await executeTool(getTool("code_batch"), {
@@ -268,7 +270,7 @@ Deno.test("code_batch truncates large combined output", async () => {
     assertStringIncludes(text, "[Result truncated.");
 });
 
-Deno.test("cymbal tools normalize empty, non-zero, and thrown command results", async () => {
+test("cymbal tools normalize empty, non-zero, and thrown command results", async () => {
     const emptySetup = setup(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
     assertEquals(firstText(await executeTool(emptySetup.getTool("code_structure"), {})), "No results found.");
 
@@ -293,7 +295,7 @@ Deno.test("cymbal tools normalize empty, non-zero, and thrown command results", 
     );
 });
 
-Deno.test("cymbal result hook forwards failed calls to Pi and consumes the status once", async () => {
+test("cymbal result hook forwards failed calls to Pi and consumes the status once", async () => {
     const { getTool, getHandler } = setup(() => ({ code: 1, stdout: "", stderr: "missing symbol" }));
     const result = await executeTool(getTool("code_show"), { target: "Missing" });
     assertEquals(result.isError, true);
@@ -311,7 +313,7 @@ Deno.test("cymbal result hook forwards failed calls to Pi and consumes the statu
     assertEquals(await handler(event, {}), undefined);
 });
 
-Deno.test("cymbal result hook distinguishes total batch failure from partial success", async () => {
+test("cymbal result hook distinguishes total batch failure from partial success", async () => {
     for (const partial of [false, true]) {
         const { getTool, getHandler } = setup(() => ({
             code: 0,
@@ -336,7 +338,7 @@ Deno.test("cymbal result hook distinguishes total batch failure from partial suc
     }
 });
 
-Deno.test("cymbal nudge correctly intercepts bash and grep", async () => {
+test("cymbal nudge correctly intercepts bash and grep", async () => {
     const { getHandler, calls } = setup((_command, args) => {
         if (args.includes("nudge")) {
             return Promise.resolve({ code: 0, stdout: "", stderr: "Consider using cymbal search instead" });
@@ -370,7 +372,7 @@ Deno.test("cymbal nudge correctly intercepts bash and grep", async () => {
     assertStringIncludes(result.content[1].text, "Consider using cymbal search instead");
 });
 
-Deno.test("cymbal nudge handles bash commands, array paths, and ignored events", async () => {
+test("cymbal nudge handles bash commands, array paths, and ignored events", async () => {
     const { getHandler, calls } = setup((_command, args) => {
         if (args.includes("no-output")) {
             return Promise.resolve({ code: 0, stdout: "", stderr: "" });

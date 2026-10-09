@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "./captured-process.ts";
+import { isMissingExecutableError } from "./foreground-process.ts";
 /**
  * @module shared/git
  * Shared Git repository detection and non-Git execution consent helpers.
@@ -47,13 +49,10 @@ function decodeBytes(value: Uint8Array): string {
 
 export async function probeGitRepository(cwd: string): Promise<GitRepositoryProbe> {
     try {
-        const command = new Deno.Command("git", {
+        const output = await captureForegroundProcess("git", {
             args: ["rev-parse", "--is-inside-work-tree", "--is-bare-repository"],
             cwd,
-            stdout: "piped",
-            stderr: "piped",
         });
-        const output = await command.output();
         const stdout = decodeBytes(output.stdout);
         const stderr = decodeBytes(output.stderr);
         if (output.code !== 0) {
@@ -75,7 +74,7 @@ export async function probeGitRepository(cwd: string): Promise<GitRepositoryProb
             message: "RunWield requires a non-bare Git work tree for this operation.",
         };
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
+        if (error instanceof Error && isMissingExecutableError(error)) {
             return { state: "git_missing", ok: false, cwd, message: "The git executable was not found." };
         }
         return {
@@ -93,8 +92,7 @@ export async function isGitRepository(cwd: string): Promise<boolean> {
 
 async function readGitOutput(cwd: string, args: string[]): Promise<string | null> {
     try {
-        const command = new Deno.Command("git", { args, cwd, stdout: "piped", stderr: "piped" });
-        const output = await command.output();
+        const output = await captureForegroundProcess("git", { args, cwd });
         if (output.code !== 0) return null;
         return decodeBytes(output.stdout);
     } catch {

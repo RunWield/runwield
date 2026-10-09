@@ -1,8 +1,15 @@
+import { delimiter } from "node:path";
+import process from "node:process";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { getCwd, getHomeDir } from "../../constants.js";
+import { mkdir as fsMkdir, realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { env } from "node:process";
 import { fauxAssistantMessage, type FauxResponseFactory, fauxText, type Provider } from "@earendil-works/pi-ai";
 import { createProvider } from "@earendil-works/pi-ai";
 import type { AuthInteraction, OAuthCredential } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { __resetSettingsForTests, ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY } from "../../shared/settings.js";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -187,13 +194,14 @@ export async function withRuntimeCommandFixture<T>(
     ];
     return await withProcessGlobalTestLock(async () => {
         await unregisterScriptedOAuthProviders();
-        const previousHome = Deno.env.get("HOME");
-        const previousSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        const previousMnemotecaDbPath = Deno.env.get("MNEMOTECA_DB_PATH");
-        const previousPath = Deno.env.get("PATH");
-        const previousCwd = Deno.cwd();
-        const previousExitCode = Deno.exitCode;
-        const fixtureRoot = await Deno.makeTempDir({ prefix });
+        const hadHome = Object.hasOwn(env, "HOME");
+        const previousHome = getHomeDir();
+        const previousSandboxHome = env.WLD_TEST_SANDBOX_HOME;
+        const previousMnemotecaDbPath = env.MNEMOTECA_DB_PATH;
+        const previousPath = env.PATH;
+        const previousCwd = getCwd();
+        const previousExitCode = process.exitCode;
+        const fixtureRoot = await mkdtemp(join(tmpdir(), process.platform === "win32" ? "cmd-" : prefix));
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
         const alternateRoot = join(fixtureRoot, "alternate-project");
@@ -201,12 +209,12 @@ export async function withRuntimeCommandFixture<T>(
         const settingsPath = join(runwieldDir, "settings.json");
         const fixtureBinDir = await writeWorkflowBinaryFixtures(fixtureRoot);
         await Promise.all([
-            Deno.mkdir(runwieldDir, { recursive: true }),
-            Deno.mkdir(projectRoot, { recursive: true }),
-            Deno.mkdir(alternateRoot, { recursive: true }),
+            fsMkdir(runwieldDir, { recursive: true }),
+            fsMkdir(projectRoot, { recursive: true }),
+            fsMkdir(alternateRoot, { recursive: true }),
         ]);
         if (providerState !== "none") {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(runwieldDir, "models.json"),
                 JSON.stringify({
                     providers: {
@@ -229,18 +237,18 @@ export async function withRuntimeCommandFixture<T>(
                 }),
             );
         } else {
-            await Deno.writeTextFile(join(runwieldDir, "models.json"), JSON.stringify({ providers: {} }));
+            await fsWriteFile(join(runwieldDir, "models.json"), JSON.stringify({ providers: {} }));
         }
         if (providerState === "none") {
-            await Deno.writeTextFile(join(runwieldDir, "auth.json"), JSON.stringify({}));
+            await fsWriteFile(join(runwieldDir, "auth.json"), JSON.stringify({}));
         } else {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(runwieldDir, "auth.json"),
                 JSON.stringify({ [TEST_PROVIDER]: { type: "api_key", key: "fixture-key" } }),
             );
         }
         if (providerState === "default") {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 settingsPath,
                 JSON.stringify({
                     defaultProvider: TEST_PROVIDER,
@@ -250,7 +258,7 @@ export async function withRuntimeCommandFixture<T>(
                 }),
             );
         } else {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 settingsPath,
                 JSON.stringify({
                     notifications: { enabled: false },
@@ -258,8 +266,8 @@ export async function withRuntimeCommandFixture<T>(
                 }),
             );
         }
-        const canonicalProjectRoot = await Deno.realPath(projectRoot);
-        const canonicalAlternateRoot = await Deno.realPath(alternateRoot);
+        const canonicalProjectRoot = await fsRealpath(projectRoot);
+        const canonicalAlternateRoot = await fsRealpath(alternateRoot);
         const fauxProvider = registerFauxProvider({
             api: TEST_API,
             provider: TEST_PROVIDER,
@@ -269,12 +277,12 @@ export async function withRuntimeCommandFixture<T>(
         });
 
         try {
-            Deno.env.set("HOME", homeDir);
-            Deno.env.set("WLD_TEST_SANDBOX_HOME", homeDir);
-            Deno.env.set("MNEMOTECA_DB_PATH", join(fixtureRoot, "mnemoteca.db"));
-            Deno.env.set("PATH", `${fixtureBinDir}:${previousPath || ""}`);
-            Deno.chdir(canonicalAlternateRoot);
-            Deno.exitCode = 0;
+            env.HOME = homeDir;
+            env.WLD_TEST_SANDBOX_HOME = homeDir;
+            env.MNEMOTECA_DB_PATH = join(fixtureRoot, "mnemoteca.db");
+            env.PATH = `${fixtureBinDir}${delimiter}${previousPath || ""}`;
+            process.chdir(canonicalAlternateRoot);
+            process.exitCode = 0;
             __resetSettingsForTests();
             initRunWieldTheme();
             return await run({
@@ -300,20 +308,20 @@ export async function withRuntimeCommandFixture<T>(
             fauxProvider.unregister?.();
             initRunWieldTheme();
             __resetSettingsForTests();
-            Deno.chdir(previousCwd);
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", previousSandboxHome);
-            if (previousMnemotecaDbPath === undefined) Deno.env.delete("MNEMOTECA_DB_PATH");
-            else Deno.env.set("MNEMOTECA_DB_PATH", previousMnemotecaDbPath);
-            if (previousPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", previousPath);
-            Deno.exitCode = previousExitCode;
+            process.chdir(previousCwd);
+            if (!hadHome) delete env.HOME;
+            else env.HOME = previousHome;
+            if (previousSandboxHome === undefined) delete env.WLD_TEST_SANDBOX_HOME;
+            else env.WLD_TEST_SANDBOX_HOME = previousSandboxHome;
+            if (previousMnemotecaDbPath === undefined) delete env.MNEMOTECA_DB_PATH;
+            else env.MNEMOTECA_DB_PATH = previousMnemotecaDbPath;
+            if (previousPath === undefined) delete env.PATH;
+            else env.PATH = previousPath;
+            process.exitCode = previousExitCode;
             try {
                 await assertWorkflowBinaryCallsSupported(fixtureRoot);
             } finally {
-                await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+                await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
             }
         }
     });

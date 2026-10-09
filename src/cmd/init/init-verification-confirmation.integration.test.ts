@@ -1,6 +1,11 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { test } from "node:test";
+import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getCwdInitState } from "./init-state.ts";
@@ -32,7 +37,7 @@ function createUi(): InitUi {
 }
 
 async function readJsonFile(path: string) {
-    return JSON.parse(await Deno.readTextFile(path)) as { verification_command?: string; codereview?: string };
+    return JSON.parse(await fsReadFile(path, "utf8")) as { verification_command?: string; codereview?: string };
 }
 
 function choose(value: string): RuntimeInteractionResponse {
@@ -43,18 +48,15 @@ function text(value: string): RuntimeInteractionResponse {
     return { outcome: "text", value };
 }
 
-Deno.test("init confirms and saves verification through the real interaction flow", async () => {
+test("init confirms and saves verification through the real interaction flow", async () => {
     await withRuntimeCommandFixture(
         "init-verification-confirm-",
         async ({ projectRoot, settingsPath, setModelMessages }) => {
-            await Deno.writeTextFile(
-                join(projectRoot, "deno.json"),
-                JSON.stringify({ tasks: { ci: "deno task test" } }),
-            );
-            await Deno.mkdir(join(projectRoot, ".wld"));
-            await Deno.writeTextFile(join(projectRoot, ".wld", "settings.json"), '{ "codereview": "ask" }\n');
-            const originalGlobalSettings = await Deno.readTextFile(settingsPath);
-            Deno.chdir(projectRoot);
+            await fsWriteFile(join(projectRoot, "deno.json"), JSON.stringify({ tasks: { ci: "deno task test" } }));
+            await fsMkdir(join(projectRoot, ".wld"));
+            await fsWriteFile(join(projectRoot, ".wld", "settings.json"), '{ "codereview": "ask" }\n');
+            const originalGlobalSettings = await fsReadFile(settingsPath, "utf8");
+            process.chdir(projectRoot);
             setModelMessages([
                 fauxAssistantMessage(fauxToolCall("user_interview", {
                     question: {
@@ -105,7 +107,7 @@ Deno.test("init confirms and saves verification through the real interaction flo
                     codereview: "ask",
                     verification_command: "deno task ci",
                 });
-                assertEquals(await Deno.readTextFile(settingsPath), originalGlobalSettings);
+                assertEquals(await fsReadFile(settingsPath, "utf8"), originalGlobalSettings);
                 assertEquals((await getCwdInitState())?.initDone, true);
                 assertEquals(ui.messages, [{
                     message: "✅ Init complete. docs/domain-language.md has been written.",
@@ -118,15 +120,12 @@ Deno.test("init confirms and saves verification through the real interaction flo
     );
 });
 
-Deno.test("init saves an Other verification command after user free text", async () => {
+test("init saves an Other verification command after user free text", async () => {
     await withRuntimeCommandFixture(
         "init-verification-other-",
         async ({ projectRoot, setModelMessages }) => {
-            await Deno.writeTextFile(
-                join(projectRoot, "package.json"),
-                JSON.stringify({ scripts: { test: "vitest" } }),
-            );
-            Deno.chdir(projectRoot);
+            await fsWriteFile(join(projectRoot, "package.json"), JSON.stringify({ scripts: { test: "vitest" } }));
+            process.chdir(projectRoot);
             setModelMessages([
                 fauxAssistantMessage(fauxToolCall("user_interview", {
                     question: {
@@ -175,12 +174,12 @@ Deno.test("init saves an Other verification command after user free text", async
     );
 });
 
-Deno.test("init cancellation leaves verification unset and init incomplete", async () => {
+test("init cancellation leaves verification unset and init incomplete", async () => {
     await withRuntimeCommandFixture(
         "init-verification-cancel-",
         async ({ projectRoot, setModelMessages }) => {
-            await Deno.writeTextFile(join(projectRoot, "README.md"), "# fixture\n");
-            Deno.chdir(projectRoot);
+            await fsWriteFile(join(projectRoot, "README.md"), "# fixture\n");
+            process.chdir(projectRoot);
             setModelMessages([
                 fauxAssistantMessage(fauxToolCall("user_interview", {
                     question: {
@@ -217,8 +216,9 @@ Deno.test("init cancellation leaves verification unset and init incomplete", asy
                 });
 
                 await assertRejects(
-                    () => Deno.stat(join(projectRoot, ".wld", "settings.json")),
-                    Deno.errors.NotFound,
+                    () => fsStat(join(projectRoot, ".wld", "settings.json")),
+                    Error,
+                    "ENOENT",
                 );
                 assertEquals((await getCwdInitState())?.initDone, false);
                 assertStringIncludes(ui.messages[0].message, "without saving a confirmed verification command");
@@ -231,17 +231,15 @@ Deno.test("init cancellation leaves verification unset and init incomplete", asy
 });
 
 for (const outcome of ["no", "canceled", "unsupported"] as const) {
-    Deno.test(`init file consent ${outcome} leaves a fresh project untouched and explains how to retry`, async () => {
+    test(`init file consent ${outcome} leaves a fresh project untouched and explains how to retry`, async () => {
         await withRuntimeCommandFixture("init-file-consent-", async ({ projectRoot, setModelResponseFactories }) => {
-            const initialized = await new Deno.Command("git", {
+            const initialized = await captureForegroundProcess("git", {
                 cwd: projectRoot,
                 args: ["init", "-b", "main"],
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+            });
             assert(initialized.success);
-            await Deno.writeTextFile(join(projectRoot, "README.md"), "Existing project\n");
-            Deno.chdir(projectRoot);
+            await fsWriteFile(join(projectRoot, "README.md"), "Existing project\n");
+            process.chdir(projectRoot);
             let modelCalls = 0;
             setModelResponseFactories([() => {
                 modelCalls++;
@@ -272,13 +270,13 @@ for (const outcome of ["no", "canceled", "unsupported"] as const) {
                 assertEquals(requests.length, 1);
                 for (const path of [".wld/settings.json", "docs/domain-language.md", ".gitignore"]) {
                     assertStringIncludes(requests[0].prompt, path);
-                    await assertRejects(() => Deno.stat(join(projectRoot, path)), Deno.errors.NotFound);
+                    await assertRejects(() => fsStat(join(projectRoot, path)), Error, "ENOENT");
                 }
                 assertEquals(modelCalls, 0);
                 assertEquals(await getCwdInitState(projectRoot), undefined);
                 assertStringIncludes(ui.messages[0].message, "Init cannot proceed");
                 assertStringIncludes(ui.messages[0].message, "Run /init if you change your mind");
-                assertEquals(await Deno.readTextFile(join(projectRoot, "README.md")), "Existing project\n");
+                assertEquals(await fsReadFile(join(projectRoot, "README.md"), "utf8"), "Existing project\n");
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
             }

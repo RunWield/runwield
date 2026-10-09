@@ -1,3 +1,6 @@
+import { captureForegroundProcess } from "./captured-process.ts";
+import { getCwd } from "../constants.js";
+import process from "node:process";
 /** External capability for asking the operating system to open a URL. */
 export interface BrowserPort {
     open(url: string): Promise<boolean>;
@@ -5,19 +8,14 @@ export interface BrowserPort {
 
 export const SYSTEM_BROWSER_PORT: BrowserPort = {
     async open(url: string): Promise<boolean> {
-        const launcher = Deno.build.os === "darwin"
+        const launcher = process.platform === "darwin"
             ? { command: "open", args: [url] }
-            : Deno.build.os === "windows"
+            : process.platform === "win32"
             ? { command: "cmd", args: ["/c", "start", "", url] }
             : { command: "xdg-open", args: [url] };
 
         try {
-            const process = new Deno.Command(launcher.command, {
-                args: launcher.args,
-                stdout: "null",
-                stderr: "null",
-            }).spawn();
-            await process.status.catch(() => {});
+            await captureForegroundProcess(launcher.command, { args: launcher.args, cwd: getCwd() });
             return true;
         } catch {
             return false;

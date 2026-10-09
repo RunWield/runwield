@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module shared/workflow/validation-supervisor
  * The sole production owner for planned-change validation and resume.
@@ -22,6 +23,7 @@ import { logValidationFailure, ValidationStateError } from "./validation-state-e
 import type { WorkflowValidationResult } from "./validation-types.ts";
 import { validationUserMessage } from "./validation-user-messages.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";
+import { getCurrentValidationProgress } from "./validation-progress.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { claimReviewFixes, renderOpenItems } from "./review-ledger.ts";
@@ -119,7 +121,7 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
             status: plan.attrs.status,
             phase: compatible ? prior.nextPhase : phase,
             state: "running",
-            ownerPid: Deno.pid,
+            ownerPid: process.pid,
             ownerHostname: getLockHostname(),
             repairGeneration: compatible ? prior.repairGeneration : undefined,
             repairKind: compatible ? prior.repairKind : undefined,
@@ -188,6 +190,17 @@ async function settleValidation(
                 plan.attrs,
                 { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
             );
+            const progress = getCurrentValidationProgress(args.hostedSession);
+            const active = args.hostedSession.getActiveExecutionWorkflow();
+            const triageMeta = { ...plan.attrs, validationCheckpoint };
+            if (active) args.hostedSession.setActiveExecutionWorkflow({ ...active, triageMeta });
+            args.hostedSession.setWorkflowExecutionContext?.({ planName: args.planName, triageMeta });
+            if (progress) {
+                args.hostedSession.replaceWorkflowContext?.({
+                    ...args.hostedSession.getWorkflowContext(),
+                    validationProgress: progress,
+                }, { persist: true });
+            }
             return;
         } catch (error) {
             if (
@@ -306,7 +319,7 @@ function operationalFailureResult(
         ? "The Plan file could not be found. Restore it, then load the Plan to continue."
         : error instanceof ValidationStateError && error.code === "unknown_plan_status"
         ? "The saved Plan needs attention before validation can continue. Open the Plan and check its status."
-        : error instanceof Deno.errors.PermissionDenied
+        : error.name === "PermissionDenied" || ("code" in error && (error.code === "EACCES" || error.code === "EPERM"))
         ? "Validation could not access the project files. Check folder permissions, then retry."
         : "Validation paused before it could finish. Your changes are safe. Load this Plan to retry from the saved step.";
     return {

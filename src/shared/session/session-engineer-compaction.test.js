@@ -1,5 +1,7 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
 import { createAssistantMessageEventStream, fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { estimateTokens, SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -21,11 +23,11 @@ function seedConversation(manager, tokens) {
     manager.appendMessage({ role: "user", content: "Recent task", timestamp: Date.now() });
 }
 
-Deno.test("Engineer retry below 120K does not compact accumulated Agent instructions", async () => {
+test("Engineer retry below 120K does not compact accumulated Agent instructions", async () => {
     await withRuntimeCommandFixture("engineer-context-count-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.compaction = { enabled: true, reserveTokens: 16_384, keepRecentTokens: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         const manager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
         for (const role of ["Router", "Operator", "Engineer"]) {
             manager.appendMessage({ role: "system", content: role.repeat(40_000), timestamp: Date.now() });
@@ -63,11 +65,11 @@ Deno.test("Engineer retry below 120K does not compact accumulated Agent instruct
     }, { contextWindow: 272_000 });
 });
 
-Deno.test("successful Engineer compaction without queued messages does not immediately repeat", async () => {
+test("successful Engineer compaction without queued messages does not immediately repeat", async () => {
     await withRuntimeCommandFixture("engineer-compaction-reset-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.compaction = { enabled: true, reserveTokens: 16_384, keepRecentTokens: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         const manager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
         seedConversation(manager, 120_100);
         fixture.setModelResponse("Summary");
@@ -107,11 +109,11 @@ Deno.test("successful Engineer compaction without queued messages does not immed
     }, { contextWindow: 272_000 });
 });
 
-Deno.test("Engineer includes the incoming prompt in the 120K threshold", async () => {
+test("Engineer includes the incoming prompt in the 120K threshold", async () => {
     await withRuntimeCommandFixture("engineer-incoming-context-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.compaction = { enabled: true, reserveTokens: 16_384, keepRecentTokens: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         const manager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
         seedConversation(manager, 61_121);
         fixture.setModelResponse("Summary and answer");
@@ -138,11 +140,11 @@ Deno.test("Engineer includes the incoming prompt in the 120K threshold", async (
     }, { contextWindow: 272_000 });
 });
 
-Deno.test("Engineer can resume while context usage is unknown after compaction", async () => {
+test("Engineer can resume while context usage is unknown after compaction", async () => {
     await withRuntimeCommandFixture("engineer-unknown-context-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.compaction = { enabled: true, reserveTokens: 16_384, keepRecentTokens: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         const manager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
         seedConversation(manager, 61_121);
         fixture.setModelResponse("Summary and answer");

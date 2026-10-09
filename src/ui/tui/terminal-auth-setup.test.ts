@@ -1,5 +1,23 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join, resolve } from "@std/path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import { getCwd } from "../../constants.js";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import {
     registerScriptedOAuthProvider,
@@ -32,10 +50,10 @@ const decoder = new TextDecoder();
 
 async function pathExists(path: string): Promise<boolean> {
     try {
-        await Deno.stat(path);
+        await fsStat(path);
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
         throw error;
     }
 }
@@ -100,11 +118,11 @@ async function assertNoRunWieldSessionState(homeDir: string): Promise<void> {
     assertEquals(await pathExists(join(homeDir, ".wld", "projects")), false);
 }
 
-Deno.test("terminal auth setup saves an API key, default model, cleanup, and then permits a real ACP Session", async () => {
+test("terminal auth setup saves an API key, default model, cleanup, and then permits a real ACP Session", async () => {
     await withRuntimeCommandFixture("terminal-auth-api-key-", async ({ alternateRoot, homeDir }) => {
         const registry = getModelRegistry();
         await registry.logoutProvider("runtime-command-fixture");
-        const settings = getSettingsManager(Deno.cwd());
+        const settings = getSettingsManager(getCwd());
         await settings.setDefaultModel("");
         await settings.setDefaultProvider("");
         const terminal = installVirtualTui();
@@ -132,7 +150,7 @@ Deno.test("terminal auth setup saves an API key, default model, cleanup, and the
     }, { providerState: "provider-no-model" });
 });
 
-Deno.test("terminal auth setup saves scripted OAuth credentials and a default model", async () => {
+test("terminal auth setup saves scripted OAuth credentials and a default model", async () => {
     await withRuntimeCommandFixture("terminal-auth-oauth-", async ({ homeDir }) => {
         const provider = await registerScriptedOAuthProvider();
         provider.setOutcome({ kind: "success" });
@@ -149,8 +167,8 @@ Deno.test("terminal auth setup saves scripted OAuth credentials and a default mo
 
             assertEquals(result.status, "ready");
             assertEquals(await getModelRegistry().getStoredCredentialType(SCRIPTED_OAUTH_PROVIDER_ID), "oauth");
-            assertEquals(getSettingsManager(Deno.cwd()).getDefaultProvider(), SCRIPTED_OAUTH_PROVIDER_ID);
-            assertEquals(getSettingsManager(Deno.cwd()).getDefaultModel(), SCRIPTED_OAUTH_MODEL);
+            assertEquals(getSettingsManager(getCwd()).getDefaultProvider(), SCRIPTED_OAUTH_PROVIDER_ID);
+            assertEquals(getSettingsManager(getCwd()).getDefaultModel(), SCRIPTED_OAUTH_MODEL);
             await assertNoRunWieldSessionState(homeDir);
         } finally {
             await provider.unregister();
@@ -159,7 +177,7 @@ Deno.test("terminal auth setup saves scripted OAuth credentials and a default mo
     }, { providerState: "none" });
 });
 
-Deno.test("terminal auth setup can choose Claude CLI without provider credentials", async () => {
+test("terminal auth setup can choose Claude CLI without provider credentials", async () => {
     await withRuntimeCommandFixture("terminal-auth-claude-cli-", async ({ homeDir }) => {
         const terminal = installVirtualTui();
         try {
@@ -171,8 +189,8 @@ Deno.test("terminal auth setup can choose Claude CLI without provider credential
             const result = await setup;
 
             assertEquals(result.status, "ready");
-            assertEquals(getSettingsManager(Deno.cwd()).getDefaultProvider(), "claude-cli");
-            assertEquals(getSettingsManager(Deno.cwd()).getDefaultModel(), "sonnet");
+            assertEquals(getSettingsManager(getCwd()).getDefaultProvider(), "claude-cli");
+            assertEquals(getSettingsManager(getCwd()).getDefaultModel(), "sonnet");
             await assertNoRunWieldSessionState(homeDir);
         } finally {
             stopTUI();
@@ -180,7 +198,7 @@ Deno.test("terminal auth setup can choose Claude CLI without provider credential
     }, { providerState: "none" });
 });
 
-Deno.test("terminal auth setup can choose Antigravity CLI without provider credentials", async () => {
+test("terminal auth setup can choose Antigravity CLI without provider credentials", async () => {
     await withRuntimeCommandFixture("terminal-auth-agy-cli-", async ({ homeDir }) => {
         const terminal = installVirtualTui();
         try {
@@ -195,9 +213,9 @@ Deno.test("terminal auth setup can choose Antigravity CLI without provider crede
             const result = await setup;
 
             assertEquals(result.status, "ready");
-            assertEquals(getSettingsManager(Deno.cwd()).getDefaultProvider(), "agy-cli");
+            assertEquals(getSettingsManager(getCwd()).getDefaultProvider(), "agy-cli");
             assert(
-                ["gemini-3.8-flash", "gemini-3.1-pro"].includes(getSettingsManager(Deno.cwd()).getDefaultModel() || ""),
+                ["gemini-3.8-flash", "gemini-3.1-pro"].includes(getSettingsManager(getCwd()).getDefaultModel() || ""),
             );
             assertEquals(await pathExists(join(homeDir, ".gemini")), false);
             await assertNoRunWieldSessionState(homeDir);
@@ -207,11 +225,11 @@ Deno.test("terminal auth setup can choose Antigravity CLI without provider crede
     }, { providerState: "none" });
 });
 
-Deno.test("terminal auth setup exits nonzero state when model selection is canceled after login", async () => {
+test("terminal auth setup exits nonzero state when model selection is canceled after login", async () => {
     await withRuntimeCommandFixture("terminal-auth-cancel-model-", async () => {
         const registry = getModelRegistry();
         await registry.logoutProvider("runtime-command-fixture");
-        const settings = getSettingsManager(Deno.cwd());
+        const settings = getSettingsManager(getCwd());
         await settings.setDefaultModelAndProvider("claude-cli", "sonnet");
         const terminal = installVirtualTui();
         try {
@@ -234,7 +252,7 @@ Deno.test("terminal auth setup exits nonzero state when model selection is cance
     }, { providerState: "provider-no-model" });
 });
 
-Deno.test("terminal auth setup cancels at the shared setup choice", async () => {
+test("terminal auth setup cancels at the shared setup choice", async () => {
     await withRuntimeCommandFixture("terminal-auth-auth-type-cancel-", async () => {
         const terminal = installVirtualTui();
         const setup = runTerminalAuthSetup([]);
@@ -244,7 +262,7 @@ Deno.test("terminal auth setup cancels at the shared setup choice", async () => 
     }, { providerState: "none" });
 });
 
-Deno.test("terminal auth setup cancellations and failures do not report ready or store invalid credentials", async () => {
+test("terminal auth setup cancellations and failures do not report ready or store invalid credentials", async () => {
     await withRuntimeCommandFixture("terminal-auth-failures-", async () => {
         const registry = getModelRegistry();
         await registry.logoutProvider("runtime-command-fixture");
@@ -283,7 +301,7 @@ Deno.test("terminal auth setup cancellations and failures do not report ready or
     }, { providerState: "provider-no-model" });
 });
 
-Deno.test("terminal auth setup maps OAuth cancellation and provider failure to non-ready results", async () => {
+test("terminal auth setup maps OAuth cancellation and provider failure to non-ready results", async () => {
     await withRuntimeCommandFixture("terminal-auth-oauth-failures-", async () => {
         const provider = await registerScriptedOAuthProvider();
         try {
@@ -308,27 +326,26 @@ Deno.test("terminal auth setup maps OAuth cancellation and provider failure to n
     }, { providerState: "none" });
 });
 
-Deno.test("terminal auth setup does not import the normal chat Session composition", async () => {
-    const source = await Deno.readTextFile("src/ui/tui/terminal-auth-setup.ts");
+test("terminal auth setup does not import the normal chat Session composition", async () => {
+    const source = await fsReadFile("src/ui/tui/terminal-auth-setup.ts", "utf8");
     assert(!source.includes("chat-session"));
     assert(!source.includes("createInteractiveSession"));
     assert(!source.includes("SessionRuntime"));
 });
 
 async function symlinkEntries(sourceDir: string, targetDir: string, skip: Set<string>): Promise<void> {
-    await Deno.mkdir(targetDir, { recursive: true });
-    for await (const entry of Deno.readDir(sourceDir)) {
+    await fsMkdir(targetDir, { recursive: true });
+    for await (const entry of await fsReaddir(sourceDir, { withFileTypes: true })) {
         if (skip.has(entry.name)) continue;
-        await Deno.symlink(join(sourceDir, entry.name), join(targetDir, entry.name), {
-            type: entry.isDirectory ? "dir" : "file",
-        });
+        await fsSymlink(join(sourceDir, entry.name), join(targetDir, entry.name), entry.isDirectory() ? "dir" : "file");
     }
 }
 
-Deno.test("terminal auth setup succeeds against a temporary source mutation where createInteractiveSession throws", async () => {
-    const tempRoot = await Deno.makeTempDir({ prefix: "terminal-auth-mutated-source-" });
+test("terminal auth setup succeeds against a temporary source mutation where createInteractiveSession throws", async () => {
+    const tempRoot = await fsMkdtemp(join(tmpdir(), "terminal-auth-mutated-source-"));
     try {
-        await Deno.symlink(join(REPO_ROOT, "runtime-root.js"), join(tempRoot, "runtime-root.js"));
+        await fsSymlink(join(REPO_ROOT, "runtime-root.js"), join(tempRoot, "runtime-root.js"));
+        await fsSymlink(join(REPO_ROOT, "node_modules"), join(tempRoot, "node_modules"), "dir");
         await symlinkEntries(join(REPO_ROOT, "src"), join(tempRoot, "src"), new Set(["shared"]));
         await symlinkEntries(join(REPO_ROOT, "src", "shared"), join(tempRoot, "src", "shared"), new Set(["session"]));
         await symlinkEntries(
@@ -336,8 +353,9 @@ Deno.test("terminal auth setup succeeds against a temporary source mutation wher
             join(tempRoot, "src", "shared", "session"),
             new Set(["session-runtime.ts"]),
         );
-        const runtimeSource = await Deno.readTextFile(
+        const runtimeSource = await fsReadFile(
             join(REPO_ROOT, "src", "shared", "session", "session-runtime.ts"),
+            "utf8",
         );
         const mutatedRuntimeSource = runtimeSource.replace(
             '    createInteractiveSession(...args: Parameters<RuntimeLifecycle["createInteractiveSession"]>) {',
@@ -345,14 +363,11 @@ Deno.test("terminal auth setup succeeds against a temporary source mutation wher
                 '        throw new Error("mutated createInteractiveSession called");',
         );
         assert(mutatedRuntimeSource !== runtimeSource);
-        await Deno.writeTextFile(
-            join(tempRoot, "src", "shared", "session", "session-runtime.ts"),
-            mutatedRuntimeSource,
-        );
+        await fsWriteFile(join(tempRoot, "src", "shared", "session", "session-runtime.ts"), mutatedRuntimeSource);
         const childScript = join(tempRoot, "mutation-proof.ts");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             childScript,
-            `import { assertEquals } from "@std/assert";\n` +
+            `import { assertEquals } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};\n` +
                 `import { TuiMainScreen } from "@earendil-works/pi-tui";\n` +
                 `import { withRuntimeCommandFixture } from "./src/cmd/testing/runtime-command-fixture.ts";\n` +
                 `import { getModelRegistry } from "./src/shared/models/model-registry.ts";\n` +
@@ -370,7 +385,7 @@ Deno.test("terminal auth setup succeeds against a temporary source mutation wher
                 `}\n` +
                 `await withRuntimeCommandFixture("terminal-auth-mutation-proof-", async () => {\n` +
                 `  await getModelRegistry().logoutProvider("runtime-command-fixture");\n` +
-                `  const settings = getSettingsManager(Deno.cwd());\n` +
+                `  const settings = getSettingsManager((await import("node:process")).cwd());\n` +
                 `  await settings.setDefaultModel("");\n` +
                 `  await settings.setDefaultProvider("");\n` +
                 `  stopTUI();\n` +
@@ -385,12 +400,10 @@ Deno.test("terminal auth setup succeeds against a temporary source mutation wher
                 `  assertEquals((await setup).status, "ready");\n` +
                 `}, { providerState: "provider-no-model" });\n`,
         );
-        const output = await new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "--no-check", "--config", join(REPO_ROOT, "deno.json"), childScript],
+        const output = await captureForegroundProcess(process.execPath, {
+            args: runtimeSourceArgs(["run", "-A", "--no-check", "--config", join(REPO_ROOT, "deno.json"), childScript]),
             cwd: tempRoot,
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
         assertEquals(
             output.code,
             0,
@@ -399,6 +412,6 @@ Deno.test("terminal auth setup succeeds against a temporary source mutation wher
             }`,
         );
     } finally {
-        await Deno.remove(tempRoot, { recursive: true }).catch(() => {});
+        await fsRm(tempRoot, { recursive: true }).catch(() => {});
     }
 });

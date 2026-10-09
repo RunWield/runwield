@@ -1,10 +1,17 @@
-import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { platform } from "node:process";
+import { readdirSync } from "node:fs";
+import { openNativeFileLock } from "../native-file-lock.ts";
+import { test } from "node:test";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertFalse, assertThrows } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { classifyRootSessionLocator } from "./root-session.js";
 import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
+import { catalogLockPath, lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
 
 const TIMESTAMP = "2026-01-01T00:00:00.000Z";
 
@@ -22,27 +29,27 @@ const TIMESTAMP = "2026-01-01T00:00:00.000Z";
 
 /** @param {string} sessionDir @param {string} cwd @param {string} id @param {TestLineage | null} [lineage] @param {string} [timestamp] */
 async function writeTranscript(sessionDir, cwd, id, lineage = null, timestamp = TIMESTAMP) {
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await mkdir(sessionDir, { recursive: true });
     const path = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`);
     const entries = [JSON.stringify({ type: "session", version: 3, id, timestamp, cwd })];
     if (lineage) {
         entries.push(JSON.stringify({ type: "custom", customType: "runwield.segment_lineage", data: lineage }));
     }
-    await Deno.writeTextFile(path, `${entries.join("\n")}\n`);
+    await writeFile(path, `${entries.join("\n")}\n`);
     return path;
 }
 
 async function makeFixture() {
-    const rootDir = await Deno.makeTempDir({ prefix: "runwield-file-session-store-" });
+    const rootDir = await mkdtemp(join(tmpdir(), "runwield-file-session-store-"));
     const projectRoot = join(rootDir, "project");
     const sessionBaseDir = join(rootDir, "sessions");
-    await Deno.mkdir(projectRoot);
-    const canonicalProjectRoot = await Deno.realPath(projectRoot);
+    await mkdir(projectRoot);
+    const canonicalProjectRoot = await realpath(projectRoot);
     const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
     return { rootDir, projectRoot, sessionBaseDir, sessionDir };
 }
 
-Deno.test("Core catalogs every local Session without creating a Workspace database", async () => {
+test("Core catalogs every local Session without creating a Workspace database", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "legacy-session");
@@ -66,11 +73,42 @@ Deno.test("Core catalogs every local Session without creating a Workspace databa
         assertEquals((await reopened.listProjectSessions(project.projectId)).sessions[0].runwieldSessionId, stableId);
         reopened.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("Project Session listing paginates and provides a sorted unpaged snapshot", async () => {
+test(
+    "Windows aliases share Session authority and transcript catalog locks",
+    { skip: platform !== "win32" },
+    async () => {
+        const fixture = await makeFixture();
+        const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
+        try {
+            const canonicalRoot = await realpath(fixture.projectRoot);
+            const alias = fixture.projectRoot.toUpperCase();
+            const project = store.ensureRuntimeProject({ root: alias });
+            assertEquals(project.currentRoot, canonicalRoot);
+            assertEquals(store.ensureRuntimeProject({ root: canonicalRoot }).projectId, project.projectId);
+            assertEquals(store.listSessionProjects().length, 1);
+            assertEquals(sessionDirForRoot(fixture.sessionBaseDir, alias), fixture.sessionDir);
+            const transcriptPath = await writeTranscript(fixture.sessionDir, alias, "Alias Transcript");
+            assertEquals(
+                catalogLockPath(fixture.sessionDir, transcriptPath.toUpperCase()),
+                catalogLockPath(fixture.sessionDir, await realpath(transcriptPath)),
+            );
+            const sessions = await store.listProjectSessions(project.projectId);
+            assertEquals(
+                sessions.sessions.map((session) => session.piSessionId),
+                ["Alias Transcript"],
+            );
+        } finally {
+            store.close();
+            await rm(fixture.rootDir, { recursive: true });
+        }
+    },
+);
+
+test("Project Session listing paginates and provides a sorted unpaged snapshot", async () => {
     const fixture = await makeFixture();
     try {
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -100,15 +138,15 @@ Deno.test("Project Session listing paginates and provides a sorted unpaged snaps
         assertEquals(firstPage.sessions[0].piSessionId, "session-100");
         assertEquals(snapshot.sessions[snapshot.sessions.length - 1].piSessionId, "session-0");
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("real and symlinked Project roots share one file authority", async () => {
+test("real and symlinked Project roots share one file authority", async () => {
     const fixture = await makeFixture();
     const linkedRoot = join(fixture.rootDir, "project-link");
     try {
-        await Deno.symlink(fixture.projectRoot, linkedRoot);
+        await symlink(fixture.projectRoot, linkedRoot);
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const realProject = store.ensureRuntimeProject({ root: fixture.projectRoot });
         const linkedProject = store.ensureRuntimeProject({ root: linkedRoot });
@@ -137,17 +175,17 @@ Deno.test("real and symlinked Project roots share one file authority", async () 
         assertEquals(session.transcriptPath, transcriptPath);
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("successor segments can live under their transcript cwd", async () => {
+test("successor segments can live under their transcript cwd", async () => {
     const fixture = await makeFixture();
     const worktreeRoot = join(fixture.rootDir, "worktree-project");
     const linkedWorktreeRoot = join(fixture.rootDir, "worktree-link");
     try {
-        await Deno.mkdir(worktreeRoot);
-        await Deno.symlink(worktreeRoot, linkedWorktreeRoot);
+        await mkdir(worktreeRoot);
+        await symlink(worktreeRoot, linkedWorktreeRoot);
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = store.ensureRuntimeProject({ root: fixture.projectRoot });
         const worktreeSessionDir = sessionDirForRoot(fixture.sessionBaseDir, linkedWorktreeRoot);
@@ -165,11 +203,11 @@ Deno.test("successor segments can live under their transcript cwd", async () => 
         assertEquals(safe.sessionPath, transcriptPath);
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("new Session catalog publication acquires its writer lock atomically", async () => {
+test("new Session catalog publication acquires its writer lock atomically", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "atomic-session");
@@ -207,11 +245,11 @@ Deno.test("new Session catalog publication acquires its writer lock atomically",
         firstStore.close();
         secondStore.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("active Session turns register durable artifact references without changing the writer phase", async () => {
+test("active Session turns register durable artifact references without changing the writer phase", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "artifact-session");
@@ -267,16 +305,16 @@ Deno.test("active Session turns register durable artifact references without cha
         assertEquals(reopened.listSessionArtifacts(acquired.session.runwieldSessionId), [artifact]);
         reopened.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("created and loaded Sessions do not scan unrelated Session manifests", async () => {
+test("created and loaded Sessions do not scan unrelated Session manifests", async () => {
     const fixture = await makeFixture();
     const siblingRoot = join(fixture.rootDir, "sibling-project");
     try {
-        await Deno.mkdir(siblingRoot);
-        const canonicalSiblingRoot = await Deno.realPath(siblingRoot);
+        await mkdir(siblingRoot);
+        const canonicalSiblingRoot = await realpath(siblingRoot);
         const siblingSessionDir = join(fixture.sessionBaseDir, encodeCwdForSessionDir(canonicalSiblingRoot));
         const siblingTranscript = await writeTranscript(
             siblingSessionDir,
@@ -296,7 +334,7 @@ Deno.test("created and loaded Sessions do not scan unrelated Session manifests",
         });
         seedStore.close();
         const siblingManifest = manifestPath(siblingSessionDir, sibling.runwieldSessionId);
-        await Deno.remove(siblingManifest);
+        await rm(siblingManifest);
         assertFalse(await exists(siblingManifest));
 
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "current-session");
@@ -325,11 +363,11 @@ Deno.test("created and loaded Sessions do not scan unrelated Session manifests",
         assertFalse(await exists(siblingManifest));
         reopened.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("cached Session manifests refresh after another surface publishes a change", async () => {
+test("cached Session manifests refresh after another surface publishes a change", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "shared-session");
@@ -369,11 +407,11 @@ Deno.test("cached Session manifests refresh after another surface publishes a ch
         writer.close();
         reader.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("concurrent legacy migration converges on one Session identity", async () => {
+test("concurrent legacy migration converges on one Session identity", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "legacy-race");
@@ -399,11 +437,11 @@ Deno.test("concurrent legacy migration converges on one Session identity", async
         firstStore.close();
         secondStore.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("the Session file lock permits exactly one writer and is released when its store closes", async () => {
+test("the Session file lock permits exactly one writer and is released when its store closes", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "locked-session");
@@ -455,11 +493,11 @@ Deno.test("the Session file lock permits exactly one writer and is released when
         secondStore.releaseUnchangedActivation(recovered);
         secondStore.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("a missing or damaged manifest is restored from transcript-adjacent recovery evidence", async () => {
+test("a missing or damaged manifest is restored from transcript-adjacent recovery evidence", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "recover-session");
@@ -479,19 +517,19 @@ Deno.test("a missing or damaged manifest is restored from transcript-adjacent re
             session.runwieldSessionId,
             "manifest.json",
         );
-        await Deno.remove(manifestPath);
+        await rm(manifestPath);
         assertEquals(store.getSessionById(session.runwieldSessionId)?.runwieldSessionId, session.runwieldSessionId);
-        await Deno.writeTextFile(manifestPath, "not json\n");
+        await writeFile(manifestPath, "not json\n");
         assertEquals(store.getSessionById(session.runwieldSessionId)?.runwieldSessionId, session.runwieldSessionId);
-        const bundleEntries = [...Deno.readDirSync(dirname(manifestPath))];
+        const bundleEntries = [...readdirSync(dirname(manifestPath), { withFileTypes: true })];
         assert(bundleEntries.some((entry) => entry.name.startsWith("manifest.json.damaged-")));
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("recovery descriptor retains the initial writer baseline when the manifest is lost", async () => {
+test("recovery descriptor retains the initial writer baseline when the manifest is lost", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "baseline-recovery");
@@ -511,11 +549,11 @@ Deno.test("recovery descriptor retains the initial writer baseline when the mani
             ownerProcessKind: "test",
             expectedGeneration: null,
         });
-        await Deno.writeTextFile(
+        await writeFile(
             transcriptPath,
             `${JSON.stringify({ type: "message", message: { role: "user" } })}\n`,
             {
-                append: true,
+                flag: "a",
             },
         );
         const manifestPath = join(
@@ -525,7 +563,7 @@ Deno.test("recovery descriptor retains the initial writer baseline when the mani
             session.runwieldSessionId,
             "manifest.json",
         );
-        await Deno.remove(manifestPath);
+        await rm(manifestPath);
         firstStore.close();
 
         const recoveredStore = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -543,15 +581,15 @@ Deno.test("recovery descriptor retains the initial writer baseline when the mani
         );
         recoveredStore.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("transcript lineage reconstructs one ordered Session without a database or manifest", async () => {
+test("transcript lineage reconstructs one ordered Session without a database or manifest", async () => {
     const fixture = await makeFixture();
     try {
         const planningPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "planning");
-        await Deno.writeTextFile(
+        await writeFile(
             planningPath,
             `${
                 JSON.stringify({
@@ -567,7 +605,7 @@ Deno.test("transcript lineage reconstructs one ordered Session without a databas
                     },
                 })
             }\n`,
-            { append: true },
+            { flag: "a" },
         );
         const executionPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "execution", {
             runwieldSessionId: "stable-session",
@@ -577,7 +615,7 @@ Deno.test("transcript lineage reconstructs one ordered Session without a databas
             lineageGroupKey: "planning-segment",
             kind: "execution",
         });
-        await Deno.writeTextFile(
+        await writeFile(
             executionPath,
             `${
                 JSON.stringify({
@@ -593,7 +631,7 @@ Deno.test("transcript lineage reconstructs one ordered Session without a databas
                     },
                 })
             }\n${JSON.stringify({ type: "custom", customType: "runwield.pending_segment_continuation", data: {} })}\n`,
-            { append: true },
+            { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = store.ensureRuntimeProject({ root: fixture.projectRoot });
@@ -635,11 +673,11 @@ Deno.test("transcript lineage reconstructs one ordered Session without a databas
         ]);
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("lineage recovery ignores uncommitted current root transcript associations", async () => {
+test("lineage recovery ignores uncommitted current root transcript associations", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "planning", {
@@ -650,7 +688,7 @@ Deno.test("lineage recovery ignores uncommitted current root transcript associat
             lineageGroupKey: "planning-segment",
             kind: "planning",
         });
-        await Deno.writeTextFile(
+        await writeFile(
             transcriptPath,
             `${
                 JSON.stringify({
@@ -666,7 +704,7 @@ Deno.test("lineage recovery ignores uncommitted current root transcript associat
                     },
                 })
             }\n`,
-            { append: true },
+            { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = store.ensureRuntimeProject({ root: fixture.projectRoot });
@@ -678,11 +716,11 @@ Deno.test("lineage recovery ignores uncommitted current root transcript associat
         assertEquals(store.listSessionPlanAssociations("root-only-session"), []);
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("lineage recovery rejects a mismatched parent Pi identity", async () => {
+test("lineage recovery rejects a mismatched parent Pi identity", async () => {
     const fixture = await makeFixture();
     try {
         await writeTranscript(fixture.sessionDir, fixture.projectRoot, "planning", {
@@ -708,20 +746,20 @@ Deno.test("lineage recovery rejects a mismatched parent Pi identity", async () =
         assert(result.diagnostics.every((item) => item.code === "lineage_recovery_blocked"));
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("malformed lineage is blocked instead of cataloged as a legacy Session", async () => {
+test("malformed lineage is blocked instead of cataloged as a legacy Session", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "malformed-lineage");
-        await Deno.writeTextFile(
+        await writeFile(
             transcriptPath,
             `${
                 JSON.stringify({ type: "custom", customType: "runwield.segment_lineage", data: { segmentId: "only" } })
             }\n`,
-            { append: true },
+            { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = store.ensureRuntimeProject({ root: fixture.projectRoot });
@@ -730,11 +768,11 @@ Deno.test("malformed lineage is blocked instead of cataloged as a legacy Session
         assertEquals(result.diagnostics.map((item) => item.code), ["lineage_recovery_blocked"]);
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("conflicting lineage entries fail closed", async () => {
+test("conflicting lineage entries fail closed", async () => {
     const fixture = await makeFixture();
     try {
         /** @type {TestLineage} */
@@ -752,7 +790,7 @@ Deno.test("conflicting lineage entries fail closed", async () => {
             "conflicting-lineage",
             firstLineage,
         );
-        await Deno.writeTextFile(
+        await writeFile(
             transcriptPath,
             `${
                 JSON.stringify({
@@ -761,7 +799,7 @@ Deno.test("conflicting lineage entries fail closed", async () => {
                     data: { ...firstLineage, runwieldSessionId: "different-session" },
                 })
             }\n`,
-            { append: true },
+            { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = store.ensureRuntimeProject({ root: fixture.projectRoot });
@@ -770,15 +808,15 @@ Deno.test("conflicting lineage entries fail closed", async () => {
         assertEquals(result.diagnostics.map((item) => item.code), ["lineage_recovery_blocked"]);
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("recovery rejects evidence that omits trailing transcript entries", async () => {
+test("recovery rejects evidence that omits trailing transcript entries", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "stale-prefix");
-        const original = await Deno.readFile(transcriptPath);
+        const original = await readFile(transcriptPath);
         const firstStore = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const project = firstStore.ensureRuntimeProject({ root: fixture.projectRoot });
         const session = await firstStore.ensureSessionCatalogRecord({
@@ -796,10 +834,10 @@ Deno.test("recovery rejects evidence that omits trailing transcript entries", as
             expectedGeneration: null,
         });
         firstStore.close();
-        await Deno.writeTextFile(
+        await writeFile(
             transcriptPath,
             `${JSON.stringify({ type: "message", message: { role: "user", content: "trailing" } })}\n`,
-            { append: true },
+            { flag: "a" },
         );
 
         const recoveryStore = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -823,11 +861,11 @@ Deno.test("recovery rejects evidence that omits trailing transcript entries", as
         );
         recoveryStore.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("initial recovery blocks a rewritten transcript prefix", async () => {
+test("initial recovery blocks a rewritten transcript prefix", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "prefix-original");
@@ -849,9 +887,9 @@ Deno.test("initial recovery blocks a rewritten transcript prefix", async () => {
         });
         interruptedStore.close();
 
-        const rewritten = (await Deno.readTextFile(transcriptPath)).replace("prefix-original", "prefix-modified");
-        await Deno.writeTextFile(transcriptPath, rewritten);
-        const bytes = await Deno.readFile(transcriptPath);
+        const rewritten = (await readFile(transcriptPath, "utf8")).replace("prefix-original", "prefix-modified");
+        await writeFile(transcriptPath, rewritten);
+        const bytes = await readFile(transcriptPath);
         const recoveryStore = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         assertThrows(
             () =>
@@ -873,11 +911,11 @@ Deno.test("initial recovery blocks a rewritten transcript prefix", async () => {
         );
         recoveryStore.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("initial recovery retains the writer baseline after activation becomes uncertain", async () => {
+test("initial recovery retains the writer baseline after activation becomes uncertain", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "initial-uncertain");
@@ -897,15 +935,15 @@ Deno.test("initial recovery retains the writer baseline after activation becomes
             ownerProcessKind: "test",
             expectedGeneration: null,
         });
-        await Deno.writeTextFile(
+        await writeFile(
             transcriptPath,
-            `${await Deno.readTextFile(transcriptPath)}${
+            `${await readFile(transcriptPath, "utf8")}${
                 JSON.stringify({ type: "custom", customType: "writer-output" })
             }\n`,
         );
         store.markSessionUncertain(proof, { reason: "agent activation failed" });
 
-        const bytes = await Deno.readFile(transcriptPath);
+        const bytes = await readFile(transcriptPath);
         const recovered = store.recoverSessionControl({
             runwieldSessionId: session.runwieldSessionId,
             projectId: project.projectId,
@@ -923,11 +961,11 @@ Deno.test("initial recovery retains the writer baseline after activation becomes
         assertEquals(recovered.generation?.generation, 0);
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("existing-generation recovery blocks a rewritten committed prefix", async () => {
+test("existing-generation recovery blocks a rewritten committed prefix", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "safe-prefix");
@@ -940,7 +978,7 @@ Deno.test("existing-generation recovery blocks a rewritten committed prefix", as
             transcriptCwd: fixture.projectRoot,
             source: "created",
         });
-        const original = await Deno.readFile(transcriptPath);
+        const original = await readFile(transcriptPath);
         let proof = store.acquireSessionActivation({
             runwieldSessionId: session.runwieldSessionId,
             projectId: project.projectId,
@@ -965,9 +1003,9 @@ Deno.test("existing-generation recovery blocks a rewritten committed prefix", as
         });
         store.markSessionUncertain(interrupted, { reason: "writer stopped before checkpoint" });
 
-        const rewrittenText = (await Deno.readTextFile(transcriptPath)).replace("safe-prefix", "evil-prefix");
-        await Deno.writeTextFile(transcriptPath, rewrittenText);
-        const rewritten = await Deno.readFile(transcriptPath);
+        const rewrittenText = (await readFile(transcriptPath, "utf8")).replace("safe-prefix", "evil-prefix");
+        await writeFile(transcriptPath, rewrittenText);
+        const rewritten = await readFile(transcriptPath);
         assertThrows(
             () =>
                 store.recoverSessionControl({
@@ -988,22 +1026,22 @@ Deno.test("existing-generation recovery blocks a rewritten committed prefix", as
         );
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
 /** @param {string} path */
 async function exists(path) {
     try {
-        await Deno.stat(path);
+        await stat(path);
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
         throw error;
     }
 }
 
-Deno.test("Plan Association manifest projection commits with the published generation", async () => {
+test("Plan Association manifest projection commits with the published generation", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "plan-associated");
@@ -1037,7 +1075,7 @@ Deno.test("Plan Association manifest projection commits with the published gener
         assertEquals(store.listSessionPlanAssociations(session.runwieldSessionId), []);
         proof = store.changeSessionActivationPhase(proof, "hydrated");
         proof = store.changeSessionActivationPhase(proof, "checkpointing");
-        const bytes = await Deno.readFile(transcriptPath);
+        const bytes = await readFile(transcriptPath);
         store.publishGenerationAndRelease(proof, {
             generation: 0,
             byteLength: bytes.byteLength,
@@ -1055,11 +1093,11 @@ Deno.test("Plan Association manifest projection commits with the published gener
         ]);
         reopened.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("Plan Association manifest projection drops pending entries on unchanged release", async () => {
+test("Plan Association manifest projection drops pending entries on unchanged release", async () => {
     const fixture = await makeFixture();
     try {
         const transcriptPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "plan-pending");
@@ -1092,11 +1130,11 @@ Deno.test("Plan Association manifest projection drops pending entries on unchang
         assertEquals(store.listSessionPlanAssociations(session.runwieldSessionId), []);
         store.close();
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("Session archive survives reopen and restores transcript segments and Plan associations", async () => {
+test("Session archive survives reopen and restores transcript segments and Plan associations", async () => {
     const fixture = await makeFixture();
     let store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
     try {
@@ -1126,7 +1164,7 @@ Deno.test("Session archive survives reopen and restores transcript segments and 
         });
         proof = store.changeSessionActivationPhase(proof, "hydrated");
         proof = store.changeSessionActivationPhase(proof, "checkpointing");
-        const bytes = await Deno.readFile(transcriptPath);
+        const bytes = await readFile(transcriptPath);
         store.publishGenerationAndRelease(proof, {
             generation: 0,
             byteLength: bytes.length,
@@ -1150,14 +1188,14 @@ Deno.test("Session archive survives reopen and restores transcript segments and 
         assertEquals(store.listSessionTranscriptSegments(session.runwieldSessionId), segments);
         assertEquals(store.listSessionPlanAssociations(session.runwieldSessionId), associations);
         assertEquals(store.inspectSessionActivation(session.runwieldSessionId).generation, generation);
-        assertEquals(await Deno.readFile(transcriptPath), bytes);
+        assertEquals(await readFile(transcriptPath), bytes);
     } finally {
         store.close();
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("Session archive refuses the writer lock and keeps a newer committed generation", async () => {
+test("Session archive refuses the writer lock and keeps a newer committed generation", async () => {
     const fixture = await makeFixture();
     const writer = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
     const archiver = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -1171,13 +1209,9 @@ Deno.test("Session archive refuses the writer lock and keeps a newer committed g
             transcriptCwd: fixture.projectRoot,
         });
         archiver.getSessionById(session.runwieldSessionId);
-        const file = Deno.openSync(lockPath(fixture.sessionDir, session.runwieldSessionId), {
-            create: true,
-            read: true,
-            write: true,
-        });
+        const file = openNativeFileLock(lockPath(fixture.sessionDir, session.runwieldSessionId));
         try {
-            file.lockSync(true);
+            assertEquals(file.tryLockSync(true), true);
             assertThrows(() => archiver.archiveSession(session.runwieldSessionId), Error, "another RunWield surface");
             assertEquals(archiver.getSessionById(session.runwieldSessionId)?.archivedAt, null);
         } finally {
@@ -1195,7 +1229,7 @@ Deno.test("Session archive refuses the writer lock and keeps a newer committed g
         assertThrows(() => writer.archiveSession(session.runwieldSessionId), Error, "another RunWield surface");
         proof = writer.changeSessionActivationPhase(proof, "hydrated");
         proof = writer.changeSessionActivationPhase(proof, "checkpointing");
-        const bytes = await Deno.readFile(transcriptPath);
+        const bytes = await readFile(transcriptPath);
         const published = writer.publishGenerationAndRelease(proof, {
             generation: 0,
             byteLength: bytes.length,
@@ -1208,11 +1242,11 @@ Deno.test("Session archive refuses the writer lock and keeps a newer committed g
     } finally {
         writer.close();
         archiver.close();
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("Session archive filters apply before pagination and totals", async () => {
+test("Session archive filters apply before pagination and totals", async () => {
     const fixture = await makeFixture();
     const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
     try {
@@ -1249,11 +1283,11 @@ Deno.test("Session archive filters apply before pagination and totals", async ()
         assertEquals((await store.listProjectSessions(project.projectId, { archiveState: "all", all: true })).total, 6);
     } finally {
         store.close();
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("Session archive is retained when the primary manifest is recovered from its descriptor", async () => {
+test("Session archive is retained when the primary manifest is recovered from its descriptor", async () => {
     const fixture = await makeFixture();
     let store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
     try {
@@ -1262,18 +1296,18 @@ Deno.test("Session archive is retained when the primary manifest is recovered fr
         const session = (await store.listProjectSessions(project.projectId)).sessions[0];
         const archived = store.archiveSession(session.runwieldSessionId);
         store.close();
-        await Deno.remove(manifestPath(fixture.sessionDir, session.runwieldSessionId));
+        await rm(manifestPath(fixture.sessionDir, session.runwieldSessionId));
         store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         assertEquals(store.getSessionById(session.runwieldSessionId)?.archivedAt, archived.archivedAt);
         assertEquals((await store.listProjectSessions(project.projectId)).total, 0);
     } finally {
         store.close();
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await rm(fixture.rootDir, { recursive: true });
     }
 });
 
 for (const changed of [false, true]) {
-    Deno.test(`Session archive recovers abandoned activation with ${changed ? "changed" : "unchanged"} evidence`, async () => {
+    test(`Session archive recovers abandoned activation with ${changed ? "changed" : "unchanged"} evidence`, async () => {
         const fixture = await makeFixture();
         const writer = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         const archiver = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -1292,7 +1326,7 @@ for (const changed of [false, true]) {
                 ownerInstanceId: "abandoned",
                 ownerProcessKind: "test",
             });
-            if (changed) await Deno.writeTextFile(transcriptPath, "changed evidence\n", { append: true });
+            if (changed) await writeFile(transcriptPath, "changed evidence\n", { flag: "a" });
             writer.close();
             if (changed) {
                 assertThrows(() => archiver.archiveSession(session.runwieldSessionId), Error, "requires recovery");
@@ -1311,7 +1345,7 @@ for (const changed of [false, true]) {
         } finally {
             writer.close();
             archiver.close();
-            await Deno.remove(fixture.rootDir, { recursive: true });
+            await rm(fixture.rootDir, { recursive: true });
         }
     });
 }

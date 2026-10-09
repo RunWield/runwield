@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { parseRemoteConnectionViewConfig, showRemoteConnectionView } from "./remote-connection-view.ts";
@@ -11,12 +12,12 @@ const config = {
     readiness: "Not ready for work",
 };
 
-Deno.test("remote view rejects invalid configuration before terminal startup", () => {
+test("remote view rejects invalid configuration before terminal startup", () => {
     assertThrows(() => parseRemoteConnectionViewConfig(JSON.stringify({ ...config, host: 17 })), Error);
     assertThrows(() => parseRemoteConnectionViewConfig("[1,2]"), Error);
 });
 
-Deno.test("remote view shows connection facts without a chat editor", async () => {
+test("remote view shows connection facts without a chat editor", async () => {
     const terminal = new VirtualTerminal();
     const tui = new TuiMainScreen(terminal);
     const finished = showRemoteConnectionView(tui, config);
@@ -35,7 +36,7 @@ Deno.test("remote view shows connection facts without a chat editor", async () =
     }
 });
 
-Deno.test("remote view consumes other keys and accepts Ctrl-C and Ctrl-D for exit", async () => {
+test("remote view consumes other keys and accepts Ctrl-C and Ctrl-D for exit", async () => {
     for (const exitKey of ["\x03", "\x04"]) {
         const terminal = new VirtualTerminal();
         const tui = new TuiMainScreen(terminal);
@@ -59,7 +60,7 @@ Deno.test("remote view consumes other keys and accepts Ctrl-C and Ctrl-D for exi
     }
 });
 
-Deno.test("remote view treats remote text as data, not terminal controls", async () => {
+test("remote view treats remote text as data, not terminal controls", async () => {
     const terminal = new VirtualTerminal();
     const tui = new TuiMainScreen(terminal);
     const finished = showRemoteConnectionView(tui, { ...config, host: "host\x1b[31m\nspoof" });

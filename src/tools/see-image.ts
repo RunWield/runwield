@@ -1,3 +1,4 @@
+import { readFile as fsReadFile } from "node:fs/promises";
 /**
  * @module tools/see-image
  * Vision fallback Custom Tool for text-only primary models.
@@ -97,7 +98,7 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                     );
                 }
 
-                const bytes = await Deno.readFile(resolved.path);
+                const bytes = await fsReadFile(resolved.path);
                 let binary = "";
                 for (const byte of bytes) binary += String.fromCharCode(byte);
                 const base64 = btoa(binary);

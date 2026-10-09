@@ -1,4 +1,21 @@
-import { basename, dirname, join, resolve, SEPARATOR } from "@std/path";
+import { recoverWindowsRename } from "./native-file-replace-windows.ts";
+import fsPromises from "node:fs/promises";
+import { open as fsOpen, rmdir as fsRmdir } from "node:fs/promises";
+import { type NativeFileLock, openNativeFileLock } from "./native-file-lock.ts";
+import { type CapturedProcessOutput, captureForegroundProcess } from "./captured-process.ts";
+import { type Dirent, realpathSync as fsRealpathSync, type Stats } from "node:fs";
+import {
+    chmod as fsChmod,
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { clearInterval, setInterval } from "node:timers";
+import { pid, platform } from "node:process";
+import { basename, dirname, isAbsolute, join, resolve, sep as SEPARATOR } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
     getRunWieldRuntimeDir,
@@ -18,6 +35,13 @@ import {
     readLockFileSnapshot,
     removeLockFileIfSnapshotMatches,
 } from "./lock-file-snapshot.ts";
+import {
+    gitIndexEvidence,
+    gitWorktreeListEvidence,
+    observeGitEvidence,
+    rememberGitRead,
+    reusedGitRead,
+} from "./git-evidence-cache.ts";
 import { getLockHostname, isLockHolderGone } from "./process-liveness.ts";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
 import { inspectWorktreeRegistryAtPath, withWorktreeRegistryLockAtPath } from "./worktree-registry.js";
@@ -95,9 +119,7 @@ export interface ProjectRuntimeMigrationBlockedResult {
     securityAction?: ProjectRuntimeMigrationSecurityAction;
 }
 
-export type ProjectRuntimeMigrationResult =
-    | ProjectRuntimeMigrationReadyResult
-    | ProjectRuntimeMigrationBlockedResult;
+export type ProjectRuntimeMigrationResult = ProjectRuntimeMigrationReadyResult | ProjectRuntimeMigrationBlockedResult;
 
 export interface ProjectRuntimeLayoutAdoptedInspection {
     kind: "adopted";
@@ -201,10 +223,13 @@ type MigrationPreflight = {
     operations: MigrationOperation[];
 };
 
-type GitWorktree = {
+type GitWorktreeRecord = {
     path: string;
-    realPath: string;
     branch: string;
+};
+
+type GitWorktree = GitWorktreeRecord & {
+    realPath: string;
 };
 
 type LegacyLockStatus = {
@@ -233,9 +258,9 @@ const WORK_RECORD_LOCK_HEARTBEAT_MS = 10_000;
 
 export function resolveProjectRoot(projectRoot: string): string {
     try {
-        return Deno.realPathSync(projectRoot);
+        return fsRealpathSync(projectRoot);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return resolve(projectRoot);
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return resolve(projectRoot);
         throw error;
     }
 }
@@ -302,7 +327,7 @@ export async function inspectProjectRuntimeLayout(
     if (isBlocked(marker)) return marker;
     const inspected = await preflight(layout, primaryCheckoutRoot, marker.marker);
     if (isBlocked(inspected)) return inspected;
-    if (marker.marker && await completeMarkerNeedsNoWork(layout, marker.marker, inspected)) {
+    if (marker.marker && (await completeMarkerNeedsNoWork(layout, marker.marker, inspected))) {
         return {
             kind: "adopted",
             layout,
@@ -315,16 +340,19 @@ export async function inspectProjectRuntimeLayout(
 interface RuntimeReadScope {
     active: boolean;
     layouts: Map<string, Promise<ProjectRuntimeLayout>>;
+    /** Symlinks under each authority root, walked once per read like each checkout's entry. */
+    symlinkWalks: Map<string, Promise<string[]>>;
 }
 
 const runtimeEntryScope = new AsyncLocalStorage<RuntimeReadScope>();
-// Retain only diagnostic identities, never runtime validation or migration results.
+// Retain only diagnostic identities, never runtime validation or migration results. Git answers
+// are reused only while their repository evidence is unchanged; see git-evidence-cache.ts.
 const reportedGitignoreWarnings = new Map<string, Set<string>>();
 
 /** Verify each checkout once during a bounded read; retain no result across refreshes. */
 export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Promise<T> {
     if (runtimeEntryScope.getStore()?.active) return await read();
-    const scope: RuntimeReadScope = { active: true, layouts: new Map() };
+    const scope: RuntimeReadScope = { active: true, layouts: new Map(), symlinkWalks: new Map() };
     try {
         return await runtimeEntryScope.run(scope, read);
     } finally {
@@ -332,12 +360,15 @@ export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Pr
         // not retain its validation results after that read has settled.
         scope.active = false;
         scope.layouts.clear();
+        scope.symlinkWalks.clear();
     }
 }
 
 /** Writes inside a grouped read must revalidate and invalidate surrounding reads. */
 export function invalidateProjectRuntimeReadScope(): void {
-    runtimeEntryScope.getStore()?.layouts.clear();
+    const scope = runtimeEntryScope.getStore();
+    scope?.layouts.clear();
+    scope?.symlinkWalks.clear();
 }
 
 export function enterProjectRuntime(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
@@ -355,11 +386,11 @@ export function enterProjectRuntime(selectedCheckoutRoot: string): Promise<Proje
 }
 
 async function enterProjectRuntimeUncached(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
-    const rootInfo = await Deno.lstat(selectedCheckoutRoot).catch((error) => {
-        if (error instanceof Deno.errors.NotFound) return null;
+    const rootInfo = await fsLstat(selectedCheckoutRoot).catch((error) => {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     });
-    if (rootInfo && !rootInfo.isDirectory) throw new Error("Project root must be a directory");
+    if (rootInfo && !rootInfo.isDirectory()) throw new Error("Project root must be a directory");
     const result = await migrateLegacyProjectRuntimeState(selectedCheckoutRoot);
     if (result.kind === "blocked") throw new ProjectRuntimeEntryRefusedError(result);
     if (rootInfo) {
@@ -398,13 +429,16 @@ export async function migrateLegacyProjectRuntimeState(
     const migrationWasInFlight = await lstatOrNull(layout.primary.layoutMigrationLockPath);
     const beforeLock = await preflight(layout, primaryCheckoutRoot, marker.marker);
     if (
-        isBlocked(beforeLock) && !migrationWasInFlight &&
+        isBlocked(beforeLock) &&
+        !migrationWasInFlight &&
         !(await lstatOrNull(layout.primary.layoutMigrationLockPath)) &&
-        !(beforeLock.reason === "active_legacy_writer" &&
-            beforeLock.paths.every((path) => path === legacyWorktreeRegistryLockPath(primaryCheckoutRoot)))
-    ) return beforeLock;
-    const unchanged = !isBlocked(beforeLock) &&
-        await completeMarkerNeedsNoWork(layout, marker.marker, beforeLock);
+        !(
+            beforeLock.reason === "active_legacy_writer" &&
+            beforeLock.paths.every((path) => path === legacyWorktreeRegistryLockPath(primaryCheckoutRoot))
+        )
+    )
+        return beforeLock;
+    const unchanged = !isBlocked(beforeLock) && (await completeMarkerNeedsNoWork(layout, marker.marker, beforeLock));
     if (unchanged && marker.marker) {
         return {
             kind: "ready",
@@ -417,6 +451,9 @@ export async function migrateLegacyProjectRuntimeState(
     const lock = await acquireMigrationLock(layout.primary.layoutMigrationLockPath);
     let cleanupInternalRoot = false;
     try {
+        // Migration moves authorities, so walks taken before it no longer describe them.
+        // Keep the entry promise: this migration is part of that shared verification.
+        runtimeEntryScope.getStore()?.symlinkWalks.clear();
         const lockedMarker = await readLayoutMarker(layout);
         if (isBlocked(lockedMarker)) return lockedMarker;
         return await withWorktreeRegistryLockAtPath(legacyWorktreeRegistryLockPath(primaryCheckoutRoot), async () => {
@@ -432,8 +469,8 @@ export async function migrateLegacyProjectRuntimeState(
                     ignoreMigrationLock: true,
                 });
                 if (lockedUnchanged && lockedMarker.marker) {
-                    await Deno.remove(layout.primary.layoutMigrationJournalPath).catch((error) => {
-                        if (!(error instanceof Deno.errors.NotFound)) throw error;
+                    await fsPromises.rm(layout.primary.layoutMigrationJournalPath).catch((error) => {
+                        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                     });
                     return {
                         kind: "ready",
@@ -456,8 +493,8 @@ export async function migrateLegacyProjectRuntimeState(
                     adoptedSelectedCheckoutRoots,
                     completedAt: new Date().toISOString(),
                 });
-                await Deno.remove(layout.primary.layoutMigrationJournalPath).catch((error) => {
-                    if (!(error instanceof Deno.errors.NotFound)) throw error;
+                await fsPromises.rm(layout.primary.layoutMigrationJournalPath).catch((error) => {
+                    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                 });
                 return { kind: "ready", layout, migrated: true, adoptedSelectedCheckoutRoots };
             };
@@ -467,6 +504,7 @@ export async function migrateLegacyProjectRuntimeState(
                 : await migrate();
         });
     } finally {
+        runtimeEntryScope.getStore()?.symlinkWalks.clear();
         await lock.release();
         if (cleanupInternalRoot) await removeEmptyDirectory(layout.primary.internalRoot);
     }
@@ -493,7 +531,7 @@ function block(
 
 async function canonicalExistingRoot(path: string): Promise<string> {
     try {
-        return await Deno.realPath(path);
+        return await fsRealpath(path);
     } catch {
         return resolve(path);
     }
@@ -519,7 +557,7 @@ async function readLayoutMarker(
     layout: ProjectRuntimeLayout,
 ): Promise<{ marker: LayoutMarker | null } | ProjectRuntimeMigrationBlockedResult> {
     try {
-        const parsed = JSON.parse(await Deno.readTextFile(layout.primary.layoutMarkerPath));
+        const parsed = JSON.parse(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"));
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
             return block(
                 "malformed_migration_evidence",
@@ -542,8 +580,10 @@ async function readLayoutMarker(
             );
         }
         if (
-            parsed.version !== LAYOUT_VERSION || typeof parsed.primaryCheckoutRoot !== "string" ||
-            !Array.isArray(parsed.adoptedSelectedCheckoutRoots) || typeof parsed.completedAt !== "string" ||
+            parsed.version !== LAYOUT_VERSION ||
+            typeof parsed.primaryCheckoutRoot !== "string" ||
+            !Array.isArray(parsed.adoptedSelectedCheckoutRoots) ||
+            typeof parsed.completedAt !== "string" ||
             !parsed.adoptedSelectedCheckoutRoots.every((root: string) => typeof root === "string")
         ) {
             return block(
@@ -554,7 +594,7 @@ async function readLayoutMarker(
         }
         return { marker: parsed as LayoutMarker };
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return { marker: null };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return { marker: null };
         if (error instanceof SyntaxError) {
             return block(
                 "malformed_migration_evidence",
@@ -573,11 +613,15 @@ async function completeMarkerNeedsNoWork(
     options: { ignoreMigrationLock?: boolean } = {},
 ): Promise<boolean> {
     if (
-        !marker || preflightResult.operations.length !== 0 ||
+        !marker ||
+        preflightResult.operations.length !== 0 ||
         !preflightResult.selectedCheckoutRoots.every((root) => marker.adoptedSelectedCheckoutRoots.includes(root))
-    ) return false;
-    return !(await lstatOrNull(layout.primary.layoutMigrationJournalPath)) &&
-        (options.ignoreMigrationLock || !(await lstatOrNull(layout.primary.layoutMigrationLockPath)));
+    )
+        return false;
+    return (
+        !(await lstatOrNull(layout.primary.layoutMigrationJournalPath)) &&
+        (options.ignoreMigrationLock || !(await lstatOrNull(layout.primary.layoutMigrationLockPath)))
+    );
 }
 
 async function preflight(
@@ -586,15 +630,16 @@ async function preflight(
     marker: LayoutMarker | null,
     options: { legacyRegistryLockHeld?: boolean } = {},
 ): Promise<MigrationPreflight | ProjectRuntimeMigrationBlockedResult> {
-    const markerCheck = await validateMarkerRoots(layout, primaryCheckoutRoot, marker);
+    const markerCheck = validateMarkerRoots(layout, primaryCheckoutRoot, marker);
     if (isBlocked(markerCheck)) return markerCheck;
 
     const existingJournal = await readJournal(layout.primary.layoutMigrationJournalPath);
     if (isBlocked(existingJournal)) return existingJournal;
     if (
-        existingJournal.journal?.operations.some((operation) =>
-            operation.action === "rename" &&
-            operation.source === legacyRelativePath(primaryCheckoutRoot, "worktrees")
+        existingJournal.journal?.operations.some(
+            (operation) =>
+                operation.action === "rename" &&
+                operation.source === legacyRelativePath(primaryCheckoutRoot, "worktrees"),
         )
     ) {
         return block(
@@ -604,10 +649,14 @@ async function preflight(
         );
     }
 
-    const symlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, [
-        layout.selected.checkoutRoot,
-        ...(existingJournal.journal?.selectedCheckoutRoots || []),
-    ]);
+    // Under the migration lock, every walk is fresh: that recheck is the one migration trusts.
+    const reuseWalks = !options.legacyRegistryLockHeld;
+    const symlink = await findSymlinkBlocker(
+        layout,
+        primaryCheckoutRoot,
+        [layout.selected.checkoutRoot, ...(existingJournal.journal?.selectedCheckoutRoots || [])],
+        reuseWalks,
+    );
     if (symlink.length > 0) {
         return block(
             "symlink",
@@ -632,7 +681,7 @@ async function preflight(
         );
     }
 
-    if (marker && await lstatOrNull(legacyWorktreeRegistryPath(primaryCheckoutRoot))) {
+    if (marker && (await lstatOrNull(legacyWorktreeRegistryPath(primaryCheckoutRoot)))) {
         try {
             const recovered = await inspectReturningRegistry(
                 legacyWorktreeRegistryPath(primaryCheckoutRoot),
@@ -674,7 +723,7 @@ async function preflight(
         );
     }
 
-    const selectedSymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, selectedRoots.roots);
+    const selectedSymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, selectedRoots.roots, reuseWalks);
     if (selectedSymlink.length > 0) {
         return block(
             "symlink",
@@ -755,11 +804,11 @@ async function preflight(
     };
 }
 
-async function validateMarkerRoots(
+function validateMarkerRoots(
     layout: ProjectRuntimeLayout,
     primaryCheckoutRoot: string,
     marker: LayoutMarker | null,
-): Promise<ProjectRuntimeMigrationBlockedResult | undefined> {
+): ProjectRuntimeMigrationBlockedResult | undefined {
     if (!marker) return undefined;
     if (marker.primaryCheckoutRoot !== primaryCheckoutRoot) {
         return block(
@@ -780,7 +829,10 @@ async function validateMarkerRoots(
         );
     }
     for (const root of marker.adoptedSelectedCheckoutRoots) {
-        if (root !== await canonicalExistingRoot(root)) {
+        // These locators record completed adoption, not current filesystem authority.
+        // Retired worktrees can disappear or their paths can be reused. Active roots
+        // are independently verified against Git, the registry, and the journal.
+        if (!isAbsolute(root) || root !== resolve(root)) {
             return block(
                 "malformed_migration_evidence",
                 [layout.primary.layoutMarkerPath, root],
@@ -794,18 +846,22 @@ async function validateMarkerRoots(
 async function listGitWorktrees(
     primaryCheckoutRoot: string,
 ): Promise<{ worktrees: GitWorktree[] } | ProjectRuntimeMigrationBlockedResult> {
+    const evidence = await observeGitEvidence(
+        `worktree-list\0${primaryCheckoutRoot}`,
+        await gitWorktreeListEvidence(primaryCheckoutRoot),
+    );
+    const reused = reusedGitRead<GitWorktreeRecord[]>(evidence);
+    if (reused) return { worktrees: await withRealPaths(reused) };
     const runWorktreeList = () =>
-        new Deno.Command("git", {
+        captureForegroundProcess("git", {
             cwd: primaryCheckoutRoot,
             args: ["worktree", "list", "--porcelain"],
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
-    let output: Deno.CommandOutput;
+        });
+    let output: CapturedProcessOutput;
     try {
         output = await runWorktreeList();
         // Git can report a transient failure while another process changes a linked worktree.
-        if (output.code !== 0 && await lstatOrNull(join(primaryCheckoutRoot, ".git"))) {
+        if (output.code !== 0 && (await lstatOrNull(join(primaryCheckoutRoot, ".git")))) {
             await new Promise((resolve) => setTimeout(resolve, 50));
             output = await runWorktreeList();
         }
@@ -826,21 +882,39 @@ async function listGitWorktrees(
         return { worktrees: [{ path: primaryCheckoutRoot, realPath: primaryCheckoutRoot, branch: "" }] };
     }
     const text = new TextDecoder().decode(output.stdout);
-    const worktrees: GitWorktree[] = [];
+    const records: GitWorktreeRecord[] = [];
     for (const record of text.trim().split("\n\n").filter(Boolean)) {
         const lines = record.split("\n");
-        const path = lines.find((line) => line.startsWith("worktree "))?.slice("worktree ".length).trim() || "";
-        const branch = lines.find((line) => line.startsWith("branch "))?.slice("branch ".length).trim() || "";
-        if (!path) continue;
+        const path =
+            lines
+                .find((line) => line.startsWith("worktree "))
+                ?.slice("worktree ".length)
+                .trim() || "";
+        const branch =
+            lines
+                .find((line) => line.startsWith("branch "))
+                ?.slice("branch ".length)
+                .trim() || "";
+        if (path) records.push({ path, branch });
+    }
+    // Paths and branches come only from repository metadata. Real paths do not,
+    // so they are resolved again on every entry.
+    await rememberGitRead(evidence, records);
+    return { worktrees: await withRealPaths(records) };
+}
+
+async function withRealPaths(records: GitWorktreeRecord[]): Promise<GitWorktree[]> {
+    const worktrees: GitWorktree[] = [];
+    for (const { path, branch } of records) {
         let realPath = path;
         try {
-            realPath = await Deno.realPath(path);
+            realPath = await fsRealpath(path);
         } catch {
             // A missing worktree is not usable evidence.
         }
         worktrees.push({ path, realPath, branch });
     }
-    return { worktrees };
+    return worktrees;
 }
 
 async function resolveSelectedRoots(
@@ -881,28 +955,29 @@ async function resolveSelectedRoots(
     }
     for (const entry of entries) {
         if (typeof entry.path !== "string" || !entry.path) continue;
-        let stat: Deno.FileInfo;
+        let stat: Stats;
         try {
-            stat = await Deno.lstat(entry.path);
+            stat = await fsLstat(entry.path);
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound && entry.status === "abandoned") continue;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT" && entry.status === "abandoned")
+                continue;
             return block(
                 "invalid_registered_checkout",
                 [entry.path],
                 "A live registry entry names a missing checkout.",
             );
         }
-        if (stat.isSymlink) {
+        if (stat.isSymbolicLink()) {
             return block("symlink", [entry.path], "A registry entry names a symlinked checkout.");
         }
-        if (!stat.isDirectory) {
+        if (!stat.isDirectory()) {
             return block(
                 "invalid_registered_checkout",
                 [entry.path],
                 "A registry entry names a non-directory checkout.",
             );
         }
-        const realPath = await Deno.realPath(entry.path);
+        const realPath = await fsRealpath(entry.path);
         if (!byRealPath.has(realPath)) {
             return block(
                 "invalid_registered_checkout",
@@ -943,14 +1018,22 @@ async function findTrackedRuntimePaths(
     const runtimePaths = new Set<string>();
     const secretPaths = new Set<string>();
     for (const root of new Set([primaryCheckoutRoot, ...selectedRoots])) {
-        let output: Deno.CommandOutput;
+        const pathspecs = runtimeGitPathspecs();
+        const evidence = await observeGitEvidence(
+            `ls-files\0${root}\0${pathspecs.join("\0")}`,
+            await gitIndexEvidence(root),
+        );
+        const reused = reusedGitRead<string[]>(evidence);
+        if (reused) {
+            addTrackedRuntimePaths(root, reused, runtimePaths, secretPaths);
+            continue;
+        }
+        let output: CapturedProcessOutput;
         try {
-            output = await new Deno.Command("git", {
+            output = await captureForegroundProcess("git", {
                 cwd: root,
-                args: ["ls-files", "-z", "--", ...runtimeGitPathspecs()],
-                stdout: "piped",
-                stderr: "null",
-            }).output();
+                args: ["ls-files", "-z", "--", ...pathspecs],
+            });
         } catch (error) {
             if (!(await lstatOrNull(join(root, ".git")))) continue;
             throw error;
@@ -964,13 +1047,18 @@ async function findTrackedRuntimePaths(
             );
         }
         const paths = new TextDecoder().decode(output.stdout).split("\0").filter(Boolean);
-        for (const path of paths) {
-            const absolutePath = join(root, path);
-            if (isProjectSecretGitPath(path)) secretPaths.add(absolutePath);
-            else runtimePaths.add(absolutePath);
-        }
+        await rememberGitRead(evidence, paths);
+        addTrackedRuntimePaths(root, paths, runtimePaths, secretPaths);
     }
     return { runtimePaths: [...runtimePaths].sort(), secretPaths: [...secretPaths].sort() };
+}
+
+function addTrackedRuntimePaths(root: string, paths: string[], runtimePaths: Set<string>, secretPaths: Set<string>) {
+    for (const path of paths) {
+        const absolutePath = join(root, path);
+        if (isProjectSecretGitPath(path)) secretPaths.add(absolutePath);
+        else runtimePaths.add(absolutePath);
+    }
 }
 
 function runtimeGitPathspecs(): string[] {
@@ -983,8 +1071,8 @@ function isProjectSecretGitPath(path: string): boolean {
         PROJECT_SECRET_STORE_RELATIVE_PATH,
         `${RUNWIELD_DIR_NAME}/${PROJECT_INTERNAL_RUNTIME_DIR_NAME}/collaboration-secrets.json`,
     ];
-    return secretPaths.some((secretPath) =>
-        path === secretPath || (path.startsWith(`${secretPath}.`) && path.endsWith(".tmp"))
+    return secretPaths.some(
+        (secretPath) => path === secretPath || (path.startsWith(`${secretPath}.`) && path.endsWith(".tmp")),
     );
 }
 
@@ -992,6 +1080,7 @@ async function findSymlinkBlocker(
     layout: ProjectRuntimeLayout,
     primaryCheckoutRoot: string,
     selectedRoots: string[] = [layout.selected.checkoutRoot],
+    reuseWalks = true,
 ): Promise<string[]> {
     const authorityRoots = [
         layout.primary.internalRoot,
@@ -1015,15 +1104,44 @@ async function findSymlinkBlocker(
     for (const root of [legacyRuntimeBase(primaryCheckoutRoot), ...selectedRoots.map(legacyRuntimeBase)]) {
         await collectOnlyThisSymlink(root, symlinks);
     }
-    for (const root of authorityRoots) {
-        await collectSymlinks(root, symlinks, repositoryContainers);
+    for (const root of new Set(authorityRoots)) {
+        symlinks.push(...(await authoritySymlinks(primaryCheckoutRoot, root, repositoryContainers, reuseWalks)));
     }
     return symlinks;
 }
 
+/**
+ * Symlinks under one authority root. Inside a bounded read, each root is walked
+ * once and shared by every checkout entered during that read, the same way each
+ * checkout's entry is; writes and migrations invalidate the walks.
+ */
+function authoritySymlinks(
+    primaryCheckoutRoot: string,
+    root: string,
+    repositoryContainers: Set<string>,
+    reuseWalks: boolean,
+): Promise<string[]> {
+    const walk = async () => {
+        const found: string[] = [];
+        await collectSymlinks(root, found, repositoryContainers);
+        return found;
+    };
+    const scope = runtimeEntryScope.getStore();
+    if (!reuseWalks || !scope?.active) return walk();
+    const key = `${primaryCheckoutRoot}\0${root}`;
+    const pending = scope.symlinkWalks.get(key);
+    if (pending) return pending;
+    const result = walk();
+    scope.symlinkWalks.set(key, result);
+    void result.catch(() => {
+        if (scope.symlinkWalks.get(key) === result) scope.symlinkWalks.delete(key);
+    });
+    return result;
+}
+
 async function collectOnlyThisSymlink(path: string, symlinks: string[]): Promise<void> {
     const info = await lstatOrNull(path);
-    if (info?.isSymlink) symlinks.push(path);
+    if (info?.isSymbolicLink()) symlinks.push(path);
 }
 
 async function collectSymlinks(
@@ -1031,25 +1149,43 @@ async function collectSymlinks(
     symlinks: string[],
     repositoryContainers: Set<string> = new Set(),
 ): Promise<void> {
-    const info = await lstatOrNull(path);
-    if (!info) return;
-    if (info.isSymlink) {
-        symlinks.push(path);
-        return;
+    let entries: Dirent[] | null;
+    for (let attempt = 0; ; attempt++) {
+        try {
+            // A staging checkout can be disappearing during publication cleanup.
+            // Recheck its type on every retry so a replacement symlink still blocks.
+            const info = await lstatOrNull(path);
+            if (!info) return;
+            if (info.isSymbolicLink()) {
+                symlinks.push(path);
+                return;
+            }
+            if (!info.isDirectory()) return;
+            entries = await safeReadDir(path);
+            break;
+        } catch (error) {
+            if (
+                platform !== "win32" ||
+                attempt >= 10 ||
+                !(error instanceof Error) ||
+                !("code" in error) ||
+                (error.code !== "EPERM" && error.code !== "EACCES" && error.code !== "EBUSY")
+            )
+                throw error;
+            await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+        }
     }
-    if (!info.isDirectory) return;
-    const entries = await safeReadDir(path);
     if (!entries) return;
     if (repositoryContainers.has(path)) {
         for (const entry of entries) {
             const checkoutRoot = join(path, entry.name);
             const checkoutInfo = await lstatOrNull(checkoutRoot);
             if (!checkoutInfo) continue;
-            if (checkoutInfo.isSymlink) {
+            if (checkoutInfo.isSymbolicLink()) {
                 symlinks.push(checkoutRoot);
                 continue;
             }
-            if (checkoutInfo.isDirectory && await lstatOrNull(join(checkoutRoot, ".git"))) continue;
+            if (checkoutInfo.isDirectory() && (await lstatOrNull(join(checkoutRoot, ".git")))) continue;
             await collectSymlinks(checkoutRoot, symlinks, repositoryContainers);
         }
         return;
@@ -1063,10 +1199,10 @@ async function collectSpecialFiles(path: string, kind: PathKind, specialFiles: s
     const info = await lstatOrNull(path);
     if (!info) return;
     if (kind === "file") {
-        if (!info.isFile) specialFiles.push(path);
+        if (!info.isFile()) specialFiles.push(path);
         return;
     }
-    if (!info.isDirectory) {
+    if (!info.isDirectory()) {
         specialFiles.push(path);
         return;
     }
@@ -1076,15 +1212,12 @@ async function collectSpecialFiles(path: string, kind: PathKind, specialFiles: s
         const child = join(path, entry.name);
         const childInfo = await lstatOrNull(child);
         if (!childInfo) continue;
-        if (childInfo.isDirectory) await collectSpecialFiles(child, "directory", specialFiles);
-        else if (!childInfo.isFile && !childInfo.isSymlink) specialFiles.push(child);
+        if (childInfo.isDirectory()) await collectSpecialFiles(child, "directory", specialFiles);
+        else if (!childInfo.isFile() && !childInfo.isSymbolicLink()) specialFiles.push(child);
     }
 }
 
-async function findLegacySecretConflicts(
-    primaryCheckoutRoot: string,
-    selectedRoots: string[],
-): Promise<string[]> {
+async function findLegacySecretConflicts(primaryCheckoutRoot: string, selectedRoots: string[]): Promise<string[]> {
     const sources: string[] = [];
     for (const root of selectedRoots) {
         const source = legacySecretAuthority(root, primaryCheckoutRoot).source;
@@ -1118,7 +1251,11 @@ async function findCurrentAuthorityConflicts(
     );
     if (!marker) {
         conflicts.push(
-            ...await currentConflictsInRoot(internalRootFor(primaryCheckoutRoot), allowedPrimary, allowedJournalPaths),
+            ...(await currentConflictsInRoot(
+                internalRootFor(primaryCheckoutRoot),
+                allowedPrimary,
+                allowedJournalPaths,
+            )),
         );
     }
     const adoptedRoots = new Set(marker?.adoptedSelectedCheckoutRoots || []);
@@ -1126,7 +1263,7 @@ async function findCurrentAuthorityConflicts(
         if (marker && (root === primaryCheckoutRoot || adoptedRoots.has(root))) continue;
         const selectedInternalRoot = internalRootFor(root);
         const allow = root === primaryCheckoutRoot ? allowedPrimary : new Set<string>();
-        conflicts.push(...await currentConflictsInRoot(selectedInternalRoot, allow, allowedJournalPaths));
+        conflicts.push(...(await currentConflictsInRoot(selectedInternalRoot, allow, allowedJournalPaths)));
     }
     // A completed marker establishes the current authority. Recreated old files
     // and directories are recoverable input, not competing authorities.
@@ -1140,7 +1277,7 @@ async function currentConflictsInRoot(
 ): Promise<string[]> {
     const info = await lstatOrNull(internalRoot);
     if (!info) return [];
-    if (!info.isDirectory) return [internalRoot];
+    if (!info.isDirectory()) return [internalRoot];
     const entries = await safeReadDir(internalRoot);
     if (!entries) return [];
     const conflicts: string[] = [];
@@ -1164,9 +1301,10 @@ async function inspectLegacyLocks(
     const registryLock = legacyWorktreeRegistryLockPath(primaryCheckoutRoot);
     if (!options.legacyRegistryLockHeld) {
         const registryStatus = await classifyProcessLock(registryLock, 30_000);
-        const currentMigrationOwnsRegistry = registryStatus.status === "active" && options.migrationLockPath
-            ? await lockOwnersMatch(options.migrationLockPath, registryLock, registryStatus.snapshot)
-            : false;
+        const currentMigrationOwnsRegistry =
+            registryStatus.status === "active" && registryStatus.snapshot && options.migrationLockPath
+                ? await lockOwnersMatch(options.migrationLockPath, registryLock, registryStatus.snapshot)
+                : false;
         if (registryStatus.status === "active" && !currentMigrationOwnsRegistry) active.push(registryLock);
         if (registryStatus.status === "stale") retire.push(retireLockOperation(registryLock, registryStatus.snapshot));
     }
@@ -1179,15 +1317,13 @@ async function inspectLegacyLocks(
             if (status.status === "active") active.push(lockPath);
             if (status.status === "stale") retire.push(retireLockOperation(lockPath, status.snapshot));
         }
-        for (
-            const lock of [
-                { path: join(selectedBase, "work-record-supersession.lock"), staleMs: WORK_RECORD_LOCK_STALE_MS },
-                {
-                    path: join(selectedBase, "work-record-supersession-recovery.lock"),
-                    staleMs: WORK_RECORD_RECOVERY_LOCK_STALE_MS,
-                },
-            ]
-        ) {
+        for (const lock of [
+            { path: join(selectedBase, "work-record-supersession.lock"), staleMs: WORK_RECORD_LOCK_STALE_MS },
+            {
+                path: join(selectedBase, "work-record-supersession-recovery.lock"),
+                staleMs: WORK_RECORD_RECOVERY_LOCK_STALE_MS,
+            },
+        ]) {
             const status = await classifyWorkRecordLock(lock.path, lock.staleMs);
             if (status.status === "active") active.push(lock.path);
             if (status.status === "stale") retire.push(retireLockOperation(lock.path, status.snapshot));
@@ -1213,8 +1349,12 @@ async function lockOwnersMatch(
         try {
             const migrationOwner = JSON.parse(migrationSnapshot.text) as ProcessLockOwner;
             const registryOwner = JSON.parse(registrySnapshot.text) as ProcessLockOwner;
-            return Number.isInteger(migrationOwner.pid) && migrationOwner.pid === registryOwner.pid &&
-                Boolean(migrationOwner.hostname) && migrationOwner.hostname === registryOwner.hostname;
+            return (
+                Number.isInteger(migrationOwner.pid) &&
+                migrationOwner.pid === registryOwner.pid &&
+                Boolean(migrationOwner.hostname) &&
+                migrationOwner.hostname === registryOwner.hostname
+            );
         } catch {
             await new Promise((resolveTimer) => setTimeout(resolveTimer, 10));
             const refreshedRegistrySnapshot = await readLockFileSnapshot(registryLockPath);
@@ -1226,12 +1366,24 @@ async function lockOwnersMatch(
 }
 
 type LegacyLockClassification =
-    | { status: "absent" }
-    | { status: "active"; snapshot: LockSnapshot }
-    | { status: "stale"; snapshot: LockSnapshot };
+    { status: "absent" } | { status: "active"; snapshot?: LockSnapshot } | { status: "stale"; snapshot: LockSnapshot };
+
+async function readLegacyLockSnapshot(path: string): Promise<LockFileSnapshot | "locked" | null> {
+    try {
+        return await readLockFileSnapshot(path);
+    } catch (error) {
+        // Windows mandatory byte-range locks deny reads through other handles.
+        // An unreadable held lock has no snapshot that could authorize retirement.
+        if (platform === "win32" && error instanceof Error && "code" in error && error.code === "EBUSY") {
+            return "locked";
+        }
+        throw error;
+    }
+}
 
 async function classifyProcessLock(path: string, staleMs: number): Promise<LegacyLockClassification> {
-    const snapshot = await readLockFileSnapshot(path);
+    const snapshot = await readLegacyLockSnapshot(path);
+    if (snapshot === "locked") return { status: "active" };
     if (!snapshot) return { status: "absent" };
     if (await isLockHolderGone(snapshot.text)) return { status: "stale", snapshot };
     const parsed = parseJsonDocument(snapshot.text);
@@ -1242,7 +1394,8 @@ async function classifyProcessLock(path: string, staleMs: number): Promise<Legac
 }
 
 async function classifyPlanLock(path: string): Promise<LegacyLockClassification> {
-    const snapshot = await readLockFileSnapshot(path);
+    const snapshot = await readLegacyLockSnapshot(path);
+    if (snapshot === "locked") return { status: "active" };
     if (!snapshot) return { status: "absent" };
     if (await isLockHolderGone(snapshot.text)) return { status: "stale", snapshot };
     return Date.now() - snapshot.mtime > PLAN_LOCK_STALE_MS
@@ -1251,7 +1404,8 @@ async function classifyPlanLock(path: string): Promise<LegacyLockClassification>
 }
 
 async function classifyWorkRecordLock(path: string, staleMs: number): Promise<LegacyLockClassification> {
-    const snapshot = await readLockFileSnapshot(path);
+    const snapshot = await readLegacyLockSnapshot(path);
+    if (snapshot === "locked") return { status: "active" };
     if (!snapshot) return { status: "absent" };
     const updatedAt = snapshot.updatedAt ?? snapshot.mtime;
     return Date.now() - updatedAt > staleMs ? { status: "stale", snapshot } : { status: "active", snapshot };
@@ -1269,8 +1423,8 @@ function retireLockOperation(source: string, proof: LockSnapshot): MigrationReti
     return { action: "retire", source, kind: "file", proof, completed: false };
 }
 
-async function canTakeControllerLock(path: string): Promise<boolean> {
-    const file = await Deno.open(path, { read: true, write: true });
+function canTakeControllerLock(path: string): boolean {
+    const file = openNativeFileLock(path, false);
     try {
         if (!file.tryLockSync(true)) return false;
         file.unlockSync();
@@ -1284,9 +1438,11 @@ async function validateLegacyAuthorities(
     primaryCheckoutRoot: string,
     selectedRoots: string[],
 ): Promise<undefined | ProjectRuntimeMigrationBlockedResult> {
-    const secretTemps = (await Promise.all(
-        selectedRoots.map((root) => listSiblingTemps(legacyRelativePath(root, "collaboration-secrets.json"))),
-    )).flat();
+    const secretTemps = (
+        await Promise.all(
+            selectedRoots.map((root) => listSiblingTemps(legacyRelativePath(root, "collaboration-secrets.json"))),
+        )
+    ).flat();
     if (secretTemps.length > 0) {
         return block("malformed_migration_evidence", secretTemps, "A legacy secret temp file is present.");
     }
@@ -1297,13 +1453,11 @@ async function validateLegacyAuthorities(
 
     const specialFiles: string[] = [];
     const symlinks: string[] = [];
-    for (
-        const authority of [
-            ...legacyPrimaryAuthorities(primaryCheckoutRoot),
-            ...selectedRoots.flatMap(legacySelectedAuthorities),
-            ...selectedRoots.map((root) => legacySecretAuthority(root, primaryCheckoutRoot)),
-        ]
-    ) {
+    for (const authority of [
+        ...legacyPrimaryAuthorities(primaryCheckoutRoot),
+        ...selectedRoots.flatMap(legacySelectedAuthorities),
+        ...selectedRoots.map((root) => legacySecretAuthority(root, primaryCheckoutRoot)),
+    ]) {
         await collectSymlinks(authority.source, symlinks);
         await collectSpecialFiles(authority.source, authority.kind, specialFiles);
     }
@@ -1328,13 +1482,12 @@ async function buildOperations(
     operations.push(...staleLocks);
     const primaryAuthorities = legacyPrimaryAuthorities(primaryCheckoutRoot);
     if (marker) {
-        for (
-            const authority of [
-                ...primaryAuthorities,
-                ...selectedRoots.filter((root) => marker.adoptedSelectedCheckoutRoots.includes(root))
-                    .flatMap(legacySelectedAuthorities),
-            ]
-        ) {
+        for (const authority of [
+            ...primaryAuthorities,
+            ...selectedRoots
+                .filter((root) => marker.adoptedSelectedCheckoutRoots.includes(root))
+                .flatMap(legacySelectedAuthorities),
+        ]) {
             if (await hasRecoverableRuntimeFiles(authority.source)) {
                 operations.push({ ...authority, action: "reconcile" });
             }
@@ -1348,9 +1501,10 @@ async function buildOperations(
     if (secretSources.length > 1) {
         throw new Error("Legacy secret conflicts must be rejected during preflight.");
     }
-    const registryAuthorities = primaryAuthorities.filter((authority) =>
-        basename(authority.source) === WORKTREE_REGISTRY_FILE ||
-        basename(authority.source) === "worktree-registry-migration-issues.json"
+    const registryAuthorities = primaryAuthorities.filter(
+        (authority) =>
+            basename(authority.source) === WORKTREE_REGISTRY_FILE ||
+            basename(authority.source) === "worktree-registry-migration-issues.json",
     );
     if (!marker) {
         for (const authority of primaryAuthorities.filter((authority) => !registryAuthorities.includes(authority))) {
@@ -1488,18 +1642,23 @@ async function readJournal(
     path: string,
 ): Promise<{ journal: MigrationJournal | null } | ProjectRuntimeMigrationBlockedResult> {
     try {
-        const parsed = JSON.parse(await Deno.readTextFile(path));
+        const parsed = JSON.parse(await fsReadFile(path, "utf8"));
         if (
-            !parsed || typeof parsed !== "object" || Array.isArray(parsed) || parsed.version !== LAYOUT_VERSION ||
-            typeof parsed.primaryCheckoutRoot !== "string" || !Array.isArray(parsed.selectedCheckoutRoots) ||
+            !parsed ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed) ||
+            parsed.version !== LAYOUT_VERSION ||
+            typeof parsed.primaryCheckoutRoot !== "string" ||
+            !Array.isArray(parsed.selectedCheckoutRoots) ||
             !parsed.selectedCheckoutRoots.every((root: string) => typeof root === "string") ||
-            !Array.isArray(parsed.operations) || !parsed.operations.every(isMigrationOperation)
+            !Array.isArray(parsed.operations) ||
+            !parsed.operations.every(isMigrationOperation)
         ) {
             return block("malformed_migration_evidence", [path], "The runtime migration journal is malformed.");
         }
         return { journal: parsed as MigrationJournal };
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return { journal: null };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return { journal: null };
         if (error instanceof SyntaxError) {
             return block("malformed_migration_evidence", [path], "The runtime migration journal is not valid JSON.");
         }
@@ -1510,20 +1669,34 @@ async function readJournal(
 function isMigrationOperation(value: MigrationOperation): boolean {
     if (!value || typeof value !== "object") return false;
     if (value.action === "reconcile") {
-        return typeof value.source === "string" && typeof value.destination === "string" &&
-            (value.kind === "directory" || value.kind === "file") && typeof value.completed === "boolean";
+        return (
+            typeof value.source === "string" &&
+            typeof value.destination === "string" &&
+            (value.kind === "directory" || value.kind === "file") &&
+            typeof value.completed === "boolean"
+        );
     }
     if (value.action === "rename") {
-        return typeof value.source === "string" && typeof value.destination === "string" &&
-            (value.kind === "file" || value.kind === "directory") && typeof value.completed === "boolean";
+        return (
+            typeof value.source === "string" &&
+            typeof value.destination === "string" &&
+            (value.kind === "file" || value.kind === "directory") &&
+            typeof value.completed === "boolean"
+        );
     }
     if (value.action === "retire") {
-        return typeof value.source === "string" && value.kind === "file" && typeof value.completed === "boolean" &&
-            Boolean(value.proof) && typeof value.proof.text === "string" &&
-            typeof value.proof.mtime === "number" && typeof value.proof.size === "number" &&
+        return (
+            typeof value.source === "string" &&
+            value.kind === "file" &&
+            typeof value.completed === "boolean" &&
+            Boolean(value.proof) &&
+            typeof value.proof.text === "string" &&
+            typeof value.proof.mtime === "number" &&
+            typeof value.proof.size === "number" &&
             (value.proof.token === undefined || typeof value.proof.token === "string") &&
             (value.proof.createdAt === undefined || typeof value.proof.createdAt === "number") &&
-            (value.proof.updatedAt === undefined || typeof value.proof.updatedAt === "number");
+            (value.proof.updatedAt === undefined || typeof value.proof.updatedAt === "number")
+        );
     }
     return false;
 }
@@ -1545,8 +1718,10 @@ async function isAllowedJournalOperation(
     const allowed = new Set(preflightResult.operations.map(operationKey));
     if (allowed.has(operationKey(operation))) return true;
     if (operation.action === "retire") {
-        return isBoundedLegacyLockPath(preflightResult, operation.source) &&
-            (operation.completed || !(await lstatOrNull(operation.source)));
+        return (
+            isBoundedLegacyLockPath(preflightResult, operation.source) &&
+            (operation.completed || !(await lstatOrNull(operation.source)))
+        );
     }
     if (operation.action === "reconcile") {
         const marker = await readLayoutMarker(preflightResult.layout);
@@ -1556,9 +1731,11 @@ async function isAllowedJournalOperation(
             ...preflightResult.selectedCheckoutRoots
                 .filter((root) => marker.marker?.adoptedSelectedCheckoutRoots.includes(root))
                 .flatMap(legacySelectedAuthorities),
-        ].some((authority) =>
-            authority.kind === operation.kind && authority.source === operation.source &&
-            authority.destination === operation.destination
+        ].some(
+            (authority) =>
+                authority.kind === operation.kind &&
+                authority.source === operation.source &&
+                authority.destination === operation.destination,
         );
     }
     // RC.1 could journal an empty staging directory before interruption. Finish
@@ -1568,19 +1745,23 @@ async function isAllowedJournalOperation(
         operation.destination === join(internalRootFor(preflightResult.primaryCheckoutRoot), PLAN_STAGING_DIR_NAME) &&
         operation.kind === "directory"
     ) {
-        return (await safeReadDir(operation.source) || []).length === 0 &&
-            (await safeReadDir(operation.destination) || []).length === 0;
+        return (
+            ((await safeReadDir(operation.source)) || []).length === 0 &&
+            ((await safeReadDir(operation.destination)) || []).length === 0
+        );
     }
     const authorities = [
         ...legacyPrimaryAuthorities(preflightResult.primaryCheckoutRoot),
         ...preflightResult.selectedCheckoutRoots.flatMap(legacySelectedAuthorities),
         ...preflightResult.selectedCheckoutRoots.map((root) =>
-            legacySecretAuthority(root, preflightResult.primaryCheckoutRoot)
+            legacySecretAuthority(root, preflightResult.primaryCheckoutRoot),
         ),
     ];
-    return authorities.some((authority) =>
-        authority.source === operation.source && authority.destination === operation.destination &&
-        authority.kind === operation.kind
+    return authorities.some(
+        (authority) =>
+            authority.source === operation.source &&
+            authority.destination === operation.destination &&
+            authority.kind === operation.kind,
     );
 }
 
@@ -1590,9 +1771,11 @@ function isBoundedLegacyLockPath(preflightResult: MigrationPreflight, path: stri
     return preflightResult.selectedCheckoutRoots.some((root) => {
         const base = legacyRuntimeBase(root);
         const planLocksDir = join(base, PLAN_LOCKS_DIR_NAME);
-        return path === join(base, "work-record-supersession.lock") ||
+        return (
+            path === join(base, "work-record-supersession.lock") ||
             path === join(base, "work-record-supersession-recovery.lock") ||
-            (path.startsWith(`${planLocksDir}${SEPARATOR}`) && path.endsWith(".lock"));
+            (path.startsWith(`${planLocksDir}${SEPARATOR}`) && path.endsWith(".lock"))
+        );
     });
 }
 
@@ -1644,9 +1827,9 @@ async function applyRenameOperation(
     const destination = await lstatOrNull(operation.destination);
     if (source && !destination) {
         await writeJournal(layout.primary.layoutMigrationJournalPath, markOperation(journal, operation.source, false));
-        await Deno.mkdir(dirname(operation.destination), { recursive: true, mode: 0o700 });
+        await fsMkdir(dirname(operation.destination), { recursive: true, mode: 0o700 });
         try {
-            await Deno.rename(operation.source, operation.destination);
+            await fsPromises.rename(operation.source, operation.destination);
         } catch (error) {
             if (error instanceof Error && isCrossDeviceError(error)) {
                 return block(
@@ -1675,11 +1858,11 @@ async function applyRenameOperation(
             "A journaled runtime rename lost both source and destination.",
         );
     }
-    if (source && destination && await isEmptyDirectory(operation.destination)) {
-        await Deno.remove(operation.destination);
+    if (source && destination && (await isEmptyDirectory(operation.destination))) {
+        await fsRmdir(operation.destination);
         await syncDirectory(dirname(operation.destination));
         try {
-            await Deno.rename(operation.source, operation.destination);
+            await fsPromises.rename(operation.source, operation.destination);
         } catch (error) {
             if (error instanceof Error && isCrossDeviceError(error)) {
                 return block(
@@ -1763,7 +1946,7 @@ function workRecordRecoveryLockPathForRetire(journal: MigrationJournal, lockPath
 }
 
 async function acquireLegacyWorkRecordRecoveryLock(lockPath: string): Promise<() => Promise<void>> {
-    await Deno.mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
+    await fsMkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
     const token = crypto.randomUUID();
     const deadline = Date.now() + WORK_RECORD_LOCK_WAIT_TIMEOUT_MS;
     while (true) {
@@ -1772,22 +1955,19 @@ async function acquireLegacyWorkRecordRecoveryLock(lockPath: string): Promise<()
             const heartbeat = setInterval(() => {
                 updateWorkRecordLockFile(file, lockPath, token).catch(() => {});
             }, WORK_RECORD_LOCK_HEARTBEAT_MS);
-            Deno.unrefTimer(heartbeat);
+            heartbeat.unref();
             return async () => {
                 clearInterval(heartbeat);
                 file.close();
                 await removeWorkRecordLockIfOwned(lockPath, token);
             };
         } catch (error) {
-            if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
             const status = await classifyWorkRecordLock(lockPath, WORK_RECORD_RECOVERY_LOCK_STALE_MS);
             if (Date.now() >= deadline) {
                 throw new Error(`Timed out waiting for the Work Record supersession recovery lock: ${lockPath}`);
             }
-            if (
-                status.status === "stale" &&
-                await removeLockFileIfSnapshotMatches(lockPath, status.snapshot)
-            ) {
+            if (status.status === "stale" && (await removeLockFileIfSnapshotMatches(lockPath, status.snapshot))) {
                 continue;
             }
             await new Promise((resolveTimer) => setTimeout(resolveTimer, WORK_RECORD_LOCK_RETRY_MS));
@@ -1795,8 +1975,8 @@ async function acquireLegacyWorkRecordRecoveryLock(lockPath: string): Promise<()
     }
 }
 
-async function createWorkRecordLockFile(lockPath: string, token: string): Promise<Deno.FsFile> {
-    const file = await Deno.open(lockPath, { createNew: true, read: true, write: true, mode: 0o600 });
+async function createWorkRecordLockFile(lockPath: string, token: string): Promise<NativeFileLock> {
+    const file = openNativeFileLock(lockPath, "exclusive");
     try {
         file.lockSync(true);
         const now = Date.now();
@@ -1808,17 +1988,14 @@ async function createWorkRecordLockFile(lockPath: string, token: string): Promis
     }
 }
 
-async function updateWorkRecordLockFile(file: Deno.FsFile, lockPath: string, token: string): Promise<void> {
-    const parsed = parseJsonDocument(await Deno.readTextFile(lockPath));
+async function updateWorkRecordLockFile(file: NativeFileLock, lockPath: string, token: string): Promise<void> {
+    const parsed = parseJsonDocument(await fsReadFile(lockPath, "utf8"));
     if (parsed?.token !== token || typeof parsed.createdAt !== "number") return;
     await writeWorkRecordLockFile(file, { token, createdAt: parsed.createdAt, updatedAt: Date.now() });
 }
 
-async function writeWorkRecordLockFile(file: Deno.FsFile, record: WorkRecordLockDocument): Promise<void> {
-    await file.truncate(0);
-    await file.seek(0, Deno.SeekMode.Start);
-    await file.write(new TextEncoder().encode(JSON.stringify(record)));
-    await file.sync();
+function writeWorkRecordLockFile(file: NativeFileLock, record: WorkRecordLockDocument): void {
+    file.replaceTextSync(JSON.stringify(record));
 }
 
 async function removeWorkRecordLockIfOwned(lockPath: string, token: string): Promise<void> {
@@ -1831,7 +2008,7 @@ function markOperation(journal: MigrationJournal, source: string, completed: boo
     return {
         ...journal,
         operations: journal.operations.map((operation) =>
-            operation.source === source ? { ...operation, completed } : operation
+            operation.source === source ? { ...operation, completed } : operation,
         ),
         updatedAt: new Date().toISOString(),
     };
@@ -1846,30 +2023,34 @@ async function writeLayoutMarker(path: string, marker: LayoutMarker): Promise<vo
 }
 
 async function atomicWriteJson(path: string, value: MigrationJournal | LayoutMarker): Promise<void> {
-    await Deno.mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    await Deno.chmod(dirname(path), 0o700).catch(() => {});
+    await fsMkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await fsChmod(dirname(path), 0o700).catch(() => {});
     const temporary = `${path}.${crypto.randomUUID()}.tmp`;
     const payload = `${JSON.stringify(value, null, 2)}\n`;
     try {
-        const file = await Deno.open(temporary, { createNew: true, write: true, mode: 0o600 });
+        const file = await fsOpen(temporary, "wx", 0o600);
         try {
-            await file.write(new TextEncoder().encode(payload));
+            await file.writeFile(payload);
             await file.sync();
         } finally {
-            file.close();
+            await file.close();
         }
-        await Deno.rename(temporary, path);
+        try {
+            await fsPromises.rename(temporary, path);
+        } catch (error) {
+            if (!(error instanceof Error && recoverWindowsRename(error, temporary, path))) throw error;
+        }
         await syncDirectory(dirname(path));
     } finally {
-        await Deno.remove(temporary).catch((error) => {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+        await fsPromises.rm(temporary).catch((error) => {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         });
     }
 }
 
 async function acquireMigrationLock(lockPath: string): Promise<{ release: () => Promise<void> }> {
-    await Deno.mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
-    await Deno.chmod(dirname(lockPath), 0o700).catch(() => {});
+    await fsMkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
+    await fsChmod(dirname(lockPath), 0o700).catch(() => {});
     const token = crypto.randomUUID();
     while (true) {
         try {
@@ -1877,7 +2058,7 @@ async function acquireMigrationLock(lockPath: string): Promise<{ release: () => 
             const heartbeat = setInterval(() => {
                 updateMigrationLockFile(lockPath, token).catch(() => {});
             }, MIGRATION_LOCK_HEARTBEAT_MS);
-            Deno.unrefTimer(heartbeat);
+            heartbeat.unref();
             return {
                 release: async () => {
                     clearInterval(heartbeat);
@@ -1885,7 +2066,7 @@ async function acquireMigrationLock(lockPath: string): Promise<{ release: () => 
                 },
             };
         } catch (error) {
-            if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
             const status = await classifyProcessLock(lockPath, MIGRATION_LOCK_STALE_MS);
             if (status.status === "stale") {
                 await removeLockFileIfSnapshotMatches(lockPath, status.snapshot);
@@ -1897,13 +2078,13 @@ async function acquireMigrationLock(lockPath: string): Promise<{ release: () => 
 }
 
 async function createMigrationLockFile(lockPath: string, token: string): Promise<void> {
-    const file = await Deno.open(lockPath, { createNew: true, write: true, mode: 0o600 });
+    const file = await fsOpen(lockPath, "wx", 0o600);
     try {
-        await file.write(
+        await file.writeFile(
             new TextEncoder().encode(
                 JSON.stringify({
                     token,
-                    pid: Deno.pid,
+                    pid: pid,
                     hostname: getLockHostname(),
                     createdAtMs: Date.now(),
                     updatedAtMs: Date.now(),
@@ -1912,23 +2093,23 @@ async function createMigrationLockFile(lockPath: string, token: string): Promise
         );
         await file.sync();
     } finally {
-        file.close();
+        await file.close();
     }
 }
 
 async function updateMigrationLockFile(lockPath: string, token: string): Promise<void> {
-    const parsed = JSON.parse(await Deno.readTextFile(lockPath));
+    const parsed = JSON.parse(await fsReadFile(lockPath, "utf8"));
     if (parsed.token !== token) return;
-    await Deno.writeTextFile(lockPath, JSON.stringify({ ...parsed, updatedAtMs: Date.now() }));
+    await fsWriteFile(lockPath, JSON.stringify({ ...parsed, updatedAtMs: Date.now() }));
 }
 
 async function removeMigrationLockIfOwned(lockPath: string, token: string): Promise<void> {
     try {
-        const parsed = JSON.parse(await Deno.readTextFile(lockPath));
+        const parsed = JSON.parse(await fsReadFile(lockPath, "utf8"));
         if (parsed.token !== token) return;
-        await Deno.remove(lockPath);
+        await fsPromises.rm(lockPath);
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
 }
 
@@ -1936,33 +2117,33 @@ function mergedSelectedRoots(marker: LayoutMarker | null, selectedRoots: string[
     return [...new Set([...(marker?.adoptedSelectedCheckoutRoots || []), ...selectedRoots])].sort();
 }
 
-async function lstatOrNull(path: string): Promise<Deno.FileInfo | null> {
+async function lstatOrNull(path: string): Promise<Stats | null> {
     try {
-        return await Deno.lstat(path);
+        return await fsLstat(path);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
 
-async function safeReadDir(path: string): Promise<Deno.DirEntry[] | null> {
+async function safeReadDir(path: string): Promise<Dirent[] | null> {
     try {
-        const entries: Deno.DirEntry[] = [];
-        for await (const entry of Deno.readDir(path)) entries.push(entry);
+        const entries: Dirent[] = [];
+        for await (const entry of await fsReaddir(path, { withFileTypes: true })) entries.push(entry);
         return entries;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
 
 async function listFiles(path: string): Promise<string[]> {
     const info = await lstatOrNull(path);
-    if (!info || !info.isDirectory) return [];
+    if (!info || !info.isDirectory()) return [];
     const files: string[] = [];
-    for await (const entry of Deno.readDir(path)) {
+    for await (const entry of await fsReaddir(path, { withFileTypes: true })) {
         const child = join(path, entry.name);
-        if (entry.isDirectory) files.push(...await listFiles(child));
+        if (entry.isDirectory()) files.push(...(await listFiles(child)));
         else files.push(child);
     }
     return files;
@@ -1971,15 +2152,15 @@ async function listFiles(path: string): Promise<string[]> {
 async function isEmptyDirectory(path: string): Promise<boolean> {
     const info = await lstatOrNull(path);
     if (!info) return true;
-    if (!info.isDirectory) return false;
-    for await (const _entry of Deno.readDir(path)) return false;
+    if (!info.isDirectory()) return false;
+    for await (const _entry of await fsReaddir(path, { withFileTypes: true })) return false;
     return true;
 }
 
 async function removeEmptyDirectory(path: string): Promise<void> {
     if (!(await isEmptyDirectory(path))) return;
-    await Deno.remove(path).catch((error) => {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+    await fsRmdir(path).catch((error) => {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     });
 }
 
@@ -1994,12 +2175,12 @@ async function listSiblingTemps(path: string): Promise<string[]> {
 }
 
 async function syncDirectory(path: string): Promise<void> {
-    if (Deno.build.os === "windows") return;
-    const directory = await Deno.open(path, { read: true });
+    if (platform === "win32") return;
+    const directory = await fsOpen(path, "r");
     try {
         await directory.sync();
     } finally {
-        directory.close();
+        await directory.close();
     }
 }
 

@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { loadExternalThemeJsons } from "./theme-discovery.ts";
 
-Deno.test("external theme discovery merges partial themes and skips built-in name overrides", async () => {
+test("external theme discovery merges partial themes and skips built-in name overrides", async () => {
     const baseThemeJson = {
         name: "catppuccin-mocha",
         vars: { base: "#111111", accent: "#222222" },

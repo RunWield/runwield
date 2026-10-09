@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import {
     buildRunWieldDirectEditPanel,
     buildRunWieldDirectEditsFeedback,
@@ -8,7 +9,7 @@ import {
 const BASE_PLAN = "# Plan\n\nUse the old approach.\n";
 const EDITED_PLAN = "# Plan\n\nUse the revised approach.\n";
 
-Deno.test("direct Plan edits produce a visible sidebar diff", () => {
+test("direct Plan edits produce a visible sidebar diff", () => {
     const [panel] = buildRunWieldDirectEditPanel(BASE_PLAN, EDITED_PLAN);
 
     assertEquals(panel.title, "Direct Plan edits");
@@ -20,7 +21,7 @@ Deno.test("direct Plan edits produce a visible sidebar diff", () => {
     assertEquals(buildRunWieldDirectEditPanel(BASE_PLAN, BASE_PLAN), []);
 });
 
-Deno.test("direct Plan edit feedback says the edits are already applied", () => {
+test("direct Plan edit feedback says the edits are already applied", () => {
     const editsOnly = composeRunWieldPlanFeedback("No changes detected.", BASE_PLAN, EDITED_PLAN);
     assertStringIncludes(editsOnly, "# Direct Plan Edits");
     assertStringIncludes(editsOnly, "already applied these changes");

@@ -1,4 +1,13 @@
-import { dirname, fromFileUrl, join, normalize, relative, resolve, SEPARATOR } from "@std/path";
+import {
+    copyFile as fsCopyFile,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { dirname, join, normalize, relative, resolve, sep as SEPARATOR } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 /** User documentation lives in its own folder and publishes at the site root. */
 const USER_DOCS_DIRECTORY = "user-documentation/";
@@ -135,20 +144,20 @@ async function validateLocalTargets(
             throw new Error(`Public document docs/${sourcePath} links outside the repository: ${target}`);
         }
         try {
-            const info = await Deno.stat(repositoryPath);
-            if (image && !info.isFile) {
+            const info = await fsStat(repositoryPath);
+            if (image && !info.isFile()) {
                 throw new Error(`Public document docs/${sourcePath} uses a directory as an image: ${target}`);
             }
             if (image) images.push(repositoryPath);
-            if (suffix.startsWith("#") && info.isFile && repositoryPath.endsWith(".md")) {
+            if (suffix.startsWith("#") && info.isFile() && repositoryPath.endsWith(".md")) {
                 const fragment = decodeURIComponent(suffix.slice(1));
-                const targetSource = path ? await Deno.readTextFile(repositoryPath) : source;
+                const targetSource = path ? await fsReadFile(repositoryPath, "utf8") : source;
                 if (!markdownFragmentIds(targetSource).has(fragment)) {
                     throw new Error(`Public document docs/${sourcePath} has a missing fragment: ${target}`);
                 }
             }
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             throw new Error(`Public document docs/${sourcePath} has a missing local target: ${target}`);
         }
     }
@@ -190,27 +199,27 @@ export async function stagePublicDocs(
 ): Promise<void> {
     const releasePath = join(projectRoot, "docs-site", "release.json");
     const release = JSON.parse(
-        await Deno.readTextFile(releasePath),
+        await fsReadFile(releasePath, "utf8"),
     ) as DocsRelease;
-    await Deno.remove(outputDirectory, { recursive: true }).catch((error) => {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+    await fsRm(outputDirectory, { recursive: true }).catch((error) => {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     });
-    await Deno.mkdir(outputDirectory, { recursive: true });
+    await fsMkdir(outputDirectory, { recursive: true });
     const assetDirectory = join(projectRoot, "docs-site", "public", "docs-assets");
-    await Deno.remove(assetDirectory, { recursive: true }).catch((error) => {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+    await fsRm(assetDirectory, { recursive: true }).catch((error) => {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     });
     for (const path of PUBLIC_DOCS) {
-        const source = await Deno.readTextFile(join(projectRoot, "docs", path));
+        const source = await fsReadFile(join(projectRoot, "docs", path), "utf8");
         const images = await validateLocalTargets(projectRoot, source, path);
         for (const image of images) {
             const destination = join(assetDirectory, relative(projectRoot, image));
-            await Deno.mkdir(dirname(destination), { recursive: true });
-            await Deno.copyFile(image, destination);
+            await fsMkdir(dirname(destination), { recursive: true });
+            await fsCopyFile(image, destination);
         }
         const destination = join(outputDirectory, `${slugFor(path)}.md`);
-        await Deno.mkdir(dirname(destination), { recursive: true });
-        await Deno.writeTextFile(destination, renderPublicDocument(source, path, release));
+        await fsMkdir(dirname(destination), { recursive: true });
+        await fsWriteFile(destination, renderPublicDocument(source, path, release));
     }
 }
 

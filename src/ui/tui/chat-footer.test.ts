@@ -1,6 +1,7 @@
+import { test } from "node:test";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { emitHostedSessionRuntimeEvent } from "../../shared/session/session-runtime-events.js";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { initRunWieldTheme } from "../theme/theme.js";
 import {
     buildFooterContextStat,
@@ -15,13 +16,13 @@ import {
 
 initRunWieldTheme();
 
-Deno.test("footer thinking level is hidden until a model is configured", () => {
+test("footer thinking level is hidden until a model is configured", () => {
     assertEquals(shouldShowFooterThinkingLevel("", "medium"), false);
     assertEquals(shouldShowFooterThinkingLevel("test/model", "off"), false);
     assertEquals(shouldShowFooterThinkingLevel("test/model", "medium"), true);
 });
 
-Deno.test("footer context stat shows percentage, capacity, and auto-compaction", () => {
+test("footer context stat shows percentage, capacity, and auto-compaction", () => {
     assertEquals(buildFooterContextStat({ contextWindow: 1_000_000, percent: 48.65 }, true), {
         text: "48.6%/1.0M (Auto-compact)",
         token: "dim",
@@ -37,7 +38,7 @@ Deno.test("footer context stat shows percentage, capacity, and auto-compaction",
     assertEquals(buildFooterContextStat(null, true), null);
 });
 
-Deno.test("footer workflow label formats eligible routing context", () => {
+test("footer workflow label formats eligible routing context", () => {
     const parts = buildFooterWorkflowLabelParts({ displayName: "Planner", agentName: "planner" }, {
         routingIntent: "FEATURE",
         complexity: "MEDIUM",
@@ -55,7 +56,7 @@ Deno.test("footer workflow label formats eligible routing context", () => {
     ]);
 });
 
-Deno.test("footer location follows active worktree execution context", () => {
+test("footer location follows active worktree execution context", () => {
     const text = buildFooterLocationText({
         cwd: "/repo",
         activeExecutionWorkflow: { executionCwd: "/repo-demo", worktreeBranch: "worktree/demo" },
@@ -63,7 +64,7 @@ Deno.test("footer location follows active worktree execution context", () => {
     assertEquals(text, "/repo-demo (worktree/demo)");
 });
 
-Deno.test("footer location shortens RunWield-managed worktree paths", () => {
+test("footer location shortens RunWield-managed worktree paths", () => {
     const text = buildFooterLocationText({
         cwd: "/Users/gandazgul/Documents/web/runwield",
         activeExecutionWorkflow: {
@@ -78,7 +79,7 @@ Deno.test("footer location shortens RunWield-managed worktree paths", () => {
     );
 });
 
-Deno.test("footer line keeps location left of workflow label", () => {
+test("footer line keeps location left of workflow label", () => {
     const line = buildFooterLine1Parts(
         { displayName: "Planner", agentName: "planner" },
         { routingIntent: "FEATURE", complexity: "MEDIUM", planName: "very-long-plan-name" },
@@ -89,7 +90,7 @@ Deno.test("footer line keeps location left of workflow label", () => {
     assertEquals(getFooterWorkflowLabelText(line.rightParts), "Planner - Medium Planned Change - very-long-plan-name");
 });
 
-Deno.test("footer workflow renderer applies provided theme tokens", () => {
+test("footer workflow renderer applies provided theme tokens", () => {
     const rendered = renderFooterWorkflowLabelParts(
         buildFooterWorkflowLabelParts({ displayName: "Engineer", agentName: "engineer" }, {
             routingIntent: "QUICK_FIX",
@@ -103,7 +104,7 @@ Deno.test("footer workflow renderer applies provided theme tokens", () => {
     );
 });
 
-Deno.test("live footer controller subscribes to usage and rebinds on Session replacement", async () => {
+test("live footer controller subscribes to usage and rebinds on Session replacement", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
         let activeSessionId = sessionId;
         const second = await runtime.createInteractiveSession({ cwd: projectRoot });
@@ -144,7 +145,7 @@ Deno.test("live footer controller subscribes to usage and rebinds on Session rep
     });
 });
 
-Deno.test("live footer controller reuses one snapshot across idle frames", async () => {
+test("live footer controller reuses one snapshot across idle frames", async () => {
     await withSessionViewFixture(({ runtime, sessionId }) => {
         const controller = createChatFooterController({
             runtime,
@@ -159,7 +160,7 @@ Deno.test("live footer controller reuses one snapshot across idle frames", async
     });
 });
 
-Deno.test("live footer controller refreshes the snapshot after a session event", async () => {
+test("live footer controller refreshes the snapshot after a session event", async () => {
     await withSessionViewFixture(({ runtime, sessionId, session }) => {
         const controller = createChatFooterController({
             runtime,
@@ -177,7 +178,7 @@ Deno.test("live footer controller refreshes the snapshot after a session event",
     });
 });
 
-Deno.test("live footer controller tolerates startup before a Session exists", async () => {
+test("live footer controller tolerates startup before a Session exists", async () => {
     await withSessionViewFixture(({ runtime }) => {
         const controller = createChatFooterController({
             runtime,
@@ -192,7 +193,7 @@ Deno.test("live footer controller tolerates startup before a Session exists", as
     });
 });
 
-Deno.test("live footer controller renders and clears the Ctrl+C pending exit notice", async () => {
+test("live footer controller renders and clears the Ctrl+C pending exit notice", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         let renderRequests = 0;
         const controller = createChatFooterController({

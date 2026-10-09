@@ -1,5 +1,7 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -14,11 +16,11 @@ import { createReplayEvents } from "./session-transcript-projection.js";
 
 /** @typedef {{ type: string, message?: string }} ProviderNotice */
 
-Deno.test("an interrupted provider response retries the same request and completes", async () => {
+test("an interrupted provider response retries the same request and completes", async () => {
     await withRuntimeCommandFixture("provider-eof-retry-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         /** @type {import('@earendil-works/pi-ai').TranscriptContext[]} */
         const requests = [];
         fixture.setModelResponseFactories([
@@ -54,14 +56,14 @@ Deno.test("an interrupted provider response retries the same request and complet
             assertStringIncludes(JSON.stringify(session.messages.at(-1)), "Recovered answer");
             const file = manager.getSessionFile();
             if (!file) throw new Error("Missing persisted transcript");
-            const transcript = await Deno.readTextFile(file);
+            const transcript = await fsReadFile(file, "utf8");
             assertStringIncludes(transcript, "Network error: Unexpected EOF");
             assertStringIncludes(transcript, "Recovered answer");
             const entries = transcript.trim().split("\n").map((line) => JSON.parse(line));
             const replay = createReplayEvents("eof-then-success", entries);
             const second = createReplayEvents("eof-then-success", entries);
             assertEquals(replay, second);
-            assertEquals(await Deno.readTextFile(file), transcript);
+            assertEquals(await fsReadFile(file, "utf8"), transcript);
             assertEquals(replay.filter((event) => event.type === "terminal_error").length, 1);
             assertEquals(
                 replay.filter((event) => event.type === "assistant_text_delta").at(-1)?.delta,
@@ -75,7 +77,7 @@ Deno.test("an interrupted provider response retries the same request and complet
     });
 });
 
-Deno.test("default EOF retries wait 2, 4, and 8 seconds and stop after four requests", async () => {
+test("default EOF retries wait 2, 4, and 8 seconds and stop after four requests", async () => {
     await withRuntimeCommandFixture("provider-default-backoff-", async (fixture) => {
         /** @type {number[]} */
         const starts = [];
@@ -110,12 +112,12 @@ Deno.test("default EOF retries wait 2, 4, and 8 seconds and stop after four requ
     });
 });
 
-Deno.test("disabled and zero retry budgets leave an EOF as one provider request", async () => {
+test("disabled and zero retry budgets leave an EOF as one provider request", async () => {
     for (const retry of [{ enabled: false }, { enabled: true, maxRetries: 0, baseDelayMs: 1 }]) {
         await withRuntimeCommandFixture("provider-no-retry-", async (fixture) => {
-            const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+            const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
             settings.retry = retry;
-            await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+            await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
             let calls = 0;
             fixture.setModelResponseFactories([() => {
                 calls++;
@@ -139,7 +141,7 @@ Deno.test("disabled and zero retry budgets leave an EOF as one provider request"
     }
 });
 
-Deno.test("Pi retains existing transient retry rules and exclusions", async () => {
+test("Pi retains existing transient retry rules and exclusions", async () => {
     /** @type {Array<[string, boolean]>} */
     const diagnostics = [
         ["socket hang up", true],
@@ -155,10 +157,10 @@ Deno.test("Pi retains existing transient retry rules and exclusions", async () =
     ];
     for (const [diagnostic, shouldRetry] of diagnostics) {
         await withRuntimeCommandFixture("provider-error-matrix-", async (fixture) => {
-            const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+            const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
             settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
             if (diagnostic === "exceeds the context window") settings.compaction = { enabled: false };
-            await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+            await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
             let calls = 0;
             fixture.setModelResponseFactories([
                 () => {
@@ -185,11 +187,11 @@ Deno.test("Pi retains existing transient retry rules and exclusions", async () =
     }
 });
 
-Deno.test("cancel during backoff stops requests and permits a later turn", async () => {
+test("cancel during backoff stops requests and permits a later turn", async () => {
     await withRuntimeCommandFixture("provider-cancel-backoff-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 2, baseDelayMs: 500 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         let calls = 0;
         fixture.setModelResponseFactories([
             () => {
@@ -228,7 +230,7 @@ Deno.test("cancel during backoff stops requests and permits a later turn", async
     });
 });
 
-Deno.test("cancel an active provider response without retrying and continue later", async () => {
+test("cancel an active provider response without retrying and continue later", async () => {
     await withRuntimeCommandFixture("provider-cancel-active-", async (fixture) => {
         let calls = 0;
         /** @type {() => void} */
@@ -266,12 +268,12 @@ Deno.test("cancel an active provider response without retrying and continue late
     });
 });
 
-Deno.test("Pi summary retry recovers from EOF without a second policy", async () => {
+test("Pi summary retry recovers from EOF without a second policy", async () => {
     await withRuntimeCommandFixture("provider-summary-retry-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
         settings.compaction = { enabled: true, reserveTokens: 16384, keepRecentTokens: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         const manager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
         manager.appendMessage({
             role: "user",
@@ -325,7 +327,7 @@ Deno.test("Pi summary retry recovers from EOF without a second policy", async ()
             );
             const file = manager.getSessionFile();
             if (!file) throw new Error("Missing compaction transcript");
-            assertStringIncludes(await Deno.readTextFile(file), "Recovered summary");
+            assertStringIncludes(await fsReadFile(file, "utf8"), "Recovered summary");
         } finally {
             unsubscribe();
             subscriber.unsubscribe();
@@ -335,12 +337,12 @@ Deno.test("Pi summary retry recovers from EOF without a second policy", async ()
     });
 });
 
-Deno.test("isolated Pi Session recovers EOF without repeating the user request", async () => {
+test("isolated Pi Session recovers EOF without repeating the user request", async () => {
     await withRuntimeCommandFixture("provider-isolated-retry-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
         settings.agents = { guide: { temperature: 0.3 } };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         /** @type {import('@earendil-works/pi-ai').TranscriptContext[]} */
         const requests = [];
         /** @type {Array<number | undefined>} */
@@ -384,11 +386,11 @@ Deno.test("isolated Pi Session recovers EOF without repeating the user request",
     });
 });
 
-Deno.test("a completed tool is not repeated after EOF and its result stays in retry context", async () => {
+test("a completed tool is not repeated after EOF and its result stays in retry context", async () => {
     await withRuntimeCommandFixture("provider-tool-retry-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         let executions = 0;
         const tool = {
             name: "record_once",
@@ -431,11 +433,11 @@ Deno.test("a completed tool is not repeated after EOF and its result stays in re
     });
 });
 
-Deno.test("failed response tool calls never execute on the retry", async () => {
+test("failed response tool calls never execute on the retry", async () => {
     await withRuntimeCommandFixture("provider-incomplete-tool-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         let executions = 0;
         const tool = {
             name: "do_not_run",
@@ -474,11 +476,11 @@ Deno.test("failed response tool calls never execute on the retry", async () => {
     });
 });
 
-Deno.test("noninteractive Pi Session uses the same EOF retry policy", async () => {
+test("noninteractive Pi Session uses the same EOF retry policy", async () => {
     await withRuntimeCommandFixture("provider-noninteractive-retry-", async (fixture) => {
-        const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+        const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
         settings.retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
-        await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
+        await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
         let calls = 0;
         fixture.setModelResponseFactories([
             () => {

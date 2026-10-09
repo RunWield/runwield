@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import process from "node:process";
 import {
     plannedChangeNonGitInPlaceScenario,
     plannedChangeReviewRepairValidationScenario,
@@ -6,9 +7,15 @@ import {
 import { validationEvidenceAssertion } from "../testing/validation-workflow-coverage.ts";
 import { withValidationBranches } from "./validation-workflow-tree-shared.ts";
 
-type GoldenScriptValue = string | number | boolean | null | GoldenScriptValue[] | {
-    [key: string]: GoldenScriptValue;
-};
+type GoldenScriptValue =
+    | string
+    | number
+    | boolean
+    | null
+    | GoldenScriptValue[]
+    | {
+          [key: string]: GoldenScriptValue;
+      };
 
 interface GoldenScriptTurn {
     id: string;
@@ -43,10 +50,12 @@ export const validationTreeSemanticRepairIncompleteScenario = withValidationBran
                 ordinal: 3,
                 requiredTools: ["write"],
                 thinking: "Repair after Semantic Reviewer rejection but do not complete the repair.",
-                toolCalls: [{
-                    name: "write",
-                    arguments: { path: "golden-planned-change.txt", content: "goldenrepaired" },
-                }],
+                toolCalls: [
+                    {
+                        name: "write",
+                        arguments: { path: "golden-planned-change.txt", content: "goldenrepaired" },
+                    },
+                ],
             },
             {
                 id: "engineer-semantic-repair-stops-before-completion",
@@ -61,8 +70,7 @@ export const validationTreeSemanticRepairIncompleteScenario = withValidationBran
             {
                 type: "writeProjectFile",
                 path: "docs/plans/plan.md",
-                text:
-                    "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
             },
             { type: "type", text: "submit the planned change for review" },
             { type: "enter" },
@@ -94,11 +102,12 @@ export const validationTreeSemanticReviewerIncompletePauseScenario = withValidat
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/semantic-reviewer-incomplete.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic reviewer incomplete\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-reviewer-incomplete-plan\n---\n# Semantic reviewer incomplete\n\nAlready implemented content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/semantic-reviewer-incomplete.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic reviewer incomplete\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-reviewer-incomplete-plan\n---\n# Semantic reviewer incomplete\n\nAlready implemented content.\n",
+            },
+        ],
         script: [1, 2, 3].map((ordinal) => ({
             id: `reviewer-incomplete-attempt-${ordinal}`,
             agent: "reviewer",
@@ -107,9 +116,7 @@ export const validationTreeSemanticReviewerIncompletePauseScenario = withValidat
             ordinal,
             text: `Reviewer attempt ${ordinal} stopped without review_complete.`,
         })),
-        scriptedInteractions: [
-            { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
-        ],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
                 type: "seedActiveWorktree",
@@ -139,10 +146,10 @@ export const validationTreeSemanticProviderErrorRetryScenario = withValidationBr
         initialAgentName: "guide",
         terminal: { columns: 100, rows: 30 },
         timeoutMs: 180000,
-        committedProjectFiles: [{
-            path: ".wld/settings.json",
-            text: `${
-                JSON.stringify(
+        committedProjectFiles: [
+            {
+                path: ".wld/settings.json",
+                text: `${JSON.stringify(
                     {
                         verification_command: "true",
                         "retry.baseDelayMs": 1,
@@ -150,14 +157,15 @@ export const validationTreeSemanticProviderErrorRetryScenario = withValidationBr
                     },
                     null,
                     4,
-                )
-            }\n`,
-        }],
-        initialProjectFiles: [{
-            path: "docs/plans/semantic-provider-error-retry.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic provider error retry\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-provider-error-retry-plan\n---\n# Semantic provider error retry\n\nAlready implemented content.\n",
-        }],
+                )}\n`,
+            },
+        ],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/semantic-provider-error-retry.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic provider error retry\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-provider-error-retry-plan\n---\n# Semantic provider error retry\n\nAlready implemented content.\n",
+            },
+        ],
         script: [
             {
                 id: "semantic-review-provider-404",
@@ -291,18 +299,20 @@ export const validationTreeSemanticNudgeOmittedPriorFindingScenario = withValida
                         arguments: {
                             approved: false,
                             feedback: "Missing durable evidence.",
-                            findings: [{
-                                status: "new",
-                                title: "Missing durable evidence",
-                                requirement: "Plan",
-                                evidence: "golden-planned-change.txt",
-                            }],
+                            findings: [
+                                {
+                                    status: "new",
+                                    title: "Missing durable evidence",
+                                    requirement: "Plan",
+                                    evidence: "golden-planned-change.txt",
+                                },
+                            ],
                         },
                     },
                 ],
             },
-            ...plannedChangeReviewRepairValidationScenario.script.filter((turn) =>
-                turn.agent === "engineer" && turn.ordinal >= 3
+            ...plannedChangeReviewRepairValidationScenario.script.filter(
+                (turn) => turn.agent === "engineer" && turn.ordinal >= 3,
             ),
             {
                 id: "semantic-reviewer-omits-prior-finding-after-repair-inspects-diff",
@@ -387,8 +397,7 @@ export const validationTreeSemanticNudgeOmittedPriorFindingScenario = withValida
             {
                 type: "writeProjectFile",
                 path: "docs/plans/plan.md",
-                text:
-                    "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
             },
             { type: "type", text: "submit the planned change for review" },
             { type: "enter" },
@@ -420,11 +429,12 @@ export const validationTreeSemanticNudgeMissingReviewCompleteScenario = withVali
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/semantic-nudge-missing-review-complete.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic nudge missing review_complete\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-nudge-missing-review-complete-plan\n---\n# Semantic nudge missing review_complete\n\nAlready implemented content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/semantic-nudge-missing-review-complete.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic nudge missing review_complete\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-nudge-missing-review-complete-plan\n---\n# Semantic nudge missing review_complete\n\nAlready implemented content.\n",
+            },
+        ],
         script: [
             {
                 id: "reviewer-stops-before-review-complete",
@@ -477,9 +487,7 @@ export const validationTreeSemanticNudgeMissingReviewCompleteScenario = withVali
                 ],
             },
         ],
-        scriptedInteractions: [
-            { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
-        ],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
                 type: "seedActiveWorktree",
@@ -516,11 +524,12 @@ export const validationTreeSemanticNudgeMissingDiffInspectionScenario = withVali
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/semantic-nudge-missing-diff.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic nudge missing diff\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-nudge-missing-diff-plan\n---\n# Semantic nudge missing diff\n\nAlready implemented content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/semantic-nudge-missing-diff.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic nudge missing diff\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-nudge-missing-diff-plan\n---\n# Semantic nudge missing diff\n\nAlready implemented content.\n",
+            },
+        ],
         script: [
             {
                 id: "reviewer-decides-without-diff-inspection",
@@ -529,10 +538,12 @@ export const validationTreeSemanticNudgeMissingDiffInspectionScenario = withVali
                 planName: "semantic-nudge-missing-diff",
                 ordinal: 1,
                 requiredTools: ["review_complete"],
-                toolCalls: [{
-                    name: "review_complete",
-                    arguments: { approved: true, feedback: "Approved without inspecting diff." },
-                }],
+                toolCalls: [
+                    {
+                        name: "review_complete",
+                        arguments: { approved: true, feedback: "Approved without inspecting diff." },
+                    },
+                ],
             },
             {
                 id: "reviewer-approves-after-diff-inspection-nudge-inspects-diff",
@@ -573,9 +584,7 @@ export const validationTreeSemanticNudgeMissingDiffInspectionScenario = withVali
                 ],
             },
         ],
-        scriptedInteractions: [
-            { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
-        ],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
                 type: "seedActiveWorktree",
@@ -612,11 +621,12 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/semantic-round-limit-stop.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic round limit stop\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-round-limit-stop-plan\n---\n# Semantic round limit stop\n\nAlready implemented content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/semantic-round-limit-stop.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic round limit stop\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-round-limit-stop-plan\n---\n# Semantic round limit stop\n\nAlready implemented content.\n",
+            },
+        ],
         script: [
             {
                 id: "reviewer-rejects-semantic-round-limit-stop-1-inspects-diff",
@@ -655,12 +665,14 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
                         arguments: {
                             approved: false,
                             feedback: "Round 1 still has open work.",
-                            findings: [{
-                                status: "new",
-                                title: "Round-limit issue",
-                                requirement: "Semantic review",
-                                evidence: "The repair still needs verification.",
-                            }],
+                            findings: [
+                                {
+                                    status: "new",
+                                    title: "Round-limit issue",
+                                    requirement: "Semantic review",
+                                    evidence: "The repair still needs verification.",
+                                },
+                            ],
                         },
                     },
                 ],
@@ -672,10 +684,12 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
                 planName: "semantic-round-limit-stop",
                 ordinal: 1,
                 requiredTools: ["write"],
-                toolCalls: [{
-                    name: "write",
-                    arguments: { path: "semantic-round-limit-stop.txt", content: "repair 1\n" },
-                }],
+                toolCalls: [
+                    {
+                        name: "write",
+                        arguments: { path: "semantic-round-limit-stop.txt", content: "repair 1\n" },
+                    },
+                ],
             },
             {
                 id: "engineer-completes-semantic-round-limit-stop-1",
@@ -723,14 +737,16 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
                         arguments: {
                             approved: false,
                             feedback: "Round 2 still has open work.",
-                            findings: [{
-                                id: "R1-1",
-                                status: "fix_rejected",
-                                rejectionReason: "The issue remains after repair round 1.",
-                                title: "Round-limit issue",
-                                requirement: "Semantic review",
-                                evidence: "The issue remains after repair round 1.",
-                            }],
+                            findings: [
+                                {
+                                    id: "R1-1",
+                                    status: "fix_rejected",
+                                    rejectionReason: "The issue remains after repair round 1.",
+                                    title: "Round-limit issue",
+                                    requirement: "Semantic review",
+                                    evidence: "The issue remains after repair round 1.",
+                                },
+                            ],
                         },
                     },
                 ],
@@ -742,10 +758,12 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
                 planName: "semantic-round-limit-stop",
                 ordinal: 3,
                 requiredTools: ["write"],
-                toolCalls: [{
-                    name: "write",
-                    arguments: { path: "semantic-round-limit-stop.txt", content: "repair 2\n" },
-                }],
+                toolCalls: [
+                    {
+                        name: "write",
+                        arguments: { path: "semantic-round-limit-stop.txt", content: "repair 2\n" },
+                    },
+                ],
             },
             {
                 id: "engineer-completes-semantic-round-limit-stop-2",
@@ -784,14 +802,16 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
                         arguments: {
                             approved: false,
                             feedback: "Round 3 still has open work.",
-                            findings: [{
-                                id: "R1-1",
-                                status: "fix_rejected",
-                                rejectionReason: "The issue remains after repair round 2.",
-                                title: "Round-limit issue",
-                                requirement: "Semantic review",
-                                evidence: "The issue remains after repair round 2.",
-                            }],
+                            findings: [
+                                {
+                                    id: "R1-1",
+                                    status: "fix_rejected",
+                                    rejectionReason: "The issue remains after repair round 2.",
+                                    title: "Round-limit issue",
+                                    requirement: "Semantic review",
+                                    evidence: "The issue remains after repair round 2.",
+                                },
+                            ],
                         },
                     },
                 ],
@@ -803,10 +823,12 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
                 planName: "semantic-round-limit-stop",
                 ordinal: 5,
                 requiredTools: ["write"],
-                toolCalls: [{
-                    name: "write",
-                    arguments: { path: "semantic-round-limit-stop.txt", content: "repair 3\n" },
-                }],
+                toolCalls: [
+                    {
+                        name: "write",
+                        arguments: { path: "semantic-round-limit-stop.txt", content: "repair 3\n" },
+                    },
+                ],
             },
             {
                 id: "engineer-completes-semantic-round-limit-stop-3",
@@ -891,11 +913,12 @@ export const validationTreeSemanticRoundLimitStopDirectScenario = withValidation
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/semantic-round-limit-stop-direct.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic round limit stop direct\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-round-limit-stop-direct-plan\n---\n# Semantic round limit stop direct\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/semantic-round-limit-stop-direct.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic round limit stop direct\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-round-limit-stop-direct-plan\n---\n# Semantic round limit stop direct\n\nDraft content.\n",
+            },
+        ],
         script: [
             {
                 id: "engineer-finishes-semantic-round-limit-stop-direct",
@@ -904,10 +927,12 @@ export const validationTreeSemanticRoundLimitStopDirectScenario = withValidation
                 planName: "semantic-round-limit-stop-direct",
                 ordinal: 1,
                 requiredTools: ["write"],
-                toolCalls: [{
-                    name: "write",
-                    arguments: { path: "semantic-round-limit-stop-direct.txt", content: "implementation\n" },
-                }],
+                toolCalls: [
+                    {
+                        name: "write",
+                        arguments: { path: "semantic-round-limit-stop-direct.txt", content: "implementation\n" },
+                    },
+                ],
             },
             {
                 id: "engineer-completes-semantic-round-limit-stop-direct",
@@ -916,10 +941,12 @@ export const validationTreeSemanticRoundLimitStopDirectScenario = withValidation
                 planName: "semantic-round-limit-stop-direct",
                 ordinal: 2,
                 requiredTools: ["task_completed"],
-                toolCalls: [{
-                    name: "task_completed",
-                    arguments: { message: "- Finished the implementation before review." },
-                }],
+                toolCalls: [
+                    {
+                        name: "task_completed",
+                        arguments: { message: "- Finished the implementation before review." },
+                    },
+                ],
             },
             ...(validationTreeSemanticRoundLimitStopScenario.script as GoldenScriptTurn[]).map((turn) => ({
                 ...turn,
@@ -928,37 +955,37 @@ export const validationTreeSemanticRoundLimitStopDirectScenario = withValidation
                 ordinal: turn.agent === "engineer" ? turn.ordinal + 2 : turn.ordinal,
                 ...(Array.isArray(turn.toolCalls)
                     ? {
-                        toolCalls: turn.toolCalls.map((call) => {
-                            if (
-                                call.name === "write" ||
-                                (call.name === "review_diff" &&
-                                    call.arguments?.command === "show" &&
-                                    call.arguments?.path === "semantic-round-limit-stop.txt")
-                            ) {
-                                return {
-                                    ...call,
-                                    arguments: {
-                                        ...call.arguments,
-                                        path: "semantic-round-limit-stop-direct.txt",
-                                    },
-                                };
-                            }
-                            if (
-                                call.name === "review_diff" &&
-                                call.arguments?.command === "show" &&
-                                call.arguments?.path === "docs/plans/semantic-round-limit-stop.md"
-                            ) {
-                                return {
-                                    ...call,
-                                    arguments: {
-                                        ...call.arguments,
-                                        path: "docs/plans/semantic-round-limit-stop-direct.md",
-                                    },
-                                };
-                            }
-                            return call;
-                        }),
-                    }
+                          toolCalls: turn.toolCalls.map((call) => {
+                              if (
+                                  call.name === "write" ||
+                                  (call.name === "review_diff" &&
+                                      call.arguments?.command === "show" &&
+                                      call.arguments?.path === "semantic-round-limit-stop.txt")
+                              ) {
+                                  return {
+                                      ...call,
+                                      arguments: {
+                                          ...call.arguments,
+                                          path: "semantic-round-limit-stop-direct.txt",
+                                      },
+                                  };
+                              }
+                              if (
+                                  call.name === "review_diff" &&
+                                  call.arguments?.command === "show" &&
+                                  call.arguments?.path === "docs/plans/semantic-round-limit-stop.md"
+                              ) {
+                                  return {
+                                      ...call,
+                                      arguments: {
+                                          ...call.arguments,
+                                          path: "docs/plans/semantic-round-limit-stop-direct.md",
+                                      },
+                                  };
+                              }
+                              return call;
+                          }),
+                      }
                     : {}),
             })),
         ],
@@ -1008,15 +1035,15 @@ export const validationTreeSemanticRoundLimitContinueScenario = {
     actions: validationTreeSemanticRoundLimitStopScenario.actions.flatMap((action: { type?: string }) =>
         action.type === "captureProjectState"
             ? [
-                {
-                    type: "waitForPlanStatus",
-                    planName: "semantic-round-limit-stop",
-                    statuses: ["verified"],
-                    timeoutMs: 180000,
-                },
-                action,
-            ]
-            : [action]
+                  {
+                      type: "waitForPlanStatus",
+                      planName: "semantic-round-limit-stop",
+                      statuses: ["verified"],
+                      timeoutMs: 180000,
+                  },
+                  action,
+              ]
+            : [action],
     ),
     validationBranches: ["semantic:round-limit:continue"],
     assertions: [validationEvidenceAssertion("semantic:round-limit:continue")],
@@ -1033,16 +1060,16 @@ export const validationTreeSemanticRoundLimitHumanReviewScenario = {
     actions: validationTreeSemanticRoundLimitStopScenario.actions.flatMap((action: { type?: string }) =>
         action.type === "captureProjectState"
             ? [
-                { type: "waitForEvent", event: "human-review:captured", timeoutMs: 30000 },
-                {
-                    type: "waitForPlanStatus",
-                    planName: "semantic-round-limit-stop",
-                    statuses: ["verified"],
-                    timeoutMs: 180000,
-                },
-                action,
-            ]
-            : [action]
+                  { type: "waitForEvent", event: "human-review:captured", timeoutMs: 30000 },
+                  {
+                      type: "waitForPlanStatus",
+                      planName: "semantic-round-limit-stop",
+                      statuses: ["verified"],
+                      timeoutMs: 180000,
+                  },
+                  action,
+              ]
+            : [action],
     ),
     validationBranches: ["semantic:round-limit:human-review"],
     assertions: [validationEvidenceAssertion("semantic:round-limit:human-review")],
@@ -1056,13 +1083,18 @@ type FollowUpPublicationResult = {
 export const validationTreeSemanticRoundLimitFollowUpScenario = {
     ...validationTreeSemanticRoundLimitContinueScenario,
     name: "validation-tree-semantic-round-limit-follow-up",
-    committedProjectFiles: [{
-        path: ".wld/settings.json",
-        text: JSON.stringify({
-            verification_command:
-                "if test \"$(cat semantic-round-limit-stop.txt)\" = followup; then printf 'checked followup' > followup-ci.txt; fi",
-        }) + "\n",
-    }],
+    committedProjectFiles: [
+        {
+            path: ".wld/settings.json",
+            text:
+                JSON.stringify({
+                    verification_command:
+                        process.platform === "win32"
+                            ? `"${process.execPath}" ${"-e"} "import fs from 'node:fs'; if (fs.readFileSync('semantic-round-limit-stop.txt', 'utf8') === 'followup\\n') fs.writeFileSync('followup-ci.txt', 'checked followup');"`
+                            : "if test \"$(cat semantic-round-limit-stop.txt)\" = followup; then printf 'checked followup' > followup-ci.txt; fi",
+                }) + "\n",
+        },
+    ],
     scriptedInteractions: [
         { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
         { type: "select", promptIncludes: "Look once more, read it, or stop.", value: "engineer_follow_up" },
@@ -1070,9 +1102,10 @@ export const validationTreeSemanticRoundLimitFollowUpScenario = {
         { type: "select", promptIncludes: "Look once more, read it, or stop.", value: "continue" },
     ],
     script: [
-        ...(validationTreeSemanticRoundLimitStopScenario.script as GoldenScriptTurn[]).filter((turn) =>
-            turn.id !== "reviewer-approves-semantic-round-limit-continue-inspects-diff" &&
-            turn.id !== "reviewer-approves-semantic-round-limit-continue"
+        ...(validationTreeSemanticRoundLimitStopScenario.script as GoldenScriptTurn[]).filter(
+            (turn) =>
+                turn.id !== "reviewer-approves-semantic-round-limit-continue-inspects-diff" &&
+                turn.id !== "reviewer-approves-semantic-round-limit-continue",
         ),
         {
             id: "engineer-applies-round-limit-follow-up",
@@ -1093,8 +1126,8 @@ export const validationTreeSemanticRoundLimitFollowUpScenario = {
             toolCalls: [{ name: "task_completed", arguments: { message: "Follow-up applied." } }],
         },
         {
-            ...(validationTreeSemanticRoundLimitStopScenario.script as GoldenScriptTurn[]).find((turn) =>
-                turn.id === "reviewer-approves-semantic-round-limit-continue-inspects-diff"
+            ...(validationTreeSemanticRoundLimitStopScenario.script as GoldenScriptTurn[]).find(
+                (turn) => turn.id === "reviewer-approves-semantic-round-limit-continue-inspects-diff",
             ),
             toolCalls: [
                 { name: "review_diff", arguments: { command: "list", scope: "repair" } },
@@ -1109,17 +1142,19 @@ export const validationTreeSemanticRoundLimitFollowUpScenario = {
             ],
         },
         {
-            ...(validationTreeSemanticRoundLimitStopScenario.script as GoldenScriptTurn[]).find((turn) =>
-                turn.id === "reviewer-approves-semantic-round-limit-continue"
+            ...(validationTreeSemanticRoundLimitStopScenario.script as GoldenScriptTurn[]).find(
+                (turn) => turn.id === "reviewer-approves-semantic-round-limit-continue",
             ),
-            toolCalls: [{
-                name: "review_complete",
-                arguments: {
-                    approved: true,
-                    feedback: "Focused round-limit recheck approved.",
-                    findings: [{ id: "R1-1", status: "fix_confirmed", title: "Round-limit issue" }],
+            toolCalls: [
+                {
+                    name: "review_complete",
+                    arguments: {
+                        approved: true,
+                        feedback: "Focused round-limit recheck approved.",
+                        findings: [{ id: "R1-1", status: "fix_confirmed", title: "Round-limit issue" }],
+                    },
                 },
-            }],
+            ],
         },
     ],
     actions: [
@@ -1127,14 +1162,16 @@ export const validationTreeSemanticRoundLimitFollowUpScenario = {
         { type: "capturePublicationState", planName: "semantic-round-limit-stop", deliveredPath: "followup-ci.txt" },
     ],
     validationBranches: [],
-    assertions: [(result: FollowUpPublicationResult) => {
-        assertEquals(result.actor.consumed.includes("engineer-completes-round-limit-follow-up"), true);
-        assertEquals(result.actor.consumed.includes("reviewer-approves-semantic-round-limit-continue"), true);
-        // Only the real CI subprocess can create this file, and only after
-        // the follow-up Engineer changed the implementation.
-        assertEquals(result.state.publication?.deliveredText, "checked followup");
-        assertEquals(result.state.publication?.remotePlanStatus, "verified");
-    }],
+    assertions: [
+        (result: FollowUpPublicationResult) => {
+            assertEquals(result.actor.consumed.includes("engineer-completes-round-limit-follow-up"), true);
+            assertEquals(result.actor.consumed.includes("reviewer-approves-semantic-round-limit-continue"), true);
+            // Only the real CI subprocess can create this file, and only after
+            // the follow-up Engineer changed the implementation.
+            assertEquals(result.state.publication?.deliveredText, "checked followup");
+            assertEquals(result.state.publication?.remotePlanStatus, "verified");
+        },
+    ],
 };
 
 // A loaded QUICK_FIX can resume a durable semantic phase without requiring an
@@ -1149,11 +1186,12 @@ export const validationTreeEmptyDiffSkipScenario = withValidationBranches(
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/empty-diff-skip.md",
-            text:
-                "---\nclassification: QUICK_FIX\ncomplexity: LOW\nsummary: Empty diff skip\naffectedPaths: []\nstatus: ready_for_work\nplanId: empty-diff-skip-plan\n---\n# Empty diff skip\n\nAlready complete content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/empty-diff-skip.md",
+                text: "---\nclassification: QUICK_FIX\ncomplexity: LOW\nsummary: Empty diff skip\naffectedPaths: []\nstatus: ready_for_work\nplanId: empty-diff-skip-plan\n---\n# Empty diff skip\n\nAlready complete content.\n",
+            },
+        ],
         scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
@@ -1187,11 +1225,12 @@ export const validationTreeSemanticRoundModeDiscoveryToVerifyScenario = withVali
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/semantic-round-mode-discovery-to-verify.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic round mode discovery to verify\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-round-mode-discovery-to-verify-plan\n---\n# Semantic round mode discovery to verify\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/semantic-round-mode-discovery-to-verify.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Semantic round mode discovery to verify\naffectedPaths: []\nstatus: ready_for_work\nplanId: semantic-round-mode-discovery-to-verify-plan\n---\n# Semantic round mode discovery to verify\n\nDraft content.\n",
+            },
+        ],
         script: [
             {
                 id: "reviewer-approves-verify-mode-round-inspects-diff",
@@ -1273,11 +1312,12 @@ export const validationTreePlanOnlyDiffFailsScenario = withValidationBranches(
         committedProjectFiles: [
             { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
         ],
-        initialProjectFiles: [{
-            path: "docs/plans/plan-only-diff.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Plan only diff\naffectedPaths: []\nstatus: ready_for_work\nplanId: plan-only-diff-plan\n---\n# Plan only diff\n\nDraft content.\n",
-        }],
+        initialProjectFiles: [
+            {
+                path: "docs/plans/plan-only-diff.md",
+                text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Plan only diff\naffectedPaths: []\nstatus: ready_for_work\nplanId: plan-only-diff-plan\n---\n# Plan only diff\n\nDraft content.\n",
+            },
+        ],
         scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             { type: "seedActiveWorktree", planName: "plan-only-diff", status: "validated_ci" },

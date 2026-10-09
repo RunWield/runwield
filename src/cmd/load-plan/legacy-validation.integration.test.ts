@@ -1,5 +1,16 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import process from "node:process";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { loadPlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -40,12 +51,12 @@ for (
         { ...stage, reappeared: true },
     ])
 ) {
-    Deno.test(`legacy migration continues ${stage.name}${stage.reappeared ? " after old writes return" : ""} using the saved execution tree`, async () => {
+    test(`legacy migration continues ${stage.name}${stage.reappeared ? " after old writes return" : ""} using the saved execution tree`, async () => {
         await withRuntimeCommandFixture("migration-validation-", async () => {
-            const sandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-            Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            const root = await Deno.realPath(await seed.checkout());
-            const directory = await Deno.realPath(await Deno.makeTempDir({ prefix: "migration-validation-tree-" }));
+            const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
+            delete process.env["WLD_TEST_SANDBOX_HOME"];
+            const root = await fsRealpath(await seed.checkout());
+            const directory = await fsRealpath(await fsMkdtemp(join(tmpdir(), "migration-validation-tree-")));
             const tree = join(directory, "execution");
             const runtime = createSessionRuntime();
             const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: root });
@@ -57,19 +68,19 @@ for (
                 await git(root, ["worktree", "add", "-b", "worktree/demo", tree]);
                 const planText =
                     `---\nplanId: migration-demo\nclassification: PLANNED_CHANGE\nstatus: ${stage.status}\ntargetBranch: main\n---\n# Demo\n`;
-                await Deno.writeTextFile(join(tree, planPath), planText);
-                await Deno.writeTextFile(join(tree, "implementation.txt"), "implemented\n");
+                await fsWriteFile(join(tree, planPath), planText);
+                await fsWriteFile(join(tree, "implementation.txt"), "implemented\n");
                 if (stage.status !== "in_progress") {
                     await git(tree, ["add", "."]);
                     await git(tree, ["commit", "-m", "Implementation before upgrade"]);
                 }
-                await Deno.mkdir(join(tree, ".wld"), { recursive: true });
-                await Deno.writeTextFile(
+                await fsMkdir(join(tree, ".wld"), { recursive: true });
+                await fsWriteFile(
                     join(tree, ".wld", "settings.json"),
                     JSON.stringify({ verification_command: "git diff --check && test ! -f broken.txt" }),
                 );
                 const repair = stage.name === "interrupted CI repair";
-                if (repair) await Deno.writeTextFile(join(tree, "broken.txt"), "unfinished repair\n");
+                if (repair) await fsWriteFile(join(tree, "broken.txt"), "unfinished repair\n");
                 const controller: ControllerRecord = {
                     version: 1,
                     revision: 7,
@@ -99,12 +110,12 @@ for (
                     },
                 };
                 const legacy = join(root, ".wld");
-                await Deno.mkdir(join(legacy, "controller", "plans"), { recursive: true });
-                await Deno.writeTextFile(
+                await fsMkdir(join(legacy, "controller", "plans"), { recursive: true });
+                await fsWriteFile(
                     join(legacy, "controller", "plans", "migration-demo.json"),
                     JSON.stringify(controller),
                 );
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     join(legacy, "worktrees.json"),
                     JSON.stringify({
                         version: 2,
@@ -124,7 +135,7 @@ for (
                         }],
                     }),
                 );
-                await Deno.writeTextFile(join(root, "implementation.txt"), "unrelated primary edits\n");
+                await fsWriteFile(join(root, "implementation.txt"), "unrelated primary edits\n");
                 const executionHead = await git(tree, ["rev-parse", "HEAD"]);
                 const messages: string[] = [];
                 const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
@@ -134,10 +145,10 @@ for (
                     // saved controller again. The command must recover it itself.
                     await readControllerRecord(root, { planId: "migration-demo", planName: "demo" });
                     const oldDirectory = join(root, ".wld", "controller", "plans");
-                    await Deno.mkdir(oldDirectory, { recursive: true });
-                    await Deno.writeTextFile(join(oldDirectory, "migration-demo.json"), JSON.stringify(controller));
-                    await Deno.writeTextFile(join(root, ".wld", "worktrees.json"), '{"version":2,"entries":[]}');
-                    await Deno.mkdir(join(tree, ".wld", "plan-locks"), { recursive: true });
+                    await fsMkdir(oldDirectory, { recursive: true });
+                    await fsWriteFile(join(oldDirectory, "migration-demo.json"), JSON.stringify(controller));
+                    await fsWriteFile(join(root, ".wld", "worktrees.json"), '{"version":2,"entries":[]}');
+                    await fsMkdir(join(tree, ".wld", "plan-locks"), { recursive: true });
                 }
                 // Act: select and reload through the actual command, with no migration
                 // helper or manually copied controller records in the execution phase.
@@ -170,10 +181,10 @@ for (
                     await readControllerRecord(root, { planId: "migration-demo", planName: "demo" }),
                     controller,
                 );
-                assertEquals(await Deno.readTextFile(join(tree, planPath)), planText);
+                assertEquals(await fsReadFile(join(tree, planPath), "utf8"), planText);
                 assertEquals(await git(tree, ["rev-parse", "HEAD"]), executionHead);
-                assertEquals(await Deno.readTextFile(join(tree, "implementation.txt")), "implemented\n");
-                if (repair) assertEquals(await Deno.readTextFile(join(tree, "broken.txt")), "unfinished repair\n");
+                assertEquals(await fsReadFile(join(tree, "implementation.txt"), "utf8"), "implemented\n");
+                if (repair) assertEquals(await fsReadFile(join(tree, "broken.txt"), "utf8"), "unfinished repair\n");
 
                 // A fresh session has no cached workflow. Production resolves the
                 // migrated execution identity and then drives the next real phases.
@@ -242,7 +253,7 @@ for (
                                 repairs++;
                                 // The scripted external Engineer edits code, then calls
                                 // the real completion tool. It never writes workflow state.
-                                await Deno.remove(join(tree, "broken.txt"));
+                                await fsRm(join(tree, "broken.txt"));
                                 await executeWorkflowTestTools(options, [{
                                     name: "task_completed",
                                     arguments: { message: "Removed unfinished repair marker." },
@@ -256,7 +267,7 @@ for (
                     },
                 });
                 const diagnostics = JSON.stringify(result) + "\n" +
-                    await Deno.readTextFile(join(getHomeDir(), ".wld", "debug", "validation-errors.jsonl")).catch(() =>
+                    await fsReadFile(join(getHomeDir(), ".wld", "debug", "validation-errors.jsonl"), "utf8").catch(() =>
                         ""
                     );
                 assertEquals(result.kind, "paused", diagnostics);
@@ -266,25 +277,25 @@ for (
                 assertEquals(repairs, repair ? 1 : 0);
                 assertEquals((await loadPlan(tree, "demo"))?.attrs.status, "reviewed");
                 assertEquals(await git(root, ["rev-parse", "HEAD"]), baseCommit);
-                assertEquals(await Deno.readTextFile(join(root, "implementation.txt")), "unrelated primary edits\n");
+                assertEquals(await fsReadFile(join(root, "implementation.txt"), "utf8"), "unrelated primary edits\n");
                 assertEquals((await findById(root, "attempt-demo"))?.path, tree);
             } finally {
                 runtime.closeAllSessions();
                 hostedSession.dispose();
-                if (sandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-                else Deno.env.set("WLD_TEST_SANDBOX_HOME", sandboxHome);
+                if (sandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+                else process.env["WLD_TEST_SANDBOX_HOME"] = sandboxHome;
                 await git(root, ["worktree", "remove", "--force", tree]).catch(() => {});
-                await Deno.remove(root, { recursive: true });
-                await Deno.remove(directory, { recursive: true });
+                await fsRm(root, { recursive: true });
+                await fsRm(directory, { recursive: true });
             }
         });
     });
 }
 
-Deno.test("legacy writer returning after migration does not block current controller reads", async () => {
+test("legacy writer returning after migration does not block current controller reads", async () => {
     await withRuntimeCommandFixture("migration-old-writer-", async () => {
-        const sandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        Deno.env.delete("WLD_TEST_SANDBOX_HOME");
+        const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
+        delete process.env["WLD_TEST_SANDBOX_HOME"];
         const root = await seed.checkout();
         try {
             const directory = join(root, ".wld", "controller", "plans");
@@ -297,26 +308,27 @@ Deno.test("legacy writer returning after migration does not block current contro
                 state: { executionMode: "non_git_in_place", executionReport: "Unsaved completion receipt" },
             };
             const bytes = JSON.stringify(record);
-            await Deno.mkdir(directory, { recursive: true });
-            await Deno.writeTextFile(path, bytes);
+            await fsMkdir(directory, { recursive: true });
+            await fsWriteFile(path, bytes);
             assertEquals(await readControllerRecord(root, identity), record);
 
             // Simulate an old binary flushing its still-current record after the
             // new binary has moved the original directory. No conflicting edit.
-            await Deno.mkdir(directory, { recursive: true });
-            await Deno.writeTextFile(path, bytes);
+            await fsMkdir(directory, { recursive: true });
+            await fsWriteFile(path, bytes);
             assertEquals(await readControllerRecord(root, identity), record);
             assertEquals(await readControllerRecord(root, identity), record);
             assertEquals(
-                await Deno.readTextFile(
+                await fsReadFile(
                     join(resolveProjectRuntimeLayout(root).primary.controllerPlansDir, "migration-demo.json"),
+                    "utf8",
                 ),
                 bytes,
             );
         } finally {
-            if (sandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", sandboxHome);
-            await Deno.remove(root, { recursive: true });
+            if (sandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = sandboxHome;
+            await fsRm(root, { recursive: true });
         }
     });
 });

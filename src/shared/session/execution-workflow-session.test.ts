@@ -1,14 +1,15 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "./hosted-session.js";
 import { restoreExecutionWorkflow } from "./execution-workflow-recovery.ts";
-import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.js";
+import { recordExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import type { ActiveExecutionWorkflow } from "../types.js";
 
 type SnapshotCase = "active" | "paused" | "stopped" | "cleared";
 for (const state of ["active", "paused", "stopped", "cleared"] as SnapshotCase[]) {
-    Deno.test(`execution snapshot restores ${state} state after branch compaction`, async () => {
+    test(`execution snapshot restores ${state} state after branch compaction`, async () => {
         await withRuntimeCommandFixture("workflow-snapshot-", async ({ projectRoot }) => {
             const manager = SessionManager.inMemory(projectRoot);
             const session = new HostedSession({ cwd: projectRoot, sessionManager: manager });

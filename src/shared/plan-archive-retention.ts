@@ -1,4 +1,6 @@
-import { join } from "@std/path";
+import { opendir as fsOpendir } from "node:fs/promises";
+import { stat as fsStat } from "node:fs/promises";
+import { join } from "node:path";
 import { listArchivedPlans } from "../plan-store.js";
 import { EPIC_ARTIFACT_FILE_NAMES, getArchivedEpicArtifactPath } from "./epic-artifacts.ts";
 import { getPlanArchiveRetentionPolicy } from "./settings.js";
@@ -66,10 +68,10 @@ export function selectArchivedPlansForPrune(args: SelectArchivedPlansForPruneArg
 
 async function pathExists(path: string): Promise<boolean> {
     try {
-        await Deno.stat(path);
+        await fsStat(path);
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
@@ -89,12 +91,12 @@ export async function collectArchivedPlanUnits(cwd: string): Promise<ArchivedPla
     const names = new Set<string>(topLevelPlans.keys());
     const archivedDir = join(cwd, "docs", "plans", "archived");
     try {
-        for await (const entry of Deno.readDir(archivedDir)) {
-            if (entry.isFile && entry.name.endsWith(".md")) names.add(entry.name.slice(0, -3));
-            if (entry.isDirectory) names.add(entry.name);
+        for await (const entry of await fsOpendir(archivedDir)) {
+            if (entry.isFile() && entry.name.endsWith(".md")) names.add(entry.name.slice(0, -3));
+            if (entry.isDirectory()) names.add(entry.name);
         }
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
 
@@ -106,13 +108,13 @@ export async function collectArchivedPlanUnits(cwd: string): Promise<ArchivedPla
         if (await pathExists(parentPath)) paths.add(projectRelativePath(cwd, parentPath));
         const childDir = join(archivedDir, name);
         try {
-            for await (const entry of Deno.readDir(childDir)) {
-                if (entry.isFile && entry.name.endsWith(".md")) {
+            for await (const entry of await fsOpendir(childDir)) {
+                if (entry.isFile() && entry.name.endsWith(".md")) {
                     paths.add(projectRelativePath(cwd, join(childDir, entry.name)));
                 }
             }
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
         for (const artifactName of EPIC_ARTIFACT_FILE_NAMES) {
             const artifactPath = getArchivedEpicArtifactPath(cwd, name, artifactName);

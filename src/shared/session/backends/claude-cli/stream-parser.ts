@@ -1,3 +1,5 @@
+import type { ClaudeCliControlReply } from "./process.ts";
+
 export interface ClaudeCliUsage {
     inputTokens: number | null;
     outputTokens: number | null;
@@ -37,6 +39,9 @@ export type ClaudeCliStreamEvent =
 
 export interface ClaudeCliStreamCallbacks {
     onDelta: (delta: ClaudeCliAssistantDelta) => void;
+    onUserReplay?: (id: string) => void;
+    onResult?: () => void;
+    onControlReply?: (reply: ClaudeCliControlReply) => void;
     /** Live thinking chunks from `stream_event` partial messages; display-only, never persisted as visible text. */
     onThinkingDelta?: (delta: ClaudeCliThinkingDelta) => void;
     /** Signals the current thinking block ended, either because visible text started or the turn finished. */
@@ -46,14 +51,12 @@ export interface ClaudeCliStreamCallbacks {
     onNativeToolStart?: (call: { callId: string; toolName: string; args?: Record<string, unknown> }) => void;
     onNativeToolResult?: (result: { callId: string; isError: boolean; resultText?: string }) => void;
     /** Request/model detail can overlap the terminal turn total; it is not additive. */
-    onUsage?: (
-        observation: {
-            sourceId: string;
-            model?: string;
-            usage: ClaudeCliUsage;
-            aggregationBasis: "turn" | "alternative";
-        },
-    ) => void;
+    onUsage?: (observation: {
+        sourceId: string;
+        model?: string;
+        usage: ClaudeCliUsage;
+        aggregationBasis: "turn" | "alternative";
+    }) => void;
 }
 
 type JsonScalar = string | number | boolean | null;
@@ -95,14 +98,22 @@ function readUsage(value: JsonValue | undefined, topCost?: JsonValue): ClaudeCli
     }
 
     return {
-        inputTokens: asNullableNumber(usage.input_tokens) ?? asNullableNumber(usage.inputTokens) ??
+        inputTokens:
+            asNullableNumber(usage.input_tokens) ??
+            asNullableNumber(usage.inputTokens) ??
             asNullableNumber(usage.input),
-        outputTokens: asNullableNumber(usage.output_tokens) ?? asNullableNumber(usage.outputTokens) ??
+        outputTokens:
+            asNullableNumber(usage.output_tokens) ??
+            asNullableNumber(usage.outputTokens) ??
             asNullableNumber(usage.output),
-        cacheReadTokens: asNullableNumber(usage.cache_read_input_tokens) ?? asNullableNumber(usage.cacheReadTokens) ??
+        cacheReadTokens:
+            asNullableNumber(usage.cache_read_input_tokens) ??
+            asNullableNumber(usage.cacheReadTokens) ??
             asNullableNumber(usage.cacheReadInputTokens),
-        cacheWriteTokens: asNullableNumber(usage.cache_creation_input_tokens) ??
-            asNullableNumber(usage.cacheWriteTokens) ?? asNullableNumber(usage.cacheCreationInputTokens),
+        cacheWriteTokens:
+            asNullableNumber(usage.cache_creation_input_tokens) ??
+            asNullableNumber(usage.cacheWriteTokens) ??
+            asNullableNumber(usage.cacheCreationInputTokens),
         costUsd: cost,
     };
 }
@@ -110,11 +121,13 @@ function readUsage(value: JsonValue | undefined, topCost?: JsonValue): ClaudeCli
 function contentText(value: JsonValue | undefined): string {
     if (typeof value === "string") return value;
     if (Array.isArray(value)) {
-        return value.map((item) => {
-            if (!isJsonRecord(item)) return "";
-            if (item.type === "text") return asString(item.text);
-            return "";
-        }).join("");
+        return value
+            .map((item) => {
+                if (!isJsonRecord(item)) return "";
+                if (item.type === "text") return asString(item.text);
+                return "";
+            })
+            .join("");
     }
     return "";
 }
@@ -134,6 +147,16 @@ export function parseClaudeCliJsonLine(
     }
     if (!isJsonRecord(parsed)) return null;
     const eventType = asString(parsed.type);
+    if (eventType === "control_response" && isJsonRecord(parsed.response)) {
+        const response = parsed.response;
+        const payload = isJsonRecord(response.response) ? response.response : {};
+        callbacks?.onControlReply?.({
+            requestId: asString(response.request_id),
+            cancelled: payload.cancelled === true,
+            ...(response.subtype === "error" ? { error: asString(response.error) } : {}),
+        });
+        return null;
+    }
     if (eventType === "assistant") {
         const message = isJsonRecord(parsed.message) ? parsed.message : parsed;
         const messageId = asString(message.id);
@@ -166,6 +189,9 @@ export function parseClaudeCliJsonLine(
     }
     if (eventType === "user") {
         const message = isJsonRecord(parsed.message) ? parsed.message : parsed;
+        if (parsed.isReplay === true) {
+            callbacks?.onUserReplay?.(asString(parsed.uuid));
+        }
         if (Array.isArray(message.content)) {
             for (const item of message.content) {
                 if (!isJsonRecord(item) || item.type !== "tool_result") continue;
@@ -234,8 +260,8 @@ export function parseClaudeCliJsonLine(
         const modelUsage = isJsonRecord(parsed.modelUsage)
             ? parsed.modelUsage
             : isJsonRecord(parsed.model_usage)
-            ? parsed.model_usage
-            : {};
+              ? parsed.model_usage
+              : {};
         for (const [model, details] of Object.entries(modelUsage)) {
             if (!/^[A-Za-z][A-Za-z0-9_.:/-]{0,127}$/.test(model) || !isJsonRecord(details)) continue;
             callbacks?.onUsage?.({
@@ -303,10 +329,14 @@ export async function parseClaudeCliStream(
         if (event.kind === "text_partial" || event.kind === "assistant_continuation") {
             previousCompletePlainLine = false;
             endThinking();
-            const separator = event.kind === "text_partial" && previousAssistantComplete && visibleText &&
-                    !visibleText.endsWith("\n") && !event.text.startsWith("\n")
-                ? "\n"
-                : "";
+            const separator =
+                event.kind === "text_partial" &&
+                previousAssistantComplete &&
+                visibleText &&
+                !visibleText.endsWith("\n") &&
+                !event.text.startsWith("\n")
+                    ? "\n"
+                    : "";
             previousAssistantComplete = false;
             const text = separator + event.text;
             visibleText += text;
@@ -328,15 +358,16 @@ export async function parseClaudeCliStream(
             endThinking();
             const alreadyStreamed = streamedBlockText;
             streamedBlockText = "";
-            const separator = previousAssistantComplete && visibleText && !visibleText.endsWith("\n") &&
-                    !event.text.startsWith("\n")
-                ? "\n"
-                : "";
+            const separator =
+                previousAssistantComplete && visibleText && !visibleText.endsWith("\n") && !event.text.startsWith("\n")
+                    ? "\n"
+                    : "";
             previousAssistantComplete = true;
             if (alreadyStreamed && event.text === alreadyStreamed) return;
-            const remainder = alreadyStreamed && event.text.startsWith(alreadyStreamed)
-                ? event.text.slice(alreadyStreamed.length)
-                : event.text;
+            const remainder =
+                alreadyStreamed && event.text.startsWith(alreadyStreamed)
+                    ? event.text.slice(alreadyStreamed.length)
+                    : event.text;
             if (!remainder) return;
             const text = separator + remainder;
             visibleText += text;
@@ -345,6 +376,7 @@ export async function parseClaudeCliStream(
         }
         endThinking();
         sawResult = true;
+        callbacks.onResult?.();
         resultText = event.text;
         metadata = {
             isError: event.isError,
@@ -353,16 +385,20 @@ export async function parseClaudeCliStream(
         };
     };
 
-    while (true) {
+    streamLoop: while (callbacks.isTerminalAccepted?.() !== true) {
         const chunk = await reader.read();
         if (chunk.done) break;
         buffered += decoder.decode(chunk.value, { stream: true });
         const lines = buffered.split(/\r?\n/);
         buffered = lines.pop() || "";
         for (const line of lines) {
-            const event: ClaudeCliStreamEvent | null = line === "" && previousCompletePlainLine
-                ? { kind: "plain_text", text: "" }
-                : parseClaudeCliJsonLine(line, callbacks);
+            // A killed process can still have buffered stdout, especially on Windows.
+            // Once RunWield accepts the lifecycle signal, none of that is a new reply.
+            if (callbacks.isTerminalAccepted?.() === true) break streamLoop;
+            const event: ClaudeCliStreamEvent | null =
+                line === "" && previousCompletePlainLine
+                    ? { kind: "plain_text", text: "" }
+                    : parseClaudeCliJsonLine(line, callbacks);
             if (event) {
                 applyEvent(event);
                 previousCompletePlainLine = event.kind === "plain_text";
@@ -371,7 +407,7 @@ export async function parseClaudeCliStream(
             }
         }
     }
-    if (buffered.trim()) {
+    if (buffered.trim() && callbacks.isTerminalAccepted?.() !== true) {
         const event = parseClaudeCliJsonLine(buffered, callbacks);
         if (event) applyEvent(event);
     }

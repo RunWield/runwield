@@ -1,6 +1,8 @@
+import process from "node:process";
 /** Run one Golden TUI scenario in a fixture environment owned by the parent test. */
 
-import { fromFileUrl, join, toFileUrl } from "@std/path";
+import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
+import { join } from "node:path";
 import { _setTestStatePath } from "../../../cmd/init/init-state.ts";
 import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.js";
 
@@ -16,9 +18,9 @@ interface ScenarioModule {
 const repoRoot = fromFileUrl(new URL("../../../..", import.meta.url));
 
 async function main(): Promise<void> {
-    const request = JSON.parse(Deno.args[0] || "{}") as SharedEnvironmentScenarioRequest;
-    Deno.env.set("WLD_GOLDEN_TUI_CHILD", "1");
-    const runwieldDir = Deno.env.get("RUNWIELD_HOME");
+    const request = JSON.parse(process.argv.slice(2)[0] || "{}") as SharedEnvironmentScenarioRequest;
+    process.env["WLD_GOLDEN_TUI_CHILD"] = "1";
+    const runwieldDir = process.env["RUNWIELD_HOME"];
     if (!runwieldDir) throw new Error("Shared Golden child requires RUNWIELD_HOME.");
     _setTestStatePath(join(runwieldDir, "init-state.json"));
 

@@ -1,10 +1,15 @@
-import { assertEquals, assertStrictEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { HostedSession } from "./hosted-session.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.js";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";
 
-Deno.test("Plan review captures only the selected Architect and keeps the same conversation through dehydration", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Plan review captures only the selected Architect and keeps the same conversation through dehydration", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const session = new HostedSession({ id: crypto.randomUUID(), cwd });
     const other = new HostedSession({ id: crypto.randomUUID(), cwd });
     try {
@@ -39,12 +44,12 @@ Deno.test("Plan review captures only the selected Architect and keeps the same c
     } finally {
         await session.dispose();
         await other.dispose();
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Plan review keeps the planning reply after final feedback and grouped Sequence chat", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Plan review keeps the planning reply after final feedback and grouped Sequence chat", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const session = new HostedSession({ id: crypto.randomUUID(), cwd });
     try {
         const answers: Array<import("./session-runtime-interactions.js").RuntimeInteractionResponse> = [
@@ -95,6 +100,6 @@ Deno.test("Plan review keeps the planning reply after final feedback and grouped
         assertEquals(conversation.events.length, 3);
     } finally {
         await session.dispose();
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });

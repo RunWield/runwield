@@ -1,11 +1,12 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     buildActiveConversationStatusMessage,
     buildActiveConversationSubmissionMessage,
     buildConversationRestoredMessage,
 } from "./session-user-messages.ts";
 
-Deno.test("session messages describe an active terminal without internal terms", () => {
+test("session messages describe an active terminal without internal terms", () => {
     assertEquals(
         buildActiveConversationSubmissionMessage("tui"),
         "This conversation is still running in another terminal. Continue there, or wait for its current turn to finish before sending here.",
@@ -20,6 +21,6 @@ Deno.test("session messages describe an active terminal without internal terms",
     );
 });
 
-Deno.test("session restored message omits implementation identifiers", () => {
+test("session restored message omits implementation identifiers", () => {
     assertEquals(buildConversationRestoredMessage(), "Conversation restored.");
 });

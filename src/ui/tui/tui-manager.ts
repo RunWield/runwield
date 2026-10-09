@@ -3,6 +3,9 @@
  * TUI singleton lifecycle.
  */
 
+import { writeSync } from "node:fs";
+import { env } from "node:process";
+
 import {
     type FocusReportingTerminal,
     installTerminalFocusState,
@@ -40,7 +43,7 @@ interface TuiPair<TTerminal extends FocusReportingTerminal, TTui extends Managed
  */
 function defaultRestoreTitle(): void {
     try {
-        Deno.stdout.writeSync(new TextEncoder().encode("\x1b]0;\x07"));
+        writeSync(1, new TextEncoder().encode("\x1b]0;\x07"));
     } catch {
         // Terminal title restoration is cosmetic — never crash on it.
     }
@@ -101,7 +104,7 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
     function initTUI(): TTui {
         if (tuiInstance) return tuiInstance;
         const terminal = new TerminalCtor();
-        if (!Deno.env.get("WLD_GOLDEN_TUI") && !Deno.env.get("WLD_GOLDEN_TUI_CHILD")) {
+        if (!env.WLD_GOLDEN_TUI && !env.WLD_GOLDEN_TUI_CHILD) {
             focusStateOwner = installTerminalFocusState(terminal, () => tuiInstance?.requestRender?.(true));
         }
         try {

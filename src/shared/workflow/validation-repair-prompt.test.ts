@@ -1,7 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { buildValidationRepairPrompt } from "./validation-repair-prompt.ts";
 
-Deno.test("focused validation repair packet carries worktree and failure context without a Plan", () => {
+test("focused validation repair packet carries worktree and failure context without a Plan", () => {
     const prompt = buildValidationRepairPrompt({
         executionCwd: "/worktrees/child",
         repairCwd: "/worktrees/child",
@@ -21,7 +22,7 @@ Deno.test("focused validation repair packet carries worktree and failure context
     assertEquals(prompt.includes("Plan"), false);
 });
 
-Deno.test("focused validation repair packet preserves repair-specific authority and completion rules", () => {
+test("focused validation repair packet preserves repair-specific authority and completion rules", () => {
     const prompt = buildValidationRepairPrompt({
         executionCwd: "/execution",
         repairCwd: "/merge-repair",
@@ -36,7 +37,7 @@ Deno.test("focused validation repair packet preserves repair-specific authority 
     assertEquals(prompt.includes("Plan"), false);
 });
 
-Deno.test("focused validation repair packet never adds general implementation ceremony", () => {
+test("focused validation repair packet never adds general implementation ceremony", () => {
     const prompt = buildValidationRepairPrompt({
         executionCwd: "/project",
         repairCwd: "/project",

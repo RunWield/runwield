@@ -12,7 +12,7 @@ import { createReplayEvents as createProjectedReplayEvents } from ".././session-
 import { requestHostedSessionInteraction } from ".././session-runtime-interactions.js";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
-import { isAbsolute } from "@std/path";
+import { isAbsolute } from "node:path";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";
 import type { LoadSessionOptions } from "./types.ts";

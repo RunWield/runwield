@@ -1,4 +1,6 @@
-import { assertEquals, assertStrictEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { createTuiCrashGuards } from "./tui-crash-guards.ts";
 
 function createFakeEventTarget() {
@@ -53,7 +55,7 @@ function createFakeSignalRuntime() {
     };
 }
 
-Deno.test("createTuiCrashGuards installs and uninstalls event and signal handlers idempotently", () => {
+test("createTuiCrashGuards installs and uninstalls event and signal handlers idempotently", () => {
     const eventTarget = createFakeEventTarget();
     const signalRuntime = createFakeSignalRuntime();
     const guards = createTuiCrashGuards({
@@ -83,7 +85,7 @@ Deno.test("createTuiCrashGuards installs and uninstalls event and signal handler
     assertStrictEquals(signalRuntime.removed[0].handler, signalRuntime.added[0].handler);
 });
 
-Deno.test("createTuiCrashGuards restores TUI for unhandled promise and error events", () => {
+test("createTuiCrashGuards restores TUI for unhandled promise and error events", () => {
     const eventTarget = createFakeEventTarget();
     const signalRuntime = createFakeSignalRuntime();
     let stops = 0;
@@ -107,7 +109,7 @@ Deno.test("createTuiCrashGuards restores TUI for unhandled promise and error eve
     assertEquals(stops, 2);
 });
 
-Deno.test("createTuiCrashGuards signal handlers stop and exit with shell-compatible codes", () => {
+test("createTuiCrashGuards signal handlers stop and exit with shell-compatible codes", () => {
     const eventTarget = createFakeEventTarget();
     const signalRuntime = createFakeSignalRuntime();
     /** @type {number[]} */
@@ -145,7 +147,7 @@ Deno.test("createTuiCrashGuards signal handlers stop and exit with shell-compati
     assertEquals(exits, [130, 143, 129]);
 });
 
-Deno.test("createTuiCrashGuards skips SIGHUP on windows and tolerates signal runtime failures", () => {
+test("createTuiCrashGuards skips SIGHUP on windows and tolerates signal runtime failures", () => {
     const eventTarget = createFakeEventTarget();
     /** @type {string[]} */
     const attempted = [];

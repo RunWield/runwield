@@ -1,4 +1,4 @@
-import { spawnForegroundProcess } from "../../../foreground-process.ts";
+import { isMissingExecutableError, spawnForegroundProcess } from "../../../foreground-process.ts";
 import type { ForegroundProcess, ForegroundTermination } from "../../../foreground-process.ts";
 import type { PreparedAgyCliCommand } from "./command.ts";
 import { AgyCliBackendError } from "./failure.ts";
@@ -32,7 +32,9 @@ export class DenoAgyCliProcessPort {
                 timeoutMs: command.timeoutMs,
             });
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) throw new AgyCliBackendError("missing_executable");
+            if (error instanceof Error && isMissingExecutableError(error)) {
+                throw new AgyCliBackendError("missing_executable");
+            }
             throw error;
         }
         return {

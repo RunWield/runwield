@@ -1,10 +1,13 @@
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /**
  * @module cmd/sleep
  * Sleep command: back up and conservatively optimize project memory.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { basename, dirname, join, resolve } from "@std/path";
+import { parseArgs } from "../../shared/cli-args.ts";
+import { basename, dirname, join, resolve } from "node:path";
 import { AGENTS, SLEEP_PROMPT_PATH } from "../../constants.js";
 import { ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";
 import { printCommandHelp } from "../help/index.ts";
@@ -40,12 +43,7 @@ export interface SleepCommandOptions {
 
 export const SYSTEM_SLEEP_MNEMOTECA_PORT: MnemotecaPort = {
     ensureAvailable: ensureMnemotecaBinary,
-    run: (args) =>
-        new Deno.Command("mnemoteca", {
-            args,
-            stdout: "piped",
-            stderr: "piped",
-        }).output(),
+    run: (args) => captureForegroundProcess("mnemoteca", { args, cwd: getCwd() }),
 };
 
 /**
@@ -56,7 +54,7 @@ export async function exportMnemotecaCollection(
     outputPath: string,
     port: Pick<MnemotecaPort, "run">,
 ): Promise<void> {
-    await Deno.mkdir(dirname(outputPath), { recursive: true });
+    await fsMkdir(dirname(outputPath), { recursive: true });
     const result = await port.run([
         "export",
         "--name",
@@ -72,12 +70,12 @@ export async function exportMnemotecaCollection(
 
     let outputInfo;
     try {
-        outputInfo = await Deno.stat(outputPath);
+        outputInfo = await fsStat(outputPath);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`Mnemoteca reported success but did not create the backup: ${message}`);
     }
-    if (!outputInfo.isFile) {
+    if (!outputInfo.isFile()) {
         throw new Error(`Mnemoteca backup output is not a file: ${outputPath}`);
     }
 }
@@ -115,7 +113,7 @@ export async function runSleepCommand(argv: string[], options: SleepCommandOptio
         snapshot = await sessionRuntime.materializePromptReadySession(runtimeSessionId);
     }
 
-    const sleepPrompt = await Deno.readTextFile(SLEEP_PROMPT_PATH);
+    const sleepPrompt = await fsReadFile(SLEEP_PROMPT_PATH, "utf8");
     const mnemoteca = options.mnemotecaPort;
     await mnemoteca.ensureAvailable();
 

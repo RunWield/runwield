@@ -1,4 +1,10 @@
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { getCwd } from "../../constants.js";
+import process from "node:process";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { savePlan } from "../../plan-store.js";
 import { type BrowserPort, NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -12,8 +18,8 @@ interface CapturedConsole {
 
 async function withPlansUiFixture(run: (projectRoot: string) => Promise<void>): Promise<void> {
     await withProcessGlobalTestLock(async () => {
-        const previousCwd = Deno.cwd();
-        const projectRoot = await Deno.makeTempDir({ prefix: "runwield-plans-ui-" });
+        const previousCwd = getCwd();
+        const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-plans-ui-"));
         try {
             await savePlan(
                 projectRoot,
@@ -28,11 +34,11 @@ async function withPlansUiFixture(run: (projectRoot: string) => Promise<void>): 
                     status: "draft",
                 },
             );
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             await run(projectRoot);
         } finally {
-            Deno.chdir(previousCwd);
-            await Deno.remove(projectRoot, { recursive: true });
+            process.chdir(previousCwd);
+            await fsRm(projectRoot, { recursive: true });
         }
     });
 }
@@ -55,7 +61,7 @@ async function captureConsole(run: () => Promise<void>): Promise<CapturedConsole
     return captured;
 }
 
-Deno.test("parsePlansUiArgs defaults to loopback random port", () => {
+test("parsePlansUiArgs defaults to loopback random port", () => {
     assertEquals(parsePlansUiArgs([]), {
         host: "127.0.0.1",
         port: 0,
@@ -65,38 +71,38 @@ Deno.test("parsePlansUiArgs defaults to loopback random port", () => {
     });
 });
 
-Deno.test("parsePlansUiArgs accepts bind, host alias, port, no-open, and help", () => {
+test("parsePlansUiArgs accepts bind, host alias, port, no-open, and help", () => {
     assertEquals(parsePlansUiArgs(["--host", "localhost", "--port", "8765", "--no-open"]).host, "localhost");
     assertEquals(parsePlansUiArgs(["--bind=0.0.0.0", "--port=0"]).explicitBind, true);
     assertEquals(parsePlansUiArgs(["--help"]).help, true);
 });
 
-Deno.test("parsePlansUiArgs rejects conflicting host bind and invalid ports", () => {
+test("parsePlansUiArgs rejects conflicting host bind and invalid ports", () => {
     assertThrows(() => parsePlansUiArgs(["--bind", "127.0.0.1", "--host", "localhost"]));
     assertThrows(() => parsePlansUiArgs(["--port", "70000"]));
 });
 
-Deno.test("isLoopbackHost detects loopback hosts", () => {
+test("isLoopbackHost detects loopback hosts", () => {
     assertEquals(isLoopbackHost("127.0.0.1"), true);
     assertEquals(isLoopbackHost("localhost"), true);
     assertEquals(isLoopbackHost("0.0.0.0"), false);
 });
 
-Deno.test("buildPlansUiUrl includes token and loopback URL for wildcard bind", () => {
+test("buildPlansUiUrl includes token and loopback URL for wildcard bind", () => {
     assertEquals(
         buildPlansUiUrl({ host: "0.0.0.0", port: 4321, token: "secret" }),
         "http://127.0.0.1:4321/?token=secret",
     );
 });
 
-Deno.test("buildPlansUiUrl brackets IPv6 loopback hosts", () => {
+test("buildPlansUiUrl brackets IPv6 loopback hosts", () => {
     assertEquals(
         buildPlansUiUrl({ host: "::1", port: 4321, token: "secret" }),
         "http://[::1]:4321/?token=secret",
     );
 });
 
-Deno.test("runPlansUiCommand serves fixture Plans through the authenticated Workspace API", async () => {
+test("runPlansUiCommand serves fixture Plans through the authenticated Workspace API", async () => {
     await withPlansUiFixture(async () => {
         const controller = new AbortController();
         let openedUrl = "";
@@ -130,7 +136,7 @@ Deno.test("runPlansUiCommand serves fixture Plans through the authenticated Work
     });
 });
 
-Deno.test("runPlansUiCommand honors no-open while running the real Workspace server", async () => {
+test("runPlansUiCommand honors no-open while running the real Workspace server", async () => {
     await withPlansUiFixture(async () => {
         const controller = new AbortController();
         const browser: BrowserPort = {
@@ -148,7 +154,7 @@ Deno.test("runPlansUiCommand honors no-open while running the real Workspace ser
     });
 });
 
-Deno.test("runPlansUiCommand warns for an explicit non-loopback bind", async () => {
+test("runPlansUiCommand warns for an explicit non-loopback bind", async () => {
     await withPlansUiFixture(async () => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 25);
@@ -169,7 +175,7 @@ Deno.test("runPlansUiCommand warns for an explicit non-loopback bind", async () 
     });
 });
 
-Deno.test("runPlansUiCommand reports argument errors and prints real help", async () => {
+test("runPlansUiCommand reports argument errors and prints real help", async () => {
     const invalid = await captureConsole(() =>
         runPlansUiCommand(["--port", "70000"], { browser: NO_OPEN_BROWSER_PORT })
     );

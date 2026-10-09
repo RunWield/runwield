@@ -1,12 +1,16 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../testing/assertions.ts";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { inspectExecutionWorktreeMergeRisk, removeWorktreeGitArtifacts } from "./worktree.js";
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 
-Deno.test("inspectExecutionWorktreeMergeRisk reports clean target branch as safe without mutating", async () => {
+test("inspectExecutionWorktreeMergeRisk reports clean target branch as safe without mutating", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
     let worktree;
     try {
@@ -17,7 +21,7 @@ Deno.test("inspectExecutionWorktreeMergeRisk reports clean target branch as safe
             worktreeRoot,
         });
         await git(projectRoot, ["checkout", "main"]);
-        await Deno.writeTextFile(`${worktree.path}/feature.txt`, "feature\n");
+        await fsWriteFile(`${worktree.path}/feature.txt`, "feature\n");
         await git(worktree.path, ["add", "."]);
         await git(worktree.path, ["commit", "-m", "feature"]);
 
@@ -41,15 +45,15 @@ Deno.test("inspectExecutionWorktreeMergeRisk reports clean target branch as safe
                 force: true,
             });
         }
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("inspectExecutionWorktreeMergeRisk fails when target branch is checked out elsewhere", async () => {
+test("inspectExecutionWorktreeMergeRisk fails when target branch is checked out elsewhere", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
-    const targetCheckout = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const targetCheckout = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
     let worktree;
     try {
@@ -61,7 +65,7 @@ Deno.test("inspectExecutionWorktreeMergeRisk fails when target branch is checked
         });
         await git(projectRoot, ["checkout", "main"]);
         await git(projectRoot, ["worktree", "add", targetCheckout, "feature-base"]);
-        await Deno.writeTextFile(`${worktree.path}/feature.txt`, "feature\n");
+        await fsWriteFile(`${worktree.path}/feature.txt`, "feature\n");
         await git(worktree.path, ["add", "."]);
         await git(worktree.path, ["commit", "-m", "feature"]);
 
@@ -73,8 +77,10 @@ Deno.test("inspectExecutionWorktreeMergeRisk fails when target branch is checked
 
         assertEquals(result.ok, false);
         assertEquals(
-            result.failures.some((failure) =>
-                failure.includes("Target branch feature-base is checked out") && failure.includes(targetCheckout)
+            result.failures.some(
+                (failure) =>
+                    failure.includes("Target branch feature-base is checked out") &&
+                    failure.replaceAll("\\", "/").includes(targetCheckout.replaceAll("\\", "/")),
             ),
             true,
         );
@@ -87,15 +93,15 @@ Deno.test("inspectExecutionWorktreeMergeRisk fails when target branch is checked
                 force: true,
             });
         }
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(targetCheckout, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(targetCheckout, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("inspectExecutionWorktreeMergeRisk requires targetBranch to be a local branch, not a tag", async () => {
+test("inspectExecutionWorktreeMergeRisk requires targetBranch to be a local branch, not a tag", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
     let worktree;
     try {
@@ -114,9 +120,10 @@ Deno.test("inspectExecutionWorktreeMergeRisk requires targetBranch to be a local
 
         assertEquals(result.ok, false);
         assertEquals(
-            result.failures.some((failure) =>
-                failure.includes("Recorded worktree target branch is not available") &&
-                failure.includes("refs/heads/release-target")
+            result.failures.some(
+                (failure) =>
+                    failure.includes("Recorded worktree target branch is not available") &&
+                    failure.includes("refs/heads/release-target"),
             ),
             true,
         );
@@ -128,14 +135,14 @@ Deno.test("inspectExecutionWorktreeMergeRisk requires targetBranch to be a local
                 force: true,
             });
         }
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("inspectExecutionWorktreeMergeRisk warns on overlapping dirty primary changes", async () => {
+test("inspectExecutionWorktreeMergeRisk warns on overlapping dirty primary changes", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
     let worktree;
     try {
@@ -144,21 +151,21 @@ Deno.test("inspectExecutionWorktreeMergeRisk warns on overlapping dirty primary 
             planName: "Dirty Risk",
             worktreeRoot,
         });
-        await Deno.writeTextFile(`${worktree.path}/README.md`, "base\nfeature\n");
+        await fsWriteFile(`${worktree.path}/README.md`, "base\nfeature\n");
         await git(worktree.path, ["add", "."]);
         await git(worktree.path, ["commit", "-m", "feature"]);
-        await Deno.writeTextFile(`${projectRoot}/README.md`, "base\nprimary scratch\n");
+        await fsWriteFile(`${projectRoot}/README.md`, "base\nprimary scratch\n");
 
         const result = await inspectExecutionWorktreeMergeRisk({ projectRoot, branch: worktree.branch });
 
         assertEquals(result.ok, true);
         assertEquals(
-            result.warnings.some((warning) =>
-                warning.includes("overlap execution worktree changes") && warning.includes("README.md")
+            result.warnings.some(
+                (warning) => warning.includes("overlap execution worktree changes") && warning.includes("README.md"),
             ),
             true,
         );
-        assertEquals(await Deno.readTextFile(`${projectRoot}/README.md`), "base\nprimary scratch\n");
+        assertEquals(await fsReadFile(`${projectRoot}/README.md`, "utf8"), "base\nprimary scratch\n");
     } finally {
         if (worktree) {
             await removeWorktreeGitArtifacts({
@@ -167,12 +174,12 @@ Deno.test("inspectExecutionWorktreeMergeRisk warns on overlapping dirty primary 
                 force: true,
             });
         }
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("inspectExecutionWorktreeMergeRisk fails on missing branch", async () => {
+test("inspectExecutionWorktreeMergeRisk fails on missing branch", async () => {
     const projectRoot = await makeRepo();
     try {
         const result = await inspectExecutionWorktreeMergeRisk({ projectRoot, branch: "missing-branch" });
@@ -184,6 +191,6 @@ Deno.test("inspectExecutionWorktreeMergeRisk fails on missing branch", async () 
             true,
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });

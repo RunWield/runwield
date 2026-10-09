@@ -1,14 +1,17 @@
-import { assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { runRemoteModelProof } from "./model-proof.ts";
 
-Deno.test("LIVE proof does not start after its connection closes", async () => {
-    const root = await Deno.makeTempDir();
+test("LIVE proof does not start after its connection closes", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const project = join(root, "project");
     const personal = join(root, "personal");
-    await Deno.mkdir(project);
-    await Deno.mkdir(personal);
-    await Deno.writeTextFile(join(project, "sentinel.txt"), "remote-test");
+    await fsMkdir(project);
+    await fsMkdir(personal);
+    await fsWriteFile(join(project, "sentinel.txt"), "remote-test");
     const controller = new AbortController();
     controller.abort();
     try {
@@ -25,6 +28,6 @@ Deno.test("LIVE proof does not start after its connection closes", async () => {
             "aborted",
         );
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

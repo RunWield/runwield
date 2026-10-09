@@ -1,6 +1,9 @@
 // @ts-nocheck: owner Workspace routes and the fixture expose JavaScript records.
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -117,7 +120,7 @@ async function withOpenReview(run) {
     );
 }
 
-Deno.test("Workspace rejects an approval if the reviewed Plan body changes while the review is open", async () => {
+test("Workspace rejects an approval if the reviewed Plan body changes while the review is open", async () => {
     await withOpenReview(async ({ fixture, answer }) => {
         const before = await loadPlan(fixture.projectRoot, "saved");
         await savePlan(
@@ -141,21 +144,27 @@ Deno.test("Workspace rejects an approval if the reviewed Plan body changes while
     });
 });
 
-Deno.test("Workspace sends review feedback images to the resumed planning Agent", async () => {
-    await withOpenReview(async ({ fixture, answer }) => {
+test("Workspace sends review feedback images to the resumed planning Agent", async () => {
+    await withOpenReview(async ({ fixture, answer, app, operationId }) => {
         const imagePath = join(fixture.projectRoot, "review.png");
         const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-        await Deno.writeFile(imagePath, Uint8Array.from(atob(png), (char) => char.charCodeAt(0)));
+        await fsWriteFile(imagePath, Uint8Array.from(atob(png), (char) => char.charCodeAt(0)));
         const response = await answer("image-feedback", {
             approved: false,
             feedback: "Please use this screenshot.",
             images: [{ path: imagePath, name: "review.png" }],
         });
         assertEquals(response.status, 202, await response.clone().text());
-        for (let index = 0; index < 300 && !fixture.modelRequests.length; index++) {
-            await new Promise((resolve) => setTimeout(resolve, 10));
+        const deadline = performance.now() + 15_000;
+        while (!fixture.modelRequests.length && performance.now() < deadline) {
+            const operation = app.sessionContinuation.getOperation(operationId);
+            if (operation.status !== "running") break;
+            await new Promise((resolve) => setTimeout(resolve, 25));
         }
-        assert(fixture.modelRequests.length > 0, "Planning Agent did not receive the feedback");
+        assert(
+            fixture.modelRequests.length > 0,
+            `Planning Agent did not receive the feedback: ${JSON.stringify(app.sessionContinuation.getOperation(operationId))}`,
+        );
         assertStringIncludes(fixture.modelRequests[0].messages, "Please use this screenshot.");
         assertStringIncludes(fixture.modelRequests[0].messages, "image/png");
     });

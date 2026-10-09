@@ -1,4 +1,8 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
 import { acknowledgeActivationProtocol, getActivationProtocolStatus } from "./activation-protocol.ts";
 import {
@@ -27,8 +31,8 @@ function insertCatalogedSession(database) {
     });
 }
 
-Deno.test("activation protocol marker binds to the database epoch", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-activation-protocol-" });
+test("activation protocol marker binds to the database epoch", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-activation-protocol-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -40,12 +44,12 @@ Deno.test("activation protocol marker binds to the database epoch", async () => 
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("activation state backfills and publishes generation zero through a fenced proof", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-activation-state-" });
+test("activation state backfills and publishes generation zero through a fenced proof", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-activation-state-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -77,12 +81,12 @@ Deno.test("activation state backfills and publishes generation zero through a fe
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("stale or expired activation proofs cannot publish or revive a session", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-activation-stale-" });
+test("stale or expired activation proofs cannot publish or revive a session", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-activation-stale-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -119,12 +123,12 @@ Deno.test("stale or expired activation proofs cannot publish or revive a session
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("activation state enforces phase graph, exact proof, and no-change release boundaries", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-activation-graph-" });
+test("activation state enforces phase graph, exact proof, and no-change release boundaries", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-activation-graph-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -170,12 +174,12 @@ Deno.test("activation state enforces phase graph, exact proof, and no-change rel
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("proof-fenced unhealthy transitions reject a superseded activation", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-activation-fenced-unhealthy-" });
+test("proof-fenced unhealthy transitions reject a superseded activation", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-activation-fenced-unhealthy-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -232,12 +236,12 @@ Deno.test("proof-fenced unhealthy transitions reject a superseded activation", a
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("plan_action operation receipts preserve bounded results", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-plan-action-receipt-" });
+test("plan_action operation receipts preserve bounded results", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-plan-action-receipt-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -289,12 +293,12 @@ Deno.test("plan_action operation receipts preserve bounded results", async () =>
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("recoverExpiredSessionControl adopts exact or transcript-ahead evidence only after expiry", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-recover-expired-" });
+test("recoverExpiredSessionControl adopts exact or transcript-ahead evidence only after expiry", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-recover-expired-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -358,6 +362,6 @@ Deno.test("recoverExpiredSessionControl adopts exact or transcript-ahead evidenc
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

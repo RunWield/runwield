@@ -1,30 +1,34 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../src/testing/assertions.ts";
+import { captureScriptProcess } from "./script-process.ts";
+import { test } from "node:test";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { listCiFiles } from "./ci-files.ts";
 
-Deno.test("CI file discovery includes source work but excludes Git-ignored and .wld files", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-ci-files-" });
+test("CI file discovery includes source work but excludes Git-ignored and .wld files", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-ci-files-"));
     try {
-        const init = await new Deno.Command("git", {
+        const init = await captureScriptProcess("git", {
             args: ["init", "-q"],
             cwd: root,
             stderr: "piped",
-        }).output();
+        });
         assertEquals(init.code, 0, new TextDecoder().decode(init.stderr));
 
-        await Deno.mkdir(join(root, "ignored"));
-        await Deno.mkdir(join(root, ".wld"));
-        await Deno.writeTextFile(join(root, ".gitignore"), "ignored/\n");
-        await Deno.writeTextFile(join(root, "tracked.ts"), "export const tracked = true;\n");
-        await Deno.writeTextFile(join(root, "visible.ts"), "export const visible = true;\n");
-        await Deno.writeTextFile(join(root, "ignored", "temp.test.ts"), 'throw new Error("must not run");\n');
-        await Deno.writeTextFile(join(root, ".wld", "temp.test.ts"), 'throw new Error("must not run");\n');
+        await fsMkdir(join(root, "ignored"));
+        await fsMkdir(join(root, ".wld"));
+        await fsWriteFile(join(root, ".gitignore"), "ignored/\n");
+        await fsWriteFile(join(root, "tracked.ts"), "export const tracked = true;\n");
+        await fsWriteFile(join(root, "visible.ts"), "export const visible = true;\n");
+        await fsWriteFile(join(root, "ignored", "temp.test.ts"), 'throw new Error("must not run");\n');
+        await fsWriteFile(join(root, ".wld", "temp.test.ts"), 'throw new Error("must not run");\n');
 
-        const add = await new Deno.Command("git", {
+        const add = await captureScriptProcess("git", {
             args: ["add", ".gitignore", "tracked.ts"],
             cwd: root,
             stderr: "piped",
-        }).output();
+        });
         assertEquals(add.code, 0, new TextDecoder().decode(add.stderr));
 
         const files = await listCiFiles(root);
@@ -33,6 +37,6 @@ Deno.test("CI file discovery includes source work but excludes Git-ignored and .
         assertEquals(files.includes("ignored/temp.test.ts"), false);
         assertEquals(files.includes(".wld/temp.test.ts"), false);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

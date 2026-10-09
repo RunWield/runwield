@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertMatch, assertThrows } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { Agent } from "@earendil-works/pi-agent-core";
 import { AgentSession, createAgentSession, estimateTokens } from "@earendil-works/pi-coding-agent";
@@ -100,7 +103,7 @@ function hasCompactionSummary(messages) {
     return JSON.stringify(messages).includes("Compaction Summary");
 }
 
-Deno.test("messageStream fixture rejects pending as a final done stop reason", () => {
+test("messageStream fixture rejects pending as a final done stop reason", () => {
     assertThrows(
         () => finalDoneStopReason("pending"),
         Error,
@@ -108,7 +111,7 @@ Deno.test("messageStream fixture rejects pending as a final done stop reason", (
     );
 });
 
-Deno.test("RunWield/Pi seam currently submits another provider call after tool-result pressure without compaction", async () => {
+test("RunWield/Pi seam currently submits another provider call after tool-result pressure without compaction", async () => {
     const providerContexts =
         /** @type {{ call: number; completedToolResults: number; estimatedTokens: number; compacted: boolean }[]} */ ([]);
     let providerCalls = 0;
@@ -133,16 +136,18 @@ Deno.test("RunWield/Pi seam currently submits another provider call after tool-r
                 contextWindow,
                 maxTokens: reserveTokens,
             },
-            tools: [{
-                name: "large_result",
-                label: "Large Result",
-                description: "Return a large deterministic tool result.",
-                parameters: Type.Object({}),
-                execute: () => {
-                    completedToolResults++;
-                    return Promise.resolve({ content: [{ type: "text", text: resultText }], details: {} });
+            tools: [
+                {
+                    name: "large_result",
+                    label: "Large Result",
+                    description: "Return a large deterministic tool result.",
+                    parameters: Type.Object({}),
+                    execute: () => {
+                        completedToolResults++;
+                        return Promise.resolve({ content: [{ type: "text", text: resultText }], details: {} });
+                    },
                 },
-            }],
+            ],
         },
         streamFn: (_model, context) => {
             providerCalls++;
@@ -161,8 +166,8 @@ Deno.test("RunWield/Pi seam currently submits another provider call after tool-r
 
     assertEquals(completedToolResults, 6);
     assertEquals(providerCalls, 7);
-    const pressuredProviderCall = providerContexts.find((entry) =>
-        entry.completedToolResults >= 4 && entry.estimatedTokens > triggerThreshold
+    const pressuredProviderCall = providerContexts.find(
+        (entry) => entry.completedToolResults >= 4 && entry.estimatedTokens > triggerThreshold,
     );
     assert(pressuredProviderCall, `expected context pressure above W - R (${triggerThreshold}) before a provider call`);
     assertEquals(
@@ -187,33 +192,38 @@ function characterizePublicContextResilienceContract(api) {
     return {
         publicAgentSessionMethods,
         agentMethods,
-        hasCompletedTurnStopHook: publicAgentSessionMethods.includes("shouldStopAfterTurn") ||
-            publicAgentSessionMethods.includes("stopAfterTurn") || createSessionSource.includes("shouldStopAfterTurn"),
-        hasRecoveryNumbersBeforeContinuation: publicAgentSessionMethods.includes("getCompactionRecovery") ||
+        hasCompletedTurnStopHook:
+            publicAgentSessionMethods.includes("shouldStopAfterTurn") ||
+            publicAgentSessionMethods.includes("stopAfterTurn") ||
+            createSessionSource.includes("shouldStopAfterTurn"),
+        hasRecoveryNumbersBeforeContinuation:
+            publicAgentSessionMethods.includes("getCompactionRecovery") ||
             publicAgentSessionMethods.includes("compactAndMeasure"),
-        hasPublicContinuationAfterManagedCompaction: publicAgentSessionMethods.includes("continueAfterCompaction") ||
+        hasPublicContinuationAfterManagedCompaction:
+            publicAgentSessionMethods.includes("continueAfterCompaction") ||
             publicAgentSessionMethods.includes("continue"),
-        hasQueueOrderContractForContinuation: publicAgentSessionMethods.includes("enqueueContinuation") ||
+        hasQueueOrderContractForContinuation:
+            publicAgentSessionMethods.includes("enqueueContinuation") ||
             publicAgentSessionMethods.includes("queueContinuation"),
         hasPrivateAutoCompactionOnly: agentSessionMethods.includes("_runAutoCompaction"),
         hasLowLevelAgentLoopConfig: agentMethods.includes("createLoopConfig"),
-        hasPublicStreamFunction: "streamFunction" in api.AgentClass.prototype ||
-            Object.getOwnPropertyNames(new api.AgentClass({ streamFn: () => messageStream(makeDoneMessage()) }))
-                .includes(
-                    "streamFunction",
-                ),
+        hasPublicStreamFunction:
+            "streamFunction" in api.AgentClass.prototype ||
+            Object.getOwnPropertyNames(
+                new api.AgentClass({ streamFn: () => messageStream(makeDoneMessage()) }),
+            ).includes("streamFunction"),
     };
 }
 
-Deno.test("selected public Pi AgentSession contract lacks the required completed-turn stop and recovery hook", async () => {
+test("selected public Pi AgentSession contract lacks the required completed-turn stop and recovery hook", async () => {
     const repositoryRoot = new URL("../../../", import.meta.url);
-    const denoConfig = JSON.parse(await Deno.readTextFile(new URL("deno.json", repositoryRoot)));
-    for (const [name, specifier] of Object.entries(denoConfig.imports)) {
+    const packageConfig = JSON.parse(await fsReadFile(new URL("package.json", repositoryRoot), "utf8"));
+    for (const [name, specifier] of Object.entries(packageConfig.dependencies)) {
         if (!name.startsWith("@earendil-works/")) continue;
         assertMatch(
             /** @type {string} */ (specifier),
-            /^npm:@earendil-works\/[^@]+@\^\d+\.\d+\.\d+/,
-            `${name} should use an upgradeable npm range`,
+            /^\d+\.\d+\.\d+$/,
+            `${name} should use an exact npm version in the frozen Bun graph`,
         );
     }
 

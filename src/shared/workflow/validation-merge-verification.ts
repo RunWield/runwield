@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "../captured-process.ts";
+import { lstat as fsLstat } from "node:fs/promises";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /**
  * @module shared/workflow/validation-merge-verification
@@ -10,17 +12,17 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
 
 import { getDeclaredPlanStatus, planDocumentMarkdown, type PlanFrontMatter } from "../../plan-store.js";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
-import { dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
 
 /** Detect Git on disk so a missing/broken Git executable cannot imply non-Git completion. */
 async function hasGitDirectory(projectRoot: string): Promise<boolean> {
     let directory = resolve(projectRoot);
     while (true) {
         try {
-            await Deno.lstat(join(directory, ".git"));
+            await fsLstat(join(directory, ".git"));
             return true;
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
         const parent = dirname(directory);
         if (parent === directory) return false;
@@ -34,19 +36,14 @@ async function hasGitDirectory(projectRoot: string): Promise<boolean> {
  * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>}
  */
 async function runGitForMergeVerification(cwd: string, args: string[]) {
-    const command = new Deno.Command("git", { args, cwd, stdout: "piped", stderr: "piped" });
-    const output = await command.output();
+    const command = captureForegroundProcess("git", { args, cwd });
+    const output = await command;
     const decoder = new TextDecoder();
     return {
         exitCode: output.code,
         stdout: decoder.decode(output.stdout),
         stderr: decoder.decode(output.stderr),
     };
-}
-
-interface MergeVerificationResult {
-    merged: boolean;
-    message: string;
 }
 
 export interface RecordedPublicationResult {

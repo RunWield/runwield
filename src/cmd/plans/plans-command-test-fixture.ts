@@ -1,4 +1,9 @@
-import { join } from "@std/path";
+import { getCwd } from "../../constants.js";
+import { mkdtemp as fsMkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { mkdir as fsMkdir, realpath as fsRealpath, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 export interface PlanCommandFixture {
@@ -11,29 +16,29 @@ export async function withPlanCommandFixture(
     run: (fixture: PlanCommandFixture) => Promise<void>,
 ): Promise<void> {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const previousSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        const previousCwd = Deno.cwd();
-        const fixtureRoot = await Deno.makeTempDir({ prefix });
+        const previousHome = process.env["HOME"];
+        const previousSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
+        const previousCwd = getCwd();
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), prefix));
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
         await Promise.all([
-            Deno.mkdir(homeDir, { recursive: true }),
-            Deno.mkdir(projectRoot, { recursive: true }),
+            fsMkdir(homeDir, { recursive: true }),
+            fsMkdir(projectRoot, { recursive: true }),
         ]);
 
         try {
-            Deno.env.set("HOME", homeDir);
-            Deno.env.set("WLD_TEST_SANDBOX_HOME", homeDir);
-            Deno.chdir(await Deno.realPath(projectRoot));
-            await run({ homeDir, projectRoot: Deno.cwd() });
+            process.env["HOME"] = homeDir;
+            process.env["WLD_TEST_SANDBOX_HOME"] = homeDir;
+            process.chdir(await fsRealpath(projectRoot));
+            await run({ homeDir, projectRoot: getCwd() });
         } finally {
-            Deno.chdir(previousCwd);
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", previousSandboxHome);
-            await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+            process.chdir(previousCwd);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            if (previousSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = previousSandboxHome;
+            await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
         }
     });
 }

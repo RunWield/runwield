@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
@@ -7,7 +8,7 @@ import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixtu
 import { ExecutionMetricsRecorder } from "../workflow/execution-metrics.ts";
 import { CLAUDE_CLI_MCP_PROVENANCE, startRunWieldMcpBridge } from "./bridged-tools/mcp-bridge.ts";
 
-Deno.test("authenticated bridge records admitted results and known-tool rejections in its execution", async () => {
+test("authenticated bridge records admitted results and known-tool rejections in its execution", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot, backend: "claude-cli" });
         const tool = defineTool({
@@ -40,7 +41,9 @@ Deno.test("authenticated bridge records admitted results and known-tool rejectio
             );
             assertEquals((await client.callTool({ name: "read_fixture", arguments: {} })).isError, true);
             await recorder.settleExecution();
-            const records = await readMetrics();
+            // Recorder sequence, rather than asynchronous disk append order, defines execution order.
+            const records = (await readMetrics()).filter((row) => row.recorderId === recorder.recorderId)
+                .sort((a, b) => Number(a.seq) - Number(b.seq));
             assertEquals(records.filter((row) => row.event === "tool_call_started").length, 2);
             assertEquals(records.filter((row) => row.event === "tool_call_finished").map((row) => row.outcome), [
                 "success",

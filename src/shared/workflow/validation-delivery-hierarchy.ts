@@ -1,3 +1,4 @@
+import { readFile as fsReadFile } from "node:fs/promises";
 /**
  * @module shared/workflow/validation-delivery-hierarchy
  * Direct-delivery evidence, and the sibling snapshot a publication transaction
@@ -56,7 +57,7 @@ export async function loadDirectDeliveryHierarchySnapshot(
         for (const sibling of await findPlansByParent(projectRoot, parentPlan).catch(() => [])) {
             siblingPlans.push({
                 name: sibling.name,
-                revision: await getPlanRevisionForText(await Deno.readTextFile(sibling.path)),
+                revision: await getPlanRevisionForText(await fsReadFile(sibling.path, "utf8")),
                 status: sibling.attrs.status,
                 deliveryEvidence: sibling.attrs.deliveryEvidence,
             });

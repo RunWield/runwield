@@ -20,20 +20,20 @@ export interface RuntimeValidationProgressPresentationInput {
 
 const STAGE_LABELS: Record<ValidationProgressStage, string> = {
     cycle: "Validation",
-    ci: "Tests and CI",
+    ci: "Verification Command",
     engineer_repair: "Repair",
     semantic_review: "AI review",
     human_review: "Code review",
-    merge: "Combining commits",
+    merge: "Merge worktree",
     manual_qa: "Manual QA",
     terminal: "Validation result",
 };
 
 const CHECK_LABELS: Record<ValidationProgressCheckName, string> = {
-    ci: "Tests and CI",
+    ci: "Verification Command",
     semanticReview: "AI review",
     humanReview: "Code review",
-    merge: "Combining commits",
+    merge: "Merge worktree",
 };
 
 const OUTCOME_LABELS: Record<ValidationProgressOutcome, string> = {
@@ -57,7 +57,8 @@ export function validationOutcomeLabel(outcome: ValidationProgressOutcome): stri
 
 export function validationProgressHeading(progress: RuntimeValidationProgressPresentationInput): string {
     if (progress.kind === "mechanical") {
-        return `${validationCheckLabel("ci")} ${validationOutcomeLabel(progress.outcome)}`;
+        const outcome = progress.outcome === "verified" ? "done" : validationOutcomeLabel(progress.outcome);
+        return `${validationCheckLabel("ci")} ${outcome}`;
     }
     if (progress.outcome === "verified") return "Validation passed";
     if (progress.outcome === "failed") return "Validation failed";
@@ -65,9 +66,10 @@ export function validationProgressHeading(progress: RuntimeValidationProgressPre
 }
 
 export function validationProgressCheckSummary(progress: RuntimeValidationProgressPresentationInput): string {
-    if (progress.kind === "mechanical") return `${validationCheckLabel("ci")} ${progress.checks.ci}`;
+    const ci = `${validationCheckLabel("ci")} ${progress.checks.ci === "passed" ? "done" : progress.checks.ci}`;
+    if (progress.kind === "mechanical") return ci;
     return [
-        `${validationCheckLabel("ci")} ${progress.checks.ci}`,
+        ci,
         `${validationCheckLabel("semanticReview")} ${progress.checks.semanticReview}`,
         `${validationCheckLabel("humanReview")} ${progress.checks.humanReview}`,
         `${validationCheckLabel("merge")} ${progress.checks.merge}`,
