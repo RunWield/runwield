@@ -25,13 +25,14 @@ affectedPaths:
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-09T04:28:01.000Z"
-status: "draft"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
 order: 5
 dependencies:
     - "04-implement-approved-plans-in-runwield-worktrees"
 targetBranch: "epic/attached-mode-claude-feature-preview"
+userVerifiedAt: null
+status: "in_progress"
 ---
 
 # Run Workflow Validation without a Core Session
@@ -209,7 +210,8 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/workflow/validation-semantic.ts`, `validation-checkpoint.ts` — reviewer rounds consume a supplied outcome
   by identity; the round-limit decision is saved in the checkpoint.
 - `src/shared/workflow/validation-mechanical.ts` — CI repair and Engineer follow-up hand off in host-turn mode instead
-  of awaiting a repair Agent.
+  of awaiting a repair Agent; a saved CI exhaustion answer reaches the existing prompt call site without a CI rerun.
+- `src/shared/workflow/validation-checkpoint.ts` also holds the pending CI exhaustion decision.
 - `src/shared/workflow/validation-recovery.ts` — retry waits do not sleep in host-turn mode.
 - `src/shared/workflow/validation-session-adapter.ts`, `epic-integration.ts`, `validation-publication.ts` — build Pi
   tools and per-round session managers from the new request shape. These are the callers that use the removed handles
@@ -299,7 +301,14 @@ behavior (child 06), and Plan Lifecycle events and their meaning.
     decision request with the same options and text the Session prompt shows. A resume input with one of those options
     takes the same branch as the Session answer. The accepted round-limit choice is saved in the Validation Checkpoint,
     so re-entering the phase for that round does not ask again. An answer for a missing command is saved through the
-    existing settings writer.
+    existing settings writer. The CI exhaustion decision matches Core's in-Session behavior exactly. Before it returns
+    the decision request, the mechanical phase saves a pending CI exhaustion decision in the Validation Checkpoint,
+    bound to the current CI attempt count and carrying the failure reason. On resume with an answer for that pending
+    decision, the phase does not run CI first. It hands the answer to the same `pauseForUserAction` call site in
+    `runMechanicalValidationPhase`, so the existing branches run unchanged: Retry `continue`s and runs CI once, Engineer
+    follow-up returns the repair request with no CI run, and Stop pauses. A call with no answer, or after Stop,
+    re-enters and runs CI, as Core does when the user runs the Plan again. There is no host-turn copy of the branches
+    after the prompt, so a later change to Core's CI exhaustion behavior applies to host-turn mode without edits here.
 12. In host-turn mode, operational retry waits do not sleep. The run pauses with the `decideValidationRecovery` message,
     and a later call resumes from the checkpoint. Correction and retry limits give the same decisions as in a Session.
 13. `docs/validation-authority.md` lists the host-turn resume input as a typed input to the supervisor. The input
@@ -362,6 +371,12 @@ behavior (child 06), and Plan Lifecycle events and their meaning.
   Resuming with `stop` pauses with tests and findings preserved, the same as `validation-loop-review.test.js` "stop at
   limit". A fixture with no `verification_command` returns a missing-command decision; the answer is saved to settings
   and CI runs.
+- Automated, CI exhaustion parity: a fixture whose CI fails past `CI_REPAIR_CYCLES` returns the CI exhaustion decision
+  request with the Session's options, and the checkpoint holds the pending decision. Counting `ci` delivery evidence
+  entries: resuming with `retry` adds exactly one; resuming with `engineer_follow_up` adds none and returns the repair
+  request; resuming with `stop` adds none and pauses; a later call with no answer adds one. The same fixture driven
+  through the Session entry with the same answers produces the same evidence count and result for each answer. A
+  re-entry that reran CI before applying the answer fails the `retry` and `engineer_follow_up` counts.
 - Automated, correction limit: in host-turn mode, rejected reviewer outcomes across fresh processes reach the same
   `decideValidationRecovery` decision at the same count as in-process nudges.
 - Automated, contracts: `review-diff.test.ts` and `review-outcome.test.ts` pin page boundaries, coverage spans, and
@@ -395,9 +410,10 @@ behavior (child 06), and Plan Lifecycle events and their meaning.
   in the red-to-green test (`--deny-net`, fake model executables).
 - **Concurrent callers.** `claimValidation` owner checks still allow only one engine run per attempt. A second caller
   gets the existing `active` result. Callers keep their own request records; child 05 uses record CAS.
-- **CI reruns on re-entry.** A CI exhaustion decision is resumed by re-entering Mechanical Validation, which runs the
-  configured command again before the prompt. Assumption: this is acceptable because Retry already means "run CI again",
-  and a check run by Core is never fabricated evidence. If the command now passes, the decision is not needed.
+- **CI exhaustion follows Core.** User decision: host-turn mode matches Core's behavior and follows it when it changes.
+  In a Session, the answer is applied right after the failed run, with no extra CI run. Host-turn mode gets the same
+  result through the saved pending decision in step 11. Re-entering without an answer runs CI again, which is what Core
+  does when the user runs the Plan again after Stop.
 - **Engineer follow-up writes before its wait.** It records `validation_failed` and then returns a repair request. Its
   resume goes through the repair completion path, not by re-entering the prompt, so the write is not repeated.
 - **Lost Session nudge context.** A fresh host worker does not share the earlier reviewer's memory. The correction text
