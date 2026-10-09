@@ -47,10 +47,10 @@ instead of Architect. Adding a tab alone does not fix the review-to-Agent-to-rev
 
 Affected product requirements:
 
-- [Core Plan review](../prd/runwield-core-prd.md#plan-review): extend **Apply the user’s review decision to the saved
+- [Core Plan review](../../prd/runwield-core-prd.md#plan-review): extend **Apply the user’s review decision to the saved
   Plan** with an explicit in-review conversation requirement. Preserve **Open saved Plans directly for review** and
   **Return to the most recent Plan review in the same Session**. Opening review must not start a model turn.
-- [Workspace Browser Plan review and workflow](../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow):
+- [Workspace Browser Plan review and workflow](../../prd/runwield-workspace-prd.md#browser-plan-review-and-workflow):
   extend **Review the current Plan and preserve explicit execution choices** with Epic chat acceptance. Link shared
   conversation semantics to Core rather than duplicate them.
 

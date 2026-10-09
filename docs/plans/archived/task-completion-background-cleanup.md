@@ -45,12 +45,12 @@ The owner approved **warn once, then cancel and complete on retry**. A normal tu
 
 Owning requirements:
 
-- [Core: Session continuity](../prd/runwield-core-prd.md#session-continuity), **Run bounded background work** and
+- [Core: Session continuity](../../prd/runwield-core-prd.md#session-continuity), **Run bounded background work** and
   **Receive task results without another user message**: add the completion warning and cleanup boundary. Change the
   unconditional later-result promise to exclude results suppressed by accepted Task Completion.
-- [Core: Execution, validation, and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery): preserve
-  accepted completion as the handoff to validation and delivery. Background cleanup must not abort that workflow or
-  count cancelled checks as passed.
+- [Core: Execution, validation, and recovery](../../prd/runwield-core-prd.md#execution-validation-and-recovery):
+  preserve accepted completion as the handoff to validation and delivery. Background cleanup must not abort that
+  workflow or count cancelled checks as passed.
 - Preserve normal-turn delivery, read-only delegation, process-local task ownership, task limits, status/log access,
   Stop/shutdown behavior, and pending interaction authority.
 

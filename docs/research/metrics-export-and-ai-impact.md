@@ -65,8 +65,8 @@ Important limits:
   general redaction. Source: `src/shared/workflow/metrics.js:44–47,149–176`.
 - Some frontend metrics deliberately omit Session/Plan/Agent identity. Existing privacy choices must not be silently
   reversed for analytics. Source: `src/shared/workflow/metrics.js:285–306`.
-- [Complete Tool-Call Metrics](../plans/complete-tool-call-metrics.md) is a **draft**, not evidence that cross-backend
-  coverage, exposure counts, correlation, or aggregation shipped.
+- [Complete Tool-Call Metrics](../plans/archived/complete-tool-call-metrics.md) is a **draft**, not evidence that
+  cross-backend coverage, exposure counts, correlation, or aggregation shipped.
 
 ### Jellyfish: target supported, custom import unconfirmed
 

@@ -53,14 +53,15 @@ not only in Workspace.
 
 Affected PRD capabilities:
 
-- [Core Session continuity](../prd/runwield-core-prd.md#session-continuity): add reversible archive state without
+- [Core Session continuity](../../prd/runwield-core-prd.md#session-continuity): add reversible archive state without
   changing Session identity, transcript, workflow, or Plan associations.
-- [ACP Session access](../prd/runwield-acp-protocol-prd.md#acp-session-access) and
-  [Advertised ACP conformance](../prd/runwield-acp-protocol-prd.md#advertised-acp-conformance): implement
+- [ACP Session access](../../prd/runwield-acp-protocol-prd.md#acp-session-access) and
+  [Advertised ACP conformance](../../prd/runwield-acp-protocol-prd.md#advertised-acp-conformance): implement
   `session/delete` as archive and advertise the supported capability.
-- [Workspace Browser Sessions](../prd/runwield-workspace-prd.md#browser-sessions): provide the Archive action.
-- [Workspace Project access and navigation](../prd/runwield-workspace-prd.md#project-access-and-navigation): provide an
-  Archived Sessions tab in Project settings with Unarchive. Keep archived Sessions visible under their associated Plans.
+- [Workspace Browser Sessions](../../prd/runwield-workspace-prd.md#browser-sessions): provide the Archive action.
+- [Workspace Project access and navigation](../../prd/runwield-workspace-prd.md#project-access-and-navigation): provide
+  an Archived Sessions tab in Project settings with Unarchive. Keep archived Sessions visible under their associated
+  Plans.
 
 Add these as target requirements and acceptance scenarios. Do not change the PRDs to claim they already work.
 

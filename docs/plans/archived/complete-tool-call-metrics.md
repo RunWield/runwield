@@ -43,10 +43,10 @@ archivedFromPath: "docs/plans/complete-tool-call-metrics.md"
 > **Independent recording change; metrics stay off by default**
 >
 > The owner confirmed that this Plan runs on its own and only expands recording. It does not depend on
-> [Reliable Usage, Workspace Dashboard, and Langfuse Export](reliable-usage-dashboard-and-langfuse-export.md). That Epic
-> overlaps this work, but its default-on policy is not current owner intent. Leave the Epic and its children unchanged
-> here; their later revision must reconcile delivered recording and use the same Core requirement owner. No dashboard,
-> export, retention controls, or new storage service is included in this Plan.
+> [Reliable Usage, Workspace Dashboard, and Langfuse Export](../reliable-usage-dashboard-and-langfuse-export.md). That
+> Epic overlaps this work, but its default-on policy is not current owner intent. Leave the Epic and its children
+> unchanged here; their later revision must reconcile delivered recording and use the same Core requirement owner. No
+> dashboard, export, retention controls, or new storage service is included in this Plan.
 
 RunWield already records sanitized tool-call start and finish events for Pi session subscribers. Coverage is not yet
 proven across Claude CLI/MCP, isolated repairs, delegated agents, cancellation, and failure paths. Call counts also lack
@@ -64,14 +64,14 @@ Pi's context estimate and usage-bearing transcript entries provide reusable meas
 `docs/prd/runwield-core-prd.md#local-workflow-metrics`. It will own opt-in local recording, per-Project separation,
 content exclusion, ordered activity, usage attribution, and honest measurement coverage. This fills a gap in the current
 PRD, not a new reporting promise. Preserve the existing settings contract in
-[Settings](../user-documentation/settings.md#workflowmetrics).
+[Settings](../../user-documentation/settings.md#workflowmetrics).
 
-Preserve [Models and providers](../prd/runwield-core-prd.md#models-and-providers),
-[Compaction and image context](../prd/runwield-core-prd.md#compaction-and-image-context), and
-[Session continuity](../prd/runwield-core-prd.md#session-continuity). Add shared-requirement links and command-recording
-scenarios to [Browser Sessions](../prd/runwield-workspace-prd.md#browser-sessions) and
-[ACP Session access](../prd/runwield-acp-protocol-prd.md#acp-session-access). Metrics do not own workflow state, Session
-history, billing, or command behavior.
+Preserve [Models and providers](../../prd/runwield-core-prd.md#models-and-providers),
+[Compaction and image context](../../prd/runwield-core-prd.md#compaction-and-image-context), and
+[Session continuity](../../prd/runwield-core-prd.md#session-continuity). Add shared-requirement links and
+command-recording scenarios to [Browser Sessions](../../prd/runwield-workspace-prd.md#browser-sessions) and
+[ACP Session access](../../prd/runwield-acp-protocol-prd.md#acp-session-access). Metrics do not own workflow state,
+Session history, billing, or command behavior.
 
 ## Objective
 
@@ -113,8 +113,8 @@ children must receive the same recording rules without making hidden work appear
 model, and execution identity when work starts, not from mutable foreground state when it ends.
 
 A larger runtime or transcript rewrite is not needed. Keep the adapter boundary from
-[ADR-010](../adr/010-session-runtime-sibling-adapters-and-acp.md) and the authority boundary from
-[ADR-015](../adr/015-file-authoritative-session-bundles.md). No ADR decision changes are planned.
+[ADR-010](../../adr/010-session-runtime-sibling-adapters-and-acp.md) and the authority boundary from
+[ADR-015](../../adr/015-file-authoritative-session-bundles.md). No ADR decision changes are planned.
 
 ### Record contract
 
