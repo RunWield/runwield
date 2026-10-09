@@ -18,7 +18,7 @@ import {
 } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { isPlannedChangeClassification } from "../../constants.js";
-import { isGitRepository } from "../git.js";
+import { isGitRepository } from "../git.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { findTargetBranchPlansByParent } from "./planning-worktree.ts";

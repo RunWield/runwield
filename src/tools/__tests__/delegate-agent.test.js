@@ -176,7 +176,7 @@ Deno.test("delegated agent prompt includes inherited repository context placehol
     assertStringIncludes(delegated.systemPrompt, "{{PROJECT_AGENTSMD}}");
     assertStringIncludes(delegated.systemPrompt, "{{PROJECT_STATE_CONTEXT}}");
     assertStringIncludes(delegated.systemPrompt, "{{MEMORIES}}");
-    assertStringIncludes(readDelegate.systemPrompt, "Treat core memories as background context");
+    assertStringIncludes(readDelegate.systemPrompt, "Treat core memories as strong guidance");
     assertStringIncludes(readDelegate.systemPrompt, "Leave all changes uncommitted");
     // The prompt must not declare `tools:` at all. barePrompt subagents take their
     // ceiling from the allowedTools registry entry, so a field here would be ignored

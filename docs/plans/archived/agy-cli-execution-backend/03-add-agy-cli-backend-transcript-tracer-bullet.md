@@ -137,7 +137,7 @@ the full failure taxonomy, timeout policy, replayable backend-status errors, and
   recording backend-neutral.
 - `src/shared/session/session-transcript-projection.js` — reuse normal user, assistant, active-Agent, and model replay;
   Agy conversation data must not become a second projection source.
-- `src/testing/process-global-lock.js#withProcessGlobalTestLock` and `scripts/run-tests.js` — isolate `HOME`, `PATH`,
+- `src/testing/process-global-lock.ts#withProcessGlobalTestLock` and `scripts/run-tests.js` — isolate `HOME`, `PATH`,
   and generated fake executables so tests never touch the developer's Antigravity configuration.
 
 ## Implementation Steps

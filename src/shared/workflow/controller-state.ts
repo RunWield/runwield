@@ -20,6 +20,8 @@ export type WorkflowControllerState = {
     documentWorktreeId?: string | null;
     executionMode?: "worktree" | "non_git_in_place" | null;
     validationCheckpoint?: ValidationCheckpoint | null;
+    /** Passed phase owned by this Plan execution; reset whenever implementation changes. */
+    validationPhase?: "mechanical" | "semantic" | "delivery";
     validationCiAttempts?: number;
     validationSemanticRounds?: number;
     failureReason?: string | null;
@@ -27,6 +29,8 @@ export type WorkflowControllerState = {
     implementedAt?: string | null;
     validatedAt?: string | null;
     verifiedAt?: string | null;
+    publicationReceipt?: { validatedCommit: string; publishedCommit: string; targetBranch: string } | null;
+    recordingSource?: { commit: string; planName: string; planId: string };
     executionReport?: string | null;
     humanReviewMode?: "none" | "ask" | "always" | null;
     humanReviewDecision?: "not_required" | "skipped" | "approved" | "changes_requested" | null;
@@ -46,6 +50,7 @@ export const CONTROLLER_STATE_FIELDS = [
     "documentWorktreeId",
     "executionMode",
     "validationCheckpoint",
+    "validationPhase",
     "validationCiAttempts",
     "validationSemanticRounds",
     "failureReason",
@@ -53,6 +58,8 @@ export const CONTROLLER_STATE_FIELDS = [
     "implementedAt",
     "validatedAt",
     "verifiedAt",
+    "publicationReceipt",
+    "recordingSource",
     "executionReport",
     "humanReviewMode",
     "humanReviewDecision",

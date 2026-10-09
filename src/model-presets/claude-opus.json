@@ -1,0 +1,49 @@
+{
+    "description": "Claude Code sign-in: Opus for every Agent, including Router.",
+    "agents": {
+        "router": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "medium"
+        },
+        "operator": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        },
+        "slicer": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        },
+        "guide": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "medium"
+        },
+        "engineer": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "medium"
+        },
+        "frontend-engineer": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "medium"
+        },
+        "init": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "medium"
+        },
+        "architect": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        },
+        "planner": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        },
+        "ideator": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        },
+        "reviewer": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "medium"
+        }
+    }
+}

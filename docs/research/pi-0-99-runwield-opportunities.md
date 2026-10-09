@@ -129,8 +129,8 @@ HTTP/OAuth configuration and codemode remain separate work.
 Pi supports streamable HTTP, OAuth, dynamic tool lists, and structured tool results. These capabilities offer a route to
 remote services and less text parsing.
 
-Sources: [current MCP scope and trust rules](../mcp.md), [MCP client](../../src/shared/mcp/integration.ts),
-[Pi MCP documentation](https://pi.dev/docs/latest/mcp).
+Sources: [current MCP scope and trust rules](../user-documentation/mcp.md),
+[MCP client](../../src/shared/mcp/integration.ts), [Pi MCP documentation](https://pi.dev/docs/latest/mcp).
 
 **Recommendation:** Treat result fidelity and remote-service support as separate opportunities. Correct result/error
 handling is useful even without codemode. Add HTTP/OAuth when a user names a service they need.

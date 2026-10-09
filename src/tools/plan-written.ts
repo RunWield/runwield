@@ -15,6 +15,7 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../shared/w
  * in-session to iterate.
  */
 
+import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-verification-command.ts";
 import { join, toFileUrl } from "@std/path";
 import { Type } from "@earendil-works/pi-ai";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
@@ -141,6 +142,15 @@ function parsePlanReviewMeta(meta: InteractionMeta | undefined): PlanReviewMeta 
 }
 
 const TOOL_PARAMS = Type.Object({
+    verificationCommand: Type.Optional(Type.Object({
+        command: Type.String({
+            description: "Exact full-project verification command, not a focused diagnostic or quoted example.",
+        }),
+        intent: Type.Union([Type.Literal("discovered"), Type.Literal("user_selected")], {
+            description:
+                "discovered fills missing configuration only. user_selected is for the user's explicit full-project command, including deliberate replacement of a saved command.",
+        }),
+    })),
     planName: Type.String({
         description: "Plan filename without extension (kebab-case preferred), e.g. implement-memory-system",
     }),
@@ -442,6 +452,10 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
                     },
                     false,
                 );
+            }
+
+            if (params.verificationCommand) {
+                await rememberPlannedVerificationCommand(reviewCwd, params.verificationCommand);
             }
 
             if (Object.keys(policyOverrides).length > 0) {

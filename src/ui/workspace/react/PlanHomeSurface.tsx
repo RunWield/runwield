@@ -37,6 +37,7 @@ function buildPresentation(payload, progress) {
         classification: payload.classification,
         projectPlanType: payload.type || payload.attrs?.type,
         status: progress?.overall?.state === "completed" ? "verified" : progress?.plan?.status || payload.status,
+        validationPhase: progress?.plan?.validationPhase || payload.attrs?.validationPhase,
         progressFacts: progressFacts(progress || payload.workflow),
         degradedMessage: typeof progress?.degraded?.message === "string"
             ? progress.degraded.message

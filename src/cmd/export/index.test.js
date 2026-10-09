@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { runExportCommand } from "./index.js";
+import { runExportCommand } from "./index.ts";
 
 /** @param {(sessionId: string, outputPath: string) => Promise<string>} exportSession */
 function makeContext(exportSession) {

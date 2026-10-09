@@ -1,6 +1,6 @@
 import { AGENTS } from "../../constants.js";
 import { resolvePlanExecutionPolicy } from "../../plan-store.js";
-import { decidePostExecution } from "../../shared/workflow/decisions.js";
+import { decidePostExecution } from "../../shared/workflow/decisions.ts";
 import { validatePostExecutionDecision } from "./plan-execution.ts";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";

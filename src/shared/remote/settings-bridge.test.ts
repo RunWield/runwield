@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getCustomSetting, setCustomSetting } from "../settings.js";
 import { startRemoteControlService } from "./control.ts";
 

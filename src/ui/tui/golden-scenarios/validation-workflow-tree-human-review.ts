@@ -146,6 +146,25 @@ export const validationTreeHumanReviewNoAnswerStopScenario = withValidationBranc
     ["human-review:no-answer-stop"],
 );
 
+export const validationTreeHumanReviewAskCloseScenario = withValidationBranches(
+    {
+        ...validationTreeHumanReviewNoAnswerStopScenario,
+        committedProjectFiles: [{ path: ".wld/settings.json", text: humanReviewSettings("ask") }],
+        humanReviewDecisions: [],
+        scriptedInteractions: [{ type: "select", promptIncludes: "code review before merge", value: "close" }],
+        actions: [
+            ...plannedChangeReviewRepairValidationScenario.actions.slice(0, 3),
+            { type: "waitForScreen", text: "Code review is still waiting for your decision", timeoutMs: 240000 },
+            { type: "waitForIdle", timeoutMs: 60000 },
+            { type: "captureProjectState", planNames: ["plan"] },
+        ],
+        assertions: [],
+    },
+    "validation-tree-human-review-ask-close",
+    ["plan"],
+    ["human-review:ask-close"],
+);
+
 export const validationTreeHumanReviewFeedbackRepairApproveScenario = withValidationBranches(
     {
         ...plannedChangeReviewRepairValidationScenario,
@@ -201,6 +220,7 @@ export const validationTreeHumanReviewFeedbackRepairApproveScenario = withValida
 export const validationWorkflowHumanReviewScenarios = [
     validationTreeHumanReviewNoneScenario,
     validationTreeHumanReviewAskSkipScenario,
+    validationTreeHumanReviewAskCloseScenario,
     validationTreeHumanReviewAskOpenApproveScenario,
     validationTreeHumanReviewAlwaysApproveScenario,
     validationTreeHumanReviewFeedbackRepairApproveScenario,

@@ -6,11 +6,11 @@
 import { dirname, join, parse } from "@std/path";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { getSettingsDir, getSettingsManager } from "../settings.js";
-import { isEnabledPackageResource } from "../package-resources.js";
+import { isEnabledPackageResource } from "../package-resources.ts";
 
 /**
- * @typedef {import("../package-resources.js").ResolvedResource} ResolvedResource
- * @typedef {import("../package-resources.js").ResolvedPaths} ResolvedPaths
+ * @typedef {import("../package-resources.ts").ResolvedResource} ResolvedResource
+ * @typedef {import("../package-resources.ts").ResolvedPaths} ResolvedPaths
  */
 
 /**

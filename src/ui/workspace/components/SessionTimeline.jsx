@@ -1,3 +1,4 @@
+import { DeliveryReportCard } from "./DeliveryReportCard.tsx";
 import { useEffect, useRef, useState } from "react";
 import { WORKFLOW_TOOL_NAMES } from "../../../tools/registry.ts";
 import {
@@ -7,7 +8,7 @@ import {
 } from "../../../shared/session/interaction-values.ts";
 import { MarkdownView } from "./MarkdownView.tsx";
 import { SessionQuestionForm } from "./SessionQuestionForm.tsx";
-import { RunWieldLink, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldLink, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 const MESSAGE_TYPES = new Set([
     "workflow",
@@ -23,6 +24,7 @@ const MESSAGE_TYPES = new Set([
     "code-review",
     "interruption",
     "system-event",
+    "delivery-report",
 ]);
 
 /** @param {unknown} value */
@@ -330,6 +332,16 @@ export function reduceSessionEvents(events, options = {}) {
             type === "system_status" || type === "terminal_error" || type === "cancellation" ||
             type === "recovery_event"
         ) {
+            if (event.validationProgress?.deliveryReport) {
+                ensure(`delivery:${id}`, {
+                    kind: "delivery-report",
+                    key: event.eventId || `delivery:${id}`,
+                    report: event.validationProgress.deliveryReport,
+                    timestamp,
+                    source,
+                });
+                return;
+            }
             if (event.header === "Triage") {
                 const previous = items.at(-1);
                 const item = (previous?.workflowMessage === "triage_report" && !previous.markdown ? previous : null) ||
@@ -396,6 +408,7 @@ export function mergeSessionTimelineItems(committed, transient) {
     const savedEnd = Math.max(0, ...saved.map((item) => Date.parse(item.timestamp) || 0));
     const matched = new Set();
     const remaining = live.filter((item) => {
+        if (item.kind === "delivery-report" && saved.some((candidate) => candidate.key === item.key)) return false;
         if (item.toolCallId && savedCalls.has(item.toolCallId)) {
             const index = savedCalls.get(item.toolCallId);
             const previous = saved[index];
@@ -693,7 +706,7 @@ function SessionActivityGroup({ item }) {
     );
 }
 
-export function SessionTimeline({ items, events, emptyMessage = "", sessionPath = "" }) {
+export function SessionTimeline({ items, events, emptyMessage = "", sessionPath = "", onRetryWorkRecord }) {
     const timelineItems = items || reduceSessionEvents(events || []);
     if (!timelineItems.length) {
         return emptyMessage
@@ -872,6 +885,14 @@ export function SessionTimeline({ items, events, emptyMessage = "", sessionPath 
                                     )
                                     : null}
                             </article>
+                        )
+                        : item.kind === "delivery-report"
+                        ? (
+                            <DeliveryReportCard
+                                report={item.report}
+                                sessionPath={sessionPath}
+                                onRetryWorkRecord={onRetryWorkRecord}
+                            />
                         )
                         : item.kind === "system-event" && item.header === "Segment"
                         ? (

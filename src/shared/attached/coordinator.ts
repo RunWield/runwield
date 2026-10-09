@@ -18,7 +18,7 @@ import {
     startActiveExecutionWorkflow,
 } from "../workflow/execution-start.ts";
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
-import { probeGitRepository } from "../git.js";
+import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { findById, listEntries } from "../worktree-registry.js";
 import { createHash } from "node:crypto";
@@ -185,7 +185,12 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         status === "in_progress" &&
         (record.execution || record.state === "plan_ready" || record.state === "awaiting_consent")
     ) return record;
-    if (status === "implemented" && record.execution) {
+    // Core's validation phase reads back as status "implemented" plus a
+    // validationPhase marker; a semantic or delivery phase means Core already
+    // accepted the implementation, so it advances past this preview's scope.
+    const advancedIntoValidation = plan?.attrs.validationPhase === "semantic" ||
+        plan?.attrs.validationPhase === "delivery";
+    if (status === "implemented" && record.execution && !advancedIntoValidation) {
         // A lifecycle event alone is not acceptance: Core may still owe the Git
         // checkpoint and registry settlement. Keep the issued action for retry.
         if (record.execution.executionMode === "worktree") {
@@ -218,7 +223,11 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
     }
     if (
         record.state === "implementing" &&
+        !advancedIntoValidation &&
         ![
+            // "reviewed" is the current vocabulary for completed code review;
+            // the validated_* names are retained for records written before it.
+            "reviewed",
             "validated_ci",
             "validated_reviewer",
             "validated",

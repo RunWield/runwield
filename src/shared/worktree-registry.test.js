@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { dirname, join } from "@std/path";
 import { listPlans, savePlan } from "../plan-store.js";
-import { withProcessGlobalTestLock } from "../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import {
@@ -15,6 +15,7 @@ import {
     inspectWorktreeRegistryAtPath,
     listEntries,
     pruneStaleEntries,
+    refreshPlanningWorktreeBase,
     removeEntry,
     updateEntry,
     withWorktreeRegistryLock,
@@ -28,6 +29,22 @@ function delay(ms) {
 }
 
 const gitFixture = defineCommittedGitFixture({ "README.md": "# registry fixture\n" });
+
+Deno.test("only unstarted planning worktrees can advance their baseline", async () => {
+    const repo = await gitFixture.checkout();
+    const initial = entry({ status: "planning" });
+    await addEntry(repo, initial);
+    const base = { baseRef: "published", baseCommit: "published", baseTree: "published-tree" };
+    const refreshed = await refreshPlanningWorktreeBase(repo, initial.id, initial.baseCommit, base);
+    assertEquals(refreshed.baseCommit, "published");
+    await updateEntry(repo, initial.id, { status: "active" });
+    await assertRejects(
+        () => refreshPlanningWorktreeBase(repo, initial.id, "published", { ...base, baseCommit: "newer" }),
+        Error,
+        "execution worktree",
+    );
+    assertEquals((await findById(repo, initial.id))?.baseCommit, "published");
+});
 
 /**
  * @param {Partial<import('./worktree-registry.js').WorktreeRegistryEntry>} [overrides]

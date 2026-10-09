@@ -98,13 +98,13 @@ Deno.test("an earlier validation checkpoint remains authoritative only for the s
 
     assertEquals(validationCheckpointCanResume(checkpoint, "wt-demo", "implemented"), true);
     assertEquals(validationCheckpointCanResume(checkpoint, "wt-demo", "validated_ci"), true);
-    assertEquals(validationCheckpointCanResume(checkpoint, "wt-demo", "validated_reviewer"), true);
+    assertEquals(validationCheckpointCanResume(checkpoint, "wt-demo", "reviewed"), true);
     assertEquals(validationCheckpointCanResume(checkpoint, "another-attempt", "validated_ci"), false);
 
     const futureCheckpoint = makeValidationCheckpoint({
         attemptId: "wt-demo",
         generation: "generation-two",
-        status: "validated_reviewer",
+        status: "reviewed",
         phase: "delivery",
         state: "paused",
     });
@@ -150,7 +150,7 @@ Deno.test("semantic feedback commits open Review Issues with the lifecycle trans
             cwd: root,
             planName: "demo",
             event: "semantic_review_feedback",
-            currentStatus: "validated_ci",
+            currentStatus: "implemented",
             details: {
                 triageMeta: plan.attrs,
                 failureReason: "One issue remains.",

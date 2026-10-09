@@ -45,7 +45,7 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
                 planId: "epic/a",
                 classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
-                status: event === "validation_passed" ? "validated_reviewer" : "implemented",
+                status: event === "validation_passed" ? "reviewed" : "implemented",
             });
             await git(root, ["add", "."]);
             await git(root, ["commit", "-m", "first child"]);
@@ -89,9 +89,9 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
             });
             assertEquals(
                 (await loadPlan(a, "epic/a"))?.attrs.status,
-                event === "validation_passed" ? "validated" : "user_verified",
+                event === "validation_passed" ? "verified" : "user_verified",
             );
-            assertEquals((await loadPlan(a, "epic"))?.attrs.status, "validated");
+            assertEquals((await loadPlan(a, "epic"))?.attrs.status, "verified");
             assertEquals((await loadPlan(root, "epic"))?.markdown, primary.markdown);
         } finally {
             for (const tree of [a, b]) await git(root, ["worktree", "remove", "--force", tree]).catch(() => {});
@@ -162,7 +162,9 @@ for (const surface of ["primary", "execution"]) {
                 workRecordMnemotecaPort: { run: () => Promise.reject(new Error("publication is not expected")) },
             });
             assertEquals(ciRuns, 1);
-            assertEquals((await loadPlan(current, "demo"))?.attrs.status, "validated_ci");
+            const afterCi = await loadPlan(current, "demo");
+            assertEquals(afterCi?.attrs.status, "implemented");
+            assertEquals(afterCi?.attrs.validationPhase, "semantic");
             assertEquals((await loadPlan(retired, "demo"))?.attrs.status, "ready_for_work");
         } finally {
             session.dispose();

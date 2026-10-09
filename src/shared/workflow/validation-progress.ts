@@ -120,10 +120,13 @@ export function emitRunWieldSystemStatus(
     const resolvedLevel = level === true ? "error" : level === false ? "info" : level;
     const currentProgress = validationProgress ||
         (hostedSession ? CURRENT_VALIDATION_PROGRESS.get(hostedSession) : undefined);
+    const snapshot = currentProgress ? structuredClone(currentProgress) : undefined;
+    // A saved report is emitted once with explicit completion, not on unrelated later status lines.
+    if (snapshot && !validationProgress) delete snapshot.deliveryReport;
     emitSystemStatus(hostedSession, text, {
         level: resolvedLevel,
         header: "RunWield",
-        ...(currentProgress ? { validationProgress: structuredClone(currentProgress) } : {}),
+        ...(snapshot ? { validationProgress: snapshot } : {}),
     });
     // The runtime event boundary validates the semantic consistency of the
     // snapshot. Commit it to session memory only after that boundary accepts it;
@@ -153,6 +156,9 @@ export function createValidationProgress(values: ValidationProgressInput): Runti
         ...(values.repairAttempt ? { repairAttempt: values.repairAttempt } : {}),
         ...(values.maxRepairAttempts ? { maxRepairAttempts: values.maxRepairAttempts } : {}),
         ...(values.message ? { message: values.message } : {}),
+        ...(values.deliveryReport ? { deliveryReport: values.deliveryReport } : {}),
+        ...(values.workRecordPlanName ? { workRecordPlanName: values.workRecordPlanName } : {}),
+        ...(values.workRecordFailed !== undefined ? { workRecordFailed: values.workRecordFailed } : {}),
     };
 }
 

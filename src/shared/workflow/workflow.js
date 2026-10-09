@@ -28,7 +28,7 @@ export {
     openSlicerDecomposition,
     runSlicerAgent,
 } from "./workflow-slicer.ts";
-export { buildEngineerRequest, buildSlicerRequest } from "./workflow-prompts.js";
+export { buildEngineerRequest, buildSlicerRequest } from "./workflow-prompts.ts";
 export {
     extractAssistantOutput,
     readLatestPlanOutcome,

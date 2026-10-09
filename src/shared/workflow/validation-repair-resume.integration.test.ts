@@ -170,7 +170,7 @@ Deno.test("human-review change repair resumes through CI and returns to Code Rev
     assertExists(plan);
     assertEquals(ciRuns, 2);
     assertEquals(repairCounter.runs, 1);
-    assertEquals(plan.attrs.status, "validated_reviewer");
+    assertEquals(plan.attrs.status, "reviewed");
     assertEquals(plan.attrs.humanReviewMode, "always");
     assertEquals(plan.attrs.humanReviewDecision, "changes_requested");
     assertEquals(result.kind, "paused");
@@ -244,7 +244,7 @@ Deno.test("CI repair completion reloads the execution-tree settings command befo
     assertStringIncludes(ui.toolResults[0].result, "first");
     assertStringIncludes(ui.toolResults[1].result, "fixed");
     assertEquals(result.kind, "verified");
-    assertEquals(plan.attrs.status, "validated");
+    assertEquals(plan.attrs.status, "verified");
 });
 
 Deno.test("process loss before CI repair dispatch reclaims the checkpoint and reruns Mechanical Validation", async () => {
@@ -329,7 +329,7 @@ Deno.test("process loss after repair changes the worktree reruns checks and does
     assertEquals(result.kind, "paused");
     assertEquals(ciRuns, 1);
     assertEquals(repairCounter.runs, 0);
-    assertEquals(plan.attrs.status, "validated_reviewer");
+    assertEquals(plan.attrs.status, "reviewed");
 });
 
 Deno.test("repair turn without task_completed settles paused and retry starts from Mechanical Validation", async () => {

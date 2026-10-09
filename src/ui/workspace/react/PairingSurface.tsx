@@ -1,6 +1,6 @@
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 type PairingState = "idle" | "loading" | "pending" | "approved" | "paired" | "expired" | "missing" | "error";
 

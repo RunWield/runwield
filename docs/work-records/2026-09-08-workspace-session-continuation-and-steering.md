@@ -40,8 +40,8 @@ without duplicating the submitted message or saved history.
 - Browser checks used the real paired owner HTTP routes with a scripted provider. At phone width, answering a TUI
   question, steering, queue dispatch, Stop, new Session creation, reload, and message display passed. Desktop layout was
   also checked. These checks did not make live model API calls.
-- Workspace production build and Compose configuration validation passed. The setup is documented in
-  [Workspace in a container](../workspace-container.md).
+- Workspace production build and Compose configuration validation passed. The setup was documented in
+  `docs/workspace-container.md`, since withdrawn while the container setup is in progress.
 - Cross-compilation to Linux ARM64 passed. The compiled binary started Workspace in the container with the Git clone
   mounted, redirected an unpaired visitor to pairing, and served the pairing screen with HTTP 200.
 

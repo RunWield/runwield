@@ -1,13 +1,13 @@
 # Plan workflow: planning through publication
 
-This is a map of the **running implementation**, inspected on 2026-09-07 in the working tree rooted at commit
-`a201fc19737471b1d8f57ab384bb4412d65309a2`. It covers routing, planning, execution, validation, publication, repair,
-resume, and Epic continuation. It does not treat a Plan, work record, prompt, or another document's claim of completion
-as evidence that a branch works.
+This map covers routing, planning, execution, validation, publication, repair, resume, and Epic continuation. The
+lifecycle and publication sections reflect the current implemented → reviewed → verified contract. Other paths retain
+source-level detail from the original 2026-09-07 inspection rooted at commit `a201fc19737471b1d8f57ab384bb4412d65309a2`.
 
-The accompanying [transition audit](audits/2026-09-07-plan-workflow-transitions.md) records observed failures, source
-evidence, test limitations, and follow-up questions. Read that alongside this map: **tool-driven completion does not
-mean that every tool handoff, restart, or publication path is correct.**
+The [2026-09-07 transition audit](audits/2026-09-07-plan-workflow-transitions.md) preserves the original observations,
+test limitations, and follow-up questions. Its audit labels below identify historical findings, not a claim that every
+finding still reproduces or has been fixed. A Plan, Work Record, prompt, or documentation claim is not evidence that a
+branch works; implementation and publication require their own checks and Git proof.
 
 ## What causes a transition
 
@@ -42,10 +42,11 @@ Sources: [Plan location](../src/shared/workflow/plan-location.ts),
 [task completion receipts](../src/shared/session/task-completion-session.ts),
 [mutation boundary](../src/shared/workflow/state-transition.ts).
 
-The current successful Plan status is **`validated`**, not a new `verified` write. `verified` remains a supported legacy
-status. The workflow result also uses `kind: "verified"`, which is a different thing. A worktree Plan becomes
-`validated` **before publication**. To answer “has this reached the target?”, inspect publication evidence as well as
-Plan status. Status-only terminal/dependency helpers are an audit concern.
+The public success path is `implemented → reviewed → verified`. Passing CI keeps the Plan implemented and saves
+`validationPhase: semantic` in the controller. Reviewed work remains pending through artifact preparation and
+publication; verified requires confirmed target delivery, or completed in-place validation for non-Git work. A permanent
+controller `publicationReceipt` preserves confirmed delivery when the primary checkout trails the remote and after
+attempt cleanup. Legacy validated statuses are compatibility inputs, not additional current milestones.
 
 ## Overall tree
 
@@ -127,7 +128,7 @@ These are different consumer paths, despite sharing the same tool.
 Sources: [plan_written](../src/tools/plan-written.ts),
 [shared review decision](../src/shared/workflow/plan-review-actions.ts),
 [planning runner](../src/shared/workflow/planning-agent.ts),
-[decision interpreter](../src/shared/workflow/decisions.js), [root handler](../src/shared/session/agent-handler.ts).
+[decision interpreter](../src/shared/workflow/decisions.ts), [root handler](../src/shared/session/agent-handler.ts).
 
 ## E — Execution preparation, implementation, and Pair checkpoints
 
@@ -216,10 +217,11 @@ continueWorkflowValidation
 ├─ same completion already settled / no runnable phase → no-op pause result
 ├─ live running owner → pause; do not start a second validation owner
 └─ claim checkpoint with revision comparison; reload on bounded stale-write conflict
-   ├─ implemented → V1 mechanical
-   ├─ validated_ci → V2 semantic
-   ├─ validated_reviewer → H, then D
-   ├─ validated with unfinished publication → D
+   ├─ implemented + mechanical phase → V1 mechanical
+   ├─ implemented + validationPhase: semantic → V2 semantic
+   ├─ legacy validated_ci → normalize to implemented + semantic phase
+   ├─ reviewed → H, then D
+   ├─ legacy validated with unfinished publication → reviewed → D
    └─ prior checkpoint awaiting_repair and no taskCompletionId
       → rebuild semantic-repair handoff
       ├─ saved Review Issues + repair generation → dispatch semantic repair
@@ -254,7 +256,7 @@ V1. Reload Plan/controller and resolve execution checkout
    │  ├─ Retry → V1
    │  ├─ follow-up → pause awaiting completion
    │  └─ Stop/cancel → pause
-   ├─ exit code 0 → mechanical_validation_passed → validated_ci → V2
+   ├─ exit code 0 → mechanical_validation_passed → implemented + validationPhase: semantic → V2
    └─ nonzero exit code
       ├─ fewer than 3 automatic repairs used
       │  → mechanical_validation_failed; persist count and implemented status
@@ -288,9 +290,9 @@ Sources: [mechanical phase](../src/shared/workflow/validation-mechanical.ts),
 
 ```text
 V2. Resolve current Plan and diff
-├─ non-Git execution → C skip semantic diff review → validated_reviewer → H
+├─ non-Git execution → C skip semantic diff review → reviewed → H
 ├─ humanReviewDecision == changes_requested
-│  → C return review authority to human after fresh CI → validated_reviewer → H
+│  → C return review authority to human after fresh CI → reviewed → H
 ├─ implementation diff required but absent / only Plan changes
 │  → validation_failed → implemented; result failed, no automatic repair
 ├─ empty implementation diff allowed for this classification → C skip → H
@@ -313,7 +315,7 @@ V2. Resolve current Plan and diff
          ├─ prior open finding omitted → protocol correction in same round
          ├─ correction budget spent → pause; do not consume semantic round
          └─ T review_complete accepted and consumer checks pass
-            ├─ approved == true → semantic_review_passed → validated_reviewer → H
+            ├─ approved == true → semantic_review_passed → reviewed → H
             └─ approved == false → apply findings to ledger; capture repair baseline
                → semantic_review_feedback → implemented
                → persist semantic round + awaiting_repair + repair generation
@@ -391,7 +393,7 @@ automatically erase passing validation or go back to semantic review.
 D0. Enter publication under Plan lock, after H has a final decision
 ├─ non-Git / supported in-place path
 │  → child QA preparation if relevant
-│  → validation_passed with in-place evidence → validated
+│  → validation_passed with in-place evidence → verified
 │  → advisory QA / Recorder handoffs → result verified; no merge
 └─ worktree path
    ├─ target/attempt identity missing → pause/fail; no target movement
@@ -408,25 +410,27 @@ D1. candidate_sealed → artifacts_committed
 │  ├─ T qa_checklist_generated → validate/write section → ready
 │  ├─ no accepted tool / rejected checklist → warn and continue without it
 │  └─ operational failure → typed retry or blocked publication [audit A8]
-└─ stage validation_passed in execution Plan → validated
+└─ stage validation_passed in execution Plan → reviewed with candidate evidence
    → standalone QA + Recorder generation run concurrently
    ├─ T manual_qa_completed → present checklist
-   ├─ T work_record_completed → accepted sections → save/link/index Work Record
+   ├─ T work_record_completed → accepted sections → save/reuse pending Work Record
    ├─ failure / missing completion → best-effort warning
-   └─ supersession proposals → U confirm / reject / later (does not revoke validation)
+   └─ retain supersession proposals for completion; preparation does not approve or index the record
    → G checkpoint artifacts with publication-attempt metadata
    → S artifacts_committed
 
 D2. artifacts_committed → integrate target
-├─ G execution checkout changed after sealing → block; preserve attempt
+├─ G execution checkout changed before integration → preserve old attempt; reset to implemented for fresh validation
 ├─ no resolvable upstream → local-target path
+│  ├─ interrupted owned finalization → reconcile exact owned changes before dirty checks
 │  ├─ unsaved tracked changes outside allowed Plan paths/owned .gitignore → block
-│  ├─ staged Plan/owned-ignore changes → block
+│  ├─ unrelated staged Plan/owned-ignore changes → block
 │  ├─ safely set aside allowed unstaged authoritative metadata
 │  ├─ target checkout/ref safety checks → merge locally
 │  ├─ failure → abort primary merge; restore owned set-aside files if target unmoved
 │  │  → local conflict repair gap [audit A7]
-│  └─ successful merge → callbacks record target_integrated then target_published
+│  └─ successful merge → finalize verified Plan and approved record metadata; commit
+│     → callbacks record target_integrated then target_published
 └─ resolvable upstream → isolated publication clone; primary checkout untouched
    ├─ fresh clone → fetch local target/execution and remote target
    │  → integrate remote target if missing → merge execution/artifact candidate
@@ -434,18 +438,20 @@ D2. artifacts_committed → integrate target
       ├─ unfinished merge → typed conflict → D-repair
       ├─ fetch newest remote target; if not already ancestor, merge it
       └─ fetch execution branch; include sealed artifact commit if absent
-   → commit publication metadata → S target_integrated
+   → finalize verified Plan and approved record metadata; commit → S target_integrated
 
 D3. target_integrated → target_published → publication_verified
 ├─ remote → G push with lease for the observed remote head
 │  ├─ lease race / remote unavailable → typed bounded retry; re-read/integrate target
 │  ├─ permissions / branch policy → halt until corrected
 │  └─ push succeeds → S target_published
-│     → G remote ref equals publication commit → S publication_verified
-└─ local → G target contains sealed candidate → S publication_verified
+│     → G remote target contains finalized publication commit → S publication_verified
+└─ local → G target contains finalized publication commit and candidate → S publication_verified
 
 D4. cleanup
-├─ G target no longer equals recorded publication commit → retain cleanup state
+├─ G target no longer contains recorded publication commit → retain cleanup state
+├─ retain permanent controller publicationReceipt and recording input
+├─ synchronize approved Work Records to index; retain durable retry state on failure
 ├─ remove execution worktree without forced deletion
 ├─ delete execution branch only with publication/merge proof
 ├─ remove publication clone
@@ -461,7 +467,7 @@ D-repair. Failure in D
 │     → retry D (NO normal CI/reviewer loop here) [audit A6]
 ├─ known user-fixable block → U Retry / Stop
 │  ├─ Retry → normalize staged/unstaged/committed repair → retry D
-│  └─ Stop/cancel → retain validated Plan, branch, clone and registry → R
+│  └─ Stop/cancel → retain reviewed Plan, branch, clone and registry → R
 ├─ fatal permission/policy condition → failed result; preserve candidate
 └─ other stage/bookkeeping failure → reconcile/retry where supported, otherwise pause
 ```
@@ -472,12 +478,13 @@ dirty files than an overlap-only rule: it rejects all tracked changes outside it
 
 The first implementation candidate is sealed **before** child QA. QA and Plan/Work Record changes are sealed in the
 later artifact commit. Once `artifacts_committed` is recorded or recovered from commit metadata, retries skip completed
-artifact handoffs. A crash before that boundary may repeat partially completed preparation; existing artifact checks can
-reduce duplication, but this is not a universal exactly-once guarantee.
+artifact handoffs. Before that boundary, prepared records are reused only when their saved source identity matches the
+publication attempt. Interrupted finalization reconciles the owned Plan and Work Record changes; it does not adopt
+unrelated edits or rerun Recorder for an already prepared record.
 
 The saved remote repair path integrates the latest target before leased push. A lease protects ref replacement; ancestry
-proves which history the integration contains. Neither proves that conflict resolution preserved behavior. Cleanup
-currently also requires exact target-ref equality; a legitimate subsequent target commit can postpone cleanup.
+proves which history the integration contains. Neither proves that conflict resolution preserved behavior. Cleanup uses
+ancestry: a legitimate later target commit does not invalidate confirmed publication.
 
 Sources: [publication loop](../src/shared/workflow/validation-publication.ts),
 [phase model](../src/shared/workflow/publication-attempt.ts),
@@ -522,8 +529,10 @@ Slicer finalization performs its transaction directly inside the tool; it does n
 another place where “called a tool” and “proved user authorization” have different meanings.
 
 Child QA is stored in the Epic's `manual-qa.md`. A child does not receive its own auto-generated Work Record; terminal
-parent resolution can produce the Epic record. `epic_done_enough` sets the parent's completion mode and `validated`
-status through a lifecycle event; it is not a merge of an Epic implementation branch.
+parent resolution can produce the Epic record. Explicit `epic_done_enough` sets the completion mode and
+`closed_without_verification`; it does not prove merge or review. A branchless parent may complete after every included
+child is delivered. An Epic with a branch stays reviewed after its integration gate until its checked commit reaches the
+recorded final target; `epic_publication_confirmed` then records verified.
 
 Sources: [Slicer tool and runner](../src/shared/workflow/workflow-slicer.ts),
 [child selection](../src/cmd/load-plan/plan-epic-flow.ts),
@@ -563,26 +572,26 @@ Sources: [error classification](../src/shared/workflow/validation-operational-er
 
 These are command/user paths. None needs to invent a missing agent completion from a transcript.
 
-| Entry or choice                                  | Transition and destination                                                                                                                                                 |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Load draft/feedback                              | Continue Planner/Architect, or direct review if eligible; then P. Direct review uses the structured review result directly and does not require `plan_written`.            |
-| Load approved/ready Plan                         | User can execute, review, defer/hold, inspect, or cancel. Approved execution first records readiness. Affected-path drift can require confirmation.                        |
-| Load in_progress/failed                          | Recovery menu resolves worktree and journals; continue records `recovery_continue` to ready_for_work and returns through E; reset uses `recovery_reset`.                   |
-| Load implemented/validated_ci/validated_reviewer | Resume validation through V0 at its saved phase; no repeat initial implementation completion required.                                                                     |
-| Load validated with publication record           | Publication recovery/cleanup takes precedence over the terminal Plan menu; resume D.                                                                                       |
-| Follow-up after implementation                   | Create the bounded follow-up planning/execution flow through the load-plan recovery action; this is an explicit choice, not automatic repair success.                      |
-| Inspect / restore record / settle records        | Read-only inspection or deterministic registry/journal recovery from current evidence; return to recovery menu or reloaded state.                                          |
-| Missing execution worktree                       | Restore only a provable attempt; otherwise stop-lost/abandon/review choices preserve or explicitly dispose of the attempt. No guessed checkout.                            |
-| Hold                                             | `plan_held` stores heldFromStatus/reason/baseline; status on_hold.                                                                                                         |
-| Resume hold                                      | Run current evidence/staleness checks; failure stays held, warning needs a user choice, success `hold_resumed` restores the permitted saved status and re-enters its flow. |
-| Reset held Plan                                  | Explicit reset decision, with optional attempt abandonment, records `hold_reset_to_draft`; return to planning.                                                             |
-| Reopen review                                    | `review_reopened` moves to feedback and detaches/abandons the old execution association where required; P again.                                                           |
-| Abandon / reset                                  | Explicit recovery action uses owned Git/registry/lifecycle operations; outcome can be committed, rolled back, blocked, or needs recovery. It is not validation success.    |
-| User Verified                                    | Required user note + `manual_user_verified` → user_verified. No automatic CI, semantic approval, or publication proof is asserted.                                         |
-| Close without verification                       | Explicit canonical action + reason → closed_without_verification. Does not claim CI/review/publication.                                                                    |
-| Epic done enough                                 | User choice + lifecycle event → terminal parent state; may generate Epic Work Record.                                                                                      |
-| Archive/restore                                  | Explicit storage/history action with eligibility/recovery checks; no new validation or merge.                                                                              |
-| Cancellation / agent switch                      | Pause/release runtime ownership while retaining durable evidence; `/load-plan` reconstructs the next action.                                                               |
+| Entry or choice                                          | Transition and destination                                                                                                                                                 |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Load draft/feedback                                      | Continue Planner/Architect, or direct review if eligible; then P. Direct review uses the structured review result directly and does not require `plan_written`.            |
+| Load approved/ready Plan                                 | User can execute, review, defer/hold, inspect, or cancel. Approved execution first records readiness. Affected-path drift can require confirmation.                        |
+| Load in_progress/failed                                  | Recovery menu resolves worktree and journals; continue records `recovery_continue` to ready_for_work and returns through E; reset uses `recovery_reset`.                   |
+| Load implemented/reviewed (including legacy equivalents) | Resume validation through V0 at its saved phase; no repeat initial implementation completion required.                                                                     |
+| Load reviewed with publication record                    | Publication recovery/cleanup takes precedence over completion menus; resume D from saved evidence.                                                                         |
+| Follow-up after implementation                           | Create the bounded follow-up planning/execution flow through the load-plan recovery action; this is an explicit choice, not automatic repair success.                      |
+| Inspect / restore record / settle records                | Read-only inspection or deterministic registry/journal recovery from current evidence; return to recovery menu or reloaded state.                                          |
+| Missing execution worktree                               | Restore only a provable attempt; otherwise stop-lost/abandon/review choices preserve or explicitly dispose of the attempt. No guessed checkout.                            |
+| Hold                                                     | `plan_held` stores heldFromStatus/reason/baseline; status on_hold.                                                                                                         |
+| Resume hold                                              | Run current evidence/staleness checks; failure stays held, warning needs a user choice, success `hold_resumed` restores the permitted saved status and re-enters its flow. |
+| Reset held Plan                                          | Explicit reset decision, with optional attempt abandonment, records `hold_reset_to_draft`; return to planning.                                                             |
+| Reopen review                                            | `review_reopened` moves to feedback and detaches/abandons the old execution association where required; P again.                                                           |
+| Abandon / reset                                          | Explicit recovery action uses owned Git/registry/lifecycle operations; outcome can be committed, rolled back, blocked, or needs recovery. It is not validation success.    |
+| User Verified                                            | Required user note + `manual_user_verified` → user_verified. No automatic CI, semantic approval, or publication proof is asserted.                                         |
+| Close without verification                               | Explicit canonical action + reason → closed_without_verification. Does not claim CI/review/publication.                                                                    |
+| Epic done enough                                         | User choice + lifecycle event → closed_without_verification with done-enough mode; may generate Epic Work Record.                                                          |
+| Archive/restore                                          | Explicit storage/history action with eligibility/recovery checks; no new validation or merge.                                                                              |
+| Cancellation / agent switch                              | Pause/release runtime ownership while retaining durable evidence; `/load-plan` reconstructs the next action.                                                               |
 
 Source: [load-plan dispatcher](../src/cmd/load-plan/index.ts),
 [direct review](../src/cmd/load-plan/plan-review-flow.ts),

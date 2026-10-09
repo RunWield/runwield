@@ -1,7 +1,7 @@
 import { join } from "@std/path";
 import { setCustomSetting } from "../shared/settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
-import { withProcessGlobalTestLock } from "./process-global-lock.js";
+import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 export type WorkflowMetricFixtureValue =
     | string

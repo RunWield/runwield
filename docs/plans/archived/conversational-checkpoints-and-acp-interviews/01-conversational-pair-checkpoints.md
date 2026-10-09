@@ -137,7 +137,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/workflow/execution-collaboration.ts`, `engineer-runner.ts`, `execution-segment-handoff.ts`, and
   `validation-helpers.ts` — conversation-based capability, initial/hydrated tool consistency, and correct paused copy.
 - `src/agent-definitions/shared-practice/plan-execution.md`, `plan-engineer.md`, `frontend-engineer.md`, and
-  `src/shared/workflow/workflow-prompts.js` — concise discussion, resolution, and final-completion instructions.
+  `src/shared/workflow/workflow-prompts.ts` — concise discussion, resolution, and final-completion instructions.
 - `src/ui/tui/runtime-interaction-adapter.js`, Workspace Session continuation/timeline/composer paths, and ACP event
   mapping — retire Pair form handling; show saved reports and accept ordinary follow-ups. Other forms remain unchanged.
 - Tests beside those owners and existing managed-Session fixtures — multi-turn, reload, and real surface boundaries.

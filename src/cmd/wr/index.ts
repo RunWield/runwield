@@ -3,6 +3,7 @@
  * List, search, read, index, and backfill canonical Work Records.
  */
 
+import { retryWorkRecordForPlan } from "../../shared/work-records/auto-generation.ts";
 import { parseArgs } from "@std/cli/parse-args";
 import { getCwd } from "../../constants.js";
 import {
@@ -144,6 +145,16 @@ export async function runWorkRecordsCommand(
 
     if (subcommand === "help") {
         printCommandHelp("wr");
+        return;
+    }
+
+    if (subcommand === "retry") {
+        if (rest.length !== 1 || rest[0].startsWith("-")) throw new Error("Usage: wld wr retry <plan-name>");
+        const result = await retryWorkRecordForPlan({ cwd: getCwd(), planName: rest[0], mnemotecaPort });
+        console.log(result.message);
+        if (result.recordId && result.supersessionProposals?.length) {
+            await resolveCommandProposals(result.recordId, result.supersessionProposals, options);
+        }
         return;
     }
 

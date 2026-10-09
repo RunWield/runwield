@@ -1,5 +1,5 @@
 // @ts-nocheck: Workspace is the scoped TSX exception zone and Plannotator is consumed as browser-only UI.
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { lazy, Suspense } from "react";
 import { RenderedMarkdown } from "@plannotator/ui/components/RenderedMarkdown.tsx";

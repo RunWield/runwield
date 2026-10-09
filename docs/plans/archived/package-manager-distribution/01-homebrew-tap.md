@@ -138,7 +138,7 @@ rules, or release process in its separate repository.
 - `src/shared/update-check.js` and `src/cmd/update/index.test.ts` — preserve tag-pinned installer selection, channel
   checks, confirmation, downgrade, and error behavior for standalone installs.
 - `scripts/install-*.test.js` — retain checksum and platform selection coverage for the shell path.
-- `src/testing/process-global-lock.js` and the isolated test runner — safe temporary home directories.
+- `src/testing/process-global-lock.ts` and the isolated test runner — safe temporary home directories.
 - Official tap guidance: https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap . Upstream formulas:
   https://github.com/1broseidon/homebrew-tap . These are references, not Tickets.
 

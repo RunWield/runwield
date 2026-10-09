@@ -19,7 +19,7 @@ async function makeRoot() {
     });
     await savePlan(projectRoot, "epic/01-one", "# One", {
         classification: "PLANNED_CHANGE",
-        status: "validated_reviewer",
+        status: "reviewed",
         parentPlan: "epic",
         summary: "One",
     });

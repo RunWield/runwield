@@ -1,23 +1,31 @@
 import { dirname, fromFileUrl, join, normalize, relative, resolve, SEPARATOR } from "@std/path";
 
+/** User documentation lives in its own folder and publishes at the site root. */
+const USER_DOCS_DIRECTORY = "user-documentation/";
+
+/** Paths under `docs/`: the user manual, then the Contributing section. */
 export const PUBLIC_DOCS = [
-    "index.md",
-    "quickstart.md",
-    "workspace.md",
-    "workspace-container.md",
-    "usage.md",
-    "workflows.md",
-    "collaboration.md",
-    "sessions.md",
-    "providers.md",
-    "customization.md",
-    "troubleshooting.md",
-    "settings.md",
-    "themes.md",
-    "mcp.md",
+    "user-documentation/index.md",
+    "user-documentation/quickstart.md",
+    "user-documentation/workspace.md",
+    "user-documentation/usage.md",
+    "user-documentation/workflows.md",
+    "user-documentation/sessions.md",
+    "user-documentation/collaboration.md",
+    "user-documentation/providers.md",
+    "user-documentation/settings.md",
+    "user-documentation/customization.md",
+    "user-documentation/themes.md",
+    "user-documentation/mcp.md",
+    "user-documentation/troubleshooting.md",
+    "contributing.md",
     "plan-lifecycle.md",
     "validation-authority.md",
-    "contributing.md",
+    "prd/runwield.md",
+    "prd/runwield-core-prd.md",
+    "prd/runwield-workspace-prd.md",
+    "prd/runwield-connect-prd.md",
+    "prd/runwield-acp-protocol-prd.md",
 ] as const;
 
 export interface DocsRelease {
@@ -29,8 +37,16 @@ export interface DocsRelease {
 const PUBLIC_SET = new Set<string>(PUBLIC_DOCS);
 const REPOSITORY_URL = "https://github.com/gandazgul/runwield";
 
-function routeFor(path: string): string {
-    return path === "index.md" ? "/" : `/${path.slice(0, -3)}/`;
+/** Site slug for a public source: user pages at the root, everything else under `contributing/`. */
+export function slugFor(path: string): string {
+    const name = path.slice(0, -3);
+    if (path.startsWith(USER_DOCS_DIRECTORY)) return name.slice(USER_DOCS_DIRECTORY.length);
+    return path === "contributing.md" ? "contributing/index" : `contributing/${name}`;
+}
+
+export function routeFor(path: string): string {
+    const slug = slugFor(path);
+    return slug === "index" ? "/" : `/${slug.replace(/\/index$/, "")}/`;
 }
 
 function splitTarget(target: string): { path: string; suffix: string } {
@@ -148,7 +164,8 @@ export function renderPublicDocument(
     if (!heading) {
         throw new Error(`Public document docs/${sourcePath} needs one H1 heading`);
     }
-    let body = source.replace(heading[0], "").replace(/^\s+/, "");
+    // Contributor documents may carry their own YAML front matter; the site writes its own.
+    let body = source.replace(/^---\n[\s\S]*?\n---\n/, "").replace(heading[0], "").replace(/^\s+/, "");
     body = body.replace(
         /(!?\[[^\]]*\]\()([^\s)]+)(\))/g,
         (_match, open, target, close) =>
@@ -161,7 +178,10 @@ export function renderPublicDocument(
             `${prefix}${rewriteTarget(target, sourcePath, release, imageLabels.has(label.toLowerCase()))}`,
     );
     const title = JSON.stringify(heading[1].trim());
-    return `---\ntitle: ${title}\ndescription: ${JSON.stringify(`RunWield ${heading[1].trim()}`)}\n---\n\n${body}`;
+    const editUrl = JSON.stringify(`${REPOSITORY_URL}/edit/docs/stable/docs/${sourcePath}`);
+    return `---\ntitle: ${title}\ndescription: ${
+        JSON.stringify(`RunWield ${heading[1].trim()}`)
+    }\neditUrl: ${editUrl}\n---\n\n${body}`;
 }
 
 export async function stagePublicDocs(
@@ -188,10 +208,9 @@ export async function stagePublicDocs(
             await Deno.mkdir(dirname(destination), { recursive: true });
             await Deno.copyFile(image, destination);
         }
-        await Deno.writeTextFile(
-            join(outputDirectory, path),
-            renderPublicDocument(source, path, release),
-        );
+        const destination = join(outputDirectory, `${slugFor(path)}.md`);
+        await Deno.mkdir(dirname(destination), { recursive: true });
+        await Deno.writeTextFile(destination, renderPublicDocument(source, path, release));
     }
 }
 

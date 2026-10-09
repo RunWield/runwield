@@ -1,4 +1,4 @@
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
 import { loadPlanBodyById, savePlan } from "../../plan-store.js";
@@ -319,13 +319,16 @@ Deno.test("Workspace persisted close without verification triggers Work Record g
 });
 
 Deno.test("Workspace persisted close preserves closure when Work Record generation fails", async () => {
-    await withRuntimeCommandFixture("workspace-close-failure-", async ({ projectRoot: cwd, setModelResponse }) => {
+    await withRuntimeCommandFixture("workspace-close-failure-", async ({ projectRoot: cwd, setModelMessages }) => {
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
             status: "implemented",
             classification: "FEATURE",
         });
-        setModelResponse("recorder unavailable");
+        setModelMessages([
+            fauxAssistantMessage(fauxText("recorder unavailable")),
+            fauxAssistantMessage(fauxText("recorder still unavailable")),
+        ]);
         const app = createWorkspaceApp({
             cwd,
             token: "secret",
@@ -339,7 +342,8 @@ Deno.test("Workspace persisted close preserves closure when Work Record generati
         assertEquals(response.status, 200);
         const payload = await response.json();
         assertStringIncludes(payload.message, "Work Record generation failed");
-        assertStringIncludes(payload.message, "did not submit a Work Record");
+        assertStringIncludes(payload.message, "Recorder submission failed after 2 attempt(s)");
+        assertStringIncludes(payload.message, "without an accepted work_record_completed call");
         const detail = await loadWorkspaceDetail(cwd, "feature-id");
         assertEquals(detail.status, "closed_without_verification");
         assertEquals(detail.closedWithoutVerificationReason, "Manual acceptance despite CI gap.");

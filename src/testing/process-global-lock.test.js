@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { HEARTBEAT_MS, LOCK_DIR, withProcessGlobalTestLock } from "./process-global-lock.js";
+import { HEARTBEAT_MS, LOCK_DIR, withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 // Every case here goes through withProcessGlobalTestLock rather than touching
 // LOCK_DIR directly: backdating or removing a lock that another test file is

@@ -7,7 +7,7 @@
  * child merely shows a finished status. The integration gate then checks the
  * exact Epic branch head as one change: the project's checks, an integration
  * review of the whole Epic diff, and Code Review per the `codereview` setting.
- * A pass marks the Epic `validated`; findings become a draft repair child that
+ * A pass marks the Epic `reviewed`; findings become a draft repair child that
  * Planner picks up like any other child. RunWield never merges the Epic branch
  * into the primary branch.
  */
@@ -22,7 +22,8 @@ import {
 } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
-import { isGitRepository } from "../git.js";
+import { isCommitPublishedToTarget } from "../isolated-publication.ts";
+import { isGitRepository } from "../git.ts";
 import { getCodeReviewMode } from "../settings.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { EPIC_INTEGRATION_REPORT_FILE_NAME, getEpicArtifactPath } from "../epic-artifacts.ts";
@@ -43,7 +44,7 @@ import {
     type ValidationSessionPort,
 } from "./validation-ports.ts";
 import type { EpicContinuationResolution } from "./epic-continuation.ts";
-import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.ts";
+
 import type { WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
 
 /** Child statuses that end a child's own workflow. */
@@ -234,7 +235,7 @@ export async function readEpicDeliveryState(
  * Bring an Epic's status in line with its branch:
  *
  * - `ready_for_work` with every child settled becomes `implemented`.
- * - `validated` by the gate whose branch has moved since becomes `implemented`
+ * - `reviewed` by the gate whose branch has moved since becomes `implemented`
  *   again: the old pass proves an older commit.
  *
  * Safe to call after any child delivery and on every load.
@@ -257,19 +258,62 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
         });
         status = attrs.status;
     } else if (
-        status === "validated" && epic.attrs.epicCompletionMode !== "done_enough" &&
-        typeof epic.attrs.validatedCommit === "string" && state.head && state.head !== epic.attrs.validatedCommit
+        (status === "reviewed" || status === "validated") && epic.attrs.epicCompletionMode !== "done_enough" &&
+        typeof epic.attrs.validatedCommit === "string" && state.head
     ) {
+        const unchanged = state.head === epic.attrs.validatedCommit ||
+            (await isContained(primaryRoot, epic.attrs.validatedCommit, state.ref) &&
+                (await runGitResult(primaryRoot, [
+                    "diff",
+                    "--quiet",
+                    epic.attrs.validatedCommit,
+                    state.head,
+                    "--",
+                    ".",
+                    `:(exclude)docs/plans/${epicPlanName}.md`,
+                ])).success);
+        const target = epic.attrs.epicDeliveryTargetBranch;
+        if (
+            unchanged && target && target !== state.branch &&
+            await isCommitPublishedToTarget({
+                projectRoot: primaryRoot,
+                targetBranch: target,
+                commit: epic.attrs.validatedCommit,
+            })
+        ) {
+            const attrs = await recordPlanEvent({
+                cwd: primaryRoot,
+                planName: epicPlanName,
+                event: "epic_publication_confirmed",
+                currentStatus: "reviewed",
+                details: { triageMeta: epic.attrs },
+            });
+            return { state, status: attrs.status, gateReady: false };
+        }
+        if (unchanged) return { state, status, gateReady: false };
         const attrs = await recordPlanEvent({
             cwd: primaryRoot,
             planName: epicPlanName,
             event: "epic_integration_stale",
-            currentStatus: "validated",
+            currentStatus: status,
             details: { triageMeta: epic.attrs },
         });
         status = attrs.status;
     }
     return { state, status, gateReady: status === "implemented" && state.allSettled };
+}
+
+async function epicDeliveryTarget(primaryRoot: string, epicBranch: string): Promise<string | undefined> {
+    const remote = await runGitResult(primaryRoot, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
+    const named = remote.success ? remote.stdout.trim().replace(/^refs\/remotes\/origin\//, "") : "";
+    for (const branch of [...new Set([named, "main", "master"].filter(Boolean))]) {
+        if (
+            branch !== epicBranch &&
+            (await refCommit(primaryRoot, `refs/heads/${branch}`) ||
+                await refCommit(primaryRoot, `refs/remotes/origin/${branch}`))
+        ) return branch;
+    }
+    return undefined;
 }
 
 /** The commit the Epic diff starts from: the recorded branch base, or where the branch left the primary branch. */
@@ -285,10 +329,6 @@ async function resolveEpicDiffBase(primaryRoot: string, epic: PlanFrontMatter, h
         if (base.success && base.stdout.trim()) return base.stdout.trim();
     }
     throw new Error("Cannot find where the Epic branch started. Record epicBaseCommit on the Epic and retry.");
-}
-
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
 }
 
 function tail(text: string): string {
@@ -424,7 +464,7 @@ async function runGateCodeReview(
         const offer = await port.requestInteraction({
             type: ValidationInteractionTypes.SELECT,
             prompt:
-                `The integration gate passed for ${epicPlanName}. Review the whole Epic before it is marked validated?`,
+                `The integration gate passed for ${epicPlanName}. Review the whole Epic before it is marked reviewed?`,
             options: [
                 { value: "open", label: "Open code review" },
                 { value: "skip", label: "Skip code review" },
@@ -683,25 +723,22 @@ export async function runEpicIntegrationGate(
             details: {
                 triageMeta: current.attrs,
                 integrationCommit: head,
+                epicDeliveryTargetBranch: current.attrs.epicDeliveryTargetBranch ||
+                    await epicDeliveryTarget(primaryRoot, state.branch),
                 humanReviewMode: run.codeReview.mode,
                 humanReviewDecision: run.codeReview.kind,
                 humanReviewedAt: reviewedAt,
             },
         });
         port.emitStatus(
-            `${epicPlanName} is validated: the integration gate passed on ${state.branch} at ${head.slice(0, 12)}. ` +
+            `${epicPlanName} is reviewed: the integration gate passed on ${state.branch} at ${head.slice(0, 12)}. ` +
                 `Merge the Epic branch or open a pull request when you are ready.`,
             "success",
         );
-        // A finished Epic gets its Work Record now; child records wait for a terminal parent.
-        const workRecord = await autoGenerateWorkRecordForCompletedPlan({
-            cwd: primaryRoot,
-            planName: epicPlanName,
-            mnemotecaPort: options.workRecordMnemotecaPort,
-        }).catch((error) => ({ status: "failed" as const, message: errorMessage(error) }));
-        if (workRecord.message) {
-            port.emitStatus(workRecord.message, workRecord.status === "failed" ? "warning" : "info");
-        }
+        port.emitStatus(
+            "The Epic remains reviewed until its checked work reaches the final target branch. Its Work Record is generated after that delivery.",
+            "info",
+        );
         return { kind: "passed", commit: head };
     }
 

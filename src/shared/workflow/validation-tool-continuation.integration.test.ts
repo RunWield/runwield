@@ -60,7 +60,7 @@ Deno.test("publication repair completion never creates a validation checkpoint i
         assertEquals(outcome, { completed: true, report: "Conflicts staged." });
         for (const cwd of [projectRoot, repairRoot]) {
             const plan = await loadPlan(cwd, "p");
-            assertEquals(plan?.attrs.status, "validated");
+            assertEquals(plan?.attrs.status, "reviewed");
             assertEquals(plan?.attrs.validationCheckpoint ?? null, null);
         }
     } finally {
@@ -74,7 +74,7 @@ for (const outcome of ["canceled", "blocked"] as const) {
     Deno.test(`canceling human review (${outcome}) cannot publish through the outer driver`, async () => {
         const projectRoot = await makeValidationProjectRoot("p", {
             classification: "PLANNED_CHANGE",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "ask",
             humanReviewDecision: null,
         });
@@ -90,7 +90,7 @@ for (const outcome of ["canceled", "blocked"] as const) {
             hostedSession,
             planName: "p",
             planContent: "# stale",
-            triageMeta: { classification: "PLANNED_CHANGE", status: "validated_reviewer" },
+            triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed" },
             git: createGitPort(),
             localCI: {
                 run: () => {
@@ -103,7 +103,7 @@ for (const outcome of ["canceled", "blocked"] as const) {
         assertEquals(result.continueValidation, undefined);
         assertEquals(prompts, 1);
         const plan = await loadPlan(projectRoot, "p");
-        assertEquals(plan?.attrs.status, "validated_reviewer");
+        assertEquals(plan?.attrs.status, "reviewed");
         assertEquals(plan?.attrs.humanReviewDecision, null);
         hostedSession.dispose();
     });
@@ -126,7 +126,7 @@ Deno.test("verified Epic-child publication leaves the removed worktree before co
             });
             await savePlan(projectRoot, planName, `# ${planName}\n\nvalidation fixture\n`, {
                 classification: "PLANNED_CHANGE",
-                status: "validated_reviewer",
+                status: "reviewed",
                 summary: "validation fixture",
                 affectedPaths: ["published-marker.txt"],
                 planId: "published-follow-up-plan",
@@ -162,7 +162,7 @@ Deno.test("verified Epic-child publication leaves the removed worktree before co
             if (!worktreePlan) throw new Error("worktree Plan fixture disappeared");
             await savePlan(worktree.path, planName, `# ${planName}\n\nvalidation fixture\n`, {
                 classification: "PLANNED_CHANGE",
-                status: "validated_reviewer",
+                status: "reviewed",
                 summary: "validation fixture",
                 affectedPaths: ["published-marker.txt"],
                 planId: "published-follow-up-plan",
@@ -182,7 +182,7 @@ Deno.test("verified Epic-child publication leaves the removed worktree before co
             await switchActiveAgent(hostedSession, { agentName: "planner", cwd: worktree.path });
             hostedSession.setActiveExecutionWorkflow({
                 planName,
-                triageMeta: { classification: "PLANNED_CHANGE", status: "validated_reviewer", parentPlan },
+                triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed", parentPlan },
                 executionAgent: "engineer",
                 projectRoot,
                 executionCwd: worktree.path,
@@ -197,7 +197,7 @@ Deno.test("verified Epic-child publication leaves the removed worktree before co
                 hostedSession,
                 planName,
                 planContent: `# ${planName}`,
-                triageMeta: { classification: "PLANNED_CHANGE", status: "validated_reviewer", parentPlan },
+                triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed", parentPlan },
                 git: createGitPort(),
                 localCI: {
                     run: () => {
@@ -277,7 +277,7 @@ Deno.test("paused validation keeps the execution Agent and worktree cwd", async 
         try {
             await savePlan(projectRoot, planName, `# ${planName}\n`, {
                 classification: "PLANNED_CHANGE",
-                status: "validated_reviewer",
+                status: "reviewed",
                 summary: "paused fixture",
                 affectedPaths: ["paused-marker.txt"],
                 planId: "paused-context-plan",
@@ -301,7 +301,7 @@ Deno.test("paused validation keeps the execution Agent and worktree cwd", async 
             await savePlan(worktree.path, planName, worktreePlan.markdown || `# ${planName}\n`, {
                 ...worktreePlan.attrs,
                 classification: "PLANNED_CHANGE",
-                status: "validated_reviewer",
+                status: "reviewed",
                 summary: "paused fixture",
                 affectedPaths: ["paused-marker.txt"],
                 planId: "paused-context-plan",
@@ -322,7 +322,7 @@ Deno.test("paused validation keeps the execution Agent and worktree cwd", async 
             });
             hostedSession.setActiveExecutionWorkflow({
                 planName,
-                triageMeta: { classification: "PLANNED_CHANGE", status: "validated_reviewer" },
+                triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed" },
                 executionAgent: "engineer",
                 projectRoot,
                 executionCwd: worktree.path,
@@ -336,7 +336,7 @@ Deno.test("paused validation keeps the execution Agent and worktree cwd", async 
                 hostedSession,
                 planName,
                 planContent: `# ${planName}`,
-                triageMeta: { classification: "PLANNED_CHANGE", status: "validated_reviewer" },
+                triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed" },
                 git: createGitPort(),
                 localCI: {
                     run: () => {
@@ -409,7 +409,7 @@ for (const repaired of [true, false]) {
             assertEquals(repairs, 3);
             assertEquals(checks, 4);
             assertEquals(result.kind, repaired ? "verified" : "paused");
-            assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, repaired ? "validated" : "implemented");
+            assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, repaired ? "verified" : "implemented");
             hostedSession.dispose();
         });
     });

@@ -9,9 +9,9 @@
 
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { loadPlan, resolvePlanExecutionPolicy } from "../../plan-store.js";
-import { isGitRepositoryRequiredError } from "../../shared/git.js";
+import { isGitRepositoryRequiredError } from "../../shared/git.ts";
 import { isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
-import { decidePostExecution } from "../../shared/workflow/decisions.js";
+import { decidePostExecution } from "../../shared/workflow/decisions.ts";
 import { finalizePlanImplementation } from "../../shared/workflow/workflow.js";
 import { listCommitsTouchingPathsSince } from "../../shared/workflow/git-snapshot.ts";
 import {
@@ -28,7 +28,7 @@ import {
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { UiAPI } from "../../ui/tui/types.js";
 import type { PlanSessionSurface, RecoveryWorktreeContext, ReviewImage } from "./plan-session-types.ts";
-import type { WorkflowDecision } from "../../shared/workflow/decisions.js";
+import type { WorkflowDecision } from "../../shared/workflow/decisions.ts";
 import type { WorkflowValidationResult } from "../../shared/workflow/validation-types.ts";
 
 export type ValidationStartResult = false | WorkflowValidationResult | true;
@@ -339,7 +339,7 @@ export async function validateCompletedExecution(
 
 /**
  * @param {Object} opts
- * @param {import('../../shared/workflow/decisions.js').WorkflowDecision} opts.executionDecision
+ * @param {import('../../shared/workflow/decisions.ts').WorkflowDecision} opts.executionDecision
  * @param {unknown} opts.executionResult
  * @param {string} opts.fallbackPlanContent
  * @param {PlanSessionSurface["runValidation"]} opts.continueWorkflowValidation
@@ -377,7 +377,7 @@ export async function validatePostExecutionDecision({
  * completes. Returns true when the decision was handled as execution.
  *
  * @param {Object} opts
- * @param {import('../../shared/workflow/decisions.js').WorkflowDecision} opts.decision
+ * @param {import('../../shared/workflow/decisions.ts').WorkflowDecision} opts.decision
  * @param {string} opts.fallbackPlanContent
  * @param {import('../../ui/tui/types.js').UiAPI} opts.uiAPI
  * @param {PlanSessionSurface["executePlan"]} opts.executePlan
@@ -447,7 +447,7 @@ export async function executePostPlanningDecision({
 }
 
 /**
- * @param {import('../../shared/workflow/decisions.js').WorkflowDecision} decision
+ * @param {import('../../shared/workflow/decisions.ts').WorkflowDecision} decision
  * @returns {boolean}
  */
 export function shouldKeepPlanningAgentActive(decision: WorkflowDecision): boolean {

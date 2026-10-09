@@ -50,7 +50,7 @@ else
   git checkout -B docs-bootstrap "$tag"
   git checkout "$source_sha" -- \
     .github/workflows/docs.yml .gitignore deno.json deno.lock \
-    docs/index.md docs-site scripts/public-docs.ts scripts/check-public-docs.ts \
+    docs/user-documentation/index.md docs-site scripts/public-docs.ts scripts/check-public-docs.ts \
     scripts/docs-dev.ts scripts/public-docs.test.ts scripts/docs-workflow.test.ts \
     scripts/docs-branch-integration.test.ts scripts/reconcile-docs-branch.sh \
     scripts/verify-docs-source.ts

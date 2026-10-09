@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { getCwd } from "../../constants.js";
 import { savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
 
 const repository = defineCommittedGitFixture();

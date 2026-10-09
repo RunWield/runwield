@@ -52,9 +52,11 @@ export const memoryToolDef = defineTool({
     promptSnippet: "Recall, store, or delete memories with an explicit action",
     promptGuidelines: [
         "Use action=recall to search project and global memory together. Project memories take precedence over conflicting global memories.",
-        "Use action=store to save important decisions, preferences, and context for future sessions.",
+        "Core memories are strong guidance; other memories are useful, non-authoritative context. Neither overrides the user, current project docs, the applicable Plan, or code as evidence of implemented behavior.",
+        "Use action=store only for current durable decisions, preferences, constraints, rationale, and reusable lessons. Do not store routine release dates, commit hashes, completed PR inventories, one-off test counts, or task-completion receipts.",
+        "Keep history only when it explains a still-relevant decision. State current guidance directly; do not repeat an obsolete claim beside a correction or present proposed work as delivered.",
         "Store defaults to project scope. Set scope=global only for cross-project preferences and patterns.",
-        "Use action=delete only for outdated or incorrect memories. Include scope so the tool can refuse ambiguous IDs.",
+        "Correct or remove outdated, incorrect, superseded, duplicate, or routine bookkeeping memories. Add and verify any durable replacement before action=delete. Include scope so the tool can refuse ambiguous IDs.",
         "Set core=true only for critical, always-relevant context. Keep core memories lean.",
     ],
     parameters: Type.Object({

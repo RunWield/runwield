@@ -1,6 +1,6 @@
 /** Owner Workspace backend Plan action service. */
 
-import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.js";
+import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import {
     executePlanAction,
     type PlanActionRequest,

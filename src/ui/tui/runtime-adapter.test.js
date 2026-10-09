@@ -328,7 +328,7 @@ Deno.test("TUI adapter keeps standalone image fallback when a tool block is hidd
     assertEquals(transcript, ["image:image/png:abc"]);
 });
 
-Deno.test("TUI adapter updates validation panel only for structured progress and clears terminal panel on next user message", () => {
+Deno.test("TUI adapter clears successful validation immediately without waiting for another user message", () => {
     const { runtime, sessionId } = makeRuntimeHarness("validation-panel-lifecycle");
     const { transcript, validationProgressUpdates, uiAPI } = makeUi();
     const adapter = attachTuiRuntimeAdapter({ runtime, sessionId, uiAPI });
@@ -351,12 +351,11 @@ Deno.test("TUI adapter updates validation panel only for structured progress and
     });
     runtime.emitSessionEvent(sessionId, { type: RuntimeEventTypes.USER_MESSAGE, text: "next", images: [] });
 
-    assertEquals(validationProgressUpdates.length, 1);
+    assertEquals(validationProgressUpdates.length, 0);
     assertEquals(transcript, [
         "system:info:OPERATION status without validation",
-        "validation:verified:terminal",
-        "system:info:Validation complete",
         "validation:clear",
+        "system:info:Validation complete",
         "user:next",
     ]);
     adapter.dispose();
@@ -900,4 +899,91 @@ Deno.test("TUI adapter shows shared provider notices without displaying diagnost
     assertEquals(transcript.some((text) => text.includes("The model service stopped responding")), true);
     assertEquals(transcript.some((text) => text.includes("Network error: Unexpected EOF")), false);
     adapter.dispose();
+});
+
+Deno.test("TUI completion waits for settlement, occurs once, and ignores failures and replay", async () => {
+    for (const outcome of ["verified", "failed", "paused"]) {
+        for (const replay of [false, true]) {
+            const { runtime, sessionId } = makeRuntimeHarness(`completion-${outcome}-${replay}`);
+            const { uiAPI } = makeUi();
+            /** @type {string[]} */
+            const completions = [];
+            const adapter = attachTuiRuntimeAdapter({
+                runtime,
+                sessionId,
+                uiAPI,
+                onSessionComplete: (id) => completions.push(id),
+            });
+            // This idle event may still be waiting in the presentation queue
+            // when publication succeeds; only a subsequent settlement qualifies.
+            runtime.emitSessionEvent(sessionId, { type: RuntimeEventTypes.BUSY_CHANGED, busy: false });
+            runtime.emitSessionEvent(sessionId, {
+                type: RuntimeEventTypes.SYSTEM_STATUS,
+                message: "Workflow settled",
+                validationProgress: {
+                    kind: "workflow",
+                    cycle: 1,
+                    maxCycles: 3,
+                    totalCycle: 1,
+                    stage: "terminal",
+                    outcome,
+                    checks: {
+                        ci: "passed",
+                        semanticReview: "passed",
+                        humanReview: "skipped",
+                        merge: outcome === "verified" ? "passed" : "failed",
+                    },
+                },
+                _meta: { replay },
+            });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            assertEquals(completions, []);
+            runtime.emitSessionEvent(sessionId, { type: RuntimeEventTypes.BUSY_CHANGED, busy: false });
+            runtime.emitSessionEvent(sessionId, { type: RuntimeEventTypes.BUSY_CHANGED, busy: false });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            assertEquals(completions, outcome === "verified" && !replay ? [sessionId] : []);
+            adapter.dispose();
+        }
+    }
+});
+
+Deno.test("TUI completion does not interrupt replacement Sessions or a new user turn", async () => {
+    for (const replace of [false, true]) {
+        const { runtime, sessionId } = makeRuntimeHarness(`completion-replaced-${replace}`);
+        const { uiAPI } = makeUi();
+        /** @type {string[]} */
+        const completions = [];
+        const adapter = attachTuiRuntimeAdapter({
+            runtime,
+            sessionId,
+            uiAPI,
+            onSessionComplete: (id) => completions.push(id),
+        });
+        runtime.emitSessionEvent(sessionId, {
+            type: RuntimeEventTypes.SYSTEM_STATUS,
+            message: "Published",
+            validationProgress: {
+                kind: "workflow",
+                cycle: 1,
+                maxCycles: 3,
+                totalCycle: 1,
+                stage: "terminal",
+                outcome: "verified",
+                checks: { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "passed" },
+            },
+        });
+        if (replace) {
+            adapter.dispose();
+        } else {
+            runtime.emitSessionEvent(sessionId, {
+                type: RuntimeEventTypes.USER_MESSAGE,
+                text: "follow up",
+                images: [],
+            });
+        }
+        runtime.emitSessionEvent(sessionId, { type: RuntimeEventTypes.BUSY_CHANGED, busy: false });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        assertEquals(completions, []);
+        adapter.dispose();
+    }
 });

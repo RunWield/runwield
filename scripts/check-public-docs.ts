@@ -1,4 +1,4 @@
-import { PUBLIC_DOCS } from "./public-docs.ts";
+import { PUBLIC_DOCS, routeFor } from "./public-docs.ts";
 import { getCwd } from "../src/constants.js";
 import { join } from "@std/path";
 
@@ -7,8 +7,8 @@ async function checkPublicDocs(): Promise<void> {
     const output = join(root, "dist", "docs");
     const failures: string[] = [];
 
-    for (const source of PUBLIC_DOCS) {
-        const route = source === "index.md" ? "index.html" : join(source.slice(0, -3), "index.html");
+    const routes = PUBLIC_DOCS.map((source) => join(routeFor(source).slice(1), "index.html"));
+    for (const route of routes) {
         try {
             await Deno.stat(join(output, route));
         } catch {
@@ -19,9 +19,7 @@ async function checkPublicDocs(): Promise<void> {
     const htmlRoutes = [
         "index.html",
         "404.html",
-        ...PUBLIC_DOCS.filter((source) => source !== "index.md").map((source) =>
-            join(source.slice(0, -3), "index.html")
-        ),
+        ...routes.filter((route) => route !== "index.html"),
     ];
     for (const route of htmlRoutes) {
         const html = await Deno.readTextFile(join(output, route));
@@ -90,7 +88,8 @@ async function checkPublicDocs(): Promise<void> {
     }
 
     const sitemap = await Deno.readTextFile(join(output, "sitemap-0.xml"));
-    for (const excluded of ["/prd/", "/plans/", "/research/", "/audits/"]) {
+    // Only the five central PRDs publish, under /contributing/prd/.
+    for (const excluded of ["docs.runwield.dev/prd/", "/plans/", "/research/", "/audits/"]) {
         if (sitemap.includes(excluded)) failures.push(`sitemap exposes excluded route ${excluded}`);
     }
 

@@ -4,7 +4,7 @@
  */
 
 import { dirname, isAbsolute, join } from "@std/path";
-import { assertGitRepository, GitRepositoryRequiredError } from "../git.js";
+import { assertGitRepository, GitRepositoryRequiredError } from "../git.ts";
 
 class GitCommandError extends Error {
     code: number;

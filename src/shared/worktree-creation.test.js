@@ -14,7 +14,7 @@ import {
 } from "./worktree.js";
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
-import { withProcessGlobalTestLock } from "../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 
 Deno.test("resolveWorktreeParent keeps overrides and home placement while no-home fallback uses primary internal storage", async () => {
     await withProcessGlobalTestLock(async () => {

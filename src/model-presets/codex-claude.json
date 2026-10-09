@@ -1,0 +1,49 @@
+{
+    "description": "Codex and Claude Code accounts: Codex for routing and execution, Opus for planning and review.",
+    "agents": {
+        "router": {
+            "model": "openai-codex/gpt-6-luna",
+            "thinkingLevel": "medium"
+        },
+        "operator": {
+            "model": "openai-codex/gpt-6-luna",
+            "thinkingLevel": "medium"
+        },
+        "slicer": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "high"
+        },
+        "guide": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "engineer": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "frontend-engineer": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "init": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "architect": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        },
+        "planner": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        },
+        "ideator": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        },
+        "reviewer": {
+            "model": "claude-cli/opus",
+            "thinkingLevel": "high"
+        }
+    }
+}

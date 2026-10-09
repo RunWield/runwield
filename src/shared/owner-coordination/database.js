@@ -19,7 +19,7 @@ import {
     OWNER_COORDINATION_SCHEMA_V8_SQL,
     OWNER_COORDINATION_SCHEMA_V9_SQL,
     OWNER_COORDINATION_SCHEMA_VERSION,
-} from "./schema.js";
+} from "./schema.ts";
 
 /**
  * @typedef {Object} OwnerCoordinationDatabase

@@ -38,7 +38,7 @@ import {
     normalizeRuntimeUsage,
     RuntimeEventTypes,
 } from "./session-runtime-events.js";
-import mnemotecaExtension, { memoryToolDef } from "../../extensions/mnemoteca/index.js";
+import mnemotecaExtension, { memoryToolDef } from "../../extensions/mnemoteca/index.ts";
 import cymbalExtension, {
     codeBatchToolDef,
     codeImpactToolDef,
@@ -51,7 +51,7 @@ import cymbalExtension, {
     codeShowToolDef,
     codeStructureToolDef,
     codeTraceToolDef,
-} from "../../extensions/cymbal/index.js";
+} from "../../extensions/cymbal/index.ts";
 import ketchExtension, {
     webCodeSearchToolDef,
     webDocsSearchToolDef,
@@ -111,7 +111,7 @@ import {
     getSettingsDir,
     getSettingsManager,
 } from "../settings.js";
-import { modelSupportsImageInput, prepareImagesForModel, resolveVisionFallbackModel } from "./image-attachments.js";
+import { modelSupportsImageInput, prepareImagesForModel, resolveVisionFallbackModel } from "./image-attachments.ts";
 import { readPersistedActiveAgentName, readPersistedModelState, recordActiveAgent } from "./active-agent-session.js";
 import {
     assertPersonalResourcePath,
@@ -122,15 +122,15 @@ import {
 } from "../remote/personal-resources.ts";
 import { getBundledAgentDefsPath } from "./agent-assets.ts";
 import { expandSkill, listSkills } from "./skill-catalog.ts";
-import { getPackagePromptTemplatePaths, resolveInstalledPackagePromptResources } from "../package-resources.js";
+import { getPackagePromptTemplatePaths, resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { getWldExtensionPaths, resolveInstalledWldExtensionResources } from "../extensions/wld-extension-manifest.js";
 import { recordToolCallFinished, recordToolCallStarted, recordWorkflowMetric } from "../workflow/metrics.js";
 import { ExecutionMetricsRecorder, SessionContextMetricsRecorder } from "../workflow/execution-metrics.ts";
 import { describeRuntimeTool } from "./tool-event-title.js";
 import { createSessionContextProjection, estimateContextTextTokens } from "./session-context-report.ts";
-import { installEarlySteeringInterruption } from "./early-steering.js";
+import { installEarlySteeringInterruption } from "./early-steering.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
-import { formatGitPromptState, readGitPromptState } from "../git.js";
+import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { sanitizeSessionName } from "../session-name.ts";
 
 /** @returns {string | null} */
@@ -389,7 +389,7 @@ async function parsePromptTemplateMeta(filePath) {
  * List all known prompt templates across bundled + home + local layers.
  * First name wins, based on priority local > home > bundled.
  *
- * @param {{ cwd?: string, packagePromptResources?: import("../package-resources.js").ResolvedResource[] }} [options]
+ * @param {{ cwd?: string, packagePromptResources?: import("../package-resources.ts").ResolvedResource[] }} [options]
  * @returns {Promise<PromptTemplateMeta[]>}
  */
 export async function listPromptTemplates(options = {}) {

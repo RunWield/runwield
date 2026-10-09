@@ -28,7 +28,7 @@ import { getRunWieldSessionDir } from "./root-session.js";
 import { estimateContextTextTokens } from "./session-context-report.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 /**
  * @param {string | Record<string, any>} testDefinition

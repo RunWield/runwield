@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertExists } from "@std/assert";
 import { dirname, fromFileUrl, join, resolve } from "@std/path";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME, RUNWIELD_DIR_NAME } from "../constants.js";
-import { withProcessGlobalTestLock } from "../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
     enterProjectRuntime,

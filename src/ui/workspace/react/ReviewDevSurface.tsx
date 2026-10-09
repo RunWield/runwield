@@ -717,6 +717,10 @@ const PLAN_DEV_VARIANTS = [
 function buildCodeReviewDevPayload(variant) {
     const base = {
         rawPatch: CODE_REVIEW_FIXTURE,
+        agentConversation: {
+            revisedRawPatch: CODE_REVIEW_FIXTURE.replace('+    "issue",', '+    "problem",'),
+            reply: "I renamed the issue label to problem. The current diff is ready in this review.",
+        },
         gitRef: "Fixture Code Review",
         agentCwd: "workspace-dev/fixture-code-review",
         planName: "fixture-code-review",

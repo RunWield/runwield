@@ -119,17 +119,28 @@ Deno.test("docs branch publishes Stable content, preserves corrections, and stop
         await run(work, "git", "tag", "v1.0.0");
         await run(work, "git", "push", "origin", "main", "--tags");
 
-        await write(join(work, "docs", "quickstart.md"), "# Quickstart\n\nUNRELEASED-B\n");
-        await write(join(work, "docs", "index.md"), "# Public home\n\nClean home\n");
+        await write(join(work, "docs", "user-documentation", "quickstart.md"), "# Quickstart\n\nUNRELEASED-B\n");
+        await write(join(work, "docs", "user-documentation", "index.md"), "# Public home\n\nClean home\n");
         await write(join(work, "src", "product.ts"), "export const product = 'UNRELEASED-B';\n");
         await run(work, "git", "add", ".");
         await run(work, "git", "commit", "-m", "Unreleased B and site support");
         const sourceSha = await run(work, "git", "rev-parse", "HEAD");
 
         await run(work, "bash", reconcileScript, "v1.0.0", "true", sourceSha);
-        assertStringIncludes(await Deno.readTextFile(join(work, "docs", "quickstart.md")), "STABLE-A");
-        assertEquals((await Deno.readTextFile(join(work, "docs", "quickstart.md"))).includes("UNRELEASED-B"), false);
-        assertStringIncludes(await Deno.readTextFile(join(work, "docs", "index.md")), "Clean home");
+        assertStringIncludes(
+            await Deno.readTextFile(join(work, "docs", "user-documentation", "quickstart.md")),
+            "STABLE-A",
+        );
+        assertEquals(
+            (await Deno.readTextFile(join(work, "docs", "user-documentation", "quickstart.md"))).includes(
+                "UNRELEASED-B",
+            ),
+            false,
+        );
+        assertStringIncludes(
+            await Deno.readTextFile(join(work, "docs", "user-documentation", "index.md")),
+            "Clean home",
+        );
         assertStringIncludes(await Deno.readTextFile(join(work, "src", "product.ts")), "STABLE-A");
         const stableARelease = JSON.parse(await Deno.readTextFile(join(work, "docs-site", "release.json")));
         assertEquals(stableARelease.version, "v1.0.0");
@@ -154,14 +165,17 @@ Deno.test("docs branch publishes Stable content, preserves corrections, and stop
         );
 
         await run(work, "git", "checkout", "main");
-        await write(join(work, "docs", "quickstart.md"), "# Quickstart\n\nSTABLE-B\n");
-        await run(work, "git", "add", "docs/quickstart.md");
+        await write(join(work, "docs", "user-documentation", "quickstart.md"), "# Quickstart\n\nSTABLE-B\n");
+        await run(work, "git", "add", "docs/user-documentation/quickstart.md");
         await run(work, "git", "commit", "-m", "Stable B");
         await run(work, "git", "tag", "v1.0.1");
         await run(work, "git", "push", "origin", "main", "--tags");
         const stableBSha = await run(work, "git", "rev-parse", "HEAD");
         await run(work, "bash", reconcileScript, "v1.0.1", "false", stableBSha);
-        assertStringIncludes(await Deno.readTextFile(join(work, "docs", "quickstart.md")), "STABLE-B");
+        assertStringIncludes(
+            await Deno.readTextFile(join(work, "docs", "user-documentation", "quickstart.md")),
+            "STABLE-B",
+        );
         assertStringIncludes(await Deno.readTextFile(join(work, "docs", "contributing.md")), "DOCS-CORRECTION");
         assertStringIncludes(await Deno.readTextFile(join(work, "src", "product.ts")), "UNRELEASED-B");
         const stableBRelease = JSON.parse(await Deno.readTextFile(join(work, "docs-site", "release.json")));
@@ -193,8 +207,11 @@ Deno.test("docs branch publishes Stable content, preserves corrections, and stop
         await run(root, "git", "clone", "--branch", "docs/stable", remote, correction);
         await run(correction, "git", "config", "user.name", "Test");
         await run(correction, "git", "config", "user.email", "test@example.com");
-        await write(join(correction, "docs", "settings.md"), "# settings.md\n\nARRIVING-CORRECTION\n");
-        await run(correction, "git", "add", "docs/settings.md");
+        await write(
+            join(correction, "docs", "user-documentation", "settings.md"),
+            "# settings.md\n\nARRIVING-CORRECTION\n",
+        );
+        await run(correction, "git", "add", "docs/user-documentation/settings.md");
         await run(correction, "git", "commit", "-m", "Correction during preparation");
         const correctionSha = await run(correction, "git", "rev-parse", "HEAD");
 
@@ -234,21 +251,24 @@ exec "$REAL_GIT" "$@"
             "fetch first",
         );
         assertStringIncludes(
-            await run(root, "git", "--git-dir", remote, "show", `${correctionSha}:docs/settings.md`),
+            await run(root, "git", "--git-dir", remote, "show", `${correctionSha}:docs/user-documentation/settings.md`),
             "ARRIVING-CORRECTION",
         );
         await run(work, "bash", reconcileScript, "v1.0.1", "false", stableBSha);
-        assertStringIncludes(await Deno.readTextFile(join(work, "docs", "settings.md")), "ARRIVING-CORRECTION");
+        assertStringIncludes(
+            await Deno.readTextFile(join(work, "docs", "user-documentation", "settings.md")),
+            "ARRIVING-CORRECTION",
+        );
 
-        await write(join(work, "docs", "quickstart.md"), "# Quickstart\n\nDOCS-CONFLICT\n");
-        await run(work, "git", "add", "docs/quickstart.md");
+        await write(join(work, "docs", "user-documentation", "quickstart.md"), "# Quickstart\n\nDOCS-CONFLICT\n");
+        await run(work, "git", "add", "docs/user-documentation/quickstart.md");
         await run(work, "git", "commit", "-m", "Conflicting docs correction");
         await run(work, "git", "push", "origin", "HEAD:docs/stable");
         const beforeConflict = await run(work, "git", "rev-parse", "HEAD");
 
         await run(work, "git", "checkout", "main");
-        await write(join(work, "docs", "quickstart.md"), "# Quickstart\n\nSTABLE-C-CONFLICT\n");
-        await run(work, "git", "add", "docs/quickstart.md");
+        await write(join(work, "docs", "user-documentation", "quickstart.md"), "# Quickstart\n\nSTABLE-C-CONFLICT\n");
+        await run(work, "git", "add", "docs/user-documentation/quickstart.md");
         await run(work, "git", "commit", "-m", "Stable C");
         await run(work, "git", "tag", "v1.0.2");
         await run(work, "git", "push", "origin", "main", "--tags");
@@ -278,7 +298,7 @@ Deno.test("docs branch preserves corrections across divergent Stable release bra
         await run(work, "git", "config", "user.name", "Test");
         await run(work, "git", "config", "user.email", "test@example.com");
         await run(work, "git", "checkout", "-b", "main");
-        await write(join(work, "docs", "index.md"), "# Base guide\n");
+        await write(join(work, "docs", "user-documentation", "index.md"), "# Base guide\n");
         await write(join(work, "docs-site", "release.json"), '{"version":"Preview","sourceRef":"main"}\n');
         await write(join(work, "src", "product.ts"), "export const product = 'BASE';\n");
         await run(work, "git", "add", ".");
@@ -291,8 +311,8 @@ Deno.test("docs branch preserves corrections across divergent Stable release bra
         await run(work, "git", "commit", "-m", "Stable A");
         await run(work, "git", "tag", "v1.0.0");
         await run(work, "git", "checkout", "-b", "docs/stable");
-        await write(join(work, "docs", "index.md"), "# Published guide\n");
-        await run(work, "git", "add", "docs/index.md");
+        await write(join(work, "docs", "user-documentation", "index.md"), "# Published guide\n");
+        await run(work, "git", "add", "docs/user-documentation/index.md");
         await run(work, "git", "commit", "-m", "Publish Stable A docs");
         const previousSource = await run(work, "git", "rev-parse", "HEAD");
         await write(
@@ -301,16 +321,16 @@ Deno.test("docs branch preserves corrections across divergent Stable release bra
         );
         await run(work, "git", "add", "docs-site/release.json");
         await run(work, "git", "commit", "-m", "Record Stable A docs source");
-        await write(join(work, "docs", "index.md"), "# Corrected guide\n");
-        await run(work, "git", "add", "docs/index.md");
+        await write(join(work, "docs", "user-documentation", "index.md"), "# Corrected guide\n");
+        await run(work, "git", "add", "docs/user-documentation/index.md");
         await run(work, "git", "commit", "-m", "Correct Stable A docs");
         const previousDocsTip = await run(work, "git", "rev-parse", "HEAD");
         await run(work, "git", "push", "origin", "HEAD:docs/stable", "--tags");
 
         await run(work, "git", "checkout", "-B", "main", baseSha);
-        await write(join(work, "docs", "index.md"), "# Published guide\n");
+        await write(join(work, "docs", "user-documentation", "index.md"), "# Published guide\n");
         await write(join(work, "src", "product.ts"), "export const product = 'STABLE-B';\n");
-        await run(work, "git", "add", "docs/index.md", "src/product.ts");
+        await run(work, "git", "add", "docs/user-documentation/index.md", "src/product.ts");
         await run(work, "git", "commit", "-m", "Stable B");
         await run(work, "git", "tag", "v1.0.1");
         await run(work, "git", "push", "origin", "main", "--tags");
@@ -319,7 +339,10 @@ Deno.test("docs branch preserves corrections across divergent Stable release bra
         await run(work, "bash", reconcileScript, "v1.0.1", "false", stableBSha);
 
         assertStringIncludes(await Deno.readTextFile(join(work, "src", "product.ts")), "STABLE-B");
-        assertStringIncludes(await Deno.readTextFile(join(work, "docs", "index.md")), "Corrected guide");
+        assertStringIncludes(
+            await Deno.readTextFile(join(work, "docs", "user-documentation", "index.md")),
+            "Corrected guide",
+        );
         assertEquals(JSON.parse(await Deno.readTextFile(join(work, "docs-site", "release.json"))).version, "v1.0.1");
         await run(work, "git", "merge-base", "--is-ancestor", previousDocsTip, "HEAD");
         await run(work, "git", "merge-base", "--is-ancestor", "v1.0.1", "HEAD");
@@ -338,22 +361,22 @@ Deno.test("docs source validation rejects stale and product-changing commits", a
         await run(work, "git", "config", "user.name", "Test");
         await run(work, "git", "config", "user.email", "test@example.com");
         await run(work, "git", "checkout", "-b", "main");
-        await write(join(work, "docs", "index.md"), "# Stable\n");
+        await write(join(work, "docs", "user-documentation", "index.md"), "# Stable\n");
         await write(join(work, "src", "product.ts"), "export const version = 1;\n");
         await run(work, "git", "add", ".");
         await run(work, "git", "commit", "-m", "Stable");
         await run(work, "git", "tag", "v1.0.0");
         await run(work, "git", "push", "origin", "main", "--tags");
         await run(work, "git", "checkout", "-b", "docs/stable");
-        await write(join(work, "docs", "index.md"), "# Corrected\n");
-        await run(work, "git", "add", "docs/index.md");
+        await write(join(work, "docs", "user-documentation", "index.md"), "# Corrected\n");
+        await run(work, "git", "add", "docs/user-documentation/index.md");
         await run(work, "git", "commit", "-m", "Docs correction");
         await run(work, "git", "push", "-u", "origin", "docs/stable");
         const firstSource = await run(work, "git", "rev-parse", "HEAD");
         await verifyDocsSource(work, "v1.0.0", firstSource);
 
-        await write(join(work, "docs", "index.md"), "# Newer correction\n");
-        await run(work, "git", "add", "docs/index.md");
+        await write(join(work, "docs", "user-documentation", "index.md"), "# Newer correction\n");
+        await run(work, "git", "add", "docs/user-documentation/index.md");
         await run(work, "git", "commit", "-m", "Newer correction");
         await run(work, "git", "push", "origin", "docs/stable");
         await assertRejects(

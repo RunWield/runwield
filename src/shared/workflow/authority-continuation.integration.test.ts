@@ -69,7 +69,7 @@ async function createPlan(root: string) {
     await git(root, ["commit", "-m", "Plan"]);
 }
 
-async function setStatus(root: string, status: "implemented" | "validated" | "in_progress" | "feedback") {
+async function setStatus(root: string, status: "implemented" | "verified" | "in_progress" | "feedback") {
     const plan = await loadPlan(root, "demo");
     assert(plan);
     await updatePlanFrontMatter(root, "demo", { status }, {}, { expectedRevision: plan.revision });
@@ -133,7 +133,7 @@ Deno.test("explicit loading cannot revive the stale primary copy of an archived 
     await withProject(async (root, directory) => {
         await createPlan(root);
         const tree = await addTree(root, directory, "current");
-        await setStatus(tree, "validated");
+        await setStatus(tree, "verified");
         await archivePlan(root, "demo");
         assertEquals((await listPlans(root)).length, 0);
         await assertRejects(() => resolvePlanWithPrimaryRecovery(root, "demo"), Error, "archived");
@@ -178,14 +178,14 @@ for (const retired of [false, true]) {
             }
             const primary = await loadPlan(root, "demo");
             assert(primary);
-            await setStatus(tree, "validated");
+            await setStatus(tree, "verified");
             await archivePlan(root, "demo");
             await restoreArchivedPlan(root, "demo", { to: "renamed" });
             assertEquals((await listPlans(root)).map((plan) => plan.name), ["renamed"]);
             const selected = await resolveWorkflowPlanLocation(root, "renamed");
             assertEquals(selected.plan?.attrs.planId, "demo");
             assertEquals(selected.documentRoot, tree);
-            assertEquals((await resolvePlanWithPrimaryRecovery(root, "renamed")).plan.attrs.status, "validated");
+            assertEquals((await resolvePlanWithPrimaryRecovery(root, "renamed")).plan.attrs.status, "verified");
             await assertRejects(() => resolvePlanWithPrimaryRecovery(root, "demo"), Error, "now named renamed");
             await archivePlan(root, "renamed");
             assertEquals((await listPlans(root)).length, 0);
@@ -201,7 +201,7 @@ for (const failure of ["name_collision", "archive_unlink", "publication_started"
         await withProject(async (root, directory) => {
             await createPlan(root);
             const tree = await addTree(root, directory, "current");
-            await setStatus(tree, "validated");
+            await setStatus(tree, "verified");
             await archivePlan(root, "demo");
             const archivedPath = join(tree, "docs/plans/archived/demo.md");
             const before = await Deno.readTextFile(archivedPath);
@@ -249,7 +249,7 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
                 planId: "epic/a",
                 classification: "PLANNED_CHANGE",
                 parentPlan: "epic",
-                status: event === "validation_passed" ? "validated_reviewer" : "implemented",
+                status: event === "validation_passed" ? "reviewed" : "implemented",
             });
             await git(root, ["add", "docs"]);
             await git(root, ["commit", "-m", "First child"]);
@@ -264,7 +264,7 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
                 cwd: root,
                 planName: "epic/a",
                 event,
-                currentStatus: event === "validation_passed" ? "validated_reviewer" : "implemented",
+                currentStatus: event === "validation_passed" ? "reviewed" : "implemented",
                 details: {
                     userVerificationNote: "Checked independently.",
                     deliveryEvidence: {
@@ -317,7 +317,7 @@ Deno.test("Epic completion reads published siblings without a permanent controll
         await git(root, ["switch", "main"]);
         const siblings = await findCompletionSiblings(tree, "epic");
         const b = siblings.find((child) => child.name === "epic/b");
-        assertEquals(b?.attrs.status, "validated");
+        assertEquals(b?.attrs.status, "verified");
         assertEquals(b?.attrs.deliveryEvidence, undefined);
     });
 });

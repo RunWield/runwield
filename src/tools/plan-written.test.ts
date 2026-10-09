@@ -87,3 +87,72 @@ Deno.test("plan_written rejects the reserved Epic Artifact name before review", 
         await Deno.remove(cwd, { recursive: true });
     }
 });
+
+Deno.test("direct Plan retains explicit verification through skipped Init, reload, and deliberate changes", async () => {
+    await withRuntimeCommandFixture("plan-command-", async ({ projectRoot }) => {
+        const { getExactProjectCustomSetting, setExactProjectCustomSetting } = await import("../shared/settings.js");
+        const { runLocalCI } = await import("../shared/workflow/validation-local-ci.ts");
+        const session = new HostedSession({ id: "plan-command", cwd: projectRoot });
+        try {
+            await savePlan(projectRoot, "demo", "# Demo", { classification: "PLANNED_CHANGE", status: "draft" });
+            session.setInteractionAdapter({
+                requestInteraction: (request) => {
+                    assertEquals(request.type, "plan_review");
+                    return Promise.resolve({ outcome: "canceled" });
+                },
+            });
+            const tool = createPlanWrittenTool({ hostedSession: session });
+            const submit = (command: string, intent: "discovered" | "user_selected") =>
+                tool.execute(
+                    crypto.randomUUID(),
+                    {
+                        planName: "demo",
+                        executionAgent: "engineer",
+                        collaborationRecommendation: "autonomous",
+                        verificationCommand: { command, intent },
+                    },
+                    undefined,
+                    undefined,
+                    EXTENSION_CONTEXT,
+                );
+            const command = `  CHECK='whole suite' sh -c 'printf "%s" "$CHECK"' && printf '%s' '-ok'  `;
+            await submit(command, "user_selected");
+            assertEquals(getExactProjectCustomSetting("verification_command", projectRoot), command);
+            const reloaded = new HostedSession({ id: "command-reloaded", cwd: projectRoot });
+            reloaded.setInteractionAdapter({
+                requestInteraction: () => Promise.reject(new Error("must not ask again")),
+            });
+            try {
+                const result = await runLocalCI({
+                    hostedSession: reloaded,
+                    cwd: projectRoot,
+                    settingsPolicy: "exact-project",
+                });
+                assertEquals(result.kind, "completed");
+                if (result.kind === "completed") {
+                    assertEquals(result.exitCode, 0);
+                    assertStringIncludes(result.output, "whole suite-ok");
+                }
+                const escapedSpace = "printf '%s' verify\\ ";
+                await submit(escapedSpace, "user_selected");
+                assertEquals(getExactProjectCustomSetting("verification_command", projectRoot), escapedSpace);
+                const escapedResult = await runLocalCI({
+                    hostedSession: reloaded,
+                    cwd: projectRoot,
+                    settingsPolicy: "exact-project",
+                });
+                if (escapedResult.kind !== "completed") throw new Error("Expected command to run");
+                assertStringIncludes(escapedResult.output, "verify ");
+                setExactProjectCustomSetting("verification_command", "printf repaired", projectRoot);
+                await submit("printf discovered", "discovered");
+                assertEquals(getExactProjectCustomSetting("verification_command", projectRoot), "printf repaired");
+                await submit("printf replacement", "user_selected");
+                assertEquals(getExactProjectCustomSetting("verification_command", projectRoot), "printf replacement");
+            } finally {
+                reloaded.dispose();
+            }
+        } finally {
+            session.dispose();
+        }
+    });
+});

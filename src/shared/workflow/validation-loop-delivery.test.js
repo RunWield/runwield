@@ -17,7 +17,7 @@ function makeValidationUi() {
 Deno.test("runValidationLoop does not preserve a nonexistent Plan path for quick-fix worktrees", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
     });
@@ -26,7 +26,7 @@ Deno.test("runValidationLoop does not preserve a nonexistent Plan path for quick
         planName: "p",
         triageMeta: {
             classification: "QUICK_FIX",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
         },
@@ -42,7 +42,7 @@ Deno.test("runValidationLoop does not preserve a nonexistent Plan path for quick
         planContent: "# p",
         triageMeta: {
             classification: "QUICK_FIX",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
         },
@@ -51,14 +51,14 @@ Deno.test("runValidationLoop does not preserve a nonexistent Plan path for quick
 
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(result.kind, "verified");
-    assertEquals(plan?.attrs.status, "validated");
+    assertEquals(plan?.attrs.status, "verified");
     assertEquals(plan?.attrs.deliveryEvidence, { version: 1, mode: "non_git_in_place" });
 });
 
-Deno.test("runValidationLoop publishes only from validated_reviewer after human review is durably complete", async () => {
+Deno.test("runValidationLoop publishes only from reviewed after human review is durably complete", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
     });
@@ -67,7 +67,7 @@ Deno.test("runValidationLoop publishes only from validated_reviewer after human 
         planName: "p",
         triageMeta: {
             classification: "QUICK_FIX",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
         },
@@ -83,7 +83,7 @@ Deno.test("runValidationLoop publishes only from validated_reviewer after human 
         planContent: "# p",
         triageMeta: {
             classification: "QUICK_FIX",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
         },
@@ -92,7 +92,7 @@ Deno.test("runValidationLoop publishes only from validated_reviewer after human 
 
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(result.kind, "verified");
-    assertEquals(plan?.attrs.status, "validated");
+    assertEquals(plan?.attrs.status, "verified");
     assertEquals(plan?.attrs.deliveryEvidence?.mode, "non_git_in_place");
     assertEquals(plan?.attrs.humanReviewDecision, "not_required");
 });
@@ -100,7 +100,7 @@ Deno.test("runValidationLoop publishes only from validated_reviewer after human 
 Deno.test("Epic child delivery commits its Manual QA artifact with verified metadata", async () => {
     const projectRoot = await makeValidationProjectRoot("epic/01-one", {
         classification: "PLANNED_CHANGE",
-        status: "validated_reviewer",
+        status: "reviewed",
         parentPlan: "epic",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
@@ -115,7 +115,7 @@ Deno.test("Epic child delivery commits its Manual QA artifact with verified meta
         planName: "epic/01-one",
         triageMeta: {
             classification: "PLANNED_CHANGE",
-            status: "validated_reviewer",
+            status: "reviewed",
             parentPlan: "epic",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
@@ -132,7 +132,7 @@ Deno.test("Epic child delivery commits its Manual QA artifact with verified meta
         planContent: "# One\n\nimplemented child",
         triageMeta: {
             classification: "PLANNED_CHANGE",
-            status: "validated_reviewer",
+            status: "reviewed",
             parentPlan: "epic",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
@@ -163,7 +163,7 @@ Deno.test("Epic child delivery commits its Manual QA artifact with verified meta
     assertEquals(result.kind, "verified");
     assertEquals(result.epicContinuation?.completedPlanName, "epic/01-one");
     assertEquals(result.epicContinuation?.projectRoot, projectRoot);
-    assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "validated");
+    assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "verified");
     const artifact = await Deno.readTextFile(`${projectRoot}/docs/plans/epic/manual-qa.md`);
     assertStringIncludes(artifact, "# Manual QA for epic");
     assertStringIncludes(artifact, "This checklist is advisory. It does not change RunWield verification status.");
@@ -176,7 +176,7 @@ Deno.test("Epic child delivery commits its Manual QA artifact with verified meta
 Deno.test("Epic child publication stops when the Manual QA Agent has a fatal failure", async () => {
     const projectRoot = await makeValidationProjectRoot("epic/01-one", {
         classification: "PLANNED_CHANGE",
-        status: "validated_reviewer",
+        status: "reviewed",
         parentPlan: "epic",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
@@ -190,7 +190,7 @@ Deno.test("Epic child publication stops when the Manual QA Agent has a fatal fai
     /** @type {import('../../tools/plan-written.ts').TriageMeta} */
     const triageMeta = {
         classification: "PLANNED_CHANGE",
-        status: "validated_reviewer",
+        status: "reviewed",
         parentPlan: "epic",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
@@ -215,13 +215,13 @@ Deno.test("Epic child publication stops when the Manual QA Agent has a fatal fai
     });
 
     assertEquals(result.kind, "failed");
-    assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "validated_reviewer");
+    assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "reviewed");
 });
 
 Deno.test("publication pauses on missing target branch metadata without recording validation failure", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
     });
@@ -229,7 +229,7 @@ Deno.test("publication pauses on missing target branch metadata without recordin
     /** @type {import('../../tools/plan-written.ts').TriageMeta} */
     const triageMeta = {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
     };
@@ -251,5 +251,5 @@ Deno.test("publication pauses on missing target branch metadata without recordin
     });
 
     assertEquals(result.kind, "paused");
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "validated_reviewer");
+    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });

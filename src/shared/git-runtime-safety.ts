@@ -4,6 +4,7 @@ import {
     RUNWIELD_DIR_NAME,
 } from "../constants.js";
 import { isRunWieldOwnedRuntimePath } from "./runwield-owned-paths.ts";
+import { recordedProjectContextPaths } from "./worktree-project-context.ts";
 
 interface CommandResult {
     code: number;
@@ -147,6 +148,9 @@ export async function gitStatusPaths(cwd: string): Promise<string[]> {
 }
 
 export async function stageGitChangesExcludingRuntime(cwd: string): Promise<void> {
+    // Only recorded versionable setup paths may override broad user ignore rules.
+    const contextPaths = await recordedProjectContextPaths(cwd);
+    if (contextPaths.length > 0) await runGit(cwd, ["add", "-f", "--", ...contextPaths]);
     const tracked = parseNulPaths(await runGit(cwd, ["diff", "--name-only", "-z", "--no-renames", "HEAD", "--"]))
         .filter((path) => !isRunWieldOwnedRuntimePath(path));
     const untracked = parseNulPaths(await runGit(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]))

@@ -39,7 +39,7 @@ export class PlanLifecycleTransitionError extends Error {
 }
 
 /**
- * @typedef {"draft"|"feedback"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"validated_reviewer"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} PlanStatus
+ * @typedef {"draft"|"feedback"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} PlanStatus
  */
 
 /** @type {Record<PlanStatus, string>} */
@@ -53,9 +53,9 @@ const PLAN_STATUS_HELP_TEXT = {
     failed: "it failed",
     implemented: "the work is done",
     validated_ci: "the checks passed",
-    validated_reviewer: "code review passed",
-    validated: "all validation passed and publication is pending",
-    verified: "it was delivered under the legacy lifecycle",
+    reviewed: "code review passed",
+    validated: "legacy validation completed",
+    verified: "it was delivered",
     user_verified: "you approved it",
     closed_without_verification: "it was closed without validation",
     on_hold: "it is on hold",
@@ -87,12 +87,14 @@ function buildStalePlanStatusMessage(planName, currentStatus, canonicalStatus) {
 }
 
 /**
- * @typedef {"review_feedback"|"review_approved"|"readiness_passed"|"epic_readiness_passed"|"decomposition_finalized"|"execution_started"|"execution_failed"|"implementation_finished"|"mechanical_validation_failed"|"mechanical_validation_passed"|"semantic_review_feedback"|"semantic_review_passed"|"validation_failed"|"validation_passed"|"recovery_continue"|"recovery_reset"|"review_reopened"|"epic_done_enough"|"epic_children_delivered"|"epic_integration_passed"|"epic_integration_failed"|"epic_integration_stale"|"manual_status_change"|"manual_closed_without_verification"|"manual_user_verified"|"plan_held"|"hold_resumed"|"hold_reset_to_draft"} PlanEvent
+ * @typedef {"review_feedback"|"review_approved"|"readiness_passed"|"epic_readiness_passed"|"decomposition_finalized"|"execution_started"|"execution_failed"|"implementation_finished"|"mechanical_validation_failed"|"mechanical_validation_passed"|"semantic_review_feedback"|"semantic_review_passed"|"validation_failed"|"validation_passed"|"recovery_continue"|"recovery_reset"|"review_reopened"|"epic_done_enough"|"epic_children_delivered"|"epic_integration_passed"|"epic_integration_failed"|"epic_integration_stale"|"epic_publication_confirmed"|"manual_status_change"|"manual_closed_without_verification"|"manual_user_verified"|"plan_held"|"hold_resumed"|"hold_reset_to_draft"} PlanEvent
  */
 
 /**
  * @typedef {Object} PlanEventDetails
  * @property {Partial<import('../../plan-store.js').PlanFrontMatter>} [triageMeta]
+ * @property {string} [epicDeliveryTargetBranch]
+ * @property {boolean} [pendingPublication] - Prepare artifacts without claiming delivery
  * @property {string} [failureReason]
  * @property {string} [executionBaselineTree]
  * @property {string} [worktreeId]
@@ -150,9 +152,7 @@ export const PLAN_STATUSES = [
     "in_progress",
     "failed",
     "implemented",
-    "validated_ci",
-    "validated_reviewer",
-    "validated",
+    "reviewed",
     "verified",
     "user_verified",
     "closed_without_verification",
@@ -169,12 +169,11 @@ export const ACTIVE_PLAN_STATUSES = [
     "in_progress",
     "failed",
     "implemented",
-    "validated_ci",
-    "validated_reviewer",
+    "reviewed",
 ];
 
 /** @type {PlanStatus[]} */
-export const VALIDATION_PLAN_STATUSES = ["implemented", "validated_ci", "validated_reviewer", "validated"];
+export const VALIDATION_PLAN_STATUSES = ["implemented", "validated_ci", "reviewed", "validated"];
 
 /** @param {string | undefined | null} status */
 export function isInValidation(status) {
@@ -182,7 +181,7 @@ export function isInValidation(status) {
 }
 
 /** @type {PlanStatus[]} */
-export const CLOSED_PLAN_STATUSES = ["validated", "verified", "user_verified", "closed_without_verification"];
+export const CLOSED_PLAN_STATUSES = ["verified", "user_verified", "closed_without_verification"];
 
 /** @type {PlanStatus[]} */
 export const ON_HOLD_PLAN_STATUSES = ["on_hold"];
@@ -209,7 +208,7 @@ export function isArchiveEligiblePlanStatus(status) {
 
 export { isPlanDependencySatisfiedStatus as isDependencySatisfiedPlanStatus };
 
-const ALL_KNOWN_STATUSES = PLAN_STATUSES;
+const ALL_KNOWN_STATUSES = /** @type {PlanStatus[]} */ ([...PLAN_STATUSES, "validated_ci", "validated"]);
 
 /** @type {Record<PlanEvent, PlanStatus[]>} */
 const ALLOWED_FROM = {
@@ -223,10 +222,10 @@ const ALLOWED_FROM = {
     implementation_finished: ["in_progress"],
     mechanical_validation_failed: ["implemented"],
     mechanical_validation_passed: ["implemented"],
-    semantic_review_feedback: ["validated_ci"],
-    semantic_review_passed: ["validated_ci"],
-    validation_failed: ["implemented", "validated_ci", "validated_reviewer"],
-    validation_passed: ["validated_reviewer"],
+    semantic_review_feedback: ["implemented", "validated_ci"],
+    semantic_review_passed: ["implemented", "validated_ci"],
+    validation_failed: ["implemented", "validated_ci", "reviewed"],
+    validation_passed: ["reviewed"],
     recovery_continue: ["in_progress", "failed"],
     recovery_reset: ["in_progress", "failed", "implemented"],
     review_reopened: [
@@ -235,15 +234,17 @@ const ALLOWED_FROM = {
         "in_progress",
         "failed",
         "implemented",
+        "reviewed",
         "validated",
         "verified",
         "user_verified",
     ],
-    epic_done_enough: ["ready_for_work", "implemented", "validated", "verified"],
+    epic_done_enough: ["ready_for_work", "implemented", "reviewed", "validated", "verified"],
     epic_children_delivered: ["ready_for_work"],
     epic_integration_passed: ["implemented"],
     epic_integration_failed: ["implemented"],
-    epic_integration_stale: ["validated"],
+    epic_integration_stale: ["reviewed", "validated"],
+    epic_publication_confirmed: ["reviewed"],
     manual_status_change: ALL_KNOWN_STATUSES,
     manual_closed_without_verification: ALL_KNOWN_STATUSES,
     manual_user_verified: ALL_KNOWN_STATUSES,
@@ -259,6 +260,7 @@ const EPIC_ONLY_EVENTS = new Set([
     "epic_integration_passed",
     "epic_integration_failed",
     "epic_integration_stale",
+    "epic_publication_confirmed",
 ]);
 
 /** @type {Record<PlanEvent, PlanStatus>} */
@@ -272,19 +274,20 @@ const EVENT_STATUS = {
     execution_failed: "failed",
     implementation_finished: "implemented",
     mechanical_validation_failed: "implemented",
-    mechanical_validation_passed: "validated_ci",
+    mechanical_validation_passed: "implemented",
     semantic_review_feedback: "implemented",
-    semantic_review_passed: "validated_reviewer",
+    semantic_review_passed: "reviewed",
     validation_failed: "implemented",
-    validation_passed: "validated",
+    validation_passed: "verified",
     recovery_continue: "ready_for_work",
     recovery_reset: "ready_for_work",
     review_reopened: "feedback",
-    epic_done_enough: "validated",
+    epic_done_enough: "closed_without_verification",
     epic_children_delivered: "implemented",
-    epic_integration_passed: "validated",
+    epic_integration_passed: "reviewed",
     epic_integration_failed: "implemented",
     epic_integration_stale: "implemented",
+    epic_publication_confirmed: "verified",
     manual_status_change: "draft",
     manual_closed_without_verification: "closed_without_verification",
     manual_user_verified: "user_verified",
@@ -329,7 +332,7 @@ function isManualBoardStatus(status, attrs) {
  * @returns {boolean}
  */
 function isManualUserVerificationStatus(status, attrs) {
-    return isManualBoardStatus(status, attrs) || status === "validated_ci" || status === "validated_reviewer";
+    return isManualBoardStatus(status, attrs) || status === "validated_ci" || status === "reviewed";
 }
 
 /**
@@ -487,7 +490,8 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
         status: targetStatus,
         updatedAt: now,
     };
-    const clearsValidationCheckpoint = event === "validation_passed" || targetStatus === "implemented" ||
+    const clearsValidationCheckpoint = event === "validation_passed" ||
+        (targetStatus === "implemented" && event !== "mechanical_validation_passed") ||
         event === "execution_started" || event === "recovery_reset" || event === "recovery_continue" ||
         event === "review_reopened" || event === "hold_reset_to_draft" || event === "manual_user_verified" ||
         event === "manual_closed_without_verification" || event === "epic_done_enough" ||
@@ -498,6 +502,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
 
     if (
         targetStatus === "implemented" && event !== "mechanical_validation_failed" &&
+        event !== "mechanical_validation_passed" &&
         event !== "semantic_review_feedback"
     ) {
         updates.validationCiAttempts = 0;
@@ -537,7 +542,31 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
         }
     }
 
+    if (
+        [
+            "execution_started",
+            "implementation_finished",
+            "semantic_review_feedback",
+            "validation_failed",
+            "recovery_reset",
+            "review_reopened",
+            "hold_reset_to_draft",
+        ].includes(event)
+    ) {
+        updates.validationPhase = "mechanical";
+        updates.validatedAt = null;
+    }
+    if (event === "mechanical_validation_passed") updates.validationPhase = "semantic";
+    if (
+        ["semantic_review_passed", "semantic_review_feedback"].includes(event) &&
+        currentStatus === "implemented" && details.triageMeta?.validationPhase !== "semantic"
+    ) {
+        throw new Error(
+            `Invalid Plan Lifecycle transition: ${event} cannot apply to status "implemented" before CI passes.`,
+        );
+    }
     if (event === "semantic_review_passed") {
+        updates.validationPhase = "delivery";
         updates.failureReason = null;
         updates.failedAt = null;
         updates.validationCheckpoint = details.validationCheckpoint ?? null;
@@ -765,6 +794,8 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
     if (event === "epic_integration_passed") {
         // The checked commit is the proof: a later Epic branch commit makes it stale.
         updates.validatedCommit = details.integrationCommit;
+        updates.epicDeliveryTargetBranch = details.epicDeliveryTargetBranch ??
+            details.triageMeta?.epicDeliveryTargetBranch;
         updates.validatedAt = now;
         updates.epicIntegrationReport = null;
         updates.userVerifiedAt = null;
@@ -774,6 +805,10 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
         if (Object.hasOwn(details, "humanReviewedAt")) updates.humanReviewedAt = details.humanReviewedAt ?? null;
         updates.failureReason = null;
         updates.failedAt = null;
+    }
+
+    if (event === "epic_publication_confirmed") {
+        updates.verifiedAt = now;
     }
 
     if (event === "epic_integration_failed") {
@@ -792,6 +827,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
     }
 
     if (event === "validation_passed") {
+        if (details.pendingPublication) updates.status = "reviewed";
         const executionMode = normalizeExecutionMode(details.executionMode ?? updates.executionMode);
         const deliveryEvidence = normalizeDeliveryEvidence(details.deliveryEvidence);
         if (isPlannedChangeClassification(updates.classification)) {
@@ -892,6 +928,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
 
     // A new execution or review must not retain the previous implementation's stamp.
     if (updates.deliveryEvidence === null) updates.validatedCommit = null;
+    if (updates.verifiedAt === null || updates.validationPhase === "mechanical") updates.publicationReceipt = null;
     return updates;
 }
 
@@ -1116,7 +1153,9 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
                             );
                             const allChildrenDone = projectedChildren.length > 0 &&
                                 projectedChildren.every((child) =>
-                                    isPlanDependencySatisfiedStatus(child.attrs.status) &&
+                                    (isPlanDependencySatisfiedStatus(child.attrs.status) ||
+                                        (details.pendingPublication && child.name === planName &&
+                                            child.attrs.status === "reviewed")) &&
                                     (child.attrs.status !== "verified" ||
                                         hasModeAppropriateDeliveryEvidence(child.attrs))
                                 );
@@ -1132,6 +1171,7 @@ export async function recordPlanEvent({ cwd, planName, event, currentStatus, det
                                     "ready_for_work",
                                     parentDetails,
                                 );
+                                parentUpdates.status = details.pendingPublication ? "reviewed" : "verified";
                             }
                         }
                     }
@@ -1211,60 +1251,38 @@ export async function stageValidationPassedInExecutionWorktree({
     const planPath = `docs/plans/${planName}.md`;
     const executionPlan = await loadPlan(executionCwd, planName);
     if (!executionPlan) throw new Error(`Plan not found in its execution worktree: ${planName}`);
-    if (executionPlan.attrs.status === "validated") {
-        if (getDeclaredPlanStatus(executionPlan.markdown) === "validated") {
-            return { attrs: executionPlan.attrs, planPaths: [planPath] };
-        }
-        const attrs = await updatePlanFrontMatter(
-            executionCwd,
-            planName,
-            { status: "validated" },
-            executionPlan.attrs,
-            { expectedRevision: executionPlan.revision },
-        );
-        return { attrs, planPaths: [planPath] };
+    if (executionPlan.attrs.status !== "reviewed" && executionPlan.attrs.status !== "validated") {
+        throw new Error(`Cannot prepare publication for ${planName} at "${executionPlan.attrs.status}".`);
     }
-    if (executionPlan.attrs.status === "verified" && executionPlan.attrs.deliveryEvidence?.mode === "worktree_merge") {
-        const attrs = await updatePlanFrontMatter(
-            executionCwd,
+    const prepared = executionPlan.attrs.status === "reviewed" &&
+        Boolean(executionPlan.attrs.validatedAt && executionPlan.attrs.deliveryEvidence);
+    const attrs = prepared ? executionPlan.attrs : executionPlan.attrs.status === "reviewed"
+        ? await recordPlanEvent({
+            cwd: executionCwd,
             planName,
-            {
-                status: "validated",
-                validatedAt: executionPlan.attrs.verifiedAt || executionPlan.attrs.updatedAt ||
-                    new Date().toISOString(),
-                verifiedAt: null,
+            event: "validation_passed",
+            currentStatus: "reviewed",
+            details: {
+                ...details,
+                triageMeta: executionPlan.attrs,
+                pendingPublication: true,
+                cleanupMergedWorktrees: false,
+                ...(getDeclaredPlanStatus(executionPlan.markdown) === "validated" && executionPlan.attrs.validatedAt
+                    ? { now: () => new Date(String(executionPlan.attrs.validatedAt)) }
+                    : {}),
             },
-            executionPlan.attrs,
-            { expectedRevision: executionPlan.revision },
-        );
-        return { attrs, planPaths: [planPath] };
+        })
+        : await updatePlanFrontMatter(executionCwd, planName, { status: "reviewed" }, executionPlan.attrs, {
+            expectedRevision: executionPlan.revision,
+        });
+    const planPaths = [planPath];
+    if (attrs.parentPlan) {
+        const parent = await loadPlan(executionCwd, attrs.parentPlan);
+        if (parent?.attrs.status === "reviewed" && parent.attrs.epicCompletionMode === "done_enough") {
+            planPaths.push(`docs/plans/${attrs.parentPlan}.md`);
+        }
     }
-    if (executionPlan.attrs.status !== "validated_reviewer") {
-        throw new Error(
-            `Cannot record completed validation for ${planName}: the execution Plan is at ` +
-                `"${executionPlan.attrs.status}" instead of "validated_reviewer".`,
-        );
-    }
-    const attrs = await recordPlanEvent({
-        cwd: executionCwd,
-        planName,
-        event: "validation_passed",
-        currentStatus: "validated_reviewer",
-        details: { ...details, triageMeta: executionPlan.attrs, cleanupMergedWorktrees: false },
-    });
-    const validatedPlan = await loadPlan(executionCwd, planName);
-    if (!validatedPlan) throw new Error(`Plan not found after validation passed: ${planName}`);
-    if (getDeclaredPlanStatus(validatedPlan.markdown) === "validated") {
-        return { attrs, planPaths: [planPath] };
-    }
-    const persistedAttrs = await updatePlanFrontMatter(
-        executionCwd,
-        planName,
-        { status: "validated" },
-        attrs,
-        { expectedRevision: validatedPlan.revision },
-    );
-    return { attrs: persistedAttrs, planPaths: [planPath] };
+    return { attrs, planPaths };
 }
 
 /**

@@ -42,6 +42,7 @@ export interface WorkflowPresentationInput {
     classification?: string | null;
     projectPlanType?: string | null;
     status?: string | null;
+    validationPhase?: "mechanical" | "semantic" | "delivery";
     progressFacts?: WorkflowProgressFact[];
     liveValidationProgress?: LiveValidationProgress | null;
     degradedMessage?: string | null;
@@ -180,7 +181,7 @@ function baseStates(input: WorkflowPresentationInput, stages: StageDefinition[])
     }
 
     if (
-        ["ready_for_work", "in_progress", "implemented", "validated_ci", "validated_reviewer", "validated"].includes(
+        ["ready_for_work", "in_progress", "implemented", "validated_ci", "reviewed", "validated"].includes(
             status,
         )
     ) {
@@ -189,14 +190,14 @@ function baseStates(input: WorkflowPresentationInput, stages: StageDefinition[])
     if (status === "feedback" || status === "failed") states.set("planning", "needs_attention");
     else if (status === "ready_for_work") states.set("execution", "pending");
     else if (status === "in_progress") states.set("execution", "running");
-    else if (status === "implemented") {
+    else if (status === "implemented" && input.validationPhase !== "semantic") {
         states.set("execution", "completed");
         states.set("mechanical", "running");
-    } else if (status === "validated_ci") {
+    } else if (status === "validated_ci" || (status === "implemented" && input.validationPhase === "semantic")) {
         states.set("execution", "completed");
         states.set("mechanical", "completed");
         states.set("semantic", "running");
-    } else if (status === "validated_reviewer") {
+    } else if (status === "reviewed") {
         states.set("execution", "completed");
         states.set("mechanical", "completed");
         states.set("semantic", "completed");
@@ -233,12 +234,16 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
         const kind = clean(fact.kind);
         const phase = clean(fact.phase);
         if (kind === "validation_checkpoint") {
+            if (phase === "semantic" || phase === "delivery") states.set("mechanical", "completed");
+            if (phase === "delivery") states.set("semantic", "completed");
             const stageId = stageForValidationPhase(phase);
             if (stageId && states.has(stageId)) states.set(stageId, stageStateFromCheckpoint(clean(fact.state)));
             if ((clean(fact.state) === "awaiting_repair" || clean(fact.repairKind)) && states.has("repair")) {
                 states.set("repair", clean(fact.state) === "paused" ? "paused" : "running");
             }
         } else if (kind === "publication") {
+            if (states.has("code_review")) states.set("code_review", "completed");
+            if (states.has("delivery")) states.set("delivery", "running");
             if (fact.failure && states.has("delivery")) states.set("delivery", "needs_attention");
             else if (["publication_verified", "cleanup_complete"].includes(phase) && states.has("delivery")) {
                 states.set("delivery", "completed");
@@ -249,7 +254,11 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
             if (status === "validation_failed") {
                 const planStatus = clean(input.status).toLowerCase();
                 states.set(
-                    planStatus === "implemented" ? "mechanical" : planStatus === "validated_ci" ? "semantic" : "repair",
+                    planStatus === "implemented" && input.validationPhase !== "semantic"
+                        ? "mechanical"
+                        : planStatus === "validated_ci" || input.validationPhase === "semantic"
+                        ? "semantic"
+                        : "repair",
                     "needs_attention",
                 );
             }

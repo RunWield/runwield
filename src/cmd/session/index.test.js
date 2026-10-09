@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { runSessionCommand } from "./index.js";
+import { runSessionCommand } from "./index.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
 
 initRunWieldTheme();

@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -166,7 +166,7 @@ Deno.test("executePlan runs preparation, Engineer, checkpoint, lifecycle, and re
     });
 });
 
-Deno.test("executePlan does not seed or hide execution worktree validation settings", async () => {
+Deno.test("executePlan carries project validation settings without hiding the versionable file", async () => {
     await withRuntimeCommandFixture("plan-executor-ci-settings-", async ({ projectRoot, setModelMessages }) => {
         await initializeGitProject(projectRoot);
         await setCustomSetting("verification_command", "printf primary", "project", projectRoot);
@@ -192,10 +192,9 @@ Deno.test("executePlan does not seed or hide execution worktree validation setti
 
             const executionCwd = result.executionContext?.executionCwd;
             assert(executionCwd, JSON.stringify(result));
-            await assertRejects(
-                () => Deno.stat(`${executionCwd}/.wld/settings.json`),
-                Deno.errors.NotFound,
-            );
+            const primarySettings = await Deno.readTextFile(`${projectRoot}/.wld/settings.json`);
+            assertEquals(await Deno.readTextFile(`${executionCwd}/.wld/settings.json`), primarySettings);
+            assertStringIncludes(await git(executionCwd, ["show", "HEAD:.wld/settings.json"]), "printf primary");
             const exclude = await new Deno.Command("git", {
                 args: ["rev-parse", "--git-path", "info/exclude"],
                 cwd: executionCwd,

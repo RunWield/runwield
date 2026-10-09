@@ -46,7 +46,7 @@ Deno.test("Workspace Session projects code-review interactions to one stable in-
     assertStringIncludes(server, '"/projects/:projectId/sessions/:runwieldSessionId/review/code"');
 });
 
-Deno.test("Workspace Code Review keeps an empty target-relative patch reviewable", async () => {
+Deno.test("Workspace Code Review keeps an empty patch reviewable with the repair conversation", async () => {
     const service = new WorkspaceSessionContinuationService({ store: {} });
     try {
         service.operations.set("operation-empty", {
@@ -59,7 +59,21 @@ Deno.test("Workspace Code Review keeps an empty target-relative patch reviewable
             id: "interaction-empty",
             type: "code_review",
             prompt: "Review the code changes.",
-            _meta: { diffText: "", planName: "empty-review" },
+            _meta: {
+                diffText: "",
+                planName: "empty-review",
+                reviewConversation: {
+                    id: "review-conversation",
+                    agentLabel: "Reviewer Feedback Engineer",
+                    revision: 1,
+                    events: [{
+                        type: "assistant_text_delta",
+                        delta: "The repair is complete.",
+                        messageId: "repair-reply",
+                        agentName: "reviewer-feedback-engineer",
+                    }],
+                },
+            },
         });
         const liveReview = await service.getLiveCodeReview({
             projectId: "project-1",
@@ -69,6 +83,7 @@ Deno.test("Workspace Code Review keeps an empty target-relative patch reviewable
         });
 
         assertEquals(liveReview?.request?.codeReview?.rawPatch, "");
+        assertEquals(liveReview?.request?.codeReview?.conversationEvents?.[0]?.delta, "The repair is complete.");
         assertStringIncludes(String(liveReview?.request?.reviewUrl), "/review/code?");
         service.operations.get("operation-empty")?.answer?.resolve({ outcome: "canceled" });
         await interaction;

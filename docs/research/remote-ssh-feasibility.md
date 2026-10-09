@@ -71,7 +71,7 @@ Official provider documentation confirms that remote browser login is not the sa
 - Settings, Agents, skills, and project tools currently share a filesystem context. Skills can contain absolute local
   paths. Copying settings alone does not make those resources or their executable dependencies available remotely.
   Sources: [`settings.js`](../../src/shared/settings.js), [`session.js`](../../src/shared/session/session.js),
-  [customization documentation](../customization.md).
+  [customization documentation](../user-documentation/customization.md).
 - Project Memory currently uses the primary repository directory name, with a current-directory name fallback. Unrelated
   same-name folders can select the same collection. Core Memory injection and `/sleep` use additional selection paths.
   Remote support must not infer shared project knowledge from a folder name alone. Sources:

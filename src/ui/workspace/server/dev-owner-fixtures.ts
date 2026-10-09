@@ -1,3 +1,4 @@
+import { DEV_DELIVERY_REPORT } from "./dev-delivery-fixture.ts";
 import type { OwnerPlanProgress } from "./owner-plan-progress.ts";
 
 export const DEV_OWNER_PROJECT = {
@@ -307,6 +308,29 @@ function devOwnerWorkflowEvents() {
 }
 
 function devOwnerShowcaseEvents(session: typeof DEV_OWNER_SESSIONS[number]) {
+    if (session.runwieldSessionId === "fix-plan-evidence") {
+        return [
+            {
+                type: "user_message",
+                messageId: "delivery-fixture-user",
+                text: "Show delivery evidence in this Session. (Illustrative fixture)",
+                timestamp: session.headerTimestamp,
+            },
+            {
+                type: "system_status",
+                messageId: "delivery-fixture-report",
+                message: "Illustrative delivery evidence",
+                timestamp: session.lastCatalogedAt,
+                validationProgress: {
+                    kind: "workflow",
+                    stage: "terminal",
+                    outcome: "verified",
+                    checks: { ci: "passed", semanticReview: "passed", humanReview: "passed", merge: "passed" },
+                    deliveryReport: DEV_DELIVERY_REPORT,
+                },
+            },
+        ];
+    }
     if (session.runwieldSessionId === "agy-cli-gemini-flash") {
         return [
             {

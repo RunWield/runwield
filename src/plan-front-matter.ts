@@ -41,6 +41,7 @@ export const PLAN_FRONT_MATTER_KEYS = Object.freeze({
     epicDoneEnoughAt: "epicDoneEnoughAt",
     epicDoneEnoughSummary: "epicDoneEnoughSummary",
     epicBaseCommit: "epicBaseCommit",
+    epicDeliveryTargetBranch: "epicDeliveryTargetBranch",
     epicIntegrationReport: "epicIntegrationReport",
     executionMode: "executionMode",
     deliveryEvidence: "deliveryEvidence",

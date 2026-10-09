@@ -14,6 +14,7 @@ import { AGENTS, getCwd, SUBAGENTS } from "../../constants.js";
 import { COMMAND_NAMES } from "../registry.js";
 import { EMPTY_PROJECT_DIRECTORY_INIT_NOOP_BODY, isEmptyProjectDirectory } from "../../shared/project-state.ts";
 import { extractBundledAgentDefs, extractBundledSkills } from "../../shared/session/agent-assets.ts";
+import { extractBundledModelPresets } from "../../shared/model-presets.ts";
 import { createSessionRuntime, SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { getSettingsManager } from "../../shared/settings.js";
@@ -23,9 +24,13 @@ import { isProjectInitComplete, requireProjectInitArtifact } from "./init-comple
 import { createInitVerificationCommandOperation } from "../../tools/init-verification-command.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
+import { confirmInitFiles, INIT_DECLINED_MESSAGE } from "./init-consent.ts";
+import { recordInitializedProjectContext } from "../../shared/worktree-project-context.ts";
 
 interface InitCommandBaseOptions {
-    uiAPI?: Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage">;
+    uiAPI?:
+        & Pick<import("../../ui/tui/types.js").UiAPI, "appendSystemMessage">
+        & Partial<Pick<import("../../ui/tui/types.js").UiAPI, "promptSelect">>;
     sessionPort: InteractiveSessionPort;
     projectRoot?: string;
 }
@@ -89,8 +94,6 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
         return;
     }
 
-    await enterProjectRuntime(getCwd());
-
     // ── Init-state guard ──────────────────────────────────────────
     if (await isProjectInitComplete(projectRoot)) {
         const msg = `[RunWield] Init has already been run for this project (${projectRoot}).\n` +
@@ -109,6 +112,7 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
     // stops because no model is configured.
     await extractBundledAgentDefs();
     await extractBundledSkills();
+    extractBundledModelPresets();
 
     if (!options.uiAPI && shouldLaunchTuiForModelSetup(getModelRegistry(), getSettingsManager(projectRoot))) {
         await options.sessionPort.startInteractiveSession(`/${COMMAND_NAMES.INIT}`, {
@@ -116,6 +120,13 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
         });
         return;
     }
+
+    if (!await confirmInitFiles(options)) {
+        if (options.uiAPI) options.uiAPI.appendSystemMessage(INIT_DECLINED_MESSAGE);
+        else console.warn(INIT_DECLINED_MESSAGE);
+        return;
+    }
+    await enterProjectRuntime(projectRoot);
 
     // ── Load init subagent definition ──────
     // The registry maps this prompt to the canonical "init" runtime identifier
@@ -149,6 +160,7 @@ export async function runInitCommand(argv: string[], options: InitCommandOptions
         }
         await requireProjectInitArtifact(projectRoot);
 
+        await recordInitializedProjectContext(projectRoot);
         await recordInitDone(projectRoot);
 
         if (options.uiAPI) {

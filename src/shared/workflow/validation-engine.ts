@@ -26,7 +26,7 @@ import type { ValidationLoopArgs, ValidationPhaseResult, WorkflowValidationResul
 import { MAX_PHASES_PER_CALL, PHASE_STATUS, VALIDATION_STATUS_ORDER } from "./validation-types.ts";
 import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 
-type PlanStatus = "implemented" | "validated_ci" | "validated_reviewer" | "validated";
+type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
 type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
 
 /**
@@ -87,17 +87,15 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
  */
 function resolveNextPhase(
     args: ValidationLoopArgs,
-    status: "implemented" | "validated_ci" | "validated_reviewer" | "validated",
+    status: "implemented" | "validated_ci" | "reviewed" | "validated",
 ): ValidationPhaseName {
-    const fromStatus: ValidationPhaseName = status === "validated_reviewer" || status === "validated"
+    const fromStatus: ValidationPhaseName = status === "validated"
         ? "delivery"
-        : status === "validated_ci"
-        ? "semantic"
-        : "mechanical";
+        : validationPhaseForStatus(status, args.triageMeta.validationPhase) || "mechanical";
     const claimed = args.continuationPhase;
     if (!claimed) return fromStatus;
     const claimedIndex = VALIDATION_STATUS_ORDER.indexOf(PHASE_STATUS[claimed]);
-    return claimedIndex < VALIDATION_STATUS_ORDER.indexOf(status) ? fromStatus : claimed;
+    return claimedIndex < VALIDATION_STATUS_ORDER.indexOf(PHASE_STATUS[fromStatus]) ? fromStatus : claimed;
 }
 
 /**
@@ -112,7 +110,7 @@ function resolveNextPhase(
 export async function runValidationLoop(args: ValidationLoopArgs): Promise<WorkflowValidationResult> {
     const projectRoot = getProjectRoot(args);
     let result: ValidationPhaseResult | undefined;
-    let phaseArgs = args;
+    let phaseArgs: ValidationLoopArgs = { ...args, codeReviewConversation: { history: [] } };
     for (let phase = 0; phase < MAX_PHASES_PER_CALL; phase += 1) {
         result = await runValidationPhase(phaseArgs);
         if (result.kind !== "paused") {
@@ -137,7 +135,7 @@ export async function runValidationLoop(args: ValidationLoopArgs): Promise<Workf
         phaseArgs = { ...phaseArgs, executionContext: undefined, continuationPhase: undefined };
     }
     const plan = await loadPlan(validationPlanCwd(phaseArgs, projectRoot), args.planName);
-    const phase = validationPhaseForStatus(plan?.attrs.status);
+    const phase = validationPhaseForStatus(plan?.attrs.status, plan?.attrs.validationPhase);
     emitStatus(args, validationUserMessage("retry_pause"), "warning");
     return {
         kind: "paused",
@@ -158,7 +156,7 @@ function canonicalOperationalResult(
         failure,
         attempt: 1,
         policy: readValidationRetryPolicy(projectRoot),
-        nextPhase: validationPhaseForStatus(args.triageMeta.status) || undefined,
+        nextPhase: validationPhaseForStatus(args.triageMeta.status, args.triageMeta.validationPhase) || undefined,
     });
     return {
         kind: decision.action === "halt" ? "failed" : "paused",
@@ -174,7 +172,7 @@ export async function loadCanonicalValidationPlan(
 ): Promise<
     | {
         kind: "ok";
-        status: "implemented" | "validated_ci" | "validated_reviewer" | "validated";
+        status: "implemented" | "validated_ci" | "reviewed" | "validated";
         attrs: PlanFrontMatter;
         markdown: string;
     }
@@ -233,7 +231,7 @@ export async function loadCanonicalValidationPlan(
     }
     return {
         kind: "ok",
-        status: status as "implemented" | "validated_ci" | "validated_reviewer" | "validated",
+        status: status as "implemented" | "validated_ci" | "reviewed" | "validated",
         attrs: plan.attrs,
         markdown: plan.markdown,
     };

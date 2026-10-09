@@ -1,0 +1,49 @@
+{
+    "description": "Codex account: Luna for routing and operations, Sol for execution, Astra for planning and review.",
+    "agents": {
+        "router": {
+            "model": "openai-codex/gpt-6-luna",
+            "thinkingLevel": "medium"
+        },
+        "operator": {
+            "model": "openai-codex/gpt-6-luna",
+            "thinkingLevel": "high"
+        },
+        "slicer": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "high"
+        },
+        "guide": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "engineer": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "frontend-engineer": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "init": {
+            "model": "openai-codex/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "architect": {
+            "model": "openai-codex/gpt-6-astra",
+            "thinkingLevel": "high"
+        },
+        "planner": {
+            "model": "openai-codex/gpt-6-astra",
+            "thinkingLevel": "high"
+        },
+        "ideator": {
+            "model": "openai-codex/gpt-6-astra",
+            "thinkingLevel": "high"
+        },
+        "reviewer": {
+            "model": "openai-codex/gpt-6-astra",
+            "thinkingLevel": "medium"
+        }
+    }
+}

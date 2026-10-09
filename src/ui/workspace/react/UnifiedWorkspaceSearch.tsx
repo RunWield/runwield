@@ -3,7 +3,7 @@ import {
     RunWieldButton,
     RunWieldLink,
     RunWieldThinkingDots,
-} from "../../design-system/components/react/RunWieldPrimitives.jsx";
+} from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import {
     RunWieldSearchDialog,
     RunWieldSearchFilters,

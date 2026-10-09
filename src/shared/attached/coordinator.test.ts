@@ -2,7 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { dirname, join } from "@std/path";
 import { WORK_KINDS } from "../../constants.js";
 import { git } from "../git-test-fixture.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import type { AttachedJsonObject } from "./operations.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import {

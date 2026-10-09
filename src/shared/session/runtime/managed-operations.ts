@@ -20,6 +20,7 @@ import {
     resolvePersistedExecutionRootConfiguration,
     resolvePersistedResumeModel,
     resolvePersistedRootConfiguration,
+    restorePublishedSessionProjectRoot,
 } from "./support.ts";
 import type { RuntimeRootSessionManager } from "./support.ts";
 
@@ -665,6 +666,7 @@ export class RuntimeManagedOperations {
                 managedSegmentCwd: managedProjectSessionDir ? generationSegment?.transcriptCwd : undefined,
             });
             hostedSession.setRootSessionManager(sessionManager, capability);
+            await restorePublishedSessionProjectRoot(hostedSession, this.services.sessionStore);
             if (options.initialTutorialContext !== undefined) {
                 hostedSession.updateTutorialContext(options.initialTutorialContext, committedPlanAssociations);
             }

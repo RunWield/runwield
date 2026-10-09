@@ -12,7 +12,7 @@ import {
     preflightImageAttachments,
     prepareImagesForModel,
     resolveVisionFallbackModel,
-} from ".././image-attachments.js";
+} from ".././image-attachments.ts";
 import { getModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../../models/model-registry.ts";
 
 import { getRuntimeRootAgentSession, isRuntimeRootSessionManager, resolvePersistedResumeModel } from "./support.ts";

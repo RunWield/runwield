@@ -1,7 +1,6 @@
 # RunWield commands
 
-Use this file for command orientation. Keep each answer brief; link to
-https://github.com/gandazgul/runwield/blob/main/docs/usage.md for full usage.
+Use this file for command orientation. Keep each answer brief; link to https://docs.runwield.dev/usage/ for full usage.
 
 ## CLI commands
 

@@ -930,7 +930,11 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
             ...archivedPlans.map((plan) => ({ ...plan, name: `archived/${plan.name}` })),
         ]
     ) {
-        if (!["validated", "verified", "user_verified"].includes(plan.attrs.status || "")) continue;
+        const reviewedCandidate = plan.attrs.status === "reviewed" &&
+            Boolean(plan.attrs.validatedCommit || plan.attrs.deliveryEvidence?.mode === "worktree_merge");
+        if (!reviewedCandidate && !["validated", "verified", "user_verified"].includes(plan.attrs.status || "")) {
+            continue;
+        }
         if (!isPlannedChangeClassification(plan.attrs.classification)) continue;
         const evidence = plan.attrs.deliveryEvidence;
         const legacy = evidence?.mode === "worktree_merge" ? evidence : undefined;

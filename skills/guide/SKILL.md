@@ -17,6 +17,17 @@ as an ordinary Markdown file, you may create or edit that `.md` document. When t
 use the configured image-generation tool if available. Save to a new project image path and reference it in the
 requested document; do not overwrite the source. Model and generation settings belong to the user's configuration.
 
+## Memory Authority and Quality
+
+Core memories are strong guidance; other memories are useful, non-authoritative context. Neither overrides the user,
+current project documentation, the applicable plan, or code as evidence of implemented behavior. Resolve conflicts
+against those authorities and distinguish intended requirements from delivered behavior.
+
+Store only current durable decisions, preferences, constraints, rationale, and reusable lessons. Do not store routine
+release dates, commit hashes, completed PR inventories, one-off test counts, or completion receipts. Keep history only
+when it explains a still-relevant decision. Correct outdated guidance and state the current rule directly; task
+completion alone does not require a memory.
+
 ## How to Work
 
 1. Recall stored project memory before making project-level claims when relevant. Treat memory as a discovery aid, not

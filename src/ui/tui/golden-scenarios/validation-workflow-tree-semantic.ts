@@ -68,7 +68,13 @@ export const validationTreeSemanticRepairIncompleteScenario = withValidationBran
             { type: "enter" },
             { type: "waitForEvent", event: "runtime:tool:start:review_complete", timeoutMs: 120000 },
             { type: "waitForEvent", event: "runtime:agent:plan-engineer", timeoutMs: 120000 },
-            { type: "waitForPlanStatus", planName: "plan", statuses: ["validated_ci"], timeoutMs: 90000 },
+            {
+                type: "waitForPlanStatus",
+                planName: "plan",
+                statuses: ["implemented"],
+                validationPhase: "semantic",
+                timeoutMs: 90000,
+            },
             { type: "waitForIdle", timeoutMs: 120000 },
         ],
         assertions: [],
@@ -102,7 +108,7 @@ export const validationTreeSemanticReviewerIncompletePauseScenario = withValidat
             text: `Reviewer attempt ${ordinal} stopped without review_complete.`,
         })),
         scriptedInteractions: [
-            { type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" },
+            { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
         ],
         actions: [
             {
@@ -217,7 +223,7 @@ export const validationTreeSemanticProviderErrorRetryScenario = withValidationBr
                 ],
             },
         ],
-        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" }],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
                 type: "seedActiveWorktree",
@@ -387,6 +393,7 @@ export const validationTreeSemanticNudgeOmittedPriorFindingScenario = withValida
             { type: "type", text: "submit the planned change for review" },
             { type: "enter" },
             { type: "waitForPlanStatus", planName: "plan", statuses: ["verified"], timeoutMs: 300000 },
+            { type: "waitForWorktreeRegistryStatus", planName: "plan", statuses: ["absent"], timeoutMs: 90000 },
             { type: "assertWorkflowDurability" },
         ],
         assertions: [],
@@ -471,7 +478,7 @@ export const validationTreeSemanticNudgeMissingReviewCompleteScenario = withVali
             },
         ],
         scriptedInteractions: [
-            { type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" },
+            { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
         ],
         actions: [
             {
@@ -567,7 +574,7 @@ export const validationTreeSemanticNudgeMissingDiffInspectionScenario = withVali
             },
         ],
         scriptedInteractions: [
-            { type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" },
+            { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
         ],
         actions: [
             {
@@ -847,7 +854,7 @@ export const validationTreeSemanticRoundLimitStopScenario = withValidationBranch
             },
         ],
         scriptedInteractions: [
-            { type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" },
+            { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
             { type: "select", promptIncludes: "Look once more, read it, or stop.", value: "stop" },
         ],
         actions: [
@@ -978,7 +985,8 @@ export const validationTreeSemanticRoundLimitStopDirectScenario = withValidation
             {
                 type: "waitForPlanStatus",
                 planName: "semantic-round-limit-stop-direct",
-                statuses: ["validated_ci"],
+                statuses: ["implemented"],
+                validationPhase: "semantic",
                 timeoutMs: 90000,
             },
             { type: "captureProjectState", planNames: ["semantic-round-limit-stop-direct"] },
@@ -994,7 +1002,7 @@ export const validationTreeSemanticRoundLimitContinueScenario = {
     ...validationTreeSemanticRoundLimitStopScenario,
     name: "validation-tree-semantic-round-limit-continue",
     scriptedInteractions: [
-        { type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" },
+        { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
         { type: "select", promptIncludes: "Look once more, read it, or stop.", value: "continue" },
     ],
     actions: validationTreeSemanticRoundLimitStopScenario.actions.flatMap((action: { type?: string }) =>
@@ -1018,7 +1026,7 @@ export const validationTreeSemanticRoundLimitHumanReviewScenario = {
     ...validationTreeSemanticRoundLimitStopScenario,
     name: "validation-tree-semantic-round-limit-human-review",
     scriptedInteractions: [
-        { type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" },
+        { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
         { type: "select", promptIncludes: "Look once more, read it, or stop.", value: "code_review" },
     ],
     humanReviewDecisions: [{ approved: true, feedback: "Human approved after reading the repaired changes." }],
@@ -1056,7 +1064,7 @@ export const validationTreeSemanticRoundLimitFollowUpScenario = {
         }) + "\n",
     }],
     scriptedInteractions: [
-        { type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" },
+        { type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" },
         { type: "select", promptIncludes: "Look once more, read it, or stop.", value: "engineer_follow_up" },
         { type: "text", promptIncludes: "Tell the Repair Engineer", value: "Apply the follow-up change and check it." },
         { type: "select", promptIncludes: "Look once more, read it, or stop.", value: "continue" },
@@ -1125,7 +1133,7 @@ export const validationTreeSemanticRoundLimitFollowUpScenario = {
         // Only the real CI subprocess can create this file, and only after
         // the follow-up Engineer changed the implementation.
         assertEquals(result.state.publication?.deliveredText, "checked followup");
-        assertEquals(result.state.publication?.remotePlanStatus, "validated");
+        assertEquals(result.state.publication?.remotePlanStatus, "verified");
     }],
 };
 
@@ -1146,7 +1154,7 @@ export const validationTreeEmptyDiffSkipScenario = withValidationBranches(
             text:
                 "---\nclassification: QUICK_FIX\ncomplexity: LOW\nsummary: Empty diff skip\naffectedPaths: []\nstatus: ready_for_work\nplanId: empty-diff-skip-plan\n---\n# Empty diff skip\n\nAlready complete content.\n",
         }],
-        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" }],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
                 type: "seedActiveWorktree",
@@ -1228,7 +1236,7 @@ export const validationTreeSemanticRoundModeDiscoveryToVerifyScenario = withVali
                 ],
             },
         ],
-        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" }],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
                 type: "seedActiveWorktree",
@@ -1270,7 +1278,7 @@ export const validationTreePlanOnlyDiffFailsScenario = withValidationBranches(
             text:
                 "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Plan only diff\naffectedPaths: []\nstatus: ready_for_work\nplanId: plan-only-diff-plan\n---\n# Plan only diff\n\nDraft content.\n",
         }],
-        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" }],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             { type: "seedActiveWorktree", planName: "plan-only-diff", status: "validated_ci" },
             { type: "type", text: "/load-plan plan-only-diff" },

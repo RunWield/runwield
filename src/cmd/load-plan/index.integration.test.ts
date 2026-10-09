@@ -176,7 +176,7 @@ async function prepareValidatedPublicationPlan(
     await git(projectRoot, ["config", "user.email", "tests@example.com"]);
     await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
     await writePlan(projectRoot, planName, {
-        status: "validated_reviewer",
+        status: "reviewed",
         executionAgent: "engineer",
         executionMode: "worktree",
         humanReviewMode: "none",
@@ -197,7 +197,7 @@ async function prepareValidatedPublicationPlan(
     if (!worktreePlan) throw new Error("worktree Plan fixture disappeared");
     await savePlan(worktree.path, planName, worktreePlan.markdown || worktreePlan.body || `# ${planName}`, {
         ...worktreePlan.attrs,
-        status: "validated_reviewer",
+        status: "reviewed",
         executionAgent: "engineer",
         executionMode: "worktree",
         humanReviewMode: "none",
@@ -343,7 +343,7 @@ Deno.test("load-plan prints its real command help", async () => {
 Deno.test("sibling dependency resolution reads canonical child Plans from the fixture catalogue", async () => {
     await withRuntimeCommandFixture("runwield-load-plan-command-", async ({ projectRoot }) => {
         await writePlan(projectRoot, "epic", { classification: "PROJECT", status: "ready_for_work" });
-        await writePlan(projectRoot, "epic/01-first", { status: "validated", parentPlan: "epic" });
+        await writePlan(projectRoot, "epic/01-first", { status: "verified", parentPlan: "epic" });
         await writePlan(projectRoot, "epic/02-second", { status: "implemented", parentPlan: "epic" });
 
         const dependencies = await resolveSiblingChildPlanDependencies(projectRoot, "epic", [
@@ -355,7 +355,7 @@ Deno.test("sibling dependency resolution reads canonical child Plans from the fi
         assertEquals(
             dependencies.map(({ dependency, planName, status, state }) => ({ dependency, planName, status, state })),
             [
-                { dependency: "01-first", planName: "epic/01-first", status: "validated", state: "verified" },
+                { dependency: "01-first", planName: "epic/01-first", status: "verified", state: "verified" },
                 {
                     dependency: "epic/02-second",
                     planName: "epic/02-second",
@@ -601,7 +601,7 @@ Deno.test("load-plan offers lifecycle actions for a validated Plan already publi
 
             assertEquals(ui.prompts.includes("What would you like to do?"), true);
             assertEquals(await loadPlan(projectRoot, "published"), null);
-            assertEquals((await loadArchivedPlan(projectRoot, "published"))?.attrs.archivedFromStatus, "validated");
+            assertEquals((await loadArchivedPlan(projectRoot, "published"))?.attrs.archivedFromStatus, "verified");
         } finally {
             runtime.closeAllSessions();
         }
@@ -626,7 +626,7 @@ Deno.test("load-plan offers completed actions for a validated non-Git Plan witho
                 editor: ui.editor,
             });
             assertEquals(ui.prompts.some((prompt) => prompt.startsWith("Plan recovery")), false);
-            assertEquals((await loadArchivedPlan(projectRoot, "finished"))?.attrs.archivedFromStatus, "validated");
+            assertEquals((await loadArchivedPlan(projectRoot, "finished"))?.attrs.archivedFromStatus, "verified");
         } finally {
             runtime.closeAllSessions();
         }
@@ -968,9 +968,18 @@ Deno.test("load-plan marks an Epic done enough only after the real lifecycle wri
             });
 
             const epic = await loadPlan(projectRoot, "epic");
-            assertEquals(epic?.attrs.status, "validated");
+            assertEquals(epic?.attrs.status, "closed_without_verification");
             assertEquals(typeof epic?.attrs.epicDoneEnoughAt, "string");
             assertEquals((await loadPlan(projectRoot, "epic/child"))?.attrs.status, "ready_for_work");
+            const reloaded = makeUi(["cancel"]);
+            await runLoadPlanCommand(["epic"], {
+                sessionRuntime: runtime,
+                sessionId,
+                uiAPI: reloaded.uiAPI,
+                editor: reloaded.editor,
+            });
+            assertEquals(reloaded.promptOptions.flat().some((option) => option.label.includes("Pick a child")), true);
+            assertEquals(ui.messages.some((message) => message.includes("status to verified")), false);
         } finally {
             runtime.closeAllSessions();
         }

@@ -10,7 +10,7 @@ import {
     OWNER_COORDINATION_SCHEMA_V3_SQL,
     OWNER_COORDINATION_SCHEMA_V4_SQL,
     OWNER_COORDINATION_SCHEMA_V5_SQL,
-} from "./schema.js";
+} from "./schema.ts";
 import {
     appendSessionTranscriptSegment,
     diagnoseSessionSegmentLineage,

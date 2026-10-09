@@ -130,7 +130,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   `../../../../src/cmd/workspace/serve.ts`, and affected existing Windows process callers — portable termination and
   shutdown behavior proved with real processes.
 - `../../../../scripts/run-tests.js`, `../../../../scripts/run-with-snip.ts`, and
-  `../../../../src/testing/process-global-lock.js` as needed — portable isolated test homes, filesystem paths and
+  `../../../../src/testing/process-global-lock.ts` as needed — portable isolated test homes, filesystem paths and
   temporary locks; do not weaken isolation or make Snip a new product requirement.
 - `../../../../src/cmd/update`, `../../../../src/shared/update-check.js`, update/help messages — Windows package-owned
   update handling, while retaining Homebrew protection.

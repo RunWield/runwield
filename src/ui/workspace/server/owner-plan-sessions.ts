@@ -1,14 +1,19 @@
 /** @module ui/workspace/server/owner-plan-sessions */
 
+import type { OwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
 import { findPlanEvidenceById } from "../../../plan-store.js";
 import { findPlanAssociatedSessions } from "../../../shared/session/plan-session-lookup.ts";
 import { ownerErrorJson, ownerJson } from "../routes/owner-api.js";
-import { requireOwnerProjectRoot } from "./owner-projects.js";
+import { requireOwnerProjectRoot } from "./owner-projects.ts";
+
+interface OwnerRouteState {
+    store: OwnerCoordinationStore;
+}
 
 interface OwnerRouteContext {
     req: Request;
     params: Record<string, string>;
-    state: { store: import("../../../shared/session/file-session-store-types.ts").FileSessionStore };
+    state: OwnerRouteState;
 }
 
 export async function ownerProjectPlanSessionsApi(ctx: OwnerRouteContext): Promise<Response> {

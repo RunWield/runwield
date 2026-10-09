@@ -1,10 +1,11 @@
 ---
+import type { OwnerProjectView } from "../server/owner-projects.ts";
 import { PLAN_SEARCH_QUERY_PARAM, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import WorkspaceLayout from "../layouts/WorkspaceLayout.astro";
 import { loadCanonicalBoard, serializeCanonicalPlanError } from "../server/astro-canonical-data.js";
 import { loadOwnerProjectBoard, loadOwnerProjects } from "../server/astro-owner-data.js";
 import { currentWorkspaceCwd } from "../server/cwd.js";
-import { PlanBoard } from "./Board.jsx";
+import { PlanBoard } from "./Board.tsx";
 import { PlanBoardToolbar } from "./PlanBoardToolbar.tsx";
 
 import type { PlanBoardView as BoardView } from "./PlanBoardToolbar.tsx";
@@ -18,16 +19,9 @@ interface Props {
     view: BoardView;
 }
 
-interface OwnerProject {
-    projectId: string;
-    displayName: string;
-    rootLabel: string;
-    healthStatus: string;
-}
-
 const { boardData, boardError, context, projectId = "", view } = Astro.props;
 const projects = context === "workspace" ? await loadOwnerProjects() : [];
-const project = projects.find((item: OwnerProject) => item.projectId === projectId);
+const project = projects.find((item: OwnerProjectView) => item.projectId === projectId);
 const workspaceCwd = Astro.request.headers.get("x-runwield-workspace-cwd") || currentWorkspaceCwd();
 let board = boardData || null;
 let error = boardError || null;

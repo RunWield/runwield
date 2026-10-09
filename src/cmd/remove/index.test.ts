@@ -2,7 +2,7 @@ import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { assert, assertEquals } from "@std/assert";
 import { join } from "@std/path";
 import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { discoverAndRegisterThemes, getAvailableThemes, initRunWieldTheme, setTheme } from "../../ui/theme/theme.js";
 import { runRemoveCommand } from "./index.ts";
 

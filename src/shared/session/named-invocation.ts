@@ -2,7 +2,7 @@ import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
 import { basename, join } from "@std/path";
 import { fileExists } from "../helpers.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
-import { resolveInstalledPackagePromptResources } from "../package-resources.js";
+import { resolveInstalledPackagePromptResources } from "../package-resources.ts";
 import { assertPersonalResourcePath, PersonalResourcePathError } from "../remote/personal-resources.ts";
 import { isWorkflowOnlyAgent, loadAgentDef, normalizeAgentInternalName } from "./agents.js";
 import { getPromptTemplatePaths } from "./session.js";

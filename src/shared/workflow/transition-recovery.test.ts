@@ -10,7 +10,7 @@ import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { getTransitionJournalPath } from "./state-transition.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 
 async function writeJournal(

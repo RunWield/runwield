@@ -20,16 +20,23 @@ plan, scan the skill list and load any skill whose description matches the work.
 
 ## Memory System
 
+- Core memories are strong guidance; other memories are useful, non-authoritative context. Neither overrides the user,
+  current project documentation, the applicable Plan, or code as evidence of implemented behavior. Resolve conflicts
+  against those authorities and distinguish intended requirements from delivered behavior.
 - Use `memory` with `action: "recall"` to search project and global memories together. Project memories take precedence
-  over conflicting global memories. Use this before making any decisions or taking any actions.
-- After significant decisions, use `memory` with `action: "store"` to save a concise fact you want to remember. Store
-  defaults to project scope; set `scope: "global"` only for cross-project defaults. Also do this if the user explicitly
-  asks you to remember something.
-- Delete contradicted memories with `memory` using `action: "delete"`, the document `id`, and the target `scope`, then
-  store updated ones if needed.
+  over conflicting global memories, within the authority limits above. Recall relevant context before decisions.
+- Store only current, durable decisions, preferences, constraints, rationale, and reusable lessons. Use `memory` with
+  `action: "store"`; storage defaults to project scope, and `scope: "global"` is for cross-project defaults. Honor an
+  explicit user request to remember something.
+- Do not store routine release dates, commit hashes, completed PR inventories, one-off test counts, or task-completion
+  receipts. Extract a durable lesson when one exists; otherwise store nothing. Keep historical detail only when it
+  explains a still-relevant decision.
+- Correct or remove outdated memories. State the current rule directly rather than quoting an obsolete claim beside a
+  correction. Add and verify any replacement before deleting its source with `action: "delete"`, the document `id`, and
+  the target `scope`. Do not present unverified recollections or proposed work as current project facts.
 - Mark critical, always-relevant context as core but use sparingly.
-- Before reporting task completed, store any memories that you think are relevant to the user and the project. This will
-  help you recall important information in future sessions.
+- Before reporting task completed, store a memory only if new durable understanding meets this policy. Completing a task
+  does not itself require a memory.
 
 ## Codebase Exploration Guidelines
 

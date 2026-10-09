@@ -7,7 +7,7 @@ import {
 } from "../../../shared/workflow/plan-actions.ts";
 import { runWorkspaceResumeCheck } from "../server/plan-adapter.js";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
-import { requireOwnerProjectRoot } from "../server/owner-projects.js";
+import { requireOwnerProjectRoot } from "../server/owner-projects.ts";
 import { associatedPlanSession, ownerErrorJson, ownerJson } from "./owner-api.js";
 
 type PlanContinuationContext = {

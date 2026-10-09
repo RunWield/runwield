@@ -57,6 +57,7 @@ export interface ChatInputController {
     restoreQueuedItemToEditor(item: QueuedInput): void;
     processSubmissions(initialItem?: QueuedInput | null): Promise<void>;
     submitTutorialRequest(request: string, context: TutorialContext): Promise<void>;
+    offerSessionCompletion(sessionId: string, workRecordFailed?: boolean, workRecordPlanName?: string): void;
     dispose(): Promise<void>;
 }
 
@@ -92,6 +93,11 @@ export function createChatInputController(options: ChatInputControllerOptions): 
     const preflightedImageRefs = new Set<string>();
     const pendingImagePastes = new WeakMap<ImageAttachment, Promise<ImageAttachment | null>>();
     let isProcessingSubmission = false;
+    let completionSessionId: string | null = null;
+    let completionWorkRecordFailed = false;
+    let completionWorkRecordPlanName = "";
+    let completionPromptActive = false;
+    let disposed = false;
     let shouldDrainQueuedAfterProcessing = false;
     let pendingThinkingLevel: ThinkingLevel | null = null;
     let pendingThinkingLevelTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,11 +149,70 @@ export function createChatInputController(options: ChatInputControllerOptions): 
     }
 
     function forceResetUI(): void {
+        if (completionPromptActive) return;
         editor.disableSubmit = false;
         uiAPI.setBusy?.(runtime.getSessionSnapshot(options.getSessionId())?.busy === true);
         uiAPI.enableInput?.();
         view.focusEditor();
         view.requestRender();
+    }
+    function offerSessionCompletion(sessionId: string, workRecordFailed = false, workRecordPlanName = ""): void {
+        completionWorkRecordPlanName = workRecordPlanName;
+        completionSessionId = sessionId;
+        completionWorkRecordFailed = workRecordFailed;
+        void presentSessionCompletion();
+    }
+    async function presentSessionCompletion(): Promise<void> {
+        if (disposed || isProcessingSubmission || completionPromptActive || !completionSessionId) return;
+        const sessionId = completionSessionId;
+        completionSessionId = null;
+        const snapshot = runtime.getSessionSnapshot(sessionId);
+        if (sessionId !== options.getSessionId() || !snapshot || snapshot.busy) return;
+        if (runtime.getQueuedMessages(sessionId).length > 0) return;
+        completionPromptActive = true;
+        try {
+            const choice = await uiAPI.promptSelect(
+                `${
+                    completionWorkRecordFailed
+                        ? "Code delivered; Work Record failed.\nRetry regenerates this record.\nwld wr backfill regenerates missing or failed records across completed Plans."
+                        : snapshot.tutorialContext?.recapShown
+                        ? "Tutorial complete"
+                        : "Session complete"
+                }\nWhat would you like to do next?`,
+                [
+                    ...(completionWorkRecordFailed && completionWorkRecordPlanName
+                        ? [{ value: "retry-record", label: "Retry Work Record" }]
+                        : []),
+                    { value: "new", label: "Start a new session" },
+                    { value: "load-plan", label: "Load a Plan — starts a new session" },
+                    { value: "quit", label: "Quit" },
+                ],
+                { hint: "↑/↓ choose · Enter select · Esc stay in this session", persistResult: false },
+            );
+            if (disposed || sessionId !== options.getSessionId() || !choice) return;
+            if (choice === "retry-record") {
+                const result = await runtime.retryWorkRecord(sessionId, completionWorkRecordPlanName);
+                uiAPI.appendSystemMessage(result.message, result.status === "failed", "RunWield");
+                completionWorkRecordFailed = result.status !== "generated" && result.status !== "linked" &&
+                    !(result.status === "skipped" && result.reason === "existing_backlink");
+                completionSessionId = sessionId;
+                return;
+            }
+            if (choice === "quit") {
+                await executeUserRequest("/quit", []);
+                return;
+            }
+            await executeUserRequest("/new", []);
+            if (choice === "load-plan" && sessionId !== options.getSessionId()) {
+                await processSubmissions({ text: "/load-plan", images: [] });
+            }
+        } catch (error) {
+            uiAPI.appendSystemMessage(`Unable to start the next action: ${String(error)}`, true, "RunWield");
+        } finally {
+            completionPromptActive = false;
+            if (!disposed) forceResetUI();
+            if (completionSessionId) void presentSessionCompletion();
+        }
     }
     function dismissActivePrompt(): void {
         uiAPI.abortActivePrompt?.();
@@ -237,6 +302,7 @@ export function createChatInputController(options: ChatInputControllerOptions): 
         savedImages: ImageAttachment[],
         preparedModelOverride?: string,
     ): Promise<void> {
+        completionSessionId = null;
         const userRequest = text.trim();
         if (!userRequest && savedImages.length === 0) return;
         if (userRequest.startsWith("/")) recordUserInputHistory(editor, userRequest);
@@ -278,6 +344,7 @@ export function createChatInputController(options: ChatInputControllerOptions): 
             if (ownsProcessingState) {
                 isProcessingSubmission = false;
                 forceResetUI();
+                void presentSessionCompletion();
             }
         }
     }
@@ -302,6 +369,7 @@ export function createChatInputController(options: ChatInputControllerOptions): 
                 shouldDrainQueuedAfterProcessing = false;
                 void processSubmissions();
             }
+            void presentSessionCompletion();
         }
     }
     async function preflightCurrentImages(text: string, images: ImageAttachment[]) {
@@ -497,7 +565,9 @@ export function createChatInputController(options: ChatInputControllerOptions): 
         restoreQueuedItemToEditor,
         processSubmissions,
         submitTutorialRequest,
+        offerSessionCompletion,
         dispose: async () => {
+            disposed = true;
             editor.onChange = originalOnChange;
             await flushPendingThinkingLevelPersistence();
         },

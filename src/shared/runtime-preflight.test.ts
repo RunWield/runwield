@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
-import { withProcessGlobalTestLock } from "../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { ensureCymbalBinary, ensureKetchBinary, ensureMnemotecaBinary, hasSnipBinary } from "./runtime-preflight.ts";
 
 async function writeAvailableBinary(directory: string, name: string): Promise<string> {

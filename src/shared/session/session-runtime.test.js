@@ -29,7 +29,7 @@ import { createRootSessionManager, getRunWieldSessionDir, resolveCreatedRootSess
 import { openFileSessionStore } from "./file-session-store.ts";
 import { sessionDirForRoot } from "./file-session-storage.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getPlanRevisionForText, savePlan } from "../../plan-store.js";
 import { rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { McpIntegration } from "../mcp/integration.ts";

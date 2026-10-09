@@ -88,7 +88,7 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const plan = await loadPlan(planCwd, args.planName);
         if (!plan) throw new ValidationStateError("plan_missing");
-        let phase = validationPhaseForStatus(plan.attrs.status);
+        let phase = validationPhaseForStatus(plan.attrs.status, plan.attrs.validationPhase);
         if (!phase && plan.attrs.status === "validated" && planCwd !== projectRoot) {
             const pendingPublication = await findWorktreeByPlanName(projectRoot, args.planName);
             if (pendingPublication) phase = "delivery";
@@ -101,7 +101,12 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
         }
         const attemptId = plan.attrs.worktreeId || "in-place";
         const prior = checkpointRecord(plan.attrs.validationCheckpoint);
-        const compatible = validationCheckpointCanResume(prior, attemptId, plan.attrs.status);
+        const compatible = validationCheckpointCanResume(
+            prior,
+            attemptId,
+            plan.attrs.status,
+            plan.attrs.validationPhase,
+        );
         if (compatible && args.taskCompletionId && prior.lastSettledOperationId === args.taskCompletionId) {
             return { kind: "settled_completion", projectRoot };
         }
@@ -158,7 +163,7 @@ async function settleValidation(
         if (!plan) return;
         const current = checkpointRecord(plan.attrs.validationCheckpoint);
         if (current?.generation !== checkpoint.generation) return;
-        const phase = validationPhaseForStatus(plan.attrs.status);
+        const phase = validationPhaseForStatus(plan.attrs.status, plan.attrs.validationPhase);
         const validationCheckpoint = result.kind === "verified" || !phase ? null : makeValidationCheckpoint({
             attemptId: plan.attrs.worktreeId || current.attemptId,
             generation: current.generation,
@@ -514,7 +519,10 @@ export async function runWorkflowValidationToStableBoundary(
         const plan = await loadPlan(planCwd, args.planName).catch(() => null);
         const status = String(plan?.attrs.status || "");
         if (!plan) break;
-        if (status !== "validated_ci" && status !== "validated_reviewer") break;
+        if (
+            status !== "validated_ci" && status !== "reviewed" &&
+            !(status === "implemented" && plan.attrs.validationPhase === "semantic")
+        ) break;
         args = {
             ...args,
             planContent: plan.markdown,

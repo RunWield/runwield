@@ -1,5 +1,15 @@
 # Image generation provider proof
 
+## Current status — 2026-10-06
+
+The owner confirmed that `create_image` works with **OpenRouter, Codex, and Antigravity CLI**. These are the user-facing
+image generation backend names. Pi is the implementation library behind OpenRouter, not a separate backend.
+
+The September and October 3 observations below remain historical evidence of those specific runs. Missing credentials
+and sandbox restrictions in those environments must not be presented as current product limitations or as a pending
+acceptance gate for these three working backends. This update records owner confirmation, not a new automated test run.
+The separate OpenCode adapter remains experimental; the confirmation does not include it.
+
 Historical live tests on 2026-09-06; current implementation checks below are dated 2026-10-03. September scope: Pi's
 existing image provider, Antigravity CLI, the official Codex App Server with subscription authentication, and Google's
 `@google/genai` library. No requests were made directly to undocumented Codex backend endpoints. No RunWield
@@ -35,7 +45,7 @@ Direct Google SDK integration remains deferred. The September results are not fr
   outside the checkout and exercised Photon JPEG/WebP conversion and Pi's resize worker. Full release and real surface
   acceptance remain separate checks in the [revised Plan](../plans/generate-image-tool.md).
 
-Current sources:
+Sources for the October 3 checks:
 
 - [Pi 1.0 image API](https://github.com/earendil-works/pi/blob/v1.0.0/packages/ai/README.md#image-generation).
 - [OpenRouter image API transition](https://openrouter.ai/blog/announcements/image-api/) and
@@ -93,9 +103,10 @@ Sources for the additional routes:
 | Official Codex App Server subscription | Passed after correcting agent tool arguments | Passed               | ChatGPT account type, image capability, completed `imageGeneration` items with `savedPath`, actual PNG files, and visual inspection.      |
 | Google Gen AI SDK                      | Blocked: missing credential                  | Not attempted        | Installed SDK 1.52.0 loads, but reports that an API key is required. Client construction alone does not prove generation.                 |
 
-This is partial confirmation, not four successful live integrations. OpenRouter and Google require a configured key and
-a real generation/edit test before their implementation acceptance criteria can be closed. The API-key OpenAI SDK was
-not tested; the official OpenAI route tested here is Codex App Server, using its existing ChatGPT login.
+At the time of this September probe, this was partial confirmation, not four successful live integrations. OpenRouter
+and Google still needed a configured key and a live generation/edit test in that environment. See the current status
+above for the later owner confirmation of OpenRouter. The API-key OpenAI SDK was not tested; the official OpenAI route
+tested here is Codex App Server, using its existing ChatGPT login.
 
 ## Agy
 

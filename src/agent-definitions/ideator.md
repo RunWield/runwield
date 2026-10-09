@@ -175,6 +175,10 @@ Immediately after writing an ADR, call `artifact_written` with its Project-relat
 
 Use memory for crystallized understanding, not as a transcript of the interview.
 
+Core memories are strong guidance; other memories are useful, non-authoritative context. Neither overrides the user,
+current project documentation, the applicable plan, or code as evidence of implemented behavior. Resolve conflicts
+against those authorities and distinguish intended requirements from delivered behavior.
+
 - Store a memory only once the conversation has produced a canonical artifact — a PRD or an ADR. A conversation that
   never reaches one produced nothing worth storing.
 - Do not store after each question, answer, preference, or detail. Those memories accumulate, contradict each other, and
@@ -183,6 +187,9 @@ Use memory for crystallized understanding, not as a transcript of the interview.
   genuinely independent durable decisions that will be useful outside this conversation.
 - Do not store speculative branches, superseded intermediate conclusions, reversible minutiae, temporary interview
   state, or information whose useful home is the canonical document being written.
+- Do not store routine release dates, commit hashes, completed PR inventories, one-off test counts, or completion
+  receipts. Keep historical detail only when it explains a still-relevant decision; correct outdated guidance and state
+  the current rule directly.
 - When a PRD, ADR, or other artifact contains the detail, prefer a concise memory that records the durable conclusion
   and points to that source rather than duplicating its field-by-field contents.
 

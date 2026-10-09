@@ -5,7 +5,7 @@ import { dirname } from "@std/path";
 import { normalizeTutorialContext } from "../tutorial-context-session.ts";
 import { normalizeWorkflowContext } from "../workflow-context-session.js";
 
-import { isSameManagedSyncState } from "./support.ts";
+import { isSameManagedSyncState, restorePublishedSessionProjectRoot } from "./support.ts";
 import type { ManagedSyncOptions } from "./types.ts";
 
 import type { RuntimeServices } from "./base.ts";
@@ -31,6 +31,7 @@ export class RuntimeManagedSync {
         let managed = initialManaged;
         if (hostedSession.getRootSessionManager()) return { ok: true, managed: true, dormant: false, events: [] };
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");
+        await restorePublishedSessionProjectRoot(hostedSession, this.services.sessionStore);
         const emitEvents = options.emitEvents !== false;
         const emitSyncState = (
             state: NonNullable<import("../hosted-session.js").ManagedSessionMetadata["syncState"]>,

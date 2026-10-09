@@ -10,14 +10,19 @@ const RELEASE = {
 
 Deno.test("public docs render their source heading and release-pinned links", () => {
     const rendered = renderPublicDocument(
-        "# Example\n\nRead [usage](usage.md#commands), [the PRD](prd/runwield.md), [reference guide][guide], and [Pi](https://pi.dev).\n\n![Logo](../brand/logo.svg)\n\n[guide]: usage.md#commands\n",
-        "quickstart.md",
+        "# Example\n\nRead [usage](usage.md#commands), [the PRD](../prd/runwield.md), [a plan](../plans/x.md), [reference guide][guide], and [Pi](https://pi.dev).\n\n![Logo](../../brand/logo.svg)\n\n[guide]: usage.md#commands\n",
+        "user-documentation/quickstart.md",
         RELEASE,
     );
     assertStringIncludes(rendered, 'title: "Example"');
     assertStringIncludes(rendered, "[usage](/usage/#commands)");
     assertStringIncludes(rendered, "[guide]: /usage/#commands");
-    assertStringIncludes(rendered, "/blob/0123456789abcdef/docs/prd/runwield.md");
+    assertStringIncludes(rendered, "[the PRD](/contributing/prd/runwield/)");
+    assertStringIncludes(rendered, "/blob/0123456789abcdef/docs/plans/x.md");
+    assertStringIncludes(
+        rendered,
+        'editUrl: "https://github.com/gandazgul/runwield/edit/docs/stable/docs/user-documentation/quickstart.md"',
+    );
     assertStringIncludes(rendered, "[Pi](https://pi.dev)");
     assertStringIncludes(
         rendered,
@@ -30,7 +35,7 @@ Deno.test("public docs reject source without a page title", () => {
     assertRejects(
         async () =>
             await Promise.resolve(
-                renderPublicDocument("No heading", "quickstart.md", RELEASE),
+                renderPublicDocument("No heading", "user-documentation/quickstart.md", RELEASE),
             ),
         Error,
         "needs one H1",
@@ -46,39 +51,16 @@ Deno.test("public docs stage only the publication manifest", async () => {
             `${root}/docs-site/release.json`,
             JSON.stringify(RELEASE),
         );
-        for (
-            const name of [
-                "index",
-                "quickstart",
-                "workspace",
-                "workspace-container",
-                "usage",
-                "workflows",
-                "collaboration",
-                "sessions",
-                "providers",
-                "customization",
-                "troubleshooting",
-                "settings",
-                "themes",
-                "mcp",
-                "plan-lifecycle",
-                "validation-authority",
-                "contributing",
-            ]
-        ) {
-            await Deno.writeTextFile(
-                `${root}/docs/${name}.md`,
-                `# ${name}\n\nMARKER-${name}\n`,
-            );
+        for (const path of PUBLIC_DOCS) {
+            await Deno.mkdir(dirname(`${root}/docs/${path}`), { recursive: true });
+            await Deno.writeTextFile(`${root}/docs/${path}`, `# ${path}\n\nMARKER-${path}\n`);
         }
         await Deno.mkdir(`${root}/brand`);
         await Deno.writeTextFile(`${root}/brand/logo.svg`, "<svg></svg>");
         await Deno.writeTextFile(
-            `${root}/docs/quickstart.md`,
-            "# quickstart\n\nMARKER-quickstart\n\n![Logo](../brand/logo.svg)\n",
+            `${root}/docs/user-documentation/quickstart.md`,
+            "# quickstart\n\nMARKER-quickstart\n\n![Logo](../../brand/logo.svg)\n",
         );
-        await Deno.mkdir(`${root}/docs/prd`);
         await Deno.writeTextFile(
             `${root}/docs/prd/secret.md`,
             "# INTERNAL-PRD-MARKER\n",
@@ -88,6 +70,12 @@ Deno.test("public docs stage only the publication manifest", async () => {
         const paths = Array.from(Deno.readDirSync(output)).map((entry) => entry.name).sort();
         assertEquals(paths.includes("prd"), false);
         assertEquals(paths.includes("index.md"), true);
+        assertEquals(paths.includes("contributing"), true);
+        assertEquals(paths.includes("user-documentation"), false);
+        assertStringIncludes(
+            await Deno.readTextFile(`${output}/contributing/prd/runwield-core-prd.md`),
+            "MARKER-prd/runwield-core-prd.md",
+        );
         assertStringIncludes(
             await Deno.readTextFile(`${output}/quickstart.md`),
             "MARKER-quickstart",
@@ -97,7 +85,7 @@ Deno.test("public docs stage only the publication manifest", async () => {
             "<svg></svg>",
         );
         await Deno.writeTextFile(
-            `${root}/docs/quickstart.md`,
+            `${root}/docs/user-documentation/quickstart.md`,
             "# quickstart\n\n[missing](does-not-exist.md)\n",
         );
         await assertRejects(
@@ -106,7 +94,7 @@ Deno.test("public docs stage only the publication manifest", async () => {
             "missing local target",
         );
         await Deno.writeTextFile(
-            `${root}/docs/quickstart.md`,
+            `${root}/docs/user-documentation/quickstart.md`,
             "# quickstart\n\n[Broken section](#missing-section)\n",
         );
         await assertRejects(
@@ -149,17 +137,17 @@ Deno.test("production docs build publishes and indexes only fixture manual pages
         }
         await Deno.mkdir(join(root, "docs"), { recursive: true });
         for (const path of PUBLIC_DOCS) {
+            await Deno.mkdir(dirname(join(root, "docs", path)), { recursive: true });
             await Deno.writeTextFile(join(root, "docs", path), `# ${path}\n\nFIXTURE-${path}\n`);
         }
         await Deno.writeTextFile(
-            join(root, "docs", "index.md"),
+            join(root, "docs", "user-documentation", "index.md"),
             "# RunWield Documentation\n\nFIXTURE-PUBLIC-PHRASE\n\n## Start\n\n[Quickstart](quickstart.md#working-section)\n\n## Configure RunWield\n",
         );
         await Deno.writeTextFile(
-            join(root, "docs", "quickstart.md"),
-            "# Quickstart\n\n## Working section\n\n`FIXTURE-GUIDE-CODE`\n\n[Start][home]\n\n[Internal](prd/secret.md#private)\n\n![Logo](../brand/logo.svg)\n\n[home]: index.md#start\n",
+            join(root, "docs", "user-documentation", "quickstart.md"),
+            "# Quickstart\n\n## Working section\n\n`FIXTURE-GUIDE-CODE`\n\n[Start][home]\n\n[Internal](../prd/secret.md#private)\n\n![Logo](../../brand/logo.svg)\n\n[home]: index.md#start\n",
         );
-        await Deno.mkdir(join(root, "docs", "prd"), { recursive: true });
         await Deno.writeTextFile(join(root, "docs", "prd", "secret.md"), "# Private\n\nEXCLUDED-SEARCH-MARKER\n");
         await Deno.mkdir(join(root, "docs", "plans"), { recursive: true });
         await Deno.writeTextFile(join(root, "docs", "plans", "plan.md"), "# Plan\n\nEXCLUDED-PLAN-MARKER\n");
@@ -194,7 +182,7 @@ Deno.test("production docs build publishes and indexes only fixture manual pages
             "<svg>FIXTURE-LOGO</svg>",
         );
         const sitemap = await Deno.readTextFile(join(output, "sitemap-0.xml"));
-        assertEquals(sitemap.includes("/prd/"), false);
+        assertEquals(sitemap.includes("docs.runwield.dev/prd/"), false);
         assertEquals(sitemap.includes("/plans/"), false);
         const pagefind = JSON.parse(await Deno.readTextFile(join(output, "pagefind", "pagefind-entry.json")));
         assertEquals(pagefind.languages.en.page_count, PUBLIC_DOCS.length);

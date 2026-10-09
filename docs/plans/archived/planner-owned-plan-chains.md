@@ -245,7 +245,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/workflow/plan-review-actions.ts`, `plan-approval.ts`, `state-transition.ts`, and lifecycle helpers — one
   recoverable group decision using existing ownership and transition rules; distinguish common PROJECT behavior from
   Epic-only capabilities so Sequences never enter aggregate validation/publication.
-- `workflow-slicer.ts`, `decisions.js`, `planning-agent.ts`, `workflow-tool-events.ts`, and Session workflow dispatch —
+- `workflow-slicer.ts`, `decisions.ts`, `planning-agent.ts`, `workflow-tool-events.ts`, and Session workflow dispatch —
   reuse prepared-decomposition finalization and route approved groups to execution without a Slicer turn.
 - `src/ui/review/plan-review.ts`, `review-launcher.ts`, the TUI interaction adapter, and Workspace live-review routes in
   `src/ui/workspace/server/session-continuation.js` — preserve the complete group through both review transports.

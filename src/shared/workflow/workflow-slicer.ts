@@ -19,7 +19,7 @@ import {
 import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { runActiveAgentTurn, switchActiveAgent } from "../session/agent-switching.js";
 import { SUBAGENT_DEFINITIONS } from "../session/subagent-definitions.ts";
-import { buildSlicerRequest } from "./workflow-prompts.js";
+import { buildSlicerRequest } from "./workflow-prompts.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { isEpicPlan } from "../project-plan.ts";
 import { runEpicDecompositionFinalizeTransition } from "./state-transition.ts";

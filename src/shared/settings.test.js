@@ -28,7 +28,7 @@ import {
     shouldAutoGenerateWorkRecordsOnPlanCompletion,
     shouldCleanupMergedWorktrees,
 } from "./settings.js";
-import { withProcessGlobalTestLock } from "../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 
 // Use a temp dir for isolated file-based tests
@@ -750,7 +750,7 @@ settingsTest("getGuidedReviewMode defaults auto, honors overrides, and rejects i
     }
 });
 
-settingsTest("getCodeReviewMode defaults none, honors overrides, and rejects invalid values", async () => {
+settingsTest("getCodeReviewMode defaults ask and preserves explicit review choices", async () => {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
     const tempHome = await Deno.makeTempDir({ prefix: "runwield-codereview-setting-home-" });
@@ -760,6 +760,9 @@ settingsTest("getCodeReviewMode defaults none, honors overrides, and rejects inv
         Deno.chdir(tempProject);
         __resetSettingsForTests();
 
+        assertEquals(getCodeReviewMode(tempProject), "ask");
+
+        await setCustomSetting("codereview", "none", "global");
         assertEquals(getCodeReviewMode(tempProject), "none");
 
         await setCustomSetting("codereview", " ALWAYS ", "global");

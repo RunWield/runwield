@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 export interface ArtifactConversationMessage {
     id: string;
@@ -25,7 +25,7 @@ export interface ArtifactConversationSidebarProps {
 
 export function ArtifactConversationSidebar(props: ArtifactConversationSidebarProps) {
     const transcriptRef = useRef<HTMLDivElement>(null);
-    const canSend = props.composer.trim().length > 0 && !props.working && !props.disabled;
+    const canSend = Boolean(props.composer.trim() || props.attachedContextLabel) && !props.working && !props.disabled;
     const artifactLabel = props.artifactLabel || "Plan";
 
     useEffect(() => {

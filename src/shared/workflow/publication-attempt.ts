@@ -34,6 +34,7 @@ export type PublicationFailure = {
 };
 
 export type PublicationAttempt = {
+    deliveryMetadataVersion?: 1;
     version: 1;
     revision: number;
     phase: PublicationPhase;

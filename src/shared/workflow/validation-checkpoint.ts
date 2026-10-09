@@ -39,10 +39,13 @@ export type ValidationCheckpoint = {
     updatedAt: string;
 };
 
-export function validationPhaseForStatus(status: string | undefined): ValidationCheckpointPhase | null {
-    if (status === "implemented") return "mechanical";
+export function validationPhaseForStatus(
+    status: string | undefined,
+    passedPhase?: ValidationCheckpointPhase,
+): ValidationCheckpointPhase | null {
+    if (status === "implemented") return passedPhase === "semantic" ? "semantic" : "mechanical";
     if (status === "validated_ci") return "semantic";
-    if (status === "validated_reviewer") return "delivery";
+    if (status === "reviewed") return "delivery";
     return null;
 }
 
@@ -60,10 +63,14 @@ export function validationCheckpointCanResume(
     checkpoint: ValidationCheckpoint | undefined,
     attemptId: string,
     currentStatus: string,
+    currentPassedPhase?: ValidationCheckpointPhase,
 ): checkpoint is ValidationCheckpoint {
     if (!checkpoint || checkpoint.attemptId !== attemptId) return false;
-    const currentPhase = validationPhaseForStatus(currentStatus);
-    const expectedPhase = validationPhaseForStatus(checkpoint.expectedStatus);
+    const currentPhase = validationPhaseForStatus(currentStatus, currentPassedPhase);
+    const expectedPhase = validationPhaseForStatus(
+        checkpoint.expectedStatus,
+        checkpoint.expectedStatus === "implemented" ? checkpoint.nextPhase : undefined,
+    );
     if (!currentPhase || expectedPhase !== checkpoint.nextPhase) return false;
     const rememberedIndex = VALIDATION_PHASE_ORDER.indexOf(checkpoint.nextPhase);
     const currentIndex = VALIDATION_PHASE_ORDER.indexOf(currentPhase);

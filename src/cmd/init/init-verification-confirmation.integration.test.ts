@@ -82,6 +82,7 @@ Deno.test("init confirms and saves verification through the real interaction flo
             runtime.setInteractionAdapter(created.sessionId, {
                 supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
                 requestInteraction: (request) => {
+                    if (request.id === "init-project-files") return choose("yes");
                     requests.push(request);
                     return choose("deno task ci");
                 },
@@ -150,7 +151,8 @@ Deno.test("init saves an Other verification command after user free text", async
             const answers = [choose("other"), text("pnpm test")];
             runtime.setInteractionAdapter(created.sessionId, {
                 supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
-                requestInteraction: () => answers.shift() || { outcome: "canceled" },
+                requestInteraction: (request) =>
+                    request.id === "init-project-files" ? choose("yes") : answers.shift() || { outcome: "canceled" },
             });
 
             try {
@@ -201,7 +203,8 @@ Deno.test("init cancellation leaves verification unset and init incomplete", asy
             const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
             runtime.setInteractionAdapter(created.sessionId, {
                 supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
-                requestInteraction: () => ({ outcome: "canceled" }),
+                requestInteraction: (request) =>
+                    request.id === "init-project-files" ? choose("yes") : { outcome: "canceled" },
             });
             const ui = createUi();
 
@@ -226,3 +229,59 @@ Deno.test("init cancellation leaves verification unset and init incomplete", asy
         },
     );
 });
+
+for (const outcome of ["no", "canceled", "unsupported"] as const) {
+    Deno.test(`init file consent ${outcome} leaves a fresh project untouched and explains how to retry`, async () => {
+        await withRuntimeCommandFixture("init-file-consent-", async ({ projectRoot, setModelResponseFactories }) => {
+            const initialized = await new Deno.Command("git", {
+                cwd: projectRoot,
+                args: ["init", "-b", "main"],
+                stdout: "piped",
+                stderr: "piped",
+            }).output();
+            assert(initialized.success);
+            await Deno.writeTextFile(join(projectRoot, "README.md"), "Existing project\n");
+            Deno.chdir(projectRoot);
+            let modelCalls = 0;
+            setModelResponseFactories([() => {
+                modelCalls++;
+                return fauxAssistantMessage(fauxText("Unexpected Init"));
+            }]);
+            const runtime = createSessionRuntime();
+            const sessionId = await runtime.createPromptReadySession({
+                cwd: projectRoot,
+                deferPersistenceUntilFirstMessage: true,
+            });
+            const requests: RuntimeInteractionRequest[] = [];
+            runtime.setInteractionAdapter(sessionId, {
+                supportsInteraction: () => true,
+                requestInteraction: (request) => {
+                    requests.push(request);
+                    return outcome === "no" ? choose("no") : { outcome };
+                },
+            });
+            const ui = createUi();
+            try {
+                await runInitCommand([], {
+                    projectRoot,
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: ui.uiAPI,
+                    sessionPort: UNEXPECTED_SESSION_PORT,
+                });
+                assertEquals(requests.length, 1);
+                for (const path of [".wld/settings.json", "docs/domain-language.md", ".gitignore"]) {
+                    assertStringIncludes(requests[0].prompt, path);
+                    await assertRejects(() => Deno.stat(join(projectRoot, path)), Deno.errors.NotFound);
+                }
+                assertEquals(modelCalls, 0);
+                assertEquals(await getCwdInitState(projectRoot), undefined);
+                assertStringIncludes(ui.messages[0].message, "Init cannot proceed");
+                assertStringIncludes(ui.messages[0].message, "Run /init if you change your mind");
+                assertEquals(await Deno.readTextFile(join(projectRoot, "README.md")), "Existing project\n");
+            } finally {
+                await runtime.closeAllSessionsWhenIdle();
+            }
+        });
+    });
+}

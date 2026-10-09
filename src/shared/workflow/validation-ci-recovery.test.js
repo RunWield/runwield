@@ -242,7 +242,7 @@ Deno.test("Retry after the CI rounds run out runs the tests again and carries on
     assertEquals(uiAPI.promptSelections.length, 1);
     assertEquals(ciRuns, 3);
     assertEquals(result.kind, "paused");
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "validated_ci");
+    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
 });
 
 Deno.test("a stopped test run asks rather than reporting the work as broken", async () => {
@@ -342,7 +342,7 @@ Deno.test("runValidationPhase keeps canonical progress when a stale checkpoint s
         });
         const advanced = await loadPlan(projectRoot, "p");
         assertExists(advanced);
-        assertEquals(advanced.attrs.status, "validated_ci");
+        assertEquals(advanced.attrs.status, "implemented");
         const checkpoint = makeValidationCheckpoint({
             attemptId: "in-place",
             generation: crypto.randomUUID(),
@@ -373,6 +373,6 @@ Deno.test("runValidationPhase keeps canonical progress when a stale checkpoint s
         assertEquals(ciExitCodes.length, 1, "Expected CI not to run again for checks the Plan already records.");
         const settled = await loadPlan(projectRoot, "p");
         assertExists(settled);
-        assertEquals(settled.attrs.status, "validated_reviewer");
+        assertEquals(settled.attrs.status, "reviewed");
     });
 });

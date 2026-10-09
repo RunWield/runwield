@@ -8,7 +8,7 @@ import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing
 import { savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createOwnerWorkspaceApp } from "./server.js";
 import { loadOwnerDashboard, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";

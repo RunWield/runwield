@@ -188,7 +188,7 @@ src/
 
     tools/                    ← src/tools/  (registry, policy, definitions/)
 
-    platform/                 git.js + git-port.ts, project-state, runtime-preflight, process-liveness,
+    platform/                 git.ts + git-port.ts, project-state, runtime-preflight, process-liveness,
                               foreground-process, snip-filters, update-check, browser-port,
                               helpers.js (directoryExists/fileExists)
       paths/                  ← src/constants.js  (getCwd, getHomeDir, bundled asset paths)
@@ -347,7 +347,7 @@ Separate terminal theme-selection policy from terminal chalk styling; browser th
 
 - `DEFAULT_THEME_NAME`, `DEFAULT_THEME_JSON`, `resolveAvailableThemeJsons`, `resolveSelectedThemeJson`;
 - `theme-discovery.ts` (`loadExternalThemeJsons`);
-- the JSON policy half of `theme-json.js`: the `ThemeJson` typedef, `mergeThemeJson`, `resolveThemeVars`;
+- the JSON policy half of `theme-json.ts`: the `ThemeJson` type, `mergeThemeJson`, `resolveThemeVars`;
 - `catppuccin-mocha.json`.
 
 **To `src/consumers/cli/style/`** — terminal chalk styling, which never leaves the terminal:
@@ -356,7 +356,7 @@ Separate terminal theme-selection policy from terminal chalk styling; browser th
 - `initRunWieldTheme`, `applyPersistedTheme`, `discoverAndRegisterThemes`, `setTheme`, `setThemeInstance`,
   `setRegisteredThemes`, `getAvailableThemes`, `onThemeChange`;
 - `theme-registry.ts`;
-- the Pi-`Theme` construction half of `theme-json.js`: `createThemeFromJson`, `detectColorMode`, `splitFgBgColors`,
+- the Pi-`Theme` construction half of `theme-json.ts`: `createThemeFromJson`, `detectColorMode`, `splitFgBgColors`,
   `BG_TOKEN_NAMES`.
 
 **The carryover invariant this must preserve.** The persisted theme name controls only terminal appearance. Preserve

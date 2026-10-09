@@ -10,7 +10,7 @@ import {
     RunWieldLink,
     RunWieldPanelToggle,
     RunWieldThinkingDots,
-} from "../../design-system/components/react/RunWieldPrimitives.jsx";
+} from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { SessionList } from "../components/SessionList.jsx";
 import { deriveSessionAvailability } from "../components/SessionActivationStatus.tsx";
 import {
@@ -2402,6 +2402,7 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         workflowClassification: typeof workflowProgress?.plan?.classification === "string"
             ? workflowProgress.plan.classification
             : "",
+        workflowValidationPhase: workflowProgress?.plan?.validationPhase,
         workflowProgressFacts: Array.isArray(workflowProgress?.progressFacts)
             ? workflowProgress.progressFacts
             : undefined,
@@ -2425,9 +2426,11 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
         (liveWorkflowInteraction?.interactionId ? `#interaction-${liveWorkflowInteraction.interactionId}` : "") ||
         planHomeUrl;
     async function runWorkflowAction(action) {
-        if (!["run", "resume", "recover", "review_plan", "resume_from_hold"].includes(action.kind)) return;
+        if (
+            !["run", "resume", "recover", "review_plan", "resume_from_hold", "retry_work_record"].includes(action.kind)
+        ) return;
         const currentTimeline = timelineRef.current;
-        const planId = activePlanId(currentTimeline?.snapshot);
+        const planId = action.planId || activePlanId(currentTimeline?.snapshot);
         if (!planId) {
             throw new Error("Plan workflow evidence is unavailable. Refresh the Session and try again.");
         }
@@ -2644,6 +2647,8 @@ export function SessionSurface({ projectId, mode = "detail", runwieldSessionId =
                                     : null}
                                 <SessionTimeline
                                     items={allItems}
+                                    onRetryWorkRecord={(report) =>
+                                        runWorkflowAction({ kind: "retry_work_record", planId: report.planId })}
                                     sessionPath={`/projects/${encodeURIComponent(projectId)}/sessions/${
                                         encodeURIComponent(runwieldSessionId)
                                     }`}

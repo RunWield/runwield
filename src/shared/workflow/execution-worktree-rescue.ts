@@ -40,7 +40,7 @@ const RESCUED_EXECUTION_STATUSES = new Set([
     "failed",
     "implemented",
     "validated_ci",
-    "validated_reviewer",
+    "reviewed",
     "validated",
 ]);
 

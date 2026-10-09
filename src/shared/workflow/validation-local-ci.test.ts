@@ -2,7 +2,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 
 import { HostedSession } from "../session/hosted-session.js";
-import { setCustomSetting, setExactProjectCustomSetting } from "../settings.js";
+import { getExactProjectCustomSetting, setCustomSetting, setExactProjectCustomSetting } from "../settings.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 
@@ -139,6 +139,42 @@ Deno.test("runLocalCI exact-project mode uses the linked worktree command and cw
     }
 });
 
+Deno.test("runLocalCI inherits an uncommitted project command and preserves checkout-local settings and repairs", async () => {
+    const primaryRoot = await linkedWorktreeCiRepo.checkout({ prefix: "runwield-local-ci-inherit-" });
+    const worktreePath = `${primaryRoot}-ci-worktree`;
+    try {
+        await setCustomSetting("verification_command", "printf inherited; exit 1", "project", primaryRoot);
+        await setCustomSetting("codereview", "ask", "project", primaryRoot);
+        await git(primaryRoot, ["worktree", "add", "-b", "local-ci-inherit", worktreePath, "main"]);
+        setExactProjectCustomSetting("codereview", "none", worktreePath);
+        const hostedSession = new HostedSession({ id: "local-ci-inherit", cwd: worktreePath });
+
+        const first = await runLocalCI({ hostedSession, cwd: worktreePath, settingsPolicy: "exact-project" });
+        assertEquals(first.kind, "completed");
+        if (first.kind !== "completed") throw new Error("Inherited command must run without user input.");
+        assertEquals(first.exitCode, 1);
+        assertStringIncludes(first.output, "inherited");
+        assertEquals(getExactProjectCustomSetting("verification_command", worktreePath), "printf inherited; exit 1");
+        assertEquals(getExactProjectCustomSetting("codereview", worktreePath), "none");
+
+        setExactProjectCustomSetting("verification_command", "printf repaired", worktreePath);
+        const resumedSession = new HostedSession({ id: "local-ci-inherit-resumed", cwd: worktreePath });
+        const second = await runLocalCI({
+            hostedSession: resumedSession,
+            cwd: worktreePath,
+            settingsPolicy: "exact-project",
+        });
+        assertEquals(second.kind, "completed");
+        if (second.kind !== "completed") throw new Error("Repaired command must run without user input.");
+        assertEquals(second.exitCode, 0);
+        assertStringIncludes(second.output, "repaired");
+        assertEquals(getExactProjectCustomSetting("verification_command", primaryRoot), "printf inherited; exit 1");
+    } finally {
+        await git(primaryRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => {});
+        await Deno.remove(primaryRoot, { recursive: true }).catch(() => {});
+    }
+});
+
 Deno.test("CI process start failure does not dispatch implementation repair", async () => {
     const tooLargeForProcessArguments = `printf never-starts ${"x".repeat(3_000_000)}`;
     const { cwd, hostedSession } = await makeCiProject(tooLargeForProcessArguments);
@@ -204,4 +240,26 @@ Deno.test({
             await Deno.remove(cwd, { recursive: true }).catch(() => {});
         }
     },
+});
+
+Deno.test("runLocalCI preserves cancellation while saving a newly answered command", async () => {
+    const cwd = await Deno.makeTempDir({ prefix: "runwield-local-ci-" });
+    const hostedSession = new HostedSession({ id: "command-save-cancel", cwd });
+    try {
+        hostedSession.setInteractionAdapter({
+            supportsInteraction: () => true,
+            requestInteraction: () => ({ outcome: "text", value: "touch should-not-run" }),
+        });
+        hostedSession.subscribeRuntimeEvents((event) => {
+            if (event.type === "interaction_resolved") hostedSession.cancelActiveInteractions();
+        });
+        const result = await runLocalCI({ hostedSession, cwd, settingsPolicy: "exact-project" });
+        assertEquals(result.kind, "canceled");
+        assertEquals(getExactProjectCustomSetting("verification_command", cwd), "touch should-not-run");
+        assertEquals(await Deno.stat(`${cwd}/should-not-run`).catch(() => null), null);
+        assertEquals(hostedSession.getActiveInteractions().size, 0);
+    } finally {
+        hostedSession.dispose();
+        await Deno.remove(cwd, { recursive: true });
+    }
 });

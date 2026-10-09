@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { join } from "@std/path";
-import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { assertModelExecutionBackendSupported } from "../../../models/model-execution.ts";
 import { getModelRegistry } from "../../../models/model-registry.ts";
 import { prepareAgyCliAgentsCommand, prepareAgyCliStreamCommand } from "./command.ts";

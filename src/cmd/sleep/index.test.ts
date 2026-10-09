@@ -8,7 +8,6 @@ import {
     type InteractiveSessionPort,
     type MnemotecaPort,
     runSleepCommand,
-    SLEEP_PROMPT,
 } from "./index.ts";
 
 interface ExportInvocation {
@@ -180,7 +179,7 @@ Deno.test("sleep backs up fixture memory before a real Runtime switches and runs
             assertEquals(messages, [`[RunWield] Memory backup created before sleep mode: ${backupPath}`]);
             assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "engineer");
             assertEquals(requests.length, 1);
-            assertStringIncludes(requests[0], SLEEP_PROMPT);
+            assertStringIncludes(requests[0], await Deno.readTextFile(new URL("./prompt.md", import.meta.url)));
             assertStringIncludes(requests[0], `Immutable pre-maintenance backup: ${backupPath}`);
             assertStringIncludes(requests[0], "Session artifact directory:");
         } finally {
@@ -265,9 +264,4 @@ Deno.test("sleep rejects missing Runtime state before touching Mnemoteca", async
         "active runtime session",
     );
     assertEquals(mnemoteca.ensureCalls, 0);
-});
-
-Deno.test("inlined sleep prompt stays synchronized with prompt.md", async () => {
-    const promptFile = await Deno.readTextFile(new URL("./prompt.md", import.meta.url));
-    assertEquals(SLEEP_PROMPT, promptFile);
 });

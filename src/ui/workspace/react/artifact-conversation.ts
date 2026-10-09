@@ -19,8 +19,7 @@ export function buildArtifactConversationFeedback(input: ArtifactConversationFee
     return [
         `## ${input.agentLabel || "Planner"} conversation`,
         "",
-        "### User message",
-        message,
+        ...(message ? ["### User message", message] : []),
         ...(attachedFeedback ? ["", "### Attached review annotations", attachedFeedback] : []),
         "",
         "### Continue the review",

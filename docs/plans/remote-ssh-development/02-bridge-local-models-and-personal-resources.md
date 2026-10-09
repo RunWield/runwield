@@ -156,7 +156,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   selections without losing saved model identity or falling through to a different backend.
 - `src/tools/see-image.ts` and Session provider tests — route vision completion through local authentication and retain
   retry, temperature, cancellation, and summarization behavior.
-- `src/shared/package-resources.js` and personal instruction readers — resolve laptop resource roots without loading
+- `src/shared/package-resources.ts` and personal instruction readers — resolve laptop resource roots without loading
   unrelated remote personal resources or starting package-owned personal services remotely.
 - `docs/domain-language.md` — extend the existing Remote SSH connection relationship with mounted global resources and
   remote project ownership; retain an ordinary Session, not a new Session type.

@@ -2,7 +2,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 import { __resetSettingsForTests } from "../../shared/settings.js";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
 import { runNameCommand } from "./index.ts";
 

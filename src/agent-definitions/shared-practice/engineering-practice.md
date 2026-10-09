@@ -19,6 +19,7 @@ description: "Practice rules true of every RunWield engineering persona regardle
 - **Canonical testing practice:** When a change adds, edits, or removes tests, load the bundled `write-tests` skill
   before editing them. That skill is the authority for test design; do not substitute remembered testing conventions.
 - **ADRs** read related ADRs in docs/adr/*.md
+- **No Budget:** You have no token or time budget, so do not estimate one or trim the work to fit one.
 
 ## Build the Smallest Thing That Works
 

@@ -15,13 +15,11 @@ import {
 import { resolveWorkflowPlanLocation } from "../workflow/plan-location.ts";
 import { shouldAutoGenerateWorkRecordsOnPlanCompletion } from "../settings.js";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
-import { listWorkRecords } from "./store.js";
 import {
     attachEpicChildren,
     buildActiveWorkRecordSource,
     evaluateWorkRecordSource,
     generateWorkRecordForSource,
-    recordsBySourcePlanId,
 } from "./generation.js";
 
 type WorkRecordSource = import("./generation.js").WorkRecordSource;
@@ -41,15 +39,26 @@ export interface WorkRecordAutoGenerationResult {
 }
 
 export interface AutoGenerateWorkRecordArgs {
+    pendingPublication?: boolean;
     cwd: string;
     planName: string;
     mnemotecaPort: WorkRecordMnemotecaPort;
+    signal?: AbortSignal;
 }
 
 interface TargetedWorkRecordSource {
     source?: WorkRecordSource;
     skipReason?: string;
     targetPlanName?: string;
+}
+
+type WorkRecordParentState = Pick<import("../../plan-store.js").PlanFrontMatter, "status" | "epicCompletionMode">;
+
+/** The parent must be terminal before a child completion can record its Epic. */
+export function isTerminalWorkRecordParent(attrs: WorkRecordParentState): boolean {
+    return (["verified", "closed_without_verification"].includes(attrs.status) &&
+        attrs.epicCompletionMode === "done_enough") ||
+        attrs.status === "user_verified";
 }
 
 function conciseError(value: Error | string): string {
@@ -96,6 +105,7 @@ async function withEpicChildren(cwd: string, source: WorkRecordSource): Promise<
 export async function resolveTargetedWorkRecordSource(
     cwd: string,
     planName: string,
+    pendingPublication = false,
 ): Promise<TargetedWorkRecordSource> {
     const source = await loadActiveSource(cwd, planName);
     if (!source) return { skipReason: "plan_not_found", targetPlanName: planName };
@@ -106,9 +116,9 @@ export async function resolveTargetedWorkRecordSource(
         if (!parent) return { skipReason: "parent_not_found", targetPlanName: parentName || planName };
         const parentWithChildren = await withEpicChildren(cwd, parent);
         if (
-            !((["validated", "verified"].includes(parentWithChildren.attrs.status) &&
-                parentWithChildren.attrs.epicCompletionMode === "done_enough") ||
-                parentWithChildren.attrs.status === "user_verified")
+            !isTerminalWorkRecordParent(parentWithChildren.attrs) &&
+            !(pendingPublication && parentWithChildren.attrs.status === "reviewed" &&
+                parentWithChildren.attrs.epicCompletionMode === "done_enough")
         ) {
             return { skipReason: "parent_not_terminal", targetPlanName: parent.name };
         }
@@ -133,7 +143,9 @@ export function formatWorkRecordAutoGenerationResult(result: WorkRecordAutoGener
     if (result.status === "failed") {
         return `Work Record generation failed for ${result.targetPlanName || result.planName}: ${
             result.error || "unknown error"
-        }. The Plan terminal state was preserved; run wld wr backfill after repair.`;
+        }. Code delivery is unchanged. Retry this Plan with wld wr retry ${
+            result.targetPlanName || result.planName
+        }. The wld wr backfill command regenerates missing or failed records across completed Plans.`;
     }
     const verb = result.status === "linked" ? "linked" : "generated";
     const warning = result.indexWarning ? ` Warning: ${result.indexWarning}` : "";
@@ -146,17 +158,31 @@ export function formatWorkRecordAutoGenerationResult(result: WorkRecordAutoGener
 }
 
 /** Generate or reconcile a Work Record for the targeted terminal active Plan. */
-export async function autoGenerateWorkRecordForCompletedPlan({
-    cwd,
-    planName,
-    mnemotecaPort,
-}: AutoGenerateWorkRecordArgs): Promise<WorkRecordAutoGenerationResult> {
-    if (!shouldAutoGenerateWorkRecordsOnPlanCompletion(cwd)) {
+export function autoGenerateWorkRecordForCompletedPlan(
+    args: AutoGenerateWorkRecordArgs,
+): Promise<WorkRecordAutoGenerationResult> {
+    return generateTargetedWorkRecord(args, true);
+}
+
+/** Explicit retry regenerates only this source record; it never re-enters delivery. */
+export function retryWorkRecordForPlan(args: AutoGenerateWorkRecordArgs): Promise<WorkRecordAutoGenerationResult> {
+    return generateTargetedWorkRecord(args, false);
+}
+
+async function generateTargetedWorkRecord(
+    { cwd, planName, mnemotecaPort, signal, pendingPublication }: AutoGenerateWorkRecordArgs,
+    automatic: boolean,
+): Promise<WorkRecordAutoGenerationResult> {
+    if (automatic && !shouldAutoGenerateWorkRecordsOnPlanCompletion(cwd)) {
         return withMessage({ status: "disabled", planName, message: "" });
     }
 
     try {
-        const resolved = await resolveTargetedWorkRecordSource(cwd, planName);
+        const { loadPublishedWorkRecordSource } = await import("./published-source.ts");
+        const published = automatic ? null : await loadPublishedWorkRecordSource(cwd, planName);
+        const resolved = published
+            ? { source: published, targetPlanName: published.name }
+            : await resolveTargetedWorkRecordSource(cwd, planName, automatic && pendingPublication);
         if (!resolved.source) {
             return withMessage({
                 status: "skipped",
@@ -168,8 +194,12 @@ export async function autoGenerateWorkRecordForCompletedPlan({
         }
 
         const sourceRoot = getPlanDocumentRoot(resolved.source.path);
-        const existingByPlanId = recordsBySourcePlanId(await listWorkRecords(sourceRoot, { createDir: false }));
-        const evaluated = evaluateWorkRecordSource(resolved.source, existingByPlanId);
+        // Store discovery belongs inside generation's failure-persistence boundary.
+        // Eligibility alone does not need existing records; generation reconciles them.
+        const evaluated = evaluateWorkRecordSource({
+            ...resolved.source,
+            pendingPublication: Boolean(automatic && pendingPublication && resolved.source.attrs.status === "reviewed"),
+        });
         if (evaluated.skipReason) {
             return withMessage({
                 status: "skipped",
@@ -182,6 +212,7 @@ export async function autoGenerateWorkRecordForCompletedPlan({
 
         const outcome = await generateWorkRecordForSource(sourceRoot, evaluated, {
             mnemotecaPort,
+            signal,
         });
         const status = outcome.status === "generated" || outcome.status === "linked" ? outcome.status : "failed";
         return withMessage({

@@ -80,11 +80,10 @@ export const startupInitScenario = {
     initArtifact: false,
     initialAgentName: "router",
     terminal: { columns: 100, rows: 30 },
-    scriptedInteractions: [{
-        type: "select",
-        promptIncludes: "Would you like to run /init",
-        value: "yes",
-    }],
+    scriptedInteractions: [
+        { type: "select", promptIncludes: "Would you like to run /init", value: "yes" },
+        { type: "select", promptIncludes: "Init will create or update these project files", value: "yes" },
+    ],
     script: [
         {
             id: "init-writes-domain-language",

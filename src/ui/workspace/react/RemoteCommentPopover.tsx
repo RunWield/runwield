@@ -1,5 +1,5 @@
 // @ts-nocheck: Workspace React UI is the scoped TypeScript/TSX exception zone.
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 export function RemoteCommentPopover(
     { mode, selection, displayName, body, disabled, onDisplayNameChange, onBodyChange, onCancel, onSubmit },

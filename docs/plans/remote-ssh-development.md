@@ -417,7 +417,7 @@ platform scope, trust, persistence ownership, or dependency strategy returns for
 - `src/shared/models/model-registry.ts`, `src/shared/session/backends/` — local model runtime, remote catalog/stream
   contract, supported-backend checks, refresh and cancellation.
 - `src/shared/session/root-session.js`, `file-session-*.ts`, `session-runtime.js`, `segment-rollover.ts`,
-  `session-resume-list.ts`, and `image-attachments.js` — explicit remote identity, mounted Pi files, local
+  `session-resume-list.ts`, and `image-attachments.ts` — explicit remote identity, mounted Pi files, local
   locks/commits, settlement, rollover, attachments, offline history and resume.
 - `src/extensions/mnemoteca/`, `src/cmd/sleep/`, and Work Record indexing — one explicit personal Memory mapping and
   remote canonical records. Other extensions retain the correct execution location.

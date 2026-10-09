@@ -3,7 +3,7 @@
  * Short-lived owner Workspace pairing request lifecycle.
  */
 
-import { createPairedDevice } from "./devices.js";
+import { createPairedDevice } from "./devices.ts";
 import { hashSecret, normalizePairingCode, randomBase64Url, randomHumanCode, timingSafeSecretEqual } from "./crypto.ts";
 
 export const PAIRING_REQUEST_TTL_MS = 5 * 60 * 1000;

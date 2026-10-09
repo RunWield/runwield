@@ -31,6 +31,7 @@ export {
 } from "./validation-workflow-tree-semantic.ts";
 export {
     validationTreeHumanReviewAlwaysApproveScenario,
+    validationTreeHumanReviewAskCloseScenario,
     validationTreeHumanReviewAskOpenApproveScenario,
     validationTreeHumanReviewAskSkipScenario,
     validationTreeHumanReviewFeedbackRepairApproveScenario,

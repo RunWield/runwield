@@ -40,6 +40,7 @@ export interface PrimaryProjectRuntimeLayout {
     worktreeRegistryLockPath: string;
     worktreeRegistryMigrationIssuesPath: string;
     publicationStagingRoot: string;
+    deliveryEvidenceRoot: string;
     projectSecretStorePath: string;
     fallbackWorktreesRoot: string;
     debugRoot: string;
@@ -262,6 +263,7 @@ export function resolveProjectRuntimeLayout(selectedCheckoutRoot: string): Proje
             worktreeRegistryLockPath: join(primaryInternalRoot, WORKTREE_REGISTRY_LOCK_FILE),
             worktreeRegistryMigrationIssuesPath: join(primaryInternalRoot, "worktree-registry-migration-issues.json"),
             publicationStagingRoot: join(primaryInternalRoot, PLAN_STAGING_DIR_NAME),
+            deliveryEvidenceRoot: join(primaryInternalRoot, "delivery-evidence"),
             projectSecretStorePath: join(primaryInternalRoot, "collaboration-secrets.json"),
             fallbackWorktreesRoot: join(primaryInternalRoot, "worktrees"),
             debugRoot: join(primaryInternalRoot, "debug"),

@@ -14,7 +14,7 @@
  */
 
 import type { ContextEvent, ExtensionAPI, SessionCompactEvent } from "@earendil-works/pi-coding-agent";
-import { buildReAnchorMessage } from "../../shared/workflow/workflow-prompts.js";
+import { buildReAnchorMessage, type ReAnchorContext } from "../../shared/workflow/workflow-prompts.ts";
 import { projectEngineerPlanBody } from "../../shared/workflow/engineer-plan-projection.ts";
 import { getStoredPlanPath } from "../../plan-store.js";
 import { normalizeWorkflowPlanName } from "../../shared/session/workflow-context-session.js";
@@ -27,12 +27,7 @@ export interface ReAnchorOptions {
     hostedSession?: HostedSession | null;
 }
 
-interface ReAnchorResolution {
-    agentName: string;
-    planName: string;
-    openReviewItems: string;
-    planBody: string;
-}
+type ReAnchorResolution = Required<ReAnchorContext>;
 
 // The Agents that execute or repair against an approved Plan. The selectable
 // Engineer is absent on purpose: a QUICK_FIX has no Plan to re-anchor to.

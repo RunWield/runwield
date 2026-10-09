@@ -18,7 +18,7 @@ import { getTransitionJournalDir } from "./state-transition.ts";
 import { loadCanonicalExecutionPlanSource } from "./execution-plan-file.js";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getCwd } from "../../constants.js";
 import {
     findById as findWorktreeRegistryEntryById,

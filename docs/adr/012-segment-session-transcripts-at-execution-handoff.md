@@ -30,8 +30,8 @@ and remains current through the repair attempt and its recovery boundaries. Each
 successor segment. The Engineer remains active after validation until a new request requires fresh Router triage.
 
 The stable Session ID owns an ordered set of segment IDs and paths, with one current writable segment. The Session
-Writer Lock covers segment changes as described in [ADR-015](./015-file-authoritative-session-bundles.md). Plan
-Lifecycle and worktree records own workflow facts; there is no separate Plan Workflow Lease.
+Writer Lock covers segment changes as described in [ADR-015](015-file-authoritative-session-bundles.md). Plan Lifecycle
+and worktree records own workflow facts; there is no separate Plan Workflow Lease.
 
 ## Consequences
 

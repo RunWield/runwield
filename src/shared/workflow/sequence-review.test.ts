@@ -1,5 +1,5 @@
 import { dirname } from "@std/path";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getTransitionJournalPath } from "./state-transition.ts";
 import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "@std/assert";
 import { SessionManager } from "@earendil-works/pi-coding-agent";

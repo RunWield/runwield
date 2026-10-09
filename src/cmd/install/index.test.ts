@@ -1,9 +1,9 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 import { resolveInstalledWldExtensionResources } from "../../shared/extensions/wld-extension-manifest.js";
-import { resolveInstalledPackagePromptResources } from "../../shared/package-resources.js";
+import { resolveInstalledPackagePromptResources } from "../../shared/package-resources.ts";
 import { __resetSettingsForTests, getSettingsManager } from "../../shared/settings.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getAvailableThemes, initRunWieldTheme } from "../../ui/theme/theme.js";
 import { runInstallCommand } from "./index.ts";
 

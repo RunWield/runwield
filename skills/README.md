@@ -6,15 +6,15 @@ Published for any coding agent in any project:
 npx skills@latest add gandazgul/runwield
 ```
 
-| Skill                           | Derived from                       |
-| ------------------------------- | ---------------------------------- |
-| [`ideator`](./ideator/SKILL.md) | `src/agent-definitions/ideator.md` |
-| [`guide`](./guide/SKILL.md)     | `src/agent-definitions/guide.md`   |
-| [`review`](./review/SKILL.md)   | nothing — it stands on its own     |
+| Skill                         | Derived from                       |
+| ----------------------------- | ---------------------------------- |
+| [`ideator`](ideator/SKILL.md) | `src/agent-definitions/ideator.md` |
+| [`guide`](guide/SKILL.md)     | `src/agent-definitions/guide.md`   |
+| [`review`](review/SKILL.md)   | nothing — it stands on its own     |
 
 ## License
 
-The [MIT License](./LICENSE) applies only to the files in `skills/`. It does not apply to any other part of this
+The [MIT License](LICENSE) applies only to the files in `skills/`. It does not apply to any other part of this
 repository. All other files keep their existing license terms.
 
 ## Where a skill comes from

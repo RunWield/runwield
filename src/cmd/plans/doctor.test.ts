@@ -11,7 +11,7 @@ import {
 import { runPlansDoctor, runPlansDoctorCommand } from "./doctor.ts";
 import { runPlansCommand } from "./index.ts";
 import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { getLockHostname } from "../../shared/process-liveness.ts";
 import { inspectTargetBranchPlansByParent } from "../../shared/workflow/planning-worktree.ts";

@@ -2,8 +2,8 @@
 
 Use this file for settings and model questions. Link to these docs for depth:
 
-- https://github.com/gandazgul/runwield/blob/main/docs/settings.md
-- https://github.com/gandazgul/runwield/blob/main/docs/providers.md
+- https://docs.runwield.dev/settings/
+- https://docs.runwield.dev/providers/
 - https://github.com/gandazgul/runwield/blob/main/docs/router-model-selection.md
 
 ## Files and merge behavior
@@ -13,7 +13,7 @@ global settings. RunWield merges custom object keys `agents` and `modelPresets` 
 replacing them wholesale.
 
 MCP servers use separate files, not settings: `~/.wld/mcp.json` and optional project `.wld/mcp.json`. The project MCP
-file must be local-only: regular file, untracked, not staged, and ignored by Git. See `docs/mcp.md`.
+file must be local-only: regular file, untracked, not staged, and ignored by Git. See https://docs.runwield.dev/mcp/.
 
 If a user asks what their setup does, read these files before answering.
 
@@ -29,9 +29,14 @@ Bundled Agent names are `architect`, `engineer`, `guide`, `ideator`, `operator`,
 
 ## Model presets
 
-`activeModelPreset` names the active entry in `modelPresets`. If it is unset, missing, or unknown, RunWield uses base
-`agents` settings. Presets are partial: missing values fall back per Agent to the base `agents` entry. A manual `/model`
-override wins until the active Agent changes.
+RunWield ships `codex`, `agy`, `opencode`, `claude-mixed`, `claude-opus`, and `codex-claude`. They are available in
+`/settings` without personal preset definitions. Files in `~/.wld/bundled-model-presets/` are disposable copies of
+bundled assets. Copy a definition into settings to customize it. Presets resolve by name: project over personal over
+bundled, replacing the whole lower-priority preset. Bundled presets are never activated automatically.
+
+`activeModelPreset` names a bundled or user-defined entry in `modelPresets`. If it is unset, missing, or unknown,
+RunWield uses base `agents` settings. Presets are partial: missing values fall back per Agent to the base `agents`
+entry. A manual `/model` override wins until the active Agent changes.
 
 Working example:
 

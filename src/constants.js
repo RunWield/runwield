@@ -50,8 +50,14 @@ export const PROMPT_TEMPLATES_DIR = resolveBundledResourcePath("prompt-templates
 /** Directory containing bundled default skill definitions. */
 export const SKILLS_DIR = resolveBundledResourcePath("skills");
 
+/** Directory containing bundled model preset definitions. */
+export const MODEL_PRESETS_DIR = resolveBundledResourcePath("model-presets");
+
 /** Path to the bundled core system prompt template. */
 export const SYSTEM_PROMPT_TEMPLATE_PATH = resolveBundledResourcePath("shared", "session", "SYSTEM_PROMPT_TEMPLATE.md");
+
+/** Path to the bundled sleep memory-maintenance prompt. */
+export const SLEEP_PROMPT_PATH = resolveBundledResourcePath("cmd", "sleep", "prompt.md");
 
 /** Directory containing bundled Snip filter definitions. */
 export const SNIP_FILTERS_DIR = resolveBundledResourcePath("snip-filters");

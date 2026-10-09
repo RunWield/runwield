@@ -1,6 +1,6 @@
 /** Image loading shared by single and grouped review decisions. */
 import { isAbsolute, resolve } from "node:path";
-import { mimeTypeForImagePath } from "../session/image-attachments.js";
+import { mimeTypeForImagePath } from "../session/image-attachments.ts";
 export interface ReviewImageInput {
     path?: string;
     name?: string;

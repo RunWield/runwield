@@ -1,3 +1,4 @@
+import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 /**
  * @module shared/workflow/validation-mechanical
  * Repository CI and the repair loop that returns failures to the execution Agent.
@@ -153,6 +154,14 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
             },
         );
         const ciResult = await args.localCI.run({ cwd: phase.context.executionCwd });
+        await recordDeliveryEvidence(
+            phase.context.projectRoot,
+            args.planName,
+            phase.context.worktreeId || "in-place",
+            "ci",
+            ciResult.kind === "completed" ? `Exit ${ciResult.exitCode}` : ciResult.kind,
+            ciResult.output ? "````text\n" + ciResult.output + "\n````" : "No command output recorded.",
+        );
         if (ciResult.kind === "operational_failure") {
             operationalAttempts += 1;
             const recovery = await handleMechanicalOperationalFailure(
@@ -317,6 +326,13 @@ export async function dispatchCiRepair(
         }),
         "warning",
         { outcome: "running", stage: "engineer_repair", checks: { ci: "failed" } },
+    );
+    await recordDeliveryEvidence(
+        context.projectRoot,
+        args.planName,
+        context.worktreeId || "in-place",
+        "ci-repair",
+        "Started",
     );
     const outcome = await args.session.runIndependentRepairTurn({
         kind: "validation",

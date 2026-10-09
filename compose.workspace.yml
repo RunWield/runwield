@@ -1,4 +1,4 @@
-# Compile bin/wld for this Linux architecture first. See docs/workspace-container.md.
+# Work in progress. Compile bin/wld for this Linux architecture first.
 services:
     workspace:
         platform: ${RUNWIELD_PLATFORM:-linux/amd64}

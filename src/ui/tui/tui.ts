@@ -14,10 +14,27 @@ export interface TuiPair {
     tui: TUI;
 }
 
+export interface TuiArtifactLink {
+    sessionId: string;
+    artifactId: string;
+}
 export class RunWieldTui extends TuiAltScreen {
+    onArtifactLink?: (link: TuiArtifactLink) => void;
     constructor(terminal: Terminal, browser: BrowserPort = SYSTEM_BROWSER_PORT) {
         super(terminal, undefined, undefined, {
-            openUrl: (url) => void browser.open(url),
+            openUrl: (url) => {
+                if (url.startsWith("runwield-artifact:")) {
+                    try {
+                        const link = new URL(url);
+                        this.onArtifactLink?.({
+                            sessionId: decodeURIComponent(link.hostname),
+                            artifactId: decodeURIComponent(link.pathname.slice(1)),
+                        });
+                    } catch { /* Ignore malformed internal links. */ }
+                    return;
+                }
+                void browser.open(url);
+            },
         });
         this.addInputListener((data) => {
             if (!matchesKey(data, Key.ctrl("l"))) return;

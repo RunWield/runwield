@@ -1,0 +1,49 @@
+{
+    "description": "Antigravity sign-in: Flash for execution, Pro for routing, planning and review.",
+    "agents": {
+        "router": {
+            "model": "agy-cli/gemini-3.1-pro",
+            "thinkingLevel": "medium"
+        },
+        "operator": {
+            "model": "agy-cli/gemini-3.8-flash",
+            "thinkingLevel": "medium"
+        },
+        "slicer": {
+            "model": "agy-cli/gemini-3.1-pro",
+            "thinkingLevel": "high"
+        },
+        "guide": {
+            "model": "agy-cli/gemini-3.8-flash",
+            "thinkingLevel": "high"
+        },
+        "engineer": {
+            "model": "agy-cli/gemini-3.8-flash",
+            "thinkingLevel": "high"
+        },
+        "frontend-engineer": {
+            "model": "agy-cli/gemini-3.8-flash",
+            "thinkingLevel": "high"
+        },
+        "init": {
+            "model": "agy-cli/gemini-3.8-flash",
+            "thinkingLevel": "high"
+        },
+        "architect": {
+            "model": "agy-cli/gemini-3.1-pro",
+            "thinkingLevel": "high"
+        },
+        "planner": {
+            "model": "agy-cli/gemini-3.1-pro",
+            "thinkingLevel": "high"
+        },
+        "ideator": {
+            "model": "agy-cli/gemini-3.1-pro",
+            "thinkingLevel": "high"
+        },
+        "reviewer": {
+            "model": "agy-cli/gemini-3.1-pro",
+            "thinkingLevel": "medium"
+        }
+    }
+}

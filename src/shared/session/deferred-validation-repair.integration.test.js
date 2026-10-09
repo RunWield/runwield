@@ -46,6 +46,8 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                 await Deno.writeTextFile(join(tree.path, "implementation.txt"), "implemented\n");
                 const plan = await loadPlan(tree.path, name);
                 assertExists(plan);
+                assertEquals(plan.attrs.status, "implemented");
+                assertEquals(plan.attrs.validationPhase, "semantic");
                 await savePlan(tree.path, name, body, {
                     ...plan.attrs,
                     executionMode: "worktree",
@@ -57,6 +59,8 @@ for (const interruption of ["disconnect", "stop", "cancel", "disconnect_compacti
                 }, { expectedRevision: plan.revision });
                 const ready = await loadPlan(tree.path, name);
                 assertExists(ready);
+                assertEquals(ready.attrs.status, "implemented");
+                assertEquals(ready.attrs.validationPhase, "semantic");
                 const id = await runtime.createPromptReadySession({
                     cwd: root,
                     agentName: "router",

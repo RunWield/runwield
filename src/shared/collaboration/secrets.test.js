@@ -3,7 +3,7 @@ import { join } from "@std/path";
 import { PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     assertCompatiblePullSecretRecord,
     deleteCompatibleSecretRecords,

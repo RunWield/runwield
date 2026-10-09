@@ -6,10 +6,9 @@ compatibility, and chat-channel integration.
 Keep this document as current product guidance. Fold lasting requirements from completed feature PRDs here;
 implementation steps belong in Plans, architectural choices in ADRs, and delivery evidence in Work Records.
 
-**Status:** Living roadmap — Session Host and ACP stdio MVP implemented; OpenAB/Telegram follows Personal Remote
-Workspace\
+**Status:** Working ACP integration with JetBrains AI Chat, the Air plugin, and OpenAB chat workflows\
 **Author:** Gandazgul + RunWield Ideator\
-**Last Updated:** 2026-09-21
+**Last Updated:** 2026-10-06
 
 ---
 
@@ -20,7 +19,11 @@ Workspace\
 Make RunWield usable from external clients through **Agent Client Protocol (ACP)** with the same conversations, Agent
 behavior, and Plan workflows available in the TUI.
 
-The delivery goals are:
+**Current compatibility (owner confirmed 2026-10-06):** JetBrains AI Chat and the Air plugin can drive RunWield. OpenAB
+works end to end with Discord and its other supported chat platforms. Other ACP-compatible clients are expected to work
+through the same protocol. Internal conformance checklists do not make these working integrations future scope.
+
+The continuing product requirements are:
 
 1. **OpenAB/Telegram compatibility:** one trusted operator can complete and recover a RunWield workflow through
    Telegram, using OpenAB as a replaceable reference ACP client.
@@ -54,8 +57,8 @@ gateway is deferred until a demonstrated product need justifies it.
 - ACP is the external-client contract; clients should not need bespoke RunWield integrations for ordinary workflows.
 - OpenAB is the first reference chat host and remains replaceable. Prefer generic upstream contributions; a passing,
   reviewed contribution branch plus an open PR is sufficient for the first proof.
-- Stage 1 serves one trusted operator in Telegram with an explicit allowlist. Slack, Discord, team identity, and SaaS
-  operations are later scope.
+- OpenAB supports end-to-end personal workflows through Discord and its other supported chats. Team identity and SaaS
+  operations remain separate scope.
 - Use standard or generic ACP interactions where supported. Unsupported interactions must be visible rather than
   silently answered.
 - Plan review remains in the browser. Telegram delivers the link and reports feedback or approval outcomes.
@@ -79,7 +82,7 @@ Stage labels below are delivery scope, not new lifecycle states or claims of shi
 
 - [ACP Session access](#acp-session-access)
 - [Protocol negotiation and interactions](#protocol-negotiation-and-interactions)
-- [Telegram workflow access](#telegram-workflow-access)
+- [Chat workflow access](#telegram-workflow-access)
 - [Interrupted-work recovery](#interrupted-work-recovery)
 - [Reference-client portability](#reference-client-portability)
 - [Advertised ACP conformance](#advertised-acp-conformance)
@@ -88,7 +91,8 @@ Stage labels below are delivery scope, not new lifecycle states or claims of shi
 
 ### ACP Session access
 
-**Scope and maturity:** Current Session Host and stdio MVP baseline; complete cross-client journeys remain required.
+**Scope and maturity:** Working Session access through JetBrains AI Chat, the Air plugin, and OpenAB. Other
+ACP-compatible clients are expected to work through the same advertised protocol.
 
 **Requirement: Load and continue the same Session through compatible clients.**
 
@@ -130,6 +134,11 @@ another lifecycle.
 
 **Acceptance scenarios:**
 
+- Given JetBrains AI Chat or the Air plugin configured to use `wld acp`, the user can drive RunWield workflows from that
+  client while retaining RunWield planning, review, execution, and validation.
+- Given OpenAB connected to Discord or another supported chat platform, the user can complete the RunWield workflow end
+  to end from that chat, following browser review links when needed.
+- Given another ACP-compatible client, ordinary workflows use the advertised protocol without a client-specific fork.
 - Given a mapped or persisted ACP Session ID, when the client sends `session/delete`, it receives `{}` and the owning
   stable Session is archived with all transcript segments and Plan Associations intact. Repeating the request or
   deleting an unknown ID also returns `{}`.
@@ -168,7 +177,8 @@ another lifecycle.
 
 ### Protocol negotiation and interactions
 
-**Scope and maturity:** Stage 1 target for the OpenAB proof; current coverage remains in the implementation audit.
+**Scope and maturity:** Current interactions support working external-client and OpenAB workflows. The dated
+implementation audit retains technical observations, not a pending gate for user-facing availability.
 
 **Requirement: Negotiate capabilities and settle interactions truthfully.**
 
@@ -238,9 +248,13 @@ requirement.
 
 <a id="62-required-user-journey"></a>
 
-### Telegram workflow access
+### Chat workflow access
 
-**Scope and maturity:** Stage 1 target for one trusted operator through the reference OpenAB client.
+<a id="telegram-workflow-access"></a>
+
+**Scope and maturity:** Working end-to-end personal workflows through OpenAB with Discord and its other supported chat
+platforms, confirmed by the owner on 2026-10-06. The Telegram journey below is a representative channel scenario, not a
+restriction on currently working channels.
 
 **Requirement: Carry the authorized operator through the shared Plan workflow.**
 
@@ -248,7 +262,7 @@ The authorized operator can reach the same RunWield planning, review, execution,
 Telegram. Plan review remains in the browser; Telegram supplies useful links, progress, questions, and outcomes. Channel
 access and Shared Plan permissions remain independent.
 
-Stage 1 is complete only when the operator can:
+The representative chat workflow lets the operator:
 
 1. Submit a bounded FEATURE User Request in Telegram.
 2. Start a new RunWield Session or reload the durable Session associated with the chat.
@@ -277,7 +291,7 @@ Stage 1 is complete only when the operator can:
 
 ### Interrupted-work recovery
 
-**Scope and maturity:** Stage 1 target using Core’s shared recovery requirements.
+**Scope and maturity:** Shared recovery requirements apply to current ACP workflows.
 
 **Requirement: Preserve partial work and avoid uncertain replay.**
 
@@ -306,7 +320,7 @@ be retried. Exact continuation of an interrupted token, tool call, or command is
 
 ### Reference-client portability
 
-**Scope and maturity:** Stage 1 target and lasting interoperability principle.
+**Scope and maturity:** Current interoperability principle for working ACP clients.
 
 **Requirement: Prove compatibility without permanent client-specific dependence.**
 
@@ -372,9 +386,10 @@ models receive the image directly, while text-only models can inspect the persis
 - When an ACP client sends an image prompt, a vision-capable model receives the image. A text-only model with a
   configured vision fallback receives a persisted attachment reference and can inspect it with `see_image`.
 
-## Stage 1 Delivery Environment
+## Historical Stage 1 Delivery Environment
 
-Stage 1 targets one trusted operator using:
+The original Telegram-focused proof used the following environment. This is historical planning context, not a limit on
+current JetBrains, Air, or OpenAB chat support:
 
 - one Telegram bot created through BotFather;
 - one private Telegram conversation;
@@ -387,7 +402,7 @@ Stage 1 targets one trusted operator using:
 A development tunnel is acceptable for concept validation. Production tenancy, account linking, billing, and
 availability guarantees are not required.
 
-## Stage 1 Cross-Capability Acceptance
+## Historical Stage 1 Cross-Capability Acceptance
 
 - An unauthorized Telegram user cannot start or mutate the configured RunWield Session.
 - One authorized operator completes the required FEATURE journey from Telegram through a Verified Plan.
@@ -402,9 +417,10 @@ availability guarantees are not required.
 
 <a id="8-out-of-scope-for-stage-1"></a>
 
-## Out of Scope for Stage 1
+## Scope beyond personal client integration
 
-- Slack or Discord validation.
+Discord and other OpenAB-supported chats are already supported. Separate future scope includes:
+
 - Multiple Telegram users, groups, topics, or concurrent project routing.
 - SaaS tenancy, account linking, billing, quotas, audit administration, or availability guarantees.
 - A RunWield-owned multi-platform chat gateway.

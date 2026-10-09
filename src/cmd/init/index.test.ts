@@ -101,6 +101,7 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                     )).isFile,
                 );
                 assert((await Deno.stat(join(homeDir, ".wld", "bundled-skills", "write-tests", "SKILL.md"))).isFile);
+                assert((await Deno.stat(join(homeDir, ".wld", "bundled-model-presets", "codex.json"))).isFile);
                 assertEquals(await getCwdInitState(), undefined);
 
                 await Deno.writeTextFile(settingsPath, originalSettings);
@@ -117,6 +118,10 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                 const ui = createUi();
                 const runtime = createSessionRuntime();
                 const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                runtime.setInteractionAdapter(created.sessionId, {
+                    supportsInteraction: () => true,
+                    requestInteraction: () => ({ outcome: "selected", value: "yes" }),
+                });
                 try {
                     await runInitCommand([], {
                         uiAPI: ui.uiAPI,
@@ -145,6 +150,10 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                 const ui = createUi();
                 const runtime = createSessionRuntime();
                 const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                runtime.setInteractionAdapter(created.sessionId, {
+                    supportsInteraction: () => true,
+                    requestInteraction: () => ({ outcome: "selected", value: "yes" }),
+                });
                 const assistantText: string[] = [];
                 const unsubscribe = runtime.subscribeSessionEvents(created.sessionId, (event) => {
                     if (event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA) assistantText.push(event.delta);

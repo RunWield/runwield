@@ -1,6 +1,6 @@
 import { assertArrayIncludes, assertEquals, assertMatch } from "@std/assert";
 import { basename } from "@std/path";
-import mnemotecaExtension from "./index.js";
+import mnemotecaExtension from "./index.ts";
 
 /**
  * @param {(command: string, args: string[], opts: { cwd: string }) => Promise<{code: number, stdout: string, stderr: string}> | {code: number, stdout: string, stderr: string}} execImpl

@@ -1,7 +1,6 @@
 ---
 classification: "PROJECT"
 complexity: "HIGH"
-summary: "Deliver the first complete RunWield Connect vertical slice: a Claude Code FEATURE workflow in which Claude owns every model call and RunWield Core owns planning, review, isolation, validation, recovery, Work Records, and durable workflow truth."
 affectedPaths:
     - "src/cmd/attached/"
     - "src/shared/attached/"
@@ -19,16 +18,13 @@ affectedPaths:
     - "docs/"
     - "docs/domain-language.md"
     - "README.md"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
 createdAt: "2026-08-03T13:15:40-04:00"
-updatedAt: "2026-10-06"
-status: "ready_for_decomposition"
 origin: "internal"
 userVerifiedAt: null
 planId: "7bf7ec07-2212-4bca-b5c5-3d4ac863025e"
+epicBaseCommit: "7bef10a1ef4b075a5484c6d4a44c56cf2791fed0"
+status: "ready_for_work"
 ---
 
 # RunWield Connect for Claude Code: FEATURE Preview
@@ -485,6 +481,37 @@ Behavior expected to stop existing:
 - No existing Core Session, ACP, Plan Lifecycle, or validation behavior is intentionally removed by this Epic.
 - Within the new Attached path, copied role prompts, host-prose lifecycle transitions, in-memory-only review waits, and
   adapter-owned Plan/worktree/validation state must never exist as accepted behavior.
+
+### Integration Notes
+
+Left by the reviewers of individual children for the integration review. These are places to look, not requirements.
+
+<!-- runwield:integration-notes:start child="attached-mode-claude-feature-preview/01-activate-and-resume-an-attached-workflow" -->
+
+**attached-mode-claude-feature-preview/01-activate-and-resume-an-attached-workflow**
+
+- Once later children add states, confirm that `nextActionFor` gives every new state an explicit next action. Today any
+  state other than `triaging` (with a pending action) or `awaiting_planning` falls through to
+  `return_to_host`/`unsupported_in_preview`. A `triaging` record with a null `pendingAction` falls through the same way.
+  (src/shared/attached/coordinator.ts nextActionFor; children 02-06)
+- When child 02 adds the Plan reference and controller-registry ownership, confirm that it extends
+  `AttachedWorkflowRecord` (schemaVersion 1), `PendingTriageAction.role`, and the strict `parse*Input` allowlists. It
+  must keep revision CAS and operationId replay for the new operations and must not add carrier-side checks.
+  (src/shared/attached/record-store.ts, operations.ts; child 02)
+- Confirm the no-home fallback path (`.wld/internal/attached/` inside the primary checkout) is reconciled with child
+  02's managed .gitignore setup preview. Without a home directory, activation writes into the repository before that
+  preview. (src/shared/attached/record-store.ts locateAttachedWorkflows; child 02)
+
+<!-- runwield:integration-notes:end child="attached-mode-claude-feature-preview/01-activate-and-resume-an-attached-workflow" -->
+
+<!-- runwield:integration-notes:start child="attached-mode-claude-feature-preview/02-plan-one-feature-request-inside-claude-code" -->
+
+**attached-mode-claude-feature-preview/02-plan-one-feature-request-inside-claude-code**
+
+- Plan review must read current Plan state, because users can run a submitted Plan with wld before Attached review
+  starts. (Child 03; src/shared/attached/coordinator.ts planWritten and the stored Plan reference.)
+
+<!-- runwield:integration-notes:end child="attached-mode-claude-feature-preview/02-plan-one-feature-request-inside-claude-code" -->
 
 ## Edge Cases & Considerations
 

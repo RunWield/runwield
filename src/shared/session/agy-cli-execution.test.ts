@@ -6,7 +6,7 @@ import { join } from "@std/path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS, SUBAGENTS } from "../../constants.js";
 import { loadPlan } from "../../plan-store.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { HostedSession } from "./hosted-session.js";
 import { setCustomSetting } from "../settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/metrics.js";

@@ -1,7 +1,7 @@
 import { assertEquals, assertFalse, assertStringIncludes } from "@std/assert";
 import { actionClassName } from "./components/Button.tsx";
 import { Dialog } from "./components/Dialog.jsx";
-import { RunWieldButton, RunWieldLink } from "./components/react/RunWieldPrimitives.jsx";
+import { RunWieldButton, RunWieldLink } from "./components/react/RunWieldPrimitives.tsx";
 import { readWorkspaceStyles } from "../workspace/workspace-styles.ts";
 
 /** @typedef {{ href?: string, className?: string }} LinkProps */

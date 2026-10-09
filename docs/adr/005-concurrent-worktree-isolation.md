@@ -77,10 +77,11 @@ publication first. Stale primary copies with the same Plan ID remain hidden afte
 4. **Checkpoint:** commit implementation changes, excluding RunWield runtime files. Record `implemented` in the
    execution Plan and `completed` for the attempt. A failed checkpoint leaves the attempt recoverable.
 5. **Validate:** run CI and review against that execution. Store retry/repair progress in the controller, not Markdown.
-   Successful validation leaves the Plan at `validated`; publication is a separate operation.
+   Successful validation leaves the execution Plan at `reviewed`; publication is a separate operation.
 6. **Publish:** follow ADR-016. Commit the final Plan and Work Record, assemble the target integration in a separate
-   publication checkout, push with a lease, verify the target, then clean up. The Plan does not gain a `published`
-   status or get rewritten after publication.
+   publication checkout, finalize its owned metadata as `verified`, push with a lease, verify the target, then clean up.
+   Only confirmed target publication establishes verified delivery; the sealed execution candidate remains `reviewed`.
+   The Plan does not gain a `published` status or get rewritten after publication.
 
 Remote publication never stages, stashes, resets, rebases, merges, or writes the user's primary checkout. The user
 updates that checkout separately after publication. For a repository without a remote, the explicit local-only exception

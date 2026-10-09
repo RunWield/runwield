@@ -37,7 +37,10 @@ export async function runValidationAgentUntilEvent(
         signal: waitController.signal,
     });
     const turn = Promise.resolve().then(() =>
-        port.runIsolatedAgentSession({ ...options, signal: turnController.signal })
+        port.runIsolatedAgentSession({
+            ...options,
+            signal: options.signal ? AbortSignal.any([options.signal, turnController.signal]) : turnController.signal,
+        })
     );
     try {
         const first = await Promise.race([

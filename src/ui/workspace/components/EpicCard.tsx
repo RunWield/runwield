@@ -1,5 +1,5 @@
 import { detailHref } from "./PlanCard.tsx";
-import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import type { countChildPlanProgress, PlanFrontMatter } from "../../../plan-store.js";
 

@@ -12,8 +12,9 @@ RunWield has strong workflow opinions. Before changing behavior, read the docs t
 - [Entity Model](entity-model.md) maps durable entities, transient workflow objects, adapter projections, and storage
   authorities.
 - [Plan Lifecycle](plan-lifecycle.md) explains Plan statuses, events, validation, repair, and delivery.
-- [Settings Reference](settings.md) documents configuration files, precedence, and commands.
-- [Themes](themes.md) and the [Design System](design-system.md) cover user-facing UI conventions.
+- [Workflow Validation Authority](validation-authority.md) explains which record owns each validation fact.
+- [Settings Reference](user-documentation/settings.md) documents configuration files, precedence, and commands.
+- [Themes](user-documentation/themes.md) and the [Design System](design-system.md) cover user-facing UI conventions.
 
 Product and architecture guidance:
 
@@ -57,7 +58,7 @@ Interactive RunWield sessions expect these helper binaries in `PATH`:
   fail-open, but local validation tasks may invoke it when installed by the standard setup path.
 
 The shell installer is the normal standalone recovery path for missing helper binaries. Package-managed installs should
-be repaired with their package manager instead. The prepared Homebrew formula uses `gandazgul/tap/mnemoteca`,
+be repaired with their package manager instead. The Homebrew formula uses `gandazgul/tap/mnemoteca`,
 `1broseidon/tap/cymbal`, `ketch`, `agent-browser`, and `git`; it does not run helper setup during formula installation.
 RunWield also ships bundled Snip filters for Deno validation output; install or remove user-level copies with:
 
@@ -180,21 +181,68 @@ rewriting, and focused tests.
 - Resolve home and cwd through `getHomeDir()` and `getCwd()` from `src/constants.js` in `src/`. Do not read
   `Deno.env.get("HOME")` or `Deno.cwd()` directly in source, and do not cache process-global state at module scope.
 - Wrap tests that mutate `HOME` or the working directory in `withProcessGlobalTestLock` from
-  `src/testing/process-global-lock.js`.
+  `src/testing/process-global-lock.ts`.
 - Preserve the layered customization model: project `.wld/` overrides home `~/.wld/`, which overrides bundled defaults.
 - Keep docs, plans, ADRs, PRDs, and Work Records as Markdown.
 
 ## Public documentation
 
-The public manual uses the selected Markdown guides in `docs/`; `docs/index.md` is its home. `deno task docs:dev` starts
-the Starlight preview at `http://localhost:4322`. `deno task docs:check` validates and builds the published pages. PRDs,
-Plans, Work Records, audits, and research remain in the repository but are not public manual pages.
+`docs.runwield.dev` publishes two parts:
+
+- **The user manual** from `docs/user-documentation/`. Read its [README](user-documentation/README.md) before editing:
+  those pages are for people who use RunWield, so internals, plans, and work in progress stay out.
+- **This Contributing section:** this page, [Plan Lifecycle](plan-lifecycle.md),
+  [Workflow Validation Authority](validation-authority.md), and the five central PRDs.
+
+`scripts/public-docs.ts` lists every published page. Plans, Work Records, audits, research, and other PRDs stay in the
+repository only. `deno task docs:dev` starts a preview at `http://localhost:4322`, and `deno task docs:check` validates
+and builds the site.
 
 `docs/stable` is the source for `docs.runwield.dev`. It identifies the Stable release it describes. Make corrections to
 that branch through normal review, then forward-port the same correction to `main`. Do not add unreleased product
 behavior to `docs/stable`. A Stable release merges its tagged source into the branch without force-pushing, so retained
 corrections survive. Resolve a merge conflict by checking the instruction against the released product; a failed merge
 leaves the existing site live.
+
+## Plan review UI in a source checkout
+
+Plan review and code review run inside Workspace using a vendored Plannotator. If they don't open from a source
+checkout:
+
+- Check that `third_party/plannotator/` exists and matches `third_party/plannotator-revision.txt`.
+- Run `deno task workspace:dev` to open a catalog of the Plan Board, Plan Review, and Code Review with fixture data.
+- Run `deno task workspace:check` to confirm the `@plannotator/*` imports resolve.
+
+## Plan Server development
+
+Run the collaboration Plan Server from source without a container:
+
+```bash
+RUNWIELD_REMOTE_HOST=127.0.0.1 \
+RUNWIELD_REMOTE_PORT=8080 \
+RUNWIELD_REMOTE_DB_PATH=.wld/remote-workspace.sqlite \
+deno task workspace:remote
+```
+
+After changing collaboration or its packaging, run this end-to-end check. See the user guide,
+[Self-hosted collaboration](user-documentation/collaboration.md), for setup.
+
+Use this checklist after changing packaging or collaboration behavior:
+
+1. `podman compose -f compose.yml up -d`.
+2. Confirm `curl http://127.0.0.1:8080/healthz` and `/readyz` return `{"ok":true,"mode":"remote"}`.
+3. Configure `planServerUrl` or pass `--plan-server http://127.0.0.1:8080`.
+4. Run `wld plans share <plan>` and save the reviewer and maintainer URLs securely.
+5. Open the reviewer URL in a browser and add comments from two display names.
+6. Resolve and reopen at least one comment.
+7. If retention is enabled, verify the browser and CLI display expiry and that writes refresh it.
+8. In another checkout, run `wld plans pull '<maintainer-url>' --to <plan-name>`.
+9. Let Planner or Architect incorporate the feedback into the local Plan.
+10. Run `wld plans push <plan-name>`.
+11. Reopen the reviewer URL and verify the new Revision is available while older Revision comments stay scoped.
+12. Inspect SQLite and representative network payloads for ciphertext-only semantic content.
+13. Stop the service, back up the volume, restore it, restart, and verify `/readyz` plus a known reviewer URL.
+14. Run `wld plans unshare <plan-name>` and verify old reviewer/maintainer links stop working.
 
 ## Pull request checklist
 

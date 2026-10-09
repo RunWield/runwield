@@ -67,6 +67,31 @@ Deno.test("defaultEpicBranchName names the branch after the Epic", () => {
     assertEquals(defaultEpicBranchName("docs/plans/My Epic.md"), "epic/my-epic");
 });
 
+Deno.test("existing Epic branches refresh publication before seeding another child", async () => {
+    const repo = await repoFixture.checkout();
+    const remote = await Deno.makeTempDir();
+    await git(remote, ["init", "--bare", "--initial-branch=main"]);
+    await git(repo, ["remote", "add", "origin", remote]);
+    await git(repo, ["push", "origin", "main", "main:epic/epic"]);
+    await git(repo, ["branch", "epic/epic", "main"]);
+    await writePlan(repo, "epic", epicAttrs({ targetBranch: "epic/epic" }), "# Epic\n");
+    await writePlan(repo, "epic/02-next", childAttrs(2, { targetBranch: "epic/epic" }), "# Next\n");
+    const publisher = await repoFixture.checkout();
+    await git(publisher, ["remote", "add", "origin", remote]);
+    await git(publisher, ["switch", "-c", "epic/epic"]);
+    await Deno.writeTextFile(join(publisher, "published.js"), "previous child\n");
+    await git(publisher, ["add", "."]);
+    await git(publisher, ["commit", "-m", "previous child publication"]);
+    await git(publisher, ["push", "origin", "epic/epic"]);
+    const published = await git(publisher, ["rev-parse", "HEAD"]);
+
+    const result = await ensureEpicBranch(repo, "epic");
+
+    assertEquals(result.seededChildren, ["epic/02-next"]);
+    await git(repo, ["merge-base", "--is-ancestor", published, "origin/epic/epic"]);
+    assertStringIncludes(await git(repo, ["show", "origin/epic/epic:published.js"]), "previous child");
+});
+
 Deno.test("an unstarted Epic gets its own branch from the latest primary branch with its drafts on it", async () => {
     const repo = await repoFixture.checkout();
     const primaryHead = await git(repo, ["rev-parse", "main"]);

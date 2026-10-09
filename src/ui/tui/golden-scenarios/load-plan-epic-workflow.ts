@@ -297,7 +297,12 @@ export const loadPlanEpicDoneEnoughArchiveScenario = {
         { type: "type", text: "/load-plan ready-epic" },
         { type: "enter" },
         { type: "enter" },
-        { type: "waitForPlanStatus", planName: "ready-epic", statuses: ["verified"], timeoutMs: 30000 },
+        {
+            type: "waitForPlanStatus",
+            planName: "ready-epic",
+            statuses: ["closed_without_verification"],
+            timeoutMs: 30000,
+        },
         { type: "waitForIdle", timeoutMs: 20000 },
         { type: "type", text: "/load-plan ready-epic" },
         { type: "enter" },

@@ -1,4 +1,5 @@
 ---
+import type { OwnerProjectView } from "../../server/owner-projects.ts";
 import SettingsLayout from "../../layouts/SettingsLayout.astro";
 import { loadOwnerProjects } from "../../server/astro-owner-data.js";
 
@@ -19,7 +20,7 @@ const projects = await loadOwnerProjects();
         <p class="muted" data-project-register-status role="status"></p>
     </section>
     <section class="project-list-panel" aria-label="Linked Projects">
-        {projects.length ? projects.map((project: { projectId: string; displayName: string; rootLabel: string; healthStatus: string; lifecycle: string; enabled: boolean }) => (
+        {projects.length ? projects.map((project: OwnerProjectView) => (
             <a
                 class="project-list-row"
                 href={`/projects/${encodeURIComponent(project.projectId)}/settings`}

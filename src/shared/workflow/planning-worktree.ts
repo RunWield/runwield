@@ -22,6 +22,7 @@ import { runExecutionPreparationTransition } from "./state-transition.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { ensureExecutionPlanFile } from "./execution-plan-file.js";
 import { listControllerDocumentWorktrees, writeControllerState } from "./controller-registry.ts";
+import { refreshPlanningWorktree } from "./planning-worktree-refresh.ts";
 
 type LoadedPlan = NonNullable<Awaited<ReturnType<typeof loadPlan>>>;
 
@@ -269,7 +270,25 @@ export async function preparePlanningWorktreeForPlan(
                     `Registered worktree contains a different Plan ID. Your files were not changed.`,
                 );
             }
-            return { entry: existing, plan, reused: true };
+            if (existing.status !== "planning") return { entry: existing, plan, reused: true };
+            const target = await resolveExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
+            if (existing.baseBranch !== target.baseBranch) {
+                throw new Error(
+                    `Planning worktree targets ${existing.baseBranch}, but Plan targets ${target.baseBranch}.`,
+                );
+            }
+            if (target.baseRef !== existing.baseCommit) {
+                const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+                if (!targetPlan || targetPlan.attrs.planId !== planId) {
+                    throw new Error(
+                        `Target Plan ${planName} is missing or has a different Plan ID. Your files were not changed.`,
+                    );
+                }
+            }
+            const entry = await refreshPlanningWorktree(projectRoot, existing, target.baseRef);
+            const refreshedPlan = await loadPlan(entry.path, planName);
+            if (!refreshedPlan) throw new Error(`Registered worktree is missing its Plan: ${entry.path}`);
+            return { entry, plan: refreshedPlan, reused: true };
         }
     }
 

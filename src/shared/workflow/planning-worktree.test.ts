@@ -117,6 +117,154 @@ Deno.test("planning worktree resume reuses saved Plan edits", async () => {
     assertStringIncludes(second.plan.markdown, "SAVED PLANNER EDIT");
 });
 
+async function remotePublication(repo: string) {
+    const remote = await Deno.makeTempDir();
+    await git(remote, ["init", "--bare", "--initial-branch=main"]);
+    await git(repo, ["remote", "add", "origin", remote]);
+    await git(repo, ["push", "origin", "main", "epic-target"]);
+    const publisher = await fixture.checkout();
+    await git(publisher, ["remote", "add", "origin", remote]);
+    await git(publisher, ["switch", "epic-target"]);
+    return publisher;
+}
+
+async function publishPreviousChild(publisher: string) {
+    await Deno.writeTextFile(join(publisher, "previous-child.js"), "export const delivered = true;\n");
+    const parentPath = join(publisher, "docs/plans/epic.md");
+    await Deno.writeTextFile(
+        parentPath,
+        (await Deno.readTextFile(parentPath)).replace('status: "ready_for_work"', 'status: "implemented"'),
+    );
+    await git(publisher, ["add", "."]);
+    await git(publisher, ["commit", "-m", "publish previous child"]);
+    await git(publisher, ["push", "origin", "epic-target"]);
+    return await git(publisher, ["rev-parse", "HEAD"]);
+}
+
+Deno.test("new child planning fetches remote publication despite dirty primary Plan status", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const published = await publishPreviousChild(publisher);
+    const parentPath = join(repo, "docs/plans/epic.md");
+    const dirtyParent = (await Deno.readTextFile(parentPath)).replace('status: "ready_for_work"', 'status: "draft"');
+    await Deno.writeTextFile(parentPath, dirtyParent);
+    const primaryHead = await git(repo, ["rev-parse", "HEAD"]);
+
+    const result = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+
+    assertEquals(result.entry.baseCommit, published);
+    assertStringIncludes(await Deno.readTextFile(join(result.entry.path, "previous-child.js")), "delivered");
+    assertEquals(await Deno.readTextFile(parentPath), dirtyParent);
+    assertEquals(await git(repo, ["rev-parse", "HEAD"]), primaryHead);
+});
+
+Deno.test("reused child planning imports remote publication and preserves its saved Plan status and scope", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const planPath = join(first.entry.path, "docs/plans/epic/01-child.md");
+    await Deno.writeTextFile(
+        planPath,
+        (await Deno.readTextFile(planPath)).replace('status: "draft"', 'status: "approved"')
+            .replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"),
+    );
+    const parentPath = join(first.entry.path, "docs/plans/epic.md");
+    await Deno.writeTextFile(
+        parentPath,
+        (await Deno.readTextFile(parentPath)).replace('status: "ready_for_work"', 'status: "draft"'),
+    );
+    const published = await publishPreviousChild(publisher);
+
+    const second = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+
+    assertEquals(second.reused, true);
+    assertEquals(second.entry.id, first.entry.id);
+    assertStringIncludes(await Deno.readTextFile(join(second.entry.path, "previous-child.js")), "delivered");
+    assertEquals(second.entry.baseCommit, published);
+    assertEquals(second.plan.attrs.status, "approved");
+    assertStringIncludes(second.plan.markdown, "SAVED PLANNER EDIT");
+    assertStringIncludes(await Deno.readTextFile(parentPath), "implemented");
+    await git(second.entry.path, ["merge-base", "--is-ancestor", published, "HEAD"]);
+    const again = await preparePlanningWorktreeForPlan(repo, "epic/01-child", second.plan.attrs);
+    assertEquals(again.entry.baseCommit, published);
+    assertEquals(again.plan.attrs.status, "approved");
+});
+
+Deno.test("reused planning stops on fetch failure without changing saved work", async () => {
+    const repo = await fixture.checkout();
+    await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const head = await git(first.entry.path, ["rev-parse", "HEAD"]);
+    await git(repo, ["remote", "set-url", "origin", join(repo, "unavailable.git")]);
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        "Could not refresh target branch",
+    );
+    assertEquals(await git(first.entry.path, ["rev-parse", "HEAD"]), head);
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
+Deno.test("planning refresh preserves incompatible scope edits without leaving a conflicted checkout", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const relativePath = "docs/plans/epic/01-child.md";
+    const saved = (await Deno.readTextFile(join(first.entry.path, relativePath))).replace(
+        "TARGET PLAN BODY",
+        "LOCAL SCOPE",
+    );
+    await Deno.writeTextFile(join(first.entry.path, relativePath), saved);
+    await Deno.writeTextFile(
+        join(publisher, relativePath),
+        (await Deno.readTextFile(join(publisher, relativePath))).replace("TARGET PLAN BODY", "PUBLISHED SCOPE"),
+    );
+    const published = await publishPreviousChild(publisher);
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        "planning scope conflicts",
+    );
+    assertEquals(await Deno.readTextFile(join(first.entry.path, relativePath)), saved);
+    assertStringIncludes(await git(repo, ["show", `${published}:${relativePath}`]), "PUBLISHED SCOPE");
+    assertEquals(await git(first.entry.path, ["diff", "--name-only", "--diff-filter=U"]), "");
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
+Deno.test("planning refresh does not overwrite implementation already in the checkout", async () => {
+    const repo = await fixture.checkout();
+    const publisher = await remotePublication(repo);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const path = join(first.entry.path, "src-target-only.js");
+    await Deno.writeTextFile(path, "saved implementation\n");
+    await publishPreviousChild(publisher);
+    await assertRejects(
+        () => preparePlanningWorktreeForPlan(repo, "epic/01-child", first.plan.attrs),
+        Error,
+        "already contains implementation changes",
+    );
+    assertEquals(await Deno.readTextFile(path), "saved implementation\n");
+    assertEquals((await listEntries(repo))[0].baseCommit, first.entry.baseCommit);
+});
+
 Deno.test("first Epic child planning starts from a new target branch", async () => {
     const repo = await fixture.checkout();
     const remote = await Deno.makeTempDir();

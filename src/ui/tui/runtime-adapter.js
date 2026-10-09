@@ -1,3 +1,4 @@
+import { deliveryReportText } from "./delivery-report-text.ts";
 /**
  * @module ui/tui/runtime-adapter
  * Renders one SessionRuntime event stream into the terminal UI.
@@ -5,7 +6,7 @@
 
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { normalizeAgentInternalName } from "../../shared/session/agents.js";
-import { formatImageAttachmentMarker } from "../../shared/session/image-attachments.js";
+import { formatImageAttachmentMarker } from "../../shared/session/image-attachments.ts";
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";
 import { setTerminalTitleForName } from "./terminal-title.ts";
 import { presentTutorialEvent } from "./tutorial-guidance.ts";
@@ -68,6 +69,7 @@ const activeAdapters = new WeakMap();
  * @property {typeof import('./system-notifications.ts').notifyRunWieldEventQuietly} notifyRunWieldEvent
  * @property {(replacement: { oldSessionId: string, newSessionId: string }) => void} [onSessionReplaced]
  * @property {boolean} [pauseTutorialPresentation]
+ * @property {(sessionId: string, workRecordFailed?: boolean, workRecordPlanName?: string) => void} [onSessionComplete]
  */
 
 /**
@@ -93,6 +95,7 @@ export function attachTuiRuntimeAdapter({
     notifyRunWieldEvent,
     onSessionReplaced,
     pauseTutorialPresentation = false,
+    onSessionComplete,
 }) {
     let registrations = activeAdapters.get(runtime);
     if (!registrations) {
@@ -118,6 +121,11 @@ export function attachTuiRuntimeAdapter({
     let validationSessionActive = false;
     let terminalValidationPanelVisible = false;
     let hiddenValidationReportCached = false;
+    let completionPending = false;
+    let completionWorkRecordFailed = false;
+    let completionWorkRecordPlanName = "";
+    let completionGeneration = 0;
+    let disposed = false;
     /** @type {Set<string>} */
     const seenProjectedEventIds = new Set();
     let tutorialPresentation = Promise.resolve();
@@ -129,8 +137,22 @@ export function attachTuiRuntimeAdapter({
      * @param {string} [tutorialSessionId]
      */
     const queueTutorialPresentation = (event, tutorialSessionId = sessionId) => {
+        // Capture settlement now: an older idle event waiting behind Tutorial
+        // presentation must not consume a later publication's completion.
+        const settlementGeneration = completionPending && !event._meta?.replay &&
+                event.type === RuntimeEventTypes.BUSY_CHANGED && !event.busy
+            ? completionGeneration
+            : null;
         tutorialPresentation = tutorialPresentation
-            .then(() => presentTutorialEvent({ runtime, sessionId: tutorialSessionId, uiAPI, event }))
+            .then(async () => {
+                await presentTutorialEvent({ runtime, sessionId: tutorialSessionId, uiAPI, event });
+                if (
+                    !disposed && completionPending && settlementGeneration === completionGeneration
+                ) {
+                    completionPending = false;
+                    onSessionComplete?.(tutorialSessionId, completionWorkRecordFailed, completionWorkRecordPlanName);
+                }
+            })
             .catch((error) => console.error(`[RunWield] tutorial_presentation_failed ${error}`));
     };
     const shouldCacheValidationReport = () => {
@@ -149,6 +171,7 @@ export function attachTuiRuntimeAdapter({
                 onSessionReplaced?.({ oldSessionId: value.oldSessionId, newSessionId: value.newSessionId });
                 break;
             case RuntimeEventTypes.USER_MESSAGE:
+                completionPending = false;
                 if (terminalValidationPanelVisible) {
                     uiAPI.clearValidationPanel?.();
                     terminalValidationPanelVisible = false;
@@ -268,18 +291,34 @@ export function attachTuiRuntimeAdapter({
             }
             case RuntimeEventTypes.SYSTEM_STATUS:
                 if (value.validationProgress) {
-                    validationSessionActive = true;
                     hiddenValidationReportCached = false;
-                    uiAPI.updateValidationProgress?.(value.validationProgress);
-                    terminalValidationPanelVisible = ["verified", "failed"].includes(value.validationProgress.outcome);
+                    const completed = value.validationProgress.stage === "terminal" &&
+                        value.validationProgress.outcome === "verified";
+                    validationSessionActive = !completed;
+                    terminalValidationPanelVisible = value.validationProgress.outcome === "failed";
+                    if (completed) {
+                        uiAPI.clearValidationPanel?.();
+                        if (!event._meta?.replay && value.validationProgress.kind === "workflow") {
+                            completionGeneration += 1;
+                            completionPending = true;
+                            completionWorkRecordFailed = value.validationProgress.workRecordFailed === true;
+                            completionWorkRecordPlanName = value.validationProgress.workRecordPlanName || "";
+                        }
+                    } else {
+                        completionPending = false;
+                        uiAPI.updateValidationProgress?.(value.validationProgress);
+                    }
                 }
                 uiAPI.appendSystemMessage(
-                    value.message,
+                    value.validationProgress?.deliveryReport
+                        ? deliveryReportText(value.validationProgress.deliveryReport, sessionId)
+                        : value.message,
                     value.level === "error",
                     value.header,
                 );
                 break;
             case RuntimeEventTypes.TERMINAL_ERROR:
+                completionPending = false;
                 if (validationSessionActive || terminalValidationPanelVisible || hiddenValidationReportCached) {
                     uiAPI.clearValidationPanel?.();
                     validationSessionActive = false;
@@ -328,6 +367,7 @@ export function attachTuiRuntimeAdapter({
                 else uiAPI.disableInput?.();
                 break;
             case RuntimeEventTypes.MESSAGES_CLEARED:
+                completionPending = false;
                 terminalValidationPanelVisible = false;
                 validationSessionActive = false;
                 hiddenValidationReportCached = false;
@@ -384,7 +424,6 @@ export function attachTuiRuntimeAdapter({
         uiAPI.appendQueuedMessage?.(message.id, formatQueuedMessageText(message));
     }
 
-    let disposed = false;
     const registration = {
         /** @param {{ discard?: boolean }} [options] */
         resumeTutorialPresentation(options = {}) {

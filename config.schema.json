@@ -40,6 +40,7 @@
         "codereview": {
             "type": "string",
             "enum": ["none", "ask", "always"],
+            "default": "ask",
             "description": "Optional Plannotator human code review gate after local validation and semantic review."
         },
         "guidedReview": {
@@ -66,6 +67,20 @@
         "notifications": {
             "$ref": "#/$defs/notifications",
             "description": "Terminal bell and desktop attention notifications for agent stops, plan review, user interview prompts, and /compact completion."
+        },
+        "imageGeneration": {
+            "$ref": "#/$defs/imageGeneration",
+            "description": "Image model used by the create_image tool. Supports openrouter/, opencode/, codex-cli/ (alias openai-codex/), and agy-cli/ models."
+        },
+        "planServerUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL of the default remote Workspace Plan Server used by wld plans share. Do not store share URLs here."
+        },
+        "mascot": {
+            "type": "boolean",
+            "default": true,
+            "description": "Shows the agent mascot in TUI and Workspace. Set false to hide it."
         },
         "workflowMetrics": {
             "description": "Opt-in local-only workflow metrics recording. When disabled or unset, no metrics are written. Records are stored under ~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl. Linked worktrees write to the primary project file.",
@@ -333,6 +348,32 @@
                 },
                 "visionFallback": {
                     "$ref": "#/$defs/providerModelReferenceObject"
+                },
+                "imageGeneration": {
+                    "$ref": "#/$defs/imageGeneration"
+                }
+            }
+        },
+        "imageGeneration": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "model": {
+                    "$ref": "#/$defs/providerModelReference"
+                },
+                "thinkingLevel": {
+                    "type": "string",
+                    "description": "Optional. Supported values depend on the provider and model."
+                },
+                "temperature": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2,
+                    "description": "Optional. Only some image models accept it."
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Set false to turn image generation off in this scope."
                 }
             }
         },

@@ -1,7 +1,7 @@
 import { assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { DatabaseSync } from "node:sqlite";
 import { getLatestOwnerCoordinationSchemaVersion, openOwnerCoordinationDatabase } from "./database.js";
-import { OWNER_COORDINATION_SCHEMA_V1_SQL, OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.js";
+import { OWNER_COORDINATION_SCHEMA_V1_SQL, OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
 
 /** @param {string} path */
 async function exists(path) {

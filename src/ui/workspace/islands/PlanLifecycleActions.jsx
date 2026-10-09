@@ -1,6 +1,6 @@
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { useState } from "react";
-import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldButton } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import {
     lifecycleActionApiPath,
     PLAN_LIFECYCLE_ACTIONS,

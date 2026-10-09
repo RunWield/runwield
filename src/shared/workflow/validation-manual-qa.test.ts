@@ -64,7 +64,7 @@ import {
 Deno.test("Epic child Manual QA failure does not block verified delivery or continuation", async () => {
     const projectRoot = await makeValidationProjectRoot("epic/01-one", {
         classification: "PLANNED_CHANGE",
-        status: "validated_reviewer",
+        status: "reviewed",
         parentPlan: "epic",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
@@ -80,7 +80,7 @@ Deno.test("Epic child Manual QA failure does not block verified delivery or cont
         planName: "epic/01-one",
         triageMeta: {
             classification: "PLANNED_CHANGE",
-            status: "validated_reviewer",
+            status: "reviewed",
             parentPlan: "epic",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
@@ -97,7 +97,7 @@ Deno.test("Epic child Manual QA failure does not block verified delivery or cont
         planContent: "# One\n\nimplemented child",
         triageMeta: {
             classification: "PLANNED_CHANGE",
-            status: "validated_reviewer",
+            status: "reviewed",
             parentPlan: "epic",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
@@ -106,7 +106,7 @@ Deno.test("Epic child Manual QA failure does not block verified delivery or cont
     });
 
     assertEquals(result.kind, "verified");
-    assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "validated");
+    assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "verified");
     assert(
         uiAPI.systemCalls.some((call: { level: string; message: string }) =>
             call.level === "warning" && call.message.includes("RunWield could not save the test note")

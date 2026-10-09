@@ -6,7 +6,7 @@
  * in this module reads or writes the Plan store, so it needs no fixture to test.
  */
 
-import { buildTriageReport } from "../../shared/workflow/workflow-prompts.js";
+import { buildTriageReport } from "../../shared/workflow/workflow-prompts.ts";
 import type { PlanFrontMatter } from "../../plan-store.js";
 
 /** One commit in the "these paths changed since the Plan was written" warning. */

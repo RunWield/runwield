@@ -250,6 +250,11 @@ function reconcileGitignore(
     return { content, warnings };
 }
 
+/** Compare only the deterministic managed-rule update, preserving unrelated rules. */
+export function isRunWieldOwnedGitignoreChange(before: string, after: string): boolean {
+    return reconcileGitignore(before).content === reconcileGitignore(after).content;
+}
+
 export async function ensureRunWieldOwnedGitignoreBlock(
     projectRoot: string,
 ): Promise<RunWieldGitignoreReconciliationResult> {

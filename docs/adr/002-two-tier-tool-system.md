@@ -73,7 +73,8 @@ shell composition, expansion, wrappers, and known write or execution options. De
 asks the Agent to report a blocker if they are insufficient. It is best-effort convenience filtering, **not a sandbox**:
 shell startup, Git configuration, executable lookup, and incomplete option coverage can still have effects. Restricted
 Pi Sessions omit Snip because its rewrites require compounds and temporary files. Guide's explicitly requested docs-only
-Markdown writing remains separate from the shell limit. See [customization](../customization.md#agents) for syntax and
+Markdown writing remains separate from the shell limit. See
+[customization](../user-documentation/customization.md#agents) for syntax and
 [Core customization](../prd/runwield-core-prd.md#agent-and-skill-customization) for the user contract.
 
 ### Escape Hatch

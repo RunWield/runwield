@@ -7,7 +7,7 @@
  * reach the target branch actually did.
  */
 
-import { planDocumentMarkdown, type PlanFrontMatter } from "../../plan-store.js";
+import { getDeclaredPlanStatus, planDocumentMarkdown, type PlanFrontMatter } from "../../plan-store.js";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
 import { dirname, join, resolve } from "@std/path";
 
@@ -63,16 +63,18 @@ interface PublicationPlanDocument {
  * Prove the terminal publication state that intentionally has no worktree record.
  *
  * Once Direct Delivery succeeds, RunWield removes the attempt from the worktree
- * registry. The Plan deliberately remains `validated`; its committed stamp and
- * target branch are sufficient after all controller state has been removed.
+ * registry. A verified Plan or a legacy validated document can retain publication
+ * proof after controller removal; an effective reviewed state may still need Git reconciliation.
  */
 export async function verifyRecordedPublication(
     projectRoot: string,
     attrs: PlanFrontMatter,
     document?: PublicationPlanDocument,
 ): Promise<RecordedPublicationResult> {
-    if (!["validated", "verified", "user_verified"].includes(attrs.status || "")) return { published: false };
-    if (!(await hasGitDirectory(projectRoot))) return { published: true };
+    if (!["reviewed", "validated", "verified", "user_verified"].includes(attrs.status || "")) {
+        return { published: false };
+    }
+    if (!(await hasGitDirectory(projectRoot))) return { published: attrs.status !== "reviewed" };
     const evidence = attrs.deliveryEvidence;
     const legacy = evidence?.mode === "worktree_merge" ? evidence : undefined;
     const targetBranch = attrs.targetBranch || legacy?.targetBranch;
@@ -93,7 +95,9 @@ export async function verifyRecordedPublication(
     }
     // Older published Plans predate the stamp. Exact committed document equality
     // proves their completion without inventing evidence or rewriting the Plan.
-    if (document) {
+    if (
+        document && ["validated", "verified", "user_verified"].includes(getDeclaredPlanStatus(document.markdown) || "")
+    ) {
         const saved = await runGitForMergeVerification(projectRoot, [
             "show",
             `refs/heads/${targetBranch}:docs/plans/${document.planName}.md`,

@@ -110,7 +110,7 @@ export function isUserVerifiableStatus(status: string): boolean {
         "in_progress",
         "implemented",
         "validated_ci",
-        "validated_reviewer",
+        "reviewed",
     ].includes(String(status));
 }
 

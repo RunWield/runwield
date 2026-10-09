@@ -47,7 +47,7 @@ import {
     summarizeResumableTranscript,
     validateExpiredControlTranscriptEvidence,
 } from "../../../shared/session/session-transcript-projection.js";
-import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.js";
+import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 
 /** A rejected image submission has not been accepted as an operation. */
 export class ImageSubmissionValidationError extends Error {
@@ -168,8 +168,14 @@ function safeCodeReviewReference(request) {
         ? meta.planName.trim()
         : "Workspace changes";
     const planTitle = typeof meta.planTitle === "string" && meta.planTitle.trim() ? meta.planTitle.trim() : planName;
+    const conversation = meta.reviewConversation;
+    const conversationEvents = conversation && typeof conversation === "object" && "events" in conversation &&
+            Array.isArray(conversation.events)
+        ? conversation.events
+        : [];
     return {
         rawPatch,
+        conversationEvents,
         gitRef: `RunWield workflow diff: ${planName}`,
         planName,
         planTitle,
@@ -2349,6 +2355,11 @@ export class WorkspaceSessionContinuationService {
         }
         if (!options.triageMeta) throw new Error("Plan execution handoff requires approval-time Plan action evidence.");
         const status = String(options.triageMeta.status || "");
+        if (options.action === "retry_work_record") {
+            // The existing retry authority resolves sealed publication evidence. A preserved
+            // primary Plan can still say ready_for_work after successful remote delivery.
+            return await this.startPlanWorkflowOperation(options, false, requestHash);
+        }
         const review = ["approved", "ready_for_work"].includes(status);
         if (options.action === "review_plan" && !review) {
             throw new Error("Plan review requires an approved Plan waiting for execution. Refresh its progress.");
@@ -2360,8 +2371,9 @@ export class WorkspaceSessionContinuationService {
                 "failed",
                 "ready_for_decomposition",
                 "implemented",
+                "reviewed",
                 "validated_ci",
-                "validated_reviewer",
+                "reviewed",
                 "validated",
             ].includes(status)
         ) {
@@ -2430,7 +2442,9 @@ export class WorkspaceSessionContinuationService {
             let error;
             try {
                 const status = String(options.triageMeta?.status || "");
-                const result = review
+                const result = options.action === "retry_work_record"
+                    ? await this.runtime.retryWorkRecord(adopted.sessionId, options.planName)
+                    : review
                     ? await this.runtime.reviewSavedPlan(adopted.sessionId, planId)
                     : status === "ready_for_decomposition"
                     ? await this.runtime.runSlicerAgent(adopted.sessionId, {

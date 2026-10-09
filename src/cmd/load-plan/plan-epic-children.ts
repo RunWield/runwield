@@ -71,7 +71,8 @@ export interface EpicChildPlan {
 export function isDecomposedEpicStatus(attrs: PlanFrontMatter): boolean {
     return attrs.status === "ready_for_decomposition" || attrs.status === "ready_for_work" ||
         attrs.status === "implemented" ||
-        (["validated", "verified"].includes(attrs.status) && attrs.epicCompletionMode === "done_enough");
+        (["reviewed", "validated", "verified", "closed_without_verification"].includes(attrs.status) &&
+            attrs.epicCompletionMode === "done_enough");
 }
 
 /**

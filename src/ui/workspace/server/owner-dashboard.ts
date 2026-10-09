@@ -4,7 +4,8 @@ import { isSequencePlan } from "../../../plan-store.js";
 import { findByPlanId, findByPlanIds, type WorktreeRegistryEntry } from "../../../shared/worktree-registry.js";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 import { loadPlanSummaries } from "./plan-adapter.js";
-import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.js";
+import type { OwnerProjectHealth, OwnerProjectRecord, OwnerProjectView } from "./owner-projects.ts";
+import { requireOwnerProjectRoot, serializeOwnerProject } from "./owner-projects.ts";
 import { readLiveSessionConnection } from "../../../shared/session/live-session-connection.ts";
 import { withProjectRuntimeReadScope } from "../../../shared/project-runtime-layout.ts";
 
@@ -42,12 +43,7 @@ type OwnerPlan = {
     attrs?: PlanAttrs;
 };
 
-type OwnerProject = {
-    projectId: string;
-    displayName?: string;
-    currentRoot?: string;
-    registeredRoot?: string;
-    lifecycle?: string;
+type OwnerProject = OwnerProjectRecord & {
     healthStatus?: string;
     healthEvidence?: string[];
     enabled?: boolean;
@@ -93,7 +89,7 @@ type SidebarPlan = {
     hasMoreSessions: boolean;
 };
 
-type SidebarProject = ReturnType<typeof serializeOwnerProject> & {
+type SidebarProject = OwnerProjectView & {
     plans: SidebarPlan[];
     sessions: SessionSummary[];
     hasMorePlans: boolean;
@@ -108,7 +104,7 @@ type SidebarProject = ReturnType<typeof serializeOwnerProject> & {
 
 type OwnerStore = {
     listProjects(): OwnerProject[];
-    getProjectHealth(projectId: string): { status: string; evidence?: string[] } | null;
+    getProjectHealth(projectId: string): OwnerProjectHealth;
     requireEnabledProjectRoot(projectId: string): string;
     listSessionPlanAssociations?: (runwieldSessionId: string, projectId?: string) => Array<{
         planId?: string;
@@ -168,7 +164,7 @@ const UNFINISHED_EXECUTION = new Set([
     "in_progress",
     "implemented",
     "validated_ci",
-    "validated_reviewer",
+    "reviewed",
     "failed",
     "ci_failed",
     "review_failed",

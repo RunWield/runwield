@@ -4,6 +4,7 @@
  */
 
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { ModelPreset, ModelPresetsMap } from "../../shared/model-presets.ts";
 import { getCwd } from "../../constants.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../../shared/settings.js";
 import { theme } from "../../ui/theme/theme.js";
 import { printCommandHelp } from "../help/index.js";
+import { editPolicySetting, getPolicySettings } from "./policies.ts";
 
 interface CompactionSettings {
     enabled: boolean;
@@ -67,20 +69,6 @@ interface SettingsCommandOptions {
     sessionRuntime?: SessionRuntime;
     uiAPI?: SettingsCommandUi;
 }
-
-interface ModelPresetAgentOverride {
-    model?: string;
-    thinkingLevel?: string;
-    temperature?: number;
-}
-
-interface ModelPreset {
-    agents?: Record<string, ModelPresetAgentOverride>;
-    visionFallback?: { model?: string };
-    imageGeneration?: import("../../shared/image-generation-settings.ts").ImageGenerationSettings;
-}
-
-type ModelPresetsMap = Record<string, ModelPreset>;
 
 const MODEL_PRESET_PREFIX = "preset:";
 
@@ -230,6 +218,7 @@ async function reloadActiveSessionForPresetChange(
 }
 
 function formatModelPresetDescription(preset: ModelPreset): string {
+    if (preset.description) return preset.description;
     const parts: string[] = [];
     const agentEntries = Object.entries(preset.agents ?? {});
     if (agentEntries.length > 0) {
@@ -275,7 +264,13 @@ export async function runSettingsCommand(argv: string[], options: SettingsComman
         const session = getActiveSession();
         const settings = getCompactionSettings(settingsManager);
         const mascotEnabled = isMascotEnabled(projectRoot);
+        const policies = getPolicySettings(projectRoot);
         const selection = await uiAPI.promptSelect("Settings", [
+            ...policies.map((policy) => ({
+                value: policy.key,
+                label: `${policy.title}: ${policy.current === "none" ? "never" : policy.current}`,
+                description: policy.description,
+            })),
             {
                 value: "mascot",
                 label: `Mascot: ${mascotEnabled ? "on" : "off"}`,
@@ -297,6 +292,15 @@ export async function runSettingsCommand(argv: string[], options: SettingsComman
         ]);
 
         if (!selection || selection === "done") break;
+        const policy = policies.find((entry) => entry.key === selection);
+        if (policy) {
+            try {
+                await editPolicySetting(policy, projectRoot, uiAPI);
+            } catch (error) {
+                uiAPI.appendSystemMessage(error instanceof Error ? error.message : String(error));
+            }
+            continue;
+        }
         if (selection === "mascot") {
             await setCustomSetting("mascot", !mascotEnabled, "global", projectRoot);
             uiAPI.appendSystemMessage(`Mascot ${!mascotEnabled ? "on" : "off"} (global setting).`);
@@ -310,7 +314,7 @@ export async function runSettingsCommand(argv: string[], options: SettingsComman
                 if (presetNames.length === 0) {
                     uiAPI.appendSystemMessage(
                         "No model presets defined. Add a `modelPresets` entry to your settings " +
-                            "(see docs/settings.md#modelpresets).",
+                            "(see https://docs.runwield.dev/settings/#modelpresets).",
                     );
                 }
                 const active = getActiveModelPreset(projectRoot);

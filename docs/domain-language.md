@@ -522,10 +522,10 @@ rechecks canonical sources before display and navigation. Session entry text hel
 shared knowledge, full Session Transcript search, or cross-Session Agent retrieval. _Avoid_: Workspace Intelligence
 Search, Project Knowledge Search, global code search, transcript search
 
-**Possible test-seam risks**: The advisory `wld init` result section for evidence-backed candidates where representative
-project tests appear able to replace product-owned behavior. Each candidate stays speculative until the user classifies
-it, and RunWield asks before it writes an issue or Plan for the risk. _Avoid_: seam check, clean test architecture
-report, automatic refactor
+**Possible test-seam risks**: The advisory `/test-seams` prompt result section for evidence-backed candidates where
+representative project tests appear able to replace product-owned behavior. Each candidate stays speculative until the
+user classifies it, and RunWield asks before it writes an issue or Plan for the risk. _Avoid_: seam check, clean test
+architecture report, automatic refactor
 
 **Engineer**: The selectable full-stack Agent for bounded no-plan QUICK_FIX code changes. Engineer can work in any layer
 by loading the relevant Skills, including browser UI Skills, but does not execute approved Plans. _Avoid_: Plan
@@ -768,8 +768,9 @@ smart project snapshot
 
 **Mnemoteca**: The external semantic memory system for project and global memories. _Avoid_: Memory layer, memory store
 
-**Memory**: A concise fact, decision, or preference stored in Mnemoteca for future retrieval. _Avoid_: Note, record,
-entry
+**Memory**: Current durable understanding stored in Mnemoteca for future retrieval: a fact, decision, preference,
+constraint, rationale, or reusable lesson. Ordinary Memories provide useful context, not authority over the user,
+current project docs, the applicable Plan, or code as evidence of implemented behavior. _Avoid_: Note, record, entry
 
 **Local Memory**: A project Memory retained only in its owner's local Mnemoteca collection. _Avoid_: Private memory,
 personal memory
@@ -781,7 +782,8 @@ trusted as shared project context. _Avoid_: Shareable memory, pending memory
 Mnemoteca copies are derived from trusted text. _Avoid_: Shared memory, synchronized memory
 
 **Core Memory**: A Memory tagged `core` that is injected into every Agent Session independently of whether it is Local
-or Team. _Avoid_: Critical memory, pinned memory, shared memory
+or Team. It provides strong guidance within the same authority limits as other Memories; injection does not turn it into
+project truth or permission. _Avoid_: Critical memory, pinned memory, shared memory
 
 **Global Memory**: A Memory stored in the cross-project collection. _Avoid_: Shared memory, universal memory
 

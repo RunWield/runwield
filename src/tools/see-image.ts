@@ -9,7 +9,7 @@ import type { AgentToolResult, SessionManager } from "@earendil-works/pi-coding-
 import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
 import { getModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../shared/models/model-registry.ts";
 import { remotePersonalResourcesActive } from "../shared/remote/personal-resources.ts";
-import { resolveImageRef, resolveVisionFallbackModel } from "../shared/session/image-attachments.js";
+import { resolveImageRef, resolveVisionFallbackModel } from "../shared/session/image-attachments.ts";
 
 export const DEFAULT_SEE_IMAGE_PROMPT =
     "Describe this image in detail for a text-only coding agent. Include all visible UI/content, readable text and error messages, relevant layout, controls, highlighted regions, and visual state. If text or details are unclear, say so explicitly.";
@@ -85,7 +85,7 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                 });
                 const fallback = remote
                     ? { model: opts.remoteModel! }
-                    : await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, opts.cwd);
+                    : await resolveVisionFallbackModel(modelRegistry!, SYSTEM_MODEL_DISCOVERY_NETWORK, opts.cwd);
                 if (!fallback) throw new Error("visionFallback.model is not configured.");
                 // Remote sessions have no provider credentials. The projected native runtime
                 // carries this request over the authenticated control connection instead.

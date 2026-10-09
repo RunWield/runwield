@@ -56,8 +56,8 @@ rather than treating fixtures as live acceptance. See
 - The shared generation operation hides routing, references, validation, conversion and atomic no-overwrite save behind
   one tool factory. Photon converts actual raster bytes to PNG/JPEG/WebP when required by the filename.
 - Pi reasoning/temperature controls use its payload hook only for the documented Gemini mappings in
-  [settings](../settings.md#imagegeneration). Other models work without those optional controls. Unknown mappings fail
-  clearly instead of sending speculative parameters.
+  [settings](../user-documentation/settings.md#imagegeneration). Other models work without those optional controls.
+  Unknown mappings fail clearly instead of sending speculative parameters.
 - Agy uses direct argv, the existing owned foreground process, cached host authentication and a five-minute timeout.
   Native `generate_image` step success and a structured absolute path are both required. The path must resolve inside
   the helper's temporary directory or its reported Agy Session output directory. Host originals are not removed.

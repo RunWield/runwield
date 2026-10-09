@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
 
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -28,14 +28,14 @@ Deno.test("human Code Review metadata uses the Plan heading as the review title"
     const projectRoot = await Deno.makeTempDir({ prefix: "runwield-human-review-title-" });
     await savePlan(projectRoot, "filename-fallback", "# Readable Plan Title\n\nBody.", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "always",
         humanReviewDecision: null,
     });
     const { hostedSession } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
         planName: "filename-fallback",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         executionAgent: "engineer",
         projectRoot,
         executionCwd: projectRoot,
@@ -51,7 +51,7 @@ Deno.test("human Code Review metadata uses the Plan heading as the review title"
         hostedSession,
         planName: "filename-fallback",
         planContent: "# stale caller body",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: NO_ISOLATED_AGENT_PORT,
     });
 
@@ -62,14 +62,14 @@ Deno.test("human Code Review metadata falls back to the Plan filename when no ti
     const projectRoot = await Deno.makeTempDir({ prefix: "runwield-human-review-title-" });
     await savePlan(projectRoot, "filename-fallback", "## Ignored Section\n\n#\n", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "always",
         humanReviewDecision: null,
     });
     const { hostedSession } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
         planName: "filename-fallback",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         executionAgent: "engineer",
         projectRoot,
         executionCwd: projectRoot,
@@ -85,7 +85,7 @@ Deno.test("human Code Review metadata falls back to the Plan filename when no ti
         hostedSession,
         planName: "filename-fallback",
         planContent: "# stale caller body",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: NO_ISOLATED_AGENT_PORT,
     });
 
@@ -95,14 +95,14 @@ Deno.test("human Code Review metadata falls back to the Plan filename when no ti
 Deno.test("runValidationLoop runs always human review after semantic approval and before merge", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "always",
         humanReviewDecision: null,
     });
     const { hostedSession } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         executionAgent: "engineer",
         projectRoot,
         executionCwd: projectRoot,
@@ -118,14 +118,14 @@ Deno.test("runValidationLoop runs always human review after semantic approval an
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: NO_ISOLATED_AGENT_PORT,
     });
 
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(result.kind, "paused");
     assertEquals(requests, ["code_review"]);
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
     assertEquals(plan?.attrs.humanReviewMode, "always");
     assertEquals(plan?.attrs.humanReviewDecision, "approved");
 });
@@ -133,46 +133,51 @@ Deno.test("runValidationLoop runs always human review after semantic approval an
 Deno.test("runValidationLoop ask mode can skip human review and merge", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "ask",
         humanReviewDecision: null,
     });
-    const { hostedSession } = makeValidationUi();
+    const { hostedSession, uiAPI } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "ask" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "ask" },
         executionAgent: "engineer",
         projectRoot,
         executionCwd: projectRoot,
         nonGitInPlace: true,
     });
-    setInteraction(hostedSession, () => Promise.resolve({ outcome: "selected", value: "skip" }));
+    setInteraction(hostedSession, (request) => {
+        assertEquals(request._meta?.presentation, "code_review_offer");
+        return Promise.resolve({ outcome: "selected", value: "skip" });
+    });
 
     const result = await runValidationPhase({
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "ask" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "ask" },
         semanticReviewPort: NO_ISOLATED_AGENT_PORT,
     });
 
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(result.kind, "paused");
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
     assertEquals(plan?.attrs.humanReviewDecision, "skipped");
+    assertEquals(uiAPI.messages.filter((/** @type {string} */ message) => message === "Code Review skipped").length, 1);
+    assertEquals(uiAPI.messages.some((/** @type {string} */ message) => message.includes("You approved")), false);
 });
 
 Deno.test("runValidationLoop ask mode opens code review before merge when approved", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "ask",
         humanReviewDecision: null,
     });
     const { hostedSession } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "ask" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "ask" },
         executionAgent: "engineer",
         projectRoot,
         executionCwd: projectRoot,
@@ -189,7 +194,7 @@ Deno.test("runValidationLoop ask mode opens code review before merge when approv
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "ask" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "ask" },
         semanticReviewPort: NO_ISOLATED_AGENT_PORT,
     });
 
@@ -200,10 +205,10 @@ Deno.test("runValidationLoop ask mode opens code review before merge when approv
     assertEquals(plan?.attrs.humanReviewDecision, "approved");
 });
 
-Deno.test("runValidationLoop resumes at validated_reviewer and records durable human-review metadata before publication", async () => {
+Deno.test("runValidationLoop resumes at reviewed and records durable human-review metadata before publication", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "none",
         humanReviewDecision: null,
     });
@@ -212,7 +217,7 @@ Deno.test("runValidationLoop resumes at validated_reviewer and records durable h
         planName: "p",
         triageMeta: {
             classification: "QUICK_FIX",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: null,
         },
@@ -228,7 +233,7 @@ Deno.test("runValidationLoop resumes at validated_reviewer and records durable h
         planContent: "# p",
         triageMeta: {
             classification: "QUICK_FIX",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: null,
         },
@@ -237,7 +242,7 @@ Deno.test("runValidationLoop resumes at validated_reviewer and records durable h
 
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(result.kind, "paused");
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
     assertEquals(plan?.attrs.humanReviewMode, "none");
     assertEquals(plan?.attrs.humanReviewDecision, "not_required");
 });
@@ -246,7 +251,7 @@ Deno.test("runValidationLoop resumes at validated_reviewer and records durable h
 async function makeAwaitingReview(extra = {}) {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "always",
         humanReviewDecision: null,
         ...extra,
@@ -268,7 +273,7 @@ async function makeAwaitingReview(extra = {}) {
     );
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         executionAgent: "engineer",
         projectRoot,
         executionCwd: projectRoot,
@@ -300,7 +305,7 @@ Deno.test("a code review closed with no answer asks instead of throwing the work
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: NO_ISOLATED_AGENT_PORT,
     });
 
@@ -310,7 +315,7 @@ Deno.test("a code review closed with no answer asks instead of throwing the work
     assertStringIncludes(result.reason || "", "without approving it");
     // The approved semantic review and passing tests survive: the Plan is still one
     // approval away from publishing, not back at the beginning.
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "validated_reviewer");
+    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });
 
 Deno.test("Retry reopens the code review that was closed without an answer", async () => {
@@ -331,7 +336,7 @@ Deno.test("Retry reopens the code review that was closed without an answer", asy
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: NO_ISOLATED_AGENT_PORT,
     });
 
@@ -351,7 +356,7 @@ Deno.test("Code Review chat repairs rerun CI before reopening the fresh diff", a
     await Deno.writeTextFile(sourcePath, "export const label = 'first';\n");
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         executionAgent: "engineer",
         projectRoot,
         executionCwd: projectRoot,
@@ -400,7 +405,7 @@ Deno.test("Code Review chat repairs rerun CI before reopening the fresh diff", a
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: {
             runIsolatedAgentSession: async (options) => {
                 await Deno.writeTextFile(sourcePath, "export const label = 'second';\n");
@@ -414,6 +419,9 @@ Deno.test("Code Review chat repairs rerun CI before reopening the fresh diff", a
     assertStringIncludes(patches[0], "+export const label = 'first';");
     assertStringIncludes(patches[1], "+export const label = 'second';");
     assertEquals(ciRuns, 1);
+    assertStrictEquals(conversations[1], conversations[0]);
+    assertEquals(conversations[1].events.length, 1);
+    assertEquals(conversations[1].events[0].type, "assistant_text_delta");
     assertEquals(result.kind, "paused");
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.humanReviewDecision, "changes_requested");
 });
@@ -437,7 +445,7 @@ Deno.test("human code-review annotations are not duplicated in the engineer repa
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: {
             runIsolatedAgentSession: (request) => {
                 capturedRequest = String(request.userRequest || "");
@@ -471,7 +479,7 @@ Deno.test("your feedback goes to the engineer, then the tests, then straight bac
         hostedSession,
         planName: "p",
         planContent: "# p",
-        triageMeta: { classification: "QUICK_FIX", status: "validated_reviewer", humanReviewMode: "always" },
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: {
             runIsolatedAgentSession: (request) => {
                 isolatedRuns += 1;
@@ -491,7 +499,7 @@ Deno.test("your feedback goes to the engineer, then the tests, then straight bac
     assertEquals(isolatedRuns, 1);
     assertEquals(result.kind, "verified");
     const plan = await loadPlan(projectRoot, "p");
-    assertEquals(plan?.attrs.status, "validated");
+    assertEquals(plan?.attrs.status, "verified");
     assertEquals(plan?.attrs.humanReviewDecision, "approved");
 });
 
@@ -534,5 +542,75 @@ Deno.test("asking for changes makes you the reviewer, so the reviewer agent stan
     assertEquals(reviewerRuns, 0, "the Semantic Code Reviewer must not sweep a diff the user already owns");
     assertEquals(result.kind, "paused");
     assertStringIncludes(result.reason || "", "Reopening your code review");
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "validated_reviewer");
+    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });
+
+Deno.test("an unconfigured Plan offers human review and cancellation pauses before delivery", async () => {
+    const projectRoot = await makeValidationProjectRoot("default-review", {
+        classification: "QUICK_FIX",
+        status: "reviewed",
+    });
+    const { hostedSession } = makeValidationUi();
+    hostedSession.setActiveExecutionWorkflow({
+        planName: "default-review",
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed" },
+        executionAgent: "engineer",
+        projectRoot,
+        executionCwd: projectRoot,
+        nonGitInPlace: true,
+    });
+    /** @type {import("../session/session-runtime-interactions.js").RuntimeInteractionRequest[]} */
+    const requests = [];
+    setInteraction(hostedSession, (request) => {
+        requests.push(request);
+        return Promise.resolve({ outcome: "canceled" });
+    });
+    const result = await runValidationPhase({
+        hostedSession,
+        planName: "default-review",
+        planContent: "# Default",
+        triageMeta: { classification: "QUICK_FIX", status: "reviewed" },
+        semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+    });
+    assertEquals(result.kind, "paused");
+    assertEquals(requests.length, 1);
+    assertEquals(requests[0].type, "select");
+    assertEquals(requests[0].options?.map((option) => option.value), ["open", "skip", "close"]);
+    assertEquals((await loadPlan(projectRoot, "default-review"))?.attrs.status, "reviewed");
+});
+
+for (const answer of [{ outcome: "canceled" }, { outcome: "selected", value: "close" }]) {
+    Deno.test(`Code Review offer ${answer.value || answer.outcome} stays pending without a skipped or approved outcome`, async () => {
+        const projectRoot = await makeValidationProjectRoot("p", {
+            classification: "QUICK_FIX",
+            status: "validated_reviewer",
+            humanReviewMode: "ask",
+            humanReviewDecision: null,
+        });
+        const { hostedSession, uiAPI } = makeValidationUi();
+        hostedSession.setActiveExecutionWorkflow({
+            planName: "p",
+            triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "ask" },
+            executionAgent: "engineer",
+            projectRoot,
+            executionCwd: projectRoot,
+            nonGitInPlace: true,
+        });
+        setInteraction(hostedSession, () => Promise.resolve(answer));
+        const result = await runValidationPhase({
+            hostedSession,
+            planName: "p",
+            planContent: "# p",
+            triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "ask" },
+            semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+        });
+        assertEquals(result.kind, "paused");
+        assertEquals((await loadPlan(projectRoot, "p"))?.attrs.humanReviewDecision, null);
+        assertEquals(
+            uiAPI.messages.some((/** @type {string} */ message) =>
+                message.includes("Code Review skipped") || message.includes("You approved")
+            ),
+            false,
+        );
+    });
+}

@@ -83,6 +83,17 @@ When the user asks for an image or image edit, use `create_image` if configured.
 use `imageRefs` for references; do not overwrite the source. Model and generation settings belong to the user's
 configuration.
 
+## Memory Authority and Quality
+
+Core memories are strong guidance; other memories are useful, non-authoritative context. Neither overrides the user,
+current project documentation, the applicable plan, or code as evidence of implemented behavior. Resolve conflicts
+against those authorities and distinguish intended requirements from delivered behavior.
+
+Store only current durable decisions, preferences, constraints, rationale, and reusable lessons. Do not store routine
+release dates, commit hashes, completed PR inventories, one-off test counts, or completion receipts. Keep history only
+when it explains a still-relevant decision. Correct outdated guidance and state the current rule directly; task
+completion alone does not require a memory.
+
 ## How to Work
 
 1. Use `memory` with `action: "recall"` before making project-level claims when relevant. Treat Memory as a discovery

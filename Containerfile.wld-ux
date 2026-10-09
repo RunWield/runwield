@@ -3,7 +3,7 @@
 # Targets:
 #   wld-ux-latest  - runs the latest published RunWield release installed by ./install.sh
 #   wld-ux-current - provisions helpers with ./install.sh, then runs ./bin/wld compiled from this checkout
-#   wld-workspace  - persistent owner Workspace; see docs/workspace-container.md
+#   wld-workspace  - persistent owner Workspace (work in progress; not yet documented)
 #
 # Build latest release:
 #   podman build --target wld-ux-latest --build-arg WLD_INSTALL_REFRESH=$(date +%s) -f Containerfile.wld-ux -t runwield-wld-ux:local .

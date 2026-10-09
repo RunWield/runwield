@@ -149,6 +149,27 @@ export async function readControllerRecord(cwd: string, identity: WorkflowIdenti
     );
 }
 
+/** Resolve retained delivery evidence when its primary Plan document is absent. */
+export async function findRecordingControllerByName(cwd: string, planName: string): Promise<ControllerRecord | null> {
+    await enterProjectRuntime(selectedRoot(cwd));
+    const directory = resolveProjectRuntimeLayout(projectRoot(cwd)).primary.controllerPlansDir;
+    let match: ControllerRecord | null = null;
+    try {
+        for await (const entry of Deno.readDir(directory)) {
+            if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+            const key = decodeURIComponent(entry.name.slice(0, -5));
+            if (key.startsWith("name:")) continue;
+            const record = await readControllerRecordAtPath(directory, { planId: key, planName });
+            if (record?.planName !== planName || !record.state.recordingSource) continue;
+            if (match) throw new Error("More than one delivered Plan has this name. Its Work Record was not changed.");
+            match = record;
+        }
+    } catch (error) {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+    }
+    return match;
+}
+
 async function atomicWrite(path: string, record: ControllerRecord): Promise<void> {
     const temporary = `${path}.${crypto.randomUUID()}.tmp`;
     const data = new TextEncoder().encode(`${JSON.stringify(record, null, 2)}\n`);

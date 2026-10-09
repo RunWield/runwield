@@ -110,6 +110,9 @@ export class SessionRuntime {
         );
     }
 
+    retryWorkRecord(...args: Parameters<RuntimeWorkflows["retryWorkRecord"]>) {
+        return this.#workflows.retryWorkRecord(...args);
+    }
     listSessions(...args: Parameters<RuntimeReads["listSessions"]>) {
         return this.#reads.listSessions(...args);
     }

@@ -449,6 +449,7 @@ export const loadPlanWorktreeInspectResetScenario = {
         { type: "select", promptIncludes: "Plan recovery", value: "inspect" },
         { type: "select", promptIncludes: "Plan recovery", value: "reset" },
         { type: "select", promptIncludes: "Delete/recreate", value: "confirm" },
+        { type: "select", promptIncludes: "code review before merge", value: "skip" },
     ],
     actions: [
         { type: "seedActiveWorktree", planName: "recover-reset" },
@@ -460,7 +461,13 @@ export const loadPlanWorktreeInspectResetScenario = {
         {
             type: "waitForPlanStatus",
             planName: "recover-reset",
-            statuses: ["validated_ci", "verified"],
+            statuses: ["verified"],
+            timeoutMs: 60000,
+        },
+        {
+            type: "waitForWorktreeRegistryStatus",
+            planName: "recover-reset",
+            statuses: ["absent"],
             timeoutMs: 60000,
         },
         { type: "captureProjectState", planNames: ["recover-reset"] },
@@ -470,7 +477,7 @@ export const loadPlanWorktreeInspectResetScenario = {
             assertEventIncludes(result, "project:worktree-seeded:recover-reset");
             assertScreenIncludes(result, "Completed after recovery reset.");
             assert(
-                ["validated_ci", "verified"].includes(planStatus(result, "recover-reset")),
+                planStatus(result, "recover-reset") === "verified",
                 `Expected recovery reset to re-run and validate the Plan; got ${planStatus(result, "recover-reset")}`,
             );
             assert(
@@ -603,7 +610,7 @@ export const loadPlanImplementedFollowUpRepaintsScenario = {
         { type: "type", text: "Please finish the follow-up." },
         { type: "enter" },
         { type: "waitForEvent", event: "runtime:tool:start:task_completed", timeoutMs: 60000 },
-        { type: "waitForRemotePlanStatus", planName: "follow-up-repaint", statuses: ["validated"], timeoutMs: 90000 },
+        { type: "waitForRemotePlanStatus", planName: "follow-up-repaint", statuses: ["verified"], timeoutMs: 90000 },
         { type: "waitForIdle", timeoutMs: 90000 },
         { type: "captureProjectState", planNames: ["follow-up-repaint"] },
     ],
@@ -624,17 +631,19 @@ export const loadPlanImplementedFollowUpRepaintsScenario = {
             assert(entry?.path, "Expected the seeded worktree registry entry to record its path.");
             assertEquals(snapshot?.cwd, entry.path);
             assertEquals(snapshot?.activeExecutionWorkflow?.planName, "follow-up-repaint");
-            assertEquals(planStatus(result, "follow-up-repaint"), "validated");
+            assertEquals(planStatus(result, "follow-up-repaint"), "verified");
         }),
         assertsGoldenCoverage("workflow:follow-up-validation", (result: GoldenScenarioResult) => {
             assertEventIncludes(result, "runtime:tool:start:task_completed");
-            assertEventIncludes(result, "publication:remote-plan-status:follow-up-repaint:validated");
-            assertEquals(planStatus(result, "follow-up-repaint"), "validated");
+            assertEventIncludes(result, "publication:remote-plan-status:follow-up-repaint:verified");
+            assertEquals(planStatus(result, "follow-up-repaint"), "verified");
         }),
     ],
 };
 
 export const loadPlanContinueUsesExecutionPlanAuthorityScenario = {
+    // This scenario isolates automated delivery; human policy gates have dedicated journeys.
+    globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
     name: "load-plan-continue-uses-execution-plan-authority",
     composedTui: true,
     initialAgentName: "guide",
@@ -713,7 +722,7 @@ export const loadPlanContinueUsesExecutionPlanAuthorityScenario = {
         { type: "enter" },
         { type: "enter" },
         { type: "waitForEvent", event: "runtime:tool:start:task_completed", timeoutMs: 60000 },
-        { type: "waitForRemotePlanStatus", planName: "continue-authority", statuses: ["validated"], timeoutMs: 90000 },
+        { type: "waitForRemotePlanStatus", planName: "continue-authority", statuses: ["verified"], timeoutMs: 90000 },
         { type: "waitForIdle", timeoutMs: 90000 },
         { type: "captureProjectState", planNames: ["continue-authority"] },
         {

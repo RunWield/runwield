@@ -1,0 +1,49 @@
+{
+    "description": "OpenCode Zen API key: Luna for routing, Sol for execution, GLM 5.3 for planning, Astra for review.",
+    "agents": {
+        "router": {
+            "model": "opencode/gpt-6-luna",
+            "thinkingLevel": "medium"
+        },
+        "operator": {
+            "model": "opencode/gpt-6-luna",
+            "thinkingLevel": "medium"
+        },
+        "slicer": {
+            "model": "opencode/glm-5.3",
+            "thinkingLevel": "high"
+        },
+        "guide": {
+            "model": "opencode/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "engineer": {
+            "model": "opencode/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "frontend-engineer": {
+            "model": "opencode/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "init": {
+            "model": "opencode/gpt-6.1-sol",
+            "thinkingLevel": "medium"
+        },
+        "architect": {
+            "model": "opencode/glm-5.3",
+            "thinkingLevel": "high"
+        },
+        "planner": {
+            "model": "opencode/glm-5.3",
+            "thinkingLevel": "high"
+        },
+        "ideator": {
+            "model": "opencode/glm-5.3",
+            "thinkingLevel": "high"
+        },
+        "reviewer": {
+            "model": "opencode/gpt-6-astra",
+            "thinkingLevel": "medium"
+        }
+    }
+}

@@ -378,3 +378,27 @@ Deno.test("wld wr rejects invalid command arguments before touching project stat
         assertEquals(await listWorkRecords(projectRoot), []);
     });
 });
+
+Deno.test("wld wr retry regenerates only its completed Plan and is idempotent", async () => {
+    await withRuntimeCommandFixture("wr-targeted-retry-", async ({ projectRoot, setModelMessages }) => {
+        Deno.chdir(projectRoot);
+        await saveVerifiedPlan(projectRoot);
+        await savePlan(projectRoot, "unrelated", "# Unrelated", {
+            planId: "unrelated",
+            classification: "PLANNED_CHANGE",
+            status: "verified",
+        });
+        const unrelated = await Deno.readTextFile(`${projectRoot}/docs/plans/unrelated.md`);
+        setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
+            title: "Retried record",
+            summary: "Regenerated the selected record.",
+        }))]);
+        const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
+        assertStringIncludes(await captureCommand(["retry", "standalone"], options), "Work Record generated");
+        assertEquals((await loadPlan(projectRoot, "standalone"))?.attrs.status, "verified");
+        assertEquals((await listWorkRecords(projectRoot)).length, 1);
+        assertEquals(await Deno.readTextFile(`${projectRoot}/docs/plans/unrelated.md`), unrelated);
+        assertStringIncludes(await captureCommand(["retry", "standalone"], options), "existing_backlink");
+        assertEquals((await listWorkRecords(projectRoot)).length, 1);
+    });
+});

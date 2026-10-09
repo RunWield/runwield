@@ -16,7 +16,7 @@ import { COLLABORATION_LOCK_BYPASS } from "../collaboration/lock.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.js";
 import { getCwd } from "../../constants.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { runPlansArchiveCommand } from "../../cmd/plans/archive.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 
@@ -52,7 +52,7 @@ async function withDocument(run: (root: string, tree: string) => Promise<void>) 
         });
         const plan = await loadPlan(tree, "demo");
         assert(plan);
-        await updatePlanFrontMatter(tree, "demo", { status: "validated" }, {}, { expectedRevision: plan.revision });
+        await updatePlanFrontMatter(tree, "demo", { status: "verified" }, {}, { expectedRevision: plan.revision });
         await run(root, tree);
     } finally {
         await git(root, ["worktree", "remove", "--force", tree]);
@@ -109,9 +109,9 @@ for (const target of ["demo", "document-plan"]) {
         await withDocument(async (root, tree) => {
             const primary = await loadPlan(root, "demo");
             assert(primary);
-            assertEquals((await listPlans(root)).find((plan) => plan.name === "demo")?.attrs.status, "validated");
+            assertEquals((await listPlans(root)).find((plan) => plan.name === "demo")?.attrs.status, "verified");
             const archived = await archivePlan(root, target);
-            assertEquals(archived.attrs.status, "validated");
+            assertEquals(archived.attrs.status, "verified");
             assertEquals(archived.fromPath, join(tree, "docs/plans/demo.md"));
             assertEquals(archived.toPath, join(tree, "docs/plans/archived/demo.md"));
             assertEquals((await listPlans(root)).some((plan) => plan.name === "demo"), false);
@@ -135,12 +135,12 @@ for (const mode of ["single", "bulk"]) {
                 try {
                     Deno.chdir(root);
                     await runPlansArchiveCommand(
-                        mode === "single" ? ["document-plan"] : ["--all", "--status", "validated"],
+                        mode === "single" ? ["document-plan"] : ["--all", "--status", "verified"],
                     );
                     assertEquals((await listPlans(root)).some((plan) => plan.name === "demo"), false);
                     assertEquals((await listArchivedPlans(root))[0]?.path, join(tree, "docs/plans/archived/demo.md"));
                     await runPlansArchiveCommand(["restore", "document-plan"]);
-                    assertEquals((await resolveWorkflowPlanLocation(root, "demo")).plan?.attrs.status, "validated");
+                    assertEquals((await resolveWorkflowPlanLocation(root, "demo")).plan?.attrs.status, "verified");
                     assertEquals((await loadPlan(root, "demo"))?.markdown, primary.markdown);
                 } finally {
                     Deno.chdir(previousCwd);

@@ -138,7 +138,7 @@ Deno.test("golden scenario child process runs with isolated environment before s
 
 Deno.test("golden composition cleans up partial startup failure", async () => {
     const { join } = await import("@std/path");
-    const { withProcessGlobalTestLock } = await import("../../../testing/process-global-lock.js");
+    const { withProcessGlobalTestLock } = await import("../../../testing/process-global-lock.ts");
     await withProcessGlobalTestLock(async () => {
         const previousHome = Deno.env.get("HOME");
         const previousCwd = Deno.cwd();

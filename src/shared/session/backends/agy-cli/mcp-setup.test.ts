@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
-import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { HostedSession } from "../../hosted-session.js";
 import type { ManagedOperationCapability } from "../../managed-operation.ts";
 import {

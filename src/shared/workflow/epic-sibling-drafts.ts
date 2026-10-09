@@ -10,7 +10,17 @@
  * session can reshape it again. A started or finished sibling stays as it is.
  */
 
-import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter } from "../../plan-store.js";
+import {
+    injectFrontMatter,
+    loadPlan,
+    parsePlanFrontMatter,
+    planDocumentMarkdown,
+    savePlan,
+    updatePlanFrontMatter,
+    withPlanCatalogLock,
+    withPlanLock,
+} from "../../plan-store.js";
+import { join } from "@std/path";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../epic-artifacts.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
@@ -24,12 +34,20 @@ const APPROVED_STATUSES = new Set(["approved", "ready_for_work"]);
 
 interface GitResult {
     success: boolean;
+    code: number;
     stdout: string;
+    stderr: string;
 }
 
 async function runGitResult(cwd: string, args: string[]): Promise<GitResult> {
     const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
-    return { success: output.success, stdout: new TextDecoder().decode(output.stdout) };
+    const decoder = new TextDecoder();
+    return {
+        success: output.success,
+        code: output.code,
+        stdout: decoder.decode(output.stdout),
+        stderr: decoder.decode(output.stderr),
+    };
 }
 
 /** Changed paths in the worktree, including untracked files, relative to its root. */
@@ -48,16 +66,48 @@ async function changedPaths(worktreePath: string): Promise<string[]> {
     return paths;
 }
 
-function bodyOf(markdown: string): string {
-    return parsePlanFrontMatter(markdown).body.trim();
+/** Compare planning content independently of lifecycle state and legacy formatting. */
+function scopeMarkdown(markdown: string): string {
+    return planDocumentMarkdown(injectFrontMatter(markdown, { status: "draft", userVerifiedAt: null }));
+}
+
+async function mergeSiblingScope(cwd: string, name: string, current: string, base: string, incoming: string) {
+    if (current === base || current === incoming) return incoming;
+    if (incoming === base) return current;
+    const directory = await Deno.makeTempDir({ prefix: "runwield-sibling-scope-" });
+    try {
+        const paths = ["current", "base", "incoming"].map((name) => join(directory, name));
+        await Promise.all(paths.map((path, index) => Deno.writeTextFile(path, [current, base, incoming][index])));
+        const merged = await runGitResult(cwd, ["merge-file", "-p", ...paths]);
+        if (merged.code > 127) throw new Error(`Cannot reconcile ${name}: ${merged.stderr.trim()}`);
+        if (!merged.success) {
+            throw new Error(
+                `${name} has conflicting scope changes from two planning sessions. ` +
+                    "Both versions are preserved. Review which requirements this sibling should implement before proceeding.",
+            );
+        }
+        return merged.stdout;
+    } finally {
+        await Deno.remove(directory, { recursive: true });
+    }
+}
+
+async function resetReshapedApproval(cwd: string, name: string) {
+    const plan = await loadPlan(cwd, name);
+    if (!plan || !APPROVED_STATUSES.has(String(plan.attrs.status))) return;
+    const updates = buildPlanEventUpdates("manual_status_change", plan.attrs.status, {
+        triageMeta: plan.attrs as Partial<PlanFrontMatter>,
+        manualTargetStatus: "draft",
+    });
+    await updatePlanFrontMatter(cwd, name, updates, plan.attrs, { expectedRevision: plan.revision });
 }
 
 /**
  * Prepare sibling Plans that Planner edited in this child's worktree.
  *
  * Returns the sibling Plan paths to include in the preparation commit. Throws,
- * before anything is committed, when an edit touches a sibling that has started
- * or is being planned in its own worktree.
+ * before anything is committed, when scope conflicts or a sibling has started.
+ * Registered, unstarted siblings are reconciled under their own Plan lock.
  */
 export async function prepareEditedSiblingPlans(
     worktreePath: string,
@@ -81,27 +131,63 @@ export async function prepareEditedSiblingPlans(
         const before = committed.success ? parsePlanFrontMatter(committed.stdout).attrs : null;
         // A new draft Planner split out of this child starts as a draft of its own.
         if (!before) continue;
-        if (!RESHAPEABLE_STATUSES.has(String(before.status))) {
-            throw new Error(
-                `${siblingName} has already started (${before.status}), so its Plan stays as it is. ` +
-                    `Undo the edit to ${path} and put that work in a new child instead.`,
-            );
-        }
-        if (registered.some((entry) => entry.planName === siblingName && entry.path !== worktreePath)) {
-            throw new Error(
-                `${siblingName} is being planned in its own worktree. Make the change there, or undo the edit to ${path}.`,
-            );
-        }
         const sibling = await loadPlan(worktreePath, siblingName);
-        if (!sibling || !APPROVED_STATUSES.has(String(sibling.attrs.status))) continue;
-        if (bodyOf(sibling.markdown) === bodyOf(committed.stdout)) continue;
-        const updates = buildPlanEventUpdates("manual_status_change", sibling.attrs.status, {
-            triageMeta: sibling.attrs as Partial<PlanFrontMatter>,
-            manualTargetStatus: "draft",
-        });
-        await updatePlanFrontMatter(worktreePath, siblingName, updates, sibling.attrs, {
-            expectedRevision: sibling.revision,
-        });
+        if (!sibling) continue;
+        const base = scopeMarkdown(committed.stdout);
+        const incoming = scopeMarkdown(sibling.markdown);
+        // Reading old Plans can normalize their metadata without changing scope.
+        if (incoming === base) continue;
+        const authority = registered.find((entry) => entry.planName === siblingName);
+        const authorityRoot = authority?.path || worktreePath;
+        const synchronized = await withPlanCatalogLock(
+            authorityRoot,
+            () =>
+                withPlanLock(authorityRoot, siblingName, async () => {
+                    const authoritative = await loadPlan(authorityRoot, siblingName);
+                    if (!authoritative || authoritative.attrs.planId !== sibling.attrs.planId) {
+                        throw new Error(
+                            `Cannot confirm the authoritative Plan identity for ${siblingName}. Both copies are preserved.`,
+                        );
+                    }
+                    const sameWorktree = await Deno.realPath(authorityRoot) === await Deno.realPath(worktreePath);
+                    const currentScope = scopeMarkdown(authoritative.markdown);
+                    // A previous attempt may already have synchronized this scope and the
+                    // sibling may since have started. Refresh the copy without reshaping it.
+                    if (!sameWorktree && currentScope === incoming) {
+                        return authoritative.markdown;
+                    }
+                    if (!RESHAPEABLE_STATUSES.has(String(authoritative.attrs.status))) {
+                        throw new Error(
+                            `${siblingName} has already started (${authoritative.attrs.status}), so its Plan stays as it is. ` +
+                                `Undo the edit to ${path} and put that work in a new child instead.`,
+                        );
+                    }
+                    const merged = await mergeSiblingScope(
+                        worktreePath,
+                        siblingName,
+                        currentScope,
+                        base,
+                        incoming,
+                    );
+                    await savePlan(authorityRoot, siblingName, merged, { status: authoritative.attrs.status }, {
+                        expectedRevision: authoritative.revision,
+                    });
+                    // A retry must not revoke a new approval of scope already synchronized
+                    // into the authoritative worktree since the previous preparation.
+                    if (sameWorktree || merged !== currentScope) {
+                        await resetReshapedApproval(authorityRoot, siblingName);
+                    }
+                    if (!sameWorktree) {
+                        const settled = await loadPlan(authorityRoot, siblingName);
+                        if (!settled) throw new Error(`Plan disappeared while synchronizing ${siblingName}.`);
+                        return settled.markdown;
+                    }
+                }),
+        );
+        // Never hold one worktree's Plan lock while acquiring another's.
+        if (synchronized !== undefined) {
+            await savePlan(worktreePath, siblingName, synchronized, {}, { expectedRevision: sibling.revision });
+        }
     }
     return siblingPaths;
 }

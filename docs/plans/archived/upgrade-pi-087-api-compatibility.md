@@ -179,7 +179,7 @@ policy or retain removed catalog entries artificially.
   expansion evidence without a second storage format.
 - `src/cmd/testing/runtime-command-fixture.ts` and Pi Faux providers — observe requests through real AgentSession and
   ModelRuntime without paid network calls.
-- `src/testing/process-global-lock.js` and existing Session fixtures — isolate HOME/cwd and use real persisted managers.
+- `src/testing/process-global-lock.ts` and existing Session fixtures — isolate HOME/cwd and use real persisted managers.
 - `src/shared/workflow/workflow-tool-events.ts` — retain accepted event ownership and consume-once decisions.
 - Release workflows already use `deno cache scripts/compile.js src/cli.ts` — refresh the selected dependency graph
   rather than resolving every frontend import with `deno install`.

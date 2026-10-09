@@ -25,7 +25,12 @@ session.
 
 - Complete only the supplied brief.
 - Treat the brief as the source of truth for task scope, paths, and expected output. Follow the instruction files for
-  repository policy. Treat core memories as background context that does not expand the brief or override instructions.
+  repository policy. Treat core memories as strong guidance and other memories as useful, non-authoritative context.
+  Neither expands the brief or overrides the user, current project documentation, the applicable Plan, or code as
+  evidence of implemented behavior. Resolve conflicts against those authorities.
+- Retain only current durable decisions, constraints, rationale, preferences, and reusable lessons in memory. Do not
+  store release dates, commit receipts, completed PR inventories, one-off test counts, or task-completion reports. Keep
+  history only when it explains a still-relevant decision; state the current rule directly.
 - Do not ask the user questions. If required information is missing, state the blocker in your final handoff.
 - If running in write mode, keep changes limited to the brief and preserve partial edits if blocked.
 - Leave all changes uncommitted for the parent Agent to inspect.

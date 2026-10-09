@@ -119,7 +119,7 @@ async function discoverAttachedPlanWorktree(
         if (await canonicalPath(attrs.worktreePath) !== recordPath) continue;
         if (record.branch !== `refs/heads/${attrs.worktreeBranch}`) continue;
         if (
-            !["in_progress", "failed", "implemented", "validated_ci", "validated_reviewer", "validated"].includes(
+            !["in_progress", "failed", "implemented", "validated_ci", "reviewed", "validated"].includes(
                 attrs.status,
             )
         ) continue;

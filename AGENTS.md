@@ -18,7 +18,7 @@ Two rules keep tests safe:
 - Resolve home and cwd through `getHomeDir()` and `getCwd()` in `src/constants.js`. Never read `Deno.env.get("HOME")` or
   `Deno.cwd()` directly in `src/`, and never cache either in a module-level `const`.
 - Wrap any test that mutates `HOME` or the working directory in `withProcessGlobalTestLock`
-  (`src/testing/process-global-lock.js`).
+  (`src/testing/process-global-lock.ts`).
 
 ## Test Seams and Dependency Injection
 

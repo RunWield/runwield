@@ -1,3 +1,4 @@
+import { devDeliveryArtifact } from "./dev-delivery-fixture.ts";
 /** @module ui/workspace/server/astro-owner-data */
 
 import {
@@ -7,7 +8,7 @@ import {
     devOwnerProjects,
 } from "./dev-owner-fixtures.ts";
 import { currentWorkspaceCwd } from "./cwd.js";
-import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.js";
+import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import { loadCanonicalBoard, loadCanonicalWorkspaceDetail } from "./astro-canonical-data.js";
 import { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
@@ -104,6 +105,11 @@ export async function loadOwnerProjectArtifact(projectId, artifactType, sourceId
 /** @param {string} projectId @param {string} runwieldSessionId @param {string} artifactId */
 export async function loadOwnerSessionArtifact(projectId, runwieldSessionId, artifactId) {
     const store = getAstroOwnerWorkspaceStore();
+    if (
+        !store && isAstroDevelopmentMode() && projectId === "dev-project" && runwieldSessionId === "fix-plan-evidence"
+    ) {
+        return devDeliveryArtifact(artifactId);
+    }
     if (!store) throw new Error("Owner Workspace store is not available.");
     const root = requireOwnerProjectRoot(store, projectId);
     const session = store.getSessionById(runwieldSessionId);

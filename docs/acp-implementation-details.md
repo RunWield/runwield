@@ -1,5 +1,17 @@
 # ACP Implementation Details and Gaps
 
+## Current compatibility — 2026-10-06
+
+The owner confirmed working ACP integration with JetBrains AI Chat and the Air plugin, and end-to-end OpenAB workflows
+through Discord and its other supported chat platforms. Other ACP-compatible clients are expected to work as well.
+
+The September 21 audit below is a historical technical snapshot. Its pending checks and optional-feature gaps must not
+be used to describe these working integrations as unavailable or awaiting end-to-end acceptance. Current product
+requirements live in the [ACP PRD](prd/runwield-acp-protocol-prd.md). This update records owner confirmation; it does
+not claim a new protocol audit or that every optional ACP capability is implemented.
+
+## Historical audit — 2026-09-21
+
 **Audit date:** 2026-09-21\
 **Repository baseline:** ACP reasoning and exact-context implementation on the active Plan branch.\
 **Verdict:** RunWield implements the main **ACP v1 stdio** Session path, model and reasoning selection, exact context
@@ -175,7 +187,7 @@ A Session subscription stays active after `session/prompt` returns `end_turn` wh
 Runtime can start a later result turn without a new client prompt. Its output and interactions use `session/update` and
 the existing interaction mapping on the same ACP Session ID. The earlier prompt receives only one response. An idle
 `session/cancel` stops owned tasks; `session/close` also releases their host owner. The tasks are not saved jobs and do
-not resume after process exit. See [Session background work](sessions.md#background-work).
+not resume after process exit. See [Session background work](user-documentation/sessions.md#background-tasks).
 
 `session/set_config_option` accepts the `model` option with a provider-qualified model value from the shared selectable
 model catalog. For a reasoning-capable active model, it also accepts the standard `thought_level` option with `off`,

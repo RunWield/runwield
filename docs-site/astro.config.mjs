@@ -45,25 +45,30 @@ export default defineConfig({
                 { label: "Start", items: ["quickstart", "workspace"] },
                 {
                     label: "Use RunWield",
-                    items: [
-                        "usage",
-                        "workflows",
-                        "sessions",
-                        "collaboration",
-                        "workspace-container",
-                    ],
+                    items: ["usage", "workflows", "sessions", "collaboration"],
                 },
                 {
                     label: "Configure",
                     items: ["providers", "settings", "customization", "themes", "mcp"],
                 },
+                { label: "Help", items: ["troubleshooting"] },
                 {
-                    label: "Help and reference",
+                    label: "Contributing",
+                    collapsed: true,
                     items: [
-                        "troubleshooting",
-                        "plan-lifecycle",
-                        "validation-authority",
                         "contributing",
+                        "contributing/plan-lifecycle",
+                        "contributing/validation-authority",
+                        {
+                            label: "Product requirements",
+                            items: [
+                                "contributing/prd/runwield",
+                                "contributing/prd/runwield-core-prd",
+                                "contributing/prd/runwield-workspace-prd",
+                                "contributing/prd/runwield-connect-prd",
+                                "contributing/prd/runwield-acp-protocol-prd",
+                            ],
+                        },
                     ],
                 },
                 {

@@ -219,7 +219,7 @@ Deno.test("runValidationPhase resumes at validated_ci and skips CI before record
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(ciCalls, 0);
     assertEquals(result.kind, "paused");
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
 });
 
 Deno.test("runValidationPhase reviews the proposed branch patch from validated_ci", async () => {
@@ -251,7 +251,7 @@ Deno.test("runValidationPhase reviews the proposed branch patch from validated_c
     assertStringIncludes(reviewPrompts[0], "workflow.js");
     assertEquals(reviewPrompts[0].includes("+scoped workflow change"), false);
     assertEquals(hostedSession.getWorkflowContext(), expectedWorkflowContext);
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
 });
 
 Deno.test("AI review and repair receive the same proposed branch patch", async () => {
@@ -412,7 +412,7 @@ Deno.test("runValidationPhase rejects an approved verdict reached without inspec
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(reviewCalls, 2);
     assertStringIncludes(reviewPrompts[1], "Read every remaining diff chunk");
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
 });
 
 Deno.test("runValidationPhase does not count a failed review_diff call as inspecting the diff", async () => {
@@ -572,7 +572,7 @@ Deno.test("runValidationPhase stops after one unknown Reviewer failure", async (
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(reviewCalls, 1);
     assertEquals(result.kind, "failed");
-    assertEquals(plan?.attrs.status, "validated_ci");
+    assertEquals(plan?.attrs.status, "implemented");
     assertStringIncludes(uiAPI.messages.join(" "), "AI review for p stopped.");
     assertEquals(uiAPI.messages.join(" ").includes("Context window exceeded"), false);
     assertStringIncludes(
@@ -605,7 +605,7 @@ Deno.test("runValidationPhase treats a Reviewer 404 as an operational retry with
     assertEquals(reviewOpts.length, 2);
     assertEquals(reviewOpts[0].sessionManager, reviewOpts[1].sessionManager);
     assertEquals(reviewOpts[1].userRequest.includes("have not called review_complete"), false);
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
     assertEquals(plan?.attrs.validationSemanticRounds, 1);
     assertStringIncludes(uiAPI.messages.join(" "), "The model provider could not complete AI review");
 });
@@ -626,7 +626,7 @@ Deno.test("runValidationPhase pauses a Reviewer outage without recording feedbac
 
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(result.kind, "paused");
-    assertEquals(plan?.attrs.status, "validated_ci");
+    assertEquals(plan?.attrs.status, "implemented");
     assertEquals(plan?.attrs.validationSemanticRounds, 1);
     assertEquals(uiAPI.messages.join(" ").includes("Semantic review rejected"), false);
     assertEquals(uiAPI.messages.join(" ").includes("have not called review_complete"), false);
@@ -748,7 +748,7 @@ Deno.test("runValidationPhase carries existing ledger identities and repair repo
     assertStringIncludes(reviewPrompts[0], "added the guard in file.js");
     assertStringIncludes(reviewPrompts[0], "claims to verify, not proof");
     assertEquals(reviewModes, ["discovery"]);
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
     assertEquals(plan?.attrs.validationCheckpoint?.reviewState?.semanticRound, 2);
     assertEquals(plan?.attrs.validationCheckpoint?.reviewState?.reviewLedger.items[0].status, "fix_confirmed");
     assertEquals(plan?.attrs.validationCheckpoint?.reviewState?.reviewLedger.items[0].resolvedInRound, 2);
@@ -912,7 +912,7 @@ Deno.test("runValidationPhase gives later semantic rounds a repair-scoped review
 
     assertStringIncludes(repairDiffTexts[0], "-export const scopedWorkflowChange = true;");
     assertStringIncludes(repairDiffTexts[0], "+export const repairedWorkflowChange = true;");
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "validated_reviewer");
+    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });
 
 Deno.test("runValidationPhase refuses semantic approval while a prior finding is unmentioned", async () => {
@@ -955,7 +955,7 @@ Deno.test("runValidationPhase refuses semantic approval while a prior finding is
     assertEquals(reviewCalls, 2);
     assertStringIncludes(reviewPrompts[1], "Account for every open finding: R1-1");
     assertStringIncludes(reviewPrompts[1], "Reuse the existing identities exactly");
-    assertEquals(plan?.attrs.status, "validated_reviewer");
+    assertEquals(plan?.attrs.status, "reviewed");
 });
 
 Deno.test("runValidationPhase narrows semantic review to verification mode after discovery rounds", async () => {
@@ -1119,7 +1119,7 @@ Deno.test("inline round-limit repair records passing CI before another Reviewer 
     assertEquals(reviewerRuns, 2);
     assertEquals(ciRuns, 1);
     assertEquals(result.kind, "paused");
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "validated_reviewer");
+    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });
 
 Deno.test("look again re-enters at the focused reviewer, after the repair and its tests", async () => {
@@ -1207,7 +1207,7 @@ Deno.test("transcript provenance cannot waive production diff inspection", async
 
     assertEquals(reviewCalls, 4);
     assertEquals(reviewPrompts[1].includes("Read every remaining diff chunk"), true);
-    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "validated_ci");
+    assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
 
     // An otherwise identical result without provenance also requires actual reads.
     const second = await makeValidatedCiRun();
@@ -1240,7 +1240,7 @@ Deno.test("transcript provenance cannot waive production diff inspection", async
         }),
     });
     assertEquals(untrustedCalls, 2);
-    assertEquals((await loadPlan(second.projectRoot, "p"))?.attrs.status, "validated_reviewer");
+    assertEquals((await loadPlan(second.projectRoot, "p"))?.attrs.status, "reviewed");
 
     // The ledger rules remain authoritative for bridge-stamped results too: an
     // accepted verdict that leaves an open ledger identity unmentioned is nudged.
@@ -1294,5 +1294,5 @@ Deno.test("transcript provenance cannot waive production diff inspection", async
     });
     assertEquals(ledgerCalls, 2);
     assertStringIncludes(ledgerPrompts[1], "Account for every open finding: R1-1");
-    assertEquals((await loadPlan(third.projectRoot, "p"))?.attrs.status, "validated_reviewer");
+    assertEquals((await loadPlan(third.projectRoot, "p"))?.attrs.status, "reviewed");
 });

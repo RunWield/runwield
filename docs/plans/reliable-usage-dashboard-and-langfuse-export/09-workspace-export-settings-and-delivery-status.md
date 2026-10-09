@@ -93,7 +93,7 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
 - `ownerJson`, `ownerErrorJson`, `sanitizeOwnerError`, `sanitizeOwnerDiagnosticValue`, `scrubLocalPaths`
   (`routes/owner-api.js`) — existing response sanitization, which credential handling depends on.
 - Core export status from child 07 — rendered as reported, with no browser-side recomputation of delivery state.
-- Existing notices, confirmation dialogs, and `RunWieldPrimitives.jsx` patterns.
+- Existing notices, confirmation dialogs, and `RunWieldPrimitives.tsx` patterns.
 
 ## Implementation Steps
 

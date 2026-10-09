@@ -1,3 +1,4 @@
+import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 /**
  * @module shared/workflow/validation-semantic
  * The Semantic Review phase: reviewer rounds with ledger convergence, repair
@@ -58,8 +59,21 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
     if (phase.kind === "blocked") return phase.result;
     const context = phase.context;
     if (context.nonGitInPlace) {
+        await recordDeliveryEvidence(
+            context.projectRoot,
+            args.planName,
+            context.worktreeId || "in-place",
+            "ai-skip",
+            "Skipped",
+            "Non-Git in-place workflow has no implementation diff review.",
+        );
         emitStatus(args, buildValidationUserMessage({ kind: "semantic_skipped", reason: "non_git" }), "info");
-        await recordLifecycleEvent(args, context.projectRoot, "semantic_review_passed", "validated_ci");
+        await recordLifecycleEvent(
+            args,
+            context.projectRoot,
+            "semantic_review_passed",
+            args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+        );
         return {
             kind: "paused",
             planName: args.planName,
@@ -74,7 +88,12 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
     // objections the user has already moved past, and cost a full review cycle for
     // every note they write. Run the tests, then give them the diff back.
     if (args.triageMeta.humanReviewDecision === "changes_requested") {
-        await recordLifecycleEvent(args, context.projectRoot, "semantic_review_passed", "validated_ci");
+        await recordLifecycleEvent(
+            args,
+            context.projectRoot,
+            "semantic_review_passed",
+            args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+        );
         return {
             kind: "paused",
             planName: args.planName,
@@ -94,12 +113,31 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             ? "No implementation changes detected in workflow diff; only plan document changes were found."
             : "No implementation changes detected in workflow diff.";
         emitHalted(args, buildValidationUserMessage({ kind: "semantic_diff_missing", planOnly }), reason);
-        await recordLifecycleEvent(args, context.projectRoot, "validation_failed", "validated_ci", reason);
+        await recordLifecycleEvent(
+            args,
+            context.projectRoot,
+            "validation_failed",
+            args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+            reason,
+        );
         return { kind: "failed", planName: args.planName, projectRoot: context.projectRoot, reason };
     }
     if (!hasImplementationDiff(diffText, args.planName)) {
+        await recordDeliveryEvidence(
+            context.projectRoot,
+            args.planName,
+            context.worktreeId || "in-place",
+            "ai-skip",
+            "Skipped",
+            "No implementation diff remained to review.",
+        );
         emitStatus(args, buildValidationUserMessage({ kind: "semantic_skipped", reason: "empty_diff" }), "info");
-        await recordLifecycleEvent(args, context.projectRoot, "semantic_review_passed", "validated_ci");
+        await recordLifecycleEvent(
+            args,
+            context.projectRoot,
+            "semantic_review_passed",
+            args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+        );
         return {
             kind: "paused",
             planName: args.planName,
@@ -117,6 +155,14 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             true,
         );
         if (action === "code_review") {
+            await recordDeliveryEvidence(
+                context.projectRoot,
+                args.planName,
+                context.worktreeId || "in-place",
+                "ai-skip",
+                "Human takeover",
+                "AI review reached its round limit; the user chose human Code Review. This is not AI approval.",
+            );
             await persistHumanReviewMetadata(args, context.executionCwd, {
                 humanReviewMode: "always",
                 humanReviewDecision: null,
@@ -126,7 +172,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 args,
                 context.projectRoot,
                 "semantic_review_passed",
-                "validated_ci",
+                args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
                 undefined,
                 { humanReviewMode: "always", humanReviewDecision: null, humanReviewedAt: null },
             );
@@ -154,7 +200,13 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 };
             }
             const feedback = typeof response.value === "string" ? response.value.trim() : "";
-            await recordLifecycleEvent(args, context.projectRoot, "validation_failed", "validated_ci", feedback);
+            await recordLifecycleEvent(
+                args,
+                context.projectRoot,
+                "validation_failed",
+                args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+                feedback,
+            );
             const repair = await args.session.continueLastRepairTurn(feedback);
             if (!repair?.completed) {
                 return {
@@ -229,7 +281,13 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
         );
         if (review.kind === "paused") return review.result;
         if (review.kind === "failed") {
-            await recordLifecycleEvent(args, context.projectRoot, "validation_failed", "validated_ci", review.reason);
+            await recordLifecycleEvent(
+                args,
+                context.projectRoot,
+                "validation_failed",
+                args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+                review.reason,
+            );
             return {
                 kind: "failed",
                 planName: args.planName,
@@ -238,6 +296,14 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             };
         }
 
+        await recordDeliveryEvidence(
+            context.projectRoot,
+            args.planName,
+            context.worktreeId || "in-place",
+            "ai",
+            review.outcome.approved ? "Approved" : "Changes requested",
+            "````json\n" + JSON.stringify(review.outcome, null, 2) + "\n````",
+        );
         if (review.outcome.approved) {
             await recordMetric(args, context.projectRoot, {
                 category: "validation",
@@ -269,14 +335,21 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             const checkpoint = makeValidationCheckpoint({
                 attemptId: context.worktreeId || "in-place",
                 generation: priorCheckpoint?.generation || crypto.randomUUID(),
-                status: "validated_reviewer",
+                status: "reviewed",
                 phase: "delivery",
                 state: "ready",
                 reviewState,
             });
-            await recordLifecycleEvent(args, context.projectRoot, "semantic_review_passed", "validated_ci", undefined, {
-                validationCheckpoint: checkpoint,
-            });
+            await recordLifecycleEvent(
+                args,
+                context.projectRoot,
+                "semantic_review_passed",
+                args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+                undefined,
+                {
+                    validationCheckpoint: checkpoint,
+                },
+            );
             args.session.setActiveWorkflow({ ...context.workflowBase, ...reviewState });
             return {
                 kind: "paused",
@@ -328,7 +401,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             args,
             context.projectRoot,
             "semantic_review_feedback",
-            "validated_ci",
+            args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
             review.outcome.feedback || "Semantic Review requested changes.",
             { validationCheckpoint: repairCheckpoint },
         );
@@ -365,6 +438,13 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 reason: "The repair is complete. Running checks before another review.",
             };
         }
+        await recordDeliveryEvidence(
+            context.projectRoot,
+            args.planName,
+            context.worktreeId || "in-place",
+            "ai-repair",
+            "Started",
+        );
         emitStatus(args, buildValidationUserMessage({ kind: "review_repair", repairKind: "semantic" }), "warning");
         return {
             kind: "semantic_repair_handoff",
@@ -834,6 +914,13 @@ export async function dispatchReviewFeedbackRepair(
     context: PhaseContext,
     packet: ReviewFeedbackRepairPacket,
 ): Promise<{ completed: boolean; report: string; reason?: string }> {
+    await recordDeliveryEvidence(
+        context.projectRoot,
+        args.planName,
+        context.worktreeId || "in-place",
+        packet.repairKind === "semantic" ? "ai-repair" : "human-revision",
+        "Started",
+    );
     emitStatus(args, buildValidationUserMessage({ kind: "review_repair", repairKind: packet.repairKind }), "warning");
     try {
         const workflowState: ValidationWorkflowState = { ...context.workflowBase, ...packet.activeWorkflow };

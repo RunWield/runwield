@@ -19,6 +19,7 @@ import {
     groupPlanHierarchy,
     hashPlanBody,
     injectFrontMatter,
+    inspectPlanFileStrict,
     isChildFeaturePlan,
     isEpicPlan,
     listArchivedPlans,
@@ -3129,5 +3130,27 @@ testWithFs("restore rolls back the active Plan file when Epic Artifact movement 
         );
     } finally {
         await Deno.remove(cwd, { recursive: true });
+    }
+});
+
+Deno.test("legacy done-enough Epic remains deliberately closed without invented verification", async () => {
+    const root = await Deno.makeTempDir({ prefix: "legacy-epic-closure-" });
+    try {
+        await savePlan(root, "legacy-epic", "# Legacy Epic", {
+            classification: "PROJECT",
+            status: "validated",
+            epicCompletionMode: "done_enough",
+            epicDoneEnoughAt: "2026-01-01T00:00:00.000Z",
+            validatedAt: "2026-01-01T00:00:00.000Z",
+        });
+        const plan = await loadPlan(root, "legacy-epic");
+        assertEquals(plan?.attrs.status, "closed_without_verification");
+        assertEquals(Boolean(plan?.attrs.verifiedAt), false);
+        const inspected = await inspectPlanFileStrict(join(root, "docs/plans/legacy-epic.md"));
+        assert(inspected.kind === "loaded");
+        assertEquals(inspected.attrs.status, "closed_without_verification");
+        assertEquals((await listPlans(root))[0].attrs.status, "closed_without_verification");
+    } finally {
+        await Deno.remove(root, { recursive: true });
     }
 });

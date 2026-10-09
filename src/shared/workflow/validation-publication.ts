@@ -1,3 +1,17 @@
+import {
+    readDeliveryEvidence,
+    saveDeliveredPlanEvidence,
+    saveDeliveredWorkRecordEvidence,
+    savePublicationEvidence,
+} from "./delivery-evidence.ts";
+import { relative } from "@std/path";
+import { buildDeliveryReport } from "./delivery-report.ts";
+import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
+import {
+    readPublishedDeliverySources,
+    readPublishedRecordMarkdown,
+    retainPublishedWorkRecordSource,
+} from "../work-records/published-source.ts";
 /**
  * @module shared/workflow/validation-publication
  * The publication phase: merging the validated worktree into the target branch
@@ -11,6 +25,7 @@
 import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { loadPlan, withPlanLock } from "../../plan-store.js";
+import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
 import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { findEpicManualQaSection } from "../epic-artifacts.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
@@ -61,6 +76,7 @@ import {
     cleanupStoredPublication,
     failStoredPublication,
     loadPublicationAttempt,
+    publishedWorkRecordFailed,
     reconcileStoredPublication,
     startPublicationAttempt,
 } from "./publication-machine.ts";
@@ -277,13 +293,13 @@ async function runLockedPublicationPhase(
         const deliveryEvidence: DeliveryEvidence = context.nonGitInPlace
             ? { version: 1, mode: "non_git_in_place" }
             : null;
-        await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "validated_reviewer", undefined, {
+        await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "reviewed", undefined, {
             executionMode: context.nonGitInPlace ? "non_git_in_place" : undefined,
             deliveryEvidence,
             ...humanReviewMetadata,
         });
         await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
-        return { recorded: true, result: buildVerifiedResult(args, context.projectRoot) };
+        return { recorded: true, result: await buildVerifiedResult(args, context.projectRoot) };
     }
 
     // Review and artifact generation can outlive the phase's initial Plan read.
@@ -575,7 +591,11 @@ async function runLockedPublicationPhase(
                 async () => await reconcileStoredPublication(context.projectRoot, publicationAttempt!),
             );
             if (publicationAttempt.phase === "cleanup_complete") {
-                const cleanup = await cleanupStoredPublication(context.projectRoot, publicationAttempt);
+                const cleanup = await cleanupStoredPublication(
+                    context.projectRoot,
+                    publicationAttempt,
+                    args.workRecordMnemotecaPort,
+                );
                 if (cleanup.preservedFiles) {
                     emitStatus(
                         args,
@@ -587,7 +607,13 @@ async function runLockedPublicationPhase(
                 }
                 return {
                     recorded: true,
-                    result: buildVerifiedResult(args, context.projectRoot, undefined, targetBranch),
+                    result: await buildVerifiedResult(
+                        args,
+                        context.projectRoot,
+                        undefined,
+                        targetBranch,
+                        publicationAttempt,
+                    ),
                 };
             }
         }
@@ -648,7 +674,7 @@ async function runLockedPublicationPhase(
             );
             await atStage(
                 "artifact_preparation",
-                async () => await runPostVerificationHandoffs(args, context.executionCwd),
+                async () => await runPostVerificationHandoffs(args, context.executionCwd, true),
             );
             const artifactCandidate = await atStage("candidate_sealing", async () =>
                 await checkpointExecutionWorktree({
@@ -750,7 +776,11 @@ async function runLockedPublicationPhase(
             buildValidationUserMessage({ kind: "publication_progress", phase: "cleanup", targetBranch }),
         );
         await args.session.handoffVerifiedPublication(context.projectRoot);
-        const cleanup = await cleanupStoredPublication(context.projectRoot, publicationAttempt);
+        const cleanup = await cleanupStoredPublication(
+            context.projectRoot,
+            publicationAttempt,
+            args.workRecordMnemotecaPort,
+        );
         publicationAttempt = cleanup.attempt;
         if (cleanup.preservedFiles) {
             emitStatus(
@@ -772,45 +802,118 @@ async function runLockedPublicationPhase(
             );
             return {
                 recorded: true,
-                result: buildVerifiedResult(args, context.projectRoot, epicResolution, targetBranch),
+                result: await buildVerifiedResult(
+                    args,
+                    context.projectRoot,
+                    epicResolution,
+                    targetBranch,
+                    publicationAttempt,
+                ),
             };
         }
-        return { recorded: true, result: buildVerifiedResult(args, context.projectRoot, epicResolution, targetBranch) };
+        return {
+            recorded: true,
+            result: await buildVerifiedResult(
+                args,
+                context.projectRoot,
+                epicResolution,
+                targetBranch,
+                publicationAttempt,
+            ),
+        };
     }
 }
 
-export async function runPostVerificationHandoffs(args: ValidationLoopArgs, projectRoot: string): Promise<void> {
+export async function runPostVerificationHandoffs(
+    args: ValidationLoopArgs,
+    projectRoot: string,
+    pendingPublication = false,
+): Promise<void> {
     if (!isPlannedChangeClassification(args.triageMeta?.classification)) return;
     await args.session.runPostVerificationHandoffs({
         planName: args.planName,
         planContent: args.planContent,
         projectRoot,
         mnemotecaPort: args.workRecordMnemotecaPort,
+        pendingPublication,
     });
 }
 
-export function buildVerifiedResult(
+export async function buildVerifiedResult(
     args: ValidationLoopArgs,
     projectRoot: string,
     epicResolution?: import("./epic-continuation.ts").EpicContinuationResolution,
     targetBranch?: string,
-): ValidationPhaseResult {
+    publication?: PublicationAttempt,
+): Promise<ValidationPhaseResult> {
+    const workRecordFailed = publication
+        ? await publishedWorkRecordFailed(projectRoot, publication)
+        : (await resolveTargetedWorkRecordSource(projectRoot, args.planName)).source?.attrs.workRecord?.status ===
+            "failed";
+    if (workRecordFailed && publication) await retainPublishedWorkRecordSource(projectRoot, publication);
+    const message = buildValidationUserMessage({ kind: "verified", planName: args.planName, targetBranch }) +
+        (workRecordFailed
+            ? " Work Record failed. Retry this Plan from the completion menu or use wld wr retry <plan-name>. The wld wr backfill command regenerates missing or failed records across completed Plans."
+            : "");
     // The run is over, so its position must not outlive it — a Plan reopened later
     // has to start from what the Plan durably says, not from where this one ended.
     args.session.clearPosition(args.planName);
     // Close the panel out on the way past. Without this the last thing the user
     // sees is a merge still "running", on a run that finished successfully.
     const current = args.session.getCurrentProgress();
+    const sealed = publication ? await readPublishedDeliverySources(projectRoot, publication) : undefined;
+    const local = sealed ? undefined : await loadPlan(projectRoot, args.planName);
+    const recordingOwner = sealed?.workRecordOwner ||
+        (!publication ? (await resolveTargetedWorkRecordSource(projectRoot, args.planName)).source : undefined);
+    const deliveredAttrs = sealed?.delivered.attrs || local?.attrs || args.triageMeta;
+    const evidence = await readDeliveryEvidence(
+        projectRoot,
+        args.planName,
+        publication?.attemptId || args.triageMeta.worktreeId || "in-place",
+    );
+    const publicationArtifact = publication ? await savePublicationEvidence(projectRoot, publication) : null;
+    if (publicationArtifact) evidence.artifacts.push(publicationArtifact);
+    const planArtifact = publication && sealed
+        ? await saveDeliveredPlanEvidence(projectRoot, publication, sealed.delivered.markdown)
+        : null;
+    if (planArtifact) evidence.artifacts.push(planArtifact);
+    const recordPath = recordingOwner?.attrs.workRecord?.path;
+    const recordMarkdown = publication && recordPath
+        ? await readPublishedRecordMarkdown(projectRoot, publication, recordPath)
+        : null;
+    const recordArtifact = publication && recordMarkdown
+        ? await saveDeliveredWorkRecordEvidence(projectRoot, publication, recordMarkdown)
+        : null;
+    if (recordArtifact) evidence.artifacts.push(recordArtifact);
+    const deliveryReport = buildDeliveryReport({
+        planName: args.planName,
+        attrs: {
+            ...deliveredAttrs,
+            workRecord: publication
+                ? (recordArtifact ? { ...recordingOwner?.attrs.workRecord, path: recordArtifact.path } : undefined)
+                : recordingOwner?.attrs.workRecord,
+        },
+        planPath: !publication && local?.path ? relative(projectRoot, local.path).replaceAll("\\", "/") : undefined,
+        publication,
+        evidence,
+        guidedReview: getGuidedReviewMode(projectRoot),
+        codeReview: getCodeReviewMode(projectRoot),
+        workRecordFailed,
+        semanticRequired: isPlannedChangeClassification(args.triageMeta.classification),
+    });
     if (current) {
         emitStatus(
             args,
-            buildValidationUserMessage({ kind: "verified", planName: args.planName, targetBranch }),
-            "success",
+            message,
+            workRecordFailed ? "warning" : "success",
             completeProgressRecord(
                 // This path is reached only after the durable validation gates
                 // and publication proof succeeded. Session display state can
                 // still describe an earlier failed or canceled attempt.
                 updateProgressRecord(current, {
+                    deliveryReport,
+                    workRecordFailed,
+                    workRecordPlanName: args.planName,
                     checks: {
                         ci: "passed",
                         semanticReview: isPlannedChangeClassification(args.triageMeta.classification)
@@ -821,7 +924,7 @@ export function buildVerifiedResult(
                     },
                 }),
                 true,
-                buildValidationUserMessage({ kind: "verified", planName: args.planName, targetBranch }),
+                message,
             ),
         );
     }

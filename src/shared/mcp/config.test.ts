@@ -1,7 +1,7 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { dirname, join } from "@std/path";
 import { resolveMcpConfig } from "./config.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 async function git(cwd: string, args: string[]): Promise<void> {
     const output = await new Deno.Command("git", { cwd, args, stdout: "null", stderr: "null" }).output();

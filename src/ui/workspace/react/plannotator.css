@@ -1922,3 +1922,9 @@ body:has(.rw-code-review) button.review-toolbar-btn.primary:disabled,
     height: 100%;
     min-height: 0;
 }
+
+/* Keep review view state mounted while switching between guide and diff. */
+.rw-code-review-retained-view {
+    height: 100%;
+    min-height: 0;
+}

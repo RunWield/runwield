@@ -2,7 +2,7 @@ import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/
 import { join } from "@std/path";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { getModelRegistry } from "../../../models/model-registry.ts";
 import { createTaskCompletedTool } from "../../../../tools/task-completed.ts";
 import { HostedSession } from "../../hosted-session.js";

@@ -19,6 +19,7 @@ const FENCED_METHOD_DRIVERS: Record<string, string> = {
     renameSession: "renameSession(",
     reopenPlanReview: "runWorkflowOperation(",
     replaceSessionForExecutionFollowUp: "rollManagedSessionSegment(",
+    retryWorkRecord: "runWorkflowOperation(",
     reviewSavedPlan: "runManagedStandaloneMutation(",
     rollManagedSessionSegment: "rollSessionTranscriptSegment(",
     runEpicIntegrationGate: "runWorkflowOperation(",

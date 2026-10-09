@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 import {
     assembleFinalSystemPrompt,
@@ -17,7 +17,7 @@ import { HostedSession } from "./hosted-session.js";
 import { getAgentDisplayName, listAvailableAgents } from "./agents.js";
 import { getCustomSetting } from "../settings.js";
 import { loadPlan } from "../../plan-store.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 Deno.test("two project roots keep local catalogs settings and Plans isolated", async () => {
     const alpha = await Deno.makeTempDir({ prefix: "runwield-project-alpha-" });
@@ -125,6 +125,16 @@ Deno.test("listPromptTemplates gives local templates precedence and parses metad
         assertEquals(codeReview?.thinkingLevel, "low");
         assertEquals(local?.description, "Describe local prompt from body.");
         assertEquals(Object.prototype.hasOwnProperty.call(adversarial || {}, "tools"), false);
+
+        const testSeams = templates.find((template) => template.name === "test-seams");
+        assert(testSeams);
+        assertEquals(testSeams.source, "bundled");
+        assertEquals(testSeams.agent, "engineer");
+        const audit = await expandPromptTemplate(testSeams.path, "Focus on the payment tests.");
+        assertStringIncludes(audit, "Possible test-seam risks");
+        assertStringIncludes(audit, "write-tests");
+        assertStringIncludes(audit, "When ownership is ambiguous");
+        assertStringIncludes(audit, "Focus on the payment tests.");
     } finally {
         await Deno.remove(projectRoot, { recursive: true });
     }

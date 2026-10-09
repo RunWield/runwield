@@ -99,8 +99,8 @@ Deno.test("committed validation stamp survives runtime removal and proves only i
         await git(root, ["add", "file.txt"]);
         await git(root, ["commit", "-m", "implementation"]);
         const executionCommit = await git(root, ["rev-parse", "HEAD"]);
-        const updates = buildPlanEventUpdates("validation_passed", "validated_reviewer", {
-            triageMeta: { classification: "PLANNED_CHANGE", status: "validated_reviewer" },
+        const updates = buildPlanEventUpdates("validation_passed", "reviewed", {
+            triageMeta: { classification: "PLANNED_CHANGE", status: "reviewed" },
             executionMode: "worktree",
             deliveryEvidence: {
                 version: 1,
@@ -217,5 +217,22 @@ Deno.test("publication proof requires the exact candidate and metadata commits",
         assertEquals(rejected.merged, false);
     } finally {
         await Deno.remove(root, { recursive: true }).catch(() => {});
+    }
+});
+
+Deno.test("committed reviewed metadata alone never proves delivery", async () => {
+    const root = await fixture.checkout();
+    try {
+        await savePlan(root, "pending-review", "# Pending review", { status: "reviewed", targetBranch: "main" });
+        await git(root, ["add", "docs/plans/pending-review.md"]);
+        await git(root, ["commit", "-m", "Save review candidate"]);
+        const plan = await loadPlan(root, "pending-review");
+        assertExists(plan);
+        assertEquals(
+            await verifyRecordedPublication(root, plan.attrs, { planName: "pending-review", markdown: plan.markdown }),
+            { published: false, targetBranch: "main" },
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
     }
 });

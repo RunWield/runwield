@@ -91,7 +91,7 @@ The rest of Workspace should reuse that language through these implementation la
 - bundled website fonts: `src/ui/design-system/fonts.css`
 - shell and navigation: `src/ui/workspace/layouts/WorkspaceLayout.astro`
 - shared Plan Board page composition: `src/ui/workspace/components/PlanBoardPage.astro`
-- board patterns: `src/ui/workspace/components/BoardColumn.jsx`, `PlanCard.tsx`, and `EpicCard.tsx`
+- board patterns: `src/ui/workspace/components/BoardColumn.tsx`, `PlanCard.tsx`, and `EpicCard.tsx`
 - detail patterns: `src/ui/workspace/components/PlanDetail.jsx`
 - editor and action islands: `src/ui/workspace/islands/`
 
@@ -155,6 +155,16 @@ ARIA behavior.
 Plan and Code Review share `ReviewCompletion` for successful decisions. Workspace reviews return to the originating
 Session in the same tab; standalone reviews retain the completion overlay and its auto-close preference. Workspace must
 never mount the standalone auto-close behavior.
+
+### Delivery evidence card
+
+Completed workflow evidence appears within the owning Session timeline as `.rw-delivery-report`, using semantic surface,
+border, status and spacing tokens. Its shared data model also supplies the compact TUI text above continuation choices;
+the TUI omits logos and breadcrumbs. Keep mechanical checks, semantic AI review, human code-review decisions, human
+verification attestations, merge confirmation and Work Record state separate. Settings describe policies, not outcomes.
+Show exact checked and delivered commits separately. Link recorded artifacts to the existing Markdown reader. Missing
+history is unavailable; resettable retry counters must not be presented as lifetime totals. The count labels identify
+recorded runs and repair cycles started. The card is saved completion evidence, not a live dashboard.
 
 ### Shared Markdown artifact reader
 
@@ -649,10 +659,14 @@ inside the review surface. Do not use it for destructive outcomes or low-emphasi
 Use the **Artifact conversation** pattern when the active workflow agent can discuss and revise the artifact without
 leaving its review surface. Render `ArtifactConversationSidebar` inside an existing review sidebar, keep its message and
 operation wiring in the owning surface, and use the shared `.rw-artifact-conversation-*` classes. Review context is
-attached explicitly as a removable chip; ordinary final feedback actions remain separate. Only one agent turn may be
-active at a time. When a revised artifact arrives, replace the readable artifact in place and open a before/after diff
-automatically. The component is artifact-neutral so Plan Review, Code Review, and later review surfaces can share the
-same transcript, composer, working, and error states.
+attached explicitly as a removable chip; attaching review notes enables Send without requiring message text. Removing
+the attachment disables Send again if the message is empty. Only one agent turn may be active at a time. Code Review's
+Send Annotations action uses this same repair conversation when available; approval remains explicit. When a revised
+Plan arrives, replace the readable artifact in place and open a before/after diff automatically. Code Review refreshes
+its existing diff while retaining the transcript, selected file, diff collapse choices, active Guided Review/diff view,
+and collapsed guide sections. Mark retained guide prose as belonging to an earlier revision and offer regeneration; do
+not replace the owner's navigation state during a repair. The component is artifact-neutral so Plan Review, Code Review,
+and later review surfaces can share the same transcript, composer, working, and error states.
 
 ### Boards and columns
 
@@ -884,11 +898,17 @@ still frame.
 
 Use `src/ui/theme/theme.js` and its semantic theme helpers for terminal colors and Markdown, selection, and editor
 styling. Preserve the user's selected terminal theme; do not impose browser hex colors or CSS variables on ANSI output.
-See [Themes](themes.md). Shared intent does not require identical color values across renderers.
+See [Themes](user-documentation/themes.md). Shared intent does not require identical color values across renderers.
 
 Terminal fonts and cell sizes belong to the terminal. Express hierarchy through order, spacing, emphasis, labels, and
 selection markers rather than browser font sizes, radii, shadows, or pixel target sizes. Keep status understandable
 without color. Reuse the existing TUI symbols and loaders instead of importing a browser icon family.
+
+At Session completion, reuse `PromptSelectBlock` in the active prompt area for the outcome and next-step choices. Its
+selected surface, spacing, and keyboard focus keep the decision visible above the footer even after long scrollback. Use
+an explicit completion heading and “What would you like to do next?” with Start a new session, Load a Plan, and Quit.
+Explain that Load a Plan starts a fresh Session. Clear the pinned review/publishing panel on confirmed success; keep the
+outcome and reports in conversation history. Escape dismisses the selection and restores the composer.
 
 Check narrow and wide terminal layouts with real long paths, identifiers, multiline content, and live updates. Preserve
 readable wrapping, keyboard selection, input focus, and scroll position. Browser motion preferences do not configure
@@ -1072,3 +1092,8 @@ toggles.
 Session history and live activity form one chronological timeline. Reconcile workflow/tool copies by call identity
 before grouping; accepted report times survive delayed tool results. Activity contains only consecutive completed tools
 and Thinking, ending at every message, special block, or system notice. Never move activity across a user message.
+
+Artifact links sit beside the corresponding evidence row (and the approved Plan beside the title), without a detached
+button group or “in browser” suffix. TUI mouse links open the same registered artifact reader; Esc then Alt+] remains
+the keyboard path. An explicitly skipped Code Review replaces its selection controls with the ordinary RunWield status
+“Code Review skipped”. Dismissed offers remain pending and do not claim a decision.

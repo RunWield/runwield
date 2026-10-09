@@ -31,7 +31,8 @@ deterministic operations.
 
 ## Output Contract
 
-Return only structured JSON with this shape:
+Submit the sections by calling `work_record_completed` with this argument shape. A JSON text response does not complete
+this step. If the tool rejects the arguments, correct them and call it again.
 
 ```json
 {

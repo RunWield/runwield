@@ -7,6 +7,10 @@
  */
 
 import { join } from "@std/path";
+import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT, type WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
+import { hasFinalizedPublicationLifecycle, indexPublishedWorkRecords } from "../publication-lifecycle.ts";
+import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "../../plan-store.js";
+import { isTerminalWorkRecordParent } from "../work-records/auto-generation.ts";
 import { enterProjectRuntime, resolveProjectRoot, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { findById, pruneEntry, updatePublication } from "../worktree-registry.js";
 import { existingPublicationSavedFiles, preserveUnregisteredPublicationFiles } from "./publication-leftover-files.ts";
@@ -88,6 +92,17 @@ async function integratedEvidence(
     const head = await git(attempt.publicationRoot, ["rev-parse", "HEAD"]);
     if (head.code !== 0 || !head.stdout) return null;
     if (!(await gitAncestor(attempt.publicationRoot, attempt.artifactCommit || "", head.stdout))) return null;
+    if (
+        attempt.deliveryMetadataVersion &&
+        !(await hasFinalizedPublicationLifecycle(
+            attempt.publicationRoot,
+            head.stdout,
+            attempt.planName,
+            attempt.planId,
+            attempt.artifactCommit,
+            attempt.planPaths,
+        ))
+    ) return null;
     const merges = await git(attempt.publicationRoot, ["rev-list", "--merges", "--first-parent", "HEAD"]);
     let assembledTargetBase: string | null = null;
     for (const merge of merges.stdout.split("\n").filter(Boolean)) {
@@ -161,6 +176,17 @@ async function publishedEvidence(
     if (!remote) {
         const target = `refs/heads/${attempt.targetBranch}`;
         if (!(await gitAncestor(projectRoot, integrationCommit, target))) return null;
+        if (
+            attempt.deliveryMetadataVersion &&
+            !(await hasFinalizedPublicationLifecycle(
+                projectRoot,
+                integrationCommit,
+                attempt.planName,
+                attempt.planId,
+                attempt.artifactCommit,
+                attempt.planPaths,
+            ))
+        ) return null;
         return {
             targetBaseCommit,
             integrationCommit,
@@ -172,7 +198,7 @@ async function publishedEvidence(
     if (remoteHead.code !== 0) return null;
     const head = remoteHead.stdout.split(/\s+/)[0] || "";
     if (!head) return null;
-    if (head !== integrationCommit) {
+    if (head !== integrationCommit || attempt.deliveryMetadataVersion) {
         // The publication clone may already have been cleaned up. Fetch into an
         // independent bare repository, never the user's checkout or its refs.
         const inspectionRoot = await Deno.makeTempDir({ prefix: "runwield-publication-proof-" });
@@ -189,6 +215,17 @@ async function publishedEvidence(
             if (fetched.code !== 0 || !(await gitAncestor(inspectionRoot, integrationCommit, "FETCH_HEAD"))) {
                 return null;
             }
+            if (
+                attempt.deliveryMetadataVersion &&
+                !(await hasFinalizedPublicationLifecycle(
+                    inspectionRoot,
+                    integrationCommit,
+                    attempt.planName,
+                    attempt.planId,
+                    attempt.artifactCommit,
+                    attempt.planPaths,
+                ))
+            ) return null;
         } finally {
             await Deno.remove(inspectionRoot, { recursive: true });
         }
@@ -260,6 +297,7 @@ export async function startPublicationAttempt(args: {
         validatedCommit: args.validatedCommit,
         targetHeadAtSeal: args.targetHeadAtSeal,
     });
+    publication.deliveryMetadataVersion = 1;
     await updatePublication(args.projectRoot, args.attemptId, null, publication);
     return publication;
 }
@@ -369,8 +407,60 @@ async function retainPublicationCompletion(projectRoot: string, attempt: Publica
     if (!attempt.verifiedAt) return;
     await writeControllerState(projectRoot, { planId: attempt.planId, planName: attempt.planName }, {
         verifiedAt: attempt.verifiedAt,
+        publicationReceipt: attempt.publishedCommit
+            ? {
+                validatedCommit: attempt.validatedCommit,
+                publishedCommit: attempt.publishedCommit,
+                targetBranch: attempt.targetBranch,
+            }
+            : null,
         updatedAt: attempt.verifiedAt,
     });
+}
+
+/** Retry against current target records so an older delivery cannot undo later supersession. */
+async function settlePublicationIndex(
+    projectRoot: string,
+    attempt: PublicationAttempt,
+    port: WorkRecordMnemotecaPort,
+): Promise<void> {
+    if (!attempt.publishedCommit) return;
+    const paths = attempt.planPaths || [`docs/plans/${attempt.planName}.md`];
+    if (attempt.publicationMode === "local") {
+        const head = await git(projectRoot, ["rev-parse", `refs/heads/${attempt.targetBranch}`]);
+        if (head.code !== 0 || !await gitAncestor(projectRoot, attempt.publishedCommit, head.stdout)) {
+            throw new Error("Published Work Record source cannot be proven on its target.");
+        }
+        await indexPublishedWorkRecords(projectRoot, projectRoot, head.stdout, paths, port, attempt.publishedCommit);
+        return;
+    }
+    if (attempt.publicationMode !== "remote" || !attempt.upstreamRemote || !attempt.upstreamBranch) {
+        throw new Error("Published Work Record source is unavailable.");
+    }
+    // Delivery fixes the upstream identity. Later branch configuration cannot
+    // redirect index recovery to a different repository or branch.
+    const remoteUrl = await git(projectRoot, ["remote", "get-url", attempt.upstreamRemote]);
+    if (remoteUrl.code !== 0 || !remoteUrl.stdout) throw new Error("Published Work Record upstream is unavailable.");
+    const inspection = await Deno.makeTempDir({ prefix: "runwield-record-index-proof-" });
+    try {
+        if ((await git(projectRoot, ["init", "--bare", inspection])).code !== 0) {
+            throw new Error("Cannot inspect published Work Records.");
+        }
+        const fetched = await git(inspection, [
+            "fetch",
+            "--no-tags",
+            remoteUrl.stdout,
+            `refs/heads/${attempt.upstreamBranch}`,
+        ]);
+        if (fetched.code !== 0 || !await gitAncestor(inspection, attempt.publishedCommit, "FETCH_HEAD")) {
+            throw new Error("Published Work Record source cannot be proven on its target.");
+        }
+        const head = await git(inspection, ["rev-parse", "FETCH_HEAD"]);
+        if (head.code !== 0) throw new Error("Published Work Record target cannot be read.");
+        await indexPublishedWorkRecords(projectRoot, inspection, head.stdout, paths, port, attempt.publishedCommit);
+    } finally {
+        await Deno.remove(inspection, { recursive: true });
+    }
 }
 
 /**
@@ -381,19 +471,38 @@ async function retainPublicationCompletion(projectRoot: string, attempt: Publica
 export async function cleanupStoredPublication(
     projectRoot: string,
     initial: PublicationAttempt,
+    workRecordMnemotecaPort: WorkRecordMnemotecaPort = SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
 ): Promise<PublicationCleanupResult> {
     // Reconciliation validates before inspecting Git or changing any receipt.
     let attempt = await reconcileStoredPublication(projectRoot, initial);
     let preservedFiles = await existingPublicationSavedFiles(attempt.executionCwd);
-    if (attempt.phase === "cleanup_complete") {
+    if (attempt.phase === "publication_verified" || attempt.phase === "cleanup_complete") {
+        // Index availability must not hide delivery already proven by Git.
         await retainPublicationCompletion(projectRoot, attempt);
+        try {
+            await settlePublicationIndex(projectRoot, attempt, workRecordMnemotecaPort);
+        } catch (error) {
+            return {
+                complete: false,
+                attempt,
+                worktreeKept: true,
+                branchKept: true,
+                details: [
+                    `Delivery is confirmed. Work Record index synchronization will retry from the retained publication: ${
+                        error instanceof Error ? error.message : String(error)
+                    }`,
+                ],
+                preservedFiles,
+            };
+        }
+    }
+    if (attempt.phase === "cleanup_complete") {
         await pruneEntry(projectRoot, attempt.attemptId);
         return { complete: true, attempt, worktreeKept: false, branchKept: false, details: [], preservedFiles };
     }
     if (attempt.phase !== "publication_verified") {
         throw new Error(`Publication cleanup requires verified publication, found ${attempt.phase}.`);
     }
-    await retainPublicationCompletion(projectRoot, attempt);
     const stillPublished = await publishedEvidence(projectRoot, attempt);
     if (!stillPublished) {
         const worktreeKept = await Deno.stat(attempt.executionCwd).then((value) => value.isDirectory).catch(() =>
@@ -481,4 +590,29 @@ export async function cleanupStoredPublication(
     });
     await pruneEntry(projectRoot, attempt.attemptId);
     return { complete: true, attempt, worktreeKept: false, branchKept: false, details: [], preservedFiles };
+}
+
+/** Read recording outcome from the sealed delivery, even after its worktree is removed. */
+export async function publishedWorkRecordFailed(projectRoot: string, attempt: PublicationAttempt): Promise<boolean> {
+    if (!attempt.artifactCommit) throw new Error("Published Plan artifact commit is missing.");
+    for (const path of attempt.planPaths || []) {
+        const result = await git(projectRoot, ["show", `${attempt.artifactCommit}:${path}`]);
+        if (result.code !== 0) continue;
+        const { attrs } = parsePlanFrontMatter(result.stdout);
+        if (attrs.planId !== attempt.planId) continue;
+        if (!isChildFeaturePlan({ attrs })) return attrs.workRecord?.status === "failed";
+        // Child completion records the terminal parent, which need not be listed
+        // among the child's lifecycle paths. Read it from the same sealed tree.
+        const parentName = canonicalizeStoredPlanName(attrs.parentPlan || "").name;
+        const parent = await git(projectRoot, ["show", `${attempt.artifactCommit}:docs/plans/${parentName}.md`]);
+        if (parent.code !== 0) return false;
+        const parentAttrs = parsePlanFrontMatter(parent.stdout).attrs;
+        const preparedParentDelivered = ["publication_verified", "cleanup_complete"].includes(attempt.phase) &&
+            ["reviewed", "validated"].includes(parentAttrs.status) &&
+            parentAttrs.epicCompletionMode === "done_enough" &&
+            Boolean(attempt.planPaths?.includes(`docs/plans/${parentName}.md`));
+        return (isTerminalWorkRecordParent(parentAttrs) || preparedParentDelivered) &&
+            parentAttrs.workRecord?.status === "failed";
+    }
+    throw new Error(`Published Plan ${attempt.planName} was not found in its artifact commit.`);
 }

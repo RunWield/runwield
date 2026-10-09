@@ -4,7 +4,7 @@ workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
     - "src/shared/workflow/metrics.js"
-    - "src/ui/workspace/server/owner-projects.js"
+    - "src/ui/workspace/server/owner-projects.ts"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"

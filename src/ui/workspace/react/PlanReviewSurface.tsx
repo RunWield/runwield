@@ -3,10 +3,10 @@ import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
 import { RunWieldIconButton } from "../../design-system/components/react/RunWieldIconButton.tsx";
 import { animateSidebarUpdate } from "../../design-system/components/react/sidebar-motion.ts";
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { RunWieldSegmentedControl } from "../../design-system/components/react/RunWieldSegmentedControl.tsx";
-import { RunWieldTabs } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldTabs } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemeProvider } from "@plannotator/ui/components/ThemeProvider.tsx";
 import { Tooltip, TooltipProvider } from "@plannotator/ui/components/Tooltip.tsx";
@@ -353,8 +353,10 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         );
     const reviewContextCount = annotations.length + codeAnnotations.length + globalAttachments.length +
         (directlyEditedPlan === null ? 0 : 1);
-    const attachedContextLabel = conversationContextAttached && reviewContextCount > 0
-        ? `${reviewContextCount} review ${reviewContextCount === 1 ? "note" : "notes"} attached`
+    const attachedContextLabel = conversationContextAttached && hasGroupFeedback
+        ? reviewContextCount > 0
+            ? `${reviewContextCount} review ${reviewContextCount === 1 ? "note" : "notes"} attached`
+            : "Sequence review notes attached"
         : undefined;
 
     const persistReviewDraftLocally = useCallback((reportError = true) => {
@@ -503,8 +505,12 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
 
     async function sendPlannerMessage() {
         const message = conversationComposer.trim();
-        if (!message || plannerWorking) return;
-        const attachedFeedback = conversationContextAttached && hasReviewFeedback ? currentFeedback() : "";
+        const attachedFeedback = conversationContextAttached && hasGroupFeedback
+            ? reviewGroup
+                ? reviewGroup.collect().map((document) => document.feedback || "").filter(Boolean).join("\n\n")
+                : currentFeedback()
+            : "";
+        if ((!message && !attachedFeedback) || plannerWorking) return;
         const contextLabel = attachedFeedback ? attachedContextLabel : undefined;
         const userMessageId = `user-${crypto.randomUUID()}`;
         const agentMessageId = `agent-${crypto.randomUUID()}`;
@@ -520,7 +526,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
         setConversationMessages((items) => [...items, {
             id: userMessageId,
             role: "user",
-            body: message,
+            body: message || "Review annotations",
             ...(contextLabel && { contextLabel }),
         }]);
 

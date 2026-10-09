@@ -269,7 +269,7 @@ with review-round policy. Read it against the current PRD. `offer-semantic-revie
 **Required outcome:** Saved Session images remain available through execution, repair, and resume. Another Session must
 not inherit access. A continuous visible transcript is not sufficient if its attachment references no longer resolve.
 
-**Evidence:** `src/shared/session/image-attachments.js:62–66,104–116` stores and looks up images using the current Pi
+**Evidence:** `src/shared/session/image-attachments.ts:62–66,104–116` stores and looks up images using the current Pi
 session ID. `src/shared/session/segment-rollover.ts:98–113` creates a new Pi ID. The inspected rollover path has no
 image transfer or predecessor lookup. `src/tools/see-image.ts:94–98` supplies the current manager and cwd only.
 
@@ -332,7 +332,7 @@ scope; this local audit did not research current CLI APIs.
 Project settings and preset precedence, and preserve typed text and previews when setup needs correction.
 
 **Finding A:** `src/shared/session/session.js:2041–2044` eagerly resolves fallback for any text-only Pi Agent, without
-requiring an image. `image-attachments.js:194–224` throws for missing authentication, unknown models, or unsuitable
+requiring an image. `image-attachments.ts:194–224` throws for missing authentication, unknown models, or unsuitable
 models. Example: old fallback credentials expire; starting a text-only Agent fails even for a text-only request.
 
 **Finding B:** `src/shared/settings.js:617–629` resolves fallback without a Project root. The underlying reads default
@@ -362,7 +362,7 @@ required non-empty `## Summary`:
 **Evidence:** `src/shared/work-records/store.js:92` parses every record without isolating a failure. Search scans
 records before querying (`search.js:92`); read-by-ID also scans all (`store.js:106`). Validation throws at
 `markdown.js:349`. The draft therefore blocks even current-only queries before filtering. Listing, backfill, and
-rebuilding use the same scan. `index-adapter.js:261–266` deletes the existing index before parsing all records.
+rebuilding use the same scan. `index-adapter.ts:239–247` deletes the existing index before parsing all records.
 
 **Distinguish two deliveries:** Quick win 1 fixes today's two documents. This group addresses the failure behavior when
 another malformed document appears. Rebuilding alone cannot repair malformed Markdown.
@@ -387,7 +387,7 @@ found, but its full scope was not audited. Manual/external record creation remai
 because their directory names match. Preserve existing knowledge and intentional global-memory sharing.
 
 **Evidence:** `src/extensions/mnemoteca/tools.ts:86–96` resolves the primary repository and uses its basename for the
-memory collection. `src/shared/work-records/index-adapter.js:42–48` uses the same kind of basename identity.
+memory collection. `src/shared/work-records/index-adapter.ts:59–65` uses the same kind of basename identity.
 
 **Failure example:** `/client-a/app` and `/client-b/app` use the same memory collection name. Rebuilding one Work Record
 index replaces indexed candidates for the other. Canonical filtering prevents foreign Work Records from being returned,

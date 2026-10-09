@@ -1,5 +1,5 @@
 import { join } from "@std/path";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 export interface PlanCommandFixture {
     homeDir: string;

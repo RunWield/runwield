@@ -70,6 +70,7 @@ export const SESSION_RUNTIME_METHOD_POLICY = {
     runLocalShellCommand: "fenced_standalone_mutation",
     // Controls this runtime's MCP transports; does not mutate durable Session state.
     runMcpCommand: "projection_adapter_local",
+    retryWorkRecord: "fenced_standalone_mutation",
     reviewSavedPlan: "fenced_standalone_mutation",
     runPlanAction: "fenced_standalone_mutation",
     runPlanningAgent: "fenced_standalone_mutation",

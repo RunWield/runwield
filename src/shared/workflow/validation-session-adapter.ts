@@ -439,6 +439,27 @@ export function createValidationSessionPort(
         getCurrentProgress: () => getCurrentValidationProgress(hostedSession),
         setCurrentProgress: (progress) => setCurrentValidationProgress(hostedSession, progress),
         emitStatus: (message, level, progress) => {
+            const capability = hostedSession.getManagedOperationCapability?.();
+            if (progress?.deliveryReport && capability) {
+                progress = {
+                    ...progress,
+                    deliveryReport: {
+                        ...progress.deliveryReport,
+                        artifacts: progress.deliveryReport.artifacts.map((artifact) => {
+                            if (
+                                artifact.artifactId || artifact.path.startsWith("../") || artifact.path.startsWith("/")
+                            ) return artifact;
+                            const reference = capability.registerArtifact({
+                                kind: artifact.kind,
+                                path: artifact.path,
+                                title: artifact.title,
+                                registeredBy: "delivery-report",
+                            });
+                            return { ...artifact, artifactId: reference.artifactId };
+                        }),
+                    },
+                };
+            }
             emitRunWieldSystemStatus(
                 hostedSession,
                 message,
@@ -556,13 +577,16 @@ export function createValidationSessionPort(
                 forceRebuild: true,
             });
         },
-        runPostVerificationHandoffs: async ({ planName, planContent, projectRoot, mnemotecaPort }) => {
+        runPostVerificationHandoffs: async (
+            { planName, planContent, projectRoot, mnemotecaPort, pendingPublication },
+        ) => {
             await runFeaturePostVerificationHandoffs({
                 hostedSession,
                 planName,
                 planContent,
                 projectRoot,
                 mnemotecaPort,
+                pendingPublication,
             });
         },
     };

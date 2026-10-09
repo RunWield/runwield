@@ -5,7 +5,7 @@ workKind: "BUG_FIX"
 complexity: "HIGH"
 affectedPaths:
     - "src/shared/settings.js"
-    - "src/shared/session/image-attachments.js"
+    - "src/shared/session/image-attachments.ts"
     - "src/shared/session/session.js"
     - "src/shared/session/session-runtime.js"
     - "src/tools/see-image.ts"
@@ -228,7 +228,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   Runtime behavior. The older `.js` references below describe the original implementation, not files to recreate.
 - `docs/adr/016-proof-bearing-publication-state-machine.md` and Core recovery scenarios — clarify and verify
   unpublished-attempt invalidation during review reopening if the owner correction is required.
-- `src/shared/settings.js`, `session/image-attachments.js`, and tests — explicit root, precedence, and lazy fallback.
+- `src/shared/settings.js`, `session/image-attachments.ts`, and tests — explicit root, precedence, and lazy fallback.
 - `src/shared/session/session.js`, `session-runtime.js`, and existing model/invocation preparation — one effective model
   selection for preflight and actual submission, plus early rejection before transcript effects.
 - `src/tools/see-image.ts` and tests — resolve configured fallback when invoked, retaining safe references and auth.

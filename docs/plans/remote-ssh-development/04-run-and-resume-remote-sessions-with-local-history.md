@@ -9,7 +9,7 @@ affectedPaths:
     - "src/shared/session/file-session-storage.ts"
     - "src/shared/session/file-session-store.ts"
     - "src/shared/session/session-resume-list.ts"
-    - "src/shared/session/image-attachments.js"
+    - "src/shared/session/image-attachments.ts"
     - "src/shared/session/segment-rollover.ts"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/remote-ssh-prd.md"
@@ -78,7 +78,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   running laptop path operations against them.
 - `src/shared/session/session-resume-list.ts` — list and inspect laptop history offline while requiring a validated
   connection for continuation.
-- `src/shared/session/image-attachments.js` and rollover modules — transfer attachments explicitly and keep stable
+- `src/shared/session/image-attachments.ts` and rollover modules — transfer attachments explicitly and keep stable
   references independent of temporary mounts.
 - The owning Core and Remote SSH PRD sections — mark the remote conversation and continuation scenarios delivered while
   workflows and review remain target behavior.

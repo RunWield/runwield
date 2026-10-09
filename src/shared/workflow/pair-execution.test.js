@@ -1,7 +1,7 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
-import { decidePostExecution } from "./decisions.js";
+import { decidePostExecution } from "./decisions.ts";
 import { resolveExecutionOwner, supportsPairExecution } from "./workflow.js";
 import { selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
 import { buildPairPausedMessage } from "./engineer-runner.ts";

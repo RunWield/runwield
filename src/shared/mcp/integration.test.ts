@@ -13,7 +13,7 @@ import { SessionHost } from "../session/session-host.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { buildAgentSession, runIsolatedAgentSession } from "../session/session.js";
 import { createSessionRuntime } from "../session/session-runtime.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { startMcpIntegration } from "./integration.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { getSettingsDir, getSettingsManager } from "../settings.js";

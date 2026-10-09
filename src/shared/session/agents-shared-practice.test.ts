@@ -59,8 +59,20 @@ const PLANNING_DOC_AUTHORS: readonly string[] = ["planner", "architect"];
 
 /** Planning personas that compose the explanation practice on top of user authority. */
 const PLANNING_PRACTICE_CONSUMERS: ReadonlyArray<[string, readonly string[]]> = [
-    ["planner", [...PLANNING_DOC_FRAGMENTS, "plain-language-dialogue", "architecture-vocabulary", "domain-design"]],
-    ["architect", [...PLANNING_DOC_FRAGMENTS, "plain-language-dialogue", "architecture-vocabulary", "domain-design"]],
+    ["planner", [
+        ...PLANNING_DOC_FRAGMENTS,
+        "plain-language-dialogue",
+        "architecture-vocabulary",
+        "domain-design",
+        "planning-pending-changes",
+    ]],
+    ["architect", [
+        ...PLANNING_DOC_FRAGMENTS,
+        "plain-language-dialogue",
+        "architecture-vocabulary",
+        "domain-design",
+        "planning-pending-changes",
+    ]],
     ["ideator", [...PLANNING_DOC_FRAGMENTS]],
 ];
 
@@ -450,5 +462,20 @@ Deno.test("the shared pair ceremony stays medium-neutral", async () => {
             false,
             `shared plan-execution fragment must stay medium-neutral, found: ${browserTerm}`,
         );
+    }
+});
+
+Deno.test("Planner and Architect use pending work as evidence without dirty-file warnings", async () => {
+    for (const name of ["planner", "architect"]) {
+        const { systemPrompt } = await loadAgentDef(name);
+        for (
+            const text of [
+                "Inspect staged, unstaged, and relevant untracked changes",
+                "Use task-relevant changes as evidence",
+                "Silently ignore unrelated changes",
+                "Preserve all existing work",
+                "A dirty checkout alone is neither a blocker nor a risk",
+            ]
+        ) assertStringIncludes(systemPrompt, text);
     }
 });

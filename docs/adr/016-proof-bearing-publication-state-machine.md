@@ -14,32 +14,49 @@ recoverable work. RunWield reconciles proof and repairs internal storage, locks,
 automatically; exposing an error and a repair command is not completion. Evidence requirements still forbid fabricated
 success, blind replay, or loss of user work.
 
-- Plan Front Matter records that validation succeeded, the `validatedCommit` implementation hash, and the actual
-  `targetBranch`. A worktree-backed Planned Change stops changing at `validated`.
-- The matching `.wld/internal/worktrees.json` entry owns publication progress in one `publication` record.
-- Git commits and refs are evidence. Status strings, error text, Session memory, and transition journals are not
-  publication evidence.
-- The registry entry is removed only after verified publication and cleanup. With no active attempt, Git ancestry of the
-  Plan's `validatedCommit` on `targetBranch` proves delivery without a permanent controller receipt. Absence of a
-  registry entry alone is not proof. There is no Plan `published` status. Non-Git completion uses the Plan status.
+- Public Plan status separates finished implementation (`implemented`), passed review (`reviewed`), and confirmed
+  delivery (`verified`). CI success stays in controller `validationPhase`; it does not add a public status.
+- The sealed execution Plan remains `reviewed`. After merging its candidate into the publication target, RunWield
+  finalizes the owned Plan as `verified` and any prepared Work Record as approved in a target metadata commit. Remote
+  publication assembles that commit privately, then pushes and proves it before reporting delivery.
+- The matching `.wld/internal/worktrees.json` entry owns intermediate publication progress in one `publication` record.
+- Git commits and refs supply proof. A status string, error, Session memory, or transition journal cannot substitute for
+  delivery evidence. Candidate `validatedCommit` and the final published commit are distinct identities.
+- Confirmed delivery retains a permanent controller `publicationReceipt` identifying the candidate, published commit,
+  and target branch, plus `verifiedAt`. It survives attempt cleanup and preserves effective completion when a remote
+  publication leaves the user's primary checkout behind. The receipt records established proof; it does not authorize
+  overwriting later user changes or replaying publication.
+- Registry cleanup waits for confirmed publication and recoverable bookkeeping. Work Record indexing has durable retry
+  state and does not revoke successful code delivery. The attempt can be removed after cleanup settles; absence of an
+  attempt alone never proves delivery. There is no separate Plan `published` status. Non-Git completion verifies in
+  place after checks and review.
 
-The stamp survives removal of runtime records; checkpoints and intermediate publication receipts do not become Plan
-fields. Reopening for review or starting a new execution clears the previous stamp. Older unstamped Plans can be
-recognized by exact completed document content already committed on their target; arbitrary working-copy status edits do
-not qualify. Committed archived history without an active attempt is not an instruction to restart publication when an
-old feature branch or pre-squash commit is no longer reachable. Doctor omits such non-actionable history, rather than
-calling it broken. This diagnostic rule neither proves publication nor authorizes deleting unmerged commits.
+Runtime checkpoints, receipts, and index retry state remain outside Plan Markdown. The target's verified status is
+portable in Git; the controller receipt supports the local view and recovery. Reopening for review or starting a new
+execution invalidates prior completion evidence. Legacy `validated_ci` resumes as implemented with semantic review
+ready; `validated_reviewer` becomes reviewed. Legacy `validated` means verified only with delivery evidence; an
+unfinished publication or unmerged Epic integration pass remains reviewed.
+
+An Epic integration gate records reviewed work and its final target. It becomes verified only after that checked work is
+proven on the final target. Explicit done-enough closure uses `closed_without_verification` with its completion mode; it
+does not manufacture publication proof.
+
+Older unstamped Plans can be recognized by exact completed document content already committed on their target; arbitrary
+working-copy status edits do not qualify. Committed archived history without an active attempt is not an instruction to
+restart publication when an old feature branch or pre-squash commit is no longer reachable. Doctor omits such
+non-actionable history rather than calling it broken. This diagnostic rule neither proves publication nor permits
+deleting unmerged commits.
 
 The record advances monotonically through these proven phases:
 
-| Phase                  | Required evidence                                                                          |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| `candidate_sealed`     | Validated execution commit and target head observed at sealing                             |
-| `artifacts_committed`  | Commit containing the final Plan and generated delivery artifacts                          |
-| `target_integrated`    | Exact target ref head protected by the next CAS/lease and the assembled integration commit |
-| `target_published`     | Exact local or remote target commit and publication mode                                   |
-| `publication_verified` | A fresh Git read proves the target still names the published commit                        |
-| `cleanup_complete`     | Execution checkout, branch, and temporary publication clone are settled                    |
+| Phase                  | Required evidence                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| `candidate_sealed`     | Reviewed implementation commit and target head observed at sealing                                  |
+| `artifacts_committed`  | Sealed reviewed Plan, candidate evidence, and pending generated delivery artifacts                  |
+| `target_integrated`    | Exact target base and assembled commit with finalized verified Plan and approved prepared artifacts |
+| `target_published`     | Exact local or remote target commit and publication mode                                            |
+| `publication_verified` | A fresh Git read proves the target contains the finalized publication commit                        |
+| `cleanup_complete`     | Execution checkout, branch, and temporary publication clone are settled                             |
 
 Every registry update uses a compare-and-swap revision under the existing registry lock. A stale process cannot
 overwrite newer proof. A failure annotates the current phase without moving it backward.
@@ -51,23 +68,25 @@ identity is immutable.
 
 Before integration, rewritten source ancestry or changed sealed files invalidate the candidate's validation evidence.
 RunWield durably records a revalidation request in that publication record, preserves the record and any publication
-checkout, resets the execution Plan to `implemented`, clears its validation stamp and review approval, and retires the
-old record with a revision check. Validation then creates a fresh publication record from the current files. The request
-survives interruption between these operations, including after moving the checkout or resetting the Plan. This retires
-an invalid candidate; it does not move a proven publication phase backward. The current validation owner's checkpoint
-remains claimed while its next phase changes to Mechanical Validation.
+checkout, resets the execution Plan to `implemented`, clears its candidate/completion evidence and review approval, and
+retires the old record with a revision check. Validation then creates a fresh publication record from the current files.
+The request survives interruption between these operations, including after moving the checkout or resetting the Plan.
+This retires an invalid candidate; it does not move a proven publication phase backward. The current validation owner's
+checkpoint remains claimed while its next phase changes to Mechanical Validation.
 
 Recovery deliberately reruns validation even for a content-equivalent source rewrite. Matching commit messages or trees
-alone does not repair the Plan's embedded validation stamp or prove the rewritten ancestry is suitable for publication;
-fresh checks and sealing avoid carrying those stale identities forward. This costs another validation pass. Ordinary
-unchanged retries retain their completed checks. Integrated and published records are excluded from this reset because a
-push may already have happened; losing ancestry after publication does not authorize replaying work removed from the
-target.
+alone does not repair the saved candidate identity or prove the rewritten ancestry is suitable for publication; fresh
+checks and sealing avoid carrying those stale identities forward. This costs another validation pass. Ordinary unchanged
+retries retain their completed checks. Integrated and published records are excluded from this reset because a push may
+already have happened; losing ancestry after publication does not authorize replaying work removed from the target.
 
 On restart, RunWield reads the record and current Git facts. It may advance a missing receipt only when Git proves the
-external effect already happened—for example, an integration commit exists in the saved publication clone or the remote
-target contains the recorded integration commit. Otherwise it retries the current phase. It never reruns validation or
-regenerates committed artifacts merely because publication was interrupted.
+external effect already happened—for example, the saved publication clone contains the candidate and all intended
+finalized Plan/Work Record metadata, or the remote target contains that recorded publication commit. Candidate ancestry
+alone cannot prove metadata finalization. Otherwise it retries the current phase. It never reruns validation or
+regenerates committed artifacts merely because publication was interrupted. Prepared records are reused for their exact
+attempt/source identity, and interrupted owned metadata writes are reconciled before ordinary dirty-checkout guards.
+Identity checks do not grant ownership over unrelated Plan or Work Record edits.
 
 Later target commits do not invalidate publication or cleanup. Recovery verifies ancestry against the recorded upstream
 (or the local target in local-only mode), preserving the original publication commit as the receipt. Remote checks use
@@ -95,10 +114,11 @@ Remote publication uses a stable temporary clone and never checks out, rebases, 
 primary checkout. It pushes the assembled commit with a lease.
 
 A repository without a remote has no second target authority that a primary checkout can later pull. In that explicit
-local-only mode, RunWield prepares the integration separately, requires the checked-out target to have no unsaved
-tracked changes, and then advances that checkout. Non-overlapping untracked files are preserved. This is the sole
-primary-checkout exception; users who need publication while the checkout contains parallel tracked work must configure
-a remote.
+local-only mode, RunWield checks the target checkout, preserves unrelated work, merges the candidate locally, and
+commits its finalized lifecycle metadata. Unrelated unsaved tracked changes block that operation; exact RunWield-owned
+preparation and interrupted finalization writes are reconciled automatically. Non-overlapping untracked files are
+preserved. This is the sole primary-checkout exception; users who need publication while the checkout contains parallel
+tracked work must configure a remote.
 
 ## Removed authorities
 
@@ -106,8 +126,9 @@ This decision retires publication-specific transition journals, manual recovered
 `publication_failed`/`merge_conflict`/`merged` registry transitions, and Plan-owned repair-checkout pointers. They
 described the same operation from multiple stores and made recovery depend on which write happened last.
 
-This is intentionally a breaking architecture change. Old partial-publication bookkeeping is not translated into the new
-machine.
+Retired publication-specific journals do not become new authorities. Stored lifecycle labels and supported publication
+records remain compatible through evidence-based reads and reconciliation; recovery does not discard an unfinished
+attempt merely because its labels predate the current public lifecycle.
 
 ## Verification
 

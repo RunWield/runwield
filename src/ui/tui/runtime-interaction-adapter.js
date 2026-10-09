@@ -50,7 +50,12 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                 const value = await waitForPrompt(
                     uiAPI,
                     signal,
-                    () => uiAPI.promptSelect(request.prompt, request.options || []),
+                    () =>
+                        uiAPI.promptSelect(
+                            request.prompt,
+                            request.options || [],
+                            request._meta?.presentation === "code_review_offer" ? { persistResult: false } : undefined,
+                        ),
                 );
                 if (value === null) return { outcome: RuntimeInteractionOutcomes.CANCELED };
                 const option = (request.options || []).find((item) => item.value === value);

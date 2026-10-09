@@ -31,7 +31,7 @@ const stages = [
     { name: "interrupted CI", status: "implemented", checkpoint: "running", ci: 1, review: 1 },
     { name: "interrupted CI repair", status: "implemented", checkpoint: "paused", ci: 2, review: 1 },
     { name: "awaiting Reviewer", status: "validated_ci", ci: 0, review: 1 },
-    { name: "awaiting human review", status: "validated_reviewer", ci: 0, review: 0 },
+    { name: "awaiting human review", status: "reviewed", ci: 0, review: 0 },
 ] as const;
 
 for (
@@ -162,7 +162,10 @@ for (
                         },
                     });
                 }
-                assertStringIncludes(messages.join("\n"), `Status: ${stage.status}`);
+                assertStringIncludes(
+                    messages.join("\n"),
+                    `Status: ${stage.status === "validated_ci" ? "implemented" : stage.status}`,
+                );
                 assertEquals(
                     await readControllerRecord(root, { planId: "migration-demo", planName: "demo" }),
                     controller,
@@ -261,7 +264,7 @@ for (
                 assertEquals(ciRuns, stage.ci);
                 assertEquals(reviews, stage.review);
                 assertEquals(repairs, repair ? 1 : 0);
-                assertEquals((await loadPlan(tree, "demo"))?.attrs.status, "validated_reviewer");
+                assertEquals((await loadPlan(tree, "demo"))?.attrs.status, "reviewed");
                 assertEquals(await git(root, ["rev-parse", "HEAD"]), baseCommit);
                 assertEquals(await Deno.readTextFile(join(root, "implementation.txt")), "unrelated primary edits\n");
                 assertEquals((await findById(root, "attempt-demo"))?.path, tree);

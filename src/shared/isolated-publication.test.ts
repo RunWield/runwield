@@ -1,3 +1,5 @@
+import { mergeFrontMatterText } from "../plan-store.js";
+import { normalizePublicationFailure } from "./workflow/validation-merge-repair.ts";
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import {
     isExecutionCommitPublishedUpstream,
@@ -50,7 +52,10 @@ for (const change of ["formatting", "definition", "body", "staged", "committed"]
                 assertEquals(await git(worktree.path, ["write-tree"]), indexBefore);
             } else {
                 await publish();
-                assertEquals(await git(projectRoot, ["show", `main:${path}`]), sealed.trim());
+                assertEquals(
+                    await git(projectRoot, ["show", `main:${path}`]),
+                    mergeFrontMatterText(sealed, { status: "verified" }).trim(),
+                );
                 assertEquals(await Deno.readTextFile(`${worktree.path}/${path}`), sealed);
                 assertEquals(await git(worktree.path, ["status", "--porcelain"]), "");
             }
@@ -756,5 +761,36 @@ Deno.test("completed publication repair imports a newer execution commit before 
         await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
         await Deno.remove(remoteRoot, { recursive: true }).catch(() => {});
         await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+    }
+});
+
+Deno.test("local publication retains blocking filenames for the recovery prompt", async () => {
+    const projectRoot = await makeRepo();
+    const worktreeRoot = await Deno.makeTempDir({ prefix: "publication-dirty-paths-" });
+    const worktree = await createTestWorktreeAttempt({ projectRoot, planName: "p", worktreeRoot });
+    try {
+        await Deno.writeTextFile(`${worktree.path}/implementation.txt`, "validated implementation\n");
+        await git(worktree.path, ["add", "implementation.txt"]);
+        await git(worktree.path, ["commit", "-m", "Validated candidate"]);
+        await Deno.writeTextFile(`${projectRoot}/README.md`, "user work that must be preserved\n");
+        const head = await git(projectRoot, ["rev-parse", "HEAD"]);
+        const sealedExecutionCommit = await git(worktree.path, ["rev-parse", "HEAD"]);
+        const error = await assertRejects(() =>
+            publishExecutionWorktreeIsolated({
+                projectRoot,
+                sealedExecutionCommit,
+                executionCwd: worktree.path,
+                executionBranch: worktree.branch,
+                targetBranch: "main",
+                planName: "p",
+                allowedPlanPaths: [],
+            }), IsolatedPublicationError);
+        assertEquals(normalizePublicationFailure(error).blockingPaths, ["README.md"]);
+        assertEquals(await Deno.readTextFile(`${projectRoot}/README.md`), "user work that must be preserved\n");
+        assertEquals(await git(projectRoot, ["rev-parse", "HEAD"]), head);
+    } finally {
+        await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true });
+        await Deno.remove(projectRoot, { recursive: true });
+        await Deno.remove(worktreeRoot, { recursive: true });
     }
 });

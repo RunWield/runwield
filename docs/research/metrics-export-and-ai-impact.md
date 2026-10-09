@@ -19,7 +19,7 @@ Workflow metrics are opt-in and disabled by default. They append to project-scop
 `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`. Linked execution worktrees use the primary project's
 file. Writes are best-effort: a write failure does not stop work and can be silent. There is no reporting UI, CLI
 summary, or analytics sync. Sources: [metrics writer](../../src/shared/workflow/metrics.js),
-[settings](../settings.md#workflowmetrics).
+[settings](../user-documentation/settings.md#workflowmetrics).
 
 A local configuration check found global `workflowMetrics: true`, no project override, and 30 metrics files including
 this project's file. Event contents and counts were not audited. This updates the older July finding that metrics were

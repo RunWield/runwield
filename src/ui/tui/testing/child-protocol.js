@@ -6,7 +6,7 @@
 import { fromFileUrl, join, toFileUrl } from "@std/path";
 import { createGoldenIsolatedEnvironment } from "./isolated-environment.js";
 import { GOLDEN_CHILD_READY_MARKER, runGoldenChild } from "./subprocess-runner.js";
-import { releaseProcessGlobalTestLockSync } from "../../../testing/process-global-lock.js";
+import { releaseProcessGlobalTestLockSync } from "../../../testing/process-global-lock.ts";
 
 const CHILD_FLAG = "--golden-tui-child";
 

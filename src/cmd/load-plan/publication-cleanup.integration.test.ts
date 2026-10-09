@@ -236,7 +236,9 @@ async function checkCleanupRestart(
                 assertStringIncludes(messages.join("\n"), "Cleanup stopped for demo");
                 assertStringIncludes(
                     messages.join("\n"),
-                    "Could not confirm that main still contains the published commits",
+                    targetChange === "rewritten"
+                        ? "Published Work Record source cannot be proven on its target"
+                        : "Published Work Record upstream is unavailable",
                 );
                 assertEquals(messages.join("\n").includes("Fix this Git issue"), false);
             } else {

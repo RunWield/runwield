@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { fromFileUrl, join } from "@std/path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.js";
 import { __resetSettingsForTests, getSettingsManager } from "../../settings.js";
 import { loadAgentDef, resolveSessionToolNames } from "../agents.js";

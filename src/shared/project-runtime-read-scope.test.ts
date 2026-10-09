@@ -2,7 +2,7 @@ import { assertEquals, assertNotStrictEquals, assertRejects, assertStrictEquals 
 import { join } from "@std/path";
 import { getRunWieldRuntimeDir } from "../constants.js";
 import { listPlans, loadPlan, savePlan } from "../plan-store.js";
-import { withProcessGlobalTestLock } from "../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
 import {
     enterProjectRuntime,

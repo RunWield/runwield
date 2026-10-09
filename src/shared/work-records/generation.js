@@ -29,7 +29,7 @@ import {
 } from "../plan-deviations.ts";
 import { runPlanFrontMatterTransition } from "../workflow/state-transition.ts";
 import { buildWorkRecordFileName, deleteWorkRecord, listWorkRecords, writeWorkRecord } from "./store.js";
-import { syncWorkRecordToIndex } from "./index-adapter.js";
+import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import { applyWorkRecordSupersession, WorkRecordSupersessionRollbackError } from "./supersession.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -40,11 +40,13 @@ const USER_VERIFIED_TEXT = "The user attested verification; RunWield Workflow Va
 
 /**
  * @typedef {Object} WorkRecordSource
+ * @property {boolean} [pendingPublication] - Explicit artifact preparation, never ordinary backfill eligibility
  * @property {"active"|"archived"} sourceKind
  * @property {string} name
  * @property {string} relativePath
  * @property {string} path
  * @property {string} planId
+ * @property {string} [documentRevision] - Expected local document revision when recording a published source
  * @property {import('../../plan-store.js').PlanFrontMatter} attrs
  * @property {import('../plan-deviations.ts').PlanDeviation[]} [planDeviations]
  * @property {string} body
@@ -70,6 +72,7 @@ const USER_VERIFIED_TEXT = "The user attested verification; RunWield Workflow Va
 
 /**
  * @typedef {Object} GenerationOptions
+ * @property {AbortSignal} [signal] - Cancellation of the recording operation
  * @property {() => string} [idGenerator]
  * @property {() => Date} [now]
  * @property {(prompt: string) => Promise<GeneratedWorkRecordSections>} [runRecorderStep]
@@ -206,7 +209,10 @@ export function deriveWorkRecordCompletionMode(source) {
     if (isProjectPlan(source.attrs) && source.attrs.epicCompletionMode === "done_enough") return "done_enough";
     if (source.attrs.status === "closed_without_verification") return "closed_without_verification";
     if (source.attrs.status === "user_verified") return "user_verified";
-    if (source.attrs.status === "validated" || source.attrs.status === "verified") return "verified";
+    if (
+        source.attrs.status === "validated" || source.attrs.status === "verified" ||
+        (source.pendingPublication && source.attrs.status === "reviewed")
+    ) return "verified";
     return "";
 }
 
@@ -243,7 +249,8 @@ export function recordsBySourcePlanId(records) {
 function findLinkableExistingRecord(source, existingByPlanId) {
     const candidates = source.planId ? existingByPlanId.get(source.planId) || [] : [];
     return candidates.find((record) =>
-        record.attrs.status === "approved" &&
+        (record.attrs.status === "approved" ||
+            (source.pendingPublication && record.attrs.status === "pending_verification")) &&
         record.attrs.origin === "internal" &&
         record.attrs.scope === source.scope &&
         record.attrs.completionMode === source.completionMode &&
@@ -377,6 +384,7 @@ async function updateSourceFrontMatter(cwd, source, updates) {
         projectRoot: cwd,
         planName: source.name,
         operation: "work_record_backlink",
+        expectedRevision: source.documentRevision,
         updates,
         recoveryAttrs: source.attrs || {},
     });
@@ -505,6 +513,9 @@ function buildRecorderPrompt(source, successorRecordId, settledSupersedes) {
                 planId: source.planId,
                 scope: source.scope,
                 completionMode: source.completionMode,
+                deliveryState: source.pendingPublication
+                    ? "pending publication; do not claim merged or delivered"
+                    : "completed",
                 closureReason: source.closureReason,
                 userVerificationNote: source.attrs.userVerificationNote,
                 userVerifiedAt: source.attrs.userVerifiedAt,
@@ -544,21 +555,39 @@ export async function generateRecorderSections(
     const prompt = buildRecorderPrompt(source, successorRecordId, settledSupersedes);
     if (options.runRecorderStep) return normalizeRecorderOutput(await options.runRecorderStep(prompt));
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd });
+    const sessionManager = SessionManager.inMemory(cwd);
     try {
-        const { event } = await runValidationAgentUntilEvent(SYSTEM_SEMANTIC_REVIEW_PORT, {
-            hostedSession,
-            cwd,
-            agentName: AGENTS.RECORDER,
-            userRequest: prompt +
-                "\nSubmit the sections by calling work_record_completed. Plain text cannot complete this step.",
-            sessionManager: SessionManager.inMemory(cwd),
-            customTools: [createWorkRecordCompletedTool(hostedSession)],
-            includeEditFallback: false,
-        }, "work_record_completed");
-        if (!event) throw new Error("The Recorder did not submit a Work Record. Retry generation.");
-        const sections = normalizeRecorderOutput(event.payload);
-        settleWorkflowToolEvent(hostedSession, event);
-        return sections;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            const { event, messages } = await runValidationAgentUntilEvent(SYSTEM_SEMANTIC_REVIEW_PORT, {
+                hostedSession,
+                signal: options.signal,
+                cwd,
+                agentName: AGENTS.RECORDER,
+                userRequest: attempt === 1
+                    ? prompt +
+                        "\nSubmit the sections by calling work_record_completed. Plain text cannot complete this step."
+                    : "No work_record_completed submission was accepted. Use the source already provided to call " +
+                        "work_record_completed now. Correct any rejected arguments; do not return JSON as text.",
+                sessionManager,
+                customTools: [createWorkRecordCompletedTool(hostedSession)],
+                includeEditFallback: false,
+            }, "work_record_completed");
+            if (event) {
+                const sections = normalizeRecorderOutput(event.payload);
+                settleWorkflowToolEvent(hostedSession, event);
+                return sections;
+            }
+            const lastAssistant = messages.findLast((message) => message.role === "assistant");
+            // Keep only protocol metadata, never provider text or private reasoning.
+            const stopped = lastAssistant?.role === "assistant" ? lastAssistant.stopReason : undefined;
+            const diagnostic = stopped === "error" || stopped === "aborted" || stopped === "length"
+                ? `turn ended with ${stopped}`
+                : "turn ended without an accepted work_record_completed call";
+            if (attempt === 2 || stopped === "error" || stopped === "aborted") {
+                throw new Error(`Recorder submission failed after ${attempt} attempt(s): ${diagnostic}`);
+            }
+        }
+        throw new Error("Recorder submission attempts exhausted.");
     } finally {
         hostedSession.dispose();
     }
@@ -782,7 +811,9 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
             let record = source.existingRecord;
             let indexWarning = "";
             declaredIds = await validateDeclaredSupersession(cwd, record.attrs.recordId, declaredIds);
-            if (declaredIds.length) {
+            if (source.pendingPublication) {
+                // Reuse the exact pending artifact after a crash without publishing index effects.
+            } else if (declaredIds.length) {
                 const applied = await applyWorkRecordSupersession(cwd, {
                     successorRecordId: record.attrs.recordId,
                     predecessorRecordIds: declaredIds,
@@ -818,7 +849,7 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
         const attrs = {
             kind: "work_record",
             recordId,
-            status: "approved",
+            status: source.pendingPublication ? "pending_verification" : "approved",
             scope: /** @type {"planned_change"|"epic"} */ (source.scope),
             workKind: source.attrs.workKind,
             origin: "internal",
@@ -838,7 +869,9 @@ export async function generateWorkRecordForSource(cwd, inputSource, options) {
         const record = await writeWorkRecord(cwd, attrs, body, { fileName: buildWorkRecordFileName(title, now) });
         let settledRecord = record;
         let indexWarning = "";
-        if (declaredIds.length) {
+        if (source.pendingPublication) {
+            // Prepared records are committed with the reviewed candidate; publication approves them.
+        } else if (declaredIds.length) {
             try {
                 const applied = await applyWorkRecordSupersession(cwd, {
                     successorRecordId: recordId,

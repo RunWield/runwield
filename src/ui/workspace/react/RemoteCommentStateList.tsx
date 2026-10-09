@@ -1,4 +1,4 @@
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import type { RemoteCommentRecord } from "./remote-review-payload.js";
 

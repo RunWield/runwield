@@ -191,7 +191,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {boolean|null} [devServerHmr] - Whether the dev server is expected to support hot module reload
  * @property {string} createdAt - ISO timestamp
  * @property {string} [planId] - Durable project-scoped resource identity for Workspace URLs
- * @property {"draft"|"feedback"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"validated_reviewer"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} status
+ * @property {"draft"|"feedback"|"approved"|"ready_for_decomposition"|"ready_for_work"|"in_progress"|"failed"|"implemented"|"validated_ci"|"reviewed"|"validated"|"verified"|"user_verified"|"closed_without_verification"|"on_hold"} status
  * @property {"internal"|"external"} [origin] - "internal" = created by a RunWield agent; "external" = a pre-existing markdown file loaded from an arbitrary path and resumed with RunWield
  * @property {string} [parentPlan] - Canonical parent plan name for child FEATURE plans
  * @property {number} [order] - Epic child FEATURE execution order.
@@ -204,10 +204,12 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {"done_enough"|null} [epicCompletionMode] - Explicit Epic completion mode when an Epic is marked done enough for now
  * @property {string|null} [epicDoneEnoughAt] - ISO timestamp when an Epic was marked done enough for now
  * @property {string|null} [epicDoneEnoughSummary] - Human-readable summary captured when an Epic was marked done enough for now
+ * @property {string|null} [epicDeliveryTargetBranch] - Final target of the reviewed Epic branch
  * @property {string|null} [epicBaseCommit] - Primary-branch commit the Epic branch was created from; the integration gate diffs from it
  * @property {string|null} [epicIntegrationReport] - Project-relative path of the latest failing Epic integration gate report
  * @property {string} [targetBranch] - User-selected target branch, independent of the current execution attempt
  * @property {string|null} [validatedCommit] - Validated implementation commit; durable after runtime cleanup
+ * @property {"mechanical"|"semantic"|"delivery"} [validationPhase] - Current Workflow Validation phase while status stays "implemented"
  * @property {PlanFrontMatter["status"]|null} [heldFromStatus] - Status captured before the Plan moved to on_hold
  * @property {string|null} [heldAt] - ISO timestamp when the Plan was put on hold
  * @property {string|null} [holdReason] - Optional human reason for the hold
@@ -460,6 +462,7 @@ function formatFrontMatter(fm) {
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.epicDoneEnoughAt, fm.epicDoneEnoughAt);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.epicDoneEnoughSummary, fm.epicDoneEnoughSummary);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.epicBaseCommit, fm.epicBaseCommit);
+    appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.epicDeliveryTargetBranch, fm.epicDeliveryTargetBranch);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.epicIntegrationReport, fm.epicIntegrationReport);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.executionMode, fm.executionMode);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.deliveryEvidence, fm.deliveryEvidence);
@@ -517,7 +520,7 @@ const PLAN_STATUSES = new Set([
     "failed",
     "implemented",
     "validated_ci",
-    "validated_reviewer",
+    "reviewed",
     "validated",
     "verified",
     "user_verified",
@@ -529,7 +532,7 @@ const PLAN_LIST_STATUS_ORDER = new Map([
     ["failed", 0],
     ["implemented", 1],
     ["validated_ci", 1],
-    ["validated_reviewer", 1],
+    ["reviewed", 1],
     ["validated", 8],
     ["ready_for_work", 2],
     ["ready_for_decomposition", 3],
@@ -551,6 +554,7 @@ const PLAN_LIST_CLASSIFICATION_ORDER = new Map([
 ]);
 
 const LEGACY_PLAN_STATUSES = new Map([
+    ["validated_reviewer", "reviewed"],
     ["completed", "verified"],
     ["in_review", "feedback"],
     // Older/manual recovery copies used this to mean implementation was done
@@ -1086,6 +1090,7 @@ export function injectFrontMatter(markdown, overrides = {}) {
         epicDoneEnoughAt: optionalFrontMatterValue(overrides, existingFm, "epicDoneEnoughAt"),
         epicDoneEnoughSummary: optionalFrontMatterValue(overrides, existingFm, "epicDoneEnoughSummary"),
         epicBaseCommit: optionalFrontMatterValue(overrides, existingFm, "epicBaseCommit"),
+        epicDeliveryTargetBranch: optionalStringValue(overrides, existingFm, "epicDeliveryTargetBranch"),
         epicIntegrationReport: optionalFrontMatterValue(overrides, existingFm, "epicIntegrationReport"),
         executionMode: Object.hasOwn(overrides, "executionMode")
             ? normalizeExecutionMode(overrides.executionMode)
@@ -1218,6 +1223,10 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
             humanReviewMode: normalizeHumanReviewMode(attrs.humanReviewMode),
             humanReviewDecision: normalizeHumanReviewDecision(attrs.humanReviewDecision),
             humanReviewedAt: attrs.humanReviewedAt,
+            validationPhase: attrs.validationPhase === "mechanical" || attrs.validationPhase === "semantic" ||
+                    attrs.validationPhase === "delivery"
+                ? attrs.validationPhase
+                : undefined,
             validationCheckpoint: attrs.validationCheckpoint && typeof attrs.validationCheckpoint === "object"
                 ? attrs.validationCheckpoint
                 : attrs.validationCheckpoint === null
@@ -1227,6 +1236,9 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
             epicDoneEnoughAt: attrs.epicDoneEnoughAt,
             epicDoneEnoughSummary: attrs.epicDoneEnoughSummary,
             epicBaseCommit: typeof attrs.epicBaseCommit === "string" ? attrs.epicBaseCommit : undefined,
+            epicDeliveryTargetBranch: typeof attrs.epicDeliveryTargetBranch === "string"
+                ? attrs.epicDeliveryTargetBranch
+                : undefined,
             epicIntegrationReport: typeof attrs.epicIntegrationReport === "string"
                 ? attrs.epicIntegrationReport
                 : undefined,
@@ -1299,7 +1311,57 @@ async function withControllerMetadata(filePath, attrs) {
     const location = planControllerLocation(filePath);
     if (!location) return { attrs, controllerRevision: 0 };
     const view = await loadControllerView(location.cwd, { planId: attrs.planId, planName: location.planName }, attrs);
-    return { attrs: { ...stripRuntimeFields(attrs), ...view.state }, controllerRevision: view.revision };
+    return {
+        attrs: await effectivePlanLifecycleAttrs(
+            location.cwd,
+            attrs,
+            view.state,
+            attrs.status === "validated"
+                ? { planName: location.planName, markdown: await Deno.readTextFile(filePath) }
+                : undefined,
+        ),
+        controllerRevision: view.revision,
+    };
+}
+
+/**
+ * One compatibility boundary for writable and read-only controller-backed reads.
+ * @param {string} cwd
+ * @param {PlanFrontMatter} attrs
+ * @param {import('./shared/workflow/controller-state.ts').WorkflowControllerState & import('./shared/workflow/controller-state.ts').WorkflowWorktreeContext} state
+ * @param {{planName: string, markdown: string}} [document]
+ * @returns {Promise<PlanFrontMatter>}
+ */
+async function effectivePlanLifecycleAttrs(cwd, attrs, state, document) {
+    const combined = { ...stripRuntimeFields(attrs), ...state };
+    // A remote delivery need not move the user's primary checkout. Its durable
+    // receipt supplies completion until that checkout catches up.
+    if (
+        combined.publicationReceipt &&
+        !["on_hold", "user_verified", "closed_without_verification"].includes(combined.status)
+    ) {
+        combined.status = "verified";
+    } else if (combined.status === "validated") {
+        const pendingAttempt = combined.worktreeId && !combined.verifiedAt;
+        const pendingEpic = isProjectPlan(combined) && combined.targetBranch &&
+            combined.epicCompletionMode !== "done_enough";
+        let delivered = Boolean(combined.verifiedAt || combined.deliveryEvidence?.mode === "non_git_in_place");
+        if (!delivered && !pendingAttempt && !pendingEpic && combined.epicCompletionMode !== "done_enough") {
+            const { verifyRecordedPublication } = await import("./shared/workflow/validation-merge-verification.ts");
+            delivered = (await verifyRecordedPublication(cwd, combined, document).catch(() => ({ published: false })))
+                .published;
+        }
+        combined.status = delivered
+            ? "verified"
+            : isProjectPlan(combined) && combined.epicCompletionMode === "done_enough"
+            ? "closed_without_verification"
+            : "reviewed";
+    }
+    if (combined.status === "validated_ci") {
+        combined.status = "implemented";
+        combined.validationPhase = "semantic";
+    }
+    return combined;
 }
 
 /**
@@ -1753,7 +1815,10 @@ export async function inspectPlanFileStrict(filePath) {
     );
     return {
         ...result,
-        attrs: { ...stripRuntimeFields(result.attrs), ...view.state },
+        attrs: await effectivePlanLifecycleAttrs(location.cwd, result.attrs, view.state, {
+            planName: location.planName,
+            markdown: result.markdown,
+        }),
         controllerRevision: view.revision,
         pendingControllerRepairs: view.pendingRepairs,
     };
@@ -2316,7 +2381,20 @@ export async function savePlan(cwd, planName, content, fmOverrides = {}, options
             }
             // Import once from the authoritative copy; an ordinary document save
             // can never overwrite workflow state with an old in-memory snapshot.
-            await loadControllerView(cwd, { planName, planId: documentAttrs.planId }, documentAttrs);
+            const controller = await loadControllerView(cwd, { planName, planId: documentAttrs.planId }, documentAttrs);
+            // Normalizing legacy CI status removes its phase from Markdown. Keep
+            // that already-passed gate durably before replacing the old document.
+            // Other saves still cannot overwrite controller state from a snapshot.
+            if (
+                existing.kind === "loaded" && getDeclaredPlanStatus(existing.markdown) === "validated_ci" &&
+                documentAttrs.status === "implemented" && controller.state.validationPhase === undefined
+            ) {
+                await writeControllerState(cwd, { planName, planId: documentAttrs.planId }, {
+                    validationPhase: "semantic",
+                }, {
+                    expectedRevision: controller.revision,
+                });
+            }
             if (existing.kind === "not_found") {
                 await atomicWriteTextFileIfAbsent(filePath, planDocumentMarkdown(withFm));
                 await requestWorkspaceSearchRefresh(resolvePrimaryCheckoutRoot(cwd));

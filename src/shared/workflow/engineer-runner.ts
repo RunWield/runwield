@@ -5,7 +5,7 @@ import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { AgyCliBackendError } from "../session/backends/agy-cli/failure.ts";
 import { runActiveAgentTurn } from "../session/agent-switching.js";
 import { createPairCheckpointTool } from "../../tools/pair-checkpoint.ts";
-import { buildEngineerRequest } from "./workflow-prompts.js";
+import { buildEngineerRequest } from "./workflow-prompts.ts";
 import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../session/task-completion-session.ts";
 import { pairCheckpointMatchesWorkflow, readCurrentPairCheckpoint } from "../session/pair-checkpoint-session.ts";
 import { CollaborationStyles, PairPauseReasons } from "./execution-collaboration.ts";

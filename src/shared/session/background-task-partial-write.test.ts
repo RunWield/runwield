@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { HostedSession } from "./hosted-session.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 Deno.test("a partial task log write reports stored bytes and a visible failure", async () => {
     await withProcessGlobalTestLock(async () => {

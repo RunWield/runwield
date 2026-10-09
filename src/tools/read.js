@@ -9,7 +9,7 @@ import { createReadToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Buffer } from "node:buffer";
 import { isAbsolute, resolve as resolvePath } from "node:path";
-import { mimeTypeForImagePath } from "../shared/session/image-attachments.js";
+import { mimeTypeForImagePath } from "../shared/session/image-attachments.ts";
 
 const BINARY_DISPLAY_SAMPLE_BYTES = 8192;
 const BINARY_DISPLAY_SUPPRESSED_DETAIL = "binary_display_suppressed";

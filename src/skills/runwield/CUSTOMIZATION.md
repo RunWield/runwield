@@ -1,7 +1,6 @@
 # Customization
 
-Use this file for customization questions. Link to https://github.com/gandazgul/runwield/blob/main/docs/customization.md
-for depth.
+Use this file for customization questions. Link to https://docs.runwield.dev/customization/ for depth.
 
 ## Layering model
 
@@ -35,8 +34,20 @@ the workflow. Core stores the exact expansion for resume and displays the render
 A prompt template cannot override a built-in slash command name. RunWield warns at startup when an installed package
 prompt is blocked by a built-in command collision. Use `/reload` after editing prompt files in an active TUI.
 
-Copy bundled templates for examples: `code-optimizer`, `commit`, and `release`. For a user-requested review of a PR or
-other changes, invoke `/skill:review` instead.
+Bundled prompts:
+
+- `/commit`: inspect all pending changes, group them into commits, stage, commit, and push upstream, including work
+  unrelated to the current conversation.
+- `/release`: run with Engineer, select Candidate creation, Candidate promotion, or direct Stable release, follow the
+  repository's release policy, prepare notes, confirm publication side effects, and monitor completion.
+- `/code-optimizer`: improve codebase clarity, maintainability, types, and documentation; offer planning for broader
+  refactors.
+- `/test-seams`: run with Engineer to inspect representative production code and tests for fakes replacing product-owned
+  machinery. Report evidence, uncertainty, and fixture alternatives; ask before persisting findings. This advisory audit
+  does not modify code or add CI rules, and initialization does not run it.
+
+Copy bundled templates to customize them. For a user-requested review of a PR or other changes, invoke `/skill:review`
+instead.
 
 ## Skills
 

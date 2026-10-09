@@ -24,3 +24,16 @@ Deno.test("artifact conversation collects only new Planner text deltas", () => {
 
     assertEquals(reply, { text: "I tightened the checks.", agentName: "Planner" });
 });
+
+Deno.test("Plan and Code Review conversations accept annotations without a user message", () => {
+    for (const artifactKind of ["plan", "code"] as const) {
+        const feedback = buildArtifactConversationFeedback({
+            message: "  ",
+            attachedFeedback: "Fix the missing error handling.",
+            artifactKind,
+        });
+        assertStringIncludes(feedback, "### Attached review annotations\nFix the missing error handling.");
+        assertEquals(feedback.includes("### User message"), false);
+        assertStringIncludes(feedback, "### Continue the review");
+    }
+});

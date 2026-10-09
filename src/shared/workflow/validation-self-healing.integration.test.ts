@@ -205,7 +205,7 @@ Deno.test("stale RunWield state self-heals and validation continues", async () =
         const executionAfter = parsePlanFrontMatter(await Deno.readTextFile(testFixture.executionPath));
         assertEquals(executionAfter.attrs.planId, "plan-demo");
         assertEquals(executionAfter.attrs.collaborationRecommendation, "autonomous");
-        assertEquals(executionAfter.attrs.status, "validated_ci");
+        assertEquals(executionAfter.attrs.status, "implemented");
         assertEquals(executionAfter.body, "# Demo\n\nKeep the approved body.\n");
         const primaryAfter = await loadPlan(testFixture.projectRoot, "demo");
         assertExists(primaryAfter);
@@ -290,7 +290,7 @@ Deno.test("body-only Plan amendment no longer prompts before Mechanical Validati
         const executionAfter = await loadPlan(testFixture.executionCwd, "demo");
         assertExists(executionAfter);
         assertEquals(executionAfter.body, "# Demo\n\nEngineer clarified the implementation notes.\n");
-        assertEquals(executionAfter.attrs.status, "validated_ci");
+        assertEquals(executionAfter.attrs.status, "implemented");
         const primaryAfter = await loadPlan(testFixture.projectRoot, "demo");
         assertExists(primaryAfter);
         assertEquals(primaryAfter.body, "# Demo\n\nKeep the approved body.\n");

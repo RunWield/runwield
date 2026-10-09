@@ -1,5 +1,5 @@
 import { PLAN_SEARCH_QUERY_PARAM } from "../constants.ts";
-import { PlanBoardSearch } from "../islands/PlanBoardSearch.jsx";
+import { PlanBoardSearch } from "../islands/PlanBoardSearch.tsx";
 import type { PlanSearchScreen } from "../plan-search.ts";
 import { buildPlanBoardSearchIndex } from "../plan-search.ts";
 import { workspaceUrl } from "./PlanCard.tsx";

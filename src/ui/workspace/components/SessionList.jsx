@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RunWieldButton, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldButton, RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 /** @param {string} projectId @param {string} sessionId */
 function sessionHref(projectId, sessionId) {

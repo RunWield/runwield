@@ -5,7 +5,7 @@ complexity: "MEDIUM"
 affectedPaths:
     - "src/cmd/install/"
     - "src/shared/extensions/wld-extension-manifest.js"
-    - "src/shared/package-resources.js"
+    - "src/shared/package-resources.ts"
     - "docs/plans/protect-new-package-extension-consent.md"
     - "docs/settings.md"
     - "docs/prd/runwield-core-prd.md"
@@ -85,7 +85,7 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
   nothing enabled.
 - `src/shared/extensions/wld-extension-manifest.js` — a versioned `metrics-exporter` declaration recognized separately
   from `code-extension`, with exporter identity and entry point.
-- `src/shared/package-resources.js` and the installed-resource lookup path — exporters resolve without
+- `src/shared/package-resources.ts` and the installed-resource lookup path — exporters resolve without
   `DefaultResourceLoader` or `buildAgentSession`.
 - `docs/plans/protect-new-package-extension-consent.md` — retired per the project's document lifecycle policy after its
   behavior and Pi-interface findings are preserved in this Plan.

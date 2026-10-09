@@ -7,7 +7,7 @@ affectedPaths:
     - "src/cmd/install/index.ts"
     - "src/cmd/install/index.test.ts"
     - "src/shared/extensions/wld-extension-manifest.js"
-    - "src/shared/package-resources.js"
+    - "src/shared/package-resources.ts"
     - "docs/themes.md"
     - "docs/settings.md"
     - "docs/prd/runwield-core-prd.md"
@@ -97,7 +97,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   saved consent, and truthful command output.
 - `src/cmd/install/index.test.ts` — real local package fixtures, pre-consent disk state, interruption, and fresh
   loading.
-- `src/shared/extensions/wld-extension-manifest.js` and `src/shared/package-resources.js` — reuse compatibility and
+- `src/shared/extensions/wld-extension-manifest.js` and `src/shared/package-resources.ts` — reuse compatibility and
   enabled resource rules; a small candidate-inspection adjustment is acceptable, but runtime restrictions must not
   weaken.
 - `src/shared/session/session.js` and existing resource-loader tests — verification boundary for actual subsequent

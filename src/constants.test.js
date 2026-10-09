@@ -14,7 +14,7 @@ import {
     SYSTEM_PROMPT_TEMPLATE_PATH,
 } from "./constants.js";
 import { getWorkflowMetricsFilePath } from "./shared/workflow/metrics.js";
-import { withProcessGlobalTestLock } from "./testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 
 Deno.test("bundled resource constants point to file-readable assets", async () => {
     assertStringIncludes(await Deno.readTextFile(CATPPUCCIN_MOCHA_THEME_PATH), "catppuccin-mocha");

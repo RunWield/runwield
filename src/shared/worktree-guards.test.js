@@ -12,7 +12,7 @@ async function savePlanForTest(cwd, planName, content, attrs) {
     const existing = await loadPlan(cwd, planName).catch(() => null);
     return await savePlan(cwd, planName, content, attrs, existing ? { expectedRevision: existing.revision } : {});
 }
-import { GitRepositoryRequiredError } from "./git.js";
+import { GitRepositoryRequiredError } from "./git.ts";
 
 import {
     checkpointExecutionPreparation,
@@ -20,6 +20,8 @@ import {
     deleteMergedWorktreeBranch,
     deleteRemotelyPublishedWorktreeBranch,
     discardWorktreeGitArtifacts,
+    hasExecutionChangesSince,
+    hasOnlyExecutionPreparationChangesSince,
     mergeExecutionWorktree,
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
@@ -395,5 +397,82 @@ Deno.test("discard removes a missing linked checkout through its saved symlinked
     } finally {
         await Deno.remove(projectRoot, { recursive: true });
         await Deno.remove(parent, { recursive: true });
+    }
+});
+
+Deno.test("preparation never adopts staged, unstaged, or committed user ignore rules", async () => {
+    const projectRoot = await makeRepo();
+    const worktreeRoot = await Deno.makeTempDir();
+    try {
+        const worktree = await createTestWorktreeAttempt({ projectRoot, planName: "Ignore ownership", worktreeRoot });
+        const { ensureRunWieldOwnedGitignoreBlock } = await import("./runwield-owned-paths.ts");
+        await ensureRunWieldOwnedGitignoreBlock(worktree.path);
+        await savePlanForTest(worktree.path, "ignore-ownership", "# Ignore ownership", { status: "ready_for_work" });
+        const owned = await Deno.readTextFile(`${worktree.path}/.gitignore`);
+        for (const staged of [false, true]) {
+            const mixed = owned + "user-only-secret-path/\n";
+            await Deno.writeTextFile(`${worktree.path}/.gitignore`, mixed);
+            if (staged) {
+                await git(worktree.path, ["add", ".gitignore"]);
+                // A clean-looking working file must not hide unrelated staged content.
+                await Deno.writeTextFile(`${worktree.path}/.gitignore`, owned);
+            }
+            const indexBefore = await git(worktree.path, ["diff", "--cached"]);
+            assertEquals(
+                await hasExecutionChangesSince({
+                    worktreePath: worktree.path,
+                    baseRef: worktree.baseCommit,
+                    includeWorkingTree: true,
+                }),
+                true,
+            );
+            await assertRejects(
+                () =>
+                    checkpointExecutionPreparation({
+                        worktreePath: worktree.path,
+                        branch: worktree.branch,
+                        baseCommit: worktree.baseCommit,
+                        planName: "ignore-ownership",
+                        planRelativePath: "docs/plans/ignore-ownership.md",
+                    }),
+                Error,
+                "outside preparation",
+            );
+            assertEquals(await git(worktree.path, ["diff", "--cached"]), indexBefore);
+            assertEquals(await Deno.readTextFile(`${worktree.path}/.gitignore`), staged ? owned : mixed);
+            await git(worktree.path, ["reset", "--", ".gitignore"]);
+        }
+        await Deno.writeTextFile(`${worktree.path}/.gitignore`, owned);
+        await checkpointExecutionPreparation({
+            worktreePath: worktree.path,
+            branch: worktree.branch,
+            baseCommit: worktree.baseCommit,
+            planName: "ignore-ownership",
+            planRelativePath: "docs/plans/ignore-ownership.md",
+        });
+        assertEquals(
+            await hasOnlyExecutionPreparationChangesSince({
+                worktreePath: worktree.path,
+                baseRef: worktree.baseCommit,
+            }),
+            true,
+        );
+        await Deno.writeTextFile(`${worktree.path}/.gitignore`, owned + "implementation-cache/\n");
+        await git(worktree.path, ["add", ".gitignore"]);
+        await git(worktree.path, ["commit", "-m", "user ignore change"]);
+        assertEquals(
+            await hasOnlyExecutionPreparationChangesSince({
+                worktreePath: worktree.path,
+                baseRef: worktree.baseCommit,
+            }),
+            false,
+        );
+        assertEquals(
+            await hasExecutionChangesSince({ worktreePath: worktree.path, baseRef: worktree.baseCommit }),
+            true,
+        );
+    } finally {
+        await Deno.remove(worktreeRoot, { recursive: true });
+        await Deno.remove(projectRoot, { recursive: true });
     }
 });

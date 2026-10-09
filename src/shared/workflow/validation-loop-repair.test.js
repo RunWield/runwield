@@ -72,7 +72,7 @@ Deno.test("CI repair reruns CI and continues after task completion", async () =>
     const run = await runCiRepair({ reportCompletion: true });
     assertEquals(run.ciRuns, 2);
     assertEquals(run.result.kind, "verified");
-    assertEquals(run.plan?.attrs.status, "validated");
+    assertEquals(run.plan?.attrs.status, "verified");
 });
 
 Deno.test("CI repair prompt verifies the repair without requiring a duplicate full CI run", async () => {

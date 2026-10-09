@@ -40,9 +40,9 @@ Deno.test("validated_ci resumes at semantic review without rerunning CI", async 
     }
 });
 
-Deno.test("validated_reviewer with no human decision runs only the human review phase", async () => {
+Deno.test("reviewed with no human decision runs only the human review phase", async () => {
     const projectRoot = await makeValidationProjectRoot("demo", {
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewDecision: null,
         executionMode: "non_git_in_place",
     });
@@ -50,9 +50,8 @@ Deno.test("validated_reviewer with no human decision runs only the human review 
         let ciCalls = 0;
         const result = await runValidationPhase({
             planName: "demo",
-            planContent:
-                "---\nstatus: validated_reviewer\nhumanReviewDecision: null\nclassification: FEATURE\n---\n# Demo\n",
-            triageMeta: { status: "validated_reviewer", humanReviewDecision: null, classification: "FEATURE" },
+            planContent: "---\nstatus: reviewed\nhumanReviewDecision: null\nclassification: FEATURE\n---\n# Demo\n",
+            triageMeta: { status: "reviewed", humanReviewDecision: null, classification: "FEATURE" },
             sessionManager: undefined,
             hostedSession: makeHostedSession(projectRoot),
             semanticReviewPort: NO_ISOLATED_AGENT_PORT,
@@ -65,7 +64,10 @@ Deno.test("validated_reviewer with no human decision runs only the human review 
         });
 
         assertEquals(result.kind, "paused");
-        assertEquals(result.reason, "Code Review is not required.");
+        assertEquals(
+            result.reason,
+            "Code review is still waiting for your decision. Resume with /load-plan demo to choose again.",
+        );
         assertEquals(ciCalls, 0);
     } finally {
         await Deno.remove(projectRoot, { recursive: true });

@@ -14,6 +14,7 @@ sharedPractice:
     - plain-language-dialogue
     - architecture-vocabulary
     - domain-design
+    - planning-pending-changes
 tools:
     - read
     - grep

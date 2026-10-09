@@ -13,7 +13,7 @@ import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
 
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n", "implementation.txt": "before\n" });
 
-for (const status of ["validated_reviewer", "ready_for_decomposition"]) {
+for (const status of ["reviewed", "ready_for_decomposition"]) {
     Deno.test(`Workspace continuation routes ${status} to its interactive workflow`, async () => {
         await withRuntimeCommandFixture("workspace-gates-", async ({ setModelResponseFactory }) => {
             const root = await repository.checkout();

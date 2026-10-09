@@ -13,7 +13,7 @@ tools:
     - ls
     - bash
     - memory
-    - work_record_search
+    - work_record_se[prompts](../../../../../.wld/prompts)arch
     - work_record_read
     - user_interview
     - web_search

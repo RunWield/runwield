@@ -135,6 +135,9 @@ export const RuntimeEventTypes = Object.freeze({
  * @property {number} [repairAttempt]
  * @property {number} [maxRepairAttempts]
  * @property {string} [message]
+ * @property {boolean} [workRecordFailed]
+ * @property {string} [workRecordPlanName]
+ * @property {import("../workflow/delivery-report.ts").DeliveryReport} [deliveryReport]
  */
 
 /**
@@ -424,6 +427,52 @@ function validateRuntimeValidationProgress(progress, type) {
             value.outcome === "verified" || value.outcome === "failed" || value.outcome === "paused",
             type,
             "terminal stage requires terminal or paused outcome",
+        );
+    }
+    if (value.deliveryReport !== undefined) {
+        const report = value.deliveryReport;
+        requireRuntimeEvent(
+            value.stage === "terminal" && value.outcome === "verified",
+            type,
+            "delivery report requires completed workflow",
+        );
+        requireRuntimeEvent(
+            report?.version === 1 && typeof report.planName === "string" &&
+                typeof report.heading === "string" && typeof report.settings === "string" &&
+                typeof report.workRecordFailed === "boolean" && Array.isArray(report.rows) &&
+                Array.isArray(report.artifacts),
+            type,
+            "delivery report is invalid",
+        );
+        for (const row of report.rows) {
+            requireRuntimeEvent(
+                typeof row.label === "string" && typeof row.outcome === "string" &&
+                    typeof row.detail === "string" && ["success", "warning", "neutral"].includes(row.tone),
+                type,
+                "delivery report row is invalid",
+            );
+        }
+        for (const artifact of report.artifacts) {
+            requireRuntimeEvent(
+                typeof artifact.title === "string" && typeof artifact.path === "string" &&
+                    ["plan", "prd", "adr", "work-record", "epic-artifact", "report"].includes(artifact.kind),
+                type,
+                "delivery report artifact is invalid",
+            );
+        }
+    }
+    if (value.workRecordPlanName !== undefined) {
+        requireRuntimeEvent(
+            typeof value.workRecordPlanName === "string",
+            type,
+            "validationProgress.workRecordPlanName must be a string",
+        );
+    }
+    if (value.workRecordFailed !== undefined) {
+        requireRuntimeEvent(
+            typeof value.workRecordFailed === "boolean",
+            type,
+            "validationProgress.workRecordFailed must be a boolean",
         );
     }
     if (value.message !== undefined) {

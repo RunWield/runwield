@@ -95,3 +95,32 @@ Deno.test("TUI singleton accepts a second compatible pair after cleanup", () => 
         stopTUI();
     }
 });
+
+Deno.test("RunWield TUI routes artifact clicks to the Session without opening a custom OS URL", async () => {
+    const terminal = new CompatibleVirtualTerminal({ columns: 100, rows: 30 });
+    const opened: string[] = [];
+    const clicked: Array<{ sessionId: string; artifactId: string }> = [];
+    const tui = new RunWieldTui(terminal, {
+        open: (url) => {
+            opened.push(url);
+            return Promise.resolve(true);
+        },
+    });
+    tui.onArtifactLink = (link) => clicked.push(link);
+    tui.setLayoutRoot({
+        render: () => ["\x1b]8;;runwield-artifact://session/id%2Fone\x07Test results\x1b]8;;\x07"],
+        invalidate() {},
+    });
+    try {
+        tui.start();
+        tui.requestRender();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        await terminal.flush();
+        terminal.input("\x1b[<0;1;1M");
+        terminal.input("\x1b[<0;1;1m");
+        assertEquals(clicked, [{ sessionId: "session", artifactId: "id/one" }]);
+        assertEquals(opened, []);
+    } finally {
+        tui.stop();
+    }
+});

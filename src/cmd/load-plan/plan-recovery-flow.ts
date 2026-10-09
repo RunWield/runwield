@@ -5,7 +5,7 @@
 
 import { resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
-import { probeGitRepository } from "../../shared/git.js";
+import { probeGitRepository } from "../../shared/git.ts";
 import { createGitPort } from "../../shared/git-port.ts";
 import {
     buildPlanRecoveryUserMessage,

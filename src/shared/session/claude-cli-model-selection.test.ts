@@ -7,7 +7,7 @@ import {
 } from "../models/model-execution.ts";
 import { getModelRegistry } from "../models/model-registry.ts";
 import { __resetSettingsForTests, getSettingsManager } from "../settings.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { setActiveModel } from "../../ui/tui/chat-session.ts";
 
 Deno.test("configured Claude CLI model is supported by typed execution backend dispatch", () => {

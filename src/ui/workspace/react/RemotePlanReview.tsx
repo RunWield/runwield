@@ -1,5 +1,5 @@
 // @ts-nocheck: Workspace React UI is the scoped TypeScript/TSX exception zone.
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createCollaborationClient } from "../../../shared/collaboration/client.js";

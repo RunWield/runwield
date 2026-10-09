@@ -41,10 +41,3 @@ src/shared/build-identity.js
 
 # Local timing histories and test reports
 .ci-cache/
-
-# Keep only shared RunWield settings, Agents, and Skills in Git.
-!/.wld/
-/.wld/*
-!/.wld/settings.json
-!/.wld/agents/
-!/.wld/skills/

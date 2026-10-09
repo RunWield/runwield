@@ -2,7 +2,7 @@ import { assertArrayIncludes, assertEquals, assertMatch } from "@std/assert";
 import { join } from "@std/path";
 import { CLAUDE_CLI_CAPABILITY_TOOL_NAMES, createClaudeCliCapabilityTools } from "./capability-tools.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 
 async function writeExecutable(path: string, content: string): Promise<void> {
     await Deno.writeTextFile(path, content, { mode: 0o755 });

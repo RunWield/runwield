@@ -4,7 +4,7 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import { getHomeDir } from "../../constants.js";
 import { spawnForegroundProcess } from "../foreground-process.ts";
 import type { ImageGenerationSettings } from "../image-generation-settings.ts";
-import { mimeTypeForImagePath } from "../session/image-attachments.js";
+import { mimeTypeForImagePath } from "../session/image-attachments.ts";
 import { resolveCodexExecutable } from "./codex-executable.ts";
 
 interface CodexImageRequest {

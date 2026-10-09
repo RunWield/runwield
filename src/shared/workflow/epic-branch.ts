@@ -20,7 +20,7 @@ import {
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { isPlannedChangeClassification } from "../../constants.js";
 import { projectPlanType } from "../project-plan.ts";
-import { isGitRepository } from "../git.js";
+import { isGitRepository } from "../git.ts";
 import { prepareTargetBranchRef, resolveTargetBranchName } from "../worktree.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
@@ -164,14 +164,18 @@ async function refCommit(primaryRoot: string, ref: string): Promise<string | nul
 
 /** Whether a local branch exists locally or on origin, refreshing the remote ref. */
 async function epicBranchExists(primaryRoot: string, branch: string): Promise<boolean> {
-    if (await refCommit(primaryRoot, `refs/heads/${branch}`)) return true;
-    if (!await remoteExists(primaryRoot)) return false;
-    const fetched = await runGitResult(primaryRoot, [
-        "fetch",
-        "origin",
-        `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
-    ]);
-    return fetched.success;
+    if (await remoteExists(primaryRoot)) {
+        const fetched = await runGitResult(primaryRoot, [
+            "fetch",
+            "origin",
+            `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+        ]);
+        if (fetched.success) return true;
+        if (!fetched.stderr.includes("couldn't find remote ref")) {
+            throw new Error(`Could not refresh Epic branch origin/${branch}: ${fetched.stderr || fetched.stdout}`);
+        }
+    }
+    return Boolean(await refCommit(primaryRoot, `refs/heads/${branch}`));
 }
 
 /** The checkout that has `branch` checked out, if any. */
@@ -257,7 +261,11 @@ async function seedEpicChildren(
         if (remote) {
             // Origin holds the Epic family; a plain push fails rather than overwriting work published meanwhile.
             await runGit(primaryRoot, ["push", "origin", `${commit}:refs/heads/${branch}`]);
-            await runGit(primaryRoot, ["update-ref", `refs/remotes/origin/${branch}`, commit, head]);
+            // Push normally advances the tracking ref itself. Only settle it
+            // explicitly when it still holds the old head; never rewind a newer fetch.
+            if (await refCommit(primaryRoot, `refs/remotes/origin/${branch}`) === head) {
+                await runGit(primaryRoot, ["update-ref", `refs/remotes/origin/${branch}`, commit, head]);
+            }
             const local = await refCommit(primaryRoot, `refs/heads/${branch}`);
             if (local === head) await runGit(primaryRoot, ["update-ref", `refs/heads/${branch}`, commit, head]);
         } else {

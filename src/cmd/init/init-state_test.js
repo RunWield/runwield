@@ -9,7 +9,7 @@
 import { assertEquals, assertExists, assertObjectMatch } from "@std/assert";
 import { join } from "@std/path";
 import { _setTestStatePath } from "./init-state.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     getCwdHash,
     getInitState,

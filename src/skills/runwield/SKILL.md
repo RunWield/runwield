@@ -12,9 +12,8 @@ If the question is about the user's own configuration or Plan state, inspect the
 project `.wld/`, `RUNWIELD.md` or `AGENTS.md`, and Plan files under `docs/plans/`. Do not answer those questions only
 from defaults.
 
-For depth, link to authoritative docs under the GitHub docs base
-(`https://github.com/gandazgul/runwield/blob/main/docs`) by appending the concrete `<file>.md` path, for example
-`https://github.com/gandazgul/runwield/blob/main/docs/usage.md`.
+For depth, link to the user documentation at `https://docs.runwield.dev` by appending the page name, for example
+`https://docs.runwield.dev/usage/`.
 
 Describe state-changing `wld` commands to the user. Do not run them only to demonstrate behavior. Never run destructive
 commands such as `wld plans unshare` or `wld plans archive` as an example.

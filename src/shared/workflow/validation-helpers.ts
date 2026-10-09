@@ -251,6 +251,7 @@ async function presentManualQaChecklist(
 }
 
 interface RunFeaturePostVerificationHandoffsOptions {
+    pendingPublication?: boolean;
     hostedSession: import("../session/hosted-session.js").HostedSession;
     planName: string;
     planContent: string;
@@ -272,6 +273,7 @@ export async function runFeaturePostVerificationHandoffs({
     planContent,
     projectRoot,
     mnemotecaPort,
+    pendingPublication,
 }: RunFeaturePostVerificationHandoffsOptions) {
     const plan = await loadPlan(projectRoot, planName).catch(() => null);
     const isEpicChild = typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim().length > 0;
@@ -297,6 +299,7 @@ export async function runFeaturePostVerificationHandoffs({
         cwd: projectRoot,
         planName,
         mnemotecaPort,
+        pendingPublication,
     }).catch(async (error) => {
         await logValidationFailure(error instanceof Error ? error : new Error(String(error)), "work_record");
         return {

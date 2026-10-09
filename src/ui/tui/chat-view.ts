@@ -1,3 +1,4 @@
+import { RunWieldTui } from "./tui.ts";
 import { getCwd } from "../../constants.js";
 import { getSettingsManager, isMascotEnabled } from "../../shared/settings.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -470,13 +471,18 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const artifactReaders = new Set<Awaited<ReturnType<typeof startArtifactReadSurface>>>();
     let selectingArtifact = false;
     let disposed = false;
-    async function openSessionArtifact() {
-        if (selectingArtifact || activeInteractionContainer.children.length > 0) return;
+    if (tui instanceof RunWieldTui) {
+        tui.onArtifactLink = (link) => {
+            if (link.sessionId === options.getSessionId()) void openSessionArtifact(link.artifactId);
+        };
+    }
+    async function openSessionArtifact(selectedId?: string) {
+        if (selectingArtifact || (!selectedId && activeInteractionContainer.children.length > 0)) return;
         const snapshot = options.sessionRuntime?.getSessionSnapshot(options.getSessionId());
         if (!snapshot?.artifacts?.length) return;
         selectingArtifact = true;
         try {
-            const artifactId = await uiAPI.promptSelect(
+            const artifactId = selectedId || await uiAPI.promptSelect(
                 "Open artifact",
                 snapshot.artifacts.slice().reverse().map((artifact) => ({
                     value: artifact.artifactId,
@@ -718,6 +724,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             mascot.dispose();
             for (const surface of artifactReaders) void Promise.resolve(surface.stop()).catch(() => {});
             artifactReaders.clear();
+            if (tui instanceof RunWieldTui) tui.onArtifactLink = undefined;
             snapshotWindow?.dispose();
             removeSidebarKeyListener();
             removeSidebarActionListener();

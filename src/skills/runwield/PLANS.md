@@ -2,9 +2,9 @@
 
 Use this file for Plan lifecycle questions. Link to these docs for depth:
 
-- https://github.com/gandazgul/runwield/blob/main/docs/workflows.md
+- https://docs.runwield.dev/workflows/
 - https://github.com/gandazgul/runwield/blob/main/docs/plan-lifecycle.md
-- https://github.com/gandazgul/runwield/blob/main/docs/collaboration.md
+- https://docs.runwield.dev/collaboration/
 
 ## Plan files
 
@@ -54,10 +54,10 @@ skips the gate, `ask` prompts the user, and `always` requires it.
 - `in_progress`: execution started.
 - `failed`: implementation did not finish; recovery may continue or reset it.
 - `implemented`: implementation finished and waits for validation or repair restart.
-- `validated_ci`: local Mechanical Validation passed; Semantic Review is next.
-- `validated_reviewer`: Semantic Review passed; Code Review and publication are next.
+- Mechanical check progress is durable controller state; the Plan remains `implemented` until review passes.
+- `reviewed`: review passed; human review follows the configured policy and delivery is pending.
 - `validation_passed`: validation success event that moves the Plan to `verified` after required proof.
-- `verified`: RunWield Verified; Workflow Validation passed and worktree-backed work merged back.
+- `verified`: the reviewed work reached its target branch, or passed verification in place for a non-Git project.
 - `user_verified`: User Verified; the user attested acceptance without RunWield Workflow Validation proof.
 - `done_enough`: user-facing Epic outcome meaning remaining child work is intentionally deferred.
 - `closed_without_verification`: terminal manual closure without validation success.

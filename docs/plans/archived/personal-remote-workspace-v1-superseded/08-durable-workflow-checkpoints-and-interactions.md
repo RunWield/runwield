@@ -63,7 +63,7 @@ Existing functions, modules, or patterns to reuse:
 
 - `src/shared/session/session-runtime-interactions.js` — reuse existing interaction request/response semantics.
 - `src/shared/session/session-runtime-events.js` — emit stable semantic interaction/checkpoint events.
-- `src/shared/workflow/guided-review.js` and `src/shared/workflow/decisions.js` — reuse structured workflow decision
+- `src/shared/workflow/guided-review.js` and `src/shared/workflow/decisions.ts` — reuse structured workflow decision
   concepts.
 - Owner DB migration utilities from earlier slices — add checkpoint tables with the same transaction conventions.
 

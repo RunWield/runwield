@@ -93,7 +93,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   external-process seam; do not add a seam for RunWield-owned file logic.
 - `src/shared/session/backends/claude-cli/stream-parser.ts` — reuse line-buffering and streamed `TextDecoder` ideas, not
   the Claude event schema.
-- `src/testing/process-global-lock.js#withProcessGlobalTestLock` and `scripts/run-tests.js` — isolate `HOME`, `PATH`,
+- `src/testing/process-global-lock.ts#withProcessGlobalTestLock` and `scripts/run-tests.js` — isolate `HOME`, `PATH`,
   and the fake executable so tests cannot touch the developer's configuration.
 
 ## Implementation Steps

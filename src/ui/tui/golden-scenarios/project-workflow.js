@@ -8,9 +8,10 @@ import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-r
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
 
 /** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
-/** @typedef {{ status?: string }} WorkRecordStatus */
+/** @typedef {{ status?: string, path?: string }} WorkRecordStatus */
 /** @typedef {{ status?: string, epicCompletionMode?: string, validatedCommit?: string, workRecord?: WorkRecordStatus }} EpicCompletionAttrs */
-/** @typedef {{ attrs?: { workRecord?: WorkRecordStatus } }} PlanReviewState */
+/** @typedef {{ attrs?: EpicCompletionAttrs }} EpicPlanState */
+/** @typedef {{ plans?: EpicPlanState[] }} EpicProjectState */
 
 /** @param {GoldenScenarioResult} result @param {string | undefined} capability */
 function assertProjectPlanReviewJourney(result, capability) {
@@ -80,8 +81,8 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
             `Expected ${label} child canonical PLANNED_CHANGE metadata.`,
         );
         assert(
-            ["validated", "user_verified"].includes(String(childAttrs.status || "")),
-            `Expected ${label} child to finish validated; got ${childAttrs.status}`,
+            childAttrs.status === "verified",
+            `Expected ${label} child to finish verified; got ${childAttrs.status}`,
         );
     }
 
@@ -156,6 +157,8 @@ export const projectPlanReviewScenario = {
 };
 
 export const twoChildProjectContinuationScenario = {
+    // This scenario isolates automated delivery; human policy gates have dedicated journeys.
+    globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
     name: "project-two-child-continuation-epic-evidence",
     composedTui: true,
     initialAgentName: "planner",
@@ -165,6 +168,12 @@ export const twoChildProjectContinuationScenario = {
     // clear the contended case or the inner budgets never apply.
     timeoutMs: 600000,
     coverage: ["durable:session-replaced", "durable:epic-evidence", "durable:work-record", "durable:epic-completion"],
+    interactiveSelectPrompts: ["What would you like to do next?"],
+    scriptedInteractions: [{
+        type: "select",
+        promptIncludes: "What would you like to do with this Epic",
+        value: "cancel",
+    }],
     // Three real Plan Reviews: the Architect defers the Epic, then each child is
     // approved for execution. The second child's review is reached only through the
     // Runtime's own Epic continuation.
@@ -441,7 +450,7 @@ export const twoChildProjectContinuationScenario = {
         {
             type: "waitForPlanStatus",
             planName: "epic/01-child-one",
-            statuses: ["validated", "verified", "user_verified"],
+            statuses: ["verified"],
             // Two full child journeys run inside these two waits, each with real Git,
             // real transactions and real Agent turns. It takes ~95s on its own, and
             // `deno task ci` runs 12 files at a time, so the budget is sized for that
@@ -451,13 +460,11 @@ export const twoChildProjectContinuationScenario = {
         {
             type: "waitForPlanStatus",
             planName: "epic/02-child-two",
-            statuses: ["validated", "verified", "user_verified"],
+            statuses: ["verified"],
             timeoutMs: 240000,
         },
-        // An execution Plan becomes validated before publication finishes. Wait for
-        // the registry entry to disappear and the parent Epic to reach its terminal
-        // state so the evidence below observes the delivered branch, not an
-        // in-progress publication snapshot.
+        // Confirm child cleanup before asserting the reviewed Epic boundary.
+        // The integration gate cannot claim delivery to the final target.
         {
             type: "waitForWorktreeRegistryStatus",
             planName: "epic/02-child-two",
@@ -467,16 +474,36 @@ export const twoChildProjectContinuationScenario = {
         {
             type: "waitForPlanStatus",
             planName: "epic",
-            statuses: ["validated", "verified", "user_verified"],
+            statuses: ["reviewed"],
             timeoutMs: 240000,
         },
-        // The integration gate records the pass, then writes the Epic's Work Record.
-        { type: "waitForScreen", text: "Work Record generated", timeoutMs: 60000 },
+        { type: "captureProjectState", planNames: ["epic"], key: "reviewedEpicState" },
         // No idle wait here: after continuation replaces the Session, the
         // composition tracks a Session the Runtime has closed, so idle never settles.
         { type: "captureProjectDurability", planName: "epic" },
+        // Supply only the user's external Git effect; load-plan must prove delivery
+        // and generate the Work Record through the actual lifecycle.
+        { type: "mergeReviewedEpicToFinalTarget", planName: "epic" },
+        { type: "waitForScreen", text: "What would you like to do next?", timeoutMs: 15000 },
+        { type: "escape" },
+        { type: "restartTui", sessionStartMode: "new" },
+        { type: "type", text: "/load-plan epic" },
+        { type: "enter" },
+        { type: "enter" },
+        {
+            type: "waitForPlanStatus",
+            planName: "epic",
+            statuses: ["verified"],
+            workRecordStatus: "generated",
+            timeoutMs: 90000,
+        },
         { type: "capturePublishedWorkRecords" },
-        { type: "captureProjectState", planNames: ["epic", "epic/01-child-one", "epic/02-child-two"] },
+        {
+            type: "captureProjectState",
+            planNames: ["epic", "epic/01-child-one", "epic/02-child-two"],
+            // load-plan reconciles the delivered Epic and writes its Work Record in this checkout.
+            primaryPlanNames: ["epic"],
+        },
     ],
     assertions: [
         assertsGoldenCoverage("durable:session-replaced", (result) => {
@@ -500,9 +527,22 @@ export const twoChildProjectContinuationScenario = {
             const parent = /** @type {EpicCompletionAttrs | undefined} */ (
                 projectState?.plans?.find((plan) => plan.name === "epic")?.attrs || undefined
             );
-            const planReview = /** @type {PlanReviewState | undefined} */ (result.state.planReview);
-            assert(parent?.status === "validated", `Expected parent Epic validated; got ${parent?.status}`);
-            // The Epic finishes through its integration gate on the Epic branch, not from child statuses.
+            const reviewedState = /** @type {EpicProjectState} */ (result.state.reviewedEpicState);
+            const reviewed = reviewedState.plans?.[0]?.attrs;
+            assert(
+                reviewed?.status === "reviewed",
+                `Expected the integration gate to leave the Epic reviewed; got ${reviewed?.status}`,
+            );
+            assert(
+                reviewed?.workRecord?.status !== "generated",
+                "Unpublished Epic must not have a completed Work Record.",
+            );
+            assert(
+                parent?.status === "verified",
+                `Expected parent Epic verified after its final merge; got ${parent?.status}`,
+            );
+            assertEventIncludes(result, "project:epic:user-merged:epic:main");
+            // The gate's checked commit is independently proven on the final target by the merge action.
             assert(
                 typeof parent?.validatedCommit === "string" && parent.validatedCommit.length > 0,
                 `Expected the integration gate to record the checked Epic commit; got ${parent?.validatedCommit}`,
@@ -522,11 +562,11 @@ export const twoChildProjectContinuationScenario = {
                 }`,
             );
             assert(
-                parent?.workRecord?.status === "generated" ||
-                    planReview?.attrs?.workRecord?.status === "generated" ||
-                    (projectState?.workRecordNames || []).some((name) => name.startsWith("docs/work-records/")),
-                `Expected Work Record storage evidence; got status=${
-                    parent?.workRecord?.status || planReview?.attrs?.workRecord?.status
+                parent?.workRecord?.status === "generated" &&
+                    typeof parent.workRecord.path === "string" &&
+                    (projectState?.workRecordNames || []).includes(parent.workRecord.path),
+                `Expected the Epic's own generated Work Record in storage; got ${
+                    JSON.stringify(parent?.workRecord)
                 } files=${(projectState?.workRecordNames || []).join(", ")}`,
             );
         }),
@@ -534,7 +574,7 @@ export const twoChildProjectContinuationScenario = {
             const workRecord =
                 /** @type {{ status?: string, path?: string, error?: string, recordNames?: string[] } | undefined} */ (result
                     .state.workRecord);
-            // The integration gate writes the finished Epic's record in the primary checkout.
+            // Loading the externally delivered Epic writes its Work Record in the primary checkout.
             assert(
                 workRecord?.status === "local" || workRecord?.status === "published",
                 `Expected the finished Epic to write its Work Record; got ${workRecord?.status} ${

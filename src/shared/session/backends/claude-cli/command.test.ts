@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { prepareClaudeCliCommand, removeClaudeCliMcpConfigFile, removeClaudeCliPromptFile } from "./command.ts";
 
 async function disposePreparedCommand(command: Awaited<ReturnType<typeof prepareClaudeCliCommand>>): Promise<void> {

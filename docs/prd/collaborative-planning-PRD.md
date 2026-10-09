@@ -55,7 +55,8 @@ content and accountless review.
 Hosted RunWield Workspace, Cloudflare deployment, and published container images remain follow-up work.
 
 Architecture is documented in [ADR-008](../adr/008-remote-canonical-collaborative-shared-spaces.md). API, deployment,
-storage, and operational instructions belong in the [collaboration documentation](../collaboration.md).
+storage, and operational instructions belong in the
+[collaboration documentation](../user-documentation/collaboration.md).
 
 ## 6. Audience
 

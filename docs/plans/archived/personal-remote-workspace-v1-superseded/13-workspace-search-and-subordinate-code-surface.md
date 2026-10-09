@@ -61,7 +61,7 @@ owner.
 
 - `src/shared/work-records/search.js` and related artifact readers — generalize canonical hydration and access-policy
   patterns for broader Project/Workspace search.
-- `src/extensions/cymbal/index.js` or a new shared search coordinator beside it — add bounded, explicitly scoped human
+- `src/extensions/cymbal/index.ts` or a new shared search coordinator beside it — add bounded, explicitly scoped human
   Cymbal federation while preserving current Agent tool behavior.
 - `src/ui/workspace/server/` — add search APIs, Project selection, result hydration, code-server process supervision,
   health, and safe path routing.
@@ -77,8 +77,8 @@ owner.
 Existing functions, modules, or patterns to reuse:
 
 - `src/shared/work-records/search.js` — reuse candidate-index plus canonical-hydration behavior.
-- `src/shared/work-records/index-adapter.js` — reuse index abstraction where applicable.
-- `src/extensions/cymbal/index.js` — reuse installed Cymbal CLI and JSON contract.
+- `src/shared/work-records/index-adapter.ts` — reuse index abstraction where applicable.
+- `src/extensions/cymbal/index.ts` — reuse installed Cymbal CLI and JSON contract.
 - Owner Project registry from slice 2 — determine eligible registered main checkouts and opt-outs.
 - `src/ui/design-system/` — use existing Workspace form, result, badge, and panel patterns.
 

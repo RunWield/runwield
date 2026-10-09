@@ -5,6 +5,7 @@ import lockfile from "proper-lockfile";
 import { normalizePlanServerUrl } from "./collaboration/urls.ts";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
 import { getCwd, getHomeDir } from "../constants.js";
+import { getBundledModelPresets } from "./model-presets.ts";
 import { remoteSettingsSnapshot, updateRemoteGlobalSetting } from "./remote/settings-bridge.ts";
 import {
     assertPersonalResourcePathSync,
@@ -739,8 +740,9 @@ export async function setCompactionKeepRecentTokens(value) {
  * Merged custom key lookup: reads a key from both global and project scopes
  * and returns the value with project scope taking precedence.
  *
- * For object-valued keys (e.g. `agents`, `modelPresets`), the result is a
- * deep merge where project values override global values at the top level.
+ * For object-valued keys (e.g. `agents`, `modelPresets`), project values
+ * override global values at the top level. Model presets also include bundled
+ * defaults, with a same-name user preset replacing the bundled definition.
  * For scalar keys, project value wins if present.
  *
  * @param {string} key
@@ -750,6 +752,10 @@ export async function setCompactionKeepRecentTokens(value) {
 export function getMergedCustomSetting(key, projectRoot = getCwd()) {
     const globalVal = getCustomSetting(key, "global", projectRoot);
     const projectVal = getCustomSetting(key, "project", projectRoot);
+
+    if (key === "modelPresets") {
+        return { ...getBundledModelPresets(), ...globalVal, ...projectVal };
+    }
 
     if (globalVal === undefined && projectVal === undefined) return undefined;
     if (globalVal === undefined) return projectVal;
@@ -888,6 +894,7 @@ export function getPlanArchiveRetentionPolicy(projectRoot) {
 export function getCodeReviewMode(projectRoot) {
     if (!projectRoot) throw new Error("getCodeReviewMode: projectRoot is required");
     const mode = getMergedCustomSetting("codereview", projectRoot);
+    if (mode === undefined) return "ask";
     if (typeof mode !== "string") return "none";
 
     const normalized = mode.trim().toLowerCase();

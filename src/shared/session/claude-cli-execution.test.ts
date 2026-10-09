@@ -3,7 +3,7 @@ import { join } from "@std/path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS } from "../../constants.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { HostedSession } from "./hosted-session.js";
 import { getRunWieldSessionDir, openPersistedRootSession } from "./root-session.js";
 import { __resetSettingsForTests } from "../settings.js";

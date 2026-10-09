@@ -5,7 +5,7 @@ import {
     buildReAnchorMessage,
     buildSlicerRequest,
     buildTriageReport,
-} from "./workflow-prompts.js";
+} from "./workflow-prompts.ts";
 
 Deno.test("buildAgentHandoffRequest explicitly re-anchors the active specialist", () => {
     const request = buildAgentHandoffRequest("Planner", "Continue the requested refactor.", {

@@ -11,7 +11,7 @@ import { getModelRuntime } from "./models/model-registry.ts";
 import { parseProviderModel } from "./models/model-validation.ts";
 import { resolveImageGenerationSettings } from "./image-generation-settings.ts";
 import type { ImageGenerationSettings } from "./image-generation-settings.ts";
-import { getSessionImageDir, mimeTypeForImagePath, resolveImageRef } from "./session/image-attachments.js";
+import { getSessionImageDir, mimeTypeForImagePath, resolveImageRef } from "./session/image-attachments.ts";
 import { generateAgyImage } from "./session/backends/agy-cli/image-generation.ts";
 import { generateCodexImage } from "./image-generation/codex.ts";
 import { generateOpenCodeImage } from "./image-generation/opencode.ts";

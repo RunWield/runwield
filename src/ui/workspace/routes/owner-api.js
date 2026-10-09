@@ -7,14 +7,14 @@ import {
     clearDeviceCookieHeaders,
     deviceCookieHeaders,
     getCookie,
-} from "../server/owner-auth.js";
+} from "../server/owner-auth.ts";
 import { loadBoard, loadWorkspaceDetail } from "../server/plan-adapter.js";
 import { runOwnerPlanAction } from "../server/owner-plan-actions.ts";
 import { loadOwnerPlanProgress } from "../server/owner-plan-progress.ts";
 import { loadOwnerDashboard, loadOwnerSidebar, subscribeOwnerDashboard } from "../server/owner-dashboard.ts";
-import { listOwnerProjects, requireOwnerProjectRoot, serializeOwnerProject } from "../server/owner-projects.js";
+import { listOwnerProjects, requireOwnerProjectRoot, serializeOwnerProject } from "../server/owner-projects.ts";
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
-import { reviewFileContentApi } from "./api/review-file-handlers.js";
+import { reviewFileContentApi } from "./api/review-file-handlers.ts";
 
 const MAX_JSON_BYTES = 64 * 1024;
 
@@ -450,7 +450,7 @@ export async function ownerProjectPlanProgressApi(ctx) {
                     "ready_for_decomposition",
                     "implemented",
                     "validated_ci",
-                    "validated_reviewer",
+                    "reviewed",
                     "validated",
                 ].includes(progress.plan.status),
         );

@@ -27,7 +27,7 @@ import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { ensurePlansDir, loadPlan } from "../../plan-store.js";
-import { probeGitRepository } from "../git.js";
+import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { switchActiveAgent } from "../session/agent-switching.js";
 import { runRootTurn } from "../session/session.js";
@@ -40,9 +40,9 @@ import {
     RuntimeEventTypes,
 } from "../session/session-runtime-events.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
-import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.js";
+import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
 import { recordWorkflowMetric } from "./metrics.js";
-import { buildAgentHandoffRequest } from "./workflow-prompts.js";
+import { buildAgentHandoffRequest } from "./workflow-prompts.ts";
 import {
     executePlan,
     extractAssistantOutput,

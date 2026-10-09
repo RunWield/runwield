@@ -21,7 +21,7 @@ import {
     planDetailApi,
     plansApi,
     workspaceApi,
-} from "./routes/api/handlers.js";
+} from "./routes/api/handlers.ts";
 import { registerRemoteApiRoutes } from "./routes/remote-api.js";
 import {
     registerReviewDecisionPromise,
@@ -36,14 +36,14 @@ import { escapeReviewPayloadJson } from "./server/review-payload-json.ts";
 import { withAccessLogger } from "./server-access-logger.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../../shared/work-records/mnemoteca-port.ts";
 import { renderRunWieldThemeCss } from "../design-system/theme-bridge.ts";
-import { reviewImageApi, reviewImageUploadApi } from "./routes/api/review-image-handlers.js";
+import { reviewImageApi, reviewImageUploadApi } from "./routes/api/review-image-handlers.ts";
 import {
     cleanupReviewAgentState,
     createReviewAgentState,
     reviewAgentApi,
     runConfiguredGuideCommand,
 } from "./routes/api/review-agent-handlers.js";
-import { reviewFileContentApi, reviewLocalConfigApi, reviewOpenInAppsApi } from "./routes/api/review-file-handlers.js";
+import { reviewFileContentApi, reviewLocalConfigApi, reviewOpenInAppsApi } from "./routes/api/review-file-handlers.ts";
 import { reviewWidgetApi } from "./routes/api/review-widget-handlers.js";
 import {
     devicesApi,
@@ -71,7 +71,7 @@ import {
     authorizeOwnerUpgradeRequest,
     isOwnerUpgradeRequest,
     renewDeviceCookies,
-} from "./server/owner-auth.js";
+} from "./server/owner-auth.ts";
 import { createWorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import {
     ownerNotificationsStreamApi,
@@ -101,7 +101,7 @@ import {
     isStateChangingRequest,
     withOwnerSecurityHeaders,
 } from "./server/owner-origin.ts";
-import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./server/owner-projects.js";
+import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./server/owner-projects.ts";
 import { ownerProjectPlanSessionsApi } from "./server/owner-plan-sessions.ts";
 import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.js";
@@ -655,7 +655,12 @@ async function handleReviewApiRequest(request, state, pathname) {
     return jsonNotFound();
 }
 
-/** @param {Request} req @param {{ cwd: string }} state @param {Record<string, string>} [params] */
+/**
+ * @template {import('./routes/api/handlers.ts').WorkspaceApiState} State
+ * @param {Request} req
+ * @param {State} state
+ * @param {Record<string, string>} [params]
+ */
 function ctx(req, state, params = {}) {
     return { req, request: req, url: new URL(req.url), state, params };
 }

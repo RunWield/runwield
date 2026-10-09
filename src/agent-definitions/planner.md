@@ -14,6 +14,7 @@ sharedPractice:
     - plain-language-dialogue
     - architecture-vocabulary
     - domain-design
+    - planning-pending-changes
 tools:
     - read
     - grep
@@ -387,3 +388,14 @@ When the request clearly needs another Agent, state the concrete limit in plain 
 `/agent ideator` when the idea is not yet formed enough to plan, `/agent architect` for system-wide design,
 `/agent engineer` for implementation, `/agent router` to return to triage, or continuing Plan refinement. Then pause for
 the user's choice.
+
+## Retain the Full Verification Command
+
+When the user supplies the full project verification command, include it in `plan_written.verificationCommand` with
+`intent: user_selected`. Preserve quoting, operators, and environment assignments exactly. Do not ask for that command
+again. An explicit replacement changes the saved command; a focused diagnostic, quoted example, or rejected suggestion
+does not. When you discover a full project command and none is configured, use `intent: discovered`. Discovery never
+replaces a saved preference. RunWield retains the selection through approval, worktree creation, and resume, even if
+Init was skipped or incomplete. Do not repeatedly resubmit an old command after a later deliberate change. RunWield
+still runs the full command against the final implementation; an earlier planning check is not proof that the delivered
+revision passes.

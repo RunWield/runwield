@@ -104,7 +104,7 @@ steps need.
 - Existing private-file, atomic-replacement, and OS-lock conventions — reuse the low-level durability approach, not the
   Session lock.
 - `defineGitFixture` (`src/shared/git-test-fixture.ts`), `makeValidationProjectRoot`, and `withProcessGlobalTestLock`
-  (`src/testing/process-global-lock.js`) — real repositories and sandboxed HOME.
+  (`src/testing/process-global-lock.ts`) — real repositories and sandboxed HOME.
 
 ## Implementation Steps
 

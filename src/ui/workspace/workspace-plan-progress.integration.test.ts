@@ -79,7 +79,7 @@ Deno.test("Workspace progress recognizes publication with an unchanged local che
         const after = await loadOwnerPlanProgress(makeStore(projectRoot), options);
         assertEquals(after.overall.state, "completed");
         assertEquals(after.overall.settled, true);
-        assertEquals(after.plan.status, "validated");
+        assertEquals(after.plan.status, "verified");
         assertEquals(after.stages.find((stage) => stage.id === "delivery")?.state, "completed");
         assertEquals(after.stages.find((stage) => stage.id === "mechanical")?.state, "passed");
         assertEquals(await git(projectRoot, ["rev-parse", "HEAD"]), originalHead);
@@ -159,12 +159,13 @@ Deno.test("Workspace progress uses the authoritative execution Plan and never mu
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
         summary: "Feature A",
-        status: "validated_ci",
+        status: "implemented",
+        validationPhase: "semantic",
         executionAgent: "frontend-engineer",
         validationCheckpoint: makeValidationCheckpoint({
             attemptId: "attempt-1",
             generation: "generation-1",
-            status: "validated_ci",
+            status: "implemented",
             phase: "semantic",
             state: "awaiting_repair",
         }),
@@ -195,10 +196,15 @@ Deno.test("Workspace progress uses the authoritative execution Plan and never mu
             projectId: "project-1",
             planId: "feature-a-id",
         });
-        assertEquals(progress.plan.status, "validated_ci");
+        assertEquals(progress.plan.status, "implemented");
         assertEquals(progress.stages.find((stage) => stage.id === "execution")?.state, "passed");
         assertEquals(progress.stages.find((stage) => stage.id === "mechanical")?.state, "passed");
         assertEquals(progress.stages.find((stage) => stage.id === "semantic")?.state, "needs_attention");
+        assertEquals(progress.stages.find((stage) => stage.id === "mechanical")?.state, "passed");
+        assertEquals(
+            progress.progressFacts.some((fact) => fact.kind === "validation_checkpoint" && fact.phase === "semantic"),
+            true,
+        );
         assertEquals(progress.readOnly, true);
         const serialized = JSON.stringify(progress);
         assertEquals(serialized.includes(dir), false);
@@ -216,7 +222,7 @@ Deno.test("Workspace progress uses the authoritative execution Plan and never mu
     }
 });
 
-Deno.test("Workspace progress shows publication states without treating validated work as complete", async () => {
+Deno.test("Workspace progress shows publication states without treating reviewed work as complete", async () => {
     const dir = await Deno.makeTempDir({ prefix: "runwield-progress-publication-" });
     const projectRoot = `${dir}/project`;
     const worktreeRoot = `${dir}/worktree`;
@@ -227,14 +233,14 @@ Deno.test("Workspace progress shows publication states without treating validate
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
         summary: "Feature B",
-        status: "validated",
+        status: "reviewed",
     });
     await savePlan(worktreeRoot, "feature-b", "# Feature B\n\nBody", {
         planId: "feature-b-id",
         classification: "PLANNED_CHANGE",
         complexity: "LOW",
         summary: "Feature B",
-        status: "validated",
+        status: "reviewed",
     });
     const publication = recordPublicationFailure(
         createPublicationAttempt({

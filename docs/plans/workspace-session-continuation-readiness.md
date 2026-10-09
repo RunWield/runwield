@@ -48,7 +48,8 @@ Product intent: [Workspace PRD](../prd/runwield-workspace-prd.md). Architecture:
   without a separate preparation or recovery step.
 - Phone layout keeps the conversation and composer visible, with context details collapsed. Send follows the latest
   activity; reading earlier messages preserves the scroll position.
-- A [container setup](../workspace-container.md) runs Workspace and TUI together against a mounted Git repository.
+- A container setup (`Containerfile.wld-ux`, `compose.workspace.yml`) runs Workspace and TUI together against a mounted
+  Git repository.
 
 ## Delivery Evidence
 

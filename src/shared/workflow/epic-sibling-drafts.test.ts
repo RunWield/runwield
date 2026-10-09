@@ -1,7 +1,9 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { dirname, join } from "@std/path";
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
+import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
+import { updateEntry } from "../worktree-registry.js";
 import { prepareEditedSiblingPlans } from "./epic-sibling-drafts.ts";
 
 type PlanFixtureAttribute = string | number | string[];
@@ -48,6 +50,136 @@ const familyFixture = defineGitFixture(async (repo) => {
 });
 
 const CURRENT_PATH = "docs/plans/epic/01-current.md";
+
+async function withSiblingWorktree(repo: string, run: (path: string) => Promise<void>) {
+    const worktree = await settleWorktreeAttempt(
+        repo,
+        await createWorktreeGitArtifacts({
+            projectRoot: repo,
+            planName: "epic/02-approved",
+            planId: "plan-child-2",
+        }),
+    );
+    await updateEntry(repo, worktree.id, { status: "planning" });
+    try {
+        await run(worktree.path);
+    } finally {
+        await removeWorktreeGitArtifacts({ projectRoot: repo, path: worktree.path, force: true });
+    }
+}
+
+Deno.test("scope moves synchronize an unstarted sibling's registered worktree and survive retry", async () => {
+    const repo = await familyFixture.checkout();
+    await withSiblingWorktree(repo, async (authority) => {
+        const sibling = await loadPlan(repo, "epic/02-approved");
+        await Deno.writeTextFile(
+            sibling!.path,
+            sibling!.markdown.replace("Original scope.", "Use the laptop save bridge."),
+        );
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+            assertEquals(await prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH), [
+                "docs/plans/epic/02-approved.md",
+            ]);
+            const local = await loadPlan(repo, "epic/02-approved");
+            const remote = await loadPlan(authority, "epic/02-approved");
+            assertEquals(local?.attrs.status, "draft");
+            assertEquals(remote?.attrs.status, "draft");
+            assertEquals(local?.body, remote?.body);
+            assertStringIncludes(remote!.body, "Use the laptop save bridge.");
+        }
+        const synchronized = await loadPlan(authority, "epic/02-approved");
+        await updatePlanFrontMatter(authority, "epic/02-approved", { status: "ready_for_work" }, {}, {
+            expectedRevision: synchronized!.revision,
+        });
+        await prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH);
+        assertEquals((await loadPlan(authority, "epic/02-approved"))?.attrs.status, "ready_for_work");
+        assertEquals((await loadPlan(repo, "epic/02-approved"))?.attrs.status, "ready_for_work");
+        const reapproved = await loadPlan(authority, "epic/02-approved");
+        await updatePlanFrontMatter(authority, "epic/02-approved", { status: "in_progress" }, {}, {
+            expectedRevision: reapproved!.revision,
+        });
+        await prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH);
+        assertEquals((await loadPlan(authority, "epic/02-approved"))?.attrs.status, "in_progress");
+        assertEquals((await loadPlan(repo, "epic/02-approved"))?.attrs.status, "in_progress");
+    });
+});
+
+Deno.test("independent sibling edits merge without losing either planning session's work", async () => {
+    const repo = await familyFixture.checkout();
+    const sibling = await loadPlan(repo, "epic/02-approved");
+    const body = "# Original title\n\nContext.\n\nOriginal scope.\n\nVerification.\n";
+    await Deno.writeTextFile(sibling!.path, sibling!.markdown.replace(sibling!.body, body));
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "Detailed sibling"]);
+    await withSiblingWorktree(repo, async (authority) => {
+        const local = await loadPlan(repo, "epic/02-approved");
+        const remote = await loadPlan(authority, "epic/02-approved");
+        await Deno.writeTextFile(
+            local!.path,
+            local!.markdown.replace("Original scope.", "Use the laptop save bridge."),
+        );
+        await Deno.writeTextFile(remote!.path, remote!.markdown.replace("Original title", "Revised title"));
+
+        await prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH);
+
+        const merged = await loadPlan(authority, "epic/02-approved");
+        assertStringIncludes(merged!.body, "Revised title");
+        assertStringIncludes(merged!.body, "Use the laptop save bridge.");
+        assertEquals((await loadPlan(repo, "epic/02-approved"))?.body, merged?.body);
+    });
+});
+
+Deno.test("conflicting sibling scope is preserved in both worktrees", async () => {
+    const repo = await familyFixture.checkout();
+    await withSiblingWorktree(repo, async (authority) => {
+        const local = await loadPlan(repo, "epic/02-approved");
+        const remote = await loadPlan(authority, "epic/02-approved");
+        const localText = local!.markdown.replace("Original scope.", "Use the laptop save bridge.");
+        const remoteText = remote!.markdown.replace("Original scope.", "Use a different persistence design.");
+        await Deno.writeTextFile(local!.path, localText);
+        await Deno.writeTextFile(remote!.path, remoteText);
+
+        await assertRejects(
+            () => prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH),
+            Error,
+            "conflicting scope changes",
+        );
+        assertEquals(await Deno.readTextFile(local!.path), localText);
+        assertEquals(await Deno.readTextFile(remote!.path), remoteText);
+    });
+});
+
+Deno.test("a sibling started in its authoritative worktree cannot be reshaped from a stale draft", async () => {
+    const repo = await familyFixture.checkout();
+    await withSiblingWorktree(repo, async (authority) => {
+        const remote = await loadPlan(authority, "epic/02-approved");
+        await updatePlanFrontMatter(authority, "epic/02-approved", { status: "in_progress" }, {}, {
+            expectedRevision: remote!.revision,
+        });
+        const local = await loadPlan(repo, "epic/02-approved");
+        await Deno.writeTextFile(local!.path, `${local!.markdown}\nMoved scope.\n`);
+        await assertRejects(
+            () => prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH),
+            Error,
+            "has already started",
+        );
+        assertEquals((await loadPlan(authority, "epic/02-approved"))?.body, remote?.body);
+    });
+});
+
+Deno.test("metadata-only normalization of a started sibling does not block preparation", async () => {
+    const repo = await familyFixture.checkout();
+    const sibling = await loadPlan(repo, "epic/04-started");
+    await Deno.writeTextFile(
+        sibling!.path,
+        sibling!.markdown.replace('classification: "PLANNED_CHANGE"', 'classification: "FEATURE"'),
+    );
+    assertEquals(await prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH), [
+        "docs/plans/epic/04-started.md",
+    ]);
+    assertEquals((await loadPlan(repo, "epic/04-started"))?.attrs.status, "in_progress");
+});
 
 Deno.test("an approved sibling whose scope moved goes back to draft and travels with the child", async () => {
     const repo = await familyFixture.checkout();

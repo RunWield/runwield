@@ -705,7 +705,7 @@ export class ToolExecutionBlock {
      */
     constructor(toolName, title) {
         this.previewLineLimit = 6;
-        this.expanded = false;
+        this.expanded = toolName === "pair_checkpoint";
         this.durationStr = "";
         this.bodyText = "";
         /** @type {ToolDisplayImage[]} */
@@ -720,7 +720,9 @@ export class ToolExecutionBlock {
         this.headerText = normalizeToolHeaderText(title);
 
         // Body text component (rendered inside the block)
-        this.bodyTextComponent = new Text("", 0, 0);
+        this.bodyTextComponent = this.toolName === "pair_checkpoint"
+            ? new MermaidMarkdown("", 0, 0, getMarkdownTheme())
+            : new Text("", 0, 0);
         /** @type {number} */
         this.outputLineCount = 0;
         /** @type {{ width: number, lines: string[] } | null} */
@@ -754,6 +756,10 @@ export class ToolExecutionBlock {
                 `… ${omittedLineCount} lines omitted …`,
                 ...lines.slice(-tailLineCount),
             ];
+        }
+        if (this.bodyTextComponent instanceof MermaidMarkdown) {
+            this.bodyTextComponent.setText(shown.join("\n"));
+            return;
         }
         const renderedText = shown.map((line) => {
             if (!this.isError && line.startsWith("Review Plan:")) {

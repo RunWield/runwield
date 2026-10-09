@@ -31,6 +31,7 @@ export interface SessionSidebarProjectionInput {
     workflowIntent?: string | null;
     workflowClassification?: string | null;
     workflowStatus?: string | null;
+    workflowValidationPhase?: "mechanical" | "semantic" | "delivery";
     workflowProgressFacts?: WorkflowProgressFact[];
     workflowLiveValidationProgress?: LiveValidationProgress | null;
     workflowHasLiveQuestion?: boolean;
@@ -156,6 +157,7 @@ export function buildSessionSidebarProjection(input: SessionSidebarProjectionInp
         intent: workflowIntent,
         classification: input.workflowClassification,
         status: input.workflowStatus,
+        validationPhase: input.workflowValidationPhase,
         progressFacts: input.workflowProgressFacts,
         liveValidationProgress: input.workflowLiveValidationProgress,
         degradedMessage: input.workflowDegradedMessage,

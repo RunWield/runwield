@@ -3,9 +3,7 @@
  * Load external JSON themes from resolved package resources.
  */
 
-import { mergeThemeJson } from "./theme-json.js";
-
-type ThemeJson = Parameters<typeof mergeThemeJson>[0];
+import { mergeThemeJson, type ThemeJson } from "./theme-json.ts";
 
 interface ThemePackageManager {
     resolve(): Promise<{ themes: Array<{ path: string }> }>;

@@ -1,3 +1,4 @@
+import { readControllerRecord } from "../../../shared/workflow/controller-registry.ts";
 import { ownerPlanContinuationApi } from "./owner-plan-continuation.ts";
 import { resolveWorkflowPlanLocation } from "../../../shared/workflow/plan-location.ts";
 /* @module ui/workspace/routes/owner-session-api */
@@ -6,7 +7,7 @@ import { ImageSubmissionValidationError } from "../server/session-continuation.j
 import { ownerErrorJson, ownerJson, sanitizeOwnerError } from "./owner-api.js";
 import { ownerSecurityHeaders } from "../server/owner-origin.ts";
 import { findPlanEvidenceById } from "../../../plan-store.js";
-import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.js";
+import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "../server/owner-projects.ts";
 import { getSlashCommandDefinition } from "../../../cmd/registry.js";
 
 const MAX_JSON_BYTES = 12 * 1024 * 1024;
@@ -406,9 +407,16 @@ export async function ownerSessionPlanWorkflowApi(ctx) {
                 req: new Request(ctx.req.url, { method: "POST", body: JSON.stringify(body) }),
             });
         }
-        const primary = await findPlanEvidenceById(projectRoot, planId);
-        const location = await resolveWorkflowPlanLocation(projectRoot, primary.planName);
-        const plan = location.plan;
+        const retained = body.action === "retry_work_record"
+            ? await readControllerRecord(projectRoot, { planId, planName: "" })
+            : null;
+        const recording = retained?.planId === planId && retained.state.recordingSource ? retained : null;
+        const primary = recording
+            ? { planId, planName: recording.planName }
+            : await findPlanEvidenceById(projectRoot, planId);
+        const plan = recording
+            ? { attrs: { planId }, markdown: "", body: "" }
+            : (await resolveWorkflowPlanLocation(projectRoot, primary.planName)).plan;
         if (!plan || plan.attrs.planId !== primary.planId) {
             throw new Error("Plan evidence is unavailable. Refresh and try again.");
         }

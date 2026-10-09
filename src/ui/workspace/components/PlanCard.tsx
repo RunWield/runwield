@@ -1,5 +1,5 @@
 import { PLAN_SEARCH_QUERY_PARAM, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
-import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldCard } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 export interface PlanLinkTarget {
     planId: string;

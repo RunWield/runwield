@@ -2,7 +2,7 @@
 import { canonicalizeStoredPlanName, isCompletedPlanStatus, loadPlan } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
-import { isGitRepository } from "../git.js";
+import { isGitRepository } from "../git.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 import { findTargetBranchPlan, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";

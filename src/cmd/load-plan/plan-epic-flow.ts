@@ -27,7 +27,7 @@ import {
     findTargetBranchPlansByParent,
     preparePlanningWorktreeForPlan,
 } from "../../shared/workflow/planning-worktree.ts";
-import { isGitRepository } from "../../shared/git.js";
+import { isGitRepository } from "../../shared/git.ts";
 import { ensureEpicBranch } from "../../shared/workflow/epic-branch.ts";
 import { reconcileEpicDelivery } from "../../shared/workflow/epic-integration.ts";
 import { archiveEpicWithChildren } from "./plan-epic-archive.ts";
@@ -111,6 +111,14 @@ export async function handleEpicPlan({
             }
             const reconciled = await reconcileEpicDelivery(projectRoot, plan.planName);
             epicGateReady = reconciled.gateReady;
+            if (reconciled.status === "verified" && plan.attrs.status !== "verified") {
+                const record = await autoGenerateWorkRecordForCompletedPlan({
+                    cwd: projectRoot,
+                    planName: plan.planName,
+                    mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                });
+                if (record.status === "failed") uiAPI.appendSystemMessage(record.message, true, "RunWield");
+            }
         } catch (error) {
             // The Epic stays readable; child work retries branch preparation when it starts.
             const message = error instanceof Error ? error.message : String(error);
@@ -128,7 +136,7 @@ export async function handleEpicPlan({
     );
     const hasChildren = children.length > 0;
     const pendingPublication = (await Promise.all(children.map(async (child) => {
-        if (child.attrs.status !== "validated") return null;
+        if (child.attrs.status !== "reviewed" && child.attrs.status !== "validated") return null;
         const attempt = await readControllerWorktree(projectRoot, {
             planName: child.name,
             planId: child.attrs.planId,
@@ -311,7 +319,7 @@ export async function handleEpicPlan({
             uiAPI.appendSystemMessage(
                 [
                     formatEpicProgressSummary(children),
-                    "Marking this Epic done enough sets the Epic status to verified for now.",
+                    "Marking this Epic done enough closes it without claiming verification.",
                     "Unverified child plans remain visible and loadable.",
                 ].join("\n"),
                 false,

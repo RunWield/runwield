@@ -130,7 +130,7 @@ Deno.test("a completed sequence reports no remaining children after its final ch
     await writePlan(cwd, "epic/01-done", {
         classification: "FEATURE",
         complexity: "MEDIUM",
-        status: "validated_reviewer",
+        status: "reviewed",
         parentPlan: "epic",
         order: 1,
         affectedPaths: [],
@@ -140,7 +140,7 @@ Deno.test("a completed sequence reports no remaining children after its final ch
         cwd,
         planName: "epic/01-done",
         event: "validation_passed",
-        currentStatus: "validated_reviewer",
+        currentStatus: "reviewed",
         details: {
             executionMode: "worktree",
             deliveryEvidence: {
@@ -152,7 +152,7 @@ Deno.test("a completed sequence reports no remaining children after its final ch
             },
         },
     });
-    assertEquals((await loadPlan(cwd, "epic"))?.attrs.status, "validated");
+    assertEquals((await loadPlan(cwd, "epic"))?.attrs.status, "verified");
     const result = await resolveEpicContinuation({ cwd, completedPlanName: "epic/01-done" });
     assertEquals(result.kind, "none");
     assertEquals(result.reason, "parent_epic_not_active");

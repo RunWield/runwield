@@ -15,7 +15,7 @@ import { dispatchPostTriage } from "../workflow/orchestrator.ts";
 import { systemLocalCIPort } from "../workflow/validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";
-import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "../workflow/decisions.js";
+import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "../workflow/decisions.ts";
 import { recordWorkflowMetric } from "../workflow/metrics.js";
 import {
     runMechanicalValidation,

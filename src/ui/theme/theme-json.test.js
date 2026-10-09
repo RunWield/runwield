@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { createThemeFromJson, mergeThemeJson, resolveThemeVars, splitFgBgColors } from "./theme-json.js";
+import { createThemeFromJson, mergeThemeJson, resolveThemeVars, splitFgBgColors } from "./theme-json.ts";
 
 Deno.test("resolveThemeVars resolves nested references and leaves literals intact", () => {
     const resolved = resolveThemeVars({

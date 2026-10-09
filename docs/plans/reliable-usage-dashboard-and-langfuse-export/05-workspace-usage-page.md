@@ -37,7 +37,7 @@ navigation.
 
 Existing owner routes already enforce the access model this page needs: `requireOwnerProjectRoot` requires enabled
 roots, and `sessionBelongsToOwnerProject` compares canonical roots because Workspace and Core Project IDs differ
-(`src/ui/workspace/server/owner-projects.js`, used throughout `server.js` and `routes/owner-session-api.js`).
+(`src/ui/workspace/server/owner-projects.ts`, used throughout `server.js` and `routes/owner-session-api.js`).
 
 Owning PRD: this change creates the Workspace **Personal usage and outcomes** capability in
 `docs/prd/runwield-workspace-prd.md`, referencing Core measurement rules rather than restating them.
@@ -92,7 +92,7 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
   control.
 - `ownerJson`, `ownerErrorJson`, `sanitizeOwnerError`, `scrubLocalPaths` (`routes/owner-api.js`) — existing response
   sanitization.
-- `WorkspaceLayout.astro`, existing loaders, notices, and `react/RunWieldPrimitives.jsx` — established visual patterns.
+- `WorkspaceLayout.astro`, existing loaders, notices, and `react/RunWieldPrimitives.tsx` — established visual patterns.
 - `docs/design-system.md` and `src/ui/design-system/tokens.css`, `theme-bridge.ts` — semantic tokens instead of
   hard-coded colors.
 - Existing integration test helpers in `src/ui/workspace/` (`workspace-test-helpers.js`, the `*.integration.test.ts`

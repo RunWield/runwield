@@ -17,7 +17,7 @@ const repository = defineGitFixture(async (root) => {
     await savePlan(root, "rewrite", "# Rewrite recovery\n", {
         planId: "rewrite-plan",
         classification: "PLANNED_CHANGE",
-        status: "validated_reviewer",
+        status: "reviewed",
         humanReviewMode: "always",
         humanReviewDecision: "approved",
     });
@@ -250,7 +250,7 @@ Deno.test("validation overrides stale delivery claims and reruns CI after a rewr
         const checkpoint = makeValidationCheckpoint({
             attemptId: f.entry.id,
             generation: "running-owner",
-            status: "validated_reviewer",
+            status: "reviewed",
             phase: "delivery",
             state: "running",
             ownerPid: Deno.pid,
@@ -290,7 +290,7 @@ Deno.test("validation overrides stale delivery claims and reruns CI after a rewr
         assertEquals(result.kind, "paused");
         assertEquals(checks, 1);
         const current = await loadPlan(f.entry.path, f.entry.planName);
-        assertEquals(current?.attrs.status, "validated_ci");
+        assertEquals(current?.attrs.status, "implemented");
         assertEquals(current?.attrs.validationCheckpoint?.generation, "running-owner");
         assertEquals(current?.attrs.humanReviewDecision, null);
     } finally {

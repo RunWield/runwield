@@ -5,7 +5,7 @@ import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.js
 import type { WorkRecordResource } from "./schema.ts";
 import { listWorkRecords, replaceWorkRecord } from "./store.js";
 import { supersedeWorkRecord } from "./lifecycle.ts";
-import { syncWorkRecordToIndex } from "./index-adapter.js";
+import { syncWorkRecordToIndex } from "./index-adapter.ts";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

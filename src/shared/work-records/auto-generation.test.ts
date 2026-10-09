@@ -289,10 +289,15 @@ Deno.test("automatic generation settles Plan declarations and keeps only undecla
 });
 
 Deno.test("automatic generation preserves terminal Plan state when Recorder fails", async () => {
-    await withRuntimeCommandFixture("work-record-auto-failure-", async ({ projectRoot, setModelMessages }) => {
+    await withRuntimeCommandFixture("work-record-auto-failure-", async ({ projectRoot, setModelResponseFactories }) => {
         Deno.chdir(projectRoot);
         await saveStandalonePlan(projectRoot);
-        setModelMessages([fauxAssistantMessage(fauxText("Recorder returned invalid fixture output."))]);
+        let calls = 0;
+        const respond = () => {
+            calls++;
+            return fauxAssistantMessage(fauxText("Recorder returned private fixture output."));
+        };
+        setModelResponseFactories([respond, respond]);
 
         const result = await autoGenerateWorkRecordForCompletedPlan({
             cwd: projectRoot,
@@ -301,10 +306,71 @@ Deno.test("automatic generation preserves terminal Plan state when Recorder fail
         });
 
         assertEquals(result.status, "failed");
-        assertStringIncludes(result.message, "run wld wr backfill");
+        assertStringIncludes(result.message, "wld wr retry");
+        assertStringIncludes(result.message, "wld wr backfill command regenerates");
         assertEquals(await listWorkRecords(projectRoot), []);
         const plan = await loadPlan(projectRoot, "standalone");
         assertEquals(plan?.attrs.status, "verified");
         assertEquals(plan?.attrs.workRecord?.status, "failed");
+        assertEquals(calls, 2);
+        assertStringIncludes(plan?.attrs.workRecord?.error || "", "after 2 attempt(s)");
+        assertStringIncludes(plan?.attrs.workRecord?.error || "", "without an accepted work_record_completed call");
+        assertEquals(plan?.attrs.workRecord?.error?.includes("private fixture output"), false);
     });
 });
+
+Deno.test("Recorder corrects a text-only response once using the original source context", async () => {
+    await withRuntimeCommandFixture("work-record-retry-", async ({ projectRoot, setModelResponseFactories }) => {
+        Deno.chdir(projectRoot);
+        await saveStandalonePlan(projectRoot);
+        let calls = 0;
+        setModelResponseFactories([
+            () => {
+                calls++;
+                return fauxAssistantMessage(fauxText('{"title":"Outcome","summary":"Text is not acceptance."}'));
+            },
+            (context) => {
+                calls++;
+                assertStringIncludes(JSON.stringify(context), "Build the fixture feature.");
+                assertStringIncludes(JSON.stringify(context), "No work_record_completed submission was accepted");
+                return fauxAssistantMessage(fauxToolCall("work_record_completed", {
+                    title: "Recovered Outcome",
+                    summary: "Recorded after the corrective turn.",
+                }));
+            },
+        ]);
+        const result = await autoGenerateWorkRecordForCompletedPlan({
+            cwd: projectRoot,
+            planName: "standalone",
+            mnemotecaPort: createWorkRecordMnemotecaFixture(),
+        });
+        assertEquals(result.status, "generated");
+        assertEquals(calls, 2);
+        assertEquals((await listWorkRecords(projectRoot)).length, 1);
+        assertEquals((await loadPlan(projectRoot, "standalone"))?.attrs.workRecord?.status, "generated");
+    });
+});
+
+for (const stopReason of ["error", "aborted"] as const) {
+    Deno.test(`Recorder does not retry a ${stopReason} turn as a missing-tool correction`, async () => {
+        await withRuntimeCommandFixture("work-record-stop-", async ({ projectRoot, setModelResponseFactories }) => {
+            Deno.chdir(projectRoot);
+            await saveStandalonePlan(projectRoot);
+            let calls = 0;
+            const respond = () => {
+                calls++;
+                return { ...fauxAssistantMessage(fauxText("")), stopReason, errorMessage: "Fixture provider stopped." };
+            };
+            setModelResponseFactories([respond, respond]);
+            const result = await autoGenerateWorkRecordForCompletedPlan({
+                cwd: projectRoot,
+                planName: "standalone",
+                mnemotecaPort: createWorkRecordMnemotecaFixture(),
+            });
+            assertEquals(result.status, "failed");
+            assertEquals(calls, 1);
+            assertEquals(await listWorkRecords(projectRoot), []);
+            assertEquals((await loadPlan(projectRoot, "standalone"))?.attrs.status, "verified");
+        });
+    });
+}

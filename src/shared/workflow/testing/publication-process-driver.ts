@@ -81,7 +81,7 @@ await withPlanLock(config.projectRoot, config.planName, async () => {
         await Deno.mkdir(`${config.executionCwd}/docs/plans`, { recursive: true });
         await Deno.writeTextFile(
             `${config.executionCwd}/${planPath}`,
-            "---\nclassification: PLANNED_CHANGE\nstatus: validated\n---\n# Matrix Plan\n",
+            `---\nplanId: ${attempt.planId}\nclassification: PLANNED_CHANGE\nstatus: reviewed\n---\n# Matrix Plan\n`,
         );
         await Deno.writeTextFile(`${config.executionCwd}/artifact-count.txt`, "1\n");
         const artifact = await checkpointExecutionWorktree({

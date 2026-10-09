@@ -20,6 +20,10 @@ import { slashCommandTerminalScenarios } from "./slash-command-tree-terminal.ts"
 import { slashCommandSessionScenarios } from "./slash-command-tree-session.ts";
 import { slashCommandUtilityScenarios } from "./slash-command-tree-utility.ts";
 import { validationWorkflowTreeScenarios } from "./validation-workflow-tree.ts";
+import {
+    initTutorialValidationCommandScenario,
+    routerValidationCommandRepairScenario,
+} from "./validation-command-persistence.ts";
 
 export const goldenTuiPortfolioScenarios = [
     ...initialGoldenScenarios,
@@ -30,6 +34,8 @@ export const goldenTuiPortfolioScenarios = [
     ...loadPlanWorkflowScenarios,
     ...loadPlanEpicWorkflowScenarios,
     ...validationWorkflowTreeScenarios,
+    initTutorialValidationCommandScenario,
+    routerValidationCommandRepairScenario,
     ...concurrentWorkflowScenarios,
     ...presentationAndTerminalScenarios,
     ...sessionResumeWorkflowScenarios,

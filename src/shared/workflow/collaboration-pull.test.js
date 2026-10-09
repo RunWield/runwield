@@ -4,7 +4,7 @@ import {
     formatPullCommentsForPrompt,
     selectPullPlanningAgent,
     summarizePullPlanningOutcome,
-} from "./collaboration-pull.js";
+} from "./collaboration-pull.ts";
 
 Deno.test("selectPullPlanningAgent routes PROJECT Plans to Architect and FEATURE Plans to Planner", () => {
     assertEquals(selectPullPlanningAgent({ classification: "PROJECT" }), "architect");

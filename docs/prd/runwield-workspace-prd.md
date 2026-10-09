@@ -239,7 +239,8 @@ The owner can build a Linux image with Podman and run Workspace on their private
 and `~/.agents` have separate persistent mounts. The `.wld` mount also holds memory data. Image replacement preserves
 saved Sessions, device pairing, settings, skills, and registered Projects when mount paths remain unchanged. One
 Workspace instance writes this state; HTTPS and device pairing remain required for remote access. Container packaging
-does not deploy or publish an image automatically. See [Workspace in a container](../workspace-container.md).
+does not deploy or publish an image automatically. The container setup is a work in progress and is not yet in the user
+documentation.
 
 **Acceptance scenarios:**
 
@@ -333,7 +334,7 @@ Current collaboration capabilities:
 - one agreed shared review version, with clear publishing and unsharing actions.
 
 The [Collaborative Planning PRD](collaborative-planning-PRD.md) defines these journeys. Storage and protocol details are
-in [collaboration documentation](../collaboration.md).
+in [collaboration documentation](../user-documentation/collaboration.md).
 
 Deferred collaboration surface:
 
@@ -341,7 +342,7 @@ Deferred collaboration surface:
 - browser-side push, close, unshare/delete, or Plan body editing
 - automated notifications
 - Forge Change Request Delivery through GitHub or GitLab as an explicitly selected delivery and review mode (see
-  [forge-change-request-delivery-prd.md](./forge-change-request-delivery-prd.md)); RunWield-native review and Direct
+  [forge-change-request-delivery-prd.md](forge-change-request-delivery-prd.md)); RunWield-native review and Direct
   Delivery remain the default
 
 Shared review consumes [Core Plan review](runwield-core-prd.md#plan-review) and
@@ -895,6 +896,22 @@ The owner can review, give feedback, approve for later, or approve and run the c
 Plan or its associated Session does not give that screen permanent control of the work.
 
 **Requirement: Keep Architect Epic review chat in the shared review.**
+
+Plan and Code Review chats accept attached annotations without a typed message. Adding annotations to chat enables Send
+and its keyboard shortcut; removing them disables Send when the message is empty. The Agent receives the notes as review
+context, and the conversation shows the annotation-only submission. Working or unavailable chats stay disabled.
+
+**Requirement: Repair code without replacing the open review.**
+
+A Code Review repair request keeps the same review screen and conversation through repair and the required CI rerun. The
+Agent response and refreshed changes appear in place. Preserve chat history, the selected file, diff collapse choices,
+Guided Review versus diff mode, and collapsed guide sections. Retained guide prose is marked as describing an earlier
+revision until regenerated; the inline diffs show current changes. A lengthy repair must not lose its refresh
+subscription merely because a short UI timeout expires.
+
+Acceptance: collapse a file diff and a guide section, request a repair, and verify that the reply and current diff
+arrive in the same standalone or Workspace review without opening another tab. Switch between Guided Review and diff and
+verify that both retain their collapse choices and all earlier chat messages.
 
 Workspace Plan Review keeps the Architect discussion on the page across review rounds and permits another message and
 reply while the Epic remains in review. It follows [Core Epic review chat semantics](runwield-core-prd.md#plan-review):
@@ -1524,14 +1541,28 @@ establish the proposed Project Evidence Graph.
 
 ## References
 
-- [RunWield Core PRD](./runwield-core-prd.md)
-- [Session Host and ACP PRD](./runwield-acp-protocol-prd.md)
+- [RunWield Core PRD](runwield-core-prd.md)
+- [Session Host and ACP PRD](runwield-acp-protocol-prd.md)
 - [Cymbal multi-Project federation research](../research/cymbal-multiproject-search-federation.md)
-- [Shared Core Plan lifecycle](./runwield-core-prd.md#plan-lifecycle)
-- [Collaborative Planning PRD](./collaborative-planning-PRD.md)
-- [Forge Change Request Delivery PRD](./forge-change-request-delivery-prd.md)
+- [Shared Core Plan lifecycle](runwield-core-prd.md#plan-lifecycle)
+- [Collaborative Planning PRD](collaborative-planning-PRD.md)
+- [Forge Change Request Delivery PRD](forge-change-request-delivery-prd.md)
 - [ADR-007: Local-First Workspace Plan Board](../adr/007-local-first-workspace-plan-board.md)
 - [ADR-008: Remote-Canonical Collaborative Shared Spaces](../adr/008-remote-canonical-collaborative-shared-spaces.md)
 - [ADR-010: SessionRuntime sibling adapters and ACP](../adr/010-session-runtime-sibling-adapters-and-acp.md)
 - [ADR-015: File-Authoritative Session Bundles](../adr/015-file-authoritative-session-bundles.md)
 - [RunWield Design System](../design-system.md)
+
+### Session delivery evidence
+
+After confirmed delivery, the owning Session displays a compact evidence card in its timeline. It separates mechanical
+checks, semantic AI review, human code review, actual human verification, publication confirmation and Work Record
+creation. The same recorded facts feed the TUI summary above its existing continuation choices. Review policy does not
+imply review or verification occurred. Checked candidate and delivered commit remain distinct and inspectable. Recorded
+check receipts link to the shared Markdown reader; unavailable history stays explicit. Run and repair-start counts
+describe recorded receipts, not resettable retry budgets. Failed Work Records preserve delivery confirmation and expose
+Retry Work Record, with an explanation that backfill regenerates missing or failed records across completed Plans.
+
+Acceptance: reopening the Session preserves its report; a code-review approval with no verification attestation shows
+Human verification: Not recorded; codereview Never explains its stored none policy; a failed Work Record can be retried
+without re-executing or republishing the Plan. Narrow screens wrap identifiers and retain every action.

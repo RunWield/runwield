@@ -35,7 +35,7 @@ Deno.test("workflow presentation exposes recovery only when live capability is p
 Deno.test("workflow presentation returns repairs to the failed check, not repair itself", () => {
     const presentation = buildWorkflowPresentation({
         planName: "workspace/diagram",
-        status: "validated_reviewer",
+        status: "reviewed",
         progressFacts: [{ kind: "registry", status: "validation_failed" }],
     });
 
@@ -88,7 +88,7 @@ Deno.test("ready Plans begin at execution with useful step descriptions", () => 
 });
 
 Deno.test("workflow descriptions show live user actions and publication failures", () => {
-    const review = buildWorkflowPresentation({ planName: "Review", status: "validated_reviewer", hasCodeReview: true });
+    const review = buildWorkflowPresentation({ planName: "Review", status: "reviewed", hasCodeReview: true });
     assertEquals(review.currentStage?.id, "code_review");
     assertEquals(review.currentStage?.detail, "Inspect the changes and approve them or request a repair.");
     const question = buildWorkflowPresentation({ planName: "Question", status: "in_progress", hasLiveQuestion: true });
@@ -177,4 +177,14 @@ Deno.test("held Plans offer Resume from hold only when the saved workflow is ava
         buildWorkflowPresentation({ ...input, canResume: true, sessionState: "active" }).action?.kind,
         "open_session",
     );
+});
+
+Deno.test("implemented Plans retain passed CI while the saved semantic phase resumes", () => {
+    const presentation = buildWorkflowPresentation({
+        planName: "Resume review",
+        status: "implemented",
+        validationPhase: "semantic",
+    });
+    assertEquals(presentation.stages.find((stage) => stage.id === "mechanical")?.state, "completed");
+    assertEquals(presentation.currentStage?.id, "semantic");
 });

@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import { withProcessGlobalTestLock } from "./process-global-lock.js";
+import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 // Tripwire. The suite writes to ~/.wld through both a live Deno.env.get("HOME")
 // and a HOME_DIR snapshot taken when each test realm loads src/constants.js, so

@@ -48,7 +48,7 @@ AI chat product. Agents are implementation partners inside the planning loop, no
 Core remains useful by itself. It should provide the full local loop for one project/repository without requiring the
 hosted product.
 
-The detailed Core product requirements live in [runwield-core-prd.md](./runwield-core-prd.md). This root PRD summarizes
+The detailed Core product requirements live in [runwield-core-prd.md](runwield-core-prd.md). This root PRD summarizes
 Core only enough to place it inside the broader RunWield product architecture.
 
 <a id="22-runwield-workspace"></a>
@@ -75,7 +75,7 @@ Workspace focuses on:
 Workspace should not initially lead with hosted execution. Hosted AFK `wld` agents may become a later capability for
 executing ready Plans, but the first SaaS wedge is collaborative planning and records.
 
-The detailed Workspace product requirements live in [runwield-workspace-prd.md](./runwield-workspace-prd.md). That PRD
+The detailed Workspace product requirements live in [runwield-workspace-prd.md](runwield-workspace-prd.md). That PRD
 marries the local Plan management UI and encrypted collaborative planning directions into the self-hostable and hosted
 Workspace story.
 
@@ -94,7 +94,7 @@ authority and local operations on demand. A user explicitly activates Connect fo
 Connect plugin must not alter ordinary host behavior.
 
 Connect is a first-class way to use RunWield, not a deliberately weakened trial of Core or Workspace. Its detailed
-requirements live in [runwield-connect-prd.md](./runwield-connect-prd.md). That document retains **attached mode** and
+requirements live in [runwield-connect-prd.md](runwield-connect-prd.md). That document retains **attached mode** and
 **Attached Workflow** as internal architectural terms while using RunWield Connect as the public product name.
 
 When RunWield Core owns the Session and invokes another harness non-interactively, such as Claude Code through

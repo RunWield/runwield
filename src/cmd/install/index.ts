@@ -6,7 +6,7 @@
 import { DefaultPackageManager, type PackageSource, type SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getCwd } from "../../constants.js";
 import { filterWldCompatibleExtensionResources } from "../../shared/extensions/wld-extension-manifest.js";
-import { countPackageResourcesForSource } from "../../shared/package-resources.js";
+import { countPackageResourcesForSource } from "../../shared/package-resources.ts";
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { discoverAndRegisterThemes } from "../../ui/theme/theme.js";
 

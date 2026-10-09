@@ -1,5 +1,5 @@
 import { assert, assertArrayIncludes, assertEquals, assertStringIncludes } from "@std/assert";
-import cymbalExtension from "./index.js";
+import cymbalExtension from "./index.ts";
 
 /**
  * @param {(command: string, args: string[], opts: { cwd: string }) => Promise<{code: number, stdout: string, stderr: string}> | {code: number, stdout: string, stderr: string}} execImpl

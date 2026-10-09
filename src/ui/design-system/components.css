@@ -2268,3 +2268,78 @@ button.danger-action:disabled {
     fill: var(--rw-text);
     pointer-events: none;
 }
+
+/* Saved delivery evidence is part of the owning Session timeline. */
+.rw-delivery-report {
+    padding: var(--rw-space-panel);
+    border: 1px solid var(--rw-border);
+    border-radius: var(--rw-radius-card);
+    background: var(--rw-surface);
+    color: var(--rw-text);
+    font-size: 13px;
+}
+.rw-delivery-report header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+}
+.rw-delivery-report h3 {
+    font-size: 16px;
+    margin: 0;
+}
+.rw-delivery-report header span,
+.rw-delivery-report p {
+    color: var(--rw-text-dim);
+}
+.rw-delivery-report-commits {
+    display: grid;
+    grid-template-columns: minmax(130px, 180px) minmax(0, 1fr);
+    gap: 6px 12px;
+}
+.rw-delivery-report dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.rw-delivery-report-checks {
+    border-block: 1px solid var(--rw-border);
+    padding-block: 12px;
+}
+.rw-delivery-report-checks > div {
+    display: grid;
+    grid-template-columns: minmax(130px, 180px) minmax(0, 1fr);
+    gap: 6px 12px;
+    margin-block: 8px;
+}
+.rw-delivery-report-checks p {
+    margin: 2px 0 0;
+    font-size: 12px;
+}
+.rw-delivery-report a {
+    color: var(--rw-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.rw-delivery-success {
+    color: var(--rw-success);
+}
+.rw-delivery-warning {
+    color: var(--rw-warning);
+}
+.rw-delivery-neutral {
+    color: var(--rw-text-muted);
+}
+.rw-delivery-settings {
+    margin-bottom: 0;
+    font-size: 12px;
+}
+@media (max-width: 540px) {
+    .rw-delivery-report-commits,
+    .rw-delivery-report-checks > div {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .rw-delivery-report-checks > div {
+        margin-block: 12px;
+    }
+}

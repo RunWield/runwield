@@ -37,9 +37,10 @@ import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 import { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     buildPullRevisionRequest,
+    type PullReviewComment,
     selectPullPlanningAgent,
     summarizePullPlanningOutcome,
-} from "../../shared/workflow/collaboration-pull.js";
+} from "../../shared/workflow/collaboration-pull.ts";
 
 interface PlansPullArgs {
     target?: string;
@@ -69,7 +70,6 @@ interface WireRecord {
 type WireValue = boolean | number | string | null | WireRecord | WireValue[] | undefined;
 type PlanResource = Awaited<ReturnType<typeof listPlanResources>>[number];
 type PlanAttrs = PlanResource["attrs"];
-type PullReviewComment = Parameters<typeof buildPullRevisionRequest>[0]["comments"][number];
 type EncryptedComment = ReturnType<typeof normalizeEncryptedCommentRecord>;
 
 interface ResolvedPull {

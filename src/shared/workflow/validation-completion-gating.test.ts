@@ -93,7 +93,7 @@ Deno.test("PLANNED_CHANGE CI repair continues after Engineer calls task_complete
     assertEquals(run.prompts.length, 1);
     assertEquals(run.ciRuns, 2);
     assertEquals(run.result.kind, "verified");
-    assertEquals(run.plan?.attrs.status, "validated");
+    assertEquals(run.plan?.attrs.status, "verified");
 });
 Deno.test("validation repair runs independently and returns structured completion", async () => {
     await withRuntimeCommandFixture(

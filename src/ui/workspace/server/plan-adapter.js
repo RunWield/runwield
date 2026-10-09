@@ -85,23 +85,23 @@ export const STATUS_META = {
     },
     validated_ci: {
         status: "validated_ci",
-        label: "CI Validated",
+        label: "Implemented",
         description: "Tests and CI passed; AI review is next.",
     },
-    validated_reviewer: {
-        status: "validated_reviewer",
-        label: "Reviewer Validated",
+    reviewed: {
+        status: "reviewed",
+        label: "Reviewed",
         description: "AI review passed; code review or delivery is next.",
     },
     validated: {
         status: "validated",
-        label: "Validated",
-        description: "Workflow Validation passed; delivery publication may still be finishing.",
+        label: "Verified",
+        description: "Legacy name for verified delivery.",
     },
     verified: {
         status: "verified",
         label: "Verified",
-        description: "Work verified by RunWield Workflow Validation.",
+        description: "Reviewed work delivered to its target branch, or verified in place for a non-Git project.",
     },
     user_verified: {
         status: "user_verified",
@@ -434,7 +434,7 @@ function childHealth(children) {
         blocked: children.filter((child) => child.blockedByDependencies),
         missingDependencies: children.filter((child) => child.missingDependencyCount > 0),
         implemented: children.filter((child) =>
-            child.status === "implemented" || child.status === "validated_ci" || child.status === "validated_reviewer"
+            child.status === "implemented" || child.status === "validated_ci" || child.status === "reviewed"
         ),
     };
 }

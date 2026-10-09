@@ -47,4 +47,4 @@ without a model turn. Automatic diagnostics stay redacted; explicit inspection c
 
 Product requirements belong in
 [Core's customization capability](../prd/runwield-core-prd.md#agent-and-skill-customization). User configuration and
-behavior are documented in [MCP tools](../mcp.md).
+behavior are documented in [MCP tools](../user-documentation/mcp.md).

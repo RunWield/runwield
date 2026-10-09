@@ -76,7 +76,7 @@ function assertPublishedWithoutPrimaryMutation(result: PublicationState, deliver
     assertEquals(published.primaryBranch, baseline.branch);
     assertEquals(published.primaryStatus, baseline.status);
     assertEquals(published.primaryFiles, baseline.files);
-    assertEquals(published.remotePlanStatus, "validated");
+    assertEquals(published.remotePlanStatus, "verified");
     assertEquals(published.remotePlanAttrs?.worktreeId, undefined);
     assert(published.remotePlanFields);
     for (const field of PLAN_RUNTIME_FIELDS) {
@@ -158,7 +158,7 @@ function isolatedPublicationScenario(
                 {
                     type: "seedActiveWorktree",
                     planName: name,
-                    status: "validated_reviewer",
+                    status: "reviewed",
                     attrs: { humanReviewMode: "none", humanReviewDecision: "not_required" },
                     files: [{ path: deliveredPath, text: `${deliveredText}\n` }],
                 },
@@ -199,7 +199,7 @@ function isolatedPublicationScenario(
                         { type: "enter" },
                     ]
                     : []),
-                { type: "waitForRemotePlanStatus", planName: name, statuses: ["validated"], timeoutMs: 90000 },
+                { type: "waitForRemotePlanStatus", planName: name, statuses: ["verified"], timeoutMs: 90000 },
                 { type: "waitForWorktreeRegistryStatus", planName: name, statuses: ["absent"], timeoutMs: 90000 },
                 { type: "waitForIdle", timeoutMs: 90000 },
                 { type: "capturePublicationState", planName: name, deliveredPath },
@@ -281,7 +281,7 @@ export const validationTreePublicationDirtyCheckoutScenario = withValidationBran
             {
                 type: "seedActiveWorktree",
                 planName: dirtyPublicationPlanName,
-                status: "validated_reviewer",
+                status: "reviewed",
                 attrs: { humanReviewMode: "none", humanReviewDecision: "not_required" },
                 files: [{ path: "dirty-overlap.txt", text: "validated implementation\n" }],
             },
@@ -305,7 +305,7 @@ export const validationTreePublicationDirtyCheckoutScenario = withValidationBran
         ],
         assertions: [
             (result: PublicationState) => {
-                assertEquals(result.state.localPublication?.planStatus, "validated");
+                assertEquals(result.state.localPublication?.planStatus, "verified");
                 assertEquals(result.state.localPublication?.deliveredText, "validated implementation\n");
                 assertEquals(result.state.localPublication?.registryEntries, []);
                 const interactions = result.state.scriptedInteractions || [];
@@ -349,7 +349,7 @@ export const validationTreePublicationPrimaryPlanRestoredScenario = withValidati
             {
                 type: "seedActiveWorktree",
                 planName: restoredPrimaryPlanName,
-                status: "validated_reviewer",
+                status: "reviewed",
                 attrs: { humanReviewMode: "none", humanReviewDecision: "not_required" },
                 files: [{ path: "restored-primary-plan.txt", text: "safe implementation\n" }],
             },
@@ -364,7 +364,7 @@ export const validationTreePublicationPrimaryPlanRestoredScenario = withValidati
             {
                 type: "waitForRemotePlanStatus",
                 planName: restoredPrimaryPlanName,
-                statuses: ["validated"],
+                statuses: ["verified"],
                 timeoutMs: 90000,
             },
             {
@@ -392,7 +392,7 @@ export const validationTreePublicationPrimaryPlanRestoredScenario = withValidati
                     "Loading the execution Plan must leave the deleted primary file alone.",
                 );
                 assertEquals(publication.primaryHead, baseline.head);
-                assertEquals(publication.remotePlanStatus, "validated");
+                assertEquals(publication.remotePlanStatus, "verified");
                 assertEquals(publication.deliveredText, "safe implementation");
                 assertEquals(publication.registryEntries, []);
                 assertEquals(publication.worktreeBranchExists, false);
@@ -426,7 +426,7 @@ export const validationTreePublicationLocalOnlyScenario = withValidationBranches
             {
                 type: "seedActiveWorktree",
                 planName: localPublicationPlanName,
-                status: "validated_reviewer",
+                status: "reviewed",
                 attrs: { humanReviewMode: "none", humanReviewDecision: "not_required" },
                 files: [{ path: "local-publication.txt", text: "local-only delivery\n" }],
             },
@@ -464,7 +464,7 @@ export const validationTreePublicationLocalOnlyScenario = withValidationBranches
                 assert(baseline && published, "Expected local publication evidence.");
                 assert(published.head !== baseline.head, "Expected local main to advance.");
                 assertEquals(published.branch, "main");
-                assertEquals(published.planStatus, "validated");
+                assertEquals(published.planStatus, "verified");
                 assertEquals(published.deliveredText, "local-only delivery\n");
                 assertEquals(published.files?.["untracked-user-note.txt"], "preserve local note\n");
                 assertEquals(published.registryEntries, []);
@@ -497,14 +497,14 @@ export const validationTreePublicationMissingTargetBranchScenario = withValidati
         }],
         scriptedInteractions: [{
             type: "select",
-            promptIncludes: "Plan recovery (validated_reviewer)",
+            promptIncludes: "Plan recovery (reviewed)",
             value: "validate",
         }],
         actions: [
             {
                 type: "seedActiveWorktree",
                 planName: "publication-missing-target-branch",
-                status: "validated_reviewer",
+                status: "reviewed",
                 attrs: { humanReviewMode: "none", humanReviewDecision: "not_required" },
                 files: [{ path: "publication-missing-target-branch.txt", text: "done\n" }],
             },
@@ -516,7 +516,7 @@ export const validationTreePublicationMissingTargetBranchScenario = withValidati
             {
                 type: "waitForPlanStatus",
                 planName: "publication-missing-target-branch",
-                statuses: ["validated_reviewer"],
+                statuses: ["reviewed"],
                 timeoutMs: 30000,
             },
             { type: "captureProjectState", planNames: ["publication-missing-target-branch"] },

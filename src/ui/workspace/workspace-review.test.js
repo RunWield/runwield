@@ -24,7 +24,7 @@ import {
     resolveReviewDecision,
     unregisterReviewDecision,
 } from "./routes/api/review-handlers.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
 // Anchored to the shared runtime root, not Deno.cwd(): test realms share one

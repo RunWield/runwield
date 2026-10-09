@@ -5,7 +5,7 @@
 
 import { type ReviewConversation, type ReviewDecisionValue, startCodeReviewSurface } from "./review-launcher.ts";
 import { isAbsolute, resolve } from "node:path";
-import { mimeTypeForImagePath } from "../../shared/session/image-attachments.js";
+import { mimeTypeForImagePath } from "../../shared/session/image-attachments.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.js";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 

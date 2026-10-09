@@ -6,10 +6,10 @@
 import { CLI_BIN, DEV_CLI_RUN } from "../constants.js";
 import { runLoginCommand, runLogoutCommand, runStatusCommand } from "./auth/index.ts";
 import { runQuitCommand } from "./quit/index.ts";
-import { runExportCommand } from "./export/index.js";
+import { runExportCommand } from "./export/index.ts";
 import { runNewCommand } from "./new/index.ts";
 import { runNameCommand } from "./name/index.ts";
-import { runSessionCommand } from "./session/index.js";
+import { runSessionCommand } from "./session/index.ts";
 import { runContextCommand } from "./context/index.ts";
 import { runShareCommand, SYSTEM_GITHUB_CLI_PORT } from "./share/index.ts";
 import { runResumeCommand } from "./resume/index.ts";
@@ -610,6 +610,7 @@ export const commandRegistry = {
             `${bin("wr supersede <successorRecordId>")}`,
             `${bin("wr supersede <successorRecordId> --confirm <predecessorRecordId>")}`,
             `${bin("wr supersede <successorRecordId> --reject <predecessorRecordId>")}`,
+            `${bin("wr retry <plan-name>")}`,
             `${bin("wr backfill")}`,
             `${bin("wr backfill --dry-run")}`,
             `${bin("wr backfill --yes")}`,
@@ -622,6 +623,7 @@ export const commandRegistry = {
             "Use wr index rebuild to repair or bootstrap only the derived Work Record Mnemoteca collection.",
             "Use wr supersede without an ID to list pending proposals and reasons. Pass a successor ID to choose confirm, reject, or later for each candidate.",
             "The --confirm and --reject forms are mutually exclusive and accept exactly one pending predecessor relation. Later or canceled prompts preserve the proposal.",
+            "Retry regenerates only the selected completed Plan record without rerunning implementation, validation, or merge. Backfill regenerates missing or failed records across completed Plans.",
             "Backfill asks about each generated supersession proposal even with --yes. Proposal decisions do not change whether backfill succeeded.",
             "Manual create remains deferred to later Work Records slices.",
         ],

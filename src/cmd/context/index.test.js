@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import stripAnsi from "strip-ansi";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
 import { abbreviateHomePath, formatContextReport, renderUsageBar, runContextCommand } from "./index.ts";
 

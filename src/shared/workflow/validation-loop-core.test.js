@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
+import { setCustomSetting } from "../settings.js";
 import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";
@@ -48,7 +49,7 @@ function makeValidationUi() {
 }
 
 /**
- * @param {"implemented" | "validated_ci" | "validated_reviewer"} status
+ * @param {"implemented" | "validated_ci" | "reviewed"} status
  * @param {Record<string, string | number | null>} [attrs]
  */
 async function makeLifecycleRun(status, attrs = {}) {
@@ -77,6 +78,7 @@ async function makeLifecycleRun(status, attrs = {}) {
 
 async function makePlannedReviewWorktree() {
     const projectRoot = await makeRepo();
+    await setCustomSetting("codereview", "none", "project", projectRoot);
     await savePlan(projectRoot, "p", "# p\n\nvalidation fixture\n", {
         classification: "FEATURE",
         status: "validated_ci",
@@ -135,7 +137,7 @@ for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
                 if (!plan) throw new Error("Missing execution Plan");
                 await savePlan(fixture.executionCwd, "p", plan.body, {
                     ...plan.attrs,
-                    status: "validated_reviewer",
+                    status: "reviewed",
                     humanReviewMode: "none",
                     humanReviewDecision: "not_required",
                 }, { expectedRevision: plan.revision });
@@ -174,7 +176,7 @@ for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
                     hostedSession: fixture.hostedSession,
                     planName: "p",
                     planContent: plan.body,
-                    triageMeta: { classification: "FEATURE", status: "validated_reviewer" },
+                    triageMeta: { classification: "FEATURE", status: "reviewed" },
                     git: createGitPort(),
                     localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
                     workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
@@ -203,7 +205,7 @@ for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
                     );
                     assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "paused");
                     assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
-                    assertEquals((await loadPlan(fixture.executionCwd, "p"))?.attrs.status, "validated_reviewer");
+                    assertEquals((await loadPlan(fixture.executionCwd, "p"))?.attrs.status, "reviewed");
                     assertEquals(
                         await Deno.readTextFile(`${fixture.executionCwd}/delivered.txt`),
                         "reviewed implementation\n",
@@ -228,7 +230,7 @@ for (const sealed of [false, true]) {
                 hostedSession: fixture.hostedSession,
                 planName: "p",
                 planContent: "# stale Plan",
-                triageMeta: { classification: "FEATURE", status: "validated_reviewer", targetBranch: "main" },
+                triageMeta: { classification: "FEATURE", status: "reviewed", targetBranch: "main" },
                 git: createGitPort(),
                 localCI: { run: () => Promise.reject(new Error("Unexpected CI")) },
                 workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
@@ -253,7 +255,7 @@ for (const sealed of [false, true]) {
             if (!plan) throw new Error("Missing execution Plan");
             await savePlan(worktree.path, "p", plan.body, {
                 ...plan.attrs,
-                status: "validated_reviewer",
+                status: "reviewed",
                 targetBranch: "release/next",
             }, { expectedRevision: plan.revision });
             await Deno.writeTextFile(`${worktree.path}/delivered.txt`, "late target edit\n");
@@ -291,7 +293,7 @@ for (const targetBranch of ["release/next", " origin/release/next ", undefined])
             // Only the execution document changes after the workflow was loaded.
             await savePlan(fixture.executionCwd, "p", plan.body, {
                 ...plan.attrs,
-                status: "validated_reviewer",
+                status: "reviewed",
                 targetBranch,
                 humanReviewMode: "none",
                 humanReviewDecision: "not_required",
@@ -389,7 +391,7 @@ Deno.test("shouldContinueParentEpicAfterValidation detects parent epic linkage",
 });
 
 Deno.test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans", async () => {
-    const { projectRoot, hostedSession } = await makeLifecycleRun("validated_reviewer", {
+    const { projectRoot, hostedSession } = await makeLifecycleRun("reviewed", {
         classification: "FEATURE",
         humanReviewMode: "none",
         humanReviewDecision: "not_required",
@@ -398,7 +400,7 @@ Deno.test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE pl
         planName: "p",
         triageMeta: {
             classification: "FEATURE",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
         },
@@ -414,7 +416,7 @@ Deno.test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE pl
         planContent: "# p",
         triageMeta: {
             classification: "FEATURE",
-            status: "validated_reviewer",
+            status: "reviewed",
             humanReviewMode: "none",
             humanReviewDecision: "not_required",
         },
@@ -424,7 +426,7 @@ Deno.test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE pl
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(result.kind, "verified");
     assertEquals(result.epicContinuation, undefined);
-    assertEquals(plan?.attrs.status, "validated");
+    assertEquals(plan?.attrs.status, "verified");
     assertEquals(plan?.attrs.deliveryEvidence, { version: 1, mode: "non_git_in_place" });
 });
 
@@ -524,6 +526,7 @@ Deno.test("runValidationLoop starts at implemented and records only the mechanic
     assertEquals(ciCalls, 1);
     assertEquals(result.kind, "paused");
     assertEquals(hostedSession.getWorkflowContext(), expectedWorkflowContext);
-    assertEquals(plan?.attrs.status, "validated_ci");
+    assertEquals(plan?.attrs.status, "implemented");
+    assertEquals(plan?.attrs.validationPhase, "semantic");
     assertEquals(plan?.attrs.validationCiAttempts, 0);
 });

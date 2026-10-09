@@ -22,7 +22,8 @@ const PARAMETERS = Type.Object({
     })),
     summary: Type.Optional(Type.String({
         minLength: 1,
-        description: "Concise description of the observable increment now available for review.",
+        description:
+            "Concise Markdown description of the observable increment now available for review. Use short paragraphs or bullets; separate changes and verification with bold section titles and blank lines. Put supporting evidence, diagnostics, and next steps in their dedicated fields.",
     })),
     route: Type.Optional(Type.String({ minLength: 1, description: "Route or URL currently shown." })),
     state: Type.Optional(Type.String({ minLength: 1, description: "Application state or scenario inspected." })),
@@ -91,14 +92,18 @@ function formatReport(report: PairCheckpointReport, checkpointNumber: number): s
     const lines = [
         `**Pair checkpoint ${checkpointNumber}${report.final ? " — final" : ""}.**`,
         "",
+        "**Summary**",
+        "",
         report.summary,
     ];
-    if (report.route) lines.push("", `- Route: ${report.route}`);
-    if (report.state) lines.push(`- State: ${report.state}`);
-    if (report.viewport) lines.push(`- Viewport: ${report.viewport}`);
-    for (const evidence of report.evidence || []) lines.push(`- Evidence: ${evidence}`);
-    if (report.diagnostics) lines.push(`- Diagnostics: ${report.diagnostics}`);
-    if (report.nextIncrement) lines.push("", `Next increment: ${report.nextIncrement}`);
+    if (report.route) lines.push("", "**Route**", "", report.route);
+    if (report.state) lines.push("", "**State**", "", report.state);
+    if (report.viewport) lines.push("", "**Viewport**", "", report.viewport);
+    if (report.evidence?.length) {
+        lines.push("", "**Evidence**", "", ...report.evidence.map((evidence) => `- ${evidence}`));
+    }
+    if (report.diagnostics) lines.push("", "**Diagnostics**", "", report.diagnostics);
+    if (report.nextIncrement) lines.push("", "**Next increment**", "", report.nextIncrement);
     lines.push("", "Reply normally to ask a question, request a change, continue, stop, or switch to autonomous work.");
     return lines.join("\n");
 }

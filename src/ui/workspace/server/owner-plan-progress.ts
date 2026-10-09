@@ -5,10 +5,11 @@ import {
     isValidationCheckpoint,
     type ValidationCheckpoint,
     validationCheckpointCanResume,
+    type ValidationCheckpointPhase,
 } from "../../../shared/workflow/validation-checkpoint.ts";
 import { getRunWieldSessionDir } from "../../../shared/session/root-session.js";
 import { projectAggregateTranscript } from "../../../shared/session/session-transcript-manifest.ts";
-import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.js";
+import { requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import { validationStageLabel } from "../../../shared/workflow/validation-progress-presentation.ts";
 import {
     buildWorkflowPresentation,
@@ -117,6 +118,7 @@ export type OwnerPlanProgress = {
         planName: string;
         title: string;
         status: string;
+        validationPhase?: ValidationCheckpointPhase;
         classification: string;
         executionAgent: string | null;
         updatedAt: string | null;
@@ -157,6 +159,11 @@ export type OwnerPlanProgress = {
 
 function text(value: JsonValue | undefined, fallback = "") {
     return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function savedValidationPhase(attrs: PlanAttrs): ValidationCheckpointPhase | undefined {
+    const phase = attrs.validationPhase;
+    return phase === "mechanical" || phase === "semantic" || phase === "delivery" ? phase : undefined;
 }
 
 function planTitle(evidence: PlanEvidence) {
@@ -201,7 +208,12 @@ function progressFactsFromEvidence(
     const checkpoint = checkpointFrom(evidence.attrs);
     if (
         checkpoint && registry &&
-        validationCheckpointCanResume(checkpoint, registry.id, text(evidence.attrs.status, "draft"))
+        validationCheckpointCanResume(
+            checkpoint,
+            registry.id,
+            text(evidence.attrs.status, "draft"),
+            savedValidationPhase(evidence.attrs),
+        )
     ) {
         facts.push({
             kind: "validation_checkpoint",
@@ -247,6 +259,7 @@ function progressFromSharedPresentation(
         classification: text(evidence.attrs.classification, "PLANNED_CHANGE"),
         projectPlanType: text(evidence.attrs.type),
         status,
+        validationPhase: savedValidationPhase(evidence.attrs),
         progressFacts: facts,
     });
     const stages = presentation.stages.map((item) =>
@@ -393,7 +406,8 @@ export async function loadOwnerPlanProgress(
             planId: primary.planId,
             planName: primary.planName,
             title: planTitle(authoritative),
-            status: published ? "validated" : text(authoritative.attrs.status, "draft"),
+            status: published ? "verified" : text(authoritative.attrs.status, "draft"),
+            validationPhase: savedValidationPhase(authoritative.attrs),
             classification: text(primary.attrs.classification, "PLANNED_CHANGE"),
             executionAgent: text(primary.attrs.executionAgent) || null,
             updatedAt: derived.updatedAt,

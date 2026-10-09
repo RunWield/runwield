@@ -8,7 +8,7 @@ import {
     getPairingRequestByProof,
     stripTerminalControlCharacters,
 } from "./pairing.js";
-import { listDevices, revokeDevice, verifyDeviceCredential, verifyDeviceCsrf } from "./devices.js";
+import { listDevices, revokeDevice, verifyDeviceCredential, verifyDeviceCsrf } from "./devices.ts";
 
 /** @returns {() => string} */
 function idFactory() {

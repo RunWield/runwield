@@ -261,7 +261,7 @@ Deno.test("A published sequence keeps its parent open while a target-only child 
         planId: "plan-child-01",
         classification: "FEATURE",
         complexity: "MEDIUM",
-        status: "validated_reviewer",
+        status: "reviewed",
         parentPlan: "epic",
         order: 1,
         targetBranch: "epic-target",
@@ -272,7 +272,7 @@ Deno.test("A published sequence keeps its parent open while a target-only child 
         cwd: repo,
         planName: "epic/01-done",
         event: "validation_passed",
-        currentStatus: "validated_reviewer",
+        currentStatus: "reviewed",
         details: {
             executionMode: "worktree",
             deliveryEvidence: {
@@ -335,6 +335,46 @@ Deno.test("Epic branch continuation selects the next child from target state", a
     assertEquals(resolution.childPlanName, "epic/02-next");
     assertEquals(resolution.childAttrs?.planId, "plan-child-02");
     assertEquals(await listEntries(repo), [], "reading the completed child must not create a planning worktree");
+});
+
+Deno.test("Epic continuation refreshes a preplanned child before execution promotion", async () => {
+    const repo = await journeyFixture.checkout();
+    const remote = await Deno.makeTempDir();
+    await git(remote, ["init", "--bare", "--initial-branch=main"]);
+    await git(repo, ["remote", "add", "origin", remote]);
+    await git(repo, ["push", "origin", "main", "epic-target"]);
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/02-next", {
+        planId: "plan-child-02",
+        targetBranch: "epic-target",
+    });
+    const publisher = await journeyFixture.checkout();
+    await git(publisher, ["remote", "add", "origin", remote]);
+    await git(publisher, ["switch", "epic-target"]);
+    await Deno.writeTextFile(join(publisher, "first-child.js"), "published implementation\n");
+    await git(publisher, ["add", "."]);
+    await git(publisher, ["commit", "-m", "publish first child from isolated checkout"]);
+    await git(publisher, ["push", "origin", "epic-target"]);
+    const published = await git(publisher, ["rev-parse", "HEAD"]);
+
+    const resolution = await resolveEpicContinuation({ cwd: repo, completedPlanName: "epic/01-done" });
+    assertEquals(resolution.kind, "execute");
+    assert(resolution.childAttrs);
+    const prepared = await preparePlanningWorktreeForPlan(repo, "epic/02-next", resolution.childAttrs);
+    const hostedSession = new HostedSession({ id: "epic-remote-continuation", cwd: repo, sessionManager: null });
+    await startActiveExecutionWorkflow({
+        planName: "epic/02-next",
+        triageMeta: prepared.plan.attrs,
+        currentStatus: prepared.plan.attrs.status,
+        hostedSession,
+        ports: createExecutionStartPorts(),
+    });
+
+    const workflow = hostedSession.getActiveExecutionWorkflow();
+    assertEquals(workflow?.worktreeId, first.entry.id);
+    assertEquals((await listEntries(repo))[0].baseCommit, published);
+    assertEquals((await listEntries(repo))[0].status, "active");
+    assertEquals(await Deno.readTextFile(join(first.entry.path, "first-child.js")), "published implementation\n");
+    assertEquals((await loadPlan(first.entry.path, "epic/02-next"))?.attrs.status, "in_progress");
 });
 
 Deno.test("Epic branch continuation ignores stale primary completed child status", async () => {

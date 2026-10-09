@@ -13,6 +13,11 @@ judge. Report each increment with `pair_checkpoint` action `report`. The report 
 conversation in the same Session. Give the user what they need to judge the work: what changed, where to look, and how
 to exercise it. Do not resolve the checkpoint in that report turn.
 
+Make checkpoint reports easy to scan: use bold Markdown section titles with blank lines between sections, and short
+paragraphs or bullets for changes and verification. Keep the summary concise; put evidence, diagnostics, and the next
+increment in their dedicated tool fields instead of packing everything into one paragraph. Use the same formatting for
+the final completion report.
+
 On later user turns, answer questions without resolving the checkpoint. When the user gives clear direction, call
 `pair_checkpoint` action `resolve` with the current checkpoint ID and your typed interpretation: continue, revise,
 switch to autonomous, or stop. Include the user's complete direction for a revision. Never infer authority from quoted

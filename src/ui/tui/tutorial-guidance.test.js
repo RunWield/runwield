@@ -4,7 +4,7 @@ import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { savePlan } from "../../plan-store.js";
 import { writeControllerState } from "../../shared/workflow/controller-registry.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
-import { getTutorialExplanation, presentTutorialEvent } from "./tutorial-guidance.ts";
+import { getTutorialExplanation, presentTutorialEvent, restoreVerifiedTutorialRecap } from "./tutorial-guidance.ts";
 import { setCustomSetting } from "../../shared/settings.js";
 import { INIT_VERIFICATION_COMMAND_PLACEHOLDER } from "../../tools/init-verification-command.ts";
 
@@ -435,6 +435,86 @@ Deno.test("tutorial guidance persists deduplication and requires an associated P
             assertEquals(runtime.getSessionSnapshot(sessionId)?.tutorialContext?.recapShown, false);
         } finally {
             await runtime.closeAllSessionsWhenIdle();
+        }
+    });
+});
+
+Deno.test("completed tutorial recap restores after reload without changing saved progress and requires current proof", async () => {
+    await withRuntimeCommandFixture("tutorial-recap-reload-", async ({ projectRoot, setModelResponse }) => {
+        setModelResponse("Choose a small change.");
+        const runtime = createSessionRuntime();
+        const restarted = createSessionRuntime();
+        const planId = "reloaded-tutorial-plan";
+        const planName = "tutorial-change";
+        await savePlan(projectRoot, planName, "# Delivered tutorial change\n", {
+            planId,
+            status: "verified",
+            classification: "PLANNED_CHANGE",
+        });
+        await writeControllerState(projectRoot, { planId, planName }, {
+            verifiedAt: "2026-01-01T00:00:00.000Z",
+            deliveryEvidence: { version: 1, mode: "non_git_in_place" },
+        });
+        /** @type {string[]} */
+        const messages = [];
+        const uiAPI = /** @type {any} */ ({
+            appendSystemMessage: (
+                /** @type {string} */ text,
+                /** @type {boolean} */ _error,
+                /** @type {string} */ header,
+            ) => messages.push(`${header}: ${text}`),
+        });
+        try {
+            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            await runtime.promptUserTurn(created.sessionId, {
+                initialRequest: "Start tutorial",
+                agentName: "planner",
+                initialTutorialContext: {
+                    version: 1,
+                    guidanceEnabled: true,
+                    shownExplanationIds: ["choose-improvement"],
+                    recapShown: false,
+                    planId: null,
+                },
+            });
+            await runtime.recordPlanAssociation(created.sessionId, { planId, planName, purpose: "execution" });
+            await runtime.updateTutorialContext(created.sessionId, { planId });
+            const idle = /** @type {any} */ ({ type: RuntimeEventTypes.BUSY_CHANGED, busy: false });
+            await presentTutorialEvent({ runtime, sessionId: created.sessionId, uiAPI, event: idle });
+            assertEquals(messages.length, 1);
+            const saved = runtime.getSessionSnapshot(created.sessionId);
+            assertEquals(saved?.tutorialContext?.recapShown, true);
+            const savedContext = structuredClone(saved?.tutorialContext);
+            const savedGeneration = saved?.managed?.generation;
+            const managed = saved?.managed;
+            await runtime.closeAllSessionsWhenIdle();
+            const loaded = await restarted.createInteractiveSession({
+                cwd: projectRoot,
+                mode: "continue",
+                resumeSessionId: managed?.runwieldSessionId || "",
+            });
+            messages.length = 0;
+            await restarted.replaySession(loaded.sessionId);
+            await restoreVerifiedTutorialRecap({ runtime: restarted, sessionId: loaded.sessionId, uiAPI });
+            assertEquals(messages.length, 1);
+            assertStringIncludes(messages[0], "Tutorial complete");
+            assertStringIncludes(messages[0], "Plan:");
+            assertStringIncludes(messages[0], "tutorial-change.md");
+            await presentTutorialEvent({ runtime: restarted, sessionId: loaded.sessionId, uiAPI, event: idle });
+            assertEquals(messages.length, 1, "Ordinary idle events must not repeat the restored recap.");
+            const restored = restarted.getSessionSnapshot(loaded.sessionId);
+            assertEquals(restored?.tutorialContext, savedContext);
+            assertEquals(restored?.managed?.generation, savedGeneration);
+
+            await writeControllerState(projectRoot, { planId, planName }, { verifiedAt: null, deliveryEvidence: null });
+            messages.length = 0;
+            await restarted.replaySession(loaded.sessionId);
+            await restoreVerifiedTutorialRecap({ runtime: restarted, sessionId: loaded.sessionId, uiAPI });
+            assertEquals(messages, [], "A persisted completion flag alone must not restore an unproven recap.");
+            assertEquals(restarted.getSessionSnapshot(loaded.sessionId)?.tutorialContext, savedContext);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            await restarted.closeAllSessionsWhenIdle();
         }
     });
 });

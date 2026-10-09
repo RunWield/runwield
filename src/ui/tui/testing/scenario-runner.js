@@ -14,7 +14,7 @@ import { readControllerRecord } from "../../../shared/workflow/controller-regist
 import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { findPlansByParent, loadPlan, parsePlanFrontMatter } from "../../../plan-store.js";
-import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { submitPlanForReview } from "../../review/plan-review.ts";
 import { createScriptedReviewBrowser } from "../../review/review-test-fixture.ts";
 import { createFauxMessageForTurn, GoldenScenarioActor } from "./scenario-actor.js";
@@ -159,6 +159,7 @@ function findFixturePlanLifecycle(directory, expectedStatus) {
  * @property {Array<import('./scenario-actor.js').GoldenScriptTurn>} [script]
  * @property {Array<{ interactionType: string, decision?: string }>} [interactions]
  * @property {Array<import('./scripted-review-surface.js').ScriptedRuntimeInteraction>} [scriptedInteractions]
+ * @property {string[]} [interactiveSelectPrompts] Prompt fragments driven by real terminal input even with other scripted interactions.
  * @property {Array<import('./scripted-review-surface.js').ScriptedReviewDecision>} [reviewDecisions]
  * @property {Array<import('./scripted-review-surface.js').ScriptedHumanReviewDecision>} [humanReviewDecisions]
  * @property {"new" | "continue"} [sessionStartMode]
@@ -938,7 +939,11 @@ async function runComposedTuiScenario(scenario, options) {
                 };
             }
             if (!interactionSurface) return;
-            uiAPI.promptSelect = (prompt, options) => {
+            const originalPromptSelect = uiAPI.promptSelect.bind(uiAPI);
+            uiAPI.promptSelect = (prompt, options, hooks) => {
+                if (scenario.interactiveSelectPrompts?.some((fragment) => prompt.includes(fragment))) {
+                    return originalPromptSelect(prompt, options, hooks);
+                }
                 const value = interactionSurface.next(activeScriptedInteractionType || "select", {
                     prompt,
                     options,
@@ -1713,6 +1718,48 @@ async function runComposedTuiScenario(scenario, options) {
                     };
                     events.push("project:epic:evidence");
                     await writeHeartbeat();
+                } else if (typed.type === "mergeReviewedEpicToFinalTarget") {
+                    const projectRoot = getCwd();
+                    const planName = String(typed.planName || "");
+                    const plan = await loadPlan(projectRoot, planName);
+                    const epicBranch = plan?.attrs.targetBranch;
+                    const finalTarget = plan?.attrs.epicDeliveryTargetBranch;
+                    const reviewedCommit = plan?.attrs.validatedCommit;
+                    if (
+                        plan?.attrs.status !== "reviewed" || !epicBranch || !finalTarget ||
+                        !reviewedCommit || epicBranch === finalTarget
+                    ) {
+                        throw new Error("Expected a reviewed Epic with distinct recorded source and final target.");
+                    }
+                    const remote = await runGoldenGit(
+                        ["config", "--get", `branch.${finalTarget}.remote`],
+                        projectRoot,
+                    ).catch(() => "origin") || "origin";
+                    const remotePath = await runGoldenGit(["remote", "get-url", remote], projectRoot);
+                    const mergeRoot = await Deno.makeTempDir({ prefix: "golden-user-epic-merge-" });
+                    try {
+                        await runGoldenGit(["clone", remotePath, mergeRoot], projectRoot);
+                        await runGoldenGit(["checkout", "-B", finalTarget, `origin/${finalTarget}`], mergeRoot);
+                        await runGoldenGit([
+                            "-c",
+                            "user.name=Golden User",
+                            "-c",
+                            "user.email=golden@example.test",
+                            "merge",
+                            "--no-ff",
+                            `origin/${epicBranch}`,
+                            "-m",
+                            `Merge reviewed Epic ${planName}`,
+                        ], mergeRoot);
+                        await runGoldenGit(["push", "origin", `HEAD:refs/heads/${finalTarget}`], mergeRoot);
+                        const deliveredCommit = await runGoldenGit(["rev-parse", "HEAD"], mergeRoot);
+                        await runGoldenGit(["merge-base", "--is-ancestor", reviewedCommit, deliveredCommit], mergeRoot);
+                        state.epicFinalDelivery = { reviewedCommit, deliveredCommit, epicBranch, finalTarget };
+                        events.push(`project:epic:user-merged:${planName}:${finalTarget}`);
+                    } finally {
+                        await Deno.remove(mergeRoot, { recursive: true });
+                    }
+                    await writeHeartbeat();
                 } else if (typed.type === "capturePublishedWorkRecords") {
                     const branch = await runGoldenGit(["branch", "--show-current"], Deno.cwd());
                     const remote = await runGoldenGit(
@@ -1731,8 +1778,8 @@ async function runComposedTuiScenario(scenario, options) {
                     const publishedNames = remoteTree.split("\n").filter((path) =>
                         path.startsWith("docs/work-records/") && path.endsWith(".md")
                     );
-                    // An Epic finished by its integration gate writes its record in the primary
-                    // checkout: committing it to the Epic branch would move the validated head.
+                    // Reloading an Epic after confirmed final delivery writes its record in
+                    // the primary checkout, so capture that artifact as well as remote records.
                     const localNames = [];
                     try {
                         for await (const entry of Deno.readDir(join(Deno.cwd(), "docs", "work-records"))) {
@@ -1953,7 +2000,7 @@ async function runComposedTuiScenario(scenario, options) {
                         ? "implemented"
                         : rememberedValidationPhase === "semantic"
                         ? "validated_ci"
-                        : "validated_reviewer";
+                        : "reviewed";
                     const registryStatus = legacyStrandedPublication
                         ? "completed"
                         : typed.registryStatus === "validation_failed"
@@ -1990,9 +2037,7 @@ async function runComposedTuiScenario(scenario, options) {
                                 },
                             }
                             : {}),
-                        ...(status === "validated_ci" || status === "validated_reviewer"
-                            ? { validationSemanticRounds: 0 }
-                            : {}),
+                        ...(status === "validated_ci" || status === "reviewed" ? { validationSemanticRounds: 0 } : {}),
                         ...(status === "implemented" ? { validationCiAttempts: 0 } : {}),
                         ...(rememberedValidationPhase
                             ? {
@@ -2095,6 +2140,9 @@ async function runComposedTuiScenario(scenario, options) {
                     await writeHeartbeat();
                 } else if (typed.type === "captureProjectState") {
                     const planNames = Array.isArray(typed.planNames) ? typed.planNames.map(String) : [];
+                    const primaryPlanNames = new Set(
+                        Array.isArray(typed.primaryPlanNames) ? typed.primaryPlanNames.map(String) : [],
+                    );
                     const { inspectWorktreeRegistry } = await import("../../../shared/worktree-registry.js");
                     const registry = await inspectWorktreeRegistry(Deno.cwd());
                     const branch = await runGoldenGit(["branch", "--show-current"], Deno.cwd()).catch(() => "");
@@ -2108,6 +2156,7 @@ async function runComposedTuiScenario(scenario, options) {
                         : "";
                     const plans = [];
                     for (const planName of planNames) {
+                        const primaryPlan = primaryPlanNames.has(planName) ? await loadPlan(getCwd(), planName) : null;
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
@@ -2126,7 +2175,7 @@ async function runComposedTuiScenario(scenario, options) {
                         const localPlan = !executionPlan && !remotePlanText
                             ? await loadPlan(Deno.cwd(), planName).catch(() => null)
                             : null;
-                        const attrs = executionPlan?.attrs ||
+                        const attrs = primaryPlan?.attrs || executionPlan?.attrs ||
                             (remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : localPlan?.attrs) || null;
                         const controller = attrs
                             ? await readControllerRecord(getCwd(), { planName, planId: attrs.planId })
@@ -2309,7 +2358,8 @@ async function runComposedTuiScenario(scenario, options) {
                     );
                     const startedAt = Date.now();
                     let latestStatus = "";
-                    while (!expectedStatuses.has(latestStatus)) {
+                    let matchedStatus = false;
+                    while (!matchedStatus) {
                         if (Date.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for Plan ${planName} status ${
@@ -2331,28 +2381,24 @@ async function runComposedTuiScenario(scenario, options) {
                                 Deno.cwd(),
                             ).catch(() => "")
                             : "";
-                        const remoteStatus = remotePlanText
-                            ? String(parsePlanFrontMatter(remotePlanText).attrs.status || "")
-                            : "";
-                        const candidates = [
-                            String(executionPlan?.attrs.status || ""),
-                            remoteStatus,
-                            String(localPlan?.attrs.status || ""),
-                        ];
-                        const matchingStatus = candidates.find((status) => expectedStatuses.has(status));
-                        latestStatus = matchingStatus || candidates.filter(Boolean).join("/");
-                        if (
-                            !matchingStatus && !entry && remoteStatus === "validated" &&
-                            expectedStatuses.has("verified")
-                        ) {
-                            latestStatus = "verified";
-                        }
-                        if (
-                            !matchingStatus && !entry && localPlan?.attrs.status === "validated" &&
-                            expectedStatuses.has("verified")
-                        ) {
-                            latestStatus = "verified";
-                        }
+                        const candidateAttrs = [
+                            executionPlan?.attrs,
+                            remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : null,
+                            localPlan?.attrs,
+                        ].filter((attrs) => attrs != null);
+                        const matching = candidateAttrs.find((attrs) =>
+                            expectedStatuses.has(String(attrs.status || "")) &&
+                            (!typed.validationPhase || attrs.validationPhase === typed.validationPhase) &&
+                            (!typed.workRecordStatus || attrs.workRecord?.status === typed.workRecordStatus)
+                        );
+                        matchedStatus = Boolean(matching);
+                        latestStatus = matching ? String(matching.status) : candidateAttrs.map((attrs) =>
+                            [
+                                attrs.status,
+                                typed.validationPhase ? attrs.validationPhase : "",
+                                typed.workRecordStatus ? attrs.workRecord?.status : "",
+                            ].filter(Boolean).join(":")
+                        ).join("/");
                         await terminal.flush();
                         await new Promise((resolve) => setTimeout(resolve, 20));
                     }

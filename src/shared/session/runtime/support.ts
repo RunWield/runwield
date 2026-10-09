@@ -4,11 +4,38 @@ import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agen
 import { getModelRegistry } from "../../models/model-registry.ts";
 import { parseProviderModel } from "../../models/model-validation.ts";
 import { getSettingsManager } from "../../settings.js";
-import { isGitRepository } from "../../git.js";
+import { isGitRepository } from "../../git.ts";
 import { enterProjectRuntime } from "../../project-runtime-layout.ts";
 import { readPersistedWorkflowContext } from ".././workflow-context-session.js";
 import { createPairCheckpointTool } from "../../../tools/pair-checkpoint.ts";
 import { formatPairCheckpointContext, restorePairExecutionState } from ".././pair-checkpoint-session.ts";
+import { loadPlan } from "../../../plan-store.js";
+import { listEntries } from "../../worktree-registry.js";
+
+/** A delivered execution keeps its transcript origin, but resumes in the registered project. */
+export async function restorePublishedSessionProjectRoot(
+    session: import("../hosted-session.js").HostedSession,
+    store: import("../file-session-store-types.ts").FileSessionStore,
+): Promise<void> {
+    const managed = session.getManagedMetadata();
+    if (!managed) return;
+    const segment = store.getCurrentSessionSegment(managed.runwieldSessionId);
+    if (segment?.kind !== "execution" && segment?.kind !== "semantic_repair") return;
+    const projectRoot = store.requireSessionProjectRoot(managed.projectId);
+    if (session.cwd === projectRoot) return;
+    const association = store.listSessionPlanAssociations(managed.runwieldSessionId, managed.projectId).at(-1);
+    if (!association || !["execution", "recovery"].includes(association.purpose)) return;
+    // A retained or newer attempt still owns its execution checkout.
+    if ((await listEntries(projectRoot, { migrate: false })).some((entry) => entry.planId === association.planId)) {
+        return;
+    }
+    const plan = await loadPlan(projectRoot, association.planName);
+    if (
+        plan?.attrs.planId !== association.planId || plan.attrs.status !== "verified" ||
+        !plan.attrs.publicationReceipt?.publishedCommit
+    ) return;
+    session.rebindProjectRoot(projectRoot);
+}
 
 /**
  * @param {import('.././types.js').ImageAttachment[]} images

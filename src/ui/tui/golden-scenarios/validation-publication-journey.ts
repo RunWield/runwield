@@ -48,6 +48,8 @@ interface JourneyResult {
  * Model responses are the external boundary; they do not call workflow helpers.
  */
 export const validationPublicationJourneyScenario = {
+    // This scenario isolates automated delivery; human policy gates have dedicated journeys.
+    globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
     name: planName,
     composedTui: true,
     initialAgentName: "guide",
@@ -151,7 +153,7 @@ Replace the original feature with the implemented feature.
         { type: "type", text: "Retry Workflow Validation" },
         { type: "enter" },
         // Observation only from here. No retries, resets, status writes, or Git fixes.
-        { type: "waitForRemotePlanStatus", planName, statuses: ["validated"], timeoutMs: 90000 },
+        { type: "waitForRemotePlanStatus", planName, statuses: ["verified"], timeoutMs: 90000 },
         { type: "waitForWorktreeRegistryStatus", planName, statuses: ["absent"], timeoutMs: 30000 },
         { type: "waitForIdle", timeoutMs: 30000 },
         { type: "capturePublicationState", planName, deliveredPath },
@@ -166,7 +168,7 @@ Replace the original feature with the implemented feature.
             assertEquals(published.primaryBranch, baseline.branch);
             assertEquals(published.primaryStatus, baseline.status);
             assertEquals(published.primaryFiles, baseline.files);
-            assertEquals(published.remotePlanStatus, "validated");
+            assertEquals(published.remotePlanStatus, "verified");
             assert(/^[a-f0-9]{40,64}$/i.test(published.remotePlanAttrs?.validatedCommit || ""));
             assertEquals(
                 published.validatedCommitPublished,
@@ -198,7 +200,7 @@ Replace the original feature with the implemented feature.
             const ci = result.events.indexOf("runtime:validation-ci:passed");
             const review = result.events.indexOf("runtime:tool:end:review_complete");
             const repair = result.events.indexOf("runtime:tool:end:task_completed");
-            const publishedEvent = result.events.indexOf(`publication:remote-plan-status:${planName}:validated`);
+            const publishedEvent = result.events.indexOf(`publication:remote-plan-status:${planName}:verified`);
             assert(ci >= 0 && ci < review && review < repair && repair < publishedEvent);
             // Default model responses still invoke real QA/record tools. Exactly
             // one call each: silently repeating ancillary LLM calls is not success.
@@ -215,7 +217,10 @@ Replace the original feature with the implemented feature.
                 result.state.validationCiRuns.some((run) => !run.isError && run.output.includes("JOURNEY_CI_PASSED")),
                 "Real fixture CI must execute successfully, not merely display a passing status.",
             );
-            assert(visible.includes(`${planName} is on main`), "TUI must report confirmed delivery.");
+            assert(
+                visible.includes(`Plan: ${planName}`) && visible.includes("Published commit confirmed on main"),
+                "TUI must report the delivered Plan and confirmed publication.",
+            );
             assert(!visible.includes("Validation paused before it could finish"));
         },
     ],

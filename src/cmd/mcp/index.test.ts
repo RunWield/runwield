@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 async function runCli(args: string[], env: Record<string, string> = {}, stdinText = "") {
     const command = new Deno.Command(Deno.execPath(), {

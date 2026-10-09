@@ -5,7 +5,7 @@ import {
     isGitRepository,
     isGitRepositoryRequiredError,
     probeGitRepository,
-} from "./git.js";
+} from "./git.ts";
 
 Deno.test("probeGitRepository reports non-Git directories without throwing", async () => {
     const dir = await Deno.makeTempDir({ prefix: "runwield-non-git-probe-" });

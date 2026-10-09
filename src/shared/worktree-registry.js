@@ -713,6 +713,37 @@ export async function updateEntry(projectRoot, id, updates) {
 }
 
 /**
+ * @typedef {Object} PlanningWorktreeBase
+ * @property {string} baseRef
+ * @property {string} baseCommit
+ * @property {string} baseTree
+ */
+
+/**
+ * Advance a planning checkout's baseline after importing published child work.
+ * Once execution starts its original baseline is immutable.
+ * @param {string} projectRoot
+ * @param {string} id
+ * @param {string} expectedBaseCommit
+ * @param {PlanningWorktreeBase} base
+ * @returns {Promise<WorktreeRegistryEntry>}
+ */
+export async function refreshPlanningWorktreeBase(projectRoot, id, expectedBaseCommit, base) {
+    return await withWorktreeRegistryLock(projectRoot, async () => {
+        const entries = await readRegistry(projectRoot);
+        const entry = entries.find((entry) => entry.id === id);
+        if (!entry) throw new Error(`Worktree registry entry not found: ${id}`);
+        if (entry.status !== "planning" || entry.executionBaselineTree || entry.publication) {
+            throw new Error(`Cannot refresh the baseline of an execution worktree: ${id}`);
+        }
+        if (entry.baseCommit !== expectedBaseCommit) throw new Error(`Planning worktree baseline changed: ${id}`);
+        Object.assign(entry, base, { updatedAt: new Date().toISOString() });
+        await writeRegistry(projectRoot, entries);
+        return entry;
+    });
+}
+
+/**
  * Rename a restored document without changing its stable Plan or attempt identity.
  * Ordinary registry updates cannot rename an attempt. Only the archive transaction,
  * holding the document/catalog locks, may move this address. Publication receipts

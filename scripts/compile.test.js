@@ -45,8 +45,10 @@ Deno.test("buildCompileArgs uses Deno compile flags and bundled resource include
     assertStringIncludes(args.join("\n"), "src/ui/workspace/server/plan-adapter.js");
     assertEquals(args.join("\n").includes("dist/workspace/"), false);
     assertStringIncludes(args.join("\n"), "src/agent-definitions");
+    assertStringIncludes(args.join("\n"), "src/model-presets/");
     assertStringIncludes(args.join("\n"), "src/prompt-templates");
     assertStringIncludes(args.join("\n"), "src/shared/session/SYSTEM_PROMPT_TEMPLATE.md");
+    assertStringIncludes(args.join("\n"), "src/cmd/sleep/prompt.md");
     assertStringIncludes(args.join("\n"), "src/skills");
     assertStringIncludes(args.join("\n"), "src/snip-filters");
     assertStringIncludes(args.join("\n"), "src/ui/theme/catppuccin-mocha.json");

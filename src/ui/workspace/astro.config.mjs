@@ -9,6 +9,7 @@ import { defineConfig, passthroughImageService } from "astro/config";
 import deno from "@deno/astro-adapter";
 import react from "./integrations/deno-react.mjs";
 import tailwindcss from "@tailwindcss/vite";
+import { reviewCollapseStatePlugin } from "./integrations/review-collapse-state.ts";
 
 const WORKSPACE_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(WORKSPACE_DIR, "../../..");
@@ -45,7 +46,7 @@ export default defineConfig({
         checkOrigin: false,
     },
     vite: {
-        plugins: [tailwindcss()],
+        plugins: [reviewCollapseStatePlugin(), tailwindcss()],
         define: { "process.env.NODE_ENV": '"development"' },
         build: {
             rollupOptions: {

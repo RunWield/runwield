@@ -3,7 +3,7 @@ import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
 import { RunWieldIconButton } from "../../design-system/components/react/RunWieldIconButton.tsx";
 import { animateSidebarUpdate } from "../../design-system/components/react/sidebar-motion.ts";
-import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.jsx";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 
 import { RunWieldSegmentedControl } from "../../design-system/components/react/RunWieldSegmentedControl.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -165,6 +165,13 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [activeInteractionAnswerUrl, setActiveInteractionAnswerUrl] = useState(
         initialPayload.interactionAnswerUrl || "",
     );
+    const reviewMountedRef = useRef(true);
+    useEffect(() => {
+        reviewMountedRef.current = true;
+        return () => {
+            reviewMountedRef.current = false;
+        };
+    }, []);
     const autoGuideStartedRef = useRef(false);
     const filePanelResizeRef = useRef(null);
     const globalCommentButtonRef = useRef(null);
@@ -599,6 +606,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }
 
     async function submitFeedback() {
+        if (conversationEnabled) {
+            setRightSidebarView("agent");
+            await sendAgentMessage(true);
+            return;
+        }
         setSubmitting("feedback");
         try {
             await submit("feedback", { approved: false, ...buildReviewPayload() });
@@ -617,14 +629,17 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setAgentError("");
     }
 
-    async function sendAgentMessage() {
+    async function sendAgentMessage(attachAnnotations = false) {
         const message = conversationComposer.trim();
-        if (!message || agentWorking) return;
-        const attachedFeedback = conversationContextAttached && annotations.length > 0 ? feedbackMarkdown : "";
+        const attachedFeedback = (attachAnnotations === true || conversationContextAttached) && annotations.length > 0
+            ? feedbackMarkdown
+            : "";
+        if ((!message && !attachedFeedback) || agentWorking) return;
         const userMessageId = `user-${crypto.randomUUID()}`;
         const agentMessageId = `agent-${crypto.randomUUID()}`;
         let eventStartIndex = 0;
         let conversationRevision = 0;
+        let conversationEventStartIndex = 0;
 
         setAgentWorking(true);
         setAgentError("");
@@ -633,8 +648,9 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setConversationMessages((items) => [...items, {
             id: userMessageId,
             role: "user",
-            body: message,
-            ...(attachedContextLabel && { contextLabel: attachedContextLabel }),
+            body: message || "Review annotations",
+            ...(attachedFeedback &&
+                { contextLabel: attachedContextLabel || `${annotations.length} code annotations attached` }),
         }]);
 
         try {
@@ -646,6 +662,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 if (!statusResponse.ok) throw new Error(statusPayload.error || `${agentLabel} status is unavailable.`);
                 eventStartIndex = Array.isArray(statusPayload.events) ? statusPayload.events.length : 0;
                 conversationRevision = Number.isInteger(statusPayload.revision) ? statusPayload.revision : 0;
+                conversationEventStartIndex =
+                    statusPayload.liveInteraction?.request?.codeReview?.conversationEvents?.length || 0;
             }
 
             await submit("deny", {
@@ -687,6 +705,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
 
             await waitForWorkspaceCodeReview({
                 previousInteractionId: activeInteractionId,
+                conversationEventStartIndex,
                 eventStartIndex,
                 agentMessageId,
                 clearAttachedContext: Boolean(attachedFeedback),
@@ -699,8 +718,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }
 
     async function waitForStandaloneCodeReview(options) {
-        const deadline = Date.now() + 180_000;
-        while (Date.now() < deadline) {
+        // Repairs and their required validation can outlast a short UI timeout.
+        while (reviewMountedRef.current) {
             const response = await fetch(initialPayload.conversationStatusUrl);
             const conversation = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(conversation.error || `${agentLabel} status is unavailable.`);
@@ -723,12 +742,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             }
             await pause(750);
         }
-        throw new Error(`${agentLabel} is still working. Check the terminal Session for progress.`);
     }
 
     async function waitForWorkspaceCodeReview(options) {
-        const deadline = Date.now() + 180_000;
-        while (Date.now() < deadline) {
+        // Repairs and their required validation can outlast a short UI timeout.
+        while (reviewMountedRef.current) {
             const response = await fetch(initialPayload.operationStatusUrl);
             const operation = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(operation.error || `${agentLabel} status is unavailable.`);
@@ -746,7 +764,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     rawPatch: codeReview.rawPatch,
                     reviewStatus: codeReview.reviewStatus || null,
                     interactionId: interaction.interactionId,
-                    reply: reply.text || "I updated the working files. Code Review has reloaded the current diff.",
+                    reply: collectArtifactConversationReply(
+                        codeReview.conversationEvents || [],
+                        options.conversationEventStartIndex,
+                    ).text ||
+                        reply.text || "I updated the working files. Code Review has reloaded the current diff.",
                     agentMessageId: options.agentMessageId,
                     clearAttachedContext: options.clearAttachedContext,
                 });
@@ -757,11 +779,13 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             }
             await pause(750);
         }
-        throw new Error(`${agentLabel} is still working. Return to the Session to check its progress.`);
     }
 
     function applyAgentRevision(options) {
         upsertAgentReply(options.agentMessageId, options.reply);
+        const nextFiles = parseDiffToFiles(options.rawPatch);
+        const nextFileIndex = nextFiles.findIndex((file) => file.path === currentFile?.path);
+        setActiveFileIndex(nextFileIndex < 0 ? 0 : nextFileIndex);
         setActiveRawPatch(options.rawPatch);
         setActiveReviewStatus(options.reviewStatus);
         setActiveInteractionId(options.interactionId);
@@ -775,10 +799,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 // In-place diff refresh remains usable when browser history is unavailable.
             }
         }
-        setGuide(null);
-        setGuideOpen(false);
-        setGuideJob(null);
-        setActiveFileIndex(0);
+        // Keep the guide's organization and UI state, but label its prose as from the prior revision.
+        setGuide((current) => current ? { ...current, moved: true } : current);
         setViewedFiles(new Set());
         setFileNavigationTarget(null);
         if (options.clearAttachedContext) {
@@ -954,7 +976,6 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                             </aside>
                         )}
                         <main
-                            ref={allFilesHostRef}
                             className="rw-review-all-files-host"
                             aria-label="All file changes"
                             data-content-fits={allFilesContentFits}
@@ -984,17 +1005,18 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                 onToggleGlobalComment={() => setGlobalCommentOpen((open) => !open)}
                             />
                             <div className="rw-code-diff-stage">
-                                {!highlightingReady
-                                    ? (
-                                        <div className="rw-empty-diff">
-                                            <RunWieldThinkingDots label="Preparing syntax highlighting" />
-                                        </div>
-                                    )
-                                    : guideOpen && guide
-                                    ? (
+                                {!highlightingReady && (
+                                    <div className="rw-empty-diff">
+                                        <RunWieldThinkingDots label="Preparing syntax highlighting" />
+                                    </div>
+                                )}
+                                {guide && (
+                                    <div className="rw-code-review-retained-view" hidden={!guideOpen}>
                                         <GuidedReviewExplainer
                                             guide={guide}
                                             job={guideJob}
+                                            onRegenerate={generateGuide}
+                                            isActive={guideOpen}
                                             files={files}
                                             token={initialPayload.token}
                                             onToggleReviewed={(index) =>
@@ -1032,57 +1054,64 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                                 stagedFiles,
                                             }}
                                         />
-                                    )
-                                    : files.length > 0
-                                    ? (
-                                        <AllFilesCodeView
-                                            key={[
-                                                diffStyle,
-                                                diffOverflow,
-                                                diffIndicators,
-                                                diffLineDiffType,
-                                                diffShowLineNumbers,
-                                                diffShowBackground,
-                                                diffExpandUnchanged,
-                                                diffFontFamily,
-                                                diffFontSize,
-                                            ].join("|")}
-                                            files={accordionFiles}
-                                            diffStyle={diffStyle}
-                                            diffOverflow={diffOverflow}
-                                            diffIndicators={diffIndicators}
-                                            lineDiffType={diffLineDiffType}
-                                            disableLineNumbers={!diffShowLineNumbers}
-                                            disableBackground={!diffShowBackground}
-                                            expandUnchanged={diffExpandUnchanged}
-                                            fontFamily={diffFontFamily}
-                                            fontSize={diffFontSize}
-                                            annotations={annotations}
-                                            selectedAnnotationId={selectedAnnotationId}
-                                            scrollTargetAnnotation={scrollTargetAnnotation}
-                                            pendingSelection={pendingSelection}
-                                            onLineSelection={setPendingSelection}
-                                            onAddAnnotationForFile={(filePath, ...args) =>
-                                                addAnnotationForFile(
-                                                    files.find((file) => file.path === filePath),
-                                                    ...args,
-                                                )}
-                                            onEditAnnotation={editAnnotation}
-                                            onSelectAnnotation={setSelectedAnnotationId}
-                                            onDeleteAnnotation={(id) =>
-                                                setAnnotations((items) => items.filter((item) => item.id !== id))}
-                                            onAddFileCommentForFile={addFileComment}
-                                            viewedFiles={viewedFiles}
-                                            onToggleViewed={toggleViewedFile}
-                                            stagedFiles={stagedFiles}
-                                            activeSearchMatchId={fileNavigationTarget?.id ?? null}
-                                            activeSearchMatch={fileNavigationTarget}
-                                            onVisibleFileChange={handleVisibleFileChange}
-                                            fileOrder={filePanelMode === "tree" ? "tree" : "list"}
-                                            isActive
-                                        />
-                                    )
-                                    : <div className="rw-empty-diff">No diff content.</div>}
+                                    </div>
+                                )}
+                                <div
+                                    ref={allFilesHostRef}
+                                    className="rw-code-review-retained-view"
+                                    hidden={Boolean(guideOpen && guide)}
+                                >
+                                    {files.length > 0
+                                        ? (
+                                            <AllFilesCodeView
+                                                key={[
+                                                    diffStyle,
+                                                    diffOverflow,
+                                                    diffIndicators,
+                                                    diffLineDiffType,
+                                                    diffShowLineNumbers,
+                                                    diffShowBackground,
+                                                    diffExpandUnchanged,
+                                                    diffFontFamily,
+                                                    diffFontSize,
+                                                ].join("|")}
+                                                files={accordionFiles}
+                                                diffStyle={diffStyle}
+                                                diffOverflow={diffOverflow}
+                                                diffIndicators={diffIndicators}
+                                                lineDiffType={diffLineDiffType}
+                                                disableLineNumbers={!diffShowLineNumbers}
+                                                disableBackground={!diffShowBackground}
+                                                expandUnchanged={diffExpandUnchanged}
+                                                fontFamily={diffFontFamily}
+                                                fontSize={diffFontSize}
+                                                annotations={annotations}
+                                                selectedAnnotationId={selectedAnnotationId}
+                                                scrollTargetAnnotation={scrollTargetAnnotation}
+                                                pendingSelection={pendingSelection}
+                                                onLineSelection={setPendingSelection}
+                                                onAddAnnotationForFile={(filePath, ...args) =>
+                                                    addAnnotationForFile(
+                                                        files.find((file) => file.path === filePath),
+                                                        ...args,
+                                                    )}
+                                                onEditAnnotation={editAnnotation}
+                                                onSelectAnnotation={setSelectedAnnotationId}
+                                                onDeleteAnnotation={(id) =>
+                                                    setAnnotations((items) => items.filter((item) => item.id !== id))}
+                                                onAddFileCommentForFile={addFileComment}
+                                                viewedFiles={viewedFiles}
+                                                onToggleViewed={toggleViewedFile}
+                                                stagedFiles={stagedFiles}
+                                                activeSearchMatchId={fileNavigationTarget?.id ?? null}
+                                                activeSearchMatch={fileNavigationTarget}
+                                                onVisibleFileChange={handleVisibleFileChange}
+                                                fileOrder={filePanelMode === "tree" ? "tree" : "list"}
+                                                isActive={!guideOpen}
+                                            />
+                                        )
+                                        : <div className="rw-empty-diff">No diff content.</div>}
+                                </div>
                                 {guideError && <p className="rw-review-error" role="alert">{guideError}</p>}
                             </div>
                         </main>
@@ -1398,7 +1427,7 @@ function pause(milliseconds) {
     return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
 }
 
-function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, diffProps }) {
+function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, onRegenerate, isActive, diffProps }) {
     const [focusedFile, setFocusedFile] = useState(null);
     const [revealFile, setRevealFile] = useState(null);
     const revealToken = useRef(0);
@@ -1435,6 +1464,7 @@ function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, dif
         return {
             title: guide.title || "Guided Review",
             intent: guide.intent,
+            moved: guide.moved,
             sections,
             unplacedFiles: remaining,
         };
@@ -1451,6 +1481,7 @@ function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, dif
         revealFile,
         onRevealFile: reveal,
         getDiffRendererProps: ({ focused }) => ({
+            isActive: isActive && focused,
             diffStyle: diffProps.diffStyle,
             diffOverflow: diffProps.diffOverflow,
             diffIndicators: diffProps.diffIndicators,
@@ -1483,6 +1514,7 @@ function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, dif
             <GuideHostProvider value={host}>
                 <GuideView
                     guide={chapters}
+                    onRegenerate={onRegenerate}
                     showTitle={false}
                     engineLabel={formatGuidedReviewGenerator(job)}
                     sectionNotes={sectionNotes}

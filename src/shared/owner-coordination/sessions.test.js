@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { openOwnerCoordinationDatabase } from "./database.js";
 import { registerProject, relinkProject } from "./projects.js";

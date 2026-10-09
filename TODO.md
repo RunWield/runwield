@@ -95,7 +95,7 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 
 8. [ ] **Needs Plan — Retain image access across Session handoffs.** Planning attachments must remain available after
        execution, repair, and resume without exposing another Session's images. Evidence:
-       [image attachments](src/shared/session/image-attachments.js),
+       [image attachments](src/shared/session/image-attachments.ts),
        [segment rollover](src/shared/session/segment-rollover.ts).
 
 9. [ ] **Needs Plan — Preserve compaction across model backends.** Claude CLI and Antigravity must support useful
@@ -110,12 +110,12 @@ Plans and current uncommitted work before creating new ones. Explicit future PRD
 11. [ ] **Needs Plan — Isolate malformed Work Records.** Listing, reading, search, backfill, and index rebuild must
         remain useful when an unrelated record is malformed. Report the affected record without treating it as approved
         guidance or discarding a usable index before replacement succeeds. Evidence:
-        [record store](src/shared/work-records/store.js), [index rebuild](src/shared/work-records/index-adapter.js).
+        [record store](src/shared/work-records/store.js), [index rebuild](src/shared/work-records/index-adapter.ts).
 
 12. [ ] **Needs Plan — Keep same-named Projects' knowledge separate.** Independent repositories named `app`, for
         example, must not share project memories or overwrite each other's Work Record index. Preserve access to
         existing knowledge. Evidence: [memory collection](src/extensions/mnemoteca/tools.ts),
-        [record index](src/shared/work-records/index-adapter.js).
+        [record index](src/shared/work-records/index-adapter.ts).
 
 13. [ ] **Quick win — Back up the correct memories during Sleep.** In a linked worktree, use the same project collection
         as normal memory operations. Coordinate with the Project separation work above if it changes first. Evidence:

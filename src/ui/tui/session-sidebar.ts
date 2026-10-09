@@ -44,6 +44,7 @@ export interface TuiSessionSidebarSnapshot {
             routingIntent?: string | null;
             complexity?: string | null;
             status?: string | null;
+            validationPhase?: "mechanical" | "semantic" | "delivery";
         } | null;
         validationContinuation?: boolean;
         validationRepairGeneration?: string | null;
@@ -89,6 +90,7 @@ export function tuiSessionSidebarProjection(snapshot: TuiSessionSidebarSnapshot)
         workflowEpic: epic,
         workflowIntent: snapshot.workflowContext?.routingIntent,
         workflowStatus: activeWorkflow?.triageMeta?.status || snapshot.workflowContext?.status,
+        workflowValidationPhase: activeWorkflow?.triageMeta?.validationPhase,
         workflowClassification: activeWorkflow?.triageMeta?.classification || snapshot.workflowContext?.classification,
         workflowProgressFacts: snapshot.workflowContext?.progressFacts?.map((fact) => ({ ...fact })),
         workflowLiveValidationProgress: snapshot.validationProgress,

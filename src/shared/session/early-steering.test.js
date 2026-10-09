@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { installEarlySteeringInterruption } from "./early-steering.js";
+import { installEarlySteeringInterruption } from "./early-steering.ts";
 
 Deno.test("installEarlySteeringInterruption allows current tool calls to complete when steering is pending", async () => {
     const executed = /** @type {string[]} */ ([]);

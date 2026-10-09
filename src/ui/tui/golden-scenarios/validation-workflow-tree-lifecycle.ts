@@ -118,7 +118,7 @@ export const validationTreeResumeValidatedCiScenario = withValidationBranches(
                 ],
             },
         ],
-        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" }],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
                 type: "seedActiveWorktree",
@@ -156,14 +156,14 @@ export const validationTreeResumeValidatedReviewerScenario = withValidationBranc
         }],
         scriptedInteractions: [{
             type: "select",
-            promptIncludes: "Plan recovery (validated_reviewer)",
+            promptIncludes: "Plan recovery (reviewed)",
             value: "validate",
         }],
         actions: [
             {
                 type: "seedActiveWorktree",
                 planName: "resume-validated-reviewer",
-                status: "validated_reviewer",
+                status: "reviewed",
                 attrs: { humanReviewMode: "none", humanReviewDecision: "not_required" },
                 files: [{ path: "resume-validated-reviewer.txt", text: "done\n" }],
             },
@@ -250,7 +250,7 @@ export const validationTreeAheadStatusScenario = withValidationBranches(
                 ],
             },
         ],
-        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (validated_ci)", value: "validate" }],
+        scriptedInteractions: [{ type: "select", promptIncludes: "Plan recovery (implemented)", value: "validate" }],
         actions: [
             {
                 type: "seedActiveWorktree",

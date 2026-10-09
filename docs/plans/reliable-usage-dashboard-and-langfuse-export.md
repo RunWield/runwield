@@ -429,7 +429,7 @@ These are architectural boundaries, not an allowlist, implementation checklist o
   state machine or its lock as a metrics lock.
 - Existing package manager, installed resource lookup and trust UI: reuse distribution without inheriting Pi-only
   loading or implicit permission to export.
-- Owner routes, safe Project serializers, `WorkspaceLayout.astro`, loaders and `RunWieldPrimitives.jsx`: existing
+- Owner routes, safe Project serializers, `WorkspaceLayout.astro`, loaders and `RunWieldPrimitives.tsx`: existing
   browser access control and visual patterns.
 - [Complete Tool-Call Metrics](complete-tool-call-metrics.md) and
   [extension-consent work](protect-new-package-extension-consent.md): reconcile overlaps during later planning against
@@ -486,6 +486,20 @@ activity that Core actually observed while measurement was enabled; it does not 
 Provider, Pi Agent extension, or RunWield Connect plugin. **Delivery unconfirmed** is an exporter status only, not a
 Plan Status or a workflow failure. The changes that make collection/export real must add these terms and relationships
 to `docs/domain-language.md` in that same delivery, without renaming existing domain concepts.
+
+### Integration Notes
+
+Left by the reviewers of individual children for the integration review. These are places to look, not requirements.
+
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/03-workflow-outcome-observations" -->
+
+**reliable-usage-dashboard-and-langfuse-export/03-workflow-outcome-observations**
+
+- Count repair_round once per round identity; treat repair_round_finished as its completion, not another repair. Keep
+  interrupted work separate from deliberate abandonment. (Child 04 reporting; validation-semantic.ts,
+  validation-session-adapter.ts, validation-supervisor.ts)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/03-workflow-outcome-observations" -->
 
 ## Edge Cases & Considerations
 

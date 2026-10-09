@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { loadPlan } from "../../plan-store.js";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../runwield-owned-paths.ts";

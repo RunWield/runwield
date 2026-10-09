@@ -14,11 +14,11 @@ import {
 import { CATPPUCCIN_MOCHA_THEME_PATH } from "../../constants.js";
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { loadExternalThemeJsons } from "./theme-discovery.ts";
-import { createThemeFromJson } from "./theme-json.js";
+import { createThemeFromJson } from "./theme-json.ts";
 import { createThemeRegistry } from "./theme-registry.ts";
 
 /** @typedef {import('@earendil-works/pi-coding-agent').Theme} ThemeInstance */
-/** @typedef {import('./theme-json.js').ThemeJson} ThemeJson */
+/** @typedef {import('./theme-json.ts').ThemeJson} ThemeJson */
 
 // ─── Global theme singleton key (matches the upstream) ───────────────────────
 const THEME_KEY = Symbol.for("@earendil-works/pi-coding-agent:theme");

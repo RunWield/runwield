@@ -68,43 +68,17 @@ and constraints so future RunWield sessions can use the right vocabulary and dur
      `verificationNotImplemented: true`. This saves `echo "verification not implemented yet"`.
    - When the user cancels or leaves the choice unresolved, end with a concise explanation that Init can continue after
      the verification command is confirmed.
-7. Read the bundled `write-tests` skill before you evaluate test seams. Apply its ownership rule in the project's own
-   language: tests must not replace product-owned machinery, and only genuine external systems earn fakes. After you
-   understand the architecture map, inspect representative production composition and tests for concrete signs that
-   tests can replace project-owned behavior. Keep this audit bounded to representative examples.
-8. As you go, collect and formalize current implemented domain terminology from your exploration into a consistent
+7. As you go, collect and formalize current implemented domain terminology from your exploration into a consistent
    glossary. Create or update `docs/domain-language.md` only for language that is already true: canonical terms, avoided
    aliases, and stable domain relationships. Keep proposed or future-state terminology out.
-9. Seed the memory system with the tech stack, architectural boundaries, the confirmed verification command,
+8. Seed the memory system with the tech stack, architectural boundaries, the confirmed verification command,
    conventions, and other significant project facts using `memory` with `action: "store"`. Set `core: true` sparingly
    for critical, always-relevant project facts.
-10. At the end, create `docs/` if needed and write the final version of `docs/domain-language.md` using the canonical
-    format at `{{BUNDLED_AGENT_DEFS_DIR}}/document-formats/domain-language-format.md`.
-11. Before ending, re-read `docs/domain-language.md` and verify that it exists, follows the canonical format, captures
+9. At the end, create `docs/` if needed and write the final version of `docs/domain-language.md` using the canonical
+   format at `{{BUNDLED_AGENT_DEFS_DIR}}/document-formats/domain-language-format.md`.
+10. Before ending, re-read `docs/domain-language.md` and verify that it exists, follows the canonical format, captures
     current domain language, and does not include implementation details, project architecture, conventions,
     constraints, plan content, example dialogue, resolved-ambiguity history, or future-state proposals.
-12. End your result with a `Possible test-seam risks` section. If no candidates were noticed during bounded
-    initialization, say that and do not call the project clean. For each candidate, include the exact file and
-    construct, what behavior appears replaceable, why that behavior may be product-owned machinery rather than an
-    external system, what fixture environment could exercise the real implementation, the confidence level, and the
-    facts that remain uncertain. Ask the user whether to dismiss the candidate as a legitimate external boundary, record
-    it in the existing issue system, request a Plan for a fixture-based refactor, or leave it unpersisted for now. Do
-    not write issues, Plans, Memory, or domain language for possible risks unless the user explicitly chooses that
-    persistence.
-
-## Test-seam risk discovery
-
-This is advisory discovery, not enforcement and not a source check. Do not add commands, analyzers, manifests, or CI
-rules. Do not expose RunWield's repository layout or private implementation names while initializing another project.
-
-Flag concrete candidates when representative code shows tests replacing storage, lifecycle, transactions, registries,
-locks, orchestration, or other behavior that appears to belong to the project. Also look for optional collaborators,
-production fallback between an injected behavior and a system implementation, mutable global implementations reset by
-tests, branches keyed to test or fake mode, and broad mocks that prevent a feature's real code path from running.
-
-Do not flag ordinary data/configuration parameters, normal fixture data, or fakes for external systems such as networks,
-subprocesses, clocks, browsers, model calls, and hosted services. When ownership is ambiguous, report the candidate with
-uncertain facts instead of silently deciding.
 
 ## Important Rules
 

@@ -8,7 +8,7 @@ import {
     WorktreeReviewComparisonError,
     WorktreeReviewTargetError,
 } from "./git-snapshot.ts";
-import { GitRepositoryRequiredError } from "../git.js";
+import { GitRepositoryRequiredError } from "../git.ts";
 
 /**
  * @param {string} cwd

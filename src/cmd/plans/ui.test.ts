@@ -1,7 +1,7 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import { savePlan } from "../../plan-store.js";
 import { type BrowserPort, NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { buildPlansUiUrl, isLoopbackHost, parsePlansUiArgs, runPlansUiCommand } from "./ui.ts";
 
 interface CapturedConsole {

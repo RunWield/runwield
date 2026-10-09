@@ -14,7 +14,7 @@ import { COMMAND_NAMES } from "../registry.js";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 
-export { getAgentCompletions } from "./getArgumentCompletions.js";
+export { getAgentCompletions } from "./getArgumentCompletions.ts";
 
 interface AgentsCommandOptions {
     tui?: import("../../ui/tui/types.js").TuiAPI;

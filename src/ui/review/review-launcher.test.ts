@@ -2,7 +2,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createTuiInteractionAdapter } from "../tui/runtime-interaction-adapter.js";
 import { getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
 import {

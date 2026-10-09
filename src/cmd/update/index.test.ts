@@ -2,7 +2,7 @@ import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { dirname, join } from "@std/path";
 import { VERSION } from "../../shared/version.js";
 import { parseRunWieldReleaseVersion } from "../../shared/update-check.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { type InstallerProcessPort, type ProcessExitPort, runUpdateCommand, type UpdateNetworkPort } from "./index.ts";
 
 interface InstallerInvocation {

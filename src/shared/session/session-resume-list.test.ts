@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
 import { getHomeDir } from "../../constants.js";
-import { withProcessGlobalTestLock } from "../../testing/process-global-lock.js";
+import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { getRunWieldSessionDir } from "./root-session.js";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";

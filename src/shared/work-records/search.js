@@ -11,7 +11,7 @@ import {
     rebuildWorkRecordIndex,
     recordIdFromTags,
     runMnemotecaWorkRecordCommand,
-} from "./index-adapter.js";
+} from "./index-adapter.ts";
 
 /** @typedef {"current"|"all"} WorkRecordAccessMode */
 

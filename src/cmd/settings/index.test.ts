@@ -1,6 +1,12 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getCustomSetting, getSettingsManager, setCustomSetting } from "../../shared/settings.js";
+import {
+    getCodeReviewMode,
+    getCustomSetting,
+    getGuidedReviewMode,
+    getSettingsManager,
+    setCustomSetting,
+} from "../../shared/settings.js";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runSettingsCommand } from "./index.ts";
 
@@ -24,6 +30,57 @@ interface SettingsSelectRecord {
 interface SettingsFileRecord {
     activeModelPreset?: string | null;
 }
+
+Deno.test("settings exposes existing review policies and persists scope without replacing explicit overrides", async () => {
+    await withRuntimeCommandFixture("runwield-policy-settings-", async ({ projectRoot }) => {
+        const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
+        const harness = makeUiHarness([
+            "codereview",
+            "project",
+            "always",
+            "codereview",
+            "global",
+            "none",
+            "guidedReview",
+            "project",
+            "none",
+            "defaultProjectTrust",
+            "never",
+            "done",
+        ]);
+        try {
+            await runSettingsCommand([], { uiAPI: harness.uiAPI, sessionRuntime: runtime, sessionId });
+            await getSettingsManager(projectRoot).reload();
+            assertEquals(getCodeReviewMode(projectRoot), "always");
+            assertEquals(getCustomSetting("codereview", "global", projectRoot), "none");
+            assertEquals(getGuidedReviewMode(projectRoot), "none");
+            assertEquals(getSettingsManager(projectRoot).getDefaultProjectTrust(), "never");
+            assertEquals(getCustomSetting("defaultProjectTrust", "project", projectRoot), undefined);
+            assert(harness.messages.some((message) => message.includes("explicit override remains in effect")));
+            assert(harness.selects[0].options.some((option) => option.value === "codereview"));
+            assert(harness.selects[0].options.some((option) => option.value === "guidedReview"));
+            assert(harness.selects[0].options.some((option) => option.value === "defaultProjectTrust"));
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
+});
+
+Deno.test("cancelling review policy selection preserves persisted choices", async () => {
+    await withRuntimeCommandFixture("runwield-policy-cancel-", async ({ projectRoot }) => {
+        await setCustomSetting("codereview", "none", "project", projectRoot);
+        const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
+        const harness = makeUiHarness(["codereview", null, "guidedReview", "project", null, "done"]);
+        try {
+            await runSettingsCommand([], { uiAPI: harness.uiAPI, sessionRuntime: runtime, sessionId });
+            assertEquals(getCodeReviewMode(projectRoot), "none");
+            assertEquals(getCustomSetting("guidedReview", "project", projectRoot), undefined);
+            assertEquals(harness.messages, []);
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
+});
 
 interface SettingsUiHarness {
     editor: {
@@ -308,6 +365,26 @@ Deno.test("runSettingsCommand applies a selected model preset to the active Sess
     });
 });
 
+Deno.test("runSettingsCommand activates a bundled preset without persisting its definition", async () => {
+    await withRuntimeCommandFixture("bundled-preset-selection-", async ({ projectRoot }) => {
+        const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
+        const harness = makeUiHarness(["model-presets", "preset:claude-opus", "back", "done"]);
+        try {
+            await runSettingsCommand([], {
+                uiAPI: harness.uiAPI,
+                sessionRuntime: runtime,
+                sessionId,
+            });
+            assertEquals(getCustomSetting("activeModelPreset", "global", projectRoot), "claude-opus");
+            assertEquals(getCustomSetting("modelPresets", "global", projectRoot), undefined);
+            assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, { provider: "claude-cli", model: "opus" });
+            assert(harness.messages.includes("Agent context reloaded with the new model preset."));
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
+});
+
 Deno.test("runSettingsCommand applies a model preset to a new in-memory Session", async () => {
     await withRuntimeCommandFixture(
         "runwield-settings-command-",
@@ -391,7 +468,7 @@ Deno.test("runSettingsCommand clears activeModelPreset via None", async () => {
     });
 });
 
-Deno.test("runSettingsCommand reports when no model presets are defined", async () => {
+Deno.test("runSettingsCommand offers bundled presets without personal preset settings", async () => {
     await withRuntimeCommandFixture("runwield-settings-command-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
         const harness = makeUiHarness(["model-presets", "back", "done"]);
@@ -403,7 +480,22 @@ Deno.test("runSettingsCommand reports when no model presets are defined", async 
                 sessionId,
             });
 
-            assert(harness.messages.some((message) => message.includes("No model presets defined")));
+            const menu = harness.selects.find((select) => select.title === "Model Presets");
+            assert(menu);
+            assertEquals(menu.options.filter((item) => item.value.startsWith("preset:")).map((item) => item.value), [
+                "preset:agy",
+                "preset:claude-mixed",
+                "preset:claude-opus",
+                "preset:codex",
+                "preset:codex-claude",
+                "preset:opencode",
+            ]);
+            assertStringIncludes(
+                menu.options.find((item) => item.value === "preset:claude-mixed")?.description ?? "",
+                "Sonnet",
+            );
+            assertEquals(getCustomSetting("modelPresets", "global", projectRoot), undefined);
+            assertEquals(getCustomSetting("activeModelPreset", "global", projectRoot), undefined);
         } finally {
             runtime.closeAllSessions();
         }

@@ -3,7 +3,7 @@ import {
     countPackageResourcesForSource,
     filterEnabledPackagePrompts,
     getPackagePromptTemplatePaths,
-} from "./package-resources.js";
+} from "./package-resources.ts";
 
 Deno.test("filterEnabledPackagePrompts returns enabled package prompts only", () => {
     const resources = filterEnabledPackagePrompts(
