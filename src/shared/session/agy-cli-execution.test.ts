@@ -1,3 +1,5 @@
+import { ReviewInspection } from "../workflow/review-inspection.ts";
+import { createLedger } from "../workflow/review-ledger.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import type { SessionRuntimeEvent } from "./session-runtime-events.js";
@@ -1052,8 +1054,13 @@ Deno.test("every eligible Agy role invokes its real lifecycle tool through confi
             userRequest: "review the change through validation",
             cwd,
             reviewerMode: "discovery",
-            customTools: [],
-            sessionManager: validation.createInMemorySessionManager(cwd),
+            review: {
+                fullDiff: "",
+                repairDiff: "",
+                requiredScope: "full",
+                inspection: new ReviewInspection([]),
+            },
+            ledger: createLedger(),
         });
         assertEquals(reviewResult.outcome, "completed");
         if (reviewResult.outcome !== "completed") throw new Error("Agy review did not complete");

@@ -23,7 +23,7 @@ import {
     SYSTEM_SEMANTIC_REVIEW_PORT,
     type WorkflowValidationResult,
 } from "../workflow/validation.ts";
-import { runWorkflowValidationToStableBoundary } from "../workflow/validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "../workflow/validation.ts";
 import { switchActiveAgent } from "./agent-switching.js";
 import { getAgentDisplayName } from "./agents.js";
 import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.js";

@@ -278,8 +278,8 @@ Deno.test("normal session binding enforces coverage and supplies the Plan withou
             reviewerMode: "discovery",
             userRequest: config.prompt,
             cwd: ROOT,
-            customTools: config.customTools,
-            sessionManager: port.createInMemorySessionManager(ROOT),
+            review: config.review,
+            ledger: state.reviewLedger,
         });
         assertEquals(invoked, true);
         assertEquals(result.outcome, "completed");

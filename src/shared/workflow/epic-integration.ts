@@ -34,11 +34,10 @@ import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { createValidationSessionPort, type SemanticReviewPort } from "./validation-session-adapter.ts";
-import { createReviewDiffTool } from "./review-diff-tool.js";
+import { ReviewInspection } from "./review-inspection.ts";
 import { createLedger } from "./review-ledger.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
 import {
-    type OpaqueToolDefinition,
     ValidationInteractionTypes,
     type ValidationReviewOutcome,
     type ValidationSessionPort,
@@ -416,22 +415,24 @@ async function runIntegrationReview(
     diffText: string,
     request: string,
 ): Promise<{ kind: "completed"; outcome: ValidationReviewOutcome } | { kind: "paused"; reason: string }> {
-    const sessionManager = port.createInMemorySessionManager(checkoutPath);
+    // Integration reads are selective; an empty inspection keeps that policy.
+    const review = {
+        fullDiff: diffText,
+        repairDiff: "",
+        requiredScope: "full" as const,
+        inspection: new ReviewInspection([]),
+    };
+    const ledger = createLedger();
     let prompt = request;
     for (let attempt = 1; attempt <= MAX_REVIEWER_ATTEMPTS; attempt++) {
-        // No full-read gate: each child was read line by line in its own review, and
-        // this reviewer reads selectively from the Epic outcomes and Integration Notes.
-        const customTools = [
-            createReviewDiffTool({ full: diffText }, { ledger: createLedger() }) as unknown as OpaqueToolDefinition,
-        ];
         const session = await port.runIsolatedAgentSession({
             kind: "reviewer",
             agentName: AGENTS.REVIEWER,
             userRequest: prompt,
             cwd: checkoutPath,
             reviewerMode: "integration",
-            customTools,
-            sessionManager,
+            review,
+            ledger,
         });
         if (session.outcome === "operational_failure") {
             return { kind: "paused", reason: session.failure.message };
