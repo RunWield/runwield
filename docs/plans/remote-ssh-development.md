@@ -21,9 +21,9 @@ affectedPaths:
     - "docs/domain-language.md"
     - "docs/adr/018-remote-ssh-local-personal-authority.md"
 createdAt: "2026-09-20"
+status: "ready_for_work"
 origin: "internal"
 userVerifiedAt: null
-status: "ready_for_work"
 ---
 
 # Remote SSH Development
@@ -57,8 +57,9 @@ establishes ordinary remote turns, saved Sessions, workflows, or a release platf
 - Direct SSHFS access to the laptop’s full `~/.wld` at a fresh private remote path. No personal resource copy, sync, or
   special resource-save operation. Other enabled personal roots can be mounted separately. RunWield core must work;
   machine-specific custom Skill dependencies are best effort.
-- The remote project, including its `.wld`, remains on the server. Guarded operation-scoped SSHFS Session writer access
-  is separate from the connection-wide personal mount; native writer locks remain on the laptop.
+- The remote project, including its `.wld`, remains on the server. Managed Session entries use the synchronous
+  laptop-owned save bridge selected on 2026-10-06; native writer locks remain on the laptop. The connection-wide
+  personal mount does not authorize Session writes.
 - Trusted remote hosts may access files allowed by the laptop account. Use a clear notice and Agent instructions, not a
   filesystem sandbox. Do not add a custom SFTP server for confinement.
 - Local browser Plan Review and Code Review. Connected-only execution and saved continuation after reconnect.
@@ -174,63 +175,56 @@ All Core-created child Sessions, execution/repair Agents, delegated work, and Gu
 context. Each obtains the proper local Session ownership; none creates an independent remote personal profile or escapes
 connected-only supervision.
 
-### Mounted storage and native locks
+### Personal mounts and laptop-owned Session saves
 
-The connection-wide mount presents the laptop’s full `~/.wld` at a fresh private remote path. It is **not** a sandbox:
+**Owner decision (2026-10-06):** the validated
+[Session-save proof](remote-session-save-proof.md#execution-results-2026-10-05) selected the synchronous laptop-owned
+save bridge with strict per-entry saves. Child03's approved Plan owns the implementation details. Guarded SFTP/SSHFS
+Session writer mounts and the earlier descriptor-retention design are set aside. This is selected implementation scope,
+not a claim that production remote Sessions have shipped.
+
+The connection-wide mount presents the laptop's full `~/.wld` at a fresh private remote path. It is **not** a sandbox:
 standard SFTP can access other files allowed by the laptop account. The owner accepts this. Show the broad trust notice;
 mounted `.wld` can include credential files. Setup does not copy credentials or keys. Project work and project `.wld`
-remain remote. Managed Session writes use separate guarded operation-scoped access, never the connection-wide personal
-mount.
+remain remote. This mount is for personal resources, never managed Session persistence.
 
-Keep Pi entries and synchronous file operations. Use synchronous SSHFS writes with the tested conservative cache policy;
-verify actual file-sync and atomic-rename support. Do not claim that a cached write or successful remote directory fsync
-proves a local durable commit. No second saved remote transcript, debug transcript, or exit-time history synchronization
-is allowed.
+Remote Pi runs an in-memory Session manager and keeps no transcript file. Its synchronous persistence hooks capture an
+immutable entry and use a dedicated Worker to send an authenticated, ordered save request to the laptop. The calling
+thread waits through shared memory with a finite deadline; network progress never depends on a callback on that blocked
+thread. No dependent model, tool, workflow, or publication action proceeds before the laptop acknowledges the save.
 
-**Only the laptop acquires authoritative Session and catalog locks.** Do not use mounted `tryLockSync` to grant
-cross-machine ownership. The local coordinator acquires the real lock, starts the SFTP process with retained native lock
-ownership, and retains its own ownership through settlement. Descriptor retention must be verified for the actual stock
-server and launcher on each supported laptop platform. A wrapper holding the only lock while a child can outlive it is
-not valid. If retention fails, remote mode cannot proceed with an unlocked fallback.
-
-Retaining a descriptor is not sufficient if another holder explicitly unlocks the shared native lock. All release paths,
-including errors, store disposal, and rollover, must preserve ownership until writable service access has ended. Current
-`releaseHeldLock` calls `unlockSync`; `markSessionUncertain`, `publishGenerationAndRelease`, and
-`commitSegmentRolloverAndPublish` can release ownership. They cannot become remote service handlers unchanged. Normal
-cleanup is subject to the same exclusion rule as crashes. A rollover that keeps the operation active must retain its
-native ownership; if it ends ownership, old writable access must end before admission of another operation.
+**Only the laptop acquires authoritative Session and catalog locks and writes managed history.** The laptop owner
+validates the operation and request identity, writes and synchronizes under its native lock, then acknowledges the exact
+saved entry. Identical retries reconcile against existing evidence without duplicate writes; conflicting payloads and
+stale-operation requests are refused. Mounted `tryLockSync` never grants writer authority.
 
 ```mermaid
 graph TD
-    A[Acquire laptop lock] --> B[Start guarded SFTP and fresh mount]
-    B --> C[Hydrate and run remote operation]
-    C --> D[Flush files and stop remote writes]
-    D --> E[Close old writable service]
-    E --> F[Commit local evidence]
-    F --> G[Release final lock owner]
+    A[Acquire laptop lock] --> B[Hydrate remote in-memory Session]
+    B --> C[Send synchronous save request]
+    C --> D[Validate, write and sync on laptop]
+    D --> E[Acknowledge exact saved entry]
+    E --> F[Continue dependent work]
+    F --> G[Commit generation and release ownership]
 ```
 
-Each managed operation gets fresh writable channels and mount identity. Protect the underlying remote mount directory
-before announcing readiness, so ordinary writes fail after unmount. Never re-enable an old operation's path for its
-successor. Idle terminals remain dormant readers and do not retain the writer lock. Empty starts do not create saved
-Sessions before the first user message.
+A save error or timeout remains a sticky operation fault. A late reply cannot clear it or complete another request.
+Independent supervision remains responsive during a blocked save. Stop dependent work, discard unsaved remote manager
+state, and reload laptop evidence without replaying model requests, tools, workflow decisions, or external effects. A
+timeout never expires a lock or permits takeover.
 
-Normal settlement is an explicit exchange, not simply killing SFTP. The remote runtime finishes pending writes and
-flushes, detaches its writable manager, and asks for settlement. The laptop ends old writable access and waits for its
-actual termination while retaining the lock. It then syncs local files/directories, computes evidence from local bytes,
-commits the manifest and recovery descriptors, and releases ownership. The completion acknowledgement follows this
-commit. A lost acknowledgement is reconciled from existing evidence, not by replaying work.
+Normal settlement and segment rollover remain laptop-owned Session-store transactions under continuous ownership. Finish
+admitted saves, commit predecessor/generation evidence and successor lineage, refuse delayed old-operation requests, and
+release final ownership only after settlement. Empty starts create no saved Session before the first user message; idle
+terminals remain dormant readers. Local history stays readable offline.
 
-Segment rollover is still a Session-store transaction under the same ownership: finish predecessor writes, prepare
-successor lineage, commit local segment/generation evidence, then authorize use of the successor. Attachments use local
-Session-owned storage with explicit transfer when selected on the laptop or produced remotely. Stable references must
-not contain a temporary mountpoint. Generation commits, manifests, catalog locks, and recovery stay laptop-owned even
-though Pi transcript writes use SFTP.
+Attachments transfer explicitly into laptop Session-owned storage, with stable references independent of temporary mount
+paths. Manifests, generations, recovery descriptors, catalog coordination, lifecycle operations and committed
+projections remain laptop-owned. Audit Session lifecycle writes outside the persistence hooks and support them through
+the owner or refuse them; never create a remote transcript or fall back to the personal mount.
 
-Early live UI events are not saved-success evidence. A storage failure blocks further dependent work and completion,
-even when an intermediate caller catches the error. Preserve saved entries across interrupted generation publication;
-mark uncertain remote effects for reconciliation. An edit or accepted publication can finish before its result reaches
-the laptop. No cross-machine transaction or automatic replay can make that uncertainty disappear.
+Early UI output is not saved-success evidence. Preserve saved entries across interrupted publication and distinguish
+proven saves from uncertain remote effects. Reconciliation cannot make an external action disappear or safely replay it.
 
 ### Personal resources, integrations, and Memory
 
@@ -300,15 +294,16 @@ state, installed runtime cache, and committed local history.
 
 **Reviewable timing defaults:** Application/control health every 5 seconds; loss after 3 missed replies; owned-process
 termination starts immediately with a 5-second grace period before forced termination. A separate 30-second deadline for
-an outstanding storage request detects a stuck SFTP service even when SSH is healthy. These are proposed testable
-operating defaults, not prototype measurements or a writer lease. An uninterruptible OS I/O operation can exceed them;
-never release/reassign a still-held lock to satisfy a timer. Stop dependent work and retain truthful recovery state.
+an outstanding personal-resource request detects a stuck SFTP service even when SSH is healthy. Managed Session saves
+use a separate finite deadline (about 5 seconds in the accepted proof). These are proposed testable operating defaults,
+not prototype measurements or a writer lease. An uninterruptible OS I/O operation can exceed them; never
+release/reassign a still-held lock to satisfy a timer. Stop dependent work and retain truthful recovery state.
 
-If the launcher dies but SFTP survives, the serving process must retain the lock. Independent supervision and later
-startup recovery remove the orphan safely; a new writer waits until the actual owner is gone. A watchdog may terminate
-owned processes, but cannot declare a held lock expired. Remote project mutation admission also remains tied to the live
-connection: loss stops new effects and owned work. No arbitrary daemon launched outside RunWield's ownership or already
-accepted external action can be rolled back by closing SSH.
+If the launcher dies, the laptop Session owner remains authoritative until its native ownership ends. Independent
+supervision and startup recovery settle or stop owned work safely; a new writer waits for actual ownership release. A
+watchdog may terminate owned processes, but cannot declare a held lock expired. Remote project mutation admission also
+remains tied to the live connection: loss stops new effects and owned work. No arbitrary daemon launched outside
+RunWield's ownership or already accepted external action can be rolled back by closing SSH.
 
 Reconnect creates fresh channels and runtime context, reads saved local history, and inspects remote workflow evidence
 before continuation. It does not resume a frozen stack or automatically replay tool calls. A failed attempt, lost
@@ -317,8 +312,11 @@ deliberate user abandonment.
 
 ### Alternatives and costs
 
-- **Per-entry network saves:** Avoid FUSE but require adapting synchronous Pi persistence and every metadata path. Not
-  selected. The mount preserves the file API; it still needs local ownership and settlement.
+- **Synchronous per-entry Session saves:** Selected on 2026-10-06 after the real Pi/SSH proof and owner acceptance of
+  measured save latency. Preserve synchronous append ordering, strict laptop acknowledgements and finite sticky faults.
+  The separate personal-resource mount remains required.
+- **Guarded Session writer mounts:** Set aside by that decision; stock SFTP lock inheritance is not a production
+  Session-storage requirement. Historical mounted-writer proofs below remain evidence, not the selected design.
 - **Custom confined SFTP:** The fixed-file proof was useful, but not a server to ship. The owner chose standard SFTP and
   trusted-host access, avoiding a new protocol implementation or confinement dependency.
 - **Plain SSH/profile copying:** Fails local personal authority and sign-in requirements. The full personal mount is
@@ -460,10 +458,11 @@ remote home outside Git. Core tools and custom missing-dependency behavior must 
 **Failure evidence:** Test normal exit, Stop, browser close, transport kill, a real blocked network path, launcher
 death, file-serving owner death, service stall, interrupted setup, and loss during
 write/sync/rollover/commit/publication. Competing laptop and remote processes must use the actual lock file.
-Continuously probe lock acquisition while error cleanup, store disposal, and segment rollover occur with stock SFTP
-still able to write; no explicit unlock may admit a successor early. Launcher-death testing alone does not cover this.
-Retry only requests whose effects can be determined. Measure detection and cleanup deadlines; assert unrelated processes
-survive. A killed tunnel is not a partition test.
+Continuously probe lock acquisition during saves, errors, store disposal, settlement and rollover; no release or timeout
+may admit a successor while the old operation can still write. Test duplicate/conflicting save identities, Worker and
+laptop-owner death, late replies, sticky faults and refusal of stale requests after successor acquisition. Retry only
+requests whose effects can be determined. Measure detection and cleanup deadlines; assert unrelated processes survive. A
+killed tunnel is not a partition test.
 
 ### Outcome Evidence
 
@@ -473,8 +472,8 @@ survive. A killed tunnel is not a partition test.
 | Correct personal authority              | Personal settings and Memory saves are visible locally before exit; project overrides save remotely; no normal setup copies provider keys or imports a remote personal profile.                                          | Local personal environment; Local memories and saved Sessions |
 | Complete skill resources, honest limits | Nested personal files are read directly through the mount; edits reach laptop files without copy-back. Relative reads work; missing custom CLIs report failure while core works.                                         | Local personal environment                                    |
 | Local model execution                   | Actual remote tool result reaches a second locally authenticated request; stream/result/options match; renewal stays local; cancellation stops upstream; unsupported CLI choice fails without substitution.              | Local personal environment                                    |
-| One Session writer                      | Stock serving process retains native lock after launcher death; competitors cannot write; successor starts only after old writable access ends; stale handles cannot change successor bytes.                             | Local memories and saved Sessions                             |
-| Local saved history                     | Completed saves and generations survive loss; local store computes evidence and syncs directories; protected mountpoint cannot accept fallback writes; no remote personal transcript remains.                            | Local memories and saved Sessions; Disconnect and recovery    |
+| One Session writer                      | Laptop owner alone holds the native lock and saves entries; competitors cannot write; stale save requests cannot change successor bytes after settlement.                                                                | Local memories and saved Sessions                             |
+| Local saved history                     | Per-entry acknowledgements follow laptop write and sync; saved entries and generations survive loss; faults stop dependent work; no remote transcript or personal-mount fallback exists.                                 | Local memories and saved Sessions; Disconnect and recovery    |
 | Correct identity and Memory             | Unrelated same-name folders remain distinct; worktrees preserve project identity; known alias changes reuse it; deliberate Memory sharing does not merge Sessions; injection/tools/sleep use the same binding.           | Local memories and saved Sessions                             |
 | Complete remote delivery                | File/shell/search/build/test/Git/worktree/validation/repair/publication all act on the remote-only project; laptop sentinel tree stays unchanged; child Agents retain remote context.                                    | Remote workflows and local review                             |
 | Local usable review                     | Browser displays remote Plan/diff/files/images; feedback reaches the same pending interaction; revisions/reopen/Guided Review work; browser close alone preserves the wait.                                              | Remote workflows and local review                             |
@@ -513,9 +512,9 @@ the implemented extension without reintroducing leases. Actual decomposition is 
   belongs to release validation. Do not label every Linux host supported because one Fedora x64 test passed.
 - **MCP placement and timing:** The origin-based integration defaults and explicit detection deadlines above are
   proposed operating choices for review, not additional owner decisions already made.
-- **Stock ownership:** Combined stock SFTP mounting, descriptor retention, settlement, and recovery remain a release
-  gate on each advertised laptop build. The custom proof cannot satisfy it. Unsupported semantics require an explicit
-  error and repair or a reviewed design change, not an unlocked run.
+- **Session ownership:** The synchronous laptop-owned save bridge, strict per-entry acknowledgement, native exclusion,
+  sticky faults, settlement and stale-request refusal require production qualification on each advertised build. The
+  earlier stock-SFTP lock proof cannot establish these guarantees; unsupported semantics must stop dependent work.
 - **Complete bridge semantics:** Pi proxy option/event gaps remain integration work. General Pi support cannot be
   claimed from one successful Codex model. Publish only tested support; keep the intended Pi contract as the target.
 
