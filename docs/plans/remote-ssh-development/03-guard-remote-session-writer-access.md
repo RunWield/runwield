@@ -27,14 +27,15 @@ affectedPaths:
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-09-21T02:05:49.075Z"
-status: "draft"
 origin: "internal"
 parentPlan: "remote-ssh-development"
 order: 3
 dependencies:
     - "01-establish-the-remote-connection-and-matched-runtime"
     - "02-bridge-local-models-and-personal-resources"
+userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
+status: "in_progress"
 ---
 
 # Guard Remote Session Writer Access
