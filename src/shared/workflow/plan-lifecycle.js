@@ -772,6 +772,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
         // finished implementation is repaired and revalidated. Do not duplicate
         // that mutable state in Plan front matter.
         updates.failureReason = details.failureReason || "Workflow Validation failed.";
+        if (details.validationCheckpoint !== undefined) updates.validationCheckpoint = details.validationCheckpoint;
     }
 
     if (event === "epic_done_enough") {

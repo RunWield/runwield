@@ -21,7 +21,7 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { addEntry, findById } from "../worktree-registry.js";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
+import { continueWorkflowValidation } from "./validation.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.js";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
 

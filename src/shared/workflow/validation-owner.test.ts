@@ -48,8 +48,11 @@ test("every production entry uses one validation owner", async () => {
         assertEquals(source.includes("runValidationLoop"), false, `${relativePath} bypasses the supervisor`);
     }
     const supervisor = await fsReadFile(new URL("./validation-supervisor.ts", import.meta.url), "utf8");
-    assert(supervisor.includes("export async function continueWorkflowValidation"));
-    assert(supervisor.includes("export async function runWorkflowValidationToStableBoundary"));
+    const composition = await fsReadFile(new URL("./validation.ts", import.meta.url), "utf8");
+    assert(composition.includes("export async function continueWorkflowValidation"));
+    assert(composition.includes("export async function runWorkflowValidationToStableBoundary"));
+    assert(composition.includes("await runValidationAttempt"));
+    assert(supervisor.includes("export async function runValidationAttempt"));
     assert(supervisor.includes("await runValidationLoop"));
     assert(supervisor.includes("continuationPhase: claim.checkpoint.nextPhase"));
     assert(supervisor.includes("prior.lastSettledOperationId === args.taskCompletionId"));

@@ -18,7 +18,7 @@ import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/
 import { loadPublishedWorkRecordSource } from "../work-records/published-source.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { executePlan } from "./plan-executor.ts";
-import { runWorkflowValidationToStableBoundary } from "./validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "./validation.ts";
 import { verifyRecordedPublication } from "./validation-merge-verification.ts";
 import { inspectControllerView } from "./controller-registry.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";

@@ -25,7 +25,7 @@ import { createTestWorktreeAttempt, makeRepo } from "../worktree-test-helpers.ts
 import { createEngineValidationArgs, shouldContinueParentEpicAfterValidation } from "./validation.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { runPublicationPhase } from "./validation-publication.ts";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
+import { continueWorkflowValidation } from "./validation.ts";
 import { loadPublicationAttempt, startPublicationAttempt } from "./publication-machine.ts";
 import {
     createValidationProgress,

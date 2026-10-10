@@ -22,6 +22,17 @@ affectedPaths:
     - "src/tools/review-complete.ts"
     - "docs/validation-authority.md"
     - "docs/domain-language.md"
+planDeviations:
+    - id: "call_9da46d4497274157a1b997377627fc1c|fc_02d79525bc0c4b5a016ac97d95ea4087d1b2dc227e6f317d6a"
+      supersededRequirement: "The existing supervisor, resume, and self-healing suites pass without assertion changes."
+      replacementRequirement: "The existing supervisor, resume, and self-healing suites pass. Update only the source-location assertions in validation-owner.test.ts to check the moved Session entry points in validation.ts and the shared attempt runner in validation-supervisor.ts, while preserving the single-owner guarantee. Keep all behavior assertions unchanged."
+      reason: "The current source-location assertions require Session entry points to remain in the supervisor, which conflicts with step 1's approved composition boundary."
+      approvedAt: "2026-10-09T23:50:01.598Z"
+    - id: "call_2a63a1837108492f90640a5133566383|fc_02d79525bc0c4b5a016ac9acd995e487d1b1b5e4932279ce6d"
+      supersededRequirement: "After each step the test checks that no file changed outside the Plan, worktree, delivery evidence, metrics, and settings. This catches state kept in a hidden sidecar file. Engineer follow-up writes before its wait. It records validation_failed and then returns a repair request."
+      replacementRequirement: "After each step the test checks that no file changed outside the Plan, worktree, delivery evidence, metrics, settings, and the existing Core Workspace search-refresh marker for that project. This still rejects hidden validation sidecar state. CI-exhaustion Engineer follow-up matches Core: it returns the durable repair request without a host-only validation_failed event. Keep the existing Core lifecycle behavior and shared answer branches authoritative."
+      reason: "The shared Plan writer updates the existing derived Workspace search-refresh marker. Core's CI-exhaustion Engineer follow-up does not record validation_failed; adding it only in host mode breaks lifecycle parity."
+      approvedAt: "2026-10-10T03:37:26.878Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-09T04:28:01.000Z"
@@ -30,9 +41,9 @@ parentPlan: "attached-mode-claude-feature-preview"
 order: 5
 dependencies:
     - "04-implement-approved-plans-in-runwield-worktrees"
-targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
-status: "in_progress"
+targetBranch: "epic/attached-mode-claude-feature-preview"
+status: "implemented"
 ---
 
 # Run Workflow Validation without a Core Session
