@@ -31,8 +31,8 @@ dependencies:
     - "03-guard-remote-session-writer-access"
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "68ff6362164a60d51360741fdbd8f0bf65f1dce4"
+status: "verified"
 ---
 
 # Run and Resume Remote Sessions with Local History
