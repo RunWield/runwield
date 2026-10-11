@@ -10,8 +10,8 @@ before any code changes, has specialized agents build it, and won't call the wor
 confirm it matches the plan. Every decision is recorded, so the next change starts from what your team already learned.
 The core is free, runs locally, and it works with any model.
 
-Ceremony scales with risk: quick fixes stay quick, and only risky work gets a plan. Big implementations get an expert
-architect review and a series of plans to implement in manageable chunks.
+Ceremony scales with risk: quick fixes stay quick, and only high-risk work gets a plan. Big implementations get an
+expert architect review and a series of plans to implement in manageable chunks.
 
 ```text
 ideate -> plan -> execute -> record -> use records to plan better
