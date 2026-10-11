@@ -264,7 +264,7 @@ that mutate them with `withProcessGlobalTestLock`.
   ```sh
   deno run -A scripts/run-tests.js src/ui/tui/chat-session.test.ts src/ui/tui/slash-dispatch.test.ts src/ui/tui/model-welcome.test.ts src/shared/settings.test.js
   deno run -A scripts/run-tests.js src/shared/session/session-runtime.test.js src/shared/session/segment-rollover.test.js
-  deno run -A scripts/run-tests.js src/ui/tui/golden-scenarios/initial-scenarios.test.js src/ui/tui/golden-scenarios/planned-change-workflow.test.js src/ui/tui/golden-scenarios/session-resume-workflow.test.ts src/ui/tui/golden-scenarios/validation-publication-journey.test.ts
+  deno run -A scripts/run-tests.js src/ui/tui/golden-scenarios/initial-scenarios.test.js src/ui/tui/golden-scenarios/planned-change-workflow.test.ts src/ui/tui/golden-scenarios/session-resume-workflow.test.ts src/ui/tui/golden-scenarios/validation-publication-journey.test.ts
   ```
 - Composed startup: test Start, Skip, restart, another repository, explicit invocation after dismissal, existing users,
   and no-model cancellation. Assert Skip remains suppressed after a large clock advance, a model/theme settings save,
