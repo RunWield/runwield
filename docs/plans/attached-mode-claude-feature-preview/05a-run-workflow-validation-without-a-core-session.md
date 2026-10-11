@@ -44,6 +44,7 @@ dependencies:
 userVerifiedAt: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
 status: "reviewed"
+validatedCommit: "4f7ff53471f75303b7c2f122117fd120a324bcf0"
 ---
 
 # Run Workflow Validation without a Core Session
