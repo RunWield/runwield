@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync, realpathSync, renameSync, statSync } from "node:fs";
 import { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
-export { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
+export { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../private-json-file.ts";
 import { encodeCwdForSessionDir } from "./session-directory-name.ts";
 import type { FileSessionManifest, FileSessionProject } from "./file-session-store-types.ts";
 

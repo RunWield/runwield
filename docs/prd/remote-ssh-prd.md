@@ -185,9 +185,10 @@ Machine-specific scripts and MCP integrations are best effort, not a promise tha
 
 ### Local memories and saved Sessions
 
-**Scope and maturity:** Proposed extension of project context and Session continuity. The connection-only view creates
-no saved Session or writer lock. The existing connection-wide personal SFTP/SSHFS mount is not a Session writer: managed
-transcript writes require separate guarded operation-scoped access.
+**Scope and maturity:** Project identity, memory scope, and the user resume journey are defined below. The laptop-owned
+save bridge operates on registered Session bundles under the
+[Core remote-save contract](runwield-core-prd.md#laptop-owned-remote-session-saves). The connection-wide personal
+SFTP/SSHFS mount is not a Session writer.
 
 **Requirement: Read and update the same local memories.** Core Memory injection, recall, additions, and deletions use
 local storage and preserve project/global scope. Work Record retrieval reads the remote project's canonical records. A
@@ -246,9 +247,10 @@ review server. Closing only the browser does not end the SSH Session.
 
 ### Disconnect and recovery
 
-**Scope and maturity:** Proposed connected-only Agent and workflow behavior. The current connection-only supervisor
-stops its own view on exit or detected loss; there is no remote Agent or Session work to stop or recover. This does not
-change Workspace browser-disconnect behavior.
+**Scope and maturity:** Connected-only Agent and workflow requirements are defined below. The supervisor stops its owned
+processes on exit or detected loss, independently of a blocked save thread. Session-save uncertainty follows the
+[Core remote-save recovery contract](runwield-core-prd.md#laptop-owned-remote-session-saves). This does not change
+Workspace browser-disconnect behavior.
 
 **Requirement: Do not continue unattended.** Normal exit ends the remote TUI and stops active RunWield-owned work.
 Unexpected connection loss stops new work and cancels active owned processes when loss is detected, including when the

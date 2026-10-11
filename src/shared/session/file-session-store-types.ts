@@ -104,6 +104,13 @@ export interface FileSessionManifest {
     lastPlanReview?: LastPlanReviewReference;
 }
 
+export interface PendingTranscriptMigration {
+    beforeByteLength: number;
+    beforeDigestHex: string;
+    after: TranscriptEvidence;
+    headerVersion: number;
+}
+
 export interface FileSessionActivation {
     state: "uninitialized" | "idle" | "active" | "uncertain" | "reconcile_required";
     phase: SessionPhase | null;
@@ -116,6 +123,7 @@ export interface FileSessionActivation {
     blockedReason: string | null;
     baselineByteLength?: number | null;
     baselineDigestHex?: string | null;
+    pendingMigration?: PendingTranscriptMigration;
 }
 
 export interface FileSessionGeneration {
@@ -438,6 +446,19 @@ export interface FileSessionStore {
     inspectSegmentRolloverRecovery(options: InspectRolloverOptions): Promise<RolloverInspection>;
     discardOrphanRolloverCandidate(options: DiscardOrphanOptions): Promise<void>;
     validateSuccessorSegmentLocator(options: SuccessorLocator): Promise<CatalogedTranscriptLocator>;
+    /** Admission and I/O both run while this store holds the actual native writer lock. */
+    readActiveSessionTranscript(proof: FileActivationProof): string;
+    writeActiveSessionTranscript(
+        proof: FileActivationProof,
+        contents: string,
+        expectedDigestHex: string,
+    ): TranscriptEvidence;
+    /** Laptop migration also advances the baseline from which interrupted saves recover. */
+    migrateActiveSessionTranscript(
+        proof: FileActivationProof,
+        contents: string,
+        expectedDigestHex: string,
+    ): FileActivationProof;
     inspectSessionActivation(runwieldSessionId: string): SessionControlSnapshot;
     acquireSessionActivation(options: ActivationOptions): FileActivationProof;
     changeSessionActivationPhase(
