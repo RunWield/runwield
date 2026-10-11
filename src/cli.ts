@@ -103,7 +103,15 @@ function resolveHelpRequest(
 }
 
 async function main(): Promise<void> {
-    const args = Deno.args;
+    let allowSystemDirectory = false;
+    const args = [...Deno.args];
+    // Only consume the acknowledgement in the leading global prefix.
+    for (let index = 0; index < args.length; index++) {
+        if (args[index] === "--allow-system-directory") {
+            allowSystemDirectory = true;
+            args.splice(index--, 1);
+        } else if (!["--continue", "-c", "--help", "-h", "--version", "-v"].includes(args[index])) break;
+    }
 
     const parsed = parseArgs(args, {
         stopEarly: true,
@@ -139,9 +147,10 @@ async function main(): Promise<void> {
         return;
     }
 
-    const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface } = await import(
-        "./cmd/registry.js"
-    );
+    const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface, requiresProjectDirectoryConsent } =
+        await import(
+            "./cmd/registry.js"
+        );
     const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.js");
 
     const helpRequest = resolveHelpRequest(args, COMMAND_NAMES);
@@ -172,6 +181,18 @@ async function main(): Promise<void> {
     if (firstPositional === COMMAND_NAMES.ACP && normalizedArgs[1] === COMMAND_NAMES.LOGIN) {
         await commandRegistry[COMMAND_NAMES.LOGIN].execute(normalizedArgs.slice(2));
         return;
+    }
+
+    if (requiresProjectDirectoryConsent(firstPositional, normalizedArgs.slice(1))) {
+        const { confirmProjectDirectory, allowSystemDirectoriesForInvocation } = await import(
+            "./ui/tui/directory-warning.ts"
+        );
+        if (allowSystemDirectory) allowSystemDirectoriesForInvocation();
+        const { getCwd } = await import("./constants.js");
+        if (!await confirmProjectDirectory(getCwd(), allowSystemDirectory)) return;
+        const { resolvePrimaryCheckoutRoot } = await import("./shared/primary-checkout.ts");
+        const primaryRoot = resolvePrimaryCheckoutRoot(getCwd());
+        if (primaryRoot !== getCwd() && !await confirmProjectDirectory(primaryRoot, allowSystemDirectory)) return;
     }
 
     if (firstPositional === "guided-review") {
@@ -220,6 +241,8 @@ async function main(): Promise<void> {
 try {
     await main();
 } catch (err) {
+    const { DirectoryStartupCanceled } = await import("./ui/tui/directory-warning.ts");
+    if (err instanceof DirectoryStartupCanceled) Deno.exit(0);
     if (!isProtocolOnlyStartup(Deno.args)) {
         try {
             const { stopTUI } = await import("./ui/tui/tui.ts");

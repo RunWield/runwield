@@ -55,6 +55,9 @@ async function resolveWorkflowPlanLocationInScope(
         let plan = await loadPlan(attempt.path, planName);
         let recoveredWorktree: MissingExecutionWorktreeRecovery | undefined;
         if (!plan && !await executionWorktreePathExists(attempt.path)) {
+            if (options.readOnly) {
+                return { registryRoot, documentRoot: attempt.path, plan: null, missingManagedExecutionWorktree: true };
+            }
             recoveredWorktree = await recoverMissingExecutionWorktree(registryRoot, attempt);
             if (recoveredWorktree.recovered) plan = await loadPlan(attempt.path, planName);
         }

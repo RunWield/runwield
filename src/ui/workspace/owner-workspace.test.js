@@ -895,3 +895,81 @@ Deno.test("owner Workspace reviews a complete Sequence and rejects stale sibling
         await Deno.remove(dir, { recursive: true });
     }
 });
+
+Deno.test("owner add and relink expose redacted confirmation before writes and keep auth", async () => {
+    const { getHomeDir } = await import("../../constants.js");
+    const dir = await Deno.makeTempDir();
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    const pairing = store.createPairingRequest({ codeFactory: () => "HOME12", proofFactory: () => "home-proof" });
+    store.approvePairingRequest(pairing.code);
+    const claimed = store.claimPairingRequest(pairing.proof, {
+        credentialFactory: () => "home-credential",
+        csrfFactory: () => "csrf-secret",
+    });
+    const owner = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
+    const app = owner.handler();
+    const request = (path, body, authenticated = true) =>
+        app(
+            new Request(`http://127.0.0.1:8787${path}`, {
+                method: "POST",
+                headers: {
+                    origin: "http://127.0.0.1:8787",
+                    "content-type": "application/json",
+                    ...(authenticated
+                        ? { cookie: cookiePair(claimed.credential), "x-runwield-csrf": "csrf-secret" }
+                        : {}),
+                },
+                body: JSON.stringify(body),
+            }),
+        );
+    try {
+        const root = getHomeDir();
+        const unauthenticated = await request("/api/owner/projects", { root }, false);
+        assertEquals(unauthenticated.status, 401);
+        const refusal = await request("/api/owner/projects", { root });
+        assertEquals(refusal.status, 409);
+        const warning = await refusal.json();
+        assertEquals(warning.code, "directory_confirmation_required");
+        assertEquals(JSON.stringify(warning).includes(root), false);
+        assertEquals(store.listProjects(), []);
+        const alias = `${dir}/root-alias`;
+        await Deno.symlink(root, alias);
+        assertEquals(
+            (await request("/api/owner/projects", { root: alias, directoryConfirmation: warning.confirmation })).status,
+            409,
+        );
+        const aliasWarning = await (await request("/api/owner/projects", { root: alias })).json();
+        await Deno.remove(alias);
+        await Deno.symlink("/", alias);
+        assertEquals(
+            (await request("/api/owner/projects", { root: alias, directoryConfirmation: aliasWarning.confirmation }))
+                .status,
+            409,
+        );
+        assertEquals(store.listProjects(), []);
+        const ordinary = await request("/api/owner/projects", { root: dir });
+        assertEquals(ordinary.status, 201);
+        const projectId = (await ordinary.json()).project.projectId;
+        const evidence = store.listProjectRootEvidence(projectId);
+        const relinkPath = `/api/owner/projects/${projectId}/action`;
+        assertEquals((await request(relinkPath, { action: "relink", newRoot: root })).status, 409);
+        assertEquals(store.listProjectRootEvidence(projectId), evidence);
+        assertEquals(
+            (await request(relinkPath, {
+                action: "relink",
+                newRoot: root,
+                directoryConfirmation: warning.confirmation,
+            })).status,
+            200,
+        );
+        assertEquals((await request("/api/owner/projects", { root })).status, 409);
+        assertEquals(
+            (await request("/api/owner/projects", { root, directoryConfirmation: warning.confirmation })).status,
+            201,
+        );
+    } finally {
+        await owner.close();
+        store.close();
+        await Deno.remove(dir, { recursive: true });
+    }
+});

@@ -1108,3 +1108,11 @@ Artifact links sit beside the corresponding evidence row (and the approved Plan 
 button group or “in browser” suffix. TUI mouse links open the same registered artifact reader; Esc then Alt+] remains
 the keyboard path. An explicitly skipped Code Review replaces its selection controls with the ordinary RunWield status
 “Code Review skipped”. Dismissed offers remain pending and do not claim a decision.
+
+## Confirmation dialog
+
+`RunWieldConfirmationDialog.tsx` is the shared compact Continue/Quit modal for Project root consent. It uses a native
+`dialog` for keyboard containment and Escape dismissal, initially focuses Quit, and restores focus on close. The detail
+wraps long entered paths. `.rw-confirmation-dialog` and its detail/actions classes use semantic `--rw-*` surface, text,
+border, and page-background tokens with existing rectangular action buttons. Use it for a cancelable warning; it is not
+an authentication prompt or a destructive-operation approval. Add and relink share `ProjectRootForm.tsx`.

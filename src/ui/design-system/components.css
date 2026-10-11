@@ -2343,3 +2343,29 @@ button.danger-action:disabled {
         margin-block: 12px;
     }
 }
+
+/* Root consent uses a compact native modal, not a destructive-operation alert. */
+.rw-confirmation-dialog {
+    max-width: min(32rem, calc(100vw - 2rem));
+    box-sizing: border-box;
+    padding: 1rem;
+    border: 1px solid var(--rw-border);
+    border-radius: 6px;
+    background: var(--rw-surface);
+    color: var(--rw-text);
+}
+.rw-confirmation-dialog::backdrop {
+    background: color-mix(in srgb, var(--rw-page-bg) 80%, transparent);
+}
+.rw-confirmation-dialog h2 {
+    font-size: 1rem;
+    margin-top: 0;
+}
+.rw-confirmation-detail {
+    overflow-wrap: anywhere;
+}
+.rw-confirmation-actions {
+    display: flex;
+    gap: .5rem;
+    justify-content: flex-end;
+}

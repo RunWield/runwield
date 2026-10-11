@@ -21,6 +21,8 @@ const STD_EXTERNALS = [
     "@std/front-matter",
     "@std/jsonc",
     "@std/path",
+    "@std/path/windows",
+    "@std/path/posix",
 ];
 
 export default defineConfig({
