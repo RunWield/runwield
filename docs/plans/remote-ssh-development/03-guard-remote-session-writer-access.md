@@ -36,6 +36,7 @@ dependencies:
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 status: "reviewed"
+validatedCommit: "fe2ef67da32e1f79fec8e38e2b58b6ec5859b5be"
 ---
 
 # Guard Remote Session Writer Access
