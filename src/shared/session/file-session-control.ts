@@ -3,9 +3,11 @@
  * Operation-scoped writer locks, generation publication, and explicit recovery.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, openSync, closeSync, writeSync, fsyncSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { openNativeFileLock } from "../native-file-lock.ts";
+import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
+import { inspectRecoverableSessionTranscript } from "../remote/session-protocol.ts";
 import { requestWorkspaceSearchRefresh } from "../workspace-search-refresh.ts";
 import {
     activationView,
@@ -14,6 +16,7 @@ import {
     generationView,
     idleActivation,
     markRecoveryAfterAbandonedWriter,
+    reconcilePendingTranscriptMigration,
     releaseHeldLock,
     requireHeldLock,
 } from "./file-session-activation-state.ts";
@@ -27,6 +30,7 @@ import {
     lockPath,
     readJson,
     sessionDirForManifestPath,
+    writeTextAtomically,
 } from "./file-session-storage.ts";
 import type {
     FileActivationProof,
@@ -57,6 +61,9 @@ function dropPendingPlanAssociations(manifest: FileSessionManifest): void {
 
 type FileSessionControl = Pick<
     FileSessionStore,
+    | "readActiveSessionTranscript"
+    | "writeActiveSessionTranscript"
+    | "migrateActiveSessionTranscript"
     | "archiveSession"
     | "unarchiveSession"
     | "inspectSessionActivation"
@@ -110,11 +117,89 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 file.unlockSync();
             }
         } finally {
-            file.close();
+            closeSync(file);
         }
     }
 
+    function activeTranscript(proof: FileActivationProof) {
+        requireLocalSessionWriter();
+        const held = requireHeldLock(locks, proof);
+        const manifest = readJson<FileSessionManifest>(held.manifestPath);
+        assertProof(manifest, proof);
+        if (manifest.activation.pendingMigration) throw new Error("Session migration must settle before writing");
+        if (manifest.runwieldSessionId !== proof.runwieldSessionId || manifest.projectId !== proof.projectId) {
+            throw new Error("Session writer identity was rejected");
+        }
+        const segment = manifest.segments.find((item) => item.segmentId === manifest.currentSegmentId);
+        if (!segment || segment.sealedAt || segment.segmentId !== proof.expectedCurrentSegmentId) {
+            throw new Error("Session segment is not writable");
+        }
+        return segment.transcriptPath;
+    }
+
     return {
+        readActiveSessionTranscript(proof) {
+            return readFileSync(activeTranscript(proof), "utf8");
+        },
+        writeActiveSessionTranscript(proof, contents, expectedDigestHex) {
+            const path = activeTranscript(proof);
+            const old = readFileSync(path);
+            if (createHash("sha256").update(old).digest("hex") !== expectedDigestHex) {
+                throw new Error("Session transcript evidence changed");
+            }
+            const bytes = new TextEncoder().encode(contents);
+            const terminal = JSON.parse(contents.trimEnd().split("\n").at(-1) || "null");
+            const append = bytes.length >= old.length && old.every((byte, index) => bytes[index] === byte);
+            if (!append) {
+                writeTextAtomically(path, contents);
+            } else {
+                const file = openSync(path, "a");
+                try {
+                    let offset = old.length;
+                    while (offset < bytes.length) offset += writeSync(file, bytes.subarray(offset));
+                    fsyncSync(file);
+                } finally {
+                    closeSync(file);
+                }
+            }
+            const saved = readFileSync(path);
+            if (saved.length !== bytes.length || !saved.every((byte, index) => byte === bytes[index])) {
+                throw new Error("Session save bytes did not match");
+            }
+            return {
+                byteLength: bytes.length,
+                digestHex: createHash("sha256").update(bytes).digest("hex"),
+                terminalEntryId: terminal?.type === "session" ? null : terminal?.id ?? null,
+            };
+        },
+        migrateActiveSessionTranscript(proof, contents, expectedDigestHex) {
+            if (proof.phase !== "preparing") throw new Error("Session migration requires preparing phase");
+            const path = activeTranscript(proof);
+            const before = readFileSync(path);
+            if (createHash("sha256").update(before).digest("hex") !== expectedDigestHex) {
+                throw new Error("Session migration evidence changed");
+            }
+            const terminal = JSON.parse(contents.trimEnd().split("\n").at(-1) || "null");
+            const held = requireHeldLock(locks, proof);
+            const manifest = readJson<FileSessionManifest>(held.manifestPath);
+            assertProof(manifest, proof);
+            manifest.activation.pendingMigration = {
+                beforeByteLength: before.length,
+                beforeDigestHex: expectedDigestHex,
+                after: {
+                    byteLength: new TextEncoder().encode(contents).length,
+                    digestHex: createHash("sha256").update(contents).digest("hex"),
+                    terminalEntryId: terminal?.type === "session" ? null : terminal?.id ?? null,
+                },
+                headerVersion: JSON.parse(contents.split("\n", 1)[0]).version,
+            };
+            // Intent is durable before the atomic replacement, so owner death cannot orphan the new digest.
+            manifests.write(manifest, held.manifestPath);
+            writeTextAtomically(path, contents);
+            reconcilePendingTranscriptMigration(manifest, isoNow(options.now));
+            manifests.write(manifest, held.manifestPath);
+            return { ...proof, expectedGeneration: manifest.activation.expectedGeneration };
+        },
         archiveSession(runwieldSessionId, projectId) {
             return setArchiveState(runwieldSessionId, projectId, true);
         },
@@ -126,7 +211,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             const found = manifests.resolve(runwieldSessionId);
             if (!found) return { activation: null, generation: null };
             let manifest = found.manifest;
-            if (manifest.activation.state === "active") {
+            if (manifest.activation.state === "active" || manifest.activation.pendingMigration) {
                 const sessionDir = sessionDirForManifestPath(found.path);
                 const file = openNativeFileLock(lockPath(sessionDir, manifest.runwieldSessionId));
                 try {
@@ -140,7 +225,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                         }
                     }
                 } finally {
-                    file.close();
+                    closeSync(file);
                 }
             }
             return { activation: activationView(manifest), generation: generationView(manifest) };
@@ -153,7 +238,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             ensurePrivateDir(bundleDir(sessionDir, found.manifest.runwieldSessionId));
             const file = openNativeFileLock(lockPath(sessionDir, found.manifest.runwieldSessionId));
             if (!file.tryLockSync(true)) {
-                file.close();
+                closeSync(file);
                 throw new Error("Session is open in another RunWield surface");
             }
             const operationId = activationOptions.operationId ||
@@ -229,7 +314,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 try {
                     file.unlockSync();
                 } finally {
-                    file.close();
+                    closeSync(file);
                 }
                 throw error;
             }
@@ -348,6 +433,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             try {
                 const manifest = readJson<FileSessionManifest>(held.manifestPath);
                 assertProof(manifest, proof);
+                reconcilePendingTranscriptMigration(manifest, isoNow(options.now));
                 manifest.activation = idleActivation(manifest);
                 dropPendingPlanAssociations(manifest);
                 manifests.write(manifest, held.manifestPath);
@@ -363,7 +449,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             const sessionDir = sessionDirForManifestPath(found.path);
             const file = openNativeFileLock(lockPath(sessionDir, found.manifest.runwieldSessionId));
             if (!file.tryLockSync(true)) {
-                file.close();
+                closeSync(file);
                 throw new Error("Session is still open in another RunWield surface");
             }
             try {
@@ -378,7 +464,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 if (expectedSegment !== manifest.currentSegmentId) {
                     throw new Error("Session recovery segment changed; refresh and retry");
                 }
-                const evidence = recoveryOptions.transcriptEvidence;
+                let evidence = recoveryOptions.transcriptEvidence;
                 const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
                 if (!current) throw new Error("Session recovery transcript is unavailable");
                 const bytes = readFileSync(current.transcriptPath);
@@ -411,6 +497,21 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 ) {
                     throw new Error("Session recovery transcript changed; refresh and retry");
                 }
+                if (bytes.at(-1) !== 10) {
+                    const recovered = inspectRecoverableSessionTranscript(bytes);
+                    const retained = new TextEncoder().encode(recovered.contents);
+                    const baselineLength = manifest.generation?.byteLength ?? manifest.activation.baselineByteLength ??
+                        0;
+                    if (retained.length < baselineLength) {
+                        throw new Error("Recovery cannot discard saved baseline bytes");
+                    }
+                    writeTextAtomically(current.transcriptPath, recovered.contents);
+                    evidence = {
+                        byteLength: retained.length,
+                        digestHex: createHash("sha256").update(retained).digest("hex"),
+                        terminalEntryId: recovered.terminalEntryId,
+                    };
+                }
                 const now = isoNow(recoveryOptions.now || options.now);
                 const generation = recoveryOptions.expectedGeneration === null
                     ? 0
@@ -436,7 +537,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 return { activation: activationView(manifest), generation: generationView(manifest) };
             } finally {
                 file.unlockSync();
-                file.close();
+                closeSync(file);
             }
         },
 
@@ -446,7 +547,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             const sessionDir = sessionDirForManifestPath(found.path);
             const file = openNativeFileLock(lockPath(sessionDir, found.manifest.runwieldSessionId));
             if (!file.tryLockSync(true)) {
-                file.close();
+                closeSync(file);
                 throw new Error("Session is open in another RunWield surface");
             }
             try {
@@ -461,7 +562,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 return { activation: activationView(manifest), generation: generationView(manifest) };
             } finally {
                 file.unlockSync();
-                file.close();
+                closeSync(file);
             }
         },
 
@@ -470,6 +571,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             try {
                 const manifest = readJson<FileSessionManifest>(held.manifestPath);
                 assertProof(manifest, proof);
+                reconcilePendingTranscriptMigration(manifest, isoNow(options.now));
                 const baselineByteLength = manifest.activation.baselineByteLength;
                 const baselineDigestHex = manifest.activation.baselineDigestHex;
                 manifest.activation = {
@@ -492,6 +594,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             try {
                 const manifest = readJson<FileSessionManifest>(held.manifestPath);
                 assertProof(manifest, proof);
+                reconcilePendingTranscriptMigration(manifest, isoNow(options.now));
                 const baselineByteLength = manifest.activation.baselineByteLength;
                 const baselineDigestHex = manifest.activation.baselineDigestHex;
                 manifest.activation = {
