@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
+import type { ResolvedResource } from "../package-resources.ts";
 import {
     filterWldCompatibleExtensionResources,
     findPackageRootForExtensionResource,
@@ -49,7 +50,7 @@ Deno.test("filterWldCompatibleExtensionResources returns enabled package resourc
         await Deno.writeTextFile(join(incompatibleRoot, "package.json"), JSON.stringify({ pi: {} }));
         await Deno.writeTextFile(incompatiblePath, "export default () => ({});\n");
 
-        const resources = [
+        const resources: ResolvedResource[] = [
             {
                 path: compatiblePath,
                 enabled: true,
@@ -72,7 +73,7 @@ Deno.test("filterWldCompatibleExtensionResources returns enabled package resourc
             },
         ];
 
-        const compatible = await filterWldCompatibleExtensionResources(/** @type {any} */ (resources));
+        const compatible = await filterWldCompatibleExtensionResources(resources);
         assertEquals(getWldExtensionPaths(compatible), [compatiblePath]);
     } finally {
         await Deno.remove(root, { recursive: true }).catch(() => {});
@@ -89,13 +90,12 @@ Deno.test("findPackageRootForExtensionResource ascends from nested extension fil
         await Deno.writeTextFile(join(root, "package.json"), JSON.stringify({ pi: { wld: {} } }));
         await Deno.writeTextFile(extensionPath, "export default () => ({});\n");
 
-        const packageRoot = await findPackageRootForExtensionResource(
-            /** @type {any} */ ({
-                path: extensionPath,
-                enabled: true,
-                metadata: { source: "npm:nested", scope: "user", origin: "package", baseDir: nested },
-            }),
-        );
+        const resource: ResolvedResource = {
+            path: extensionPath,
+            enabled: true,
+            metadata: { source: "npm:nested", scope: "user", origin: "package", baseDir: nested },
+        };
+        const packageRoot = await findPackageRootForExtensionResource(resource);
 
         assertEquals(packageRoot, root);
     } finally {
