@@ -1,3 +1,5 @@
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { assert, assertEquals } from "@std/assert";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
@@ -98,5 +100,79 @@ Deno.test("saved latency, retry, compaction, and multibyte result measurements k
         );
         assertEquals([context?.currentUsage, context?.usageState], [null, "unknown_after_compaction"]);
         assertEquals(JSON.stringify(rows).includes("secret-pixels"), false);
+    });
+});
+
+Deno.test("model recorder retains only valid observed edges and reasoning, never default write timing", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot });
+        const startedAt = "2026-01-01T00:00:00.001Z";
+        const endedAt = "2026-01-01T00:00:01.002Z";
+        await recorder.recordModelUsage({
+            sourceId: "measured",
+            inputTokens: 2,
+            outputTokens: 12,
+            reasoningTokens: 7,
+            startedAt,
+            endedAt,
+        });
+        await recorder.recordModelUsage({ sourceId: "unmeasured", inputTokens: 2, outputTokens: 12 });
+        await recorder.recordModelUsage({
+            sourceId: "invalid",
+            inputTokens: 2,
+            outputTokens: 12,
+            startedAt: "2026-02-30T00:00:00.000Z",
+            endedAt: "private text",
+            reasoningTokens: 0,
+        });
+        const rows = await readMetrics();
+        assertEquals(rows.map((row) => [row.startedAt, row.endedAt, row.reasoningTokens, row.outputTokens]), [
+            [startedAt, endedAt, 7, 12],
+            [null, null, null, 12],
+            [null, null, 0, 12],
+        ]);
+    });
+});
+
+Deno.test("Pi reconciliation keeps reasoning within output and does not borrow timing for unobserved entries", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        const recorder = new ExecutionMetricsRecorder({ projectRoot });
+        const manager = SessionManager.inMemory(projectRoot);
+        const message = fauxAssistantMessage("Measured reply");
+        message.usage = { ...message.usage, input: 2, output: 12, reasoning: 7 };
+        await recorder.recordResponseLatency("turn_start");
+        recorder.recordPiAssistantMessageEnd(message);
+        manager.appendMessage(message);
+        manager.appendMessage({ ...message, usage: { ...message.usage, reasoning: undefined } });
+        manager.appendUsage("standalone", message.provider, message.model, message.usage);
+        manager.appendCompaction("summary", null, 10, undefined, false, message.usage);
+        manager.branchWithSummary(null, "branch", undefined, false, message.usage);
+        manager.appendMessage({
+            role: "toolResult",
+            toolCallId: "call",
+            toolName: "read",
+            content: [],
+            isError: false,
+            timestamp: Date.now(),
+            usage: message.usage,
+        });
+        await recorder.recordResponseLatency("turn_finish");
+        await recorder.reconcilePiEntries(manager.getEntries(), new Set());
+        const rows = (await readMetrics()).filter((row) => row.event === "model_usage");
+        assertEquals(rows.map((row) => row.reasoningTokens), [7, null, 7, 7, 7, 7]);
+        assertEquals(rows.map((row) => row.outputTokens), [12, 12, 12, 12, 12, 12]);
+        assertEquals(rows.map((row) => row.usageKind), [
+            "turn",
+            "turn",
+            "standalone",
+            "compaction",
+            "summary",
+            "request",
+        ]);
+        assert(typeof rows[0].startedAt === "string" && typeof rows[0].endedAt === "string");
+        assertEquals(
+            rows.slice(1).map((row) => [row.startedAt, row.endedAt]),
+            Array.from({ length: 5 }, () => [null, null]),
+        );
     });
 });

@@ -189,6 +189,22 @@ function allowEnum(value, allowed) {
 }
 
 /**
+ * @param {string} value
+ * @returns {string | null}
+ */
+export function normalizeObservedTime(value) {
+    const parts =
+        /^(\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d{1,3}))?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(
+            value,
+        );
+    if (!parts) return null;
+    const local = `${parts[1]}.${(parts[2] ?? "").padEnd(3, "0")}Z`;
+    if (!Number.isFinite(Date.parse(local)) || new Date(local).toISOString() !== local) return null;
+    const time = Date.parse(value);
+    return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
+/**
  * @param {unknown} value
  * @returns {number | undefined}
  */
@@ -336,6 +352,9 @@ const V2_EVENTS = {
     native_tool_observed: ["callId", "stepIndex", "toolName", "status"],
     model_usage: [
         "sourceId",
+        "startedAt",
+        "endedAt",
+        "reasoningTokens",
         "usageKind",
         "provider",
         "model",
@@ -651,6 +670,7 @@ const V2_LINKS = new Set([
     "sourceId",
 ]);
 const V2_NUMBERS = new Set([
+    "reasoningTokens",
     "sectionCount",
     "round",
     "initialFindingCount",
@@ -761,7 +781,10 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
     ];
     for (const key of fields) {
         const value = metric[key];
-        if (V2_LINKS.has(key)) {
+        if (key === "startedAt" || key === "endedAt") {
+            // Observed UTC ISO instants only. Invalid or missing edges are unavailable, not write time.
+            record[key] = typeof value === "string" ? normalizeObservedTime(value) : null;
+        } else if (V2_LINKS.has(key)) {
             if (typeof value === "string" && V2_IDENTIFIER.test(value)) record[key] = value;
             else if (value === null) record[key] = null;
         } else if (Object.hasOwn(V2_ENUMS, key)) {

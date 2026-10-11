@@ -2249,7 +2249,8 @@ retain delivery evidence. Scenarios guide verification but do not claim executab
 **Scope and maturity:** Current local recording is opt-in and stays on the device. The v2 observation layer includes
 linked execution, usage, command, and workflow-outcome records. The journal writer implements bounded cross-process
 locking, sync, epoch control, and repair. Core reporting, history deletion, exporter approval, and export coordination
-are current. Workspace dashboards, browser export controls, and the Langfuse destination remain target behavior.
+are current. A first-party [Langfuse exporter package](../../packages/langfuse-exporter/README.md) implements the
+Langfuse Cloud v4 protocol. Workspace dashboards and browser export controls remain target behavior.
 
 Installed exporter discovery and [saved host approval](#metrics-exporter-approval) are separate from destination
 consent. Core functions manage Export grants; this capability has no command-line setup flow.
@@ -2276,11 +2277,45 @@ transcript nor a billing charge. Missing measurements remain unavailable, not ze
 
 **Requirement: Supported backends preserve their measurement detail and upstream limits.** Pi retains native per-request
 measurements linked to assistant turns. Claude CLI retains request measurements, turn totals, and per-model detail as
-alternatives where they overlap. agy CLI retains turn-cumulative tokens; USD cost stays unavailable because its upstream
-result supplies no cost. Runtime events, saved entries, replay totals, the terminal footer, and Guided Review
-distinguish supplied zero from absent measurements. Replay reports compaction usage separately from assistant-message
-totals and marks partial category coverage. Historical zero-filled CLI entries cannot be reconstructed as measured or
-unavailable.
+alternatives where they overlap. Core retains these alternatives locally but excludes redundant alternative rows from
+all metrics exports. New Claude CLI and agy CLI usage rows identify input as excluding cache tokens; old rows keep their
+recorded basis. agy CLI retains turn-cumulative tokens and records USD cost as calculated when its model ID exactly
+matches the built-in Google price catalog. A missing catalog entry stays unavailable; a preview or alias model is not
+price evidence. Upstream-reported cost stays distinct from calculated cost. Pi and agy reasoning counts are recorded as
+a subset of output, not added to it. Missing reasoning or cache-write counts stay unavailable.
+
+Usage rows record start and end times only when observed for that row. CLI aggregate timing measures the subprocess
+turn, not model-server latency. Pi assistant timing is captured during its turn, not at settlement. Claude alternative
+request rows and other unobserved rows retain null timing. Old rows are not rewritten.
+
+Runtime events, saved entries, replay totals, the terminal footer, and Guided Review distinguish supplied zero from
+absent measurements. Replay reports compaction usage separately from assistant-message totals and marks partial category
+coverage. Historical zero-filled CLI entries cannot be reconstructed as measured or unavailable.
+
+**Requirement: Langfuse export preserves Core evidence without content or duplicate totals.** The first-party package
+uses Langfuse Cloud v4 OTLP HTTP ingestion, not legacy ingestion. Each attempt sends one immutable observation. Model
+requests become generations; CLI turn aggregates become one explicitly labeled generation. Workflow and tool facts use
+fixed-name spans. Related facts have deterministic trace and parent IDs. No parent is resent to add a child. No prompts,
+input/output content, events, exceptions, local paths, arbitrary text, or automatic resource attributes are sent.
+
+Native usage buckets are non-overlapping. Cache-inclusive input is reduced only when both cache counts are known.
+Unknown cache basis keeps counts in metadata only. Reasoning is split from output. Partial rows send only known buckets,
+never zero for missing counts, and carry `usage_complete=false` with missing-bucket flags. Langfuse sums those sent
+buckets: its partial-row token total is a known subtotal, not a complete measurement. Cost carries Core's reported or
+calculated source. Unavailable cost sends neither cost details nor a native model name. Reported zero stays zero. A
+native model name is sent only with supplied cost. Langfuse can add its own calculated cost to vendor totals without an
+estimate label; that is destination behavior, not additional RunWield cost evidence.
+
+Measured generation timestamps come from the row's observed edges. An unmeasured generation has zero duration at its
+observation time and `timing_measured=false`; this does not establish measured zero latency. The package performs no
+retries and installs no instrumentation. It distinguishes accepted, proven non-acceptance, and uncertain delivery under
+Core's delivery policy. Bounded public-API readback compares observation identity, native usage and cost, and
+availability; asynchronous absence is not rejection. A documented empty native map with a zero total, or empty native
+model name, can represent absence when the original availability metadata still matches. This does not invent a
+measurement. Native costs permit only floating-point roundoff; missing values and supplied zero remain distinct.
+Identical unmerged readback versions can confirm one immutable fact only when every returned field agrees; conflicting
+versions cannot. Vendor-added buckets, costs, or complete totals that contradict missing measurements remain mismatch
+evidence. Protocol fixtures do not replace owner-authorized checks of native metrics in a disposable project.
 
 **Requirement: Auxiliary calls use the same opt-in measurement history without duplicate accounting.** A completed
 `see_image` vision fallback records one request-basis observation, locally or remotely, linked to its active execution
@@ -2415,7 +2450,21 @@ fences and reports an already authorized delivery that cannot be recalled.
   it does not replace missing values with zero or add overlapping turn and request costs.
 - Given Pi request usage, Claude request/turn/per-model fixtures, or agy turn-cumulative usage, when recorded, RunWield
   retains the available detail without adding Claude alternative observations to a reported turn total. Absent cache
-  categories stay unavailable, supplied zeros stay measured, and agy cost stays unavailable.
+  categories stay unavailable and supplied zeros stay measured. New agy rows record calculated USD cost only from an
+  exact catalog model. An unmatched model keeps unavailable cost; reasoning remains part of output.
+- Given a new CLI usage row, input and cache counts remain non-overlapping. Existing rows with unknown basis are not
+  rewritten. Given agy thinking tokens or Pi reasoning tokens, recorded reasoning is part of the unchanged output total.
+- Given an exact agy catalog match, cost is calculated from recorded counts and labeled calculated. Given only a preview
+  catalog entry, cost stays unavailable. Missing token buckets are not written as measured zero.
+- Given a Pi assistant message that completes before settlement, its observed start and end stay inside its turn.
+  Settlement time does not replace them. Unobserved rows keep null timing.
+- Given a complete priced request, reported-zero request, unavailable-cost request, partial agy turn, and complete CLI
+  aggregate, Langfuse receives one content-free observation per attempt with the corresponding native fields and flags.
+  Partial buckets stay absent; the aggregate creates no child generations or second parent total.
+- Given uncertain ingestion or delayed readback, the exporter does not retry. Matching native readback confirms
+  presence, including equivalent empty native representations and fully identical unmerged versions. This does not
+  authorize a retry or claim exactly-once ingestion. Vendor-invented buckets, costs, complete values, or conflicting
+  versions that contradict Core evidence do not confirm it.
 - Given assistant entries without usage and a compaction entry with usage, when a Session is replayed, assistant totals
   show unavailable while the compaction component shows its own measured values.
 - Given a completed local or remote vision fallback, when usage is present, RunWield records it once. Missing usage

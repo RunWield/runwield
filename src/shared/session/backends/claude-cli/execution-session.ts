@@ -404,7 +404,11 @@ export class ClaudeCliExecutionSession {
                             cacheWriteTokens: observation.usage.cacheWriteTokens,
                             costUsd: observation.usage.costUsd,
                             costSource: observation.usage.costUsd === null ? "unavailable" : "reported",
-                            inputCacheBasis: "unknown",
+                            inputCacheBasis: "excludes_cache",
+                            startedAt: observation.aggregationBasis === "alternative"
+                                ? null
+                                : recorder.getObservedTurnStartedAt(),
+                            endedAt: observation.aggregationBasis === "alternative" ? null : new Date().toISOString(),
                             aggregationBasis: observation.aggregationBasis,
                             usageKind: observation.aggregationBasis === "alternative" ? "request" : "turn",
                             model: observation.model || this.model.id,

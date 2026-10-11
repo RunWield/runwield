@@ -33,3 +33,43 @@ Deno.test("one Pi execution links usage from successive model turns to its own t
         }
     });
 });
+
+Deno.test("Pi assistant usage keeps observed message timing before settlement", async () => {
+    await withRuntimeCommandFixture("metrics-pi-timing-", async ({ projectRoot, setModelResponseFactories }) => {
+        await setCustomSetting("workflowMetrics", true, "project", projectRoot);
+        await Deno.writeTextFile(`${projectRoot}/fixture.txt`, "safe fixture\n");
+        setModelResponseFactories([
+            () => fauxAssistantMessage(fauxToolCall("read", { path: "fixture.txt" })),
+            async () => {
+                // The first assistant finished before this second model request and settlement.
+                await new Promise((resolve) => setTimeout(resolve, 30));
+                return fauxAssistantMessage(fauxText("Finished."));
+            },
+        ]);
+        const runtime = createSessionRuntime();
+        try {
+            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            await runtime.switchAgent(sessionId, { agentName: "engineer" });
+            assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Read fixture." })).ok, true);
+            await drainWorkflowMetrics();
+            const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n")
+                .map((line) => JSON.parse(line));
+            const turns = rows.filter((row) => row.event === "response_latency");
+            const usage = rows.filter((row) => row.event === "model_usage" && row.usageKind === "turn");
+            assertEquals(usage.length, 2);
+            assertEquals(usage[0].reasoningTokens, null);
+            assertEquals(usage[1].reasoningTokens, null);
+            for (const [index, row] of usage.entries()) {
+                assertEquals(Date.parse(row.startedAt), turns[index].requestStartedAt);
+                assert(Date.parse(row.endedAt) >= Date.parse(row.startedAt));
+                assert(Date.parse(row.endedAt) <= turns[index].completedAt);
+                assertNotEquals(row.startedAt, row.ts);
+            }
+            assert(Date.parse(usage[0].endedAt) < Date.parse(usage[0].ts));
+            assert(Date.parse(usage[0].endedAt) <= turns[1].requestStartedAt);
+            assertNotEquals(usage[0].startedAt, usage[1].startedAt);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+        }
+    });
+});

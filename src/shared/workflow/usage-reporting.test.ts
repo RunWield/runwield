@@ -801,3 +801,73 @@ Deno.test("backend and model subtotals disclose incomplete usage and latency exc
         }
     });
 });
+
+Deno.test("new cache-exclusive CLI rows count known cache tokens while old unknown rows stay excluded", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot }) => {
+        await journal(projectRoot, [
+            enabled,
+            usage("2026-11-01T16:00:00Z", {
+                backend: "claude-cli",
+                provider: "claude-cli",
+                model: "sonnet",
+                inputTokens: 4,
+                outputTokens: 507,
+                cacheReadTokens: 5326,
+                cacheWriteTokens: 6034,
+                reasoningTokens: null,
+                costSource: "reported",
+                costAmount: 0.0594932,
+                measurementAvailability: "complete",
+            }),
+            usage("2026-11-01T16:01:00Z", {
+                backend: "agy-cli",
+                provider: "agy-cli",
+                model: "gemini-3.8-flash",
+                inputTokens: 19529,
+                outputTokens: 155,
+                cacheReadTokens: 16511,
+                cacheWriteTokens: null,
+                reasoningTokens: 0,
+                measurementAvailability: "partial",
+                costSource: "calculated",
+                costAmount: 0.016466325,
+            }),
+            usage("2026-11-01T16:02:00Z", {
+                backend: "claude-cli",
+                provider: "claude-cli",
+                model: "sonnet",
+                inputCacheBasis: "unknown",
+                inputTokens: 2,
+                outputTokens: 8,
+                cacheReadTokens: 1448,
+                cacheWriteTokens: 2430,
+            }),
+            usage("2026-11-01T16:03:00Z", {
+                backend: "agy-cli",
+                provider: "agy-cli",
+                model: "gemini-3.8-flash",
+                inputTokens: 31817,
+                outputTokens: 320,
+                cacheReadTokens: 0,
+                cacheWriteTokens: null,
+                reasoningTokens: 256,
+                measurementAvailability: "partial",
+                costSource: "calculated",
+                costAmount: 0.02506275,
+            }),
+            watermark,
+        ]);
+        const report = new UsageReporter().query([projectRoot], period, zone);
+        const backends = report.projects[0].backends;
+        assertEquals(backends.find((item) => item.key === "claude-cli")?.totals.tokens, {
+            value: 11871 + 10,
+            exclusions: 1,
+        });
+        assertEquals(backends.find((item) => item.key === "agy-cli")?.totals.tokens, {
+            value: 36195 + 32137,
+            exclusions: 2,
+        });
+        assertEquals(report.totals.tokens, { value: 80213, exclusions: 3 });
+        assertEquals(report.totals.outputTokens.value, 507 + 155 + 8 + 320);
+    });
+});

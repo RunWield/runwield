@@ -14,6 +14,12 @@ affectedPaths:
     - "src/shared/session/session.js"
     - "src/shared/session/backends/agy-cli/stream-parser.ts"
     - "src/shared/models/model-registry.ts"
+planDeviations:
+    - id: "call_71763321391f49de8ddca951a56f72ab|fc_0de2069492c92451016acc0bdccc2c8190966f9ddf477363d3"
+      supersededRequirement: "Real destination checks require owner authorization and a disposable Langfuse project: confirm actual native metrics and queried observations, that counts and sums match the sent observations, and that an availability label alongside a vendor chart still showing invented zero or full totals is treated as a failure of this contract."
+      replacementRequirement: "Real destination checks require owner authorization and a disposable Langfuse project. Native public-API readback is sufficient evidence; vendor chart inspection is not required. Confirm that native usage buckets, known-count subtotals, supplied costs, queried observations, and availability metadata match the sent observations. Documented empty native maps with zero totals and empty native model names may represent absence when the sent native measurements are absent and all required metadata matches. Invented buckets, inferred unavailable costs, incorrect subtotals, and conflicting readback versions remain failures. The authorized disposable self-hosted Langfuse 4.56.0 API validation satisfies this real-destination gate; it does not certify hosted Cloud behavior or exactly-once delivery."
+      reason: "The owner accepts API-only evidence. Saved authorized live checks establish native API behavior but do not establish vendor chart presentation."
+      approvedAt: "2026-10-11T23:03:21.247Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-09-21T19:28:55.278Z"
@@ -24,7 +30,7 @@ dependencies:
     - "07-core-export-coordination-and-delivery-states"
 userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Langfuse Exporter Package
@@ -342,3 +348,45 @@ Exporter package:
   plugin-level retries.
 - Assume the OTLP mapping and metadata vocabulary are this child's to fix; Planner spells out attribute names against
   current Langfuse v4 documentation.
+
+## Verification Results — 2026-10-11
+
+Recorded at the owner's request. Implementation Steps and approval state are unchanged. The approved Plan Deviation at
+2026-10-11T23:03:21.247Z replaces the chart-specific verification requirement with native public-API evidence.
+
+- The authorized repair recognizes the verified 4.56.0 queue acknowledgement as acceptance of queuing, not storage
+  completion. Empty native usage maps with zero totals and empty model names can represent absence; supplied
+  availability metadata must still match. Missing buckets and unavailable cost are not inferred. Native cost permits
+  only two machine epsilons of relative roundoff. Identical complete readback versions can confirm presence; conflicting
+  versions cannot.
+- Review found no production defect or documented standards violation in the incremental repair. Two test gaps were
+  closed with four added cases: the exact cost tolerance boundary and changed values under existing extra-field and
+  metadata keys. Both deliberately weakened implementations failed these checks; production code was restored.
+- Fresh focused check:
+  `deno run -A scripts/run-tests.js packages/langfuse-exporter
+  src/shared/workflow/metrics-export-record.test.ts`
+  passed 195 tests. The repair and follow-up add 33 tests. No tests were deleted. The duplicate-pages test was rewritten
+  to cover identical immutable readback versions; the unavailable-usage test was rewritten to distinguish an empty
+  native representation from a vendor-invented bucket. Their protected behaviors remain covered, including conflicting
+  versions and invented zero buckets.
+- Fresh type check of `live-compatibility.test.ts` passed. Formatting checks of the five repaired TS/JSON files and
+  `git diff --check` passed. Before follow-up edits, all 2,196 saved final file hashes matched this checkout.
+- Saved full CI evidence: the exact isolated source copy passed `deno task ci`, all ten prerequisite gates, and
+  `test:all`: 644 test files, 5,153 tests, zero failures, errors, or skips. This run preceded the four extra tests and
+  this documentation update. RunWield's current-checkout validation remains pending.
+- Authorized real destination: disposable self-hosted Langfuse 4.56.0, web ARM64 image
+  `sha256:274ea1ae6c5d042aebea0712ca5709f3d1339f559e4b03824913bfa85ab8e164`, project `runwield-synthetic-20261011`. All
+  nine synthetic cases were queued and confirmed present through public API readback. Recorded native buckets, known
+  subtotals, costs, and availability metadata matched. An additional unavailable case retained empty maps and null cost.
+  Identical replay confirmed presence; conflicting usage returned mismatch, before and after a forced merge. Forced
+  convergence does not establish natural merge timing or exactly-once delivery.
+- The Plan permits this pinned self-hosted target; hosted Cloud certification is not required or claimed. The owner
+  accepted API-only evidence through the recorded Plan Deviation. The authorized 4.56.0 native API validation satisfies
+  the real-destination gate. Vendor charts were not inspected and are not required under the replacement requirement.
+- Cleanup evidence records removal of the disposable containers, network, validation images, tunnel, and secret file;
+  existing images, volumes, and Workspace were preserved. No approval, grant, publication, or delivery gate was
+  advanced.
+- Local evidence directory: `/Users/gandazgul/Documents/web/Codex/2026-10-11/task-2/langfuse-repair/`. Primary
+  artifacts: `final-report.json`, `final-ci-complete-result.json`, `final-ci-complete.log`,
+  `live/final/validation-results.json`, `live/final/readback.json`, `live/replay-probes.json`, `live/after-merge.json`,
+  and `cleanup-verification.json`.

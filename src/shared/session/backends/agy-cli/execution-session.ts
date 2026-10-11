@@ -1,8 +1,8 @@
 import type { McpIntegration } from "../../../mcp/integration.ts";
-import type { Usage } from "@earendil-works/pi-ai";
+import { calculateCost, type Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { RunWieldModel } from "../../../models/model-registry.ts";
+import { getExternalCliPriceModel, type RunWieldModel } from "../../../models/model-registry.ts";
 import type { HostedSession } from "../../hosted-session.js";
 import {
     emitHostedSessionRuntimeEvent,
@@ -275,6 +275,7 @@ export class AgyCliExecutionSession {
             void pending.then(() => pendingObservations.delete(pending), () => pendingObservations.delete(pending));
         };
         observe(recorder.recordResponseLatency("turn_start"));
+        let usageEndedAt: string | null = null;
         let executionOutcome: import("../../../workflow/execution-metrics.ts").ExecutionOutcome = "succeeded";
         let failureKind: string | undefined;
 
@@ -457,6 +458,7 @@ export class AgyCliExecutionSession {
                 onTool,
                 onUsage: (usage) => {
                     observedUsage = usage;
+                    usageEndedAt = new Date().toISOString();
                 },
                 onToolInfo: (observation) => {
                     observe(recorder.recordResponseLatency("first_response"));
@@ -557,13 +559,28 @@ export class AgyCliExecutionSession {
             this.turnAbortController = null;
             const usage = parsed?.metadata?.usage ?? observedUsage;
             if (usage) {
+                const priceModel = getExternalCliPriceModel(this.model);
+                // Pricing alone treats unreported buckets as 0. Persisted measurements stay null.
+                const priceUsage: Usage = {
+                    input: usage.inputTokens ?? 0,
+                    output: usage.outputTokens ?? 0,
+                    cacheRead: usage.cacheReadTokens ?? 0,
+                    cacheWrite: usage.cacheWriteTokens ?? 0,
+                    totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0) +
+                        (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0),
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                };
+                const costAmount = priceModel ? calculateCost(priceModel, priceUsage).total : null;
                 await recorder.recordModelUsage({
+                    startedAt: recorder.getObservedTurnStartedAt(),
+                    endedAt: usageEndedAt,
+                    reasoningTokens: usage.thinkingTokens,
                     inputTokens: usage.inputTokens,
                     outputTokens: usage.outputTokens,
                     cacheReadTokens: usage.cacheReadTokens,
                     cacheWriteTokens: usage.cacheWriteTokens,
-                    costUsd: null,
-                    costSource: "unavailable",
+                    costAmount,
+                    costSource: costAmount === null ? "unavailable" : "calculated",
                     measurementAvailability:
                         [usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens].some((
                                 value,
@@ -571,7 +588,7 @@ export class AgyCliExecutionSession {
                             )
                             ? "partial"
                             : "unavailable",
-                    inputCacheBasis: "unknown",
+                    inputCacheBasis: "excludes_cache",
                     model: this.model.id,
                     provider: this.model.provider,
                 });

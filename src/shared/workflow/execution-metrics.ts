@@ -129,6 +129,11 @@ export interface ExecutionRecorderOptions {
     userInitiated?: boolean;
 }
 
+interface ModelUsageTiming {
+    startedAt: string | null;
+    endedAt: string | null;
+}
+
 export interface ModelUsageObservation {
     sourceId?: string;
     usageKind?: UsageKind;
@@ -136,6 +141,10 @@ export interface ModelUsageObservation {
     model?: string;
     inputTokens: number | null;
     outputTokens: number | null;
+    /** Reasoning is a subset of outputTokens, not an additional bucket. */
+    reasoningTokens?: number | null;
+    startedAt?: string | null;
+    endedAt?: string | null;
     cacheReadTokens?: number | null;
     cacheWriteTokens?: number | null;
     costAmount?: number | null;
@@ -646,6 +655,7 @@ export class ExecutionMetricsRecorder {
     private nativeObservationIds = new Set<string>();
     private reconciledUsageEntryIds = new Set<string>();
     private piEntryTurnIds = new Map<string, string>();
+    private piMessageTiming = new WeakMap<import("@earendil-works/pi-ai").AssistantMessage, ModelUsageTiming>();
     private settled = false;
 
     constructor(options: ExecutionRecorderOptions) {
@@ -1014,6 +1024,21 @@ export class ExecutionMetricsRecorder {
         );
     }
 
+    /** The start observed for the active turn, never an execution or settlement fallback. */
+    getObservedTurnStartedAt(): string | null {
+        return this.currentTurnId && this.requestStartedAt !== undefined
+            ? new Date(this.requestStartedAt).toISOString()
+            : null;
+    }
+
+    /** Pi persists this same message object after message_end. Keep its own observed edges. */
+    recordPiAssistantMessageEnd(message: import("@earendil-works/pi-ai").AssistantMessage): void {
+        this.piMessageTiming.set(message, {
+            startedAt: this.getObservedTurnStartedAt(),
+            endedAt: new Date().toISOString(),
+        });
+    }
+
     /** Associate persisted Pi entries with the turn that produced them before settlement. */
     associatePiTurnEntries(
         entries: import("@earendil-works/pi-coding-agent").SessionEntry[],
@@ -1056,13 +1081,19 @@ export class ExecutionMetricsRecorder {
                 }
             }
             if (!usage) continue;
+            const timing = entry.type === "message" && entry.message.role === "assistant"
+                ? this.piMessageTiming.get(entry.message)
+                : undefined;
             await this.recordModelUsage({
+                startedAt: timing?.startedAt ?? null,
+                endedAt: timing?.endedAt ?? null,
                 sourceId: entry.id,
                 usageKind,
                 provider,
                 model,
                 inputTokens: typeof usage.input === "number" ? usage.input : null,
                 outputTokens: typeof usage.output === "number" ? usage.output : null,
+                reasoningTokens: typeof usage.reasoning === "number" ? usage.reasoning : null,
                 cacheReadTokens: typeof usage.cacheRead === "number" ? usage.cacheRead : null,
                 cacheWriteTokens: typeof usage.cacheWrite === "number" ? usage.cacheWrite : null,
                 costAmount: typeof usage.cost?.total === "number" ? usage.cost.total : null,
@@ -1102,6 +1133,9 @@ export class ExecutionMetricsRecorder {
                 model: usage.model || this.model,
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
+                reasoningTokens: usage.reasoningTokens ?? null,
+                startedAt: usage.startedAt ?? null,
+                endedAt: usage.endedAt ?? null,
                 cacheReadTokens: usage.cacheReadTokens ?? null,
                 cacheWriteTokens: usage.cacheWriteTokens ?? null,
                 costAmount,

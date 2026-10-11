@@ -775,3 +775,20 @@ Deno.test("Agy terminal usage remains observable after malformed or mismatched s
         assertEquals(observations.at(-1)?.cacheReadTokens, 7);
     }
 });
+
+Deno.test("Agy vendor reasoning remains the measured subset of the aggregate output", async () => {
+    const text = await Deno.readTextFile(
+        new URL("./fixtures/agy-1.2.12-model-read-tool-stream.jsonl", import.meta.url),
+    );
+    const result = await parseAgyCliStream(new Blob([text]).stream());
+    assertEquals(result.metadata.usage.thinkingTokens, 205 + 51);
+    assertEquals(result.metadata.usage.outputTokens, 320);
+});
+
+Deno.test("Agy absent thinking and reported zero thinking remain distinct", async () => {
+    for (const [usage, expected] of [[{}, null], [{ thinking_tokens: 0 }, 0]] as const) {
+        const text = JSON.stringify({ type: "result", result: "reply", usage });
+        const result = await parseAgyCliStream(new Blob([text]).stream());
+        assertEquals(result.metadata.usage.thinkingTokens, expected);
+    }
+});
