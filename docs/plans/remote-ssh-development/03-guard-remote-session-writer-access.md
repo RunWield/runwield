@@ -27,6 +27,7 @@ affectedPaths:
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-09-21T02:05:49.075Z"
+status: "verified"
 origin: "internal"
 parentPlan: "remote-ssh-development"
 order: 3
@@ -36,7 +37,6 @@ dependencies:
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 validatedCommit: "fe2ef67da32e1f79fec8e38e2b58b6ec5859b5be"
-status: "verified"
 ---
 
 # Guard Remote Session Writer Access

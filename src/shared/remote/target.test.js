@@ -9,7 +9,7 @@ async function fixture(fn) {
         const ssh = join(root, "ssh");
         await Deno.writeTextFile(
             ssh,
-            '#!/bin/sh\n[ "$1" = -T ] && [ "$2" = -- ] && [ "$3" = example ] || exit 42\nexec sh -c "$4"\n',
+            '#!/bin/sh\nif [ "$1" = -G ]; then printf "hostname example\\nuser tester\\nport 22\\n"; exit 0; fi\n[ "$1" = -v ] && [ "$2" = -o ] && [ "$3" = ControlPath=none ] || exit 42\nshift 4\n[ "$1" = -T ] && [ "$2" = -- ] && [ "$3" = example ] || exit 42\necho "debug1: Server host key: ssh-ed25519 SHA256:fixture" >&2\nexec sh -c "$4"\n',
         );
         await Deno.chmod(ssh, 0o700);
         await fn(root, ssh);

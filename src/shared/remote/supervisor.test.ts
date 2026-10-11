@@ -16,7 +16,9 @@ else if (Deno.args[0] === "--remote-model-proof") {
     await new Promise<void>(() => {});
 } else if (Deno.args[0] === "--remote-view") {
     const byte = new Uint8Array(1);
-    while ((await Deno.stdin.read(byte)) !== null && byte[0] !== 10) {}
+    const bytes: number[] = [];
+    while ((await Deno.stdin.read(byte)) !== null && byte[0] !== 10) bytes.push(byte[0]);
+    await Deno.writeTextFile("view-header", new TextDecoder().decode(new Uint8Array(bytes)));
     Deno.addSignalListener("SIGTERM", () => {});
     const child = new Deno.Command("sh", {
         args: ["-c", "trap '' TERM; sleep 60 & echo $! > descendant; wait"],
@@ -196,6 +198,13 @@ for (
                     }
                     assert(view > 0);
                     assertEquals(await Deno.realPath(`/proc/${view}/cwd`), root);
+                    const bootstrap = JSON.parse(await Deno.readTextFile(join(root, "view-header")));
+                    assertEquals(bootstrap.connection, { port, credential: service.credential });
+                    assertEquals(bootstrap.cwd, root);
+                    assertEquals(bootstrap.view.cwd, root);
+                    assert(bootstrap.resources.globalRoot.startsWith("/"));
+                    assertEquals(bootstrap.resources.globalRoot === join(getHomeDir(), ".wld"), false);
+                    assertEquals(bootstrap.HOME, undefined);
                     const descendantDeadline = Date.now() + 5_000;
                     while (Date.now() < descendantDeadline && !descendant) {
                         descendant = Number(await Deno.readTextFile(join(root, "descendant")).catch(() => ""));

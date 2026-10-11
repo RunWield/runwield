@@ -253,9 +253,10 @@ export function prepareImagesForModel(opts: PrepareImagesOptions): PreparedImage
     const images = opts.images || [];
     if (images.length === 0) return { ok: true, text: opts.text, images: undefined, mode: "none" };
     if (modelSupportsImageInput(opts.activeModel)) {
+        const markers = images.filter((image) => image.ref && !image.path).map(formatImageAttachmentMarker).join("\n");
         return {
             ok: true,
-            text: opts.text,
+            text: markers ? `${opts.text}\n\n${markers}` : opts.text,
             images: images.map((img) => ({ type: "image", data: img.base64, mimeType: img.mimeType })),
             mode: "direct",
         };

@@ -1,3 +1,4 @@
+import { createTuiDisplayConsumer } from "./runtime-display.ts";
 import { deliveryReportText } from "./delivery-report-text.ts";
 /**
  * @module ui/tui/runtime-adapter
@@ -10,46 +11,6 @@ import { formatImageAttachmentMarker } from "../../shared/session/image-attachme
 import { createTuiInteractionAdapter } from "./runtime-interaction-adapter.js";
 import { setTerminalTitleForName } from "./terminal-title.ts";
 import { presentTutorialEvent } from "./tutorial-guidance.ts";
-
-const HIDDEN_TOOL_BLOCK_NAMES = new Set(["task_completed", "review_complete", "triage_report", "user_interview"]);
-
-/**
- * @typedef {{ base64: string, mimeType: string }} RuntimeDisplayImage
- */
-
-/**
- * @param {unknown} value
- * @returns {RuntimeDisplayImage[]}
- */
-function collectRuntimeDisplayImages(value) {
-    const event = /** @type {{ content?: Array<{ type?: string, data?: string, mimeType?: string }>, details?: { runwieldDisplayImages?: unknown } }} */
-        (value);
-    const contentImages = Array.isArray(event.content)
-        ? event.content.flatMap((block) =>
-            block?.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string"
-                ? [{ base64: block.data, mimeType: block.mimeType }]
-                : []
-        )
-        : [];
-    const detailImages = Array.isArray(event.details?.runwieldDisplayImages)
-        ? event.details.runwieldDisplayImages.flatMap((image) => {
-            const candidate = /** @type {{ base64?: unknown, mimeType?: unknown }} */ (image);
-            return typeof candidate.base64 === "string" && typeof candidate.mimeType === "string"
-                ? [{ base64: candidate.base64, mimeType: candidate.mimeType }]
-                : [];
-        })
-        : [];
-    /** @type {RuntimeDisplayImage[]} */
-    const images = [];
-    const seen = new Set();
-    for (const image of [...contentImages, ...detailImages]) {
-        const key = `${image.mimeType}:${image.base64}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        images.push(image);
-    }
-    return images;
-}
 
 /**
  * @typedef {Object} TuiRuntimeAdapterRegistration
@@ -106,10 +67,7 @@ export function attachTuiRuntimeAdapter({
         throw new Error(`A TUI Runtime adapter is already attached to session ${sessionId}`);
     }
 
-    /** @type {Map<string, import('./types.js').AgentMessageAppender>} */
-    const assistantMessages = new Map();
-    /** @type {Map<string, ReturnType<NonNullable<import('./types.js').UiAPI['appendThinkingStart']>>>} */
-    const thinkingMessages = new Map();
+    const display = createTuiDisplayConsumer(uiAPI);
     const interactionAdapter = createTuiInteractionAdapter(uiAPI, { browser });
     runtime.setInteractionAdapter(sessionId, interactionAdapter);
 
@@ -181,10 +139,7 @@ export function attachTuiRuntimeAdapter({
                     uiAPI.clearValidationPanel?.();
                     hiddenValidationReportCached = false;
                 }
-                if (!(typeof value.text === "string" && value.text.startsWith("!") && value.images.length === 0)) {
-                    uiAPI.appendUserMessage?.(value.text);
-                    for (const image of value.images) uiAPI.appendImage?.(image.base64, image.mimeType);
-                }
+                display.consume(event);
                 break;
             case RuntimeEventTypes.QUEUED_MESSAGE_CHANGED: {
                 const message =
@@ -233,62 +188,16 @@ export function attachTuiRuntimeAdapter({
                     );
                     break;
                 }
-                const messageId = value.messageId;
-                let appender = assistantMessages.get(messageId);
-                if (!appender) {
-                    appender = uiAPI.appendAgentMessageStart(value.agentName);
-                    assistantMessages.set(messageId, appender);
-                }
-                appender.appendText(value.delta);
+                display.consume(event);
                 break;
             }
-            case RuntimeEventTypes.ASSISTANT_THINKING_DELTA: {
-                if (value._meta?.replay) break;
-                if (!uiAPI.appendThinkingStart) break;
-                const messageId = value.messageId;
-                let appender = thinkingMessages.get(messageId);
-                if (!appender) {
-                    appender = uiAPI.appendThinkingStart();
-                    thinkingMessages.set(messageId, appender);
-                }
-                appender.appendDelta(value.delta);
+            case RuntimeEventTypes.ASSISTANT_THINKING_DELTA:
+            case RuntimeEventTypes.ASSISTANT_THINKING_END:
+            case RuntimeEventTypes.TOOL_START:
+            case RuntimeEventTypes.TOOL_UPDATE:
+            case RuntimeEventTypes.TOOL_END:
+                display.consume(event);
                 break;
-            }
-            case RuntimeEventTypes.ASSISTANT_THINKING_END: {
-                if (value._meta?.replay) break;
-                const messageId = value.messageId;
-                thinkingMessages.get(messageId)?.end();
-                thinkingMessages.delete(messageId);
-                break;
-            }
-            case RuntimeEventTypes.TOOL_START: {
-                if (!uiAPI.startToolExecution || HIDDEN_TOOL_BLOCK_NAMES.has(value.toolName)) break;
-                uiAPI.startToolExecution(value.toolCallId, value.toolName, value.title);
-                break;
-            }
-            case RuntimeEventTypes.TOOL_UPDATE: {
-                const block = uiAPI.getActiveToolBlock?.(value.toolCallId);
-                block?.setOutput(value.output);
-                break;
-            }
-            case RuntimeEventTypes.TOOL_END: {
-                const block = uiAPI.getActiveToolBlock?.(value.toolCallId);
-                const images = collectRuntimeDisplayImages(value);
-                if (
-                    !block && value.toolName === "task_completed" &&
-                    value.details?.outcome === "pair_completion_checkpoint" && value.output
-                ) {
-                    uiAPI.appendSystemMessage(value.output, false, "Pair checkpoint");
-                }
-                if (block) {
-                    block.setOutput(value.output);
-                    for (const image of images) block.appendDisplayImage?.(image.base64, image.mimeType);
-                    block.endExecution(value.isError, value.durationMs);
-                } else {
-                    for (const image of images) uiAPI.appendImage?.(image.base64, image.mimeType);
-                }
-                break;
-            }
             case RuntimeEventTypes.SYSTEM_STATUS:
                 if (value.validationProgress) {
                     hiddenValidationReportCached = false;
@@ -374,9 +283,7 @@ export function attachTuiRuntimeAdapter({
                 uiAPI.clearMessages?.();
                 break;
             case RuntimeEventTypes.TURN_END:
-                assistantMessages.clear();
-                for (const appender of thinkingMessages.values()) appender.end();
-                thinkingMessages.clear();
+                display.consume(event);
                 break;
             case RuntimeEventTypes.MODEL_CHANGED:
             case RuntimeEventTypes.THINKING_LEVEL_CHANGED:
@@ -437,9 +344,7 @@ export function attachTuiRuntimeAdapter({
             if (disposed) return;
             disposed = true;
             unsubscribe();
-            for (const appender of thinkingMessages.values()) appender.end();
-            thinkingMessages.clear();
-            assistantMessages.clear();
+            display.dispose();
             if (registrations.get(sessionId) !== registration) return;
             registrations.delete(sessionId);
             interactionAdapter.cancelAll?.();

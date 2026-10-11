@@ -7,10 +7,10 @@ import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { mascotForAgent } from "../mascot/mascot.ts";
 
 Deno.test("live TUI reserves mascot space and pauses for questions without covering input", async () => {
-    await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
+    await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
         const tui = new TuiAltScreen(terminal);
-        session.resetAgentInfoStack("Operator", "", "", "operator");
+        assertEquals((await runtime.switchAgent(sessionId, { agentName: "operator" })).ok, true);
         const view = await createChatView({
             tui,
             suppressStartupHeader: true,
@@ -38,11 +38,11 @@ Deno.test("live TUI reserves mascot space and pauses for questions without cover
             view.uiAPI.abortActivePrompt();
             await question;
             view.uiAPI.setBusy?.(false);
-            session.resetAgentInfoStack("Recorder", "", "", "recorder");
+            assertEquals((await runtime.switchAgent(sessionId, { agentName: "recorder" })).ok, true);
             tui.renderNow(true);
             await terminal.flush();
             assert(!terminal.getScreenText().includes("██   ██"));
-            session.resetAgentInfoStack("Operator", "", "", "operator");
+            assertEquals((await runtime.switchAgent(sessionId, { agentName: "operator" })).ok, true);
             terminal.resize(60, 16);
             tui.renderNow(true);
             await terminal.flush();
@@ -57,10 +57,10 @@ Deno.test("live TUI reserves mascot space and pauses for questions without cover
 });
 
 Deno.test("disabling a live TUI mascot removes rail and compact face without losing input", async () => {
-    await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
+    await withSessionViewFixture(async ({ runtime, sessionId, projectRoot }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
         const tui = new TuiAltScreen(terminal);
-        session.resetAgentInfoStack("Operator", "", "", "operator");
+        assertEquals((await runtime.switchAgent(sessionId, { agentName: "operator" })).ok, true);
         const view = await createChatView({
             tui,
             suppressStartupHeader: true,

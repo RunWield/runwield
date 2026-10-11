@@ -121,7 +121,7 @@ Deno.test("remote synchronous settings refresh after a lost acknowledgement and 
             const mountedIdentity = await Deno.stat(mounted);
             await Deno.rename(mounted, join(home, "detached-mount"));
             assertThrows(() => manager.getTheme(), PersonalResourcePathError);
-            assertThrows(() => getSettingsManager(project), PersonalResourcePathError);
+            assertThrows(() => getSettingsManager(project).getTheme(), PersonalResourcePathError);
             // SSHFS can detach and leave its sealed local directory behind.
             await Deno.mkdir(mounted);
             await Deno.chmod(mounted, 0o500);
@@ -130,7 +130,7 @@ Deno.test("remote synchronous settings refresh after a lost acknowledgement and 
             if (detachedIdentity.ino === mountedIdentity.ino) throw new Error("Replacement must have a new inode");
             assertThrows(() => getCustomSetting("theme", "global", project), PersonalResourcePathError);
             assertThrows(() => manager.getTheme(), PersonalResourcePathError);
-            assertThrows(() => getSettingsManager(project), PersonalResourcePathError);
+            assertThrows(() => getSettingsManager(project).getTheme(), PersonalResourcePathError);
             await Deno.chmod(mounted, 0o700);
             await Deno.writeTextFile(mountedPath, JSON.stringify({ theme: "remote-account-theme" }));
             await Deno.chmod(mounted, 0o500);

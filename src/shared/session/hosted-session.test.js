@@ -697,16 +697,6 @@ function makeManagedCapability() {
         runtimeSessionId: "runtime-managed",
         runwieldSessionId: "runwield-managed",
         operationId: "operation-managed",
-        proof: {
-            runwieldSessionId: "runwield-managed",
-            projectId: "project-managed",
-            ownerInstanceId: "owner-managed",
-            ownerProcessKind: "test",
-            operationId: "operation-managed",
-            fence: 1,
-            phase: "preparing",
-            expectedGeneration: 0,
-        },
         settled: false,
         registerArtifact: () => ({
             artifactId: "artifact-managed",
@@ -719,7 +709,6 @@ function makeManagedCapability() {
         }),
         stagePlanAssociation: (entry) => ({ ...entry, committedGeneration: null }),
         getCurrentSegmentKind: () => "planning",
-        updateProof: () => {},
         assertLive: () => {},
         settle: () => {},
     };

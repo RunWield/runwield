@@ -292,11 +292,23 @@ export function getAgentBusyLines(internalName, projectRoot) {
  * @returns {Promise<string[]>}
  */
 export async function listAgentDefNames(projectRoot) {
+    return (await discoverAgentDefinitions(projectRoot)).names;
+}
+
+/**
+ * Scan each layer once. Absent layers stay absent for this discovery only.
+ *
+ * @param {string | undefined} projectRoot
+ * @returns {Promise<AgentDiscovery>}
+ */
+async function discoverAgentDefinitions(projectRoot) {
     const names = new Set();
+    const layerDirs = [];
 
     for (const dir of getAgentDefLayerDirs(projectRoot)) {
         await assertPersonalResourcePath(dir, "Agent definitions directory");
         if (!(await directoryExists(dir))) continue;
+        layerDirs.push(dir);
         for await (const entry of Deno.readDir(dir)) {
             if ((!entry.isFile && !entry.isSymlink) || !entry.name.endsWith(".md")) continue;
             await assertPersonalResourcePath(join(dir, entry.name), "Agent definition");
@@ -311,7 +323,7 @@ export async function listAgentDefNames(projectRoot) {
         }
     }
 
-    return [...names].sort((a, b) => a.localeCompare(b));
+    return { names: [...names].sort((a, b) => a.localeCompare(b)), layerDirs };
 }
 
 /**
@@ -416,6 +428,18 @@ export function resolveSessionToolNames(agentTools, toolNames, customToolNames) 
 }
 
 /**
+ * @typedef {Object} AgentDiscovery
+ * @property {string[]} names
+ * @property {string[]} layerDirs Existing definition layers, lowest priority first.
+ */
+
+/**
+ * @typedef {Object} SharedPracticeDiscovery
+ * @property {string[]} layerDirs Existing practice layers, highest priority first.
+ * @property {Map<string, string>} prompts Composed bodies for ordered normalized names.
+ */
+
+/**
  * List every merged agent definition, including the workflow-only ones. Callers
  * that offer the user a choice want `listAvailableAgents` instead.
  *
@@ -423,13 +447,21 @@ export function resolveSessionToolNames(agentTools, toolNames, customToolNames) 
  * @returns {Promise<import('./types.js').AgentDefinition[]>}
  */
 export async function listAllAgentDefinitions(projectRoot) {
-    const names = await listAgentDefNames(projectRoot);
+    const { names, layerDirs } = await discoverAgentDefinitions(projectRoot);
+    const practiceLayerDirs = [];
+    for (const dir of [...layerDirs].reverse()) {
+        const practiceDir = join(dir, SHARED_PRACTICE_DIR);
+        await assertPersonalResourcePath(practiceDir, "Shared practice directory");
+        if (await directoryExists(practiceDir)) practiceLayerDirs.push(dir);
+    }
+    /** @type {SharedPracticeDiscovery} */
+    const sharedPractice = { layerDirs: practiceLayerDirs, prompts: new Map() };
     /** @type {import('./types.js').AgentDefinition[]} */
     const agents = [];
 
     for (const name of names) {
         try {
-            const def = await loadAgentDef(name, projectRoot);
+            const def = await loadNamedAgentDef(name, projectRoot, layerDirs, sharedPractice);
             agents.push(def);
         } catch (err) {
             if (err instanceof PersonalResourcePathError) throw err;
@@ -528,11 +560,11 @@ function normalizeSharedPracticeNames(value, agentName) {
  * as agent definitions so a project or home layer can override bundled practice.
  *
  * @param {string} name
- * @param {string | undefined} projectRoot
+ * @param {string[]} layerDirs - Highest priority first
  * @returns {Promise<string>}
  */
-async function readSharedPracticeBody(name, projectRoot) {
-    const candidatePaths = getAgentDefDirsByPriority(projectRoot)
+async function readSharedPracticeBody(name, layerDirs) {
+    const candidatePaths = layerDirs
         .map((dir) => join(dir, SHARED_PRACTICE_DIR, `${name}.md`));
 
     for (const filePath of candidatePaths) {
@@ -561,11 +593,42 @@ async function readSharedPracticeBody(name, projectRoot) {
  * @returns {Promise<string>}
  */
 export async function composeSharedPracticePrompt(value, agentName, projectRoot) {
+    return await composeSharedPracticeNames(
+        normalizeSharedPracticeNames(value, agentName),
+        getAgentDefDirsByPriority(projectRoot),
+    );
+}
+
+/**
+ * @param {string[]} names
+ * @param {string[]} layerDirs - Highest priority first
+ * @returns {Promise<string>}
+ */
+async function composeSharedPracticeNames(names, layerDirs) {
     const segments = [];
-    for (const name of normalizeSharedPracticeNames(value, agentName)) {
-        segments.push(await readSharedPracticeBody(name, projectRoot));
+    for (const name of names) {
+        segments.push(await readSharedPracticeBody(name, layerDirs));
     }
     return segments.join("\n\n").trim();
+}
+
+/**
+ * Cache only successful compositions, within one discovery. Validate each
+ * definition before lookup, so malformed declarations still name their owner.
+ *
+ * @param {unknown} value
+ * @param {string} agentName
+ * @param {SharedPracticeDiscovery} discovery
+ * @returns {Promise<string>}
+ */
+async function composeDiscoveredSharedPractice(value, agentName, discovery) {
+    const names = normalizeSharedPracticeNames(value, agentName);
+    const key = JSON.stringify(names);
+    const cached = discovery.prompts.get(key);
+    if (cached !== undefined) return cached;
+    const prompt = await composeSharedPracticeNames(names, discovery.layerDirs);
+    discovery.prompts.set(key, prompt);
+    return prompt;
 }
 
 /**
@@ -583,9 +646,10 @@ export async function composeSharedPracticePrompt(value, agentName, projectRoot)
  * @param {string} agentName - the file name to load (without .md)
  * @param {string[]} filePaths - Paths to attempt, ordered low → high priority
  * @param {string | undefined} projectRoot
+ * @param {SharedPracticeDiscovery} [sharedPractice]
  * @returns {Promise<import('./types.js').AgentDefinition>}
  */
-async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
+async function loadAgentDefFromPaths(agentName, filePaths, projectRoot, sharedPractice) {
     /** @type {{ name?: string, model?: string, description?: string, contextContract?: unknown, promptOverride?: boolean, thinkingLevel?: string, temperature?: unknown, tools?: unknown[], busyLines?: unknown, [key: string]: unknown }} */
     let mergedAttrs = {};
     /** @type {string[]} */
@@ -658,7 +722,9 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         `Agent definition "${agentName}"`,
     );
 
-    const sharedPracticePrompt = await composeSharedPracticePrompt(mergedAttrs.sharedPractice, agentName, projectRoot);
+    const sharedPracticePrompt = sharedPractice
+        ? await composeDiscoveredSharedPractice(mergedAttrs.sharedPractice, agentName, sharedPractice)
+        : await composeSharedPracticePrompt(mergedAttrs.sharedPractice, agentName, projectRoot);
     if (sharedPracticePrompt) promptSegments.push(sharedPracticePrompt);
 
     const mergedPromptBody = promptSegments.join("\n\n").trim();
@@ -713,13 +779,27 @@ function addUniversalAgentTools(agentDef) {
  * @returns {Promise<import('./types.js').AgentDefinition>}
  */
 export async function loadAgentDef(agentName, projectRoot) {
+    return await loadNamedAgentDef(agentName, projectRoot, getAgentDefLayerDirs(projectRoot));
+}
+
+/**
+ * Own the ordered paths for both discovery and individual loads, including the
+ * workflow-only bundled repair definition. Public loaders always read fresh.
+ *
+ * @param {string} agentName
+ * @param {string | undefined} projectRoot
+ * @param {string[]} layerDirs - Lowest priority first
+ * @param {SharedPracticeDiscovery} [sharedPractice]
+ * @returns {Promise<import('./types.js').AgentDefinition>}
+ */
+async function loadNamedAgentDef(agentName, projectRoot, layerDirs, sharedPractice) {
     const canonicalName = normalizeAgentInternalName(agentName);
-    const filePaths = getAgentDefLayerDirs(projectRoot).map((dir) => join(dir, `${canonicalName}.md`));
+    const filePaths = layerDirs.map((dir) => join(dir, `${canonicalName}.md`));
     if (canonicalName === AGENTS.REVIEWER_FEEDBACK_ENGINEER) {
         filePaths.splice(1, 0, join(AGENT_DEFS_DIR, "subagent-definitions", `${canonicalName}.md`));
     }
 
-    return addUniversalAgentTools(await loadAgentDefFromPaths(canonicalName, filePaths, projectRoot));
+    return addUniversalAgentTools(await loadAgentDefFromPaths(canonicalName, filePaths, projectRoot, sharedPractice));
 }
 
 /**

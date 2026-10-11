@@ -1,5 +1,5 @@
 /* CLI-only remote connection. SSH supplies authentication, host verification and
- * terminal transport. No project or personal context is opened on the laptop. */
+ * terminal transport. Saved remote Sessions remain on the laptop. */
 import { dirname, join } from "@std/path";
 import { linuxTarget, prepareRemoteRuntime } from "../../shared/remote/runtime.js";
 import { fixedPythonCommand, resolveRemoteTarget } from "../../shared/remote/target.ts";
@@ -9,9 +9,12 @@ import { downloadReleaseRuntime } from "../../shared/remote/release-artifact.ts"
 import { parseRemoteModelProof, type RemoteModelProof } from "../../shared/remote/model-proof-config.ts";
 
 export const REMOTE_USAGE = "Usage: wld remote <ssh-host>[:<remote-directory>]\n" +
-    "Open an existing remote Linux directory (defaults to the remote home). Laptop ~/.wld is mounted at remote ~/.wld.\n" +
-    "Released launchers use their exact VERSION-tagged GNU/Linux asset; development builds require a matching local artifact.\n" +
-    "This connection cannot accept a user turn or open a saved Session.";
+    "       wld remote sessions\n" +
+    "Run conversation turns in an existing remote Linux directory (defaults to the remote home).\n" +
+    "Personal resources and saved Session history stay on the laptop.\n" +
+    "Use sessions to read saved remote history offline; connect to the target and use /resume to continue.\n" +
+    "A host alias named sessions is reachable as sessions: or sessions:<remote-directory>.\n" +
+    "Released launchers use their exact VERSION-tagged GNU/Linux asset; development builds require a matching local artifact.";
 
 export function parseRemoteDestination(value: string): { host: string; path: string | null } {
     if (!value || value.startsWith("-") || value.includes("\0")) {
@@ -156,8 +159,26 @@ async function sendPrivateHeader(host: string, socket: string, signal: AbortSign
 
 /** @param {string[]} args */
 export async function runRemoteCommand(args: string[]): Promise<void> {
-    if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
+    if (args.length === 0 || (args.length === 1 && (args[0] === "--help" || args[0] === "-h"))) {
         console.log(REMOTE_USAGE);
+        return;
+    }
+    if (args.length === 1 && args[0] === "sessions") {
+        const { listSavedRemoteSessions } = await import("../../shared/remote/laptop-session-control.ts");
+        const saved = listSavedRemoteSessions();
+        if (saved.length === 0) {
+            console.log("No saved remote Sessions.");
+            return;
+        }
+        const { showRemoteHistory } = await import("../../ui/tui/remote-history.ts");
+        const { initTUI, stopTUI } = await import("../../ui/tui/tui.ts");
+        const { initRunWieldTheme } = await import("../../ui/theme/theme.js");
+        initRunWieldTheme();
+        try {
+            await showRemoteHistory(initTUI(), saved);
+        } finally {
+            stopTUI();
+        }
         return;
     }
     if (args.length !== 1) throw new Error(REMOTE_USAGE);
@@ -211,11 +232,24 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     const expected = `${target.home}/.cache/runwield/runtime/${BUILD_ID}/${triple}/${metadata.sha256}/wld`;
     if (executable !== expected) throw new Error("Remote runtime returned an unexpected cache path");
     const { startRemoteControlService } = await import("../../shared/remote/control.ts");
-    const sftp = await startLaptopSftp();
+    const { openFileSessionStore } = await import("../../shared/session/file-session-store.ts");
+    const store = openFileSessionStore();
+    let sftp: Awaited<ReturnType<typeof startLaptopSftp>>;
+    try {
+        sftp = await startLaptopSftp();
+    } catch (error) {
+        store.close();
+        throw error;
+    }
     let service: ReturnType<typeof startRemoteControlService>;
     try {
-        service = startRemoteControlService({ buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION });
+        service = startRemoteControlService({ buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION }, {
+            store,
+            target,
+            targetLabel: `${host}:${target.cwd}`,
+        });
     } catch (error) {
+        store.close();
         await sftp.close();
         throw error;
     }
@@ -284,8 +318,8 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
                 host,
                 cwd: target.cwd,
                 status: "Connected; laptop personal files mounted",
-                trust: "OpenSSH SFTP exposes laptop-account files, not a sandbox. No Session access is open.",
-                readiness: "Personal files available; no user turns or saved Sessions in this connection.",
+                trust: "OpenSSH SFTP exposes laptop-account files, not a sandbox.",
+                readiness: "Conversation turns ready; history is saved on the laptop.",
             },
         });
         const writer = ssh.stdin.getWriter();
@@ -359,8 +393,12 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
                 console.error("Remote SSH exit could not be confirmed")
             );
         }
-        await service.close();
-        await sftp.close();
+        try {
+            await service.close();
+        } finally {
+            store.close();
+            await sftp.close();
+        }
         if (raw) Deno.stdin.setRaw(false);
         // A pending terminal read otherwise keeps the launcher alive after
         // SSH and the remote TUI have both exited.
