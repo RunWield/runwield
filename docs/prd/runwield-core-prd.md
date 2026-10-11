@@ -748,18 +748,18 @@ carries that file path to the recovery prompt; the file contents and target bran
 
 **Scope and maturity:** Existing execution and validation baseline, with the owner's clarified completion and automatic
 recovery requirements below. These requirements do not certify that every current failure path already meets them.
-QUICK_FIX keeps its explicitly lighter behavior; answering a question does not require publication. The remote
-connection currently has setup/process cleanup and a personal mount; remote Session or workflow recovery remains target
-scope.
+QUICK_FIX keeps its explicitly lighter behavior; answering a question does not require publication. Remote connection
+setup, process cleanup, and personal-resource mounting use the connection owner; Session-save reconciliation follows the
+[laptop-owned save contract](#laptop-owned-remote-session-saves).
 
 **Requirement: Clean up connection-owned remote setup without claiming workflow recovery.**
 
 The connection-only remote supervisor monitors its control channel separately from the TUI and stops owned processes,
 including the connection-owned personal SFTP/SSHFS transport, on normal exit or detected loss. Failed or interrupted
 runtime preparation leaves the existing profile, project files, and verified runtime cache in place; the next attempt
-can repair private staging. If process exit cannot be confirmed, report uncertainty. No remote Agent or Session work
-exists yet to resume or recover. The broader connected-only and uncertain-effects requirements remain
-[proposed](remote-ssh-prd.md#disconnect-and-recovery).
+can repair private staging. If process exit cannot be confirmed, report uncertainty. Session-save uncertainty follows
+the [laptop-owned save contract](#laptop-owned-remote-session-saves) without replaying external effects. The
+[Remote SSH requirements](remote-ssh-prd.md#disconnect-and-recovery) define connected-only Agent and workflow behavior.
 
 **Acceptance scenarios:**
 
@@ -2337,6 +2337,44 @@ Given a saved Session whose current repair segment is stored under its execution
 that segment by its Pi transcript ID from the primary Project root continues the same stable Session. The file catalog
 must prove the segment belongs to that Project before accepting a cross-root transcript path. An uncataloged transcript
 in another root's Session directory remains rejected.
+
+#### Laptop-owned remote Session saves
+
+**Requirement: A remote append returns only after its exact bytes are saved on the laptop.**
+
+The save bridge operates on registered laptop-owned Session bundles. Remote Pi hydrates validated laptop evidence into
+an in-memory manager and creates no transcript file. Each entry waits for authenticated write-and-sync acknowledgement
+under the laptop's native Session Writer Lock. Neither a mounted personal directory nor a mounted lock grants writer
+access. Model, tool, workflow, and generation-publication work cannot use an unsaved record as authorization. Session
+attachments stay on the laptop; vision reads receive bytes and stable references without a connection-specific path.
+
+**Requirement: Recover save uncertainty without repeating external work.**
+
+A save fault remains sticky for the operation, including swallowed recorder errors. A late reply cannot restore health.
+Identical request retries do not duplicate entries; conflicting or stale requests are refused. Recovery discards remote
+memory and reconciles laptop evidence under the existing lock. It retains complete saved entries, handles an interrupted
+final append or migration from exact evidence, and never replays a model request, tool call, or external effect.
+Rollover retains laptop ownership while committing predecessor evidence and successor lineage.
+
+**Acceptance scenarios:**
+
+- Given an acknowledgement held after disk synchronization, the append and dependent model, tool, or workflow action
+  remain blocked until that acknowledgement arrives.
+- Given a caught metadata-save error or a timed-out save, later reads, writes, model calls, tools, and publication
+  remain stopped for that manager. A fresh operation hydrates only laptop evidence, without repeating the earlier
+  effect.
+- Given a duplicate request, the saved bytes do not change; conflicting content or an old operation cannot alter a
+  successor. A second OS process cannot acquire the held native lock.
+- Given a saved attachment and a fresh remote manager, vision reads use laptop bytes without a remote Session path;
+  project-relative image reads still use the remote project.
+
+**Qualification samples:** The native macOS ARM64 laptop and compiled Linux x64 `sct` client completed a full Pi 1.0.0
+turn, metadata, compaction, disconnect/reconnect, and fresh hydration. Nine append waits measured 19.6–36.7 ms. A
+stalled save hit its 1.5-second test deadline at 1,501 ms. Independent owned-process Stop took 5,177 ms remotely and
+6,205 ms including SSH, before a 15-second blocked-save deadline; the existing five-second termination grace applies.
+These are samples, not product thresholds or a keyboard-usability judgment. The qualification used a synthetic laptop
+provider; Windows and other platform combinations are not qualified. Synchronization does not claim power-loss
+durability. Run `deno run -A src/shared/remote/verify-remote-session-save.ts` for the owned-scratch SSH qualification.
 
 **Acceptance scenario: Choose a planning Session by its title.**
 
