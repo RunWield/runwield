@@ -42,6 +42,12 @@ export class RuntimeManagedSync {
         if (!hostedSession) throw new Error("SessionRuntime.synchronizeManagedSession: session not found");
         const initialManaged = hostedSession.getManagedMetadata?.() || null;
         if (!initialManaged) return { ok: true, managed: false, events: [] };
+        if (this.services.remotePersistence) {
+            if (!hostedSession.getRootSessionManager()) {
+                await this.services.remotePersistence.synchronize(hostedSession);
+            }
+            return { ok: true, managed: true, events: [], state: hostedSession.getManagedMetadata()?.syncState };
+        }
         let managed = initialManaged;
         if (hostedSession.getRootSessionManager()) return { ok: true, managed: true, dormant: false, events: [] };
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");

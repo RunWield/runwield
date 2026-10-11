@@ -34,6 +34,7 @@ import {
     recoveryDescriptorPath,
     rootEvidence,
     sessionDirForManifestPath,
+    sessionDirForProject,
     sessionDirForRoot,
 } from "./file-session-storage.ts";
 import type {
@@ -65,9 +66,9 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
         locator: import("./file-session-store-types.ts").EnsureSessionCatalogOptions,
         activationOptions?: import("./file-session-store-types.ts").InitialSessionActivationOptions,
     ) {
-        const project = store.getProjectById(locator.projectId);
+        const project = findProject(baseDir, locator.projectId);
         if (!project) throw new Error("Session project is unavailable");
-        const sessionDir = sessionDirForRoot(baseDir, project.currentRoot);
+        const sessionDir = sessionDirForProject(baseDir, project);
         const safe = await readCatalogSafeRootSessionLocator({
             cwd: locator.transcriptCwd,
             sessionDir,
@@ -192,22 +193,24 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             return project;
         },
         listSessionProjects() {
-            return listProjectsFromDisk(baseDir);
+            // Remote locators are storage records, not laptop runtime Projects.
+            return listProjectsFromDisk(baseDir).filter((project) => !project.remote);
         },
         listProjects() {
-            return listProjectsFromDisk(baseDir);
+            return store.listSessionProjects();
         },
         getProjectById(projectId) {
             const project = findProject(baseDir, projectId);
-            if (project) manifests.rememberProject(project);
+            if (!project || project.remote) return null;
+            manifests.rememberProject(project);
             return project;
         },
         listProjectRootEvidence(projectId) {
-            const project = findProject(baseDir, projectId);
+            const project = store.getProjectById(projectId);
             return project ? rootEvidence(project) : [];
         },
         requireSessionProjectRoot(projectId) {
-            const project = findProject(baseDir, projectId);
+            const project = store.getProjectById(projectId);
             if (!project) throw new Error("Session project is unavailable");
             const info = statSync(project.registeredRoot);
             if (!info.isDirectory()) throw new Error("Session project root is unavailable");
@@ -216,7 +219,7 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
         findSessionByLocator(locator) {
             if (locator.transcriptPath) {
                 const found = manifests.findByTranscriptPath(locator.transcriptPath);
-                if (!found) return null;
+                if (!found || !store.getProjectById(found.manifest.projectId)) return null;
                 const segment = found.manifest.segments.find((candidate) =>
                     resolve(candidate.transcriptPath) === resolve(String(locator.transcriptPath))
                 );
@@ -225,11 +228,10 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
                 if (locator.piSessionId && segment.piSessionId !== locator.piSessionId) return null;
                 return catalogedSession(found.manifest);
             }
-            const projects = locator.projectId
-                ? listProjectsFromDisk(baseDir).filter((project) => project.projectId === locator.projectId)
-                : listProjectsFromDisk(baseDir);
+            const projects = store.listSessionProjects()
+                .filter((project) => !locator.projectId || project.projectId === locator.projectId);
             for (const project of projects) {
-                for (const item of listManifests(sessionDirForRoot(baseDir, project.currentRoot))) {
+                for (const item of listManifests(sessionDirForProject(baseDir, project))) {
                     manifests.rememberProject(project);
                     manifests.remember(item.path, item.manifest);
                     const segment = item.manifest.segments.find((candidate) =>
@@ -242,7 +244,7 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
         },
         getSessionById(runwieldSessionId, projectId) {
             const found = manifests.resolve(runwieldSessionId, projectId);
-            return found ? catalogedSession(found.manifest) : null;
+            return found && store.getProjectById(found.manifest.projectId) ? catalogedSession(found.manifest) : null;
         },
         async ensureSessionCatalogRecord(locator) {
             return (await ensureCatalogRecord(locator)).session;
@@ -253,7 +255,7 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             return { session: result.session, segment: result.segment, proof: result.proof };
         },
         async listProjectSessions(projectId, sessionOptions = {}) {
-            const project = findProject(baseDir, projectId);
+            const project = store.getProjectById(projectId);
             if (!project) {
                 return {
                     sessions: [],
@@ -265,7 +267,7 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
                     hasPrevious: false,
                 };
             }
-            const sessionDir = sessionDirForRoot(baseDir, project.currentRoot);
+            const sessionDir = sessionDirForProject(baseDir, project);
             const diagnostics: Array<{ sessionPath: string; code: string; message: string }> = [];
             if (sessionOptions.catalog !== false) {
                 const { locators, diagnostics: locatorDiagnostics } = await listCatalogSafeRootSessionLocators(

@@ -10,6 +10,7 @@ import { ensurePrivateDir, writeJsonAtomically } from "../private-json-file.ts";
 export { ensurePrivateDir, writeJsonAtomically, writeTextAtomically } from "../private-json-file.ts";
 import { encodeCwdForSessionDir } from "./session-directory-name.ts";
 import type { FileSessionManifest, FileSessionProject } from "./file-session-store-types.ts";
+import type { RemoteHostIdentity, RemoteTarget } from "../remote/target.ts";
 
 export const FILE_SESSION_STORE_VERSION = 1;
 const FILE_SESSION_METADATA_DIR = ".runwield";
@@ -96,7 +97,8 @@ export function ensureProject(
     if (!stat.isDirectory()) throw new Error("Project root must be a directory");
     const canonicalRoot = realpathSync.native(enteredRoot);
     const existing = listProjectsFromDisk(baseDir).find((project) =>
-        resolve(project.currentRoot) === resolve(canonicalRoot) || resolve(project.registeredRoot) === enteredRoot
+        !project.remote &&
+        (resolve(project.currentRoot) === resolve(canonicalRoot) || resolve(project.registeredRoot) === enteredRoot)
     );
     if (existing) return existing;
     const sessionDir = sessionDirForRoot(baseDir, canonicalRoot);
@@ -126,6 +128,49 @@ export function ensureProject(
     };
     writeJsonAtomically(path, project);
     return project;
+}
+
+export function remoteProjectRoot(target: RemoteTarget): string {
+    const root = target.primaryRoot || target.gitRoot || target.cwd;
+    if (!root.startsWith("/") || root.includes("\0")) throw new Error("Remote project root must be absolute");
+    return root;
+}
+
+/** Register remote identity without resolving or inspecting its root on the laptop. */
+export function ensureRemoteProject(
+    baseDir: string,
+    host: RemoteHostIdentity,
+    target: RemoteTarget,
+    now?: () => string,
+    targetLabel?: string,
+): FileSessionProject {
+    const root = remoteProjectRoot(target);
+    const identity = JSON.stringify([host.hostname, host.user, host.port, host.hostKeyFingerprint, root]);
+    const projectId = `remote-${createHash("sha256").update(identity).digest("hex").slice(0, 32)}`;
+    const path = projectPath(join(baseDir, projectId));
+    if (pathExists(path)) return readJson<FileSessionProject>(path);
+    const timestamp = isoNow(now);
+    const project: FileSessionProject = {
+        projectId,
+        displayName: root.split("/").filter(Boolean).at(-1) || root,
+        registeredRoot: root,
+        currentRoot: root,
+        remote: { host: { ...host }, root, ...(targetLabel ? { targetLabel } : {}) },
+        lifecycle: "enabled",
+        accessScope: "local_runtime",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        disabledAt: null,
+        removedAt: null,
+        restoredAt: null,
+        relinkedAt: null,
+    };
+    writeJsonAtomically(path, project);
+    return project;
+}
+
+export function sessionDirForProject(baseDir: string, project: FileSessionProject): string {
+    return project.remote ? join(baseDir, project.projectId) : sessionDirForRoot(baseDir, project.currentRoot);
 }
 
 export function listProjectsFromDisk(baseDir: string): FileSessionProject[] {
@@ -236,8 +281,11 @@ function restoreManifestsFromRecoveryDescriptors(sessionDir: string): void {
     }
 }
 
-export function listManifests(sessionDir: string): Array<{ path: string; manifest: FileSessionManifest }> {
-    restoreManifestsFromRecoveryDescriptors(sessionDir);
+export function listManifests(
+    sessionDir: string,
+    recover = true,
+): Array<{ path: string; manifest: FileSessionManifest }> {
+    if (recover) restoreManifestsFromRecoveryDescriptors(sessionDir);
     const manifests: Array<{ path: string; manifest: FileSessionManifest }> = [];
     try {
         for (const entry of readdirSync(bundlesDir(sessionDir), { withFileTypes: true })) {
@@ -265,7 +313,7 @@ export function findManifestById(
     runwieldSessionId: string,
 ): { path: string; manifest: FileSessionManifest } | null {
     for (const project of listProjectsFromDisk(baseDir)) {
-        const sessionDir = sessionDirForRoot(baseDir, project.currentRoot);
+        const sessionDir = sessionDirForProject(baseDir, project);
         const found = listManifests(sessionDir).find((item) => item.manifest.runwieldSessionId === runwieldSessionId);
         if (found) return found;
     }
@@ -380,7 +428,7 @@ export class FileSessionManifestCache {
         ) return null;
         const project = this.#project(recovery.projectId);
         if (!project) return null;
-        const path = manifestPath(sessionDirForRoot(this.#baseDir, project.currentRoot), recovery.runwieldSessionId);
+        const path = manifestPath(sessionDirForProject(this.#baseDir, project), recovery.runwieldSessionId);
         const found = this.readPath(path);
         if (found) return found;
         writeManifest(recovery, path);
@@ -397,7 +445,7 @@ export class FileSessionManifestCache {
         if (projectId) {
             const project = this.#project(projectId);
             if (!project) return null;
-            const path = manifestPath(sessionDirForRoot(this.#baseDir, project.currentRoot), runwieldSessionId);
+            const path = manifestPath(sessionDirForProject(this.#baseDir, project), runwieldSessionId);
             const found = this.#readRestoringPath(path);
             if (!found || found.manifest.projectId !== projectId) return null;
             return found;

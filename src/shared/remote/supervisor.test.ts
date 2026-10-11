@@ -37,7 +37,17 @@ else if (process.argv.slice(2)[0] === "--remote-model-proof") {
     await new Promise<void>(() => {});
 } else if (process.argv.slice(2)[0] === "--remote-view") {
     const reader = Readable.toWeb(process.stdin).getReader();
-    await reader.read();
+    const bytes: number[] = [];
+    let finished = false;
+    while (!finished) {
+        const next = await reader.read();
+        if (next.done) break;
+        for (const byte of next.value) {
+            if (byte === 10) { finished = true; break; }
+            bytes.push(byte);
+        }
+    }
+    await fsWriteFile("view-header", new TextDecoder().decode(new Uint8Array(bytes)));
     reader.releaseLock();
     process.on("SIGTERM", () => {});
     const child = spawn("sh", ["-c", "trap '' TERM; sleep 60 & echo $! > descendant; wait"], { stdio: "ignore" });
@@ -225,6 +235,13 @@ for (const scenario of [
                     }
                     assert(view > 0);
                     assertEquals(await fsRealpath(`/proc/${view}/cwd`), root);
+                    const bootstrap = JSON.parse(await fsReadFile(join(root, "view-header"), "utf8"));
+                    assertEquals(bootstrap.connection, { port, credential: service.credential });
+                    assertEquals(bootstrap.cwd, root);
+                    assertEquals(bootstrap.view.cwd, root);
+                    assert(bootstrap.resources.globalRoot.startsWith("/"));
+                    assertEquals(bootstrap.resources.globalRoot === join(getHomeDir(), ".wld"), false);
+                    assertEquals(bootstrap.HOME, undefined);
                     const descendantDeadline = Date.now() + 5_000;
                     while (Date.now() < descendantDeadline && !descendant) {
                         descendant = Number(await fsReadFile(join(root, "descendant"), "utf8").catch(() => ""));

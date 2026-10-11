@@ -29,7 +29,12 @@ import type { RuntimeTurns } from "./turns.ts";
 
 type RuntimeEventsDependency = Pick<
     RuntimeEvents,
-    "attachRuntimeEventSink" | "consumePendingReplayEvents" | "emitSessionEvent" | "replacePendingReplayEvents"
+    | "attachRuntimeEventSink"
+    | "consumePendingReplayEvents"
+    | "emitSessionEvent"
+    | "replacePendingReplayEvents"
+    | "beginBusyOperation"
+    | "endBusyOperation"
 >;
 type RuntimeManagedOperationsDependency = Pick<
     RuntimeManagedOperations,
@@ -175,6 +180,36 @@ export class RuntimeLifecycleLoading {
             throw new Error("SessionRuntime.loadSession requires a session id");
         }
         await enterGitProjectRuntime(options.cwd);
+        if (this.services.remotePersistence) {
+            const hostedSession = this.services.sessionHost.createSession({
+                id: crypto.randomUUID(),
+                cwd: options.cwd,
+                sessionManager: null,
+            });
+            this.events.beginBusyOperation(hostedSession.id);
+            try {
+                await this.services.remotePersistence.resume(hostedSession, options.sessionId);
+                if (options.modelOverride) {
+                    hostedSession.mergePendingManagedTurnIntent({ model: options.modelOverride, manualModel: true });
+                }
+                this.events.attachRuntimeEventSink(hostedSession);
+                this.events.emitSessionEvent(hostedSession.id, {
+                    type: RuntimeEventTypes.SESSION_LOADED,
+                    cwd: hostedSession.cwd,
+                });
+                return {
+                    sessionId: hostedSession.id,
+                    cwd: hostedSession.cwd,
+                    sessionManagerId: options.sessionId,
+                    replayEvents: [],
+                };
+            } catch (error) {
+                await this.services.sessionHost.disposeSession(hostedSession.id);
+                throw error;
+            } finally {
+                this.events.endBusyOperation(hostedSession.id);
+            }
+        }
         const ownerCoordinationStore = this.services.sessionStore;
         if (!ownerCoordinationStore) {
             throw new Error("Session Manager load is blocked: session_store_unavailable");

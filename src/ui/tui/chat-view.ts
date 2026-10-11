@@ -337,10 +337,13 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const editor = new Editor(tui, getEditorTheme());
     composerContainer.addChild(editor);
     const footerContainer = new Container();
+    const snapshotWindow = options.sessionRuntime
+        ? createSessionSnapshotWindow(options.sessionRuntime, options.getSessionId)
+        : null;
     const mascot = new TuiAgentMascot(() => tui.requestRender());
     let mascotAnswering = false;
     const renderMascot = (width: number, compact: boolean) => {
-        const snapshot = options.sessionRuntime?.getSessionSnapshot(options.getSessionId());
+        const snapshot = snapshotWindow?.read();
         if (!isMascotEnabled(snapshot?.cwd || getCwd())) {
             mascot.pause();
             return [];
@@ -355,11 +358,8 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     let liveValidationProgress: TuiSessionSidebarSnapshot["validationProgress"] = null;
     const sessionSidebar = new TuiSessionSidebar(
         options.getSessionId,
-        () => options.sessionRuntime?.getSessionSnapshot(options.getSessionId()) ?? null,
+        () => snapshotWindow?.read() ?? null,
     );
-    const snapshotWindow = options.sessionRuntime
-        ? createSessionSnapshotWindow(options.sessionRuntime, options.getSessionId)
-        : null;
     const bottomDock: Component = {
         invalidate: () => {
             composerContainer.invalidate();

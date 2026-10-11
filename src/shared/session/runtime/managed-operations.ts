@@ -14,6 +14,7 @@ import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
 import { parseProviderModel } from "../../models/model-validation.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { requireLocalSessionWriter } from "../../remote/personal-resources.ts";
 
 import {
     normalizeManagedActiveModelState,
@@ -217,7 +218,7 @@ export class RuntimeManagedOperations {
     }
 
     hasOperation(sessionId: string) {
-        return this.currentManagedOperations.has(sessionId);
+        return this.currentManagedOperationSettlements.has(sessionId) || this.currentManagedOperations.has(sessionId);
     }
 
     currentCapability(sessionId: string) {
@@ -483,6 +484,151 @@ export class RuntimeManagedOperations {
         );
     }
 
+    private async runRemoteManagedOperation<T>(
+        sessionId: string,
+        descriptor: import("../managed-operation.ts").ManagedOperationDescriptor,
+        body: (
+            context: {
+                acceptedTurnId: string;
+                hasPendingImages: boolean;
+                capability: import("../managed-operation.ts").ManagedOperationCapability;
+            },
+        ) => Promise<T>,
+    ): Promise<T | import("./types.ts").ManagedOperationRunFailure> {
+        const persistence = this.services.remotePersistence!;
+        const session = this.services.sessionHost.getSession(sessionId)!;
+        const managed = session.getManagedMetadata()!;
+        if (this.currentManagedOperationSettlements.has(sessionId)) {
+            return { ok: false, turns: 0, error: "managed_operation_in_progress" };
+        }
+        let settled = () => {};
+        this.currentManagedOperationSettlements.set(
+            sessionId,
+            new Promise<void>((resolve) => {
+                settled = resolve;
+            }),
+        );
+        const options = descriptor.options || {};
+        const busy = options.emitBusyEvents !== false;
+        if (busy) this.events.beginBusyOperation(sessionId);
+        let hydration: Awaited<ReturnType<typeof persistence.open>> | null = null;
+        let capability: import("../managed-operation.ts").ManagedOperationCapability | null = null;
+        let cleanupTurnStart: (() => void) | undefined;
+        const abort = new AbortController();
+        let capabilitySettled = false;
+        try {
+            hydration = await persistence.open(session);
+            const signal = AbortSignal.any([abort.signal, hydration.bridge.signal]);
+            capability = {
+                runtimeSessionId: sessionId,
+                runwieldSessionId: managed.runwieldSessionId,
+                operationId: hydration.operation,
+                get settled() {
+                    return capabilitySettled;
+                },
+                signal,
+                registerArtifact() {
+                    throw requireLocalSessionWriter();
+                },
+                cancel() {
+                    abort.abort();
+                },
+                assertLive() {
+                    if (capabilitySettled) throw new Error("Managed operation capability is settled");
+                    hydration!.bridge.assertHealthy();
+                },
+                settle() {
+                    capabilitySettled = true;
+                },
+            };
+            this.currentManagedOperations.set(sessionId, capability);
+            session.setManagedOperationCapability(capability);
+            session.setRootSessionManager(hydration.manager, capability);
+            // Idle connections can have older snapshots. The transcript hydrated
+            // under fresh laptop ownership is authoritative for this operation.
+            const hydratedMetadata = persistence.metadata(
+                managed.runwieldSessionId,
+                [hydration.manager.getHeader()!, ...hydration.manager.getEntries()],
+                managed.generation,
+            );
+            session.setManagedMetadata(hydratedMetadata);
+            this.events.beginLiveCapture(sessionId);
+            const pending = session.getPendingManagedTurnIntent();
+            const manager = hydration.manager;
+            const acceptedTurnId = options.turnId || crypto.randomUUID();
+            const cleanup = options.onTurnStarted?.({ turnId: acceptedTurnId });
+            if (typeof cleanup === "function") cleanupTurnStart = cleanup;
+            const hasPendingImages = (options.initialImages || []).some((image) => !image.path && !image.ref);
+            if (options.initialRequest !== undefined && descriptor.emitPromptEvents !== false && !hasPendingImages) {
+                this.events.emitSessionEvent(sessionId, {
+                    type: RuntimeEventTypes.USER_MESSAGE,
+                    turnId: acceptedTurnId,
+                    text: options.initialRequest,
+                    images: options.initialImages || [],
+                });
+                this.events.emitSessionEvent(sessionId, { type: RuntimeEventTypes.TURN_START, turnId: acceptedTurnId });
+            }
+            if (descriptor.activateAgent !== false) {
+                const resumeAgent = await resolveResumeAgentName(manager);
+                const agentName = options.agentName || pending.agentName || resumeAgent;
+                const persistedManual = readPersistedManualModelState(manager, agentName);
+                const preparedModelOverride = "preparedModelOverride" in options &&
+                        typeof options.preparedModelOverride === "string"
+                    ? options.preparedModelOverride
+                    : undefined;
+                const model = preparedModelOverride ||
+                    (pending.model
+                        ? (pending.provider ? `${pending.provider}/${pending.model}` : pending.model)
+                        : persistedManual
+                        ? (persistedManual.provider
+                            ? `${persistedManual.provider}/${persistedManual.model}`
+                            : persistedManual.model)
+                        : resolvePersistedResumeModel(manager));
+                const configuration = await resolvePersistedRootConfiguration(agentName, manager, session.cwd);
+                await this.settings.activateSessionAgent(session, {
+                    ...configuration,
+                    agentName,
+                    model,
+                    toolNames: options.toolNames,
+                    customTools: options.customTools || configuration.customTools,
+                    includeEditFallback: options.includeEditFallback,
+                    thinkingLevelOverride: pending.thinkingLevel || hydratedMetadata.thinkingLevel
+                        ? normalizeThinkingLevel(pending.thinkingLevel || hydratedMetadata.thinkingLevel)
+                        : undefined,
+                    managedOperationCapability: capability,
+                });
+                if (pending.manualModel && pending.model) {
+                    recordManualModelSelection(manager, pending.provider || "", pending.model);
+                }
+            }
+            session.consumePendingManagedTurnIntent();
+            const result = await this.activeManagedOperation.run(
+                { runtime: this, sessionId, capability },
+                () => body({ acceptedTurnId, hasPendingImages, capability: capability! }),
+            );
+            hydration.bridge.assertHealthy();
+            await persistence.control.checkpoint(hydration.operation);
+            session.dehydrateManagedSession();
+            await persistence.synchronize(session);
+            return result;
+        } catch (error) {
+            session.dehydrateManagedSession();
+            if (hydration) await persistence.control.markUncertain(hydration.operation).catch(() => {});
+            throw error;
+        } finally {
+            hydration?.bridge.close();
+            this.events.endLiveCapture(sessionId);
+            this.queues.removeAllQueueSourceSubscriptions(sessionId);
+            cleanupTurnStart?.();
+            capability?.settle();
+            this.currentManagedOperations.delete(sessionId);
+            this.currentManagedOperationSettlements.delete(sessionId);
+            settled();
+            session.setManagedOperationCapability(null);
+            if (busy) this.events.endBusyOperation(sessionId);
+        }
+    }
+
     async runManagedOperation<T>(
         sessionId: string,
         descriptor: import(".././managed-operation.ts").ManagedOperationDescriptor,
@@ -506,6 +652,7 @@ export class RuntimeManagedOperations {
                 error: "managed_operation_in_progress",
             };
         }
+        if (this.services.remotePersistence) return await this.runRemoteManagedOperation(sessionId, descriptor, body);
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");
         const state = this.services.sessionStore.inspectSessionActivation(managed.runwieldSessionId);
         const committedPlanAssociations = this.services.sessionStore.listSessionPlanAssociations(
