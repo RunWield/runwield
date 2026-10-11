@@ -43,7 +43,7 @@ dependencies:
     - "04-implement-approved-plans-in-runwield-worktrees"
 userVerifiedAt: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Run Workflow Validation without a Core Session
