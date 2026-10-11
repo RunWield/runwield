@@ -17,7 +17,8 @@ import {
 } from "../../shared/workflow/validation-user-messages.ts";
 import { runPlanFrontMatterTransition, runReviewReopenTransition } from "../../shared/workflow/state-transition.ts";
 import { getWorkflowDiff } from "../../shared/workflow/git-snapshot.ts";
-import { getWorktreeStatus } from "../../shared/worktree.js";
+import { getWorktreeStatus, slugify } from "../../shared/worktree.js";
+import { WORKTREE_BRANCH_PREFIX } from "../../constants.js";
 import {
     findActiveByPlanName as findWorktreeByPlanName,
     findById as findWorktreeById,
@@ -105,7 +106,16 @@ async function discoverAttachedPlanWorktree(
 ): Promise<RecoveryWorktreeContext | null> {
     const projectPath = await canonicalPath(projectRoot);
     const matches: RecoveryWorktreeContext[] = [];
+    // Execution branches are created only as `worktree/<plan-slug>-<attempt-id>`, a
+    // prefix target branches may not use, and attempt IDs contain no dash. A child
+    // Plan's slug extends its Epic's with another dash, so only this Plan's own
+    // attempts can match; reading every other checkout's Plan would cost a runtime
+    // entry each.
+    const executionBranchPrefix = `refs/heads/${WORKTREE_BRANCH_PREFIX}${slugify(plan.planName)}-`;
+    const isOwnExecutionBranch = (branch: string) =>
+        branch.startsWith(executionBranchPrefix) && !branch.slice(executionBranchPrefix.length).includes("-");
     for (const record of await listAttachedWorktrees(projectRoot)) {
+        if (!isOwnExecutionBranch(record.branch)) continue;
         const recordPath = await canonicalPath(record.path);
         if (!recordPath || recordPath === projectPath) continue;
         const executionPlan = await loadPlan(record.path, plan.planName).catch(() => null);

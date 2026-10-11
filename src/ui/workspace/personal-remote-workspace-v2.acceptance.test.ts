@@ -481,21 +481,12 @@ Deno.test("personal remote Workspace v2 workflow presentation exposes connected 
         }],
         hasCodeReview: true,
     });
-    assertEquals(presentation.currentStage?.id, "semantic");
+    assertEquals(presentation.currentStage?.id, "code_review");
     assertEquals(presentation.action?.kind, "review_code");
-    assertEquals(presentation.connections.some((connection) => connection.kind === "repair_return"), true);
+    assertEquals(presentation.connections.some((connection) => connection.kind === "repair_return"), false);
 
     const html = renderToStaticMarkup(createElement(WorkflowSidebar, { presentation }));
-    assertEquals(
-        html.indexOf("Fix the reported issues, then rerun the failed check.") <
-            html.indexOf("Repair returns to AI review"),
-        true,
-    );
-    assertEquals(
-        html.indexOf("Repair returns to AI review") <
-            html.indexOf("Publish the validated changes to the target branch"),
-        true,
-    );
+    assertEquals(html.includes("Repair returns to AI review"), false);
 
     assertEquals(html.includes("<strong>current</strong>"), false);
     assertEquals(html.includes("<strong>upcoming</strong>"), false);

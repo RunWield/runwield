@@ -518,6 +518,24 @@ Left by the reviewers of individual children for the integration review. These a
 
 <!-- runwield:integration-notes:end child="attached-mode-claude-feature-preview/02-plan-one-feature-request-inside-claude-code" -->
 
+<!-- runwield:integration-notes:start child="attached-mode-claude-feature-preview/05a-run-workflow-validation-without-a-core-session" -->
+
+**attached-mode-claude-feature-preview/05a-run-workflow-validation-without-a-core-session**
+
+- Child 05's MCP `review_diff` must record coverage spans with `getDiffCoverage` over the exact `fullDiff`/`repairDiff`
+  strings in the reviewer request. It must pass them back unchanged in `resume.coverage` with the request's `identity`.
+  Spans for any other diff text, scope, or path are rejected as incomplete or mismatched.
+  (src/shared/workflow/review-diff.ts, validation-host-state.ts validateHostReviewerResume, child 05 coordinator/MCP)
+- Child 05 must route every `task_completed` resume through `continueHostTurnValidation` with the repair request's full
+  identity (attemptId, generation, repairGeneration). Child 05 must not call `recordValidationRepairCompletion` directly
+  while a validation owner is live, because it now throws when another owner is alive. (validation-supervisor.ts
+  continueValidationAttempt / recordValidationRepairCompletion, child 05 coordinator)
+- Child 06 must extend `continueHostTurnValidation` past `awaiting_delivery`. The engine currently short-circuits the
+  delivery phase whenever `args.hostTurn` is set (validation-engine.ts runValidationPhase). (validation-engine.ts,
+  child 06)
+
+<!-- runwield:integration-notes:end child="attached-mode-claude-feature-preview/05a-run-workflow-validation-without-a-core-session" -->
+
 ## Edge Cases & Considerations
 
 - **Extraction versus Attached readiness** — extraction is complete, but a synchronous runtime interface is not proof of

@@ -363,6 +363,61 @@ Deno.test("legacy migration blocks tracked project secrets with rotation guidanc
     }
 });
 
+Deno.test("runtime entry reuses Git answers only while repository evidence is unchanged", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const project = await makeMigrationProject();
+        const binDir = await Deno.makeTempDir({ prefix: "runwield-runtime-layout-git-log-" });
+        const log = join(binDir, "git.log");
+        const originalPath = Deno.env.get("PATH") || "";
+        try {
+            await writeGitLoggingWrapper(binDir, log, originalPath);
+            Deno.env.set("PATH", `${binDir}:${originalPath}`);
+            await settleGitEvidence();
+
+            assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
+            await settleGitEvidence();
+            await Deno.writeTextFile(log, "");
+            assertEquals((await migrateLegacyProjectRuntimeState(project.selectedRoot)).kind, "ready");
+            assertEquals(await readRuntimeGitReads(log), []);
+
+            const secret = join(project.primaryRoot, ".wld", "collaboration-secrets.json");
+            await writeText(secret, "secret\n");
+            await git(project.primaryRoot, ["add", ".wld/collaboration-secrets.json"]);
+            await settleGitEvidence();
+            await Deno.writeTextFile(log, "");
+            const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
+            if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
+            assertEquals(result.reason, "tracked_secret");
+            assertEquals(result.paths, [secret]);
+            assertEquals(await readRuntimeGitReads(log), ["ls-files"]);
+        } finally {
+            Deno.env.set("PATH", originalPath);
+            await Deno.remove(binDir, { recursive: true }).catch(() => {});
+            await project.cleanup();
+        }
+    });
+});
+
+Deno.test("runtime entry recognizes a worktree attached after a reused Git answer", async () => {
+    const project = await makeMigrationProject();
+    const laterCheckout = await Deno.makeTempDir({ prefix: "runwield-runtime-migration-later-" });
+    try {
+        await settleGitEvidence();
+        assertEquals((await migrateLegacyProjectRuntimeState(project.primaryRoot)).kind, "ready");
+        await settleGitEvidence();
+        assertEquals((await migrateLegacyProjectRuntimeState(project.primaryRoot)).kind, "ready");
+
+        await git(project.primaryRoot, ["worktree", "add", "-b", `later-${crypto.randomUUID()}`, laterCheckout]);
+        await settleGitEvidence();
+        const result = await migrateLegacyProjectRuntimeState(laterCheckout);
+        assertEquals(result.kind, "ready");
+    } finally {
+        await git(project.primaryRoot, ["worktree", "remove", "--force", laterCheckout]).catch(() => {});
+        await Deno.remove(laterCheckout, { recursive: true }).catch(() => {});
+        await project.cleanup();
+    }
+});
+
 Deno.test("legacy migration blocks symlinked authorities before adoption", async () => {
     const project = await makeMigrationProject();
     try {
@@ -1970,6 +2025,35 @@ async function assertCompletedMigrationEffect(
     }
     assertEquals(await Deno.readTextFile(join(layout.primary.controllerPlansDir, "plan.json")), `${effect}\n`);
     await assertMissing(join(getRunWieldRuntimeDir(project.primaryRoot), "controller"));
+}
+
+/** Let repository metadata age past the window in which Git answers are never reused. */
+async function settleGitEvidence(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+}
+
+async function writeGitLoggingWrapper(binDir: string, log: string, originalPath: string): Promise<void> {
+    const wrapper = join(binDir, "git");
+    await Deno.writeTextFile(
+        wrapper,
+        [
+            "#!/bin/sh",
+            `echo "$1 $2" >> ${JSON.stringify(log)}`,
+            `PATH=${JSON.stringify(originalPath)}`,
+            "export PATH",
+            'exec git "$@"',
+            "",
+        ].join("\n"),
+    );
+    await Deno.chmod(wrapper, 0o700);
+}
+
+/** The runtime-entry Git reads a log recorded, in order. */
+async function readRuntimeGitReads(log: string): Promise<string[]> {
+    const lines = (await Deno.readTextFile(log)).split("\n").filter(Boolean);
+    return lines.flatMap((line) =>
+        line === "worktree list" ? ["worktree list"] : line.startsWith("ls-files ") ? ["ls-files"] : []
+    );
 }
 
 async function writeText(path: string, contents: string): Promise<void> {

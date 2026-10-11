@@ -326,7 +326,7 @@ Deno.test("ValidationHandoffBlock renders owner validation labels and latest han
     assertBlockBackground(lines, w, "ValidationHandoffBlock");
     assertEquals(plain.includes("Repair paused"), true);
     assertEquals(
-        plain.includes("Tests and CI failed, AI review pending, Code review pending, Combining commits pending"),
+        plain.includes("Verification Command failed, AI review pending, Code review pending, Merge worktree pending"),
         true,
     );
     assertEquals(plain.includes("Round 2/3"), false);
@@ -338,7 +338,27 @@ Deno.test("ValidationHandoffBlock renders owner validation labels and latest han
     assertEquals(plain.includes("Reviewer latest AI review — rejected (feedback addressed; rechecking)"), true);
 });
 
-Deno.test("ValidationHandoffBlock renders tests and CI wording for QUICK_FIX progress", () => {
+Deno.test("ValidationHandoffBlock shows each workflow check once as verification advances", () => {
+    const states = /** @type {const} */ (["running", "failed", "passed"]);
+    for (const state of states) {
+        const block = new ValidationHandoffBlock({
+            progress: {
+                kind: "workflow",
+                outcome: state === "passed" ? "verified" : state,
+                stage: state === "running" ? "ci" : "terminal",
+                checks: { ci: state, semanticReview: "pending", humanReview: "pending", merge: "pending" },
+            },
+        });
+        const plain = stripAnsi(block.render(200).join("\n"));
+        assertEquals(plain.split("Verification Command").length - 1, 1);
+        assertEquals(plain.includes(`Verification Command ${state === "passed" ? "done" : state}`), true);
+        assertEquals(plain.includes("Merge worktree pending"), true);
+        assertEquals(plain.includes("Tests and CI"), false);
+        assertEquals(plain.includes("Combining commits"), false);
+    }
+});
+
+Deno.test("ValidationHandoffBlock renders verification command wording for QUICK_FIX progress", () => {
     const runningBlock = new ValidationHandoffBlock({
         progress: {
             kind: "mechanical",
@@ -350,10 +370,10 @@ Deno.test("ValidationHandoffBlock renders tests and CI wording for QUICK_FIX pro
     });
     const runningPlain = stripAnsi(runningBlock.render(120).join("\n"));
 
-    assertEquals(runningPlain.includes("Tests and CI running"), true);
+    assertEquals(runningPlain.split("Verification Command").length - 1, 1);
     assertEquals(runningPlain.includes("Stage: CI"), false);
     assertEquals(runningPlain.includes("Mechanical Validation"), false);
-    assertEquals(runningPlain.includes("Tests and CI running"), true);
+    assertEquals(runningPlain.includes("Verification Command running"), true);
     assertEquals(runningPlain.includes("Review skipped"), false);
     assertEquals(runningPlain.includes("Human skipped"), false);
     assertEquals(runningPlain.includes("Merge skipped"), false);
@@ -370,7 +390,8 @@ Deno.test("ValidationHandoffBlock renders tests and CI wording for QUICK_FIX pro
     });
     const verifiedPlain = stripAnsi(verifiedBlock.render(120).join("\n"));
 
-    assertEquals(verifiedPlain.includes("Tests and CI passed"), true);
+    assertEquals(verifiedPlain.includes("Verification Command done"), true);
+    assertEquals(verifiedPlain.split("Verification Command").length - 1, 1);
     assertEquals(verifiedPlain.includes("Validation passed"), false);
     assertEquals(verifiedPlain.includes("Mechanical Validation"), false);
 });

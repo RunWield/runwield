@@ -181,6 +181,22 @@ Deno.test("Semantic review request carries the Epic context before the Plan", ()
     assertEquals(epicIndex < config.prompt.indexOf("### Approved Plan"), true);
 });
 
+Deno.test("bundled discovery reviewer prompt attacks tests with a plausible wrong implementation", async () => {
+    const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
+
+    // A test that passes on a counterfeit implementation is a defect the Plan-adherence
+    // checks never see, so the prompt must ask the question directly and keep the
+    // judgment static — execution proof stays with mechanical validation.
+    assertStringIncludes(prompt, "what plausible wrong implementation would still pass this test");
+    assertStringIncludes(prompt, "Check the assertions, the boundaries, and fakes that bypass real behavior");
+    assertStringIncludes(prompt, "never require execution proof");
+    assertStringIncludes(prompt, "a test that green-lights a fake is misleading");
+    assertStringIncludes(
+        prompt,
+        "Observations about strengthening an honest test beyond that gate are advisories",
+    );
+});
+
 Deno.test("bundled discovery reviewer prompt requires all findings in one pass", async () => {
     const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
 
@@ -200,6 +216,10 @@ Deno.test("bundled verification reviewer prompt refuses to re-derive the Plan", 
     assertStringIncludes(prompt, "Did the repair introduce a new Plan divergence or regression?");
     assertStringIncludes(prompt, "A new injection seam in a touched production hunk");
     assertStringIncludes(prompt, "only required ports for genuine external capabilities are legitimate");
+    // A repair that makes the test pass by gutting it is a regression, not a fix.
+    assertStringIncludes(prompt, "resolves a finding by weakening a test");
+    assertStringIncludes(prompt, "loosening or deleting assertions, dropping a boundary case");
+    assertStringIncludes(prompt, "substituting a fake for the real behavior so the test passes");
 });
 
 Deno.test("bundled verification reviewer prompt treats repair claims as evidence, not resolution", async () => {

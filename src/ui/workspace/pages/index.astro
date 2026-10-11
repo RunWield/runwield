@@ -3,7 +3,7 @@ import OwnerDashboard from "../components/OwnerDashboard.astro";
 import WorkspaceLayout from "../layouts/WorkspaceLayout.astro";
 import PlanBoardPage from "../components/PlanBoardPage.astro";
 import { loadCanonicalBoard, serializeCanonicalPlanError } from "../server/astro-canonical-data.js";
-import { currentWorkspaceCwd } from "../server/cwd.js";
+import { currentWorkspaceCwd } from "../server/cwd.ts";
 
 const ownerDashboard = Astro.request.headers.get("x-runwield-owner-dashboard") === "true";
 const workspaceCwd = Astro.request.headers.get("x-runwield-workspace-cwd") || currentWorkspaceCwd();

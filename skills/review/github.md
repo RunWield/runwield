@@ -46,7 +46,7 @@ Write the review to a file:
 {
     "commit_id": "<headRefOid>",
     "event": "REQUEST_CHANGES",
-    "body": "## Standards\n\n…\n\n## Spec\n\n…",
+    "body": "## Standards\n\n…\n\n## Spec\n\n…\n\n## Tests\n\n…",
     "comments": [
         { "path": "src/session.ts", "line": 42, "side": "RIGHT", "body": "…" },
         { "path": "src/session.ts", "start_line": 60, "start_side": "RIGHT", "line": 64, "side": "RIGHT", "body": "…" }

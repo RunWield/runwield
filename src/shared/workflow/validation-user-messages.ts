@@ -191,7 +191,9 @@ export function buildValidationUserMessage(request: ValidationMessageRequest): s
         case "reviewer_nudge":
             return `AI review needs more time for round ${request.round}. Try ${request.attempt} of 3.`;
         case "integration_notes_saved":
-            return `AI review left ${request.count} note(s) for ${request.epicPlanName}.`;
+            return `AI review saved ${request.count} integration note${
+                request.count === 1 ? "" : "s"
+            } for Epic ${request.epicPlanName}. These are for its later check. They do not ask for a fix.`;
         case "semantic_limit":
             return `AI review checked ${request.planName} ${request.rounds} times. ${request.openCount} item(s) stay open. Tests and CI ${
                 request.testsPass ? "pass" : "do not pass"

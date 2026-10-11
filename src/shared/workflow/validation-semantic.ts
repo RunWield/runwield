@@ -445,7 +445,11 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             "ai-repair",
             "Started",
         );
-        emitStatus(args, buildValidationUserMessage({ kind: "review_repair", repairKind: "semantic" }), "warning");
+        emitProgress(args, buildValidationUserMessage({ kind: "review_repair", repairKind: "semantic" }), "warning", {
+            stage: "engineer_repair",
+            outcome: "running",
+            checks: { semanticReview: "failed", humanReview: "pending", merge: "pending" },
+        });
         return {
             kind: "semantic_repair_handoff",
             planName: args.planName,

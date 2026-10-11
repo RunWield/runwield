@@ -13,9 +13,12 @@ export const PRE_TEST_TASKS = [
     "doc-links:check",
     "docs:check",
     "skills:sync:check",
+    // The suites below skip the build their everyday tasks run first; building
+    // here overlaps it with the checks instead of serializing it before tests.
+    "workspace:build",
 ] as const;
 
-export type CiTaskName = typeof PRE_TEST_TASKS[number] | "test" | "test:all";
+export type CiTaskName = typeof PRE_TEST_TASKS[number] | "test:suite" | "test:all:suite";
 
 export interface CiTaskResult {
     name: CiTaskName;
@@ -68,7 +71,7 @@ export async function runCi(executeTask: ExecuteCiTask, options: CiOptions = {})
         return { exitCode: 1, failures: preTestFailures };
     }
 
-    const testResult = await settleTask(options.sourceOnly ? "test" : "test:all", executeTask);
+    const testResult = await settleTask(options.sourceOnly ? "test:suite" : "test:all:suite", executeTask);
     const testFailures = failedTasks([testResult]);
     printFailureSummary(testFailures);
     return { exitCode: testResult.code, failures: testFailures };
@@ -77,7 +80,7 @@ export async function runCi(executeTask: ExecuteCiTask, options: CiOptions = {})
 async function executeDenoTask(taskName: CiTaskName, failFast: boolean): Promise<CiTaskResult> {
     const start = performance.now();
     const args = ["task", "-q", taskName];
-    if (failFast && (taskName === "test" || taskName === "test:all")) args.push("--fail-fast");
+    if (failFast && (taskName === "test:suite" || taskName === "test:all:suite")) args.push("--fail-fast");
     const result = await runWithSnip("deno", args, {
         stdin: "inherit",
         failureLabel: `ci ${taskName}`,

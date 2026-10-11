@@ -297,7 +297,7 @@ File wall times below include process/import overhead and reflect contention in 
 | `src/shared/workflow/publication-machine.e2e.test.ts`                 | 35, including nested crash cases |         114.0s |
 | `src/ui/tui/golden-scenarios/slash-command-configuration.test.ts`     |                               15 |          86.5s |
 | `src/ui/tui/golden-scenarios/validation-workflow-lifecycle.test.ts`   |                                9 |          83.6s |
-| `src/ui/tui/golden-scenarios/project-workflow.test.js`                |                                3 |          80.1s |
+| `src/ui/tui/golden-scenarios/project-workflow.test.ts`                |                                3 |          80.1s |
 | `src/shared/workflow/sequence-review.test.ts`                         |                               15 |          77.8s |
 
 The longest source parent case was the complete remote/local process-death matrix, 76.6s, followed by the separate

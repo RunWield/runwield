@@ -29,6 +29,20 @@ async function decide(url: string, body: Record<string, string | boolean>) {
     assertEquals(response.status, 200, await response.text());
 }
 
+async function waitForReviewSurface(surface: Promise<string>, revision: number): Promise<string> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            surface,
+            new Promise<never>((_, reject) => {
+                timeout = setTimeout(() => reject(new Error(`Review surface ${revision} did not open`)), 30_000);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 Deno.test("reopened saved Epic chat hands feedback to Architect and shows its model-authored revision", async () => {
     await withRuntimeCommandFixture(
         "reopen-epic-handoff-",
@@ -42,6 +56,7 @@ Deno.test("reopened saved Epic chat hands feedback to Architect and shows its mo
             const runtime = createSessionRuntime({ sessionStore: store, ownerProcessKind: "test" });
             let url = "";
             let readyCount = 0;
+            const surfaces = Array.from({ length: 3 }, () => Promise.withResolvers<string>());
             const conversations: PlanReviewConversation[] = [];
             const prompts: string[] = [];
             let modelTurns = 0;
@@ -87,7 +102,7 @@ Deno.test("reopened saved Epic chat hands feedback to Architect and shows its mo
                                 ...request._meta,
                                 onSurfaceReady: (surface: { url: string }) => {
                                     url = surface.url;
-                                    readyCount++;
+                                    surfaces[readyCount++].resolve(url);
                                 },
                             },
                         }, signal);
@@ -98,22 +113,15 @@ Deno.test("reopened saved Epic chat hands feedback to Architect and shows its mo
                 const pending = runtime.reopenPlanReview(sessionId);
                 let settled = false;
                 try {
-                    for (let i = 0; i < 200 && !url; i++) await new Promise((resolve) => setTimeout(resolve, 20));
-                    assert(url, "The saved Epic review page did not open");
-                    const firstUrl = url;
+                    const firstUrl = await waitForReviewSurface(surfaces[0].promise, 0);
                     assertEquals(modelTurns, 0, "Opening the saved review must not turn the Architect model");
                     await decide(firstUrl, {
                         approved: false,
                         conversationTurn: true,
                         feedback: "Clarify milestone 1.",
                     });
-                    for (let i = 0; i < 200 && readyCount < 2; i++) {
-                        await new Promise((resolve) => setTimeout(resolve, 20));
-                    }
+                    await waitForReviewSurface(surfaces[1].promise, 1);
                     assertEquals(readyCount, 2, "plan_written must reopen review after the Architect turn");
-                    for (let i = 0; i < 200 && modelTurns < 1; i++) {
-                        await new Promise((resolve) => setTimeout(resolve, 20));
-                    }
                     assertEquals(url, firstUrl);
                     const saved = await loadPlan(projectRoot, "epic");
                     assert(saved);
@@ -139,9 +147,7 @@ Deno.test("reopened saved Epic chat hands feedback to Architect and shows its mo
                         conversationTurn: true,
                         feedback: "Clarify milestone 2 dependencies.",
                     });
-                    for (let i = 0; i < 200 && readyCount < 3; i++) {
-                        await new Promise((resolve) => setTimeout(resolve, 20));
-                    }
+                    await waitForReviewSurface(surfaces[2].promise, 2);
                     assertEquals(
                         readyCount,
                         3,
@@ -182,15 +188,8 @@ Deno.test("reopened saved Epic chat hands feedback to Architect and shows its mo
                     assertEquals(result.kind, "complete", result.message);
                 } finally {
                     if (!settled) {
-                        if (url) {
-                            try {
-                                await decide(url, { approved: true, approvalAction: "later" });
-                            } catch {
-                                runtime.closeAllSessions();
-                            }
-                        } else {
-                            runtime.closeAllSessions();
-                        }
+                        // Cancellation also works while the model is still preparing the next review.
+                        runtime.cancelSession(sessionId);
                         await pending;
                     }
                 }

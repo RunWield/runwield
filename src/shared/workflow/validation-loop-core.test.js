@@ -525,7 +525,9 @@ Deno.test("runValidationLoop starts at implemented and records only the mechanic
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(ciCalls, 1);
     assertEquals(result.kind, "paused");
-    assertEquals(hostedSession.getWorkflowContext(), expectedWorkflowContext);
+    const { validationProgress, ...workflowContext } = hostedSession.getWorkflowContext() || {};
+    assertEquals(workflowContext, expectedWorkflowContext);
+    assertEquals(validationProgress?.checks.ci, "passed");
     assertEquals(plan?.attrs.status, "implemented");
     assertEquals(plan?.attrs.validationPhase, "semantic");
     assertEquals(plan?.attrs.validationCiAttempts, 0);

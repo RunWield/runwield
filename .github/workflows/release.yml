@@ -528,10 +528,8 @@ jobs:
               if: needs.metadata.outputs.kind == 'stable'
               env:
                   HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-                  WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
               run: |
                   test -n "$HOMEBREW_TAP_TOKEN"
-                  test -n "$WINGET_CREATE_GITHUB_TOKEN"
                   GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh api repos/gandazgul/homebrew-tap --jq '.permissions.push' | grep -Fx true
 
             - name: Download checked release bytes
@@ -637,7 +635,8 @@ jobs:
 
     winget-submit:
         runs-on: windows-latest
-        if: ${{ !cancelled() && needs.winget-package.result == 'success' && needs.metadata.outputs.kind == 'stable' }}
+        # Owner paused submissions until further notice; keep manifest preparation active.
+        if: ${{ false }}
         needs:
             - metadata
             - winget-package

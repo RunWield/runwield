@@ -901,6 +901,19 @@ Plan and Code Review chats accept attached annotations without a typed message. 
 and its keyboard shortcut; removing them disables Send when the message is empty. The Agent receives the notes as review
 context, and the conversation shows the annotation-only submission. Working or unavailable chats stay disabled.
 
+**Requirement: Preserve review layout preferences and prioritize readable changes.**
+
+Code Review remembers the owner's last Split or Unified view on this browser, including after reload and across reviews.
+Both layouts wrap long lines to the diff container without horizontal scrolling, including Guided Review. Files
+automatically collapses at 980px and below and remains reachable through the toolbar. Plan and Code Review start with
+Annotations collapsed and reveal it on the first annotation or an explicit toolbar action. Additional annotations
+respect a later manual collapse. Compact sidebars open one at a time over the workbench.
+
+Acceptance: choose Unified, reload the review, and verify Unified is selected with Annotations closed. Add a first note
+and verify the panel opens, then collapse it and add another note without reopening it. Narrow the screen and verify
+Files closes, its toolbar button reopens it, and long code lines remain readable without horizontal scrolling in both
+Split and Unified views.
+
 **Requirement: Repair code without replacing the open review.**
 
 A Code Review repair request keeps the same review screen and conversation through repair and the required CI rerun. The
@@ -1049,7 +1062,8 @@ or cross-Session Agent retrieval.
 Search uses a separate rebuildable index. Before display and navigation, Workspace checks the enabled Project and the
 current canonical source. Indexing failure in one Project does not block healthy Projects or other Workspace views.
 RunWield-owned writes request an early refresh after they commit; a bounded background scan catches missed requests and
-external edits. Search filters do not change Project settings.
+external edits. A requested refresh includes committed changes made before the request, even when indexing was already
+active. Search filters do not change Project settings.
 
 Work Record results and readers show the summary, Project, source links, completion confidence, and applicable notices.
 Users can tell automated verification from user attestation, skipped verification, and a done-enough Epic. Retrieval
@@ -1065,6 +1079,8 @@ owns PRD authoring behavior.
   and type identity and both search surfaces preserve the same order.
 - When an indexed source changes, disappears, escapes its registered root, or becomes ineligible, search and an issued
   destination refuse stale evidence before the next background scan.
+- Given a document added while indexing is underway, when its requested refresh completes, search finds it without
+  waiting for the next periodic scan.
 - When one Project cannot be indexed, healthy Project results and the failed Project's safe status remain visible.
 - When a Plan lacks an ID, search skips it without changing its file and still returns other valid results from that
   Project.

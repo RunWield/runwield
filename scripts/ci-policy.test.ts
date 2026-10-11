@@ -15,7 +15,7 @@ Deno.test("the everyday test task leaves the Golden TUI portfolio to its own tas
     const { tasks } = await readDenoConfig();
 
     for (const dir of GOLDEN_TUI_DIRS) {
-        assertStringIncludes(tasks.test, `--exclude ${dir}`);
+        assertStringIncludes(tasks["test:suite"], `--exclude ${dir}`);
         assertStringIncludes(tasks["test:golden-tui"], dir);
     }
 });
@@ -28,7 +28,7 @@ Deno.test("the PR gate runs source quality and Golden TUI jobs in parallel", asy
     assertStringIncludes(workflow, "pull_request:");
     assertStringIncludes(workflow, "    ci:");
     assertStringIncludes(workflow, "run: deno task ci --source-only");
-    assertEquals(tasks["test:all"].includes("--exclude"), false);
+    assertEquals(tasks["test:all:suite"].includes("--exclude"), false);
     assertStringIncludes(workflow, "    golden:");
     assertStringIncludes(workflow, "run: deno task test:golden-tui --timings-file");
 });

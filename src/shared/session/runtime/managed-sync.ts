@@ -3,7 +3,8 @@ import { captureTranscriptEvidence, toProjectionFailure } from ".././session-tra
 import { projectAggregateTranscript } from ".././session-transcript-manifest.ts";
 import { dirname } from "@std/path";
 import { normalizeTutorialContext } from "../tutorial-context-session.ts";
-import { normalizeWorkflowContext } from "../workflow-context-session.js";
+import { normalizeWorkflowContext, type WorkflowContext } from "../workflow-context-session.js";
+import { loadPlanActionEvidence } from "../../workflow/plan-actions.ts";
 
 import { isSameManagedSyncState, restorePublishedSessionProjectRoot } from "./support.ts";
 import type { ManagedSyncOptions } from "./types.ts";
@@ -12,6 +13,19 @@ import type { RuntimeServices } from "./base.ts";
 import type { RuntimeEvents } from "./events.ts";
 
 type RuntimeEventsDependency = Pick<RuntimeEvents, "emitSessionEvent">;
+
+// Legacy transcripts lack accepted progress. Reconcile only confirmed same-Plan delivery,
+// including after a metadata-only activation; neither Plan nor transcript is rewritten.
+async function reconcileLegacyCompletion(
+    cwd: string,
+    context: WorkflowContext | null,
+): Promise<WorkflowContext | null> {
+    if (!context?.planId || context.validationProgress || context.status === "verified") return context;
+    const result = await loadPlanActionEvidence(cwd, context.planId);
+    return result.kind === "success" && result.evidence.status === "verified"
+        ? { ...context, status: "verified", planName: result.evidence.planName }
+        : context;
+}
 
 export class RuntimeManagedSync {
     private events!: RuntimeEventsDependency;
@@ -68,6 +82,15 @@ export class RuntimeManagedSync {
                 activeOwnerInstanceId !== this.services.ownerInstanceId,
         );
         const owningSurfaceKind = activeElsewhere ? sanitizedSurface(activeOwnerKind) : undefined;
+        if (!activeElsewhere && latestGeneration === currentLocalGeneration) {
+            const savedContext = managed.workflowContext ?? null;
+            const workflowContext = await reconcileLegacyCompletion(hostedSession.cwd, savedContext);
+            if (workflowContext !== savedContext) {
+                managed = { ...managed, workflowContext };
+                hostedSession.setManagedMetadata(managed);
+                hostedSession.replaceWorkflowContext(workflowContext, { persist: false });
+            }
+        }
         if (
             activationState.activation?.state === "uncertain" ||
             activationState.activation?.state === "reconcile_required"
@@ -148,6 +171,11 @@ export class RuntimeManagedSync {
                     : cursorEventOrdinal;
             } while (!projected.complete);
             const summary = projected.snapshot || {};
+            const savedContext = normalizeWorkflowContext(summary.workflowContext) ?? managed.workflowContext ?? null;
+            const workflowContext = activeElsewhere
+                ? savedContext
+                : await reconcileLegacyCompletion(hostedSession.cwd, savedContext);
+            hostedSession.replaceWorkflowContext(workflowContext, { persist: false });
             const previousSyncState = managed.syncState;
             const nextMetadata: import("../hosted-session.js").ManagedSessionMetadata = {
                 ...managed,
@@ -165,7 +193,7 @@ export class RuntimeManagedSync {
                 thinkingLevel: typeof summary.thinkingLevel === "string"
                     ? summary.thinkingLevel
                     : managed.thinkingLevel ?? null,
-                workflowContext: normalizeWorkflowContext(summary.workflowContext) ?? managed.workflowContext ?? null,
+                workflowContext,
                 tutorialContext: normalizeTutorialContext(summary.tutorialContext) ?? managed.tutorialContext ?? null,
                 syncState: {
                     type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,

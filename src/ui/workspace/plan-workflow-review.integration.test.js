@@ -13,6 +13,31 @@ import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
 import { loadOwnerPlanProgress } from "./server/owner-plan-progress.ts";
 import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 
+/**
+ * Wait for background review/execution work to publish its settled status.
+ * @param {WorkspaceSessionContinuationService} service
+ * @param {string} operationId
+ */
+async function waitForOperationSettlement(service, operationId) {
+    const settled = Promise.withResolvers();
+    const unsubscribe = service.subscribeOperationChanges(operationId, (status) => {
+        if (status !== "running" && status !== "accepted") settled.resolve();
+    });
+    let timeout;
+    try {
+        await Promise.race([
+            settled.promise,
+            new Promise((_, reject) => {
+                timeout = setTimeout(() => reject(new Error(`Operation ${operationId} did not settle`)), 60_000);
+            }),
+        ]);
+        return service.getOperation(operationId);
+    } finally {
+        clearTimeout(timeout);
+        unsubscribe();
+    }
+}
+
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n", "implementation.txt": "before\n" });
 
 for (const resumeStatus of ["in_progress", "failed"]) {
@@ -122,14 +147,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                             },
                         });
                         assertEquals(decision.status, "accepted");
-                        for (
-                            let i = 0;
-                            i < 500 && service.getOperation(started.operationId).status === "running";
-                            i++
-                        ) {
-                            await new Promise((resolve) => setTimeout(resolve, 20));
-                        }
-                        const finished = service.getOperation(started.operationId);
+                        const finished = await waitForOperationSettlement(service, started.operationId);
                         assertEquals(finished.status, "completed", JSON.stringify(finished));
                         if (approvalAction === "later") {
                             assertEquals(turns, 0);

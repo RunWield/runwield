@@ -120,7 +120,7 @@ grows, or the Verification Plan no longer proves the objective.
 ## Verification Plan
 
 - Automated: run focused repair and recovery tests through
-  `deno run -A scripts/run-tests.js src/shared/workflow/validation-loop-repair.test.js src/shared/workflow/validation-repair-resume.integration.test.ts src/shared/workflow/validation-loop-recovery.test.js src/shared/workflow/validation-self-healing.integration.test.ts src/shared/workflow/validation-repair-prompt.test.ts`.
+  `deno run -A scripts/run-tests.js src/shared/workflow/validation-loop-repair.test.js src/shared/workflow/validation-repair-resume.integration.test.ts src/shared/workflow/validation-loop-recovery.test.ts src/shared/workflow/validation-self-healing.integration.test.ts src/shared/workflow/validation-repair-prompt.test.ts`.
 - Automated: drive findings from both stages through restart and prove no more than three automatic full loops occur.
 - Automated: prove blocked and omitted per-ID reports keep findings open, rejected fixes retain IDs, and same-looking
   IDs from different stages cannot collide.

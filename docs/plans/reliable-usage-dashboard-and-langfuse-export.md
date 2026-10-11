@@ -529,6 +529,22 @@ Left by the reviewers of individual children for the integration review. These a
 
 <!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/06-package-executable-approval-and-metrics-exporter-kind" -->
 
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states" -->
+
+**reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states**
+
+- Confirm that the Langfuse exporter's deliver/confirm results match contract 1. 'unsupported' is a scheduler-internal
+  confirm status, so the package must not depend on it. Confirm that read-back returns not_found_yet, never a rejection,
+  for asynchronous absence. (src/shared/workflow/metrics-exporter-worker.ts, metrics-export-scheduler.ts callExporter;
+  child 08 packages/langfuse-exporter)
+- Confirm that the Workspace export settings call grantMetricsExportDestination, updateMetricsExportProjects,
+  revokeMetricsExportDestination, and setMetricsExportCredentials. Confirm that they show readMetricsExportStatus
+  counts, including confirmed, without computing their own eligibility. Also update docs/user-documentation/settings.md
+  so that it no longer says that export is unavailable. (child 09; src/shared/workflow/metrics-export-grants.ts,
+  metrics-export-scheduler.ts readMetricsExportStatus)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states" -->
+
 ## Edge Cases & Considerations
 
 ### Reviewable assumptions

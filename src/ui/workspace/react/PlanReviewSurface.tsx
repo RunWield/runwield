@@ -1,4 +1,5 @@
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
+import { useReviewAnnotations } from "./use-review-annotations.ts";
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
 import { RunWieldIconButton } from "../../design-system/components/react/RunWieldIconButton.tsx";
@@ -154,18 +155,24 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     );
     const [sidebarOpen, setSidebarOpen] = useState(() => !compactLayout && getUIPreferences().tocEnabled);
     const [sidebarTab, setSidebarTab] = useState("toc");
-    const [annotationsOpen, setAnnotationsOpen] = useState(() => !compactLayout);
+
     useEffect(() => {
         const media = globalThis.matchMedia("(max-width: 980px)");
         const syncLayout = () => {
             setCompactLayout(media.matches);
             setSidebarOpen(!media.matches && getUIPreferences().tocEnabled);
-            setAnnotationsOpen(!media.matches);
+            if (media.matches) setAnnotationsOpen(false);
         };
         syncLayout();
         media.addEventListener("change", syncLayout);
         return () => media.removeEventListener("change", syncLayout);
     }, []);
+    const [annotations, setAnnotations] = useState([]);
+    const [codeAnnotations, setCodeAnnotations] = useState([]);
+    const [annotationsOpen, setAnnotationsOpen] = useReviewAnnotations(annotations.length + codeAnnotations.length);
+    useEffect(() => {
+        if (compactLayout && annotationsOpen) setSidebarOpen(false);
+    }, [compactLayout, annotationsOpen]);
     const reviewRef = useRef(null);
     useEffect(() => {
         if (!compactLayout || (!sidebarOpen && !annotationsOpen)) return;
@@ -179,8 +186,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const [rightSidebarView, setRightSidebarView] = useState("annotations");
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [exportOpen, setExportOpen] = useState(false);
-    const [annotations, setAnnotations] = useState([]);
-    const [codeAnnotations, setCodeAnnotations] = useState([]);
     const [globalAttachments, setGlobalAttachments] = useState([]);
     const [selectedAnnotationId, setSelectedAnnotationId] = useState(null);
     const [selectedCodeAnnotationId, setSelectedCodeAnnotationId] = useState(null);
