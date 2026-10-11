@@ -22,16 +22,29 @@ affectedPaths:
     - "src/tools/review-complete.ts"
     - "docs/validation-authority.md"
     - "docs/domain-language.md"
+planDeviations:
+    - id: "call_9da46d4497274157a1b997377627fc1c|fc_02d79525bc0c4b5a016ac97d95ea4087d1b2dc227e6f317d6a"
+      supersededRequirement: "The existing supervisor, resume, and self-healing suites pass without assertion changes."
+      replacementRequirement: "The existing supervisor, resume, and self-healing suites pass. Update only the source-location assertions in validation-owner.test.ts to check the moved Session entry points in validation.ts and the shared attempt runner in validation-supervisor.ts, while preserving the single-owner guarantee. Keep all behavior assertions unchanged."
+      reason: "The current source-location assertions require Session entry points to remain in the supervisor, which conflicts with step 1's approved composition boundary."
+      approvedAt: "2026-10-09T23:50:01.598Z"
+    - id: "call_2a63a1837108492f90640a5133566383|fc_02d79525bc0c4b5a016ac9acd995e487d1b1b5e4932279ce6d"
+      supersededRequirement: "After each step the test checks that no file changed outside the Plan, worktree, delivery evidence, metrics, and settings. This catches state kept in a hidden sidecar file. Engineer follow-up writes before its wait. It records validation_failed and then returns a repair request."
+      replacementRequirement: "After each step the test checks that no file changed outside the Plan, worktree, delivery evidence, metrics, settings, and the existing Core Workspace search-refresh marker for that project. This still rejects hidden validation sidecar state. CI-exhaustion Engineer follow-up matches Core: it returns the durable repair request without a host-only validation_failed event. Keep the existing Core lifecycle behavior and shared answer branches authoritative."
+      reason: "The shared Plan writer updates the existing derived Workspace search-refresh marker. Core's CI-exhaustion Engineer follow-up does not record validation_failed; adding it only in host mode breaks lifecycle parity."
+      approvedAt: "2026-10-10T03:37:26.878Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-09T04:28:01.000Z"
-status: "draft"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
 order: 5
 dependencies:
     - "04-implement-approved-plans-in-runwield-worktrees"
+userVerifiedAt: null
 targetBranch: "epic/attached-mode-claude-feature-preview"
+status: "reviewed"
+validatedCommit: "4f7ff53471f75303b7c2f122117fd120a324bcf0"
 ---
 
 # Run Workflow Validation without a Core Session
@@ -209,7 +222,8 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/workflow/validation-semantic.ts`, `validation-checkpoint.ts` — reviewer rounds consume a supplied outcome
   by identity; the round-limit decision is saved in the checkpoint.
 - `src/shared/workflow/validation-mechanical.ts` — CI repair and Engineer follow-up hand off in host-turn mode instead
-  of awaiting a repair Agent.
+  of awaiting a repair Agent; a saved CI exhaustion answer reaches the existing prompt call site without a CI rerun.
+- `src/shared/workflow/validation-checkpoint.ts` also holds the pending CI exhaustion decision.
 - `src/shared/workflow/validation-recovery.ts` — retry waits do not sleep in host-turn mode.
 - `src/shared/workflow/validation-session-adapter.ts`, `epic-integration.ts`, `validation-publication.ts` — build Pi
   tools and per-round session managers from the new request shape. These are the callers that use the removed handles
@@ -299,7 +313,14 @@ behavior (child 06), and Plan Lifecycle events and their meaning.
     decision request with the same options and text the Session prompt shows. A resume input with one of those options
     takes the same branch as the Session answer. The accepted round-limit choice is saved in the Validation Checkpoint,
     so re-entering the phase for that round does not ask again. An answer for a missing command is saved through the
-    existing settings writer.
+    existing settings writer. The CI exhaustion decision matches Core's in-Session behavior exactly. Before it returns
+    the decision request, the mechanical phase saves a pending CI exhaustion decision in the Validation Checkpoint,
+    bound to the current CI attempt count and carrying the failure reason. On resume with an answer for that pending
+    decision, the phase does not run CI first. It hands the answer to the same `pauseForUserAction` call site in
+    `runMechanicalValidationPhase`, so the existing branches run unchanged: Retry `continue`s and runs CI once, Engineer
+    follow-up returns the repair request with no CI run, and Stop pauses. A call with no answer, or after Stop,
+    re-enters and runs CI, as Core does when the user runs the Plan again. There is no host-turn copy of the branches
+    after the prompt, so a later change to Core's CI exhaustion behavior applies to host-turn mode without edits here.
 12. In host-turn mode, operational retry waits do not sleep. The run pauses with the `decideValidationRecovery` message,
     and a later call resumes from the checkpoint. Correction and retry limits give the same decisions as in a Session.
 13. `docs/validation-authority.md` lists the host-turn resume input as a typed input to the supervisor. The input
@@ -362,6 +383,12 @@ behavior (child 06), and Plan Lifecycle events and their meaning.
   Resuming with `stop` pauses with tests and findings preserved, the same as `validation-loop-review.test.js` "stop at
   limit". A fixture with no `verification_command` returns a missing-command decision; the answer is saved to settings
   and CI runs.
+- Automated, CI exhaustion parity: a fixture whose CI fails past `CI_REPAIR_CYCLES` returns the CI exhaustion decision
+  request with the Session's options, and the checkpoint holds the pending decision. Counting `ci` delivery evidence
+  entries: resuming with `retry` adds exactly one; resuming with `engineer_follow_up` adds none and returns the repair
+  request; resuming with `stop` adds none and pauses; a later call with no answer adds one. The same fixture driven
+  through the Session entry with the same answers produces the same evidence count and result for each answer. A
+  re-entry that reran CI before applying the answer fails the `retry` and `engineer_follow_up` counts.
 - Automated, correction limit: in host-turn mode, rejected reviewer outcomes across fresh processes reach the same
   `decideValidationRecovery` decision at the same count as in-process nudges.
 - Automated, contracts: `review-diff.test.ts` and `review-outcome.test.ts` pin page boundaries, coverage spans, and
@@ -395,9 +422,10 @@ behavior (child 06), and Plan Lifecycle events and their meaning.
   in the red-to-green test (`--deny-net`, fake model executables).
 - **Concurrent callers.** `claimValidation` owner checks still allow only one engine run per attempt. A second caller
   gets the existing `active` result. Callers keep their own request records; child 05 uses record CAS.
-- **CI reruns on re-entry.** A CI exhaustion decision is resumed by re-entering Mechanical Validation, which runs the
-  configured command again before the prompt. Assumption: this is acceptable because Retry already means "run CI again",
-  and a check run by Core is never fabricated evidence. If the command now passes, the decision is not needed.
+- **CI exhaustion follows Core.** User decision: host-turn mode matches Core's behavior and follows it when it changes.
+  In a Session, the answer is applied right after the failed run, with no extra CI run. Host-turn mode gets the same
+  result through the saved pending decision in step 11. Re-entering without an answer runs CI again, which is what Core
+  does when the user runs the Plan again after Stop.
 - **Engineer follow-up writes before its wait.** It records `validation_failed` and then returns a repair request. Its
   resume goes through the repair completion path, not by re-entering the prompt, so the write is not repeated.
 - **Lost Session nudge context.** A fresh host worker does not share the earlier reviewer's memory. The correction text

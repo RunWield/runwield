@@ -10,6 +10,10 @@ import { setCustomSetting } from "../settings.js";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { captureWorktreeTree, getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { parseDiffFiles } from "./review-diff-tool.js";
+import { createEngineValidationArgs } from "./validation.ts";
+import { resolvePhaseContext } from "./validation-context.ts";
+import { runReviewerRound } from "./validation-semantic.ts";
+import { createLedger } from "./review-ledger.ts";
 import { getWorkflowMetricsFilePath } from "./metrics.js";
 import {
     git,
@@ -18,6 +22,7 @@ import {
     makeValidationProjectRoot,
     runValidationLoop,
     runValidationPhase,
+    UNEXPECTED_VALIDATION_PORTS,
 } from "./validation-test-helpers.js";
 
 function makeValidationUi() {
@@ -507,6 +512,50 @@ test("runValidationPhase nudges the same reviewer session when review_complete i
     assertEquals(reviewOpts[1].userRequest.includes("Approved Plan"), false);
     assertEquals(reviewOpts[0].sessionManager, reviewOpts[1].sessionManager);
     assertStringIncludes(uiAPI.messages.join(" "), "AI review needs more time");
+});
+
+test("reviewer nudges keep their context and the next round starts with a new context", async () => {
+    const { projectRoot, hostedSession } = await makeValidatedCiRun();
+    /** @typedef {import('./validation-session-adapter.ts').IsolatedAgentSessionOptions} ReviewerSessionOptions */
+    /** @type {ReviewerSessionOptions[]} */
+    const reviewOpts = [];
+    const args = createEngineValidationArgs({
+        ...UNEXPECTED_VALIDATION_PORTS,
+        hostedSession,
+        planName: "p",
+        planContent: "# p",
+        triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
+        semanticReviewPort: reviewPort({
+            runIsolatedAgentSession: (/** @type {ReviewerSessionOptions} */ opts) => {
+                reviewOpts.push(opts);
+                // A missing verdict requires a nudge, not a new review context.
+                return Promise.resolve(reviewOpts.length === 1 ? [] : reviewerMessages());
+            },
+        }),
+    });
+    const phase = await resolvePhaseContext(args);
+    assertEquals(phase.kind, "ok");
+    if (phase.kind !== "ok") throw new Error("Review context is blocked");
+    const diff = await getWorktreeReviewDiff(projectRoot, "main");
+    const state = {
+        semanticRound: 1,
+        reviewLedger: createLedger(),
+        repairBaselineTree: "",
+        lastRepairReport: "",
+    };
+    try {
+        const first = await runReviewerRound(args, phase.context, state, "discovery", diff);
+        assertEquals(first.kind, "complete");
+        const next = await runReviewerRound(args, phase.context, { ...state, semanticRound: 2 }, "discovery", diff);
+        assertEquals(next.kind, "complete");
+        assertEquals(reviewOpts.length, 3);
+        assertExists(reviewOpts[0].sessionManager);
+        assertEquals(reviewOpts[0].sessionManager, reviewOpts[1].sessionManager);
+        assertNotEquals(reviewOpts[1].sessionManager, reviewOpts[2].sessionManager);
+        assertStringIncludes(reviewOpts[2].userRequest, "This is review round 2");
+    } finally {
+        hostedSession.dispose();
+    }
 });
 
 test("runValidationPhase nudges the same Reviewer after real argument validation rejects review_complete", async () => {

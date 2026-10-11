@@ -3,6 +3,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
+import ts from "typescript";
 
 const REPO_ROOT = join(dirname(fromFileUrl(import.meta.url)), "../../..");
 
@@ -101,4 +102,93 @@ test("Agent Plan creation uses create-if-absent instead of rename-over writes", 
     const text = await fsReadFile(repoPath("src/tools/plan-safe-file-tools.ts"), "utf8");
     assertEquals(/atomicWriteTextFileIfAbsent\s*\(/.test(text), true);
     assertEquals(/atomicWriteTextFile\s*\(/.test(text), false);
+});
+
+/** Includes static imports, re-exports, dynamic imports, and import-type expressions. */
+function importSpecifiers(text: string, file: string): string[] {
+    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+    const imports: string[] = [];
+    function visit(node: ts.Node): void {
+        if (
+            (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier &&
+            ts.isStringLiteral(node.moduleSpecifier)
+        ) {
+            imports.push(node.moduleSpecifier.text);
+        }
+        if (
+            ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) &&
+            ts.isStringLiteral(node.argument.literal)
+        ) {
+            imports.push(node.argument.literal.text);
+        }
+        if (
+            ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] &&
+            ts.isStringLiteral(node.arguments[0])
+        ) {
+            imports.push(node.arguments[0].text);
+        }
+        ts.forEachChild(node, visit);
+    }
+    visit(source);
+    return imports;
+}
+
+interface GraphModule {
+    specifier: string;
+}
+interface ModuleGraph {
+    modules: GraphModule[];
+}
+
+async function moduleGraphOffenders(root: string, forbidden: RegExp): Promise<string[]> {
+    const result = await new Deno.Command(Deno.execPath(), {
+        args: ["info", "--json", repoPath(root)],
+        stdout: "piped",
+        stderr: "piped",
+    }).output();
+    assertEquals(result.success, true, new TextDecoder().decode(result.stderr));
+    const graph: ModuleGraph = JSON.parse(new TextDecoder().decode(result.stdout));
+    return graph.modules.map((module) => module.specifier).filter((specifier) => forbidden.test(specifier));
+}
+
+Deno.test("pure review diff graph excludes Pi, the tool wrapper, and HostedSession", async () => {
+    assertEquals(
+        await moduleGraphOffenders(
+            "src/shared/workflow/review-diff.ts",
+            /@earendil-works\/|review-diff-tool\.js$|hosted-session\.js$/,
+        ),
+        [],
+    );
+});
+
+Deno.test("pure review outcome graph excludes Pi, the completion tool, and HostedSession", async () => {
+    assertEquals(
+        await moduleGraphOffenders(
+            "src/shared/workflow/review-outcome.ts",
+            /@earendil-works\/|tools\/review-complete\.ts$|hosted-session\.js$/,
+        ),
+        [],
+    );
+});
+
+Deno.test("validation supervisor does not import Session composition", async () => {
+    const file = repoPath("src/shared/workflow/validation-supervisor.ts");
+    const imports = importSpecifiers(await Deno.readTextFile(file), file);
+    assertEquals(
+        imports.filter((specifier) =>
+            /(?:^|\/)(?:validation\.ts|validation-session-adapter\.ts|hosted-session\.js)$/.test(specifier)
+        ),
+        [],
+    );
+});
+
+Deno.test("host-turn composition has no validation policy, CI invocation, or model construction", async () => {
+    const text = await Deno.readTextFile(repoPath("src/shared/workflow/validation-host-turn.ts"));
+    assertEquals(
+        /\b(?:runValidationLoop|applyRoundFindings|unaccountedOpenItems|decideValidationRecovery|recordLifecycleEvent|recordDeliveryEvidence|runValidationCommand|runLocalCI|createAgentSession|createValidationSessionPort)\s*\(/
+            .test(text),
+        false,
+    );
+    assertEquals(/new\s+(?:HostedSession|AgentSession)\s*\(/.test(text), false);
+    assertEquals(/\brunValidationAttempt\s*\(/.test(text), true);
 });
