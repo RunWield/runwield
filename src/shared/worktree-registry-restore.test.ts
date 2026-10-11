@@ -2,6 +2,9 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { addEntry, removeEntry, restoreEntryFromPlanEvidence } from "./worktree-registry.js";
+import type { WorktreeRegistryEntry, WorktreeRestoreEvidence } from "./worktree-registry.js";
+
+type LiveWorktreeEntry = WorktreeRegistryEntry & WorktreeRestoreEvidence;
 
 const repo = defineGitFixture(async (repoPath) => {
     await Deno.writeTextFile(join(repoPath, "README.md"), "base\n");
@@ -9,12 +12,11 @@ const repo = defineGitFixture(async (repoPath) => {
     await git(repoPath, ["commit", "-m", "base"]);
 });
 
-/**
- * @param {string} cwd
- * @param {string} [id]
- * @param {string} [branch]
- */
-async function setupLiveWorktree(cwd, id = "restore1", branch = "restore-side") {
+async function setupLiveWorktree(
+    cwd: string,
+    id = "restore1",
+    branch = "restore-side",
+): Promise<LiveWorktreeEntry> {
     const path = `${cwd}-${id}`;
     await git(cwd, ["worktree", "add", "-b", branch, path, "main"]);
     return {
@@ -26,7 +28,7 @@ async function setupLiveWorktree(cwd, id = "restore1", branch = "restore-side") 
         baseCommit: (await git(cwd, ["rev-parse", "main"])).trim(),
         branch,
         path,
-        status: /** @type {const} */ ("completed"),
+        status: "completed",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     };
