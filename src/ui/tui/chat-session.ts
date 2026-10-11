@@ -71,6 +71,7 @@ export interface TerminalPairPort {
     getScreenText?(): string;
 }
 export interface StartInteractiveSessionOptions {
+    remoteSessionControl?: import("../../shared/remote/session-control-client.ts").RemoteSessionControl;
     sessionStartMode?: "new" | "continue";
     resumeSessionId?: string;
     initialAgentName?: string;
@@ -152,8 +153,12 @@ export async function startInteractiveSession(
     for (const command of getSlashCommandDefinitions()) chatBuiltinSlashNames.add(command.name);
     const sessionStartMode = options.sessionStartMode || "new";
     const shouldDeferManagedActivation = sessionStartMode === "new";
-    const sessionStore = shouldDeferManagedActivation ? null : openFileSessionStore();
-    const sessionRuntime = createSessionRuntime({ sessionStore, ownerProcessKind: "tui" });
+    const sessionStore = options.remoteSessionControl || shouldDeferManagedActivation ? null : openFileSessionStore();
+    const sessionRuntime = createSessionRuntime({
+        sessionStore,
+        remoteSessionControl: options.remoteSessionControl,
+        ownerProcessKind: "tui",
+    });
     const disposables: Array<() => void | Promise<void>> = [];
     let uiAPIForDispose: UiAPI | null = null;
     let lifecycleDisposed = false;
@@ -372,12 +377,15 @@ export async function startInteractiveSession(
                 browser: options.browser,
                 notifyRunWieldEvent: notifyRunWieldEventQuietly,
                 onSessionReplaced: ({ newSessionId }) => replaceRuntimeSession(newSessionId, { oldRetired: true }),
-                onSessionComplete: (completedSessionId, workRecordFailed, workRecordPlanName) =>
-                    inputControllerForPause?.offerSessionCompletion(
-                        completedSessionId,
-                        workRecordFailed,
-                        workRecordPlanName,
-                    ),
+                onSessionComplete: (
+                    completedSessionId: string,
+                    workRecordFailed?: boolean,
+                    workRecordPlanName?: string,
+                ) => inputControllerForPause?.offerSessionCompletion(
+                    completedSessionId,
+                    workRecordFailed,
+                    workRecordPlanName,
+                ),
             });
             subscribeCommandCatalog();
             view.resetForSessionReplacement();

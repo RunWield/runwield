@@ -298,20 +298,18 @@ export function createChatFooterController(options: CreateChatFooterControllerOp
     function getModelAndProvider(
         snapshot: FooterRuntimeSnapshot,
     ): { model: string; provider: string; thinkingLevel: string } {
-        const settingsManager = getSettingsManager(snapshot.cwd);
-        let model = settingsManager.getDefaultModel() ?? "";
-        let provider = settingsManager.getDefaultProvider() ?? "";
         const activeModel = snapshot.activeModel;
-        if (activeModel.model) {
-            const slashIndex = activeModel.model.indexOf("/");
-            if (slashIndex > 0) {
-                provider = activeModel.model.slice(0, slashIndex);
-                model = activeModel.model.slice(slashIndex + 1);
-            } else {
-                model = activeModel.model;
-                if (activeModel.provider) provider = activeModel.provider;
-            }
-        } else if (activeModel.provider) provider = activeModel.provider;
+        let model = activeModel.model || "";
+        let provider = activeModel.provider || "";
+        const slashIndex = model.indexOf("/");
+        if (slashIndex > 0) {
+            provider = model.slice(0, slashIndex);
+            model = model.slice(slashIndex + 1);
+        } else if (!model || !provider) {
+            const settingsManager = getSettingsManager(snapshot.cwd);
+            if (!model) model = settingsManager.getDefaultModel() ?? "";
+            if (!provider) provider = settingsManager.getDefaultProvider() ?? "";
+        }
         return { model, provider, thinkingLevel: snapshot.thinkingLevel };
     }
     const component: Component = {

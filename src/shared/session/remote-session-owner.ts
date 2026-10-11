@@ -4,7 +4,12 @@ import { dirname, join } from "@std/path";
 import { readSessionImageAttachment, saveImageAttachment } from "./image-attachments.ts";
 import type { ImageAttachment } from "./types.js";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
-import type { FileActivationProof, FileSessionStore, TranscriptEvidence } from "./file-session-store-types.ts";
+import type {
+    FileActivationProof,
+    FileSessionStore,
+    ProcessKind,
+    TranscriptEvidence,
+} from "./file-session-store-types.ts";
 import {
     inspectRecoverableSessionTranscript,
     parseRemoteSessionTranscript,
@@ -202,6 +207,10 @@ export class RemoteSessionOwner {
         });
     }
 
+    checkpoint(): void {
+        this.handle({ operation: this.operation, sequence: this.#next, kind: "checkpoint", contents: "" });
+    }
+
     /** Trusted laptop lifecycle path. Recovery uses actual digest-based store APIs, with no effect replay. */
     markUncertain(): void {
         if (this.#settled) return;
@@ -211,28 +220,43 @@ export class RemoteSessionOwner {
 
     recoverUncertain(): void {
         if (!this.#settled) throw new Error("Stop the active remote operation before recovery");
-        const inspected = this.#store.inspectSessionActivation(this.#proof.runwieldSessionId);
-        const activation = inspected.activation;
-        if (!activation || !["uncertain", "reconcile_required"].includes(activation.state)) {
-            throw new Error("Session is not awaiting recovery");
-        }
-        const segment = this.#store.getCurrentSessionSegment(this.#proof.runwieldSessionId);
-        if (!segment) throw new Error("Session transcript is unavailable");
-        const bytes = Deno.readFileSync(segment.transcriptPath);
-        const recovered = inspectRecoverableSessionTranscript(bytes);
-        this.#store.recoverSessionControl({
-            runwieldSessionId: this.#proof.runwieldSessionId,
-            projectId: this.#proof.projectId,
-            expectedFence: activation.fence,
-            expectedGeneration: inspected.generation?.generation ?? null,
-            expectedCurrentSegmentId: activation.currentSegmentId,
-            ownerInstanceId: this.#proof.ownerInstanceId,
-            ownerProcessKind: this.#proof.ownerProcessKind,
-            transcriptEvidence: {
-                byteLength: bytes.length,
-                digestHex: sessionDigest(bytes),
-                terminalEntryId: recovered.terminalEntryId,
-            },
-        });
+        recoverRemoteSession(
+            this.#store,
+            this.#proof.runwieldSessionId,
+            this.#proof.ownerInstanceId,
+            this.#proof.ownerProcessKind,
+        );
     }
+}
+
+/** Recover laptop evidence after a released or abandoned operation, without replaying effects. */
+export function recoverRemoteSession(
+    store: FileSessionStore,
+    sessionId: string,
+    ownerInstanceId: string,
+    ownerProcessKind: ProcessKind = "tui",
+): void {
+    const inspected = store.inspectSessionActivation(sessionId);
+    const activation = inspected.activation;
+    if (!activation || !["uncertain", "reconcile_required"].includes(activation.state)) {
+        throw new Error("Session is not awaiting recovery");
+    }
+    const segment = store.getCurrentSessionSegment(sessionId);
+    if (!segment) throw new Error("Session transcript is unavailable");
+    const bytes = Deno.readFileSync(segment.transcriptPath);
+    const recovered = inspectRecoverableSessionTranscript(bytes);
+    store.recoverSessionControl({
+        runwieldSessionId: sessionId,
+        projectId: segment.projectId,
+        expectedFence: activation.fence,
+        expectedGeneration: inspected.generation?.generation ?? null,
+        expectedCurrentSegmentId: activation.currentSegmentId,
+        ownerInstanceId: ownerInstanceId,
+        ownerProcessKind: ownerProcessKind,
+        transcriptEvidence: {
+            byteLength: bytes.length,
+            digestHex: sessionDigest(bytes),
+            terminalEntryId: recovered.terminalEntryId,
+        },
+    });
 }

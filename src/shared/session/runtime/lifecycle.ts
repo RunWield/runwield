@@ -107,6 +107,7 @@ export class RuntimeLifecycle {
             return this.closeSessionAfterActiveOperation(hostedSession.id);
         }
         if (hostedSession) this.queues.clearQueuedMessagesInternal(hostedSession, "session_closed");
+        await this.services.remotePersistence?.discard(id);
         let closed = false;
         try {
             closed = await this.services.sessionHost.disposeSession(id);
@@ -220,6 +221,14 @@ export class RuntimeLifecycle {
     }
 
     async materializeDeferredManagedShell(hostedSession: import(".././hosted-session.js").HostedSession) {
+        if (this.services.remotePersistence) {
+            const pending = this.pendingManagedCreationProjects.get(hostedSession.id);
+            if (!pending) return hostedSession.getManagedMetadata();
+            await enterGitProjectRuntime(hostedSession.cwd);
+            const managed = await this.services.remotePersistence.create(hostedSession, pending.name);
+            this.pendingManagedCreationProjects.delete(hostedSession.id);
+            return managed;
+        }
         const prepared = await this.prepareDeferredManagedCreation(hostedSession);
         if (!prepared) return hostedSession.getManagedMetadata?.() || null;
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");
@@ -341,7 +350,8 @@ export class RuntimeLifecycle {
         }
         const ownerCoordinationStore = this.services.sessionStore;
         const deferManagedCreation = Boolean(
-            (options.mode || "new") === "new" && options.deferManagedActivationUntilAgentReady,
+            (options.mode || "new") === "new" &&
+                (options.deferManagedActivationUntilAgentReady || this.services.remotePersistence),
         );
         if (!deferManagedCreation) await enterGitProjectRuntime(options.cwd);
         if (!ownerCoordinationStore && !deferManagedCreation) {
@@ -560,7 +570,8 @@ export class RuntimeLifecycle {
             throw new Error("SessionRuntime.createPromptReadySession requires an absolute cwd");
         }
         const agentName = options.agentName || AGENTS.ROUTER;
-        const deferPersistence = options.deferPersistenceUntilFirstMessage === true;
+        const deferPersistence = options.deferPersistenceUntilFirstMessage === true ||
+            Boolean(this.services.remotePersistence);
         const created = await this.createInteractiveSession({
             cwd: options.cwd,
             mode: "new",

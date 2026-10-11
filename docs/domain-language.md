@@ -116,23 +116,39 @@ Plan status, Session status, ownership reason
 requests. It is distinct from the terminal window or tab title. _Avoid_: Tab title, conversation name
 
 **Remote SSH connection**: A connected-only Core interaction started with `wld remote` for an existing directory on a
-remote Linux host. The current connection prepares a matching runtime, mounts laptop personal files on the approved
-Linux `sct` pilot, and opens a dormant remote TUI. An optional bounded native Pi bridge proof is not an ordinary user
-turn; the normal connection does not create or resume a saved Session. Guarded Session history and remote project
-workflows remain target behavior. _Avoid_: Personal Workspace, unattended worker, remote Session type
+remote Linux host. It prepares a matching runtime, mounts laptop personal files, and opens the normal remote TUI for
+conversation turns with Agents, core project tools, and laptop models. It can create and continue a saved Session whose
+history stays on the laptop; the first submitted message creates history, not connection alone. `wld remote sessions`
+reads that history offline in the normal renderer without a composer and with a reconnect footer. Connected `/resume`
+continues only this target's Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide remote Sessions. This
+journey passed on matching-identity compiled macOS/Linux `sct` runtimes with an authenticated synthetic streaming
+provider. On macOS laptops, Ctrl+V reads current laptop clipboard image bytes; saved attachment references and markers
+remain stable through history and reconnect. Remote Memory and delivery workflows remain target scope;
+production-provider and platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended worker,
+remote Session type
+
+**Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
+canonical remote project root. Host identity uses the effective OpenSSH hostname, user, port, and verified host key
+fingerprint; the SSH alias is only a display label. A certificate connection without a reported stable fingerprint uses
+`null`, with exact hostname, user, and port matching; it does not match a known fingerprint. Any identity difference
+creates a distinct target and never merges history. The root is remote `primaryRoot`, or `gitRoot`, or `cwd` when the
+preceding value is absent. A worktree shares its primary checkout's project identity while the Session keeps execution
+cwd separately. Laptop paths and temporary mount paths are not remote project identity. This does not establish a remote
+Memory binding. _Avoid_: SSH alias identity, mount root, local checkout path
 
 **Remote personal mount**: A connection-owned SSHFS view of the laptop’s full `~/.wld` at a fresh private remote path.
 Personal file edits through it change laptop files directly, not a copied resource tree. The remote project’s `.wld`
 stays on the server. The path is private for normal use, but standard SFTP permits broad laptop-account access by the
-trusted remote host; this is not a sandbox. This mount is not the guarded operation-scoped Session writer mount. Direct
-bidirectional Skill file access was verified on the approved Linux `sct` pilot before the connection-only view. This
-does not qualify other hosts or saved Sessions. _Avoid_: Resource sync, copied profile, confined mount
+trusted remote host; this is not a sandbox and does not grant Session writer authority. Direct bidirectional Skill file
+access was verified on the approved Linux `sct` pilot. The later compiled conversation journey also verified laptop
+history and connected resume with an authenticated synthetic provider; other hosts retain separate qualification.
+_Avoid_: Resource sync, copied profile, confined mount
 
 **Project Runtime State**: Machine-owned RunWield state inside a Project checkout. The current reserved root is
 `.wld/internal/`. User-derived `.wld/settings.json`, `.wld/agents/`, `.wld/skills/`, and `.wld/prompts/` are not Project
-Runtime State. A Remote SSH connection can identify a remote checkout but does not enter or create its Project Runtime
-State; future remote project work would keep that state with the remote checkout. _Avoid_: project settings, project
-config, all of `.wld/`
+Runtime State. Remote location discovery alone does not enter or create Project Runtime State. Remote project-owned
+state stays with the remote checkout, not with laptop personal history. Remote workflow support remains target scope.
+_Avoid_: project settings, project config, all of `.wld/`
 
 **Project Runtime Entry**: The shared migration-or-verification operation that runs before normal Project Runtime State
 access. It can adopt eligible legacy state, confirm the selected and primary checkout layout, or refuse access with a

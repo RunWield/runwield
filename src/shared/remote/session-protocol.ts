@@ -8,6 +8,7 @@ export function sessionDigest(contents: string | Uint8Array): string {
 import type { TranscriptEvidence } from "../session/file-session-store-types.ts";
 
 export const MAX_SESSION_BYTES = 16 * 1024 * 1024;
+export const REMOTE_SESSION_IDENTITY_ENTRY = "runwield.remote_identity";
 export interface RemoteSessionRequest {
     operation: string;
     sequence: number;
@@ -27,6 +28,63 @@ export interface RemoteSessionConnection {
     operation: string;
     timeoutMs?: number;
 }
+export interface RemoteSessionCreateRequest {
+    kind: "create";
+    sessionId: string;
+    name: string;
+    admissionId: string;
+}
+export interface RemoteSessionBeginRequest {
+    kind: "begin";
+    sessionId: string;
+    admissionId: string;
+}
+export type RemoteSessionAdmissionRequest = RemoteSessionCreateRequest | RemoteSessionBeginRequest;
+export type RemoteSessionControlRequest =
+    | RemoteSessionAdmissionRequest
+    | { kind: "checkpoint"; operation: string }
+    | { kind: "markUncertain"; operation: string }
+    | { kind: "markUncertain"; admissionId: string }
+    | { kind: "list"; sessionId?: string };
+
+export interface RemoteSessionSummary {
+    id: string;
+    name: string;
+    firstMessage: string;
+    messageCount: number;
+    modified: string;
+    generation?: number;
+    contents?: string;
+}
+
+export interface RemoteSessionControlResponse {
+    operation?: string;
+    sessions?: RemoteSessionSummary[];
+}
+
+export function validateSessionControlRequest(input: RemoteSessionControlRequest): void {
+    if (!input || typeof input !== "object") throw new Error("Invalid Session control request");
+    const keys = Object.keys(input).sort().join(",");
+    const validId = (id: string | undefined) => typeof id === "string" && /^[a-f0-9-]{36}$/.test(id);
+    if ("sessionId" in input && !validId(input.sessionId)) throw new Error("Invalid Session control identity");
+    if ("operation" in input && !validId(input.operation)) throw new Error("Invalid Session control identity");
+    if ("admissionId" in input && !validId(input.admissionId)) throw new Error("Invalid Session admission identity");
+    if (input.kind === "create") {
+        if (
+            keys === "admissionId,kind,name,sessionId" && typeof input.name === "string" &&
+            input.name.length <= 1024 && validId(input.sessionId) && validId(input.admissionId)
+        ) return;
+    } else if (input.kind === "begin") {
+        if (keys === "admissionId,kind,sessionId" && validId(input.sessionId) && validId(input.admissionId)) return;
+    } else if (input.kind === "checkpoint" || input.kind === "markUncertain") {
+        if (keys === "kind,operation" && "operation" in input && validId(input.operation)) return;
+        if (input.kind === "markUncertain" && keys === "admissionId,kind" && "admissionId" in input) return;
+    } else if (input.kind === "list") {
+        if (keys === "kind" || (keys === "kind,sessionId" && input.sessionId && validId(input.sessionId))) return;
+    }
+    throw new Error("Invalid Session control request");
+}
+
 export interface SessionWorkerRequest {
     connection: RemoteSessionConnection;
     payload: string;

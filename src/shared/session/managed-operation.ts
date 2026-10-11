@@ -1,5 +1,3 @@
-type ActivationProof = import("../owner-coordination/session-activations.js").ActivationProof;
-
 type ManagedTurnStarted = (context: { turnId: string }) => void | (() => void);
 
 export type ManagedOperationName =
@@ -54,7 +52,6 @@ export type ManagedOperationCapability = {
     readonly runtimeSessionId: string;
     readonly runwieldSessionId: string;
     readonly operationId: string;
-    readonly proof: ActivationProof;
     readonly settled: boolean;
     readonly signal?: AbortSignal;
     registerArtifact(
@@ -71,7 +68,6 @@ export type ManagedOperationCapability = {
     ): import("./file-session-store-types.ts").ManifestPlanAssociation;
     getCurrentSegmentKind?(): string;
     cancel?(): void;
-    updateProof(proof: ActivationProof): void;
     assertLive(): void;
     settle(): void;
 };

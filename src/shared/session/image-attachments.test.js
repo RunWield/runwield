@@ -1,6 +1,7 @@
 import { getCwd, getHomeDir } from "../../constants.js";
 import { assertEquals, assertRejects } from "@std/assert";
 import { join } from "@std/path";
+import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     formatImageAttachmentMarker,
@@ -9,8 +10,10 @@ import {
     persistImageAttachment,
     preflightImageAttachments,
     prepareImagesForModel,
+    readSessionImageAttachment,
     resolveImageRef,
     resolveVisionFallbackModel,
+    saveImageAttachment,
 } from "./image-attachments.ts";
 import { __resetSettingsForTests } from "../settings.js";
 
@@ -92,7 +95,7 @@ Deno.test("resolveImageRef resolves safe project-relative paths and rejects esca
 });
 
 Deno.test("prepareImagesForModel sends direct images or fallback markers", () => {
-    const img = { base64: "a", mimeType: "image/png", ref: "attachment:abc" };
+    const img = { base64: "a", mimeType: "image/png", ref: "attachment:abc", path: "/session/abc.png" };
     assertEquals(prepareImagesForModel({ text: "look", images: [img], activeModel: { input: ["text", "image"] } }), {
         ok: true,
         text: "look",
@@ -114,6 +117,43 @@ Deno.test("prepareImagesForModel sends direct images or fallback markers", () =>
         },
     );
     assertEquals(formatImageAttachmentMarker(img), "[Image attached: attachment:abc image/png]");
+});
+
+Deno.test("direct image preparation retains portable references but leaves local text and image bytes unchanged", async () => {
+    const directory = await Deno.makeTempDir({ prefix: "runwield-direct-images-" });
+    const pixel = new PhotonImage(new Uint8Array([255, 191, 0, 255]), 1, 1);
+    try {
+        const bytes = pixel.get_bytes();
+        const image = { base64: btoa(String.fromCharCode(...bytes)), mimeType: "image/png" };
+        const local = saveImageAttachment(image, directory);
+        assertEquals(await Deno.readFile(local.path), bytes);
+        const portable = readSessionImageAttachment(local.ref, directory);
+        assertEquals(portable, { ...image, ref: local.ref });
+        const activeModel = { input: ["text", "image"] };
+        const text = "Describe the amber pixel.";
+        const modelImage = { type: "image", data: image.base64, mimeType: image.mimeType };
+        assertEquals(prepareImagesForModel({ text, images: [local], activeModel }), {
+            ok: true,
+            text,
+            images: [modelImage],
+            mode: "direct",
+        });
+        assertEquals(prepareImagesForModel({ text, images: [portable], activeModel }), {
+            ok: true,
+            text: `${text}\n\n${formatImageAttachmentMarker(portable)}`,
+            images: [modelImage],
+            mode: "direct",
+        });
+        assertEquals(prepareImagesForModel({ text, images: [local, portable, image], activeModel }), {
+            ok: true,
+            text: `${text}\n\n${formatImageAttachmentMarker(portable)}`,
+            images: [modelImage, modelImage, modelImage],
+            mode: "direct",
+        });
+    } finally {
+        pixel.free();
+        await removeTempDir(directory);
+    }
 });
 
 Deno.test("preflightImageAttachments blocks text-only model without fallback", () => {

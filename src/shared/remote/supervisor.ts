@@ -296,9 +296,8 @@ export async function runRemoteSupervisor(): Promise<void> {
         const accountHome = await Deno.realPath((await import("../../constants.js")).getHomeDir());
         if (accountHome !== header.remoteHome) throw new Error("Remote account home changed before mount");
         personalMount = await mountLaptopHome(header.remoteHome, header.mount);
-        // personalMount.globalRoot and personalMount.agentsRoot are private to this
-        // connection. The connection-only view does not read personal resources;
-        // do not replace HOME or send mount paths to that view.
+        // Verified roots travel only through the private child header. HOME stays
+        // the remote account home; personal resources use explicit mounted roots.
         void personalMount.lost.then(() => {
             mountLost = true;
             proofAbort.abort();
@@ -369,7 +368,18 @@ export async function runRemoteSupervisor(): Promise<void> {
             childExited = true;
         });
         writer = view.stdin.getWriter();
-        await writer.write(encoder.encode(JSON.stringify(header.view) + "\n"));
+        await writer.write(encoder.encode(
+            JSON.stringify({
+                view: header.view,
+                connection: { port: header.port, credential: header.credential },
+                cwd: header.view.cwd,
+                resources: {
+                    globalRoot: personalMount.globalRoot,
+                    agentsRoot: personalMount.agentsRoot,
+                    packageRoots: personalMount.packageRoots,
+                },
+            }) + "\n",
+        ));
         let stopped = false;
         const healthAbort = new AbortController();
         let wake: (() => void) | undefined;
