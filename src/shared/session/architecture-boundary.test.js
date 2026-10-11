@@ -4,6 +4,13 @@ import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
 
 const REPO_ROOT = resolve(dirname(fromFileUrl(import.meta.url)), "../../..");
 const SKIPPED_SOURCE_DIRECTORIES = new Set([".astro", "dist", "node_modules"]);
+// These are test subprocesses and the owned-scratch qualification harness, not Runtime consumers.
+const SESSION_SAVE_TEST_SOURCES = new Set([
+    "src/shared/remote/session-save-test-client.ts",
+    "src/shared/remote/session-save-test-fixture.ts",
+    "src/shared/remote/verify-remote-session-save.ts",
+    "src/shared/session/remote-session-process-fixture.ts",
+]);
 
 /** @param {string} path @returns {Promise<string[]>} */
 async function productionSourceFiles(path) {
@@ -17,6 +24,7 @@ async function productionSourceFiles(path) {
         }
         if (!entry.isFile || !/\.[jt]sx?$/.test(entry.name)) continue;
         if (/\.test\.[jt]sx?$/.test(entry.name) || /_test\.[jt]sx?$/.test(entry.name)) continue;
+        if (SESSION_SAVE_TEST_SOURCES.has(relative(REPO_ROOT, entryPath))) continue;
         files.push(entryPath);
     }
     return files;
@@ -218,6 +226,8 @@ Deno.test("Session writer mutators stay behind approved state-machine seams", as
                 path === "src/shared/session/file-session-control.ts" ||
                 path === "src/shared/session/file-session-store-types.ts" ||
                 path === "src/shared/session/segment-rollover.ts" ||
+                // ADR-015: the laptop owner coordinates remote saves with its native writer proof.
+                path === "src/shared/session/remote-session-owner.ts" ||
                 path === "src/shared/session/runtime/lifecycle-loading.ts" ||
                 path === "src/shared/session/runtime/lifecycle.ts" ||
                 path === "src/shared/session/runtime/managed-operations.ts" ||

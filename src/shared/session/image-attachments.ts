@@ -8,7 +8,9 @@ import { discoverProviderModel } from "../models/model-registry.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
 import { getResolvedVisionFallbackModelSetting } from "../settings.js";
-import { getRunWieldSessionDir } from "./root-session.js";
+import { getRemoteSessionSaveBridge, getRunWieldSessionDir } from "./root-session.js";
+import { MAX_SESSION_BYTES } from "../remote/session-protocol.ts";
+import { Buffer } from "node:buffer";
 
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
@@ -96,21 +98,45 @@ export function getSessionImageDir(sessionManager: SessionManager | undefined, c
     if (!sessionManager || typeof sessionManager.getSessionId !== "function") {
         throw new Error("Cannot persist image attachment: no active session is available.");
     }
+    if (getRemoteSessionSaveBridge(sessionManager)) {
+        throw new Error("Session attachment files are owned by the laptop");
+    }
     return join(getRunWieldSessionDir(cwd), `${sessionManager.getSessionId()}_images`);
 }
 
+// Keep the Promise API; the laptop-owned save itself must complete synchronously.
+// deno-lint-ignore require-await
 export async function persistImageAttachment(
     image: ImageAttachment,
     sessionManager: SessionManager | undefined,
     cwd: string,
 ): Promise<ImageAttachment> {
+    const bridge = getRemoteSessionSaveBridge(sessionManager);
+    if (bridge) {
+        const response = bridge.request(
+            "attachment",
+            JSON.stringify({ base64: image.base64, mimeType: image.mimeType }),
+        );
+        return JSON.parse(response.contents);
+    }
+    return saveImageAttachment(image, getSessionImageDir(sessionManager, cwd));
+}
+
+/** Save Session-owned bytes before any transcript can refer to them. */
+export function saveImageAttachment(image: ImageAttachment, directory: string): ImageAttachment {
     const ext = extensionForMimeType(image.mimeType);
     const uuid = crypto.randomUUID();
-    const dir = getSessionImageDir(sessionManager, cwd);
-    await Deno.mkdir(dir, { recursive: true });
-    const path = join(dir, `${uuid}${ext}`);
     const bytes = Uint8Array.from(atob(image.base64), (char) => char.charCodeAt(0));
-    await Deno.writeFile(path, bytes);
+    Deno.mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const path = join(directory, `${uuid}${ext}`);
+    const file = Deno.openSync(path, { createNew: true, write: true, mode: 0o600 });
+    try {
+        let written = 0;
+        while (written < bytes.length) written += file.writeSync(bytes.subarray(written));
+        file.syncSync();
+    } finally {
+        file.close();
+    }
     return { ...image, ref: `attachment:${uuid}`, path };
 }
 
@@ -119,23 +145,84 @@ function parseAttachmentRef(imageRef: string): string | null {
     return match ? match[1] : null;
 }
 
+/** Read laptop-owned attachment bytes without exposing a laptop path to a remote caller. */
+export function readSessionImageAttachment(imageRef: string, directory: string): ImageAttachment {
+    const ref = String(imageRef || "").trim();
+    const uuid = parseAttachmentRef(ref);
+    if (!uuid) throw new Error(`Invalid image attachment reference: ${ref}`);
+    const resolved = resolveAttachmentPath(ref, uuid, directory);
+    return { ...readImageFile(resolved.path, resolved.mimeType), ref };
+}
+
+function resolveAttachmentPath(ref: string, uuid: string, directory: string): ResolvedImageReference {
+    for (const ext of EXT_TO_MIME.keys()) {
+        const candidate = join(directory, `${uuid}${ext}`);
+        try {
+            if (Deno.statSync(candidate).isFile) {
+                return { path: candidate, mimeType: mimeTypeForImagePath(candidate), refType: "attachment" };
+            }
+        } catch { /* try next extension */ }
+    }
+    throw new Error(`Image attachment not found in this session: ${ref}`);
+}
+
+/** Bound file reads even if a file grows after it is opened. The wire carries base64, not paths. */
+function readImageFile(path: string, mimeType: string): ImageAttachment {
+    const file = Deno.openSync(path, { read: true });
+    try {
+        const size = file.statSync().size;
+        if (size > MAX_SESSION_BYTES) throw new Error("Session image exceeds the read limit");
+        const bytes = new Uint8Array(size + 1);
+        let length = 0;
+        while (length < bytes.length) {
+            const count = file.readSync(bytes.subarray(length));
+            if (count === null) break;
+            length += count;
+        }
+        if (length > size) throw new Error("Session image changed during read");
+        return { base64: Buffer.from(bytes.subarray(0, length)).toString("base64"), mimeType };
+    } finally {
+        file.close();
+    }
+}
+
+/** Byte-reading contract for vision callers; path-based callers keep resolveImageRef. */
+export async function readImageRef(imageRef: string, opts: ImageReferenceOptions): Promise<ImageAttachment> {
+    const ref = String(imageRef || "").trim();
+    if (!ref) throw new Error("imageRef is required.");
+    const bridge = getRemoteSessionSaveBridge(opts.sessionManager);
+    if (bridge && ref.startsWith("attachment:")) {
+        if (!parseAttachmentRef(ref)) throw new Error(`Invalid image attachment reference: ${ref}`);
+        const response = bridge.request("attachment-read", ref);
+        try {
+            const image: ImageAttachment = JSON.parse(response.contents);
+            if (
+                !image || Object.keys(image).sort().join(",") !== "base64,mimeType,ref" ||
+                typeof image.base64 !== "string" || typeof image.mimeType !== "string" || image.ref !== ref ||
+                image.base64.length > Math.ceil(MAX_SESSION_BYTES / 3) * 4
+            ) throw new Error("Invalid Session attachment read acknowledgement");
+            const bytes = Buffer.from(image.base64, "base64");
+            if (bytes.length > MAX_SESSION_BYTES || bytes.toString("base64") !== image.base64) {
+                throw new Error("Invalid Session attachment bytes");
+            }
+            extensionForMimeType(image.mimeType);
+            return image;
+        } catch (error) {
+            return bridge.fail(error instanceof Error ? error : new Error(String(error)));
+        }
+    }
+    const resolved = await resolveImageRef(ref, opts);
+    const bytes = await Deno.readFile(resolved.path);
+    return { base64: Buffer.from(bytes).toString("base64"), mimeType: resolved.mimeType, ref };
+}
+
 export async function resolveImageRef(imageRef: string, opts: ImageReferenceOptions): Promise<ResolvedImageReference> {
     const ref = String(imageRef || "").trim();
     if (!ref) throw new Error("imageRef is required.");
 
     const attachmentUuid = parseAttachmentRef(ref);
     if (attachmentUuid) {
-        const dir = getSessionImageDir(opts.sessionManager, opts.cwd);
-        for (const ext of EXT_TO_MIME.keys()) {
-            const candidate = join(dir, `${attachmentUuid}${ext}`);
-            try {
-                const stat = await Deno.stat(candidate);
-                if (stat.isFile) {
-                    return { path: candidate, mimeType: mimeTypeForImagePath(candidate), refType: "attachment" };
-                }
-            } catch (_e) { /* try next extension */ }
-        }
-        throw new Error(`Image attachment not found in this session: ${ref}`);
+        return resolveAttachmentPath(ref, attachmentUuid, getSessionImageDir(opts.sessionManager, opts.cwd));
     }
 
     if (ref.startsWith("attachment:")) throw new Error(`Invalid image attachment reference: ${ref}`);

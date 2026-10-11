@@ -3,6 +3,8 @@
 import { createRunWieldModelRuntime } from "../models/model-registry.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 import type { SettingsUpdate } from "./settings-bridge.ts";
+import { MAX_SESSION_BYTES, type RemoteSessionRequest, validateSessionRequest } from "./session-protocol.ts";
+import type { RemoteSessionOwner } from "../session/remote-session-owner.ts";
 
 import { applyLaptopGlobalSettingsUpdate, readLaptopGlobalSettingsSnapshot } from "../settings.js";
 
@@ -74,6 +76,9 @@ export interface RemoteControlService {
     /** Send only in the first private SSH tty input line, after echo is disabled. */
     readonly credential: string;
     status(): RemoteControlStatus;
+    /** Trusted laptop registration only. HTTP clients cannot supply writer proofs. */
+    registerSessionOwner(owner: RemoteSessionOwner): void;
+    unregisterSessionOwner(operation: string): void;
     requestShutdown(): void;
     close(): Promise<void>;
 }
@@ -166,6 +171,47 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
             return new Response(null, { status: 503 });
         }
     };
+    const sessionOwners = new Map<string, RemoteSessionOwner>();
+    const sessionHandler = async (request: Request): Promise<Response> => {
+        if (request.method !== "POST") return new Response(null, { status: 404 });
+        let input: RemoteSessionRequest;
+        try {
+            const reader = request.body?.getReader();
+            if (!reader) throw new Error("Missing Session request");
+            const parts: Uint8Array[] = [];
+            let size = 0;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                size += value.length;
+                // JSON escaping may expand the immutable JSONL string.
+                if (size > MAX_SESSION_BYTES * 6 + 4096) {
+                    await reader.cancel();
+                    throw new Error("Session request too large");
+                }
+                parts.push(value);
+            }
+            const bytes = new Uint8Array(size);
+            let offset = 0;
+            for (const part of parts) {
+                bytes.set(part, offset);
+                offset += part.length;
+            }
+            input = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+            validateSessionRequest(input);
+        } catch {
+            return new Response(null, { status: 400 });
+        }
+        // Body reads are asynchronous: authority must be checked again after the last byte.
+        if (shutdown || closed || !ready) return new Response(null, { status: 403 });
+        const owner = sessionOwners.get(input.operation);
+        if (!owner) return new Response(null, { status: 409 });
+        try {
+            return Response.json(owner.handle(input));
+        } catch {
+            return new Response(null, { status: 409 });
+        }
+    };
     let modelBridge: Promise<LocalModelBridge> | undefined;
     const getModelBridge = () => {
         if (!modelBridge) {
@@ -253,6 +299,10 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
                 stopModels();
                 return Response.json({ shutdown: true });
             }
+            if (path === "/session/request") {
+                if (shutdown || !ready) return new Response(null, { status: 403 });
+                return await sessionHandler(request);
+            }
             if (path.startsWith("/settings/")) {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
                 try {
@@ -283,6 +333,15 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
         port: address.port,
         credential,
         status: () => ({ connected, ready, shutdown, closed }),
+        registerSessionOwner(owner) {
+            if (shutdown || closed || sessionOwners.has(owner.operation)) {
+                throw new Error("Remote Session owner cannot be registered");
+            }
+            sessionOwners.set(owner.operation, owner);
+        },
+        unregisterSessionOwner(operation) {
+            sessionOwners.delete(operation);
+        },
         requestShutdown() {
             shutdown = true;
             ready = false;
