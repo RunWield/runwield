@@ -1,5 +1,6 @@
 import { getCwd } from "../../constants.js";
 import { spawnNativeProcess } from "../foreground-process.ts";
+import { captureForegroundProcess } from "../captured-process.ts";
 /* Remote location resolution. This source is constant: only JSON on stdin contains user input.
  * OpenSSH still owns host configuration, authentication and host verification.
  */
@@ -59,6 +60,17 @@ export function fixedPythonCommand(source: string): string {
 
 export const REMOTE_RESOLVE_COMMAND = fixedPythonCommand(RESOLVE_SOURCE);
 
+export interface RemoteHostIdentity {
+    hostname: string;
+    user: string;
+    port: number;
+    hostKeyFingerprint: string | null;
+}
+
+export interface ResolvedRemoteTarget extends RemoteTarget {
+    host: RemoteHostIdentity;
+}
+
 export interface RemoteTarget {
     cwd: string;
     home: string;
@@ -92,15 +104,37 @@ export async function resolveRemoteTarget(
     path: string | null = null,
     sshExecutable = "ssh",
     signal?: AbortSignal,
-): Promise<RemoteTarget> {
+): Promise<ResolvedRemoteTarget> {
     // deno-lint-ignore no-control-regex -- SSH destinations must not contain control or whitespace characters.
     if (!host || host.startsWith("-") || /[\x00-\x20\x7f]/.test(host)) {
         throw new Error("Invalid SSH destination");
     }
     if (path !== null && (typeof path !== "string" || path.includes("\0"))) throw new Error("Invalid remote path");
+    const configuration = await captureForegroundProcess(sshExecutable, {
+        cwd: getCwd(),
+        args: ["-G", "--", host],
+        signal,
+        stdout: "piped",
+        stderr: "piped",
+    });
+    if (!configuration.success) throw new Error("Cannot resolve SSH host configuration");
+    const fields = new Map(
+        new TextDecoder().decode(configuration.stdout).trim().split(/\r?\n/).map((line) => {
+            const separator = line.indexOf(" ");
+            return [line.slice(0, separator), line.slice(separator + 1)];
+        }),
+    );
+    const hostname = fields.get("hostname");
+    const user = fields.get("user");
+    const port = Number(fields.get("port"));
+    if (!hostname || !user || !Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error("Invalid SSH host configuration");
+    }
     const result = await spawnNativeProcess(sshExecutable, {
         cwd: getCwd(),
-        args: ["-T", "--", host, REMOTE_RESOLVE_COMMAND],
+        // A fresh handshake reports the key OpenSSH verified, not a key claimed
+        // by the remote resolver or a multiplexed connection's stale metadata.
+        args: ["-v", "-o", "ControlPath=none", "-oFingerprintHash=sha256", "-T", "--", host, REMOTE_RESOLVE_COMMAND],
         signal,
         stdin: "piped",
         stdout: "piped",
@@ -126,7 +160,11 @@ export async function resolveRemoteTarget(
     if (!status.success || !response.ok) {
         throw new Error(`Remote resolution failed: ${response.error || stderr.trim() || status.code}`);
     }
+    // ProxyJump handshakes report their keys first; the target reports last.
+    const key = [...stderr.matchAll(/debug1: Server host (key|certificate): (\S+) (SHA256:[A-Za-z0-9+/=]+)/g)].at(-1);
+    if (!key) throw new Error("OpenSSH did not report the verified host key");
     return {
+        host: { hostname, user, port, hostKeyFingerprint: key[1] === "key" ? key[3] : null },
         cwd: response.cwd,
         home: response.home,
         os: response.os,

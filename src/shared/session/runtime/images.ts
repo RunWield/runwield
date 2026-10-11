@@ -51,7 +51,7 @@ export class RuntimeImages {
         if (!session) throw new Error("SessionRuntime.persistSessionImage: session not found");
         const managed = session.getManagedMetadata?.();
         if (managed && !session.getRootSessionManager?.()) {
-            if (!this.services.sessionStore) {
+            if (!this.services.sessionStore && !this.services.remotePersistence) {
                 throw new Error("Cannot persist image attachment: no active session is available.");
             }
             return await this.managedOperations.runManagedOperation(

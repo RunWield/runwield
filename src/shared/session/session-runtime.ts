@@ -363,13 +363,14 @@ export class SessionRuntime {
 export function createSessionRuntime(options: CreateSessionRuntimeOptions = {}): SessionRuntime {
     let sessionStore = options.sessionStore ?? null;
     let ownsSessionStore = false;
-    if (!Object.hasOwn(options, "sessionStore")) {
+    if (!options.remoteSessionControl && !Object.hasOwn(options, "sessionStore")) {
         sessionStore = openFileSessionStore();
         ownsSessionStore = true;
     }
     return new SessionRuntime({
         sessionHost: new SessionHost(),
         sessionStore,
+        remoteSessionControl: options.remoteSessionControl,
         ownsSessionStore,
         ownerProcessKind: options.ownerProcessKind ?? "test",
         ownerInstanceId: options.ownerInstanceId ?? crypto.randomUUID(),

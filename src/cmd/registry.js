@@ -140,11 +140,12 @@ export const commandRegistry = {
         name: COMMAND_NAMES.REMOTE,
         displayName: "Remote SSH connection",
         description: "Open an existing remote Linux directory",
-        summary: "Connect to an existing remote Linux directory (no user turns yet).",
-        usage: [`${bin("remote <ssh-host>[:<remote-directory>]")}`],
+        summary: "Run remote conversation turns, or read saved remote history offline.",
+        usage: [`${bin("remote <ssh-host>[:<remote-directory>]")}`, `${bin("remote sessions")}`],
         notes: [
             "Build the matching GNU/Linux runtime explicitly before connecting.",
-            "No saved Session or user turns in this slice.",
+            "History stays on the laptop. Connect to the target, then use /resume to continue.",
+            "Use sessions: to connect to a host alias named sessions.",
         ],
         execute: async (args) => {
             const { runRemoteCommand } = await import("./remote/index.ts");

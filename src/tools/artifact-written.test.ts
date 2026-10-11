@@ -40,19 +40,8 @@ test("artifact_written registers a canonical Project-relative Markdown reference
             runtimeSessionId: "artifact-session",
             runwieldSessionId: "umbrella-session",
             operationId: "operation-1",
-            proof: {
-                runwieldSessionId: "umbrella-session",
-                projectId: "project-1",
-                ownerInstanceId: "owner-1",
-                ownerProcessKind: "test",
-                operationId: "operation-1",
-                fence: 1,
-                phase: "turning",
-                expectedGeneration: 0,
-            },
             settled: false,
             assertLive() {},
-            updateProof() {},
             settle() {},
             registerArtifact(options) {
                 registered.push(options);
@@ -96,19 +85,8 @@ test("artifact_written rejects a kind whose file is outside its canonical direct
             runtimeSessionId: "artifact-session",
             runwieldSessionId: "umbrella-session",
             operationId: "operation-1",
-            proof: {
-                runwieldSessionId: "umbrella-session",
-                projectId: "project-1",
-                ownerInstanceId: "owner-1",
-                ownerProcessKind: "test",
-                operationId: "operation-1",
-                fence: 1,
-                phase: "turning",
-                expectedGeneration: 0,
-            },
             settled: false,
             assertLive() {},
-            updateProof() {},
             settle() {},
             registerArtifact() {
                 throw new Error("must not register");
@@ -159,19 +137,8 @@ test("artifact_written offers PRD review and returns feedback for an in-session 
             runtimeSessionId: "artifact-session",
             runwieldSessionId: "umbrella-session",
             operationId: "operation-1",
-            proof: {
-                runwieldSessionId: "umbrella-session",
-                projectId: "project-1",
-                ownerInstanceId: "owner-1",
-                ownerProcessKind: "test",
-                operationId: "operation-1",
-                fence: 1,
-                phase: "turning",
-                expectedGeneration: 0,
-            },
             settled: false,
             assertLive() {},
-            updateProof() {},
             settle() {},
             registerArtifact(options) {
                 return {

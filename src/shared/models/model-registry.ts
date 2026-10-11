@@ -18,7 +18,12 @@ import { dirname, join } from "node:path";
 import { parse as parseJsonc } from "../jsonc.ts";
 import { getSettingsDir } from "../settings.js";
 import { getHomeDir } from "../../constants.js";
-import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
+import { personalGlobalRoot, remotePersonalResourcesActive } from "../remote/personal-resources.ts";
+import {
+    createRemoteModelRuntime,
+    fetchRemoteModelCatalog,
+    type RemoteModelConnection,
+} from "../remote/model-bridge.ts";
 
 export type ExecutionBackend = "pi" | "claude-cli" | "agy-cli";
 type ExternalCliExecutionBackend = Exclude<ExecutionBackend, "pi">;
@@ -178,6 +183,14 @@ let modelRuntimePromise: Promise<ModelRuntime> | null = null;
 let resolvedModelRuntime: ModelRuntime | null = null;
 let modelRuntimeConfigDir: string | null = null;
 let modelCredentialStore: RunWieldCredentialStore | null = null;
+
+interface RemoteModelComposition {
+    runtime: ModelRuntime;
+    registry: RunWieldModelRegistry;
+}
+
+let remoteModelComposition: RemoteModelComposition | undefined;
+let remoteModelConnectionToken: symbol | undefined;
 
 export function getRunWieldModelConfigDir(): string {
     return getSettingsDir("global");
@@ -888,8 +901,45 @@ export async function createRunWieldModelRuntime(): Promise<ModelRuntime> {
     });
 }
 
+/**
+ * Install the laptop catalog and credential-free runtime for normal model consumers.
+ * Call after control authentication and configureRemotePersonalResources. Installation is atomic:
+ * consumers fail closed while setup is pending or if it fails. The returned cleanup is idempotent;
+ * call it when this connection ends, before installing a successor. It does not close the transport,
+ * dispose caller-owned Sessions, or revoke runtime references already held by those Sessions.
+ */
+export async function configureRemoteModelConnection(connection: RemoteModelConnection): Promise<() => void> {
+    if (
+        !remotePersonalResourcesActive() || remoteModelConnectionToken || !Number.isInteger(connection.port) ||
+        connection.port < 1 || connection.port > 65535 || !/^[a-f0-9]{64}$/.test(connection.credential)
+    ) throw new Error("Remote model composition requires a mounted context and a fresh valid control connection");
+    const token = Symbol("remote model connection");
+    remoteModelConnectionToken = token;
+    try {
+        // Retain our connection values, not a caller-mutable transport descriptor.
+        // The normal RunWield root loader disables extensions, just as the bounded
+        // loader does. Pi's no-op provider hooks stay in the remote Agent loop.
+        const configuredConnection: RemoteModelConnection = { ...connection, callbackPolicy: "no-extensions" };
+        const catalog = await fetchRemoteModelCatalog(configuredConnection);
+        const runtime = await createRemoteModelRuntime(configuredConnection, catalog);
+        const registry = new RunWieldModelRegistry({ remote: true, runtime, configDir: personalGlobalRoot() });
+        remoteModelComposition = { runtime, registry };
+    } catch (error) {
+        remoteModelConnectionToken = undefined;
+        throw error;
+    }
+    return () => {
+        if (remoteModelConnectionToken !== token) return;
+        remoteModelComposition = undefined;
+        remoteModelConnectionToken = undefined;
+    };
+}
+
 export function getModelRuntime(): Promise<ModelRuntime> {
-    if (remotePersonalResourcesActive()) throw new Error("Remote model runtime requires explicit control connection");
+    if (remotePersonalResourcesActive()) {
+        if (remoteModelComposition) return Promise.resolve(remoteModelComposition.runtime);
+        throw new Error("Remote model runtime requires explicit control connection");
+    }
     const configDir = getRunWieldModelConfigDir();
     if (!modelRuntimePromise || modelRuntimeConfigDir !== configDir) {
         modelRuntimeConfigDir = configDir;
@@ -905,7 +955,10 @@ export function getModelRuntime(): Promise<ModelRuntime> {
 }
 
 export function getModelRegistry(): RunWieldModelRegistry {
-    if (remotePersonalResourcesActive()) throw new Error("Remote model registry requires explicit control connection");
+    if (remotePersonalResourcesActive()) {
+        if (remoteModelComposition) return remoteModelComposition.registry;
+        throw new Error("Remote model registry requires explicit control connection");
+    }
     const agentDir = getRunWieldModelConfigDir();
     const piMigration = migratePiModelConfigOnce({ runwieldDir: agentDir });
     for (const failure of piMigration.failed) {

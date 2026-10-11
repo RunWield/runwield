@@ -69,11 +69,19 @@ export interface RegisterSessionArtifactOptions {
     now?: () => string;
 }
 
+export interface RemoteProjectLocator {
+    host: import("../remote/target.ts").RemoteHostIdentity;
+    root: string;
+    /** Display and reconnect command only; not an identity field. */
+    targetLabel?: string;
+}
+
 export interface FileSessionProject {
     projectId: string;
     displayName: string;
     registeredRoot: string;
     currentRoot: string;
+    remote?: RemoteProjectLocator;
     lifecycle: "enabled" | "disabled" | "removed";
     accessScope?: "local_runtime" | "workspace";
     createdAt: string;

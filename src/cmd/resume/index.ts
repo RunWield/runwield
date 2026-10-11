@@ -142,7 +142,7 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
     const items = sessions.map((session) => {
         const display = (session.firstMessage || session.id).trim().replace(/\n/g, " ");
         return {
-            value: session.path,
+            value: session.path || session.id,
             label: session.name ? `${session.name} (${display})` : display,
             description: `${new Date(session.modified || 0).toLocaleString()} | Messages: ${session.messageCount}`,
         };
@@ -155,20 +155,20 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
         getTerminalColumns() - SELECT_CHROME_WIDTH - widestDescription,
     );
 
-    const selectedPath = await uiAPI.promptSelect("Select a session to resume:", items, {
+    const selectedId = await uiAPI.promptSelect("Select a session to resume:", items, {
         layout: {
             maxPrimaryColumnWidth,
             truncatePrimary: ({ text, maxWidth }) =>
                 text.length > maxWidth ? `${text.slice(0, Math.max(0, maxWidth - 1))}…` : text,
         },
     });
-    if (!selectedPath) {
+    if (!selectedId) {
         editor.setText("");
         editor.disableSubmit = false;
         return;
     }
 
-    const selected = sessions.find((session) => session.path === selectedPath);
+    const selected = sessions.find((session) => (session.path || session.id) === selectedId);
     if (!selected) throw new Error("Selected persisted session is no longer available.");
     const inspection = await sessionRuntime.inspectResumableSession({
         cwd: current.cwd,

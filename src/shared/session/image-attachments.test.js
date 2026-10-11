@@ -9,8 +9,9 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { getCwd, getHomeDir } from "../../constants.js";
-import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { assert, assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
+import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     formatImageAttachmentMarker,
@@ -19,8 +20,10 @@ import {
     persistImageAttachment,
     preflightImageAttachments,
     prepareImagesForModel,
+    readSessionImageAttachment,
     resolveImageRef,
     resolveVisionFallbackModel,
+    saveImageAttachment,
 } from "./image-attachments.ts";
 import { __resetSettingsForTests } from "../settings.js";
 
@@ -102,7 +105,7 @@ test("resolveImageRef resolves safe project-relative paths and rejects escapes",
 });
 
 test("prepareImagesForModel sends direct images or fallback markers", () => {
-    const img = { base64: "a", mimeType: "image/png", ref: "attachment:abc" };
+    const img = { base64: "a", mimeType: "image/png", ref: "attachment:abc", path: "/session/abc.png" };
     assertEquals(prepareImagesForModel({ text: "look", images: [img], activeModel: { input: ["text", "image"] } }), {
         ok: true,
         text: "look",
@@ -124,6 +127,45 @@ test("prepareImagesForModel sends direct images or fallback markers", () => {
         },
     );
     assertEquals(formatImageAttachmentMarker(img), "[Image attached: attachment:abc image/png]");
+});
+
+test("direct image preparation retains portable references but leaves local text and image bytes unchanged", async () => {
+    const directory = await fsMkdtemp(join(tmpdir(), "runwield-direct-images-"));
+    const pixel = new PhotonImage(new Uint8Array([255, 191, 0, 255]), 1, 1);
+    try {
+        const bytes = pixel.get_bytes();
+        const image = { base64: btoa(String.fromCharCode(...bytes)), mimeType: "image/png" };
+        const local = saveImageAttachment(image, directory);
+        assert(local.path);
+        assert(local.ref);
+        assertEquals(await fsReadFile(local.path), bytes);
+        const portable = readSessionImageAttachment(local.ref, directory);
+        assertEquals(portable, { ...image, ref: local.ref });
+        const activeModel = { input: ["text", "image"] };
+        const text = "Describe the amber pixel.";
+        const modelImage = { type: /** @type {const} */ ("image"), data: image.base64, mimeType: image.mimeType };
+        assertEquals(prepareImagesForModel({ text, images: [local], activeModel }), {
+            ok: true,
+            text,
+            images: [modelImage],
+            mode: "direct",
+        });
+        assertEquals(prepareImagesForModel({ text, images: [portable], activeModel }), {
+            ok: true,
+            text: `${text}\n\n${formatImageAttachmentMarker(portable)}`,
+            images: [modelImage],
+            mode: "direct",
+        });
+        assertEquals(prepareImagesForModel({ text, images: [local, portable, image], activeModel }), {
+            ok: true,
+            text: `${text}\n\n${formatImageAttachmentMarker(portable)}`,
+            images: [modelImage, modelImage, modelImage],
+            mode: "direct",
+        });
+    } finally {
+        pixel.free();
+        await removeTempDir(directory);
+    }
 });
 
 test("preflightImageAttachments blocks text-only model without fallback", () => {

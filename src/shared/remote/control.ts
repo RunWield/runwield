@@ -4,8 +4,12 @@ import { serveHttp } from "../http-server.ts";
 import { createRunWieldModelRuntime } from "../models/model-registry.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 import type { SettingsUpdate } from "./settings-bridge.ts";
+import { readSystemClipboardImage } from "../../ui/tui/clipboard.ts";
+import { validateClipboardImage } from "./clipboard-bridge.ts";
 import { MAX_SESSION_BYTES, type RemoteSessionRequest, validateSessionRequest } from "./session-protocol.ts";
 import type { RemoteSessionOwner } from "../session/remote-session-owner.ts";
+import { LaptopSessionControl, type LaptopSessionTarget } from "./laptop-session-control.ts";
+import { type RemoteSessionControlRequest, validateSessionControlRequest } from "./session-protocol.ts";
 
 import { applyLaptopGlobalSettingsUpdate, readLaptopGlobalSettingsSnapshot } from "../settings.js";
 
@@ -107,7 +111,10 @@ function equalSecret(left: string, right: string): boolean {
 }
 
 /** Start a fresh, loopback-only listener. The launcher must close it in its finally block. */
-export function startRemoteControlService(identity: RemoteControlIdentity): RemoteControlService {
+export function startRemoteControlService(
+    identity: RemoteControlIdentity,
+    target?: LaptopSessionTarget,
+): RemoteControlService {
     if (!validIdentity(identity)) throw new Error("Invalid remote control identity");
     const credential = Array.from(
         crypto.getRandomValues(new Uint8Array(32)),
@@ -173,6 +180,43 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
         }
     };
     const sessionOwners = new Map<string, RemoteSessionOwner>();
+    const sessions = target ? new LaptopSessionControl(target, sessionOwners) : null;
+    const stopSessions = () => {
+        if (sessions) sessions.close();
+    };
+    const sessionControlHandler = async (request: Request): Promise<Response> => {
+        if (!sessions || request.method !== "POST") return new Response(null, { status: 404 });
+        let input: RemoteSessionControlRequest;
+        try {
+            const reader = request.body?.getReader();
+            if (!reader) throw new Error("Missing Session control request");
+            const bytes: number[] = [];
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (bytes.length + value.length > 4096) {
+                    await reader.cancel();
+                    throw new Error("Large Session control request");
+                }
+                for (const byte of value) bytes.push(byte);
+            }
+            input = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(bytes)));
+            validateSessionControlRequest(input);
+        } catch {
+            return new Response(null, { status: 400 });
+        }
+        if (shutdown || closed || !ready) return new Response(null, { status: 403 });
+        try {
+            const result = await sessions.handle(input);
+            if (shutdown || closed || !ready) {
+                stopSessions();
+                return new Response(null, { status: 403 });
+            }
+            return Response.json(result);
+        } catch {
+            return new Response(null, { status: 409 });
+        }
+    };
     const sessionHandler = async (request: Request): Promise<Response> => {
         if (request.method !== "POST") return new Response(null, { status: 404 });
         let input: RemoteSessionRequest;
@@ -237,6 +281,7 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
             shutdown = true;
             ready = false;
             stopModels();
+            stopSessions();
         }
     };
     const abort = new AbortController();
@@ -298,7 +343,24 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
                 shutdown = true;
                 ready = false;
                 stopModels();
+                stopSessions();
                 return Response.json({ shutdown: true });
+            }
+            if (path === "/clipboard/image") {
+                if (shutdown || !ready) return new Response(null, { status: 403 });
+                if (request.method !== "GET") return new Response(null, { status: 405 });
+                try {
+                    const image = validateClipboardImage(await readSystemClipboardImage());
+                    // Clipboard hardware access is asynchronous. Revocation discards its result.
+                    if (shutdown || closed || !ready) return new Response(null, { status: 403 });
+                    return Response.json(image);
+                } catch {
+                    return new Response(null, { status: 503 });
+                }
+            }
+            if (path === "/session/control") {
+                if (shutdown || !ready) return new Response(null, { status: 403 });
+                return await sessionControlHandler(request);
             }
             if (path === "/session/request") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
@@ -347,6 +409,7 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
             shutdown = true;
             ready = false;
             stopModels();
+            stopSessions();
         },
         async close() {
             if (closed) return;
@@ -355,6 +418,7 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
             ready = false;
             if (timer !== undefined) clearInterval(timer);
             stopModels();
+            stopSessions();
             abort.abort();
             await server.finished;
         },

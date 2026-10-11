@@ -416,16 +416,20 @@ export function initSettings(projectRoot = getCwd()) {
                 projectRoot,
                 new Proxy(manager, {
                     get(_target, property) {
-                        refreshRemoteSettingsManager(projectRoot);
                         const current = /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
-                        const value = Reflect.get(current, property, current);
-                        if (typeof value !== "function") return value;
-                        /** @param {unknown[]} args */
-                        return (...args) => {
-                            refreshRemoteSettingsManager(projectRoot);
-                            const live = /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
-                            return Reflect.apply(Reflect.get(live, property, live), live, args);
-                        };
+                        // Inspect the loaded shape without reading the mount. A held
+                        // method must refresh at invocation, not at capture as well.
+                        if (typeof Reflect.get(current, property, current) === "function") {
+                            /** @param {unknown[]} args */
+                            return (...args) => {
+                                refreshRemoteSettingsManager(projectRoot);
+                                const live = /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
+                                return Reflect.apply(Reflect.get(live, property, live), live, args);
+                            };
+                        }
+                        refreshRemoteSettingsManager(projectRoot);
+                        const live = /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
+                        return Reflect.get(live, property, live);
                     },
                     set(_target, property, value) {
                         refreshRemoteSettingsManager(projectRoot);
@@ -446,10 +450,12 @@ export function initSettings(projectRoot = getCwd()) {
  */
 export function getSettingsManager(projectRoot = getCwd()) {
     if (!projectSettingsManagers.has(projectRoot)) initSettings(projectRoot);
+    // The proxy refreshes each value read, write, or method invocation itself.
+    if (remoteManagerHandles.has(projectRoot)) {
+        return /** @type {SettingsManager} */ (remoteManagerHandles.get(projectRoot));
+    }
     refreshRemoteSettingsManager(projectRoot);
-    return /** @type {SettingsManager} */ (
-        remoteManagerHandles.get(projectRoot) ?? projectSettingsManagers.get(projectRoot)
-    );
+    return /** @type {SettingsManager} */ (projectSettingsManagers.get(projectRoot));
 }
 
 /** @returns {string | undefined} */

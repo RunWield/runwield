@@ -156,7 +156,11 @@ console.log(JSON.stringify({ ok: true, cwd: "/remote/home/" + (request.path || "
                 join(bin, "ssh"),
                 `#!/bin/sh
 printf '%s\\n' "$@" > "$SSH_LOG"
+if [ "$1" = -G ]; then printf 'hostname remote.example\\nuser tester\\nport 22\\n'; exit 0; fi
+[ "$1" = -v ] && [ "$2" = -o ] && [ "$3" = ControlPath=none ] || exit 42
+shift 4
 [ "$1" = -T ] && [ "$2" = -- ] && [ "$#" = 4 ] || exit 42
+echo 'debug1: Server host key: ssh-ed25519 SHA256:fixture' >&2
 HOME="$REMOTE_HOME" PYTHONPATH="$REMOTE_PYTHONPATH" export HOME PYTHONPATH
 tee "$SSH_LOG.json" | /bin/sh -c "$4"
 `,
@@ -309,8 +313,9 @@ test("remote CLI help and invalid arity do not contact SSH", async () => {
         assertEquals(help.code, 0);
         assertStringIncludes(help.stdout, "Usage: wld remote <ssh-host>");
         const missing = await run([]);
-        assertEquals(missing.code, 1);
-        assertStringIncludes(missing.stderr, "Usage: wld remote <ssh-host>");
+        assertEquals(missing.code, 0);
+        assertStringIncludes(missing.stdout, "wld remote sessions");
+        assertStringIncludes(help.stdout, "wld remote sessions");
         const excess = await run(["alias", "other"]);
         assertEquals(excess.code, 1);
         assertEquals(await exists(sshLog), false);
@@ -400,7 +405,15 @@ test("remote CLI resolves a host home without initializing a local project and r
         assertEquals(result.code, 1);
         assertStringIncludes(result.stderr, "Missing x86_64-unknown-linux-gnu artifact");
         assertStringIncludes(result.stderr, "bun run compile --target x86_64-unknown-linux-gnu");
-        assertEquals((await fsReadFile(sshLog, "utf8")).split("\n").slice(0, 3), ["-T", "--", "remote-alias"]);
+        assertEquals((await fsReadFile(sshLog, "utf8")).split("\n").slice(0, 7), [
+            "-v",
+            "-o",
+            "ControlPath=none",
+            "-oFingerprintHash=sha256",
+            "-T",
+            "--",
+            "remote-alias",
+        ]);
         assertEquals(await exists(join(local, ".wld")), false);
         assertEquals(await exists(join(local, ".git")), false);
         assertEquals(await exists(join(remote, ".cache")), false);
@@ -444,4 +457,22 @@ test("remote CLI exits after authenticated SSH closes while terminal stdin remai
         assertStringIncludes(result.stdout, "REMOTE_EXIT_AFTER_INPUT");
         assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
     }, true);
+});
+
+test("remote sessions reads empty laptop history before identity, proof, or SSH setup", async () => {
+    await withRemoteFixture(async ({ run, local, sshLog }) => {
+        const result = await run(["sessions"], "malformed-proof-must-not-be-read");
+        assertEquals(result.code, 0, result.stderr);
+        assertStringIncludes(result.stdout, "No saved remote Sessions.");
+        assertEquals(await exists(sshLog), false);
+        assertEquals(await exists(join(local, ".wld")), false);
+    });
+});
+
+test("a host alias named sessions remains reachable with a colon", async () => {
+    await withRemoteFixture(async ({ run, sshLog }) => {
+        const result = await run(["sessions:"]);
+        assertStringIncludes(result.stderr, "Missing x86_64-unknown-linux-gnu artifact");
+        assertStringIncludes(await fsReadFile(sshLog, "utf8"), "sessions");
+    });
 });
