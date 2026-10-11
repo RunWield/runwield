@@ -26,6 +26,16 @@ fi
 shift 4
 [ "$1" = -T ] && [ "$2" = -- ] || exit 42
 case "$3" in
+  jump*)
+    case "$3" in
+      jump-rotated) echo 'debug1: Server host key: ssh-ed25519 SHA256:rotatedJump' >&2;;
+      *) echo 'debug1: Server host key: ssh-ed25519 SHA256:jump' >&2;;
+    esac
+    case "$3" in
+      jump-target-rotated) echo 'debug1: Server host key: ssh-ed25519 SHA256:changed' >&2;;
+      jump-certificate) echo 'debug1: Server host certificate: ssh-ed25519-cert-v01@openssh.com SHA256:certificate' >&2;;
+      *) echo 'debug1: Server host key: ssh-ed25519 SHA256:verified' >&2;;
+    esac;;
   failed) echo 'Host key verification failed' >&2; exit 1;;
   no-key) ;;
   certificate) echo 'debug1: Server host certificate: ssh-ed25519-cert-v01@openssh.com SHA256:certificate' >&2;;
@@ -58,6 +68,29 @@ Deno.test("SSH aliases use effective host configuration and the verified key", a
             const changed = await resolveRemoteTarget(alias, null, ssh);
             assertEquals(JSON.stringify(first.host) === JSON.stringify(changed.host), false);
         }
+    });
+});
+
+Deno.test("SSH target key rotation changes identity behind a jump host", async () => {
+    await withSsh(async (ssh) => {
+        const first = await resolveRemoteTarget("jump", null, ssh);
+        const changed = await resolveRemoteTarget("jump-target-rotated", null, ssh);
+        assertEquals(first.host.hostKeyFingerprint, "SHA256:verified");
+        assertEquals(changed.host.hostKeyFingerprint, "SHA256:changed");
+    });
+});
+
+Deno.test("SSH jump host key rotation does not change target identity", async () => {
+    await withSsh(async (ssh) => {
+        const first = await resolveRemoteTarget("jump", null, ssh);
+        const changed = await resolveRemoteTarget("jump-rotated", null, ssh);
+        assertEquals(first.host, changed.host);
+    });
+});
+
+Deno.test("SSH target certificates do not use a jump host fingerprint", async () => {
+    await withSsh(async (ssh) => {
+        assertEquals((await resolveRemoteTarget("jump-certificate", null, ssh)).host.hostKeyFingerprint, null);
     });
 });
 

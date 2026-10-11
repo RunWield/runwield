@@ -226,16 +226,6 @@ Deno.test("Agy MCP setup approval works during a managed operation", async () =>
             runtimeSessionId: approved.id,
             runwieldSessionId: "managed-session",
             operationId: "setup-test",
-            proof: {
-                runwieldSessionId: "managed-session",
-                projectId: "project",
-                ownerInstanceId: "owner",
-                ownerProcessKind: "test",
-                operationId: "setup-test",
-                fence: 1,
-                phase: "turning",
-                expectedGeneration: 1,
-            },
             settled: false,
             registerArtifact: () => ({
                 artifactId: "artifact",
@@ -246,7 +236,6 @@ Deno.test("Agy MCP setup approval works during a managed operation", async () =>
                 registeredBy: "test",
                 sourceSegmentId: null,
             }),
-            updateProof() {},
             assertLive() {},
             settle() {},
         };

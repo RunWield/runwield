@@ -4,7 +4,7 @@ import { parseRemoteSessionTranscript } from "../../shared/remote/session-protoc
 import { createReplayEvents } from "../../shared/session/session-transcript-projection.js";
 import { createUiApi } from "./api.js";
 import { SpinnerBlock } from "./blocks.js";
-import { createTuiDisplayConsumer } from "./runtime-display.js";
+import { createTuiDisplayConsumer } from "./runtime-display.ts";
 import { theme } from "../theme/theme.js";
 
 function safeLabel(value: string): string {

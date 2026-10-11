@@ -205,7 +205,7 @@ Deno.test("load-plan association lookup excludes remote planning evidence", asyn
 
 Deno.test("Workspace project scans do not discover remote file Session Projects", async () => {
     await withFixture(({ root, baseDir, remote }) => {
-        const owner = openOwnerCoordinationStore({ path: join(root, "owner.sqlite3"), sessionBaseDir: baseDir });
+        const owner = openOwnerCoordinationStore({ dbPath: join(root, "owner.sqlite3"), sessionBaseDir: baseDir });
         try {
             assertEquals(listOwnerProjects(owner), []);
             assertEquals(owner.listSessionProjects().some((project) => project.projectId === remote.projectId), false);

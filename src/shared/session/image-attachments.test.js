@@ -1,5 +1,5 @@
 import { getCwd, getHomeDir } from "../../constants.js";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { join } from "@std/path";
 import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -126,12 +126,14 @@ Deno.test("direct image preparation retains portable references but leaves local
         const bytes = pixel.get_bytes();
         const image = { base64: btoa(String.fromCharCode(...bytes)), mimeType: "image/png" };
         const local = saveImageAttachment(image, directory);
+        assert(local.path);
+        assert(local.ref);
         assertEquals(await Deno.readFile(local.path), bytes);
         const portable = readSessionImageAttachment(local.ref, directory);
         assertEquals(portable, { ...image, ref: local.ref });
         const activeModel = { input: ["text", "image"] };
         const text = "Describe the amber pixel.";
-        const modelImage = { type: "image", data: image.base64, mimeType: image.mimeType };
+        const modelImage = { type: /** @type {const} */ ("image"), data: image.base64, mimeType: image.mimeType };
         assertEquals(prepareImagesForModel({ text, images: [local], activeModel }), {
             ok: true,
             text,

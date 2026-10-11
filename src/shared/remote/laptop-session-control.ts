@@ -2,6 +2,7 @@ import { join } from "@std/path";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import type { FileSessionManifest, FileSessionProject, FileSessionStore } from "../session/file-session-store-types.ts";
 import { recoverRemoteSession, RemoteSessionOwner } from "../session/remote-session-owner.ts";
+import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
 import {
     ensurePrivateDir,
     ensureRemoteProject,
@@ -77,7 +78,7 @@ function savedSession(project: FileSessionProject, manifest: FileSessionManifest
     };
 }
 
-export function listSavedRemoteSessions(baseDir: string): SavedRemoteSession[] {
+export function listSavedRemoteSessions(baseDir = getRunWieldSessionsBaseDir()): SavedRemoteSession[] {
     const saved: SavedRemoteSession[] = [];
     for (const project of listProjectsFromDisk(baseDir).filter((project) => project.remote)) {
         for (const { manifest } of listManifests(sessionDirForProject(baseDir, project), false)) {
