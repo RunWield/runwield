@@ -20,7 +20,7 @@ test("managed operation re-entry policy is keyed to capability state, not runtim
     const rejectionStart = source.indexOf(
         "rejectManagedPublicMutation(",
     );
-    const rejectionEnd = source.indexOf("\n    /**", rejectionStart);
+    const rejectionEnd = source.indexOf("\n    async runManagedStandaloneMutation", rejectionStart);
     const rejectionBody = source.slice(rejectionStart, rejectionEnd);
     assertEquals(rejectionBody.includes("currentManagedOperations"), true);
     assertEquals(rejectionBody.includes("busyOperationDepths"), false);

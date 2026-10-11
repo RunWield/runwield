@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { getCwd, getHomeDir } from "../../constants.js";
-import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { assert, assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -136,12 +136,14 @@ test("direct image preparation retains portable references but leaves local text
         const bytes = pixel.get_bytes();
         const image = { base64: btoa(String.fromCharCode(...bytes)), mimeType: "image/png" };
         const local = saveImageAttachment(image, directory);
+        assert(local.path);
+        assert(local.ref);
         assertEquals(await fsReadFile(local.path), bytes);
         const portable = readSessionImageAttachment(local.ref, directory);
         assertEquals(portable, { ...image, ref: local.ref });
         const activeModel = { input: ["text", "image"] };
         const text = "Describe the amber pixel.";
-        const modelImage = { type: "image", data: image.base64, mimeType: image.mimeType };
+        const modelImage = { type: /** @type {const} */ ("image"), data: image.base64, mimeType: image.mimeType };
         assertEquals(prepareImagesForModel({ text, images: [local], activeModel }), {
             ok: true,
             text,

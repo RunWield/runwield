@@ -1,36 +1,30 @@
 /** Shared conversation renderer. It consumes live or replay events, never a Runtime. */
+import type { AgentMessageAppender, UiAPI } from "./types.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 
 const HIDDEN_TOOL_BLOCK_NAMES = new Set(["task_completed", "review_complete", "triage_report", "user_interview"]);
 
-/**
- * @typedef {Object} RuntimeDisplayImage
- * @property {string} base64
- * @property {string} mimeType
- * @typedef {Partial<ReturnType<typeof import('../../shared/session/session-transcript-projection.js').createReplayEvents>[number]>} RuntimeDisplayEvent
- */
+interface RuntimeDisplayImage {
+    base64: string;
+    mimeType: string;
+}
 
-/**
- * @typedef {Object} RuntimeDisplayImageCandidate
- * @property {string} [base64]
- * @property {string} [mimeType]
- */
+type RuntimeDisplayEvent = Partial<
+    ReturnType<typeof import("../../shared/session/session-transcript-projection.js").createReplayEvents>[number]
+>;
 
-/**
- * @param {RuntimeDisplayImageCandidate} image
- * @returns {RuntimeDisplayImage[]}
- */
-function collectDetailDisplayImage(image) {
+interface RuntimeDisplayImageCandidate {
+    base64?: string;
+    mimeType?: string;
+}
+
+function collectDetailDisplayImage(image: RuntimeDisplayImageCandidate): RuntimeDisplayImage[] {
     return typeof image.base64 === "string" && typeof image.mimeType === "string"
         ? [{ base64: image.base64, mimeType: image.mimeType }]
         : [];
 }
 
-/**
- * @param {RuntimeDisplayEvent} event
- * @returns {RuntimeDisplayImage[]}
- */
-function collectRuntimeDisplayImages(event) {
+function collectRuntimeDisplayImages(event: RuntimeDisplayEvent): RuntimeDisplayImage[] {
     const contentImages = Array.isArray(event.content)
         ? event.content.flatMap((block) =>
             block?.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string"
@@ -41,8 +35,7 @@ function collectRuntimeDisplayImages(event) {
     const detailImages = Array.isArray(event.details?.runwieldDisplayImages)
         ? event.details.runwieldDisplayImages.flatMap(collectDetailDisplayImage)
         : [];
-    /** @type {RuntimeDisplayImage[]} */
-    const images = [];
+    const images: RuntimeDisplayImage[] = [];
     const seen = new Set();
     for (const image of [...contentImages, ...detailImages]) {
         const key = `${image.mimeType}:${image.base64}`;
@@ -53,17 +46,11 @@ function collectRuntimeDisplayImages(event) {
     return images;
 }
 
-/**
- * @param {import('./types.js').UiAPI} uiAPI
- */
-export function createTuiDisplayConsumer(uiAPI) {
-    /** @type {Map<string, import('./types.js').AgentMessageAppender>} */
-    const assistantMessages = new Map();
-    /** @type {Map<string, ReturnType<NonNullable<import('./types.js').UiAPI['appendThinkingStart']>>>} */
-    const thinkingMessages = new Map();
+export function createTuiDisplayConsumer(uiAPI: UiAPI) {
+    const assistantMessages = new Map<string, AgentMessageAppender>();
+    const thinkingMessages = new Map<string, ReturnType<NonNullable<UiAPI["appendThinkingStart"]>>>();
     return {
-        /** @param {RuntimeDisplayEvent} event */
-        consume(event) {
+        consume(event: RuntimeDisplayEvent) {
             const value = event;
             switch (event.type) {
                 case RuntimeEventTypes.USER_MESSAGE:

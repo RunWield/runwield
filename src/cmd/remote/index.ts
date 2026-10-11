@@ -187,8 +187,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     }
     if (args.length === 1 && args[0] === "sessions") {
         const { listSavedRemoteSessions } = await import("../../shared/remote/laptop-session-control.ts");
-        const { getRunWieldSessionsBaseDir } = await import("../../shared/session/root-session.js");
-        const saved = listSavedRemoteSessions(getRunWieldSessionsBaseDir());
+        const saved = listSavedRemoteSessions();
         if (saved.length === 0) {
             console.log("No saved remote Sessions.");
             return;

@@ -160,11 +160,11 @@ export async function resolveRemoteTarget(
     if (!status.success || !response.ok) {
         throw new Error(`Remote resolution failed: ${response.error || stderr.trim() || status.code}`);
     }
-    const key = stderr.match(/debug1: Server host key: (\S+) (SHA256:[A-Za-z0-9+/=]+)/);
-    const certificate = stderr.includes("debug1: Server host certificate:");
-    if (!key && !certificate) throw new Error("OpenSSH did not report the verified host key");
+    // ProxyJump handshakes report their keys first; the target reports last.
+    const key = [...stderr.matchAll(/debug1: Server host (key|certificate): (\S+) (SHA256:[A-Za-z0-9+/=]+)/g)].at(-1);
+    if (!key) throw new Error("OpenSSH did not report the verified host key");
     return {
-        host: { hostname, user, port, hostKeyFingerprint: key?.[2] ?? null },
+        host: { hostname, user, port, hostKeyFingerprint: key[1] === "key" ? key[3] : null },
         cwd: response.cwd,
         home: response.home,
         os: response.os,

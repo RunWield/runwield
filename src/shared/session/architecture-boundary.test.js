@@ -231,6 +231,8 @@ test("Session writer mutators stay behind approved state-machine seams", async (
                 path === "src/shared/session/segment-rollover.ts" ||
                 // ADR-015: the laptop owner coordinates remote saves with its native writer proof.
                 path === "src/shared/session/remote-session-owner.ts" ||
+                // ADR-018: connection-scoped laptop control admits native remote writers.
+                path === "src/shared/remote/laptop-session-control.ts" ||
                 path === "src/shared/session/runtime/lifecycle-loading.ts" ||
                 path === "src/shared/session/runtime/lifecycle.ts" ||
                 path === "src/shared/session/runtime/managed-operations.ts" ||

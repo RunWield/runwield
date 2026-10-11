@@ -1,4 +1,4 @@
-import { createTuiDisplayConsumer } from "./runtime-display.js";
+import { createTuiDisplayConsumer } from "./runtime-display.ts";
 import { deliveryReportText } from "./delivery-report-text.ts";
 /**
  * @module ui/tui/runtime-adapter
