@@ -12,7 +12,7 @@ import { type ControllerRecord, readControllerRecord } from "../../shared/workfl
 import { finalizePlanImplementation } from "../../shared/workflow/implementation-checkpoint.ts";
 import { makeValidationCheckpoint } from "../../shared/workflow/validation-checkpoint.ts";
 import { runLocalCI } from "../../shared/workflow/validation-local-ci.ts";
-import { runWorkflowValidationToStableBoundary } from "../../shared/workflow/validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "../../shared/workflow/validation.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";

@@ -6,7 +6,7 @@ import { createGitPort } from "../git-port.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { addEntry } from "../worktree-registry.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
-import { continueWorkflowValidation } from "./validation-supervisor.ts";
+import { continueWorkflowValidation } from "./validation.ts";
 import { attachRecorder, makeUi } from "./validation-test-helpers.js";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });

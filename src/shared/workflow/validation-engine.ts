@@ -26,6 +26,8 @@ import type { ValidationLoopArgs, ValidationPhaseResult, WorkflowValidationResul
 import { MAX_PHASES_PER_CALL, PHASE_STATUS, VALIDATION_STATUS_ORDER } from "./validation-types.ts";
 import { preparePublicationRevalidation, PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 
+import { validateHostReviewerResume } from "./validation-host-state.ts";
+
 type PlanStatus = "implemented" | "validated_ci" | "reviewed" | "validated";
 type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
 
@@ -36,6 +38,7 @@ type PlanFrontMatter = import("../../plan-store.js").PlanFrontMatter;
  * {@link runValidationLoop}, which drives phases until the Plan stops moving.
  */
 export async function runValidationPhase(args: ValidationLoopArgs): Promise<ValidationPhaseResult> {
+    await validateHostReviewerResume(args);
     const recoveryPath = await preparePublicationRevalidation(getProjectRoot(args), args.planName);
     const canonicalPlan = await loadCanonicalValidationPlan(args);
     if (canonicalPlan.kind === "blocked") return canonicalPlan.result;
@@ -69,6 +72,9 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
         case "semantic":
             return await runSemanticReviewPhase(canonicalArgs);
         case "delivery":
+            if (args.hostTurn) {
+                return { kind: "awaiting_delivery", planName: args.planName, projectRoot: getProjectRoot(args) };
+            }
             return await runValidatedReviewerPhase(canonicalArgs);
     }
 }

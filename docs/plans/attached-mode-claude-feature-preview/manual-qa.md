@@ -90,3 +90,19 @@ Claude Code **2.1.293**, macOS, autonomous execution, 2026-10-08:
   record snapshots. Non-Git proceed/decline and stale completion guards have automated real-environment coverage.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/04-implement-approved-plans-in-runwield-worktrees" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/05a-run-workflow-validation-without-a-core-session" -->
+
+## Run Workflow Validation without a Core Session
+
+Manual verification steps for attached-mode-claude-feature-preview/05a-run-workflow-validation-without-a-core-session
+
+- [ ] Start validation for an implemented Plan with a failing verification command. Confirm it returns a repair request
+      and leaves the checkpoint in `awaiting_repair`.
+- [ ] Complete the repair and resume validation. Confirm CI runs again and validation returns a reviewer request.
+- [ ] Resume the review with complete coverage of the diff and an accepted outcome. Confirm the Plan becomes `reviewed`
+      and validation stops before delivery.
+- [ ] Repeat a completed repair resume. Confirm it does not run CI or add delivery evidence again.
+- [ ] Start validation through a Core Session. Confirm its review, repair, and decision behavior remains unchanged.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/05a-run-workflow-validation-without-a-core-session" -->

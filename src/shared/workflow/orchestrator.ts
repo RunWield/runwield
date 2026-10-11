@@ -51,7 +51,7 @@ import {
     runSlicerAgent,
 } from "./workflow.js";
 import { runMechanicalValidation, shouldRunWorkflowValidation, SYSTEM_SEMANTIC_REVIEW_PORT } from "./validation.ts";
-import { runWorkflowValidationToStableBoundary } from "./validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "./validation.ts";
 import type { LocalCIPort } from "./validation-local-ci.ts";
 import { createGitPort } from "../git-port.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../work-records/mnemoteca-port.ts";

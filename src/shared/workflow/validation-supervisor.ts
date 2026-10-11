@@ -8,7 +8,9 @@ import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
 import { getLockHostname, isPidAlive } from "../process-liveness.ts";
 import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-registry.js";
-import { createEngineValidationArgs, runValidationLoop, type ValidationLoopArgs } from "./validation.ts";
+import { hostSemanticRepairPrompt, requestHostRepair } from "./validation-host-state.ts";
+import { runValidationLoop } from "./validation-engine.ts";
+import type { ValidationLoopArgs } from "./validation-types.ts";
 import {
     isValidationCheckpoint,
     makeValidationCheckpoint,
@@ -21,7 +23,6 @@ import { retryValidationLater } from "./validation-recovery.ts";
 import { logValidationFailure, ValidationStateError } from "./validation-state-errors.ts";
 import type { WorkflowValidationResult } from "./validation-types.ts";
 import { validationUserMessage } from "./validation-user-messages.ts";
-import { emitProgress, emitStatus } from "./validation-emit.ts";
 import { resolvePhaseContext } from "./validation-context.ts";
 import { getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { claimReviewFixes, renderOpenItems } from "./review-ledger.ts";
@@ -38,20 +39,32 @@ export type ValidationTrigger =
     | "orchestrator"
     | "epic_child";
 
-export type ContinueWorkflowValidationArgs = ValidationLoopArgs & {
-    trigger?: ValidationTrigger;
-    taskCompletionId?: string;
+/** Canonical Plan state owned by the claimed validation attempt. */
+export type ValidationAttemptClaim = {
+    kind: "claimed";
+    checkpoint: ValidationCheckpoint;
+    planCwd: string;
+    claimedFromState?: ValidationCheckpoint["state"];
+    planContent: string;
+    triageMeta: ValidationLoopArgs["triageMeta"];
 };
 
+import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import type { ValidationHostResume } from "./validation-host-contract.ts";
+
+export type RunValidationAttemptArgs = {
+    hostResume?: ValidationHostResume;
+    projectRoot: string;
+    planName: string;
+    trigger?: ValidationTrigger;
+    taskCompletionId?: string;
+    buildEngineArgs(claim: ValidationAttemptClaim): ValidationLoopArgs;
+};
+
+class ValidationAlreadyRunningError extends Error {}
+
 type ClaimResult =
-    | {
-        kind: "claimed";
-        checkpoint: ValidationCheckpoint;
-        planCwd: string;
-        claimedFromState?: ValidationCheckpoint["state"];
-        planContent: string;
-        triageMeta: ValidationLoopArgs["triageMeta"];
-    }
+    | ValidationAttemptClaim
     | { kind: "active"; projectRoot: string }
     | { kind: "settled_completion"; projectRoot: string };
 
@@ -63,17 +76,12 @@ function checkpointRecord(value: import("../../plan-store.js").PlanFrontMatter["
 }
 
 async function ownerIsAlive(checkpoint: ValidationCheckpoint): Promise<boolean> {
-    if (checkpoint.state !== "running") return false;
     if (!checkpoint.ownerPid || checkpoint.ownerHostname !== getLockHostname()) return false;
     return await isPidAlive(checkpoint.ownerPid);
 }
 
-function validationProjectRoot(args: ContinueWorkflowValidationArgs): string {
-    return resolvePrimaryCheckoutRoot(args.executionContext?.projectRoot || args.hostedSession.cwd);
-}
-
-async function validationPlanCwd(args: ContinueWorkflowValidationArgs): Promise<string> {
-    const projectRoot = validationProjectRoot(args);
+async function validationPlanCwd(args: RunValidationAttemptArgs): Promise<string> {
+    const projectRoot = args.projectRoot;
     // Validation's execution-context boundary verifies Git and repairs legacy
     // Plan IDs. Select its registered directory here without rejecting those
     // repairable IDs first, and never substitute a cached Session directory.
@@ -82,8 +90,8 @@ async function validationPlanCwd(args: ContinueWorkflowValidationArgs): Promise<
     return (await resolveWorkflowPlanLocation(projectRoot, args.planName)).documentRoot;
 }
 
-async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<ClaimResult> {
-    const projectRoot = validationProjectRoot(args);
+async function claimValidation(args: RunValidationAttemptArgs): Promise<ClaimResult> {
+    const projectRoot = args.projectRoot;
     const planCwd = await validationPlanCwd(args);
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const plan = await loadPlan(planCwd, args.planName);
@@ -114,6 +122,7 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
             return { kind: "active", projectRoot };
         }
         const checkpoint = makeValidationCheckpoint({
+            ...(compatible ? prior : {}),
             attemptId,
             generation: compatible ? prior.generation : crypto.randomUUID(),
             status: plan.attrs.status,
@@ -153,7 +162,7 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
 }
 
 async function settleValidation(
-    args: ContinueWorkflowValidationArgs,
+    args: RunValidationAttemptArgs,
     checkpoint: ValidationCheckpoint,
     result: WorkflowValidationResult,
     planCwd: string,
@@ -162,14 +171,22 @@ async function settleValidation(
         const plan = await loadPlan(planCwd, args.planName);
         if (!plan) return;
         const current = checkpointRecord(plan.attrs.validationCheckpoint);
-        if (current?.generation !== checkpoint.generation) return;
+        if (
+            current?.generation !== checkpoint.generation ||
+            current.ownerPid !== checkpoint.ownerPid || current.ownerHostname !== checkpoint.ownerHostname
+        ) return;
         const phase = validationPhaseForStatus(plan.attrs.status, plan.attrs.validationPhase);
         const validationCheckpoint = result.kind === "verified" || !phase ? null : makeValidationCheckpoint({
+            ...current,
+            ownerPid: undefined,
+            ownerHostname: undefined,
             attemptId: plan.attrs.worktreeId || current.attemptId,
             generation: current.generation,
             status: plan.attrs.status,
             phase,
-            state: result.kind === "semantic_repair_handoff" ? "awaiting_repair" : "paused",
+            state: result.kind === "semantic_repair_handoff" || result.hostRequest?.kind === "repair"
+                ? "awaiting_repair"
+                : "paused",
             repairKind: result.kind === "semantic_repair_handoff" ? "semantic" : current.repairKind,
             repairGeneration: result.kind === "semantic_repair_handoff"
                 ? current.repairGeneration || crypto.randomUUID()
@@ -197,6 +214,20 @@ async function settleValidation(
     }
 }
 
+type ValidationRepairCompletionOwner = {
+    pid: number;
+    hostname: string;
+};
+
+type ValidationRepairCompletionArgs = {
+    projectRoot: string;
+    planName: string;
+    repairGeneration: string;
+    report: string;
+    /** An inline Session repair runs under the supervisor's existing claim. */
+    owner?: ValidationRepairCompletionOwner;
+};
+
 /**
  * Commit a semantic repair's Agent claim before validation consumes it.
  *
@@ -204,12 +235,7 @@ async function settleValidation(
  * exact checkpoint-owned repair turn called task_completed; CI and the Reviewer
  * still decide whether the work resolved anything.
  */
-export async function recordValidationRepairCompletion(args: {
-    projectRoot: string;
-    planName: string;
-    repairGeneration: string;
-    report: string;
-}): Promise<void> {
+export async function recordValidationRepairCompletion(args: ValidationRepairCompletionArgs): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const plan = await loadPlan(args.projectRoot, args.planName);
         if (!plan) throw new Error(`Plan not found: ${args.planName}`);
@@ -217,9 +243,22 @@ export async function recordValidationRepairCompletion(args: {
         if (!checkpoint || checkpoint.repairGeneration !== args.repairGeneration) {
             throw new Error("Semantic repair completion does not match the saved validation attempt.");
         }
-        if (checkpoint.repairCompletedOperationId === args.repairGeneration && checkpoint.state === "ready") return;
+        const ownedRepair = args.owner?.pid === Deno.pid && args.owner.hostname === getLockHostname() &&
+            checkpoint.ownerPid === args.owner.pid && checkpoint.ownerHostname === args.owner.hostname;
+        if (await ownerIsAlive(checkpoint) && !ownedRepair) throw new ValidationAlreadyRunningError();
+        if (
+            checkpoint.repairCompletedOperationId === args.repairGeneration ||
+            checkpoint.lastSettledOperationId === args.repairGeneration
+        ) return;
         const reviewState = readValidationReviewState(checkpoint);
         const completed = makeValidationCheckpoint({
+            ...checkpoint,
+            ownerPid: ownedRepair ? checkpoint.ownerPid : undefined,
+            ownerHostname: ownedRepair ? checkpoint.ownerHostname : undefined,
+            pendingRepair: undefined,
+            pendingCiDecision: undefined,
+            pendingHostDecision: undefined,
+            hostDecisionChoices: undefined,
             attemptId: checkpoint.attemptId,
             generation: checkpoint.generation,
             status: plan.attrs.status,
@@ -255,14 +294,14 @@ export async function recordValidationRepairCompletion(args: {
 }
 
 async function rebuildSemanticRepairHandoff(
-    args: ContinueWorkflowValidationArgs,
+    args: RunValidationAttemptArgs,
     checkpoint: ValidationCheckpoint,
+    engineArgs: ValidationLoopArgs,
 ): Promise<WorkflowValidationResult> {
     const reviewState = readValidationReviewState(checkpoint);
     if (!reviewState || !checkpoint.repairGeneration) {
         return pausedResult(args, "validation_repair_evidence_missing", "mechanical");
     }
-    const engineArgs = createEngineValidationArgs({ ...args, validationCheckpoint: checkpoint });
     const phase = await resolvePhaseContext(engineArgs);
     if (phase.kind === "blocked") return phase.result;
     const context = phase.context;
@@ -276,6 +315,24 @@ async function rebuildSemanticRepairHandoff(
         validationRepairGeneration: checkpoint.repairGeneration,
     };
     engineArgs.session.setActiveWorkflow(activeWorkflow);
+    if (engineArgs.hostTurn) {
+        try {
+            return await requestHostRepair(
+                engineArgs,
+                context,
+                hostSemanticRepairPrompt(context, diffText, renderOpenItems(reviewState.reviewLedger)),
+                "semantic",
+            );
+        } catch (error) {
+            if (!(error instanceof ValidationHostWait)) throw error;
+            return {
+                kind: "host_request",
+                planName: args.planName,
+                projectRoot: context.projectRoot,
+                hostRequest: error.request,
+            };
+        }
+    }
     return {
         kind: "semantic_repair_handoff",
         planName: args.planName,
@@ -295,7 +352,7 @@ async function rebuildSemanticRepairHandoff(
 }
 
 function operationalFailureResult(
-    args: ContinueWorkflowValidationArgs,
+    args: RunValidationAttemptArgs,
     error: Error,
     phase?: ValidationCheckpoint["nextPhase"],
 ): WorkflowValidationResult {
@@ -312,7 +369,7 @@ function operationalFailureResult(
     return {
         kind: "paused",
         planName: args.planName,
-        projectRoot: validationProjectRoot(args),
+        projectRoot: args.projectRoot,
         reason: message,
         retainTaskCompletionClaim: true,
         recovery: retryValidationLater(
@@ -324,7 +381,7 @@ function operationalFailureResult(
 }
 
 function pausedResult(
-    args: ContinueWorkflowValidationArgs,
+    args: RunValidationAttemptArgs,
     code: string,
     phase?: ValidationCheckpoint["nextPhase"],
 ): WorkflowValidationResult {
@@ -332,49 +389,88 @@ function pausedResult(
     return {
         kind: "paused",
         planName: args.planName,
-        projectRoot: validationProjectRoot(args),
+        projectRoot: args.projectRoot,
         reason: message,
         recovery: retryValidationLater(code, message, phase),
     };
 }
 
-function presentPausedProgress(args: ContinueWorkflowValidationArgs, result: WorkflowValidationResult): void {
-    if (result.kind !== "paused" || result.continueValidation) return;
-    const engine = createEngineValidationArgs(args);
-    const current = engine.session.getCurrentProgress();
-    const message = result.reason || validationUserMessage("retry_pause");
-    if (!current) {
-        emitStatus(engine, message, "warning");
-        return;
-    }
-    if (current.outcome !== "running") return;
-    emitProgress(engine, message, "warning", {
-        outcome: "paused",
-        stage: "terminal",
-        message,
-        checks: {
-            ci: current.checks.ci === "running" ? "canceled" : current.checks.ci,
-            semanticReview: current.checks.semanticReview === "running" ? "canceled" : current.checks.semanticReview,
-            humanReview: current.checks.humanReview === "running" ? "canceled" : current.checks.humanReview,
-            merge: current.checks.merge === "running" ? "canceled" : current.checks.merge,
-        },
-    });
-}
-
 /** Reconcile canonical Plan state, claim one owner, run, and durably settle. */
-export async function continueWorkflowValidation(
-    args: ContinueWorkflowValidationArgs,
+export async function runValidationAttempt(
+    args: RunValidationAttemptArgs,
 ): Promise<WorkflowValidationResult> {
-    return await continueValidationAttempt(args, 0);
+    return await continueValidationAttempt({ ...args, projectRoot: resolvePrimaryCheckoutRoot(args.projectRoot) }, 0);
 }
 
 async function continueValidationAttempt(
-    args: ContinueWorkflowValidationArgs,
+    args: RunValidationAttemptArgs,
     retry: number,
 ): Promise<WorkflowValidationResult> {
-    let claim: Extract<ClaimResult, { kind: "claimed" }> | undefined;
+    let claim: ValidationAttemptClaim | undefined;
     try {
-        const projectRoot = validationProjectRoot(args);
+        const projectRoot = args.projectRoot;
+        if (args.hostResume?.kind === "decision") {
+            const plan = await loadPlan(await validationPlanCwd(args), args.planName);
+            const pending = plan?.attrs.validationCheckpoint?.pendingHostDecision;
+            if (!pending || !sameHostIdentity(pending.identity, args.hostResume.identity)) {
+                return {
+                    kind: "failed",
+                    planName: args.planName,
+                    projectRoot,
+                    reason: "Decision does not match the saved request.",
+                };
+            }
+        }
+        if (args.hostResume?.kind === "task_completed") {
+            const cwd = await validationPlanCwd(args);
+            const plan = await loadPlan(cwd, args.planName);
+            const checkpoint = plan?.attrs.validationCheckpoint;
+            const resume = args.hostResume;
+            if (
+                !checkpoint || !sameHostIdentity(resume.identity, {
+                    attemptId: checkpoint.attemptId,
+                    generation: checkpoint.generation,
+                    repairGeneration: checkpoint.repairGeneration || "",
+                })
+            ) {
+                return {
+                    kind: "failed",
+                    planName: args.planName,
+                    projectRoot,
+                    reason: "Repair completion does not match the saved validation attempt.",
+                };
+            }
+            if (await ownerIsAlive(checkpoint)) throw new ValidationAlreadyRunningError();
+            if (checkpoint.lastSettledOperationId !== resume.identity.repairGeneration) {
+                // The receipt proves the repair reported completion, not that validation
+                // consumed it. A crash between receipt and claim must still run CI.
+                await recordValidationRepairCompletion({
+                    projectRoot: cwd,
+                    planName: args.planName,
+                    repairGeneration: resume.identity.repairGeneration,
+                    report: resume.report,
+                });
+                args = { ...args, taskCompletionId: resume.identity.repairGeneration };
+            } else if (plan?.attrs.status === "reviewed") {
+                return { kind: "awaiting_delivery", planName: args.planName, projectRoot };
+            } else if (checkpoint.pendingHostDecision) {
+                return {
+                    kind: "host_request",
+                    planName: args.planName,
+                    projectRoot,
+                    hostRequest: checkpoint.pendingHostDecision,
+                };
+            } else if (checkpoint.nextPhase === "mechanical") {
+                const message = validationUserMessage("completion_already_used");
+                return {
+                    kind: "paused",
+                    planName: args.planName,
+                    projectRoot,
+                    reason: message,
+                    recovery: { kind: "terminal", code: "task_completion_already_settled", message, action: "none" },
+                };
+            }
+        }
         // Repair provable RunWield bookkeeping before it can block validation. Doctor
         // never resets working changes or removes an unmerged worktree.
         await runPlansDoctor(projectRoot, true);
@@ -404,7 +500,23 @@ async function continueValidationAttempt(
             };
         }
         claim = claimed;
-        const cachedWorkflow = args.hostedSession.getActiveExecutionWorkflow();
+        const engineArgs = {
+            ...args.buildEngineArgs(claim),
+            planName: args.planName,
+            planContent: claim.planContent,
+            triageMeta: claim.triageMeta,
+            continuationPhase: claim.checkpoint.nextPhase,
+            validationCheckpoint: claim.checkpoint,
+        };
+        if (
+            engineArgs.hostTurn && claim.checkpoint.repairCompletedOperationId &&
+            claim.checkpoint.repairCompletedOperationId === claim.checkpoint.repairGeneration &&
+            claim.checkpoint.repairCompletedOperationId !== claim.checkpoint.lastSettledOperationId
+        ) {
+            // A no-answer restart can also consume a ready receipt after process loss.
+            args = { ...args, taskCompletionId: claim.checkpoint.repairCompletedOperationId };
+        }
+        const cachedWorkflow = engineArgs.session.getActiveWorkflow();
         const activeWorkflow = cachedWorkflow?.planName === args.planName &&
                 cachedWorkflow.worktreeId === claim.triageMeta.worktreeId
             ? cachedWorkflow
@@ -412,7 +524,7 @@ async function continueValidationAttempt(
         const durableReview = readValidationReviewState(claim.checkpoint);
         const registryEntry = await findWorktreeByPlanName(projectRoot, args.planName);
         const policy = resolvePlanExecutionPolicy(claim.triageMeta);
-        args.hostedSession.setActiveExecutionWorkflow({
+        engineArgs.session.setActiveWorkflow({
             ...(activeWorkflow || {}),
             planName: args.planName,
             triageMeta: {
@@ -429,12 +541,13 @@ async function continueValidationAttempt(
                     executionMode: "worktree",
                     executionCwd: claim.planCwd,
                     baselineTree: registryEntry?.baseTree || claim.triageMeta.executionBaselineTree ||
-                        args.executionContext?.baselineTree,
-                    worktreeId: registryEntry?.id || claim.triageMeta.worktreeId || args.executionContext?.worktreeId,
+                        engineArgs.executionContext?.baselineTree,
+                    worktreeId: registryEntry?.id || claim.triageMeta.worktreeId ||
+                        engineArgs.executionContext?.worktreeId,
                     worktreeBranch: registryEntry?.branch || claim.triageMeta.worktreeBranch ||
-                        args.executionContext?.worktreeBranch,
+                        engineArgs.executionContext?.worktreeBranch,
                     worktreeBaseBranch: registryEntry?.baseBranch || claim.triageMeta.worktreeBaseBranch ||
-                        args.executionContext?.worktreeBaseBranch,
+                        engineArgs.executionContext?.worktreeBaseBranch,
                 }
                 : { executionMode: "non_git_in_place", executionCwd: claim.planCwd }),
             validationGeneration: claim.checkpoint.generation,
@@ -451,26 +564,44 @@ async function continueValidationAttempt(
                 : {}),
         });
         if (claim.claimedFromState === "awaiting_repair" && !args.taskCompletionId) {
-            const result = await rebuildSemanticRepairHandoff(args, claim.checkpoint);
+            if (engineArgs.hostTurn && claim.checkpoint.pendingRepair) {
+                const result: WorkflowValidationResult = {
+                    kind: "host_request",
+                    planName: args.planName,
+                    projectRoot,
+                    hostRequest: claim.checkpoint.pendingRepair,
+                };
+                await settleValidation(args, claim.checkpoint, result, claim.planCwd);
+                return result;
+            }
+            const result = await rebuildSemanticRepairHandoff(args, claim.checkpoint, engineArgs);
             await settleValidation(args, claim.checkpoint, result, claim.planCwd);
             return result;
         }
-        const result = await runValidationLoop({
-            ...args,
-            planContent: claim.planContent,
-            triageMeta: claim.triageMeta,
-            executionContext: undefined,
-            continuationPhase: claim.checkpoint.nextPhase,
-            validationCheckpoint: claim.checkpoint,
-        });
-        await settleValidation(args, claim.checkpoint, result, claim.planCwd);
-        if (result.kind === "verified") {
-            args.hostedSession.clearActiveExecutionWorkflow();
+        let result: WorkflowValidationResult;
+        try {
+            result = await runValidationLoop({ ...engineArgs, executionContext: undefined });
+        } catch (error) {
+            if (error instanceof ValidationHostWait) {
+                result = { kind: "host_request", planName: args.planName, projectRoot, hostRequest: error.request };
+            } else if (error instanceof ValidationHostRejected) {
+                result = { kind: "failed", planName: args.planName, projectRoot, reason: error.message };
+            } else throw error;
         }
-        presentPausedProgress(args, result);
+        await settleValidation(args, claim.checkpoint, result, claim.planCwd);
         return result;
     } catch (error) {
         const failure = error instanceof Error ? error : new Error(String(error));
+        if (error instanceof ValidationAlreadyRunningError) {
+            const message = validationUserMessage("already_running");
+            return {
+                kind: "paused",
+                planName: args.planName,
+                projectRoot: args.projectRoot,
+                reason: message,
+                recovery: retryValidationLater("validation_owner_active", message),
+            };
+        }
         const result = operationalFailureResult(args, failure, claim?.checkpoint.nextPhase);
         let released = !claim;
         if (claim) {
@@ -493,42 +624,6 @@ async function continueValidationAttempt(
         ) {
             return await continueValidationAttempt(args, retry + 1);
         }
-        presentPausedProgress(args, result);
         return result;
     }
-}
-
-/**
- * Continue across successful phase boundaries until validation either finishes
- * or reaches a boundary that needs an Agent or the user. The execution Plan is
- * reloaded between phases because it is the durable phase authority once work
- * has started.
- */
-export async function runWorkflowValidationToStableBoundary(
-    initialArgs: ContinueWorkflowValidationArgs,
-): Promise<WorkflowValidationResult> {
-    let args = initialArgs;
-    let result = await continueWorkflowValidation(args);
-    // A resumed run can first consume its durable recovery checkpoint before
-    // advancing through Mechanical Validation, semantic review, optional human
-    // review, and publication. Bound the loop above that complete phase count;
-    // explicit decisions below still stop immediately at Agent/user boundaries.
-    for (let phase = 0; phase < 5; phase += 1) {
-        if (result?.kind !== "paused" || !result.continueValidation) break;
-        const planCwd = await validationPlanCwd(args);
-        const plan = await loadPlan(planCwd, args.planName).catch(() => null);
-        const status = String(plan?.attrs.status || "");
-        if (!plan) break;
-        if (
-            status !== "validated_ci" && status !== "reviewed" &&
-            !(status === "implemented" && plan.attrs.validationPhase === "semantic")
-        ) break;
-        args = {
-            ...args,
-            planContent: plan.markdown,
-            triageMeta: plan.attrs as ContinueWorkflowValidationArgs["triageMeta"],
-        };
-        result = await continueWorkflowValidation(args);
-    }
-    return result;
 }
