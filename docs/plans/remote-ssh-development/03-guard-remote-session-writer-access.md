@@ -35,7 +35,7 @@ dependencies:
     - "02-bridge-local-models-and-personal-resources"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Guard Remote Session Writer Access

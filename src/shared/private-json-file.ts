@@ -29,7 +29,11 @@ function syncParent(path: string): void {
 
 /** Replace a JSON document without exposing a partial write to readers. */
 export function writeJsonAtomically<Value>(path: string, value: Value): void {
-    const text = `${JSON.stringify(value, null, 2)}\n`;
+    writeTextAtomically(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** Replace text durably using the same private and Windows-safe path as JSON. */
+export function writeTextAtomically(path: string, text: string): void {
     ensurePrivateDir(dirname(path));
     const temporaryPath = `${path}.tmp-${randomUUID()}`;
     const file = openSync(temporaryPath, "wx", 0o600);
