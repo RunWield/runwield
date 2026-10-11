@@ -44,7 +44,7 @@ function syncParent(path: string): void {
     }
 }
 
-function writeTextAtomically(path: string, text: string): void {
+export function writeTextAtomically(path: string, text: string): void {
     ensurePrivateDir(dirname(path));
     const temporaryPath = `${path}.tmp-${crypto.randomUUID()}`;
     const file = Deno.openSync(temporaryPath, { createNew: true, write: true, mode: 0o600 });

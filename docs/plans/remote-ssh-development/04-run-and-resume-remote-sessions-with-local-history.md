@@ -1,4 +1,5 @@
 ---
+planId: "ec285d14-a71f-464c-a934-47c209958966"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -9,7 +10,7 @@ affectedPaths:
     - "src/shared/session/file-session-storage.ts"
     - "src/shared/session/file-session-store.ts"
     - "src/shared/session/session-resume-list.ts"
-    - "src/shared/session/image-attachments.ts"
+    - "src/shared/session/image-attachments.js"
     - "src/shared/session/segment-rollover.ts"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/remote-ssh-prd.md"
@@ -23,18 +24,17 @@ dependencies:
     - "02-bridge-local-models-and-personal-resources"
     - "03-guard-remote-session-writer-access"
 targetBranch: "epic/remote-ssh-development"
-planId: "ec285d14-a71f-464c-a934-47c209958966"
 ---
 
 # Run and Resume Remote Sessions with Local History
 
 ## Context
 
-The connection, local model bridge, and guarded writer are useful foundations, but the first complete product slice is a
-normal remote TUI turn whose project work happens remotely and whose only authoritative conversation history is on the
-laptop. Current Session construction assumes one local cwd for project identity, resources, tools, and persistence, and
-Pi transcript writes bypass parts of the file Session store. Child 02 mounts the laptop's full `~/.wld` for direct
-personal file access, but that connection-wide mount cannot authorize Session writes.
+The connection, local model bridge, and laptop-owned save bridge are useful foundations, but the first complete product
+slice is a normal remote TUI turn whose project work happens remotely and whose only authoritative conversation history
+is on the laptop. Current Session construction assumes one local cwd for project identity, resources, tools, and
+persistence, and Pi transcript writes bypass parts of the file Session store. Child 02 mounts the laptop's full `~/.wld`
+for direct personal file access, but that connection-wide mount cannot authorize Session writes.
 
 This slice completes the Remote SSH PRD's core **Local memories and saved Sessions** journey and the Core PRD's Session
 continuity and project-context outcomes. It must keep empty starts dormant, preserve local offline history, and
@@ -49,15 +49,15 @@ identity separate.
 ## Approach
 
 Create a location-aware Session context once at Session creation, then pass it through existing runtime and store
-owners. Pi keeps synchronous mounted transcript access during a managed operation; laptop Core keeps stable identity,
-manifests, generations, catalog coordination, recovery, and attachments. Resume hydrates from committed local evidence
-and validates the remote locator before allowing continuation.
+owners. Pi saves each entry through the laptop-owned synchronous save bridge delivered by child03; laptop Core keeps
+stable identity, manifests, generations, catalog coordination, recovery, and attachments. Resume hydrates from committed
+local evidence and validates the remote locator before allowing continuation.
 
 ```text
 remote user turn
-  local lock and fresh mount
+  laptop-owned save bridge operation (child03)
   remote Pi and project tools
-  remote writer detach
+  per-entry laptop saves
   local generation commit
   dormant local-readable Session
 ```
@@ -78,7 +78,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   running laptop path operations against them.
 - `src/shared/session/session-resume-list.ts` — list and inspect laptop history offline while requiring a validated
   connection for continuation.
-- `src/shared/session/image-attachments.ts` and rollover modules — transfer attachments explicitly and keep stable
+- `src/shared/session/image-attachments.js` and rollover modules — transfer attachments explicitly and keep stable
   references independent of temporary mounts.
 - The owning Core and Remote SSH PRD sections — mark the remote conversation and continuation scenarios delivered while
   workflows and review remain target behavior.
@@ -87,8 +87,8 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 - `SessionRuntime.#runManagedOperation` — retain its acquire, hydrate, run, checkpoint, and release ownership while
   adapting the location boundary.
-- `installDenoSessionPersistence` and Pi SessionManager behavior — preserve synchronous Pi transcript writes through
-  guarded mounted access.
+- `installDenoSessionPersistence` and Pi SessionManager behavior — preserve synchronous per-entry saves through the
+  laptop-owned save bridge.
 - Existing file manifests, generations, recovery descriptors, resume projections, and segment lineage — preserve formats
   and evidence rules.
 - Existing image attachment storage — retain Session-owned local storage and add explicit transfer across the
@@ -98,12 +98,13 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 - Session context represents durable remote host identity and canonical project path separately from current execution
   cwd/worktree and temporary storage mountpoints; laptop path APIs never resolve or create the remote locator.
-- A new empty remote TUI remains an in-memory shell with no bundle, catalog record, transcript, guarded Session writer
-  mount, or lock until the first user message. The separate connection-wide personal mount may already exist.
-- The first user message acquires local ownership, creates the local bundle and planning segment, mounts fresh guarded
-  access, persists the visible message, and only then allows the remote Pi turn and project tools to continue.
-- Pi transcript writes, compaction, metadata, image references, and segment rollover use guarded mounted operation
-  access, never the broad personal mount, while local Core commits manifests, generations, recovery descriptors, and
+- A new empty remote TUI remains an in-memory shell with no bundle, catalog record, transcript, save-bridge operation,
+  or lock until the first user message. The separate connection-wide personal mount may already exist.
+- The first user message acquires local ownership, creates the local bundle and planning segment, opens a fresh
+  save-bridge operation, persists the visible message, and only then allows the remote Pi turn and project tools to
+  continue.
+- Pi transcript saves, compaction, metadata, image references, and segment rollover go through the laptop-owned save
+  bridge, never the broad personal mount, while local Core commits manifests, generations, recovery descriptors, and
   catalog evidence from laptop bytes.
 - Attachments selected locally or produced remotely transfer into local Session-owned storage; durable transcript
   references contain no connection-specific mount path.
@@ -118,8 +119,8 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Verification Plan
 
-- Automated: add integration tests for empty start, first-message persistence, remote locator handling, mounted Pi
-  append, checkpoint, compaction, attachment transfer, rollover, disconnected projection, resume validation, and
+- Automated: add integration tests for empty start, first-message persistence, remote locator handling, per-entry laptop
+  saves, checkpoint, compaction, attachment transfer, rollover, disconnected projection, resume validation, and
   uncertain interruption. Use real Plan project and Git fixtures rather than storage seams.
 - Automated: verify no remote temporary path enters manifests, transcript references, resume records, or project
   identity. Verify local Session formats and local surface tests remain unchanged.
