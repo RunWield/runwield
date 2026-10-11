@@ -64,6 +64,7 @@ Deno.test("installed review skill is user-invokable with its portable instructio
         assertStringIncludes(resolved.expandedRequest, "review PR 42");
         assertStringIncludes(resolved.expandedRequest, "## Standards");
         assertStringIncludes(resolved.expandedRequest, "## Spec");
+        assertStringIncludes(resolved.expandedRequest, "## Tests");
 
         const bundledDir = dirname(review.path);
         for (const file of ["SKILL.md", "github.md", "gitlab.md", "pull-requests.md"]) {

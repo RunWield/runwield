@@ -2814,6 +2814,19 @@ export function comparePlansForList(a, b) {
  * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter }>>}
  */
 export async function listPlans(cwd) {
+    return await listPlansWithTargetChildren(cwd, null);
+}
+
+/**
+ * List saved plans, reading target-branch children only for `onlyEpic` when it
+ * is given. Reading an Epic's target branch fetches it and reads every Plan on
+ * it, so a lookup scoped to one Epic must not pay that for every other Epic.
+ *
+ * @param {string} cwd
+ * @param {string | null} onlyEpic
+ * @returns {Promise<Array<{ name: string, path: string, attrs: PlanFrontMatter }>>}
+ */
+async function listPlansWithTargetChildren(cwd, onlyEpic) {
     return await withProjectRuntimeReadScope(async () => {
         const dir = getPlansDir(cwd);
         /** @type {Array<{ name: string, path: string, attrs: PlanFrontMatter }>} */
@@ -2830,6 +2843,7 @@ export async function listPlans(cwd) {
                 ? projectPlan.attrs.targetBranch.trim()
                 : "";
             if (!targetBranch || !isProjectPlan(projectPlan.attrs)) continue;
+            if (onlyEpic !== null && projectPlan.name !== onlyEpic) continue;
             let targetChildren;
             try {
                 targetChildren = await findTargetBranchPlansByParent(cwd, targetBranch, projectPlan.name);
@@ -3997,7 +4011,7 @@ export async function savePlanBodyById(cwd, planId, newBody, expectedBodyHash, o
  */
 export async function findPlansByParent(cwd, parentPlan) {
     const { name } = canonicalizeStoredPlanName(parentPlan);
-    const plans = await listPlans(cwd);
+    const plans = await listPlansWithTargetChildren(cwd, name);
     return plans.filter((plan) => plan.attrs.parentPlan === name).sort(compareChildPlansByOrder);
 }
 

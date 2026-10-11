@@ -9,7 +9,11 @@ Deno.test("CI collects all failures by default and supports explicit fail-fast",
         await Deno.writeTextFile(
             join(root, "deno.json"),
             JSON.stringify({
-                tasks: { ...tasks, "test:all": "deno run -A check-args.ts", test: "deno run -A check-args.ts" },
+                tasks: {
+                    ...tasks,
+                    "test:all:suite": "deno run -A check-args.ts",
+                    "test:suite": "deno run -A check-args.ts",
+                },
             }),
         );
         await Deno.writeTextFile(
@@ -75,9 +79,9 @@ Deno.test("runCi starts every pre-test task before waiting and keeps test behind
     if (!lastPreTest) throw new Error("PRE_TEST_TASKS must not be empty");
     tasks.get(lastPreTest)?.resolve({ name: lastPreTest, code: 0 });
     await flushPromises();
-    assertEquals(starts, [...PRE_TEST_TASKS, "test:all"]);
+    assertEquals(starts, [...PRE_TEST_TASKS, "test:all:suite"]);
 
-    tasks.get("test:all")?.resolve({ name: "test:all", code: 0 });
+    tasks.get("test:all:suite")?.resolve({ name: "test:all:suite", code: 0 });
     assertEquals(await resultPromise, { exitCode: 0, failures: [] });
 });
 
@@ -88,7 +92,7 @@ Deno.test("runCi starts one test after a successful pre-test wave", async () => 
         return Promise.resolve({ name: taskName, code: 0 });
     });
 
-    assertEquals(starts, [...PRE_TEST_TASKS, "test:all"]);
+    assertEquals(starts, [...PRE_TEST_TASKS, "test:all:suite"]);
     assertEquals(result, { exitCode: 0, failures: [] });
 });
 
@@ -141,20 +145,20 @@ Deno.test("runCi converts a process-start error into a failed pre-test result an
             { name: "seams:check", code: 4 },
         ],
     });
-    assertEquals(starts.includes("test:all"), false);
+    assertEquals(starts.includes("test:all:suite"), false);
 });
 
 Deno.test("runCi preserves a failed test exit code", async () => {
     const result = await runCi((taskName) =>
         Promise.resolve({
             name: taskName,
-            code: taskName === "test:all" ? 7 : 0,
+            code: taskName === "test:all:suite" ? 7 : 0,
         })
     );
 
     assertEquals(result, {
         exitCode: 7,
-        failures: [{ name: "test:all", code: 7 }],
+        failures: [{ name: "test:all:suite", code: 7 }],
     });
 });
 
@@ -164,6 +168,6 @@ Deno.test("source-only CI supports the independently required Golden job", async
         starts.push(name);
         return Promise.resolve({ name, code: 0 });
     }, { sourceOnly: true });
-    assertEquals(starts, [...PRE_TEST_TASKS, "test"]);
+    assertEquals(starts, [...PRE_TEST_TASKS, "test:suite"]);
     assertEquals(result, { exitCode: 0, failures: [] });
 });

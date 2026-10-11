@@ -95,7 +95,7 @@ Deno.test("release publication requires native Windows package qualification", a
     assertMatch(releaseJob, /needs:[\s\S]*- windows-package-check/);
 });
 
-Deno.test("Stable releases submit generated WinGet manifests without exposing the token as an argument", async () => {
+Deno.test("WinGet submission stays disabled while Stable manifest preparation remains active", async () => {
     const workflow = await Deno.readTextFile(".github/workflows/release.yml");
     const submitStart = workflow.indexOf("    winget-submit:");
     const submitEnd = workflow.indexOf("\n    homebrew-package:", submitStart);
@@ -107,7 +107,12 @@ Deno.test("Stable releases submit generated WinGet manifests without exposing th
         workflow,
         "ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}",
     );
-    assertStringIncludes(submitJob, "needs.metadata.outputs.kind == 'stable'");
+    assertMatch(submitJob, /\n {8}if: \$\{\{ false \}\}\n/);
+    const packageJob = workflow.slice(workflow.indexOf("    winget-package:"), submitStart);
+    assertStringIncludes(packageJob, "needs.metadata.outputs.kind == 'stable'");
+    assertStringIncludes(packageJob, "deno task package:winget");
+    const qualification = workflow.slice(workflow.indexOf("    homebrew-check:"), workflow.indexOf("    release:"));
+    assertEquals(qualification.includes("WINGET_CREATE_GITHUB_TOKEN"), false);
     assertStringIncludes(submitJob, "- winget-package");
     assertStringIncludes(submitJob, "WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}");
     assertStringIncludes(submitJob, "wingetcreate.exe");

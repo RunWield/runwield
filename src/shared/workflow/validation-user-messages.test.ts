@@ -120,10 +120,17 @@ Deno.test("code review messages distinguish user review from AI review", () => {
     );
 });
 
-Deno.test("saved integration notes name the parent Epic and note count", () => {
+Deno.test("saved integration notes distinguish later Epic checks from child Plan fixes", () => {
     assertEquals(
-        buildValidationUserMessage({ kind: "integration_notes_saved", count: 2, epicPlanName: "demo" }),
-        "AI review left 2 note(s) for demo.",
+        buildValidationUserMessage({ kind: "integration_notes_saved", count: 3, epicPlanName: "demo" }),
+        "AI review saved 3 integration notes for Epic demo. These are for its later check. They do not ask for a fix.",
+    );
+});
+
+Deno.test("one saved integration note uses a singular label", () => {
+    assertEquals(
+        buildValidationUserMessage({ kind: "integration_notes_saved", count: 1, epicPlanName: "demo" }),
+        "AI review saved 1 integration note for Epic demo. These are for its later check. They do not ask for a fix.",
     );
 });
 

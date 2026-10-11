@@ -460,8 +460,11 @@ export class ValidationHandoffBlock {
 
     /** @param {import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress} progress */
     formatHeading(progress) {
-        const checks = progress.checks ? ` • ${validationProgressCheckSummary(progress)}` : "";
-        return `${validationProgressHeading(progress)}${checks}`;
+        const heading = validationProgressHeading(progress);
+        const checks = progress.checks
+            ? validationProgressCheckSummary(progress).split(", ").filter((check) => check !== heading).join(", ")
+            : "";
+        return checks ? `${heading} • ${checks}` : heading;
     }
 
     /**

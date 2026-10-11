@@ -41,8 +41,7 @@ Deno.test("invalidateAll bumps without exposing the new id", () => {
 
 Deno.test("late result suppression pattern works correctly", async () => {
     const { bump, isCurrent } = createGenerationGuard();
-    /** @type {string[]} */
-    const results = [];
+    const results: string[] = [];
 
     // Simulate starting an operation
     const gen = bump();
@@ -52,9 +51,8 @@ Deno.test("late result suppression pattern works correctly", async () => {
     bump();
 
     // Now simulate the async operation completing
-    await new Promise((resolve) => {
-        /** @type {() => void} */
-        const r = /** @type {() => void} */ (resolve);
+    await new Promise<void>((resolve) => {
+        const r = resolve;
         setTimeout(() => {
             if (isCurrent(gen)) {
                 results.push("completed");
@@ -69,14 +67,12 @@ Deno.test("late result suppression pattern works correctly", async () => {
 
 Deno.test("completed result is accepted when not canceled", async () => {
     const { bump, isCurrent } = createGenerationGuard();
-    /** @type {string[]} */
-    const results = [];
+    const results: string[] = [];
 
     const gen = bump();
 
-    await new Promise((resolve) => {
-        /** @type {() => void} */
-        const r = /** @type {() => void} */ (resolve);
+    await new Promise<void>((resolve) => {
+        const r = resolve;
         setTimeout(() => {
             if (isCurrent(gen)) {
                 results.push("completed");

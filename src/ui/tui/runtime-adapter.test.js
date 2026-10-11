@@ -126,6 +126,29 @@ function makeRuntimeHarness(sessionId, queuedMessages = [], workflowContext = nu
     return { runtime, sessionId, interactionAdapters };
 }
 
+Deno.test("TUI redraws when a question opens, resolves, or is canceled", () => {
+    const { runtime, sessionId } = makeRuntimeHarness("question-lifecycle");
+    const { uiAPI } = makeUi();
+    let renders = 0;
+    uiAPI.requestRender = () => renders++;
+    const registration = attachTuiRuntimeAdapter({ runtime, sessionId, uiAPI });
+    try {
+        const before = renders;
+        for (
+            const type of [
+                RuntimeEventTypes.INTERACTION_REQUESTED,
+                RuntimeEventTypes.INTERACTION_RESOLVED,
+                RuntimeEventTypes.INTERACTION_CANCELED,
+            ]
+        ) {
+            runtime.emitSessionEvent(sessionId, { type, interactionId: "question", interactionType: "text" });
+        }
+        assertEquals(renders - before, 3);
+    } finally {
+        registration.dispose();
+    }
+});
+
 Deno.test("TUI adapter does not advertise a Pair form while attached", () => {
     const { runtime, sessionId, interactionAdapters } = makeRuntimeHarness("pair-capability-lifetime");
     const { uiAPI } = makeUi();
@@ -351,9 +374,10 @@ Deno.test("TUI adapter clears successful validation immediately without waiting 
     });
     runtime.emitSessionEvent(sessionId, { type: RuntimeEventTypes.USER_MESSAGE, text: "next", images: [] });
 
-    assertEquals(validationProgressUpdates.length, 0);
+    assertEquals(validationProgressUpdates.length, 1);
     assertEquals(transcript, [
         "system:info:OPERATION status without validation",
+        "validation:verified:terminal",
         "validation:clear",
         "system:info:Validation complete",
         "user:next",

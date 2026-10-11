@@ -21,11 +21,11 @@
         },
         {
             "skill": "skills/review/SKILL.md",
-            "skillHash": "99b39c8ffb221fad5a9a859b45527967ca726b7fc895a331fcafd54d883e55da",
+            "skillHash": "e2024d8b2f82de8b094806e75208ea0b64079c252640b913c521c0045badfcdf",
             "supportFiles": [
                 {
                     "path": "skills/review/github.md",
-                    "hash": "d3c6b80e82ecd4b2a0ec00b034d2c329e00ae29689fa5add01dfe6d3e32ce27f"
+                    "hash": "6a9f09b260649b34ce60abb9348969b6c0f04cf9f236c3dcde23f8868f51cd0e"
                 },
                 {
                     "path": "skills/review/gitlab.md",

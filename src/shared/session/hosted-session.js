@@ -3,6 +3,7 @@
  * Per-conversation runtime state owned by a SessionHost entry.
  */
 
+import { setCurrentValidationProgress } from "../workflow/validation-progress.ts";
 import { isAbsolute } from "@std/path";
 import { MAX_DELEGATED_READERS } from "../../constants.js";
 import { normalizePlanAssociation, PLAN_ASSOCIATION_CUSTOM_TYPE } from "./plan-association.ts";
@@ -1029,6 +1030,7 @@ export class HostedSession {
         } catch (_e) {
             // Footer-context persistence is fail-open; keep normalized in-memory context below.
         }
+        setCurrentValidationProgress(this, normalized?.validationProgress);
         this.workflowContext = normalized ? { ...normalized } : null;
         if (workflowContextsEqual(previous, this.workflowContext) || !this.workflowContext) return;
         emitHostedSessionRuntimeEvent(this, {
@@ -1050,6 +1052,7 @@ export class HostedSession {
             const nextContext = recordedContext && !hasWorkflowContextPersistence
                 ? { ...this.workflowContext, ...recordedContext }
                 : recordedContext || this.workflowContext;
+            if (nextContext) delete nextContext.validationProgress;
             this.replaceWorkflowContext(nextContext, { persist: false });
         } catch (_e) {
             // Footer-context persistence is fail-open and must not block triage.
@@ -1069,6 +1072,9 @@ export class HostedSession {
             const nextContext = recordedContext && !hasWorkflowContextPersistence
                 ? { ...this.workflowContext, ...recordedContext }
                 : recordedContext || this.workflowContext;
+            if (nextContext && nextContext.planName !== this.workflowContext?.planName) {
+                delete nextContext.validationProgress;
+            }
             this.replaceWorkflowContext(nextContext, { persist: false });
         } catch (_e) {
             // Footer-context persistence is fail-open and must not block planning.

@@ -491,7 +491,7 @@ Deno.test("Compact Plan Review starts collapsed and keeps panel controls outside
     const styles = await Deno.readTextFile("src/ui/workspace/react/plannotator.css");
     assertStringIncludes(surface, 'globalThis.matchMedia?.("(max-width: 980px)")');
     assertStringIncludes(surface, "!compactLayout && getUIPreferences().tocEnabled");
-    assertStringIncludes(surface, "useState(() => !compactLayout)");
+    assertStringIncludes(surface, "useReviewAnnotations(annotations.length + codeAnnotations.length)");
     assertStringIncludes(surface, 'media.addEventListener("change", syncLayout)');
     assertStringIncludes(surface, 'media.removeEventListener("change", syncLayout)');
     assertStringIncludes(surface, "if (compactLayout) setAnnotationsOpen(false)");

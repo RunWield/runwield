@@ -1,6 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
 import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
 
+type TerminalResizeCallback = NonNullable<Parameters<VirtualTerminal["start"]>[1]>;
+type TerminalSize = Parameters<TerminalResizeCallback>[0];
+
 Deno.test("VirtualTerminal captures writes in normalized viewport text", async () => {
     const terminal = new VirtualTerminal({ columns: 20, rows: 4 });
     terminal.write("hello\nworld");
@@ -21,10 +24,8 @@ Deno.test("VirtualTerminal captures the active viewport after scrollback", async
 
 Deno.test("VirtualTerminal sends input and resize through terminal callbacks", () => {
     const terminal = new VirtualTerminal({ columns: 20, rows: 4 });
-    /** @type {string[]} */
-    const input = [];
-    /** @type {Array<{ columns: number, rows: number }>} */
-    const sizes = [];
+    const input: string[] = [];
+    const sizes: TerminalSize[] = [];
     terminal.start((data) => input.push(data), (size) => sizes.push(size));
     terminal.typeText("/help");
     terminal.pressEnter();

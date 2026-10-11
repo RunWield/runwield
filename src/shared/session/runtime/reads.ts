@@ -166,20 +166,19 @@ export class RuntimeReads {
             deriveWorkflowContextFromExecutionWorkflow(activeExecutionWorkflow) || null;
         const activeInteractions = [...session.getActiveInteractions().values()];
         const liveQuestion = activeInteractions.some((record) =>
-            record.request?.type !== "plan_review" && record.request?.type !== "code_review"
+            record.request && record.request.type !== "plan_review" && record.request.type !== "code_review"
         );
         const livePlanReview = activeInteractions.some((record) => record.request?.type === "plan_review");
         const liveCodeReview = activeInteractions.some((record) => record.request?.type === "code_review");
         const liveReview = activeInteractions.find((record) =>
             record.request?.type === "plan_review" || record.request?.type === "code_review"
         );
-        const workflowProgressFacts = Array.isArray(baseWorkflowContext?.progressFacts)
+        const workflowProgressFacts = activeExecutionWorkflow
+            ? workflowProgressFactsFromActiveMeta(activeExecutionWorkflow.triageMeta || {})
+            : Array.isArray(baseWorkflowContext?.progressFacts)
             ? baseWorkflowContext.progressFacts.map((fact) => ({ ...fact }))
             : [];
         const activeWorkflowMeta = activeExecutionWorkflow?.triageMeta || {};
-        workflowProgressFacts.push(
-            ...workflowProgressFactsFromActiveMeta(activeWorkflowMeta),
-        );
         const hasValidationCheckpoint = workflowProgressFacts.some((fact) => fact.kind === "validation_checkpoint");
         const hasRepairCheckpoint = workflowProgressFacts.some((fact) =>
             fact.kind === "validation_checkpoint" && (fact.state === "awaiting_repair" || Boolean(fact.repairKind))
@@ -192,10 +191,16 @@ export class RuntimeReads {
                 ...(typeof activeWorkflowMeta.planId === "string" ? { planId: activeWorkflowMeta.planId } : {}),
                 ...(typeof activeWorkflowMeta.status === "string" ? { status: activeWorkflowMeta.status } : {}),
                 ...(workflowProgressFacts.length ? { progressFacts: workflowProgressFacts } : {}),
-                ...(liveQuestion ? { liveQuestion } : {}),
-                ...(livePlanReview ? { livePlanReview } : {}),
-                ...(liveCodeReview ? { liveCodeReview } : {}),
-                ...(liveReview?.request?.reviewUrl ? { liveReviewUrl: liveReview.request.reviewUrl } : {}),
+                canReopenPlanReview: Boolean(
+                    managed && this.services.sessionStore?.getLastPlanReview(
+                        managed.runwieldSessionId,
+                        managed.projectId,
+                    ),
+                ),
+                liveQuestion,
+                livePlanReview,
+                liveCodeReview,
+                liveReviewUrl: liveReview?.request?.reviewUrl,
                 ...(baseWorkflowContext.canRun === true || activeWorkflowMeta.status === "ready_for_work"
                     ? { canRun: true }
                     : {}),

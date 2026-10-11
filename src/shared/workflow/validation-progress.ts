@@ -94,7 +94,8 @@ export function describeUnsettledTransition(transition: TransitionResult, intent
 export function getCurrentValidationProgress(
     hostedSession: HostedSession | undefined,
 ): RuntimeValidationProgress | undefined {
-    return hostedSession ? CURRENT_VALIDATION_PROGRESS.get(hostedSession) : undefined;
+    return (hostedSession ? CURRENT_VALIDATION_PROGRESS.get(hostedSession) : undefined) ||
+        hostedSession?.getWorkflowContext?.()?.validationProgress;
 }
 
 /**
@@ -108,7 +109,10 @@ export function setCurrentValidationProgress(
     hostedSession: HostedSession | undefined,
     progress: RuntimeValidationProgress | undefined,
 ): void {
-    if (hostedSession && progress) CURRENT_VALIDATION_PROGRESS.set(hostedSession, progress);
+    if (hostedSession) {
+        if (progress) CURRENT_VALIDATION_PROGRESS.set(hostedSession, progress);
+        else CURRENT_VALIDATION_PROGRESS.delete(hostedSession);
+    }
 }
 
 export function emitRunWieldSystemStatus(
@@ -119,7 +123,7 @@ export function emitRunWieldSystemStatus(
 ): void {
     const resolvedLevel = level === true ? "error" : level === false ? "info" : level;
     const currentProgress = validationProgress ||
-        (hostedSession ? CURRENT_VALIDATION_PROGRESS.get(hostedSession) : undefined);
+        getCurrentValidationProgress(hostedSession);
     const snapshot = currentProgress ? structuredClone(currentProgress) : undefined;
     // A saved report is emitted once with explicit completion, not on unrelated later status lines.
     if (snapshot && !validationProgress) delete snapshot.deliveryReport;
@@ -132,7 +136,16 @@ export function emitRunWieldSystemStatus(
     // snapshot. Commit it to session memory only after that boundary accepts it;
     // caching first leaves a rejected stage/check combination behind, so every
     // later plain status line or retry re-emits the same invalid snapshot.
-    if (hostedSession && validationProgress) CURRENT_VALIDATION_PROGRESS.set(hostedSession, validationProgress);
+    if (hostedSession && validationProgress) {
+        CURRENT_VALIDATION_PROGRESS.set(hostedSession, validationProgress);
+        const context = hostedSession.getWorkflowContext?.();
+        if (context) {
+            hostedSession.replaceWorkflowContext?.({
+                ...context,
+                validationProgress: structuredClone(validationProgress),
+            }, { persist: true });
+        }
+    }
 }
 
 export function createValidationProgress(values: ValidationProgressInput): RuntimeValidationProgress {

@@ -70,6 +70,9 @@ complete repair diff. You are looking for:
 - A concrete defect in additional changes made by the repair. Additional changes alone are not blocking.
 - A new injection seam in a touched production hunk. Replacing product-owned machinery through a required or optional
   collaborator is a regression; only required ports for genuine external capabilities are legitimate.
+- A repair that resolves a finding by weakening a test: loosening or deleting assertions, dropping a boundary case, or
+  substituting a fake for the real behavior so the test passes. That is a repair-introduced regression. Report it as a
+  new finding with `origin: "repair_regression"`.
 
 New blocking problems the repair introduced are new findings — append them without an `id`, with `status: "new"` and
 `origin: "repair_regression"`. The origin is diagnostic attribution for metrics, not a repair state.

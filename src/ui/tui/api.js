@@ -516,9 +516,10 @@ export function createUiApi(
             }
         },
 
-        clearValidationPanel: () => {
+        /** @param {boolean} [preserveProgress=false] */
+        clearValidationPanel: (preserveProgress = false) => {
             validationProgress = null;
-            onValidationProgress?.(null);
+            if (!preserveProgress) onValidationProgress?.(null);
             latestEngineerReport = null;
             latestReviewerReport = null;
             validationReportOrder = 0;

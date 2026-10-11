@@ -601,20 +601,26 @@ export class RuntimeWorkflows {
     ): Promise<RuntimeValidationResult | null> {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) throw new Error("SessionRuntime.runValidation: session not found");
-        if (
-            !options.planName || !options.planContent || !options.triageMeta ||
-            !isValidationTriageMeta(options.triageMeta)
-        ) {
-            throw new Error("SessionRuntime.runValidation: Plan context is required");
-        }
+        if (!options.planName) throw new Error("SessionRuntime.runValidation: Plan name is required");
         const planName = options.planName;
-        const planContent = options.planContent;
-        const triageMeta = options.triageMeta;
+        let triageMeta: import("../../../tools/plan-written.ts").TriageMeta | undefined;
+        let planContent = options.planContent || "";
         if (options.skipPendingSegmentResume !== true) {
             const pendingResult = await this.resumePendingExecutionSegmentHandoff(session, options);
             if (pendingResult) return pendingResult;
         }
         const result = await this.runWorkflowOperation(session, "runValidation", options, async () => {
+            // Resume uses the current document authority, never an old sidebar snapshot's body or status.
+            const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
+            const { plan } = await resolveWorkflowPlanLocation(session.cwd, planName);
+            if (!plan || !isValidationTriageMeta(plan.attrs)) {
+                throw new Error("The saved Plan is unavailable for validation.");
+            }
+            if (options.triageMeta?.planId && options.triageMeta.planId !== plan.attrs.planId) {
+                throw new Error("The saved Plan identity changed. Reopen the Plan before continuing.");
+            }
+            planContent = plan.markdown;
+            triageMeta = plan.attrs;
             const { SYSTEM_SEMANTIC_REVIEW_PORT } = await import("../../workflow/validation.ts");
             const { runWorkflowValidationToStableBoundary } = await import(
                 "../../workflow/validation-supervisor.ts"
@@ -644,7 +650,7 @@ export class RuntimeWorkflows {
         if (result.kind === "semantic_repair_handoff" && result.semanticRepairHandoff) {
             return await this.runSemanticRepairSegmentHandoff(
                 sessionId,
-                { ...options, planName, triageMeta },
+                { ...options, planName, planContent, triageMeta },
                 { ...result, kind: "semantic_repair_handoff", semanticRepairHandoff: result.semanticRepairHandoff },
             );
         }
@@ -781,6 +787,17 @@ export class RuntimeWorkflows {
                 },
             );
             if (!completed) {
+                const { emitRunWieldSystemStatus, getCurrentValidationProgress, updateValidationProgress } =
+                    await import("../../workflow/validation-progress.ts");
+                const progress = getCurrentValidationProgress(session);
+                if (progress) {
+                    emitRunWieldSystemStatus(
+                        session,
+                        "Semantic repair paused before completion.",
+                        "warning",
+                        updateValidationProgress(progress, { outcome: "paused", stage: "engineer_repair" }),
+                    );
+                }
                 return {
                     kind: "paused",
                     planName: continuation.plan.planName || options.planName,

@@ -18,6 +18,13 @@ import {
     readLockFileSnapshot,
     removeLockFileIfSnapshotMatches,
 } from "./lock-file-snapshot.ts";
+import {
+    gitIndexEvidence,
+    gitWorktreeListEvidence,
+    observeGitEvidence,
+    rememberGitRead,
+    reusedGitRead,
+} from "./git-evidence-cache.ts";
 import { getLockHostname, isLockHolderGone } from "./process-liveness.ts";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
 import { inspectWorktreeRegistryAtPath, withWorktreeRegistryLockAtPath } from "./worktree-registry.js";
@@ -201,10 +208,13 @@ type MigrationPreflight = {
     operations: MigrationOperation[];
 };
 
-type GitWorktree = {
+type GitWorktreeRecord = {
     path: string;
-    realPath: string;
     branch: string;
+};
+
+type GitWorktree = GitWorktreeRecord & {
+    realPath: string;
 };
 
 type LegacyLockStatus = {
@@ -315,16 +325,19 @@ export async function inspectProjectRuntimeLayout(
 interface RuntimeReadScope {
     active: boolean;
     layouts: Map<string, Promise<ProjectRuntimeLayout>>;
+    /** Symlinks under each authority root, walked once per read like each checkout's entry. */
+    symlinkWalks: Map<string, Promise<string[]>>;
 }
 
 const runtimeEntryScope = new AsyncLocalStorage<RuntimeReadScope>();
-// Retain only diagnostic identities, never runtime validation or migration results.
+// Retain only diagnostic identities, never runtime validation or migration results. Git answers
+// are reused only while their repository evidence is unchanged; see git-evidence-cache.ts.
 const reportedGitignoreWarnings = new Map<string, Set<string>>();
 
 /** Verify each checkout once during a bounded read; retain no result across refreshes. */
 export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Promise<T> {
     if (runtimeEntryScope.getStore()?.active) return await read();
-    const scope: RuntimeReadScope = { active: true, layouts: new Map() };
+    const scope: RuntimeReadScope = { active: true, layouts: new Map(), symlinkWalks: new Map() };
     try {
         return await runtimeEntryScope.run(scope, read);
     } finally {
@@ -332,12 +345,15 @@ export async function withProjectRuntimeReadScope<T>(read: () => Promise<T>): Pr
         // not retain its validation results after that read has settled.
         scope.active = false;
         scope.layouts.clear();
+        scope.symlinkWalks.clear();
     }
 }
 
 /** Writes inside a grouped read must revalidate and invalidate surrounding reads. */
 export function invalidateProjectRuntimeReadScope(): void {
-    runtimeEntryScope.getStore()?.layouts.clear();
+    const scope = runtimeEntryScope.getStore();
+    scope?.layouts.clear();
+    scope?.symlinkWalks.clear();
 }
 
 export function enterProjectRuntime(selectedCheckoutRoot: string): Promise<ProjectRuntimeLayout> {
@@ -417,6 +433,9 @@ export async function migrateLegacyProjectRuntimeState(
     const lock = await acquireMigrationLock(layout.primary.layoutMigrationLockPath);
     let cleanupInternalRoot = false;
     try {
+        // Migration moves authorities, so walks taken before it no longer describe them.
+        // Keep the entry promise: this migration is part of that shared verification.
+        runtimeEntryScope.getStore()?.symlinkWalks.clear();
         const lockedMarker = await readLayoutMarker(layout);
         if (isBlocked(lockedMarker)) return lockedMarker;
         return await withWorktreeRegistryLockAtPath(legacyWorktreeRegistryLockPath(primaryCheckoutRoot), async () => {
@@ -467,6 +486,7 @@ export async function migrateLegacyProjectRuntimeState(
                 : await migrate();
         });
     } finally {
+        runtimeEntryScope.getStore()?.symlinkWalks.clear();
         await lock.release();
         if (cleanupInternalRoot) await removeEmptyDirectory(layout.primary.internalRoot);
     }
@@ -604,10 +624,12 @@ async function preflight(
         );
     }
 
+    // Under the migration lock, every walk is fresh: that recheck is the one migration trusts.
+    const reuseWalks = !options.legacyRegistryLockHeld;
     const symlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, [
         layout.selected.checkoutRoot,
         ...(existingJournal.journal?.selectedCheckoutRoots || []),
-    ]);
+    ], reuseWalks);
     if (symlink.length > 0) {
         return block(
             "symlink",
@@ -674,7 +696,7 @@ async function preflight(
         );
     }
 
-    const selectedSymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, selectedRoots.roots);
+    const selectedSymlink = await findSymlinkBlocker(layout, primaryCheckoutRoot, selectedRoots.roots, reuseWalks);
     if (selectedSymlink.length > 0) {
         return block(
             "symlink",
@@ -794,6 +816,12 @@ async function validateMarkerRoots(
 async function listGitWorktrees(
     primaryCheckoutRoot: string,
 ): Promise<{ worktrees: GitWorktree[] } | ProjectRuntimeMigrationBlockedResult> {
+    const evidence = await observeGitEvidence(
+        `worktree-list\0${primaryCheckoutRoot}`,
+        await gitWorktreeListEvidence(primaryCheckoutRoot),
+    );
+    const reused = reusedGitRead<GitWorktreeRecord[]>(evidence);
+    if (reused) return { worktrees: await withRealPaths(reused) };
     const runWorktreeList = () =>
         new Deno.Command("git", {
             cwd: primaryCheckoutRoot,
@@ -826,12 +854,22 @@ async function listGitWorktrees(
         return { worktrees: [{ path: primaryCheckoutRoot, realPath: primaryCheckoutRoot, branch: "" }] };
     }
     const text = new TextDecoder().decode(output.stdout);
-    const worktrees: GitWorktree[] = [];
+    const records: GitWorktreeRecord[] = [];
     for (const record of text.trim().split("\n\n").filter(Boolean)) {
         const lines = record.split("\n");
         const path = lines.find((line) => line.startsWith("worktree "))?.slice("worktree ".length).trim() || "";
         const branch = lines.find((line) => line.startsWith("branch "))?.slice("branch ".length).trim() || "";
-        if (!path) continue;
+        if (path) records.push({ path, branch });
+    }
+    // Paths and branches come only from repository metadata. Real paths do not,
+    // so they are resolved again on every entry.
+    await rememberGitRead(evidence, records);
+    return { worktrees: await withRealPaths(records) };
+}
+
+async function withRealPaths(records: GitWorktreeRecord[]): Promise<GitWorktree[]> {
+    const worktrees: GitWorktree[] = [];
+    for (const { path, branch } of records) {
         let realPath = path;
         try {
             realPath = await Deno.realPath(path);
@@ -840,7 +878,7 @@ async function listGitWorktrees(
         }
         worktrees.push({ path, realPath, branch });
     }
-    return { worktrees };
+    return worktrees;
 }
 
 async function resolveSelectedRoots(
@@ -943,11 +981,21 @@ async function findTrackedRuntimePaths(
     const runtimePaths = new Set<string>();
     const secretPaths = new Set<string>();
     for (const root of new Set([primaryCheckoutRoot, ...selectedRoots])) {
+        const pathspecs = runtimeGitPathspecs();
+        const evidence = await observeGitEvidence(
+            `ls-files\0${root}\0${pathspecs.join("\0")}`,
+            await gitIndexEvidence(root),
+        );
+        const reused = reusedGitRead<string[]>(evidence);
+        if (reused) {
+            addTrackedRuntimePaths(root, reused, runtimePaths, secretPaths);
+            continue;
+        }
         let output: Deno.CommandOutput;
         try {
             output = await new Deno.Command("git", {
                 cwd: root,
-                args: ["ls-files", "-z", "--", ...runtimeGitPathspecs()],
+                args: ["ls-files", "-z", "--", ...pathspecs],
                 stdout: "piped",
                 stderr: "null",
             }).output();
@@ -964,13 +1012,18 @@ async function findTrackedRuntimePaths(
             );
         }
         const paths = new TextDecoder().decode(output.stdout).split("\0").filter(Boolean);
-        for (const path of paths) {
-            const absolutePath = join(root, path);
-            if (isProjectSecretGitPath(path)) secretPaths.add(absolutePath);
-            else runtimePaths.add(absolutePath);
-        }
+        await rememberGitRead(evidence, paths);
+        addTrackedRuntimePaths(root, paths, runtimePaths, secretPaths);
     }
     return { runtimePaths: [...runtimePaths].sort(), secretPaths: [...secretPaths].sort() };
+}
+
+function addTrackedRuntimePaths(root: string, paths: string[], runtimePaths: Set<string>, secretPaths: Set<string>) {
+    for (const path of paths) {
+        const absolutePath = join(root, path);
+        if (isProjectSecretGitPath(path)) secretPaths.add(absolutePath);
+        else runtimePaths.add(absolutePath);
+    }
 }
 
 function runtimeGitPathspecs(): string[] {
@@ -992,6 +1045,7 @@ async function findSymlinkBlocker(
     layout: ProjectRuntimeLayout,
     primaryCheckoutRoot: string,
     selectedRoots: string[] = [layout.selected.checkoutRoot],
+    reuseWalks = true,
 ): Promise<string[]> {
     const authorityRoots = [
         layout.primary.internalRoot,
@@ -1015,10 +1069,39 @@ async function findSymlinkBlocker(
     for (const root of [legacyRuntimeBase(primaryCheckoutRoot), ...selectedRoots.map(legacyRuntimeBase)]) {
         await collectOnlyThisSymlink(root, symlinks);
     }
-    for (const root of authorityRoots) {
-        await collectSymlinks(root, symlinks, repositoryContainers);
+    for (const root of new Set(authorityRoots)) {
+        symlinks.push(...await authoritySymlinks(primaryCheckoutRoot, root, repositoryContainers, reuseWalks));
     }
     return symlinks;
+}
+
+/**
+ * Symlinks under one authority root. Inside a bounded read, each root is walked
+ * once and shared by every checkout entered during that read, the same way each
+ * checkout's entry is; writes and migrations invalidate the walks.
+ */
+function authoritySymlinks(
+    primaryCheckoutRoot: string,
+    root: string,
+    repositoryContainers: Set<string>,
+    reuseWalks: boolean,
+): Promise<string[]> {
+    const walk = async () => {
+        const found: string[] = [];
+        await collectSymlinks(root, found, repositoryContainers);
+        return found;
+    };
+    const scope = runtimeEntryScope.getStore();
+    if (!reuseWalks || !scope?.active) return walk();
+    const key = `${primaryCheckoutRoot}\0${root}`;
+    const pending = scope.symlinkWalks.get(key);
+    if (pending) return pending;
+    const result = walk();
+    scope.symlinkWalks.set(key, result);
+    void result.catch(() => {
+        if (scope.symlinkWalks.get(key) === result) scope.symlinkWalks.delete(key);
+    });
+    return result;
 }
 
 async function collectOnlyThisSymlink(path: string, symlinks: string[]): Promise<void> {

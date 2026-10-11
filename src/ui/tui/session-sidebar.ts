@@ -27,9 +27,11 @@ export interface TuiSessionSidebarSnapshot {
         classification?: string | null;
         status?: string | null;
         progressFacts?: readonly WorkflowProgressFact[];
+        validationProgress?: LiveValidationProgress;
         liveQuestion?: boolean;
         livePlanReview?: boolean;
         liveCodeReview?: boolean;
+        canReopenPlanReview?: boolean;
         canRun?: boolean;
         canResume?: boolean;
         canRecover?: boolean;
@@ -63,13 +65,33 @@ export interface TuiSessionSidebarSnapshot {
 }
 
 export function tuiSessionSidebarProjection(snapshot: TuiSessionSidebarSnapshot): SessionSidebarProjection {
+    const savedProgress = snapshot.workflowContext?.validationProgress;
+    const progress: LiveValidationProgress | null | undefined = savedProgress?.outcome === "running" &&
+            snapshot.busy === false && !snapshot.workflowContext?.liveCodeReview &&
+            !snapshot.workflowContext?.livePlanReview
+        ? {
+            ...savedProgress,
+            outcome: "paused",
+            message: "Work is paused. Resume from the saved checkpoint.",
+            checks: {
+                ci: savedProgress.checks.ci === "running" ? "canceled" : savedProgress.checks.ci,
+                semanticReview: savedProgress.checks.semanticReview === "running"
+                    ? "canceled"
+                    : savedProgress.checks.semanticReview,
+                humanReview: savedProgress.checks.humanReview === "running"
+                    ? "canceled"
+                    : savedProgress.checks.humanReview,
+                merge: savedProgress.checks.merge === "running" ? "canceled" : savedProgress.checks.merge,
+            },
+        }
+        : savedProgress || snapshot.validationProgress;
     const activeWorkflow = snapshot.activeExecutionWorkflow;
     const plan = activeWorkflow?.planName || snapshot.workflowContext?.planName || snapshot.workflowContext?.planId ||
         "";
     const epic = activeWorkflow?.planName
         ? activeWorkflow.triageMeta?.parentPlan || ""
         : snapshot.workflowContext?.parentPlan || "";
-    return buildSessionSidebarProjection({
+    const projection = buildSessionSidebarProjection({
         sessionName: snapshot.name,
         sessionState: snapshot.busy ? "active" : "idle",
         activeSurface: "tui",
@@ -93,7 +115,7 @@ export function tuiSessionSidebarProjection(snapshot: TuiSessionSidebarSnapshot)
         workflowValidationPhase: activeWorkflow?.triageMeta?.validationPhase,
         workflowClassification: activeWorkflow?.triageMeta?.classification || snapshot.workflowContext?.classification,
         workflowProgressFacts: snapshot.workflowContext?.progressFacts?.map((fact) => ({ ...fact })),
-        workflowLiveValidationProgress: snapshot.validationProgress,
+        workflowLiveValidationProgress: progress,
         workflowSessionState: snapshot.busy ? "active" : "idle",
         workflowHasWorkingSession: Boolean(plan),
         workflowHasLiveQuestion: snapshot.workflowContext?.liveQuestion,
@@ -104,6 +126,37 @@ export function tuiSessionSidebarProjection(snapshot: TuiSessionSidebarSnapshot)
         workflowCanRecover: snapshot.workflowContext?.canRecover,
         artifacts: snapshot.artifacts,
     });
+    if (
+        !snapshot.busy && !snapshot.workflowContext?.liveQuestion && snapshot.workflowContext?.canReopenPlanReview &&
+        ["draft", "feedback", "approved", "ready_for_work"].includes(snapshot.workflowContext.status || "draft")
+    ) {
+        projection.workflow.action = {
+            kind: "review_plan",
+            label: "Reopen Plan review",
+            detail: "Reopen the saved Plan review.",
+        };
+    }
+    const action = projection.workflow.action;
+    if (
+        action && (["answer_agent", "open_session", "open_plan", "resume_from_hold"].includes(action.kind) ||
+            progress?.outcome === "verified")
+    ) {
+        projection.workflow.action = null;
+    } else if (action?.kind === "review_plan") {
+        action.label = snapshot.workflowContext?.livePlanReview ? "Open Plan review" : "Reopen Plan review";
+    } else if (action?.kind === "review_code") {
+        action.label = "Open Code Review";
+    } else if (action?.kind === "resume" || action?.kind === "recover") {
+        const stage = projection.workflow.currentStage?.id;
+        action.label = stage === "code_review"
+            ? "Reopen Code Review"
+            : stage === "repair"
+            ? "Resume repair"
+            : ["mechanical", "semantic", "delivery"].includes(stage || "")
+            ? "Resume validation"
+            : "Resume implementation";
+    }
+    return projection;
 }
 
 function fit(text: string, width: number): string {
@@ -164,7 +217,9 @@ export class TuiSessionSidebar {
     currentAction(snapshotOverride?: TuiSessionSidebarSnapshot): SessionSidebarProjection["workflow"]["action"] {
         const snapshot = snapshotOverride || this.getSnapshot();
         if (!snapshot?.managed) return null;
-        return tuiSessionSidebarProjection(snapshot).workflow.action;
+        const projection = tuiSessionSidebarProjection(snapshot);
+        const activeTab = this.getSessionKey() === this.#sessionKey ? this.#activeTab : projection.defaultTab;
+        return activeTab === "workflow" ? projection.workflow.action : null;
     }
 
     render(width: number, snapshotOverride?: TuiSessionSidebarSnapshot): string[] {
@@ -193,7 +248,15 @@ export class TuiSessionSidebar {
             if (projection.workflow.stages.length) {
                 content.push("");
                 for (const [index, stage] of projection.workflow.stages.entries()) {
-                    const marker = stage.current ? "●" : stage.state === "completed" ? "✓" : "○";
+                    const marker = stage.state === "blocked"
+                        ? "!"
+                        : stage.state === "paused"
+                        ? "Ⅱ"
+                        : stage.state === "completed"
+                        ? "✓"
+                        : stage.current
+                        ? "●"
+                        : "○";
                     const connector = index === 0 ? " " : "│";
                     content.push(fit(`${connector} ${marker} ${stage.label}`, inner));
                     if (stage.current) content.push(theme.fg("dim", fit(`│ ${stage.detail}`, inner)));
@@ -208,8 +271,8 @@ export class TuiSessionSidebar {
                 content.push("", ...field("Blocked by", projection.workflow.blocker, inner));
             }
             if (projection.workflow.action) {
-                content.push("", ...field("Action", projection.workflow.action.label, inner));
-                content.push(theme.fg("dim", fit("ctrl+enter runs this action", inner)));
+                content.push("", theme.fg("accent", fit(projection.workflow.action.label, inner)));
+                content.push(theme.fg("dim", fit("ctrl+enter", inner)));
             }
             if (!projection.workflow.active) {
                 content.push("", theme.fg("dim", fit("No Plan workflow is active.", inner)));

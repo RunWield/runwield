@@ -4,7 +4,8 @@ import { join } from "@std/path";
 import { DatabaseSync } from "node:sqlite";
 import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
-import { addEntry } from "../../../shared/worktree-registry.js";
+import { addEntry, withWorktreeRegistryLockAtPath } from "../../../shared/worktree-registry.js";
+import { getRunWieldRuntimeDir } from "../../../constants.js";
 import { formatWorkRecordMarkdown } from "../../../shared/work-records/markdown.js";
 import { replaceWorkRecord, writeWorkRecord } from "../../../shared/work-records/store.js";
 import {
@@ -560,6 +561,47 @@ Deno.test("Workspace search and Plan opens accept registered execution-worktree 
         }
         assertStringIncludes(message, "leaves the Project");
     } finally {
+        await fixture.close();
+    }
+});
+
+Deno.test("Workspace refresh requested during a scan includes files added after that scan began", async () => {
+    const fixture = await searchFixture("refresh-during-scan");
+    const secondPath = join(fixture.dir, "blocked-project");
+    await Deno.mkdir(secondPath);
+    const secondRoot = await Deno.realPath(secondPath);
+    const second = fixture.store.registerProject({ root: secondRoot, displayName: "ZZ Blocked Project" });
+    await Deno.mkdir(join(fixture.root, "docs", "prd"), { recursive: true });
+    const locked = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    // Hold a real migration lock in the second Project so the scan has already read the first.
+    const holding = withWorktreeRegistryLockAtPath(
+        join(getRunWieldRuntimeDir(secondRoot), "worktrees.lock"),
+        async () => {
+            locked.resolve();
+            await release.promise;
+        },
+    );
+    try {
+        await locked.promise;
+        const scanning = fixture.search.refresh();
+        assertEquals(
+            await waitFor(async () => {
+                const progress = await fixture.search.search({ query: "" });
+                return progress.states.some((state) =>
+                    state.projectId === second.projectId && state.state === "indexing"
+                );
+            }),
+            true,
+        );
+        await Deno.writeTextFile(join(fixture.root, "docs", "prd", "new.md"), "# Fresh refresh needle\n");
+        const refreshed = fixture.search.refresh();
+        release.resolve();
+        await Promise.all([scanning, refreshed, holding]);
+        assertEquals((await fixture.search.search({ query: "Fresh refresh needle" })).total, 1);
+    } finally {
+        release.resolve();
+        await holding;
         await fixture.close();
     }
 });

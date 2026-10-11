@@ -621,7 +621,7 @@ Deno.test("Session workflow sidebar uses canonical progress stages", async () =>
                 { kind: "validation_checkpoint", phase: "semantic", state: "running" },
             ],
         }).stages.map((stage) => stage.label),
-        ["Planning", "Execution", "Tests and CI", "AI review", "Code Review", "Publication", "Completion"],
+        ["Planning", "Execution", "Verification Command", "AI review", "Code Review", "Publication", "Completion"],
     );
     assertEquals(surface.includes('ownerFetch(apiUrl, { method: "GET" })'), true);
     assertEquals(surface.includes("WorkflowSidebar"), true);
@@ -1390,7 +1390,7 @@ Deno.test("Workflow Resume submits the committed version and reports progress an
             globalThis.dispatchEvent(new Event("focus"));
         });
         assertStringIncludes(sidebar().textContent, "Running the tests in the execution worktree.");
-        assertEquals(sidebar().querySelector('li[aria-current="step"] span').textContent, "Tests and CI");
+        assertEquals(sidebar().querySelector('li[aria-current="step"] span').textContent, "Verification Command");
         assertEquals(resume().textContent, "Open Session");
         await act(() => resume().click());
         assertEquals(container.querySelector(".session-stream-panel").inert, false);

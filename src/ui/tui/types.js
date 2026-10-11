@@ -51,7 +51,7 @@
  *   appendReviewResult?: (agentName: string, markdown: string, approved: boolean) => void,
  *   updateValidationProgress?: (progress: import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress) => void,
  *   updateValidationReport?: (role: "engineer" | "reviewer", report: { agentName: string, markdown: string, approved?: boolean }) => void,
- *   clearValidationPanel?: () => void,
+ *   clearValidationPanel?: (preserveProgress?: boolean) => void,
  *   setManagedSyncStatus?: (status: import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent) => void,
  *   getActiveToolBlock?: (id: string) => ToolExecutionBlockApi | undefined,
  *   toggleToolOutputsExpanded?: () => void,

@@ -449,16 +449,14 @@ Deno.test("standalone Sessions linked to one on-hold Plan remain distinct", asyn
     }
 });
 
-const tracedDashboardFixture = defineCommittedGitFixture({ "README.md": "# Dashboard scope\n" });
+const dashboardScopeFixture = defineCommittedGitFixture({ "README.md": "# Dashboard scope\n" });
 
 Deno.test("HTTP dashboard stream completes its producer and starts a fresh read afterward", async () => {
     if (Deno.build.os === "windows") return; // The live connection uses a named pipe there.
     await withProcessGlobalTestLock(async () => {
-        const root = await tracedDashboardFixture.checkout({ prefix: "rw-dashboard-scope-" });
+        const root = await dashboardScopeFixture.checkout({ prefix: "rw-dashboard-scope-" });
         const fixture = await makeManagedSessionFixture({ projectRoot: root });
         const { store, session, project } = fixture;
-        const trace = await Deno.makeTempFile({ prefix: "rw-dashboard-git-trace-" });
-        const previousTrace = Deno.env.get("GIT_TRACE2_EVENT");
         const operationId = "dashboard-scope-operation";
         const socketKey = createHash("sha256")
             .update(`${getHomeDir()}:${session.runwieldSessionId}:${operationId}`).digest("hex").slice(0, 40);
@@ -506,14 +504,6 @@ Deno.test("HTTP dashboard stream completes its producer and starts a fresh read 
             const url = "http://127.0.0.1:8787/api/owner/dashboard/stream";
             const headers = { cookie: `rw_owner_device=${claimed.credential}; rw_owner_csrf=scope-csrf` };
             const app = appObject.handler();
-            const listings = async () =>
-                (await Deno.readTextFile(trace)).trim().split("\n").filter(Boolean)
-                    .map((line) => JSON.parse(line) as { event: string; argv?: string[] })
-                    .filter((event) =>
-                        event.event === "start" && event.argv?.slice(-3).join(" ") === "worktree list --porcelain"
-                    )
-                    .length;
-            Deno.env.set("GIT_TRACE2_EVENT", trace);
             const response = await app(new Request(url, { headers }));
             assertEquals(response.status, 200);
             // The route has returned, but the live socket still holds the producer open.
@@ -530,17 +520,30 @@ Deno.test("HTTP dashboard stream completes its producer and starts a fresh read 
                 frames.at(-1)?.sections.some((section) => section.items.some((item) => item.planId === "scope-plan")),
                 true,
             );
-            const completedListings = await listings();
+            // A fresh producer must reread Plan content even when Git metadata is unchanged.
+            await savePlan(root, "added-after-completion", "# Added after completion\n", {
+                planId: "fresh-scope-plan",
+                classification: "FEATURE",
+                status: "user_verified",
+                userVerifiedAt: new Date().toISOString(),
+            });
             const fresh = await app(new Request(url, { headers }));
-            assertEquals((await fresh.text()).trim().split("\n").at(-1)?.includes('"type":"complete"'), true);
-            assertEquals((await listings()) > completedListings, true);
+            const freshFrames: StreamFrame[] = (await fresh.text()).trim().split("\n").map((
+                line: string,
+            ): StreamFrame => JSON.parse(line));
+            assertEquals(freshFrames[0].type, "snapshot");
+            assertEquals(freshFrames[0].progress.pending, true);
+            assertEquals(freshFrames.at(-1)?.type, "complete");
+            assertEquals(
+                freshFrames.at(-1)?.sections.some((section) =>
+                    section.items.some((item) => item.planId === "fresh-scope-plan")
+                ),
+                true,
+            );
         } finally {
             gate.resolve();
             if (listening) await new Promise<void>((resolve) => socket.close(() => resolve()));
             if ("close" in appObject && typeof appObject.close === "function") await appObject.close();
-            if (previousTrace === undefined) Deno.env.delete("GIT_TRACE2_EVENT");
-            else Deno.env.set("GIT_TRACE2_EVENT", previousTrace);
-            await Deno.remove(trace);
             await fixture.cleanup();
             await Deno.remove(root, { recursive: true });
         }

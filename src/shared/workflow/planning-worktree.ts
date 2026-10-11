@@ -145,6 +145,43 @@ async function readTargetPlanMarkdown(projectRoot: string, planName: string, bas
     };
 }
 
+/** Read many Plan documents from one ref with a single Git process; missing paths are omitted. */
+async function readTargetPlanMarkdowns(
+    projectRoot: string,
+    relativePaths: string[],
+    baseRef: string,
+): Promise<Map<string, string>> {
+    const found = new Map<string, string>();
+    if (relativePaths.length === 0) return found;
+    const child = new Deno.Command("git", {
+        cwd: projectRoot,
+        args: ["cat-file", "--batch"],
+        stdin: "piped",
+        stdout: "piped",
+        stderr: "piped",
+    }).spawn();
+    const writer = child.stdin.getWriter();
+    await writer.write(new TextEncoder().encode(relativePaths.map((path) => `${baseRef}:${path}\n`).join("")));
+    await writer.close();
+    const output = await child.output();
+    if (!output.success) throw new Error(`git cat-file --batch failed: ${new TextDecoder().decode(output.stderr)}`);
+    const bytes = output.stdout;
+    const decoder = new TextDecoder();
+    let offset = 0;
+    for (const relativePath of relativePaths) {
+        const headerEnd = bytes.indexOf(10, offset);
+        if (headerEnd < 0) break;
+        const header = decoder.decode(bytes.subarray(offset, headerEnd));
+        offset = headerEnd + 1;
+        const [, type, size] = header.split(" ");
+        if (type === undefined || size === undefined) continue; // "<object> missing"
+        const end = offset + Number(size);
+        if (type === "blob") found.set(relativePath, decoder.decode(bytes.subarray(offset, end)));
+        offset = end + 1;
+    }
+    return found;
+}
+
 async function loadTargetPlan(projectRoot: string, planName: string, baseRef: string) {
     const source = await readTargetPlanMarkdown(projectRoot, planName, baseRef);
     if (!source) return null;
@@ -217,15 +254,15 @@ export async function findTargetBranchPlansByParent(cwd: string, targetBranch: s
         string,
         { name: string; path: string; attrs: ReturnType<typeof parsePlanFrontMatter>["attrs"] }
     >();
-    for (const relativePath of listed.split(/\r?\n/).filter((line) => line.endsWith(".md"))) {
+    const relativePaths = listed.split(/\r?\n/).filter((line) => line.endsWith(".md"));
+    const sources = await readTargetPlanMarkdowns(projectRoot, relativePaths, target.baseRef);
+    for (const [relativePath, markdown] of sources) {
         const planName = relativePath.slice("docs/plans/".length, -".md".length);
-        const source = await readTargetPlanMarkdown(projectRoot, planName, target.baseRef);
-        if (!source) continue;
-        const parsed = parsePlanFrontMatter(source.markdown);
+        const parsed = parsePlanFrontMatter(markdown);
         if (parsed.attrs.parentPlan !== parentName) continue;
         children.set(planName, {
             name: planName,
-            path: `${target.baseRef}:${source.relativePath}`,
+            path: `${target.baseRef}:${relativePath}`,
             attrs: parsed.attrs,
         });
     }

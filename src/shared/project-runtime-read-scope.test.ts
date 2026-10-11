@@ -1,4 +1,4 @@
-import { assertEquals, assertNotStrictEquals, assertRejects, assertStrictEquals } from "@std/assert";
+import { assert, assertEquals, assertNotStrictEquals, assertRejects, assertStrictEquals } from "@std/assert";
 import { join } from "@std/path";
 import { getRunWieldRuntimeDir } from "../constants.js";
 import { listPlans, loadPlan, savePlan } from "../plan-store.js";
@@ -92,23 +92,32 @@ async function withTracedProject(run: (project: TracedProject) => Promise<void>)
     });
 }
 
+/** Let repository metadata age past the window in which Git answers are never reused. */
+async function settleGitEvidence(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+}
+
 async function recreateLegacyDebug(root: string, name: string) {
     const directory = join(getRunWieldRuntimeDir(root), "debug");
     await Deno.mkdir(directory, { recursive: true });
     await Deno.writeTextFile(join(directory, name), name);
 }
 
-Deno.test("bounded runtime reads share real Git inspection and refresh after settlement", async () => {
+Deno.test("bounded runtime reads share real Git inspection and ask Git again only for changed evidence", async () => {
     await withTracedProject(async ({ root, listings }) => {
         await withProjectRuntimeReadScope(async () => {
             await Promise.all([enterProjectRuntime(root), enterProjectRuntime(root)]);
             await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
         });
-        assertEquals(await listings(), 1);
-        await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
-        assertEquals(await listings(), 2);
+        assert(await listings() <= 1);
+        await settleGitEvidence();
         await enterProjectRuntime(root);
-        assertEquals(await listings(), 3);
+        const settled = await listings();
+        await enterProjectRuntime(root);
+        assertEquals(await listings(), settled);
+        await git(root, ["branch", "-m", "renamed-main"]);
+        await enterProjectRuntime(root);
+        assertEquals(await listings(), settled + 1);
     });
 });
 
@@ -119,7 +128,7 @@ Deno.test("Plan lists share validation without caching Plan or controller conten
         }
         const before = await listings();
         assertEquals((await listPlans(root)).length, 3);
-        assertEquals(await listings() - before, 1);
+        assert(await listings() - before <= 1);
         const first = await loadPlan(root, "first");
         await writeControllerState(root, { planName: "first", planId: first?.attrs.planId }, {
             validationCiAttempts: 2,
@@ -136,9 +145,9 @@ Deno.test("Plan lists share validation without caching Plan or controller conten
 Deno.test("registry lists share inspection within a read and reject newly staged runtime on the next read", async () => {
     await withTracedProject(async ({ root, listings }) => {
         assertEquals(await listEntries(root), []);
-        assertEquals(await listings(), 1);
+        assert(await listings() <= 1);
         assertEquals(await listEntries(root), []);
-        assertEquals(await listings(), 2);
+        assert(await listings() <= 2);
         const runtimeFile = join(root, ".wld", "debug", "tracked.txt");
         await Deno.mkdir(join(root, ".wld", "debug"), { recursive: true });
         await Deno.writeTextFile(runtimeFile, "newly staged runtime must be detected\n");

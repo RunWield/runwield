@@ -13,7 +13,7 @@ affectedPaths:
     - "src/ui/tui/blocks.test.js"
     - "src/ui/tui/api.test.js"
     - "src/ui/tui/runtime-adapter.test.js"
-    - "src/shared/session/session-help.test.js"
+    - "src/shared/session/session-help.test.ts"
 tickets:
     - url: "https://app.todoist.com/app/task/collapse-the-tool-calls-between-thinking-to-1-block-with-1-line-per-tool-call-th-6hFmCQXVQHH8V7Vj"
 executionAgent: "engineer"
@@ -99,7 +99,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/ui/tui/runtime-adapter.js` — attach Runtime result images to the matching tool block, with the current standalone
   fallback when no visible block exists.
 - `src/shared/session/session-help.js` and `src/ui/tui/chat-view.ts` — describe `Ctrl+O` as the group expansion control.
-- The matching tests under `src/ui/tui/` and `src/shared/session/session-help.test.js` — prove density, boundaries,
+- The matching tests under `src/ui/tui/` and `src/shared/session/session-help.test.ts` — prove density, boundaries,
   colors, full expansion, image ownership, bounded retention, and help text.
 
 ## Reuse Opportunities
@@ -152,7 +152,7 @@ remain valid behavior that this change preserves and adapts.
 ## Verification Plan
 
 - Automated: run
-  `deno run -A scripts/run-tests.js src/ui/tui/blocks.test.js src/ui/tui/api.test.js src/ui/tui/runtime-adapter.test.js src/ui/tui/keybindings.test.js src/shared/session/session-help.test.js`.
+  `deno run -A scripts/run-tests.js src/ui/tui/blocks.test.js src/ui/tui/api.test.js src/ui/tui/runtime-adapter.test.js src/ui/tui/keybindings.test.js src/shared/session/session-help.test.ts`.
 - Automated behavior: prove three pending/success/error calls render as exactly three compact physical lines with no
   separator and the correct per-row backgrounds; long and multiline titles stay on one row at narrow widths.
 - Automated behavior: expand calls with more than six output lines and an image; prove all content appears under the

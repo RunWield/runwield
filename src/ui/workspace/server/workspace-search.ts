@@ -705,7 +705,10 @@ export function createWorkspaceSearchService(options) {
     function stateValues() {
         return [...projectStates.entries()].map(([projectId, state]) => ({ projectId, ...state }));
     }
-    function refresh() {
+    async function refresh() {
+        // An older scan may already have passed files changed before this request.
+        // Finish it, then scan again so awaiting refresh includes those changes.
+        if (scanPromise) await scanPromise;
         if (scanTimer) clearTimeout(scanTimer);
         scanTimer = null;
         return scan();

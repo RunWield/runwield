@@ -114,6 +114,24 @@ recap settle, a focused selection at the input area asks what to do next: **Star
 for follow-up. Failed or paused delivery must not offer this successful-completion menu. History replay and an Epic's
 automatic continuation must not interrupt the user with stale completion choices.
 
+**Requirement: Keep the TUI workflow sidebar current through delivery and resume.** The sidebar follows planning,
+clarification, Plan review, implementation, the configured Verification Command, AI review, repair, Code Review,
+publication, and completion. Questions remain in the active prompt. TUI shortcuts name a supported operation to reopen
+review or resume saved work; they do not offer to open the Session that is already displayed. Workspace navigation
+remains available on that surface. A canceled review is paused, never approved, and its continuation reopens review
+without repeating completed checks. A running repair remains the current stage while its failed check remains visible.
+
+Accepted validation progress and the latest settled checkpoint survive panel dismissal and Session reopening. Older
+checkpoints cannot override a newer phase or confirmed completion. Starting another workflow clears the previous
+workflow's progress. Confirmed delivery to the configured target, including the default Plan branch, completes the
+sidebar; any onward merge or PR to main is the owner's responsibility unless another target was configured.
+
+Acceptance: answer and settle a clarification without a sidebar answer shortcut; reopen a saved Plan review without a
+live URL; cancel Code Review and resume it; observe repair return to verification; finish delivery, dismiss the panel,
+and reopen the Session with completion intact. For older Sessions without saved validation progress, read the same
+Plan's confirmed completion from current Plan authority without changing history; missing or ambiguous Plan evidence
+must not manufacture completion. Starting another Plan shows that Plan's current stage.
+
 **Requirement: Agent selection replaces active instructions.** Switching Agents preserves conversation history while
 replacing the model's system instructions and available tools with those of the selected Agent. Earlier Agents' system
 instructions remain historical evidence and must not govern subsequent requests, including after Session resume.
@@ -582,7 +600,8 @@ before it runs and may reshape any sibling that has not started, moving scope in
 reshaped sibling that was already approved returns to draft. A started or validated child stays as it is. Each child's
 review judges that child's own correctness with the Epic as context; work a sibling owns is not a finding, and agents do
 not write general "unfinished" warnings. A reviewer can leave Integration Notes for the integration review in a managed
-subsection of the Epic's Verification Plan; when there is nothing to note, it leaves nothing.
+subsection of the Epic's Verification Plan; when there is nothing to note, it leaves nothing. The saved-note message
+names the parent Epic and states that these notes guide its later review, not fixes to the current child Plan.
 
 A separate registered planning worktree does not make an unstarted sibling unavailable for scope changes. Core
 synchronizes compatible edits into that sibling's authoritative Plan, preserves independent planning work, and resets
@@ -633,7 +652,9 @@ and siblings active. Listings keep held work distinct from active and finished w
   copies automatically, including after a preparation retry. Independent edits survive; conflicting scope remains
   preserved in both copies for a requirements decision. Metadata-only normalization does not invalidate sibling scope.
 - Given a child review that leaves Integration Notes, when the review finishes, the notes appear in the Epic's
-  `### Integration Notes` subsection and the integration review receives them as places to look.
+  `### Integration Notes` subsection and the integration review receives them as places to look. The saved-note message
+  names the parent Epic and distinguishes these later checks from child Plan fixes, including when the child review
+  approves the work.
 - Given an approved Epic, when the user saves draft children, they remain drafts; finalizing decomposition enables child
   selection without approving each child.
 - Given an independently held child, when the parent Epic is held and resumed, that child stays held and other children
@@ -656,6 +677,21 @@ Code Review must expose a clickable live review URL in the TUI while awaiting a 
 reviews and when automatic browser opening is unavailable. The settled card removes that live link. Delivery cards label
 automatic review **AI Code Review**, the user's review **Code Review**, and separate manual exercise of the result
 **User verification**; one does not imply the other.
+
+**Requirement: Show verification progress once and reserve answer prompts for waiting questions.** The verification card
+labels the configured check **Verification Command**, with running, failed, or done status, and labels integration
+**Merge worktree**. Its active status appears only once when also present in the check summary. The sidebar derives
+**Answer agent** and its question detail from current pending interactions. Answering or canceling a question updates
+the sidebar immediately, regardless of workflow stage. Cancellable operations without a user prompt are not questions.
+
+**Acceptance scenarios:**
+
+- Given running, failed, or successful verification, the card shows one **Verification Command** status and retains the
+  other applicable review and merge checks.
+- Given a pending question, the sidebar offers **Answer agent**. Answering on either surface or canceling it removes
+  that action and detail immediately, without waiting for CI or another workflow transition. A new question restores it.
+- Given a running shell command without a user prompt, the sidebar shows workflow progress without claiming the Agent
+  needs an answer.
 
 **Requirement: Keep standalone Plan delivery separate from the onward merge.**
 
@@ -1041,6 +1077,13 @@ findings and inspect repair changes for regressions. Each finding remains identi
 open items visible. Repair reports address every finding; an independent Reviewer verifies fixes rather than accepting
 self-approval.
 
+Discovery rounds also judge whether the change's tests would distinguish a plausible wrong implementation from the right
+one: whether the assertions pin behavior or merely assert the fake, whether the named boundaries are actually exercised,
+and whether a fake, fixture, or double bypasses the product-owned code path. A finding names the concrete wrong
+implementation that would still pass. Execution proof stays with mechanical validation; review never demands evidence
+that a test ran. A repair that resolves a finding by weakening a test — loosening or deleting assertions, dropping a
+boundary case, or substituting a fake for the real behavior — is a repair-introduced regression.
+
 **Requirement: Use one proposed branch patch.**
 
 For Git worktree execution, the full review patch is the difference from the common ancestor of the recorded target
@@ -1124,6 +1167,9 @@ convergence without more escaped defects, not approval rate alone.
   satisfied with evidence and independent review can confirm it without requiring a file edit. The issue keeps its ID.
 - Given only a maintainability preference, when review completes, it remains advisory and cannot become an invented
   implementation obligation.
+- Given a changed test that would still pass with a plausible wrong implementation of the behavior it claims to cover,
+  review reports a concrete blocking finding naming that implementation. Given only weak-but-honest assertions, the
+  observation stays advisory and cannot become a repair obligation.
 - After the automatic-round boundary, when the user chooses human review, feedback leads to repair and checks and
   returns to that human review without an automatic round limit ending it.
 - Given the Code Review offer, when the user chooses Close and come back later, the Plan remains at `reviewed` with no
@@ -1650,9 +1696,10 @@ project `.wld`, home `.wld`, then bundled skills. Pi-discovered, configured, ext
 second catalog.
 
 **Requirement: User-invoked change review is available on install.** The bundled MIT `review` Skill lets a user review
-PRs and other selected changes against project standards and the requested behavior. It is separate from the workflow
-Reviewer, which judges implementation against an Approved Plan. The bundled Skill keeps the portable instructions and
-support files available without a separate install.
+PRs and other selected changes against project standards, the requested behavior, and whether the change's tests would
+catch a plausible wrong implementation. It is separate from the workflow Reviewer, which judges implementation against
+an Approved Plan. The bundled Skill keeps the portable instructions and support files available without a separate
+install.
 
 Slash-command skill invocation injects full Skill instructions only when needed and does not change the Agent profile.
 Prompt Template and Skill expansions reach the active model with the current Agent instructions and tools. The exact
@@ -2036,7 +2083,8 @@ Windows WinGet requirements:
 - keep model and browser payload downloads in per-user first-use locations
 - make `wld update` and `wld upgrade` print `winget upgrade --id Gandazgul.RunWield --exact`
 - reject Candidate tags for Stable WinGet manifest generation and external submission
-- submit each Stable manifest to `microsoft/winget-pkgs` from the release workflow with a repository secret
+- prepare Stable manifest artifacts; automatic submission to `microsoft/winget-pkgs` is paused until further owner
+  notice and must not require a submission credential while paused
 - include `https://runwield.dev/privacy/` as `PrivacyUrl` in the WinGet package metadata
 - keep public install docs marked pending until Microsoft accepts the listing
 
@@ -2048,8 +2096,9 @@ Windows WinGet requirements:
   does not run the shell installer.
 - Given a WinGet-owned `wld`, when the user runs `wld update`, RunWield prints
   `winget upgrade --id Gandazgul.RunWield --exact` and does not run the shell installer.
-- Given a Stable release, when its Windows package and manifest jobs pass, the release workflow submits a PR to
-  `microsoft/winget-pkgs`; given a Candidate release, it does not submit one.
+- Given a Stable release while WinGet submission is paused, the workflow prepares manifest artifacts without submitting
+  a PR to `microsoft/winget-pkgs` or requiring a submission credential. Recovery also preserves this pause. Candidate
+  releases do not prepare Stable manifests or submit PRs.
 - Given a generated WinGet manifest, its package metadata links to the published RunWield privacy policy.
 - Given a standalone Unix install, when the user runs `wld update`, RunWield can still use the tag-pinned shell
   installer.
@@ -2072,6 +2121,10 @@ Core enters project runtime state before normal project-local runtime reads, loc
 one-way adoption of eligible 0.10 state. Entry adopts eligible legacy state or refuses unsafe layouts with a retryable
 reason and safe paths. Refusal stops normal writes and preserves user work. After adoption, downgrade or concurrent use
 with 0.10 is not supported. See [ADR-017](../adr/017-project-runtime-state-under-wld-internal.md).
+
+Repeated entry must observe newly tracked runtime paths, newly attached worktrees, and changed runtime files. Bounded
+reads may share verification, and unchanged Git metadata may reuse Git answers, while each new operation still checks
+RunWield-owned runtime state.
 
 **Requirement: Keep Project Runtime State out of repository changes.**
 
@@ -2109,6 +2162,8 @@ Open product questions:
   runtime state stays out of commits and user configuration can be committed.
 - Given runtime state already tracked, staged, deleted, renamed, or present in newly published history, when Core tries
   to checkpoint or publish, it refuses with safe paths and preserves the worktree, index, files, and target refs.
+- Given a successful entry in a long-running process, when a secret is subsequently staged or a worktree is attached,
+  the next entry rejects the tracked secret or recognizes the new checkout without restarting the process.
 - Given a broad `.wld/` ignore rule, when Core reconciles ignore rules, it leaves the rule in place and reports that it
   hides settings, Agents, Skills, and prompts.
 - Given eligible 0.10 runtime state, when Doctor checks the project, it reports pending adoption without locks,

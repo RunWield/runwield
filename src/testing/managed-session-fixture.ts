@@ -1,6 +1,7 @@
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { join } from "@std/path";
 import { AGENTS } from "../constants.js";
+import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.js";
 import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.js";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.js";
 import { encodeCwdForSessionDir } from "../shared/session/root-session.js";
@@ -12,6 +13,7 @@ type ManagedSessionFixtureOptions = {
     projectRoot?: string;
     dbPath?: string;
     assistantMessages?: string[];
+    workflowContext?: WorkflowContext;
 };
 type RecordedModelRequest = {
     messages: string;
@@ -64,6 +66,7 @@ async function writeManagedTranscript(
     root: string,
     piSessionId: string,
     assistantMessages: string[] = [],
+    workflowContext?: WorkflowContext,
 ): Promise<string> {
     const canonicalRoot = await Deno.realPath(root);
     const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalRoot));
@@ -86,6 +89,15 @@ async function writeManagedTranscript(
             timestamp,
             message: { role: "assistant", content: [{ type: "text", text: "Committed hello." }] },
         },
+        ...(workflowContext
+            ? [{
+                type: "custom",
+                id: "entry-workflow",
+                timestamp,
+                customType: WORKFLOW_CONTEXT_CUSTOM_TYPE,
+                data: workflowContext,
+            }]
+            : []),
     ];
     const savedEntries = assistantMessages.length
         ? [
@@ -96,7 +108,7 @@ async function writeManagedTranscript(
             ...assistantMessages.map((text, index) => ({
                 type: "message",
                 id: `saved-reply-${index}`,
-                parentId: index === 0 ? "entry-assistant" : `saved-reply-${index - 1}`,
+                parentId: index === 0 ? entries.at(-1)?.id : `saved-reply-${index - 1}`,
                 timestamp: "2026-01-01T00:00:05.000Z",
                 message: fauxAssistantMessage(fauxText(text)),
             })),
@@ -124,6 +136,7 @@ export async function makeManagedSessionFixture(options: ManagedSessionFixtureOp
         projectRoot,
         piSessionId,
         options.assistantMessages,
+        options.workflowContext,
     );
     const session = await store.ensureSessionCatalogRecord({
         projectId: project.projectId,

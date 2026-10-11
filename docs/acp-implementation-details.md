@@ -531,7 +531,7 @@ The repository contains these checks. They were read, not rerun for this update.
   origin checks.
 - `src/acp/managed-session.integration.test.ts`: load across segments and queued execution after another writer releases
   the Session.
-- `src/acp/segment-stable-identity.test.js`: an explicitly supplied stable ACP ID is stored separately from Pi IDs.
+- `src/acp/segment-stable-identity.test.ts`: an explicitly supplied stable ACP ID is stored separately from Pi IDs.
 
 Important limits:
 

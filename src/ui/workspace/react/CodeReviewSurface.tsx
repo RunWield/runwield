@@ -28,6 +28,7 @@ import { WorkspaceHeaderActionsPortal } from "./WorkspaceHeaderActionsPortal.tsx
 import { ReviewContextBar } from "./ReviewContextBar.tsx";
 import { ArtifactConversationSidebar } from "./ArtifactConversationSidebar.tsx";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
+import { useReviewAnnotations } from "./use-review-annotations.ts";
 import { useCodeReviewHighlighting } from "./code-review-highlighting.ts";
 import { formatGuidedReviewGenerator, formatGuidedReviewUsageStatus } from "./guided-review-status.ts";
 import "./plannotator.css";
@@ -135,11 +136,25 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [pendingSelection, setPendingSelection] = useState(null);
     const [globalCommentOpen, setGlobalCommentOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [compactLayout, setCompactLayout] = useState(false);
     const [fileTreeOpen, setFileTreeOpen] = useState(true);
+    useEffect(() => {
+        const media = globalThis.matchMedia("(max-width: 980px)");
+        const syncLayout = () => {
+            setCompactLayout(media.matches);
+            if (media.matches) setFileTreeOpen(false);
+        };
+        syncLayout();
+        media.addEventListener("change", syncLayout);
+        return () => media.removeEventListener("change", syncLayout);
+    }, []);
     const [filePanelMode, setFilePanelMode] = useState(getInitialFilePanelMode);
     const [filePanelWidth, setFilePanelWidth] = useState(FILE_PANEL_DEFAULT_WIDTH);
     const [resizingFilePanel, setResizingFilePanel] = useState(false);
-    const [annotationsOpen, setAnnotationsOpen] = useState(true);
+    const [annotationsOpen, setAnnotationsOpen] = useReviewAnnotations(annotations.length);
+    useEffect(() => {
+        if (compactLayout && annotationsOpen) setFileTreeOpen(false);
+    }, [compactLayout, annotationsOpen]);
     const [rightSidebarView, setRightSidebarView] = useState("annotations");
     const [submitting, setSubmitting] = useState(null);
     const [submitted, setSubmitted] = useState(null);
@@ -179,7 +194,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const navigationLockRef = useRef(null);
     const configuredDiffStyle = useConfigValue("diffStyle") || "split";
     const [diffStyle, setLocalDiffStyle] = useState(getInitialDiffStyle);
-    const diffOverflow = useConfigValue("diffOverflow") || "scroll";
+    const diffOverflow = "wrap";
     const diffIndicators = useConfigValue("diffIndicators") || "bars";
     const diffLineDiffType = useConfigValue("diffLineDiffType") || "word-alt";
     const diffShowLineNumbers = useConfigValue("diffShowLineNumbers") !== false;
@@ -231,7 +246,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         : Boolean(guideCapabilities?.available);
 
     useEffect(() => {
-        if (!readStoredDiffStyle()) setLocalDiffStyle(configuredDiffStyle);
+        // Read again after hydration: SSR cannot see this browser's saved layout.
+        setLocalDiffStyle(readStoredDiffStyle() || configuredDiffStyle);
     }, [configuredDiffStyle]);
 
     useEffect(() => {
@@ -826,7 +842,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             fileTreeOpen={fileTreeOpen}
             onOpenSettings={() => setSettingsOpen(true)}
             onToggleAnnotations={() => animateSidebarUpdate(() => setAnnotationsOpen((open) => !open))}
-            onToggleFileTree={() => animateSidebarUpdate(() => setFileTreeOpen((open) => !open))}
+            onToggleFileTree={() =>
+                animateSidebarUpdate(() => {
+                    if (compactLayout && !fileTreeOpen) setAnnotationsOpen(false);
+                    setFileTreeOpen((open) => !open);
+                })}
         />
     );
 
@@ -985,7 +1005,11 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                 onChange={setDiffStyle}
                                 fileTreeOpen={fileTreeOpen}
                                 annotationsOpen={annotationsOpen}
-                                onRestoreFiles={() => animateSidebarUpdate(() => setFileTreeOpen(true))}
+                                onRestoreFiles={() =>
+                                    animateSidebarUpdate(() => {
+                                        if (compactLayout) setAnnotationsOpen(false);
+                                        setFileTreeOpen(true);
+                                    })}
                                 onRestoreAnnotations={() => animateSidebarUpdate(() => setAnnotationsOpen(true))}
                                 guideReady={guideReady}
                                 guideOpen={guideOpen}
@@ -1251,6 +1275,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                         />
                     )}
                     <PlanReviewSettings
+                        codeDiffStyle={diffStyle}
+                        onCodeDiffStyleChange={setDiffStyle}
                         mode="code"
                         open={settingsOpen}
                         onClose={() => setSettingsOpen(false)}

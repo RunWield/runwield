@@ -15,6 +15,7 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.js";
 import { prepareExecutionPlanFile } from "./execution-plan-file.js";
+import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { resolveTargetBranchName } from "../worktree.js";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowMetric } from "./metrics.js";
@@ -197,7 +198,14 @@ async function recordResolutionMetric({
     }, cwd).catch(() => {});
 }
 
-export async function resolveValidationExecutionContext({
+/** One validation context resolution verifies each checkout's runtime layout once. */
+export async function resolveValidationExecutionContext(
+    options: ResolveValidationExecutionContextOptions,
+): Promise<ValidationContextResolution> {
+    return await withProjectRuntimeReadScope(() => resolveValidationExecutionContextInScope(options));
+}
+
+async function resolveValidationExecutionContextInScope({
     projectRoot,
     planName,
     triageMeta = {},

@@ -14,9 +14,9 @@ Deno.test("workflow presentation derives current stage and blocker from raw prog
 
     assertEquals(presentation.active, true);
     assertEquals(presentation.plan, "diagram");
-    assertEquals(presentation.currentStage?.id, "mechanical");
-    assertEquals(presentation.currentStage?.state, "blocked");
-    assertEquals(presentation.blocker, "A check failed. The agent must repair it and rerun validation.");
+    assertEquals(presentation.currentStage?.id, "repair");
+    assertEquals(presentation.currentStage?.state, "paused");
+    assertEquals(presentation.blocker, "Work is paused. Open the Session to review the latest result and continue.");
     assertEquals(presentation.action?.kind, "open_plan");
     assertEquals(presentation.connections.some((connection) => connection.kind === "repair_return"), true);
 });
@@ -79,7 +79,7 @@ Deno.test("ready Plans begin at execution with useful step descriptions", () => 
     assertEquals(result.stages.map((stage) => stage.label), [
         "Planning",
         "Execution",
-        "Tests and CI",
+        "Verification Command",
         "AI review",
         "Code Review",
         "Publication",

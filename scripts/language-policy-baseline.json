@@ -104,7 +104,6 @@
     "src/ui/workspace/server.js",
     "src/ui/workspace/server/astro-canonical-data.js",
     "src/ui/workspace/server/astro-owner-data.js",
-    "src/ui/workspace/server/cwd.js",
     "src/ui/workspace/server/plan-adapter.js",
     "src/ui/workspace/server/remote-adapter.js",
     "src/ui/workspace/server/remote-dev-api.js",
