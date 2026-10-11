@@ -69,3 +69,19 @@ Manual verification steps for remote-ssh-development/02-bridge-local-models-and-
 - [ ] Reconnect and confirm the current laptop resources load, with no writes to the remote user's personal profile.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/02-bridge-local-models-and-personal-resources" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/03-guard-remote-session-writer-access" -->
+
+## Guard Remote Session Writer Access
+
+Manual verification steps for remote-ssh-development/03-guard-remote-session-writer-access
+
+- [ ] Over the trusted SSH connection, run a remote turn with a tool call and confirm its messages and results appear in
+      laptop Session history.
+- [ ] Disconnect and reconnect, then resume the Session. Confirm saved history is present and no completed tool action
+      runs again.
+- [ ] Interrupt a save or disconnect during a save. Confirm the operation stops without publishing success, then recover
+      from laptop evidence.
+- [ ] Confirm no remote transcript file appears and the personal-resource mount does not receive Session history.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/03-guard-remote-session-writer-access" -->

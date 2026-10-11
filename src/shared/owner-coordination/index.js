@@ -87,6 +87,9 @@ export { OWNER_CSRF_COOKIE, OWNER_DEVICE_COOKIE, OWNER_DEVICE_MAX_AGE_SECONDS } 
  * @property {(deviceId: string, csrf: string) => ReturnType<typeof verifyDeviceCsrf>} verifyDeviceCsrf
  * @property {(deviceId: string, options?: Parameters<typeof revokeDevice>[2]) => ReturnType<typeof revokeDevice>} revokeDevice
  * @property {() => string | null} getDatabaseEpoch
+ * @property {ReturnType<typeof openFileSessionStore>['readActiveSessionTranscript']} readActiveSessionTranscript
+ * @property {ReturnType<typeof openFileSessionStore>['writeActiveSessionTranscript']} writeActiveSessionTranscript
+ * @property {ReturnType<typeof openFileSessionStore>['migrateActiveSessionTranscript']} migrateActiveSessionTranscript
  * @property {ReturnType<typeof openFileSessionStore>['inspectSessionActivation']} inspectSessionActivation
  * @property {ReturnType<typeof openFileSessionStore>['acquireSessionActivation']} acquireSessionActivation
  * @property {ReturnType<typeof openFileSessionStore>['changeSessionActivationPhase']} changeSessionActivationPhase
@@ -231,6 +234,11 @@ export function openOwnerCoordinationStore(options = {}) {
         verifyDeviceCsrf: (deviceId, csrf) => verifyDeviceCsrf(database, deviceId, csrf),
         revokeDevice: (deviceId, deviceOptions) => revokeDevice(database, deviceId, deviceOptions),
         getDatabaseEpoch: () => getOwnerCoordinationDatabaseEpoch(database.handle),
+        readActiveSessionTranscript: (proof) => sessionStore.readActiveSessionTranscript(proof),
+        writeActiveSessionTranscript: (proof, contents, expectedDigestHex) =>
+            sessionStore.writeActiveSessionTranscript(proof, contents, expectedDigestHex),
+        migrateActiveSessionTranscript: (proof, contents, expectedDigestHex) =>
+            sessionStore.migrateActiveSessionTranscript(proof, contents, expectedDigestHex),
         inspectSessionActivation: (runwieldSessionId) => sessionStore.inspectSessionActivation(runwieldSessionId),
         acquireSessionActivation: (activationOptions) => {
             const project = resolveSessionProject(activationOptions.projectId);
