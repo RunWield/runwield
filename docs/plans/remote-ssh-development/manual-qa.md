@@ -85,3 +85,20 @@ Manual verification steps for remote-ssh-development/03-guard-remote-session-wri
 - [ ] Confirm no remote transcript file appears and the personal-resource mount does not receive Session history.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/03-guard-remote-session-writer-access" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history" -->
+
+## Run and Resume Remote Sessions with Local History
+
+Manual verification steps for remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history
+
+- [ ] Connect with `wld remote <target>`, submit turns that read and edit remote files, and verify local files do not
+      change.
+- [ ] Attach an image in the remote session and verify the model analyzes the image.
+- [ ] Disconnect from the network, run `wld remote sessions` locally, and verify the transcript replays in read-only
+      mode without network access.
+- [ ] Reconnect to the remote host, run `/resume`, and verify the previous session continues with full history.
+- [ ] Stop network transport during an active turn, reconnect, and verify existing history remains without repeated tool
+      calls.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history" -->
