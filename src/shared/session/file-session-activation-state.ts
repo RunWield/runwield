@@ -87,7 +87,39 @@ export function releaseHeldLock(locks: Map<string, HeldFileLock>, proof: FileAct
     }
 }
 
+/** Called only while holding the native lock. Atomic replacement leaves exactly the before or after bytes. */
+export function reconcilePendingTranscriptMigration(manifest: FileSessionManifest, now: string): void {
+    const pending = manifest.activation.pendingMigration;
+    if (!pending) return;
+    const segment = manifest.segments.find((item) => item.segmentId === manifest.currentSegmentId);
+    if (!segment) throw new Error("Session migration transcript is unavailable");
+    const bytes = Deno.readFileSync(segment.transcriptPath);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.length === pending.after.byteLength && digest === pending.after.digestHex) {
+        manifest.activation.baselineByteLength = pending.after.byteLength;
+        manifest.activation.baselineDigestHex = pending.after.digestHex;
+        segment.headerVersion = pending.headerVersion;
+        if (manifest.generation) {
+            const generation = manifest.generation.generation + 1;
+            manifest.generation = {
+                ...manifest.generation,
+                ...pending.after,
+                currentSegmentId: manifest.currentSegmentId,
+                generation,
+                operationId: manifest.activation.operationId ?? manifest.generation.operationId,
+                fence: manifest.fence,
+                committedAt: now,
+            };
+            manifest.activation.expectedGeneration = generation;
+        }
+    } else if (bytes.length !== pending.beforeByteLength || digest !== pending.beforeDigestHex) {
+        throw new Error("Session migration bytes do not match saved intent");
+    }
+    delete manifest.activation.pendingMigration;
+}
+
 export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, now: string): void {
+    reconcilePendingTranscriptMigration(manifest, now);
     if (manifest.activation.state !== "active") return;
     const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
     if (!current) {
