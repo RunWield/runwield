@@ -30,7 +30,7 @@ project state was not run because that state was required.
 ## Deferred Work
 
 Investigate the remaining `deno task ci` failures in `src/shared/workflow/validation-publication-pause.test.js`,
-`src/ui/tui/golden-scenarios/project-workflow.test.js`, and
+`src/ui/tui/golden-scenarios/project-workflow.test.ts`, and
 `src/ui/tui/golden-scenarios/repaired-merge-publication.test.ts`. Run the external manual recovery check when the
 required project state is available.
 

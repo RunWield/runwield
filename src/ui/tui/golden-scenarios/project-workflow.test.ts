@@ -6,15 +6,19 @@ import {
     twoChildProjectContinuationScenario,
 } from "./project-workflow.js";
 
-const scenarioExportNames = new Map(
-    /** @type {Array<[unknown, string]>} */ ([
-        [projectPlanReviewScenario, "projectPlanReviewScenario"],
-        [twoChildProjectContinuationScenario, "twoChildProjectContinuationScenario"],
-        [projectChildCiFailureStopScenario, "projectChildCiFailureStopScenario"],
-    ]),
-);
+type ProjectWorkflowScenario =
+    & (typeof projectWorkflowScenarios)[number]
+    & Partial<Pick<typeof twoChildProjectContinuationScenario, "timeoutMs">>;
 
-for (const scenario of projectWorkflowScenarios) {
+const scenarios: ProjectWorkflowScenario[] = projectWorkflowScenarios;
+
+const scenarioExportNames = new Map<ProjectWorkflowScenario, string>([
+    [projectPlanReviewScenario, "projectPlanReviewScenario"],
+    [twoChildProjectContinuationScenario, "twoChildProjectContinuationScenario"],
+    [projectChildCiFailureStopScenario, "projectChildCiFailureStopScenario"],
+]);
+
+for (const scenario of scenarios) {
     Deno.test({
         name: `golden PROJECT workflow: ${scenario.name}`,
         fn: async () => {
@@ -22,7 +26,7 @@ for (const scenario of projectWorkflowScenarios) {
             const result = await runGoldenScenarioChildProcess({
                 scenarioModule: "src/ui/tui/golden-scenarios/project-workflow.js",
                 exportName: scenarioExportNames.get(scenario) || "",
-                timeoutMs: /** @type {{ timeoutMs?: number }} */ (scenario).timeoutMs || 30000,
+                timeoutMs: scenario.timeoutMs || 30000,
             });
             assertEquals(result.result.actor.remaining, []);
         },
