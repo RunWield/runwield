@@ -2356,11 +2356,11 @@ async function runComposedTuiScenario(scenario, options) {
                     const remotePath = await runGoldenGit(["remote", "get-url", remoteName], Deno.cwd()).catch(
                         () => "",
                     );
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     let matchedStatus = false;
                     while (!matchedStatus) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for Plan ${planName} status ${
                                     [...expectedStatuses].join(" or ")
@@ -2466,10 +2466,10 @@ async function runComposedTuiScenario(scenario, options) {
                     const planName = String(typed.planName || "");
                     const expectedStatuses = new Set((Array.isArray(typed.statuses) ? typed.statuses : []).map(String));
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     while (!expectedStatuses.has(latestStatus)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for ${planName} worktree status ${
                                     [...expectedStatuses].join(" or ")

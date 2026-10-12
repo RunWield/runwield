@@ -48,7 +48,9 @@ Model usage becomes a generation. CLI turn aggregates become one generation name
 Core keeps overlapping alternative measurements in local history but excludes them from all metrics exports, so no
 alternative request generations duplicate the aggregate totals. Other facts use fixed names such as `RunWield tool` and
 `RunWield validation`. No extra parent observations are sent. SHA-256 domain-separated IDs produce 32-hex-character
-trace IDs and 16-hex-character span and parent IDs. Related facts share plan, session, or execution correlation. Child
+trace IDs and 16-hex-character span and parent IDs. All observations for one Core Project share a trace, including
+independent operations. Session, Plan, and execution references remain correlation metadata. Project-scoped traces keep
+parent links valid across delegated Sessions and Plan changes without parent lookups or delivery-order state. Child
 spans point to the deterministic ID of their execution's completion span; nested execution spans point to their parent
 execution. This package does not invent a parent total or send a synthetic parent span.
 

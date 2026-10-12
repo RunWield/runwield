@@ -425,11 +425,11 @@ async function map(o: MetricsExportObservation): Promise<Mapped> {
     if (model) {
         attributes.push(attribute("langfuse.observation.model.name", model));
     }
-    const group = metadata.planRef ?? metadata.sessionRef ??
-        metadata.parentExecutionRef ?? metadata.executionRef ?? o.observationId;
+    // Only the Project reference is shared across arbitrary execution trees.
+    // Parent Session/Plan references are not available in this single-observation contract.
     const parent = o.kind === "execution_finished" ? metadata.parentExecutionRef : metadata.executionRef;
     const span: Span = {
-        traceId: await id("trace", `${o.projectRef}:${group}`, 32),
+        traceId: await id("trace", o.projectRef, 32),
         spanId: o.kind === "execution_finished" &&
                 typeof metadata.executionRef === "string"
             ? await id("execution", metadata.executionRef, 16)

@@ -325,6 +325,43 @@ Deno.test("model and tool spans point to the exported execution, and nested exec
         assertEquals(nested.traceId, execution.traceId);
     });
 });
+Deno.test("cross-Session execution trees share a trace even when children arrive first", async () => {
+    await withServer(async ({ context, requests }) => {
+        const root = observation();
+        const child = {
+            ...root,
+            observationId: "a".repeat(64),
+            sessionRef: "6".repeat(64),
+            executionRef: "7".repeat(64),
+            parentExecutionRef: root.executionRef,
+        };
+        const grandchild = {
+            ...child,
+            observationId: "b".repeat(64),
+            sessionRef: "8".repeat(64),
+            executionRef: "9".repeat(64),
+            parentExecutionRef: child.executionRef,
+            planRef: "f".repeat(64),
+        };
+        await deliver({ ...grandchild, kind: "execution_finished" }, context);
+        await deliver({ ...child, kind: "tool_call_finished" }, context);
+        await deliver({ ...child, kind: "execution_finished", observationId: "c".repeat(64) }, context);
+        await deliver(child, context);
+        await deliver({ ...root, kind: "execution_finished", observationId: "d".repeat(64) }, context);
+        const [nested, tool, execution, model, parent] = requests.map(span);
+        assertEquals(execution.parentSpanId, parent.spanId);
+        assertEquals(nested.parentSpanId, execution.spanId);
+        assertEquals(tool.parentSpanId, execution.spanId);
+        assertEquals(model.parentSpanId, execution.spanId);
+        for (const s of [nested, tool, execution, model]) {
+            assertEquals(s.traceId, parent.traceId);
+        }
+        assertEquals(metadata(execution).sessionRef, child.sessionRef);
+        assertEquals(metadata(nested).planRef, grandchild.planRef);
+        await deliver({ ...root, projectRef: "e".repeat(64) }, context);
+        assert(span(requests[5]).traceId !== parent.traceId);
+    });
+});
 Deno.test("own allowlists reject malicious extra fields, text, paths, credentials, and resource content", async () => {
     const o = observation({
         prompt: "SECRET_PROMPT",
