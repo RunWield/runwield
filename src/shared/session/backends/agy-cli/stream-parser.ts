@@ -4,6 +4,7 @@ import { isAgyAuthFailure, isAgyMcpUnavailable, isAgyPermissionDenied, sanitizeA
 export interface AgyCliUsage {
     inputTokens: number | null;
     outputTokens: number | null;
+    thinkingTokens: number | null;
     cacheReadTokens: number | null;
     cacheWriteTokens: number | null;
 }
@@ -82,6 +83,7 @@ type AgyCliStreamEvent =
 const emptyUsage: AgyCliUsage = {
     inputTokens: null,
     outputTokens: null,
+    thinkingTokens: null,
     cacheReadTokens: null,
     cacheWriteTokens: null,
 };
@@ -115,6 +117,7 @@ function readUsage(value: JsonValue | undefined): AgyCliUsage {
             asNullableNumber(usage.input),
         outputTokens: asNullableNumber(usage.output_tokens) ?? asNullableNumber(usage.outputTokens) ??
             asNullableNumber(usage.output),
+        thinkingTokens: asNullableNumber(usage.thinking_tokens) ?? asNullableNumber(usage.thinkingTokens),
         cacheReadTokens: asNullableNumber(usage.cache_read_tokens) ?? asNullableNumber(usage.cacheReadTokens),
         cacheWriteTokens: asNullableNumber(usage.cache_write_tokens) ?? asNullableNumber(usage.cacheWriteTokens),
     };

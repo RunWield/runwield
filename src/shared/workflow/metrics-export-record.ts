@@ -1,5 +1,6 @@
 /** The only owner of export payload contents. Never copy a journal row. */
 import type { MetricsExportHostIdentity } from "./metrics-export-grants.ts";
+import { normalizeObservedTime } from "./metrics.js";
 
 export interface MetricsJournalRow {
     v: number;
@@ -12,7 +13,13 @@ export interface MetricsJournalRow {
     planId?: string;
     parentExecutionId?: string;
     attemptId?: string;
-    [key: string]: string | number | boolean | null | undefined | MetricsAvailability;
+    [key: string]:
+        | string
+        | number
+        | boolean
+        | null
+        | undefined
+        | MetricsAvailability;
 }
 export interface MetricsAvailability {
     tools?: string;
@@ -39,10 +46,16 @@ export interface MetricsExportObservation {
     executionRef?: string;
     parentExecutionRef?: string;
     attemptRef?: string;
-    fields: Record<string, string | number | boolean | null | MetricsAvailability>;
+    fields: Record<
+        string,
+        string | number | boolean | null | MetricsAvailability
+    >;
 }
 const FIELDS: Record<MetricsExportKind, string[]> = {
     model_usage: [
+        "startedAt",
+        "endedAt",
+        "reasoningTokens",
         "usageKind",
         "provider",
         "model",
@@ -59,7 +72,14 @@ const FIELDS: Record<MetricsExportKind, string[]> = {
         "aggregationBasis",
         "inputCacheBasis",
     ],
-    execution_finished: ["backend", "outcome", "reason", "elapsedMs", "callCount", "coverage"],
+    execution_finished: [
+        "backend",
+        "outcome",
+        "reason",
+        "elapsedMs",
+        "callCount",
+        "coverage",
+    ],
     tool_call_finished: [
         "toolName",
         "outcome",
@@ -89,17 +109,35 @@ const FIELDS: Record<MetricsExportKind, string[]> = {
     workflow_abandoned: ["outcome"],
 };
 export function isExportableMetric(row: MetricsJournalRow): boolean {
-    return row.v === 2 && Object.hasOwn(FIELDS, row.event);
+    // Alternative measurements overlap the authoritative total. Keep them local.
+    return row.v === 2 && Object.hasOwn(FIELDS, row.event) &&
+        row.aggregationBasis !== "alternative";
 }
 export async function metricsExportReference(
     identity: MetricsExportHostIdentity,
     kind: string,
     id: string,
 ): Promise<string> {
-    const bytes = Uint8Array.from(identity.referenceKey.match(/../g) ?? [], (pair) => parseInt(pair, 16));
-    const key = await crypto.subtle.importKey("raw", bytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${kind}:${id}`));
-    return Array.from(new Uint8Array(signature), (b) => b.toString(16).padStart(2, "0")).join("");
+    const bytes = Uint8Array.from(
+        identity.referenceKey.match(/../g) ?? [],
+        (pair) => parseInt(pair, 16),
+    );
+    const key = await crypto.subtle.importKey(
+        "raw",
+        bytes,
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+    );
+    const signature = await crypto.subtle.sign(
+        "HMAC",
+        key,
+        new TextEncoder().encode(`${kind}:${id}`),
+    );
+    return Array.from(
+        new Uint8Array(signature),
+        (b) => b.toString(16).padStart(2, "0"),
+    ).join("");
 }
 
 export async function buildMetricsExportObservation(
@@ -118,7 +156,11 @@ export async function buildMetricsExportObservation(
             `${projectRoot}:${row.historyEpoch}:${row.eventId}`,
         ),
         occurredAt: row.ts,
-        ownerRef: await metricsExportReference(identity, "owner", identity.ownerRef),
+        ownerRef: await metricsExportReference(
+            identity,
+            "owner",
+            identity.ownerRef,
+        ),
         projectRef: await metricsExportReference(identity, "project", projectRoot),
         fields: {},
     };
@@ -132,15 +174,34 @@ export async function buildMetricsExportObservation(
         ] as const
     ) {
         const value = row[local];
-        if (typeof value === "string") observation[reference] = await metricsExportReference(identity, local, value);
+        if (typeof value === "string") {
+            observation[reference] = await metricsExportReference(
+                identity,
+                local === "parentExecutionId" ? "executionId" : local,
+                value,
+            );
+        }
     }
     for (const field of FIELDS[kind]) {
         const value = row[field];
+        if (field === "startedAt" || field === "endedAt") {
+            // Do not let general safe-name validation accept malformed time strings.
+            observation.fields[field] = typeof value === "string" ? normalizeObservedTime(value) : null;
+            continue;
+        }
+        if (field === "reasoningTokens") {
+            observation.fields[field] = typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+                ? value
+                : null;
+            continue;
+        }
         if (value === undefined) continue;
         if (field === "coverage" && value && typeof value === "object") {
             const coverage: MetricsAvailability = {};
             for (const part of ["tools", "usage", "context"] as const) {
-                if (["complete", "partial", "unavailable"].includes(value[part] ?? "")) coverage[part] = value[part];
+                if (
+                    ["complete", "partial", "unavailable"].includes(value[part] ?? "")
+                ) coverage[part] = value[part];
             }
             observation.fields.coverage = Object.freeze(coverage);
         } else if (typeof value === "string") {

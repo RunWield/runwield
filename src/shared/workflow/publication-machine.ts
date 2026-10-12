@@ -217,6 +217,7 @@ async function publishedEvidence(
                 "--git-dir",
                 inspectionRoot,
                 "fetch",
+                "--no-auto-maintenance",
                 "--no-tags",
                 remote.url,
                 `refs/heads/${remote.branch}`,

@@ -447,21 +447,23 @@ export class ClaudeCliExecutionSession {
                         });
                     },
                     onUsage: (observation) => {
-                        observe(
-                            recorder.recordModelUsage({
-                                sourceId: observation.sourceId,
-                                inputTokens: observation.usage.inputTokens,
-                                outputTokens: observation.usage.outputTokens,
-                                cacheReadTokens: observation.usage.cacheReadTokens,
-                                cacheWriteTokens: observation.usage.cacheWriteTokens,
-                                costUsd: observation.usage.costUsd,
-                                costSource: observation.usage.costUsd === null ? "unavailable" : "reported",
-                                inputCacheBasis: "unknown",
-                                aggregationBasis: observation.aggregationBasis,
-                                usageKind: observation.aggregationBasis === "alternative" ? "request" : "turn",
-                                model: observation.model || this.model.id,
-                            }),
-                        );
+                        observe(recorder.recordModelUsage({
+                            sourceId: observation.sourceId,
+                            inputTokens: observation.usage.inputTokens,
+                            outputTokens: observation.usage.outputTokens,
+                            cacheReadTokens: observation.usage.cacheReadTokens,
+                            cacheWriteTokens: observation.usage.cacheWriteTokens,
+                            costUsd: observation.usage.costUsd,
+                            costSource: observation.usage.costUsd === null ? "unavailable" : "reported",
+                            inputCacheBasis: "excludes_cache",
+                            startedAt: observation.aggregationBasis === "alternative"
+                                ? null
+                                : recorder.getObservedTurnStartedAt(),
+                            endedAt: observation.aggregationBasis === "alternative" ? null : new Date().toISOString(),
+                            aggregationBasis: observation.aggregationBasis,
+                            usageKind: observation.aggregationBasis === "alternative" ? "request" : "turn",
+                            model: observation.model || this.model.id,
+                        }));
                     },
                     onNativeToolStart: (call) => {
                         observe(recorder.recordResponseLatency("first_response"));

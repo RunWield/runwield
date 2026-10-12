@@ -3305,6 +3305,9 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                     summarizationRetryAttempt = null;
                 }
                 break;
+            case "message_end":
+                if (event.message.role === "assistant") recorder.recordPiAssistantMessageEnd(event.message);
+                break;
             case "message_update":
                 void recorder.recordResponseLatency("first_response");
                 if (event.assistantMessageEvent.type === "text_delta") {
