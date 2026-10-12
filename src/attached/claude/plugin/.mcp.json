@@ -2,6 +2,7 @@
     "mcpServers": {
         "runwield": {
             "command": "wld",
+            "timeout": 3600000,
             "args": [
                 "attached",
                 "mcp"

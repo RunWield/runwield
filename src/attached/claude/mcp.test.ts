@@ -16,6 +16,7 @@ import {
 } from "../../shared/attached/attached-test-fixture.ts";
 import type {
     AttachedJsonObject,
+    AttachedJsonValue,
     AttachedOperationName,
     AttachedOperationResult,
 } from "../../shared/attached/operations.ts";
@@ -23,6 +24,44 @@ import type {
 import type { AttachedWorkflowRecord } from "../../shared/attached/record-store.ts";
 
 type Carrier = (operation: AttachedOperationName, input: AttachedJsonObject) => Promise<AttachedOperationResult>;
+
+function schemaObject(value: AttachedJsonValue | undefined): AttachedJsonObject {
+    assert(value !== null && typeof value === "object" && !Array.isArray(value));
+    return value;
+}
+
+/** Assert the schema that a real MCP client receives, not a locally constructed descriptor. */
+function assertReviewPayloadSchema(schema: AttachedJsonObject) {
+    const payload = schemaObject(schemaObject(schema.properties).payload);
+    const properties = schemaObject(payload.properties);
+    const finding = schemaObject(schemaObject(properties.findings).items);
+    assertEquals(finding.additionalProperties, false);
+    assertEquals(finding.required, ["title"]);
+    assertEquals(finding.properties, {
+        id: { type: "string", minLength: 1, maxLength: 200 },
+        title: { type: "string", minLength: 1, maxLength: 4096 },
+        requirement: { type: "string", minLength: 1, maxLength: 4096 },
+        evidence: { type: "string", minLength: 1, maxLength: 4096 },
+        status: { type: "string", enum: ["new", "fix_confirmed", "fix_rejected"] },
+        resolved: { type: "boolean" },
+        rejectionReason: { type: "string", minLength: 1, maxLength: 4096 },
+        origin: { type: "string", enum: ["missed_original", "repair_regression"] },
+    });
+    const advisory = schemaObject(schemaObject(properties.advisories).items);
+    assertEquals(advisory.additionalProperties, false);
+    assertEquals(advisory.required, ["title"]);
+    assertEquals(advisory.properties, {
+        title: { type: "string", minLength: 1, maxLength: 4096 },
+        detail: { type: "string", minLength: 1, maxLength: 4096 },
+    });
+    const note = schemaObject(schemaObject(properties.integrationNotes).items);
+    assertEquals(note.additionalProperties, false);
+    assertEquals(note.required, ["check"]);
+    assertEquals(note.properties, {
+        check: { type: "string", minLength: 1, maxLength: 4096 },
+        where: { type: "string", minLength: 1, maxLength: 4096 },
+    });
+}
 
 /** Each project generates its own workflow and action IDs; compare everything else. */
 function withoutGeneratedIds(results: AttachedOperationResult[], workflowId: string) {
@@ -72,11 +111,25 @@ Deno.test("the CLI and the MCP server return equal result objects for the same i
             "plan_written",
             "start_execution",
             "task_completed",
+            "start_validation",
+            "review_diff",
+            "review_complete",
+            "validation_decision",
         ]);
         for (const tool of tools.tools) {
             assertEquals(tool.inputSchema.required?.includes("evidence"), false);
             assertEquals(Object.hasOwn(tool.inputSchema.properties ?? {}, "evidence"), false);
         }
+
+        const review = tools.tools.find((tool) => tool.name === "review_complete");
+        assert(review);
+        const reviewSchema: AttachedJsonObject = JSON.parse(JSON.stringify(review.inputSchema));
+        assertReviewPayloadSchema(reviewSchema);
+        const decision = tools.tools.find((tool) => tool.name === "validation_decision");
+        assert(decision);
+        const decisionSchema: AttachedJsonObject = JSON.parse(JSON.stringify(decision.inputSchema));
+        const decisionPayload = schemaObject(schemaObject(decisionSchema.properties).payload);
+        assertEquals(schemaObject(schemaObject(decisionPayload.properties).answer).additionalProperties, false);
 
         const viaCli = await runJourney(async (operation, input) =>
             (await spawnAttachedCli(operation, cliProject, input)).result
