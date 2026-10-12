@@ -25,6 +25,7 @@ import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import type { TriageOutcome } from "../workflow/triage-outcome.ts";
 import type {
     AttachedExecution,
+    AttachedOperationName,
     AttachedOperationResult,
     AttachedPendingConsent,
     AttachedPlanReference,
@@ -49,6 +50,7 @@ export interface AcceptedOperation {
 }
 
 export interface AttachedWorkflowRecord {
+    validation?: AttachedValidationCheckpoint | null;
     schemaVersion: 1;
     workflowId: string;
     revision: number;
@@ -126,7 +128,12 @@ function recordPath(workflowsDir: string, workflowId: string): string {
 async function readRecordAt(path: string): Promise<AttachedWorkflowRecord | null> {
     try {
         const record: AttachedWorkflowRecord = JSON.parse(await Deno.readTextFile(path));
-        return { ...record, execution: record.execution ?? null, pendingConsent: record.pendingConsent ?? null };
+        return {
+            ...record,
+            execution: record.execution ?? null,
+            pendingConsent: record.pendingConsent ?? null,
+            validation: record.validation ?? null,
+        };
     } catch (error) {
         if (error instanceof Deno.errors.NotFound) return null;
         throw error;
@@ -313,5 +320,49 @@ export async function transactAttachedWorkflowRecord<Result>(
         return { status: "committed", result: decision.result };
     } finally {
         await releaseLock(lockPath, token);
+    }
+}
+
+/** Carrier checkpoint only. The shared validation checkpoint owns all gate policy. */
+export interface AttachedValidationCheckpoint {
+    actionId?: string;
+    request?: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
+    coverage: import("../workflow/review-inspection.ts").ReviewDiffSpan[];
+    resume?: import("../workflow/validation-host-contract.ts").ValidationHostResume;
+    operationId?: string;
+    operation?: AttachedOperationName;
+    evidence?: RecordedEvidence;
+    holder?: AttachedValidationHolder;
+    reason?: string;
+    resultKind?: "paused" | "failed";
+    recovery?: import("../workflow/validation-recovery.ts").ValidationRecoveryResult;
+}
+
+export interface AttachedValidationHolder {
+    token?: string;
+    pid: number;
+    hostname: string;
+}
+
+/** A settled call must not keep a live MCP process as its operation owner.
+ * This receipt uses the claim token, independently of a contended workflow lock.
+ */
+export async function settleAttachedValidationHolder(location: AttachedWorkflowLocation, token: string): Promise<void> {
+    await Deno.writeTextFile(join(location.workflowsDir, `validation-${token}.settled`), "settled\n", {
+        createNew: true,
+    });
+}
+
+export async function attachedValidationHolderSettled(
+    location: AttachedWorkflowLocation,
+    holder: AttachedValidationHolder,
+): Promise<boolean> {
+    if (!holder.token) return false;
+    try {
+        await Deno.stat(join(location.workflowsDir, `validation-${holder.token}.settled`));
+        return true;
+    } catch (error) {
+        if (error instanceof Deno.errors.NotFound) return false;
+        throw error;
     }
 }

@@ -42,6 +42,21 @@ const WORKER_ADDENDUM = [
 ].join("\n");
 
 const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
+    reviewer: [
+        "## Attached independent reviewer — overrides Core lifecycle instructions above",
+        "- You are a fresh Claude subagent. Do not edit files. Inspect the exact candidate with RunWield MCP review_diff directly.",
+        "- Use the handed-off workflowId, revision and actionId in each envelope. Each read returns the next revision; use it for the next read. List does not count as coverage. Read every required diff byte.",
+        "- The coordinator must supply the review_complete tool's payload schema verbatim with the full reviewer prompt, including on correction. Use that schema for the exact structured outcome; do not invent field names. If it is missing, return the missing schema as a blocker.",
+        "- Do not call review_complete or any other lifecycle operation. Return the structured review_complete outcome and the latest workflow revision to the coordinating conversation. The coordinator must submit your outcome unchanged, not map or reinterpret its fields.",
+        "- Core owns review policy, finding identity, candidate freshness and approval. Do not claim Verified or publish.",
+    ].join("\n"),
+    "reviewer-feedback-engineer": [
+        "## Attached repair worker — overrides Core lifecycle instructions above",
+        "- You are a fresh Claude-hosted repair worker. Use only the handed-off checkout and focused repair packet. Do not repeat the original implementation or create host worktree isolation.",
+        "- Never edit, clean, stash, reset, or relocate the invoking checkout. Do not commit, push, merge, or publish.",
+        "- Do not call any RunWield lifecycle tool, MCP operation, CLI, or TUI, including task_completed. Return a per-item Markdown bullet report to the coordinating conversation; it submits task_completed.message.",
+        "- A blocked item is not completion. Return its identity, blocker, and needed recovery in plain text.",
+    ].join("\n"),
     engineer: WORKER_ADDENDUM,
     "frontend-engineer": WORKER_ADDENDUM,
     router: "- Report Triage with `triage_report`. Put the Core `triage_report` arguments (`routingIntent`, " +
@@ -63,12 +78,16 @@ const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
 
 /** The effective layered instructions for one host role, ready to hand to Claude Code. */
 export async function resolveAttachedRoleInstructions(projectRoot: string, role: AttachedHostRole): Promise<string> {
+    // The engine request carries the current discovery/verify reviewer prompt.
+    if (role === "reviewer") return ROLE_ADDENDUM.reviewer;
     const agent = await loadAgentDef(role, projectRoot);
     const bundledAgentDefsPath = await getBundledAgentDefsPath();
     return [
         agent.rolePrompt.replaceAll("{{BUNDLED_AGENT_DEFS_DIR}}", bundledAgentDefsPath),
         buildBridgedToolPromptAppendix([], "Claude Code", agent.tools).trim(),
-        ...(role === "engineer" || role === "frontend-engineer" ? [] : [ENVELOPE_ADDENDUM]),
+        ...(role === "engineer" || role === "frontend-engineer" || role === "reviewer-feedback-engineer"
+            ? []
+            : [ENVELOPE_ADDENDUM]),
         ROLE_ADDENDUM[role],
     ].join("\n\n");
 }

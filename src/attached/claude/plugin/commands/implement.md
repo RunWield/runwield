@@ -21,9 +21,10 @@ Restore RunWield implementation in this project. Claude Code owns every model ca
    `status` after interruption to restore the same authority, not another `start_execution` call. Repair rejections
    through the reported recovery path; never bypass guards.
 5. For `implemented`, report Core's saved Git checkpoint for worktree execution, not the worker's earlier uncommitted
-   state. Mention the disclosed `.gitignore` exception. Implementation is recorded, not Verified; validation and
-   publication are later Preview steps (children 05 and 06). For planning or review actions, follow
-   `/runwield:plan-review`. If no workflow exists, report that fact; do not activate a new request.
+   state. Mention the disclosed `.gitignore` exception. Implementation is recorded, not Verified. Immediately follow
+   `/runwield:validate` to run Core validation with fresh Claude review and repair workers. Publication remains pending.
+   For planning or review actions, follow `/runwield:plan-review`. If no workflow exists, report that fact; do not
+   activate a new request.
 
 Stay in Claude Code and the browser. Use no RunWield CLI or TUI commands. Use host tools normally; no permission hooks
 or tool restrictions are added.

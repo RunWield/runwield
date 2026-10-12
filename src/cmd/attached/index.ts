@@ -13,7 +13,7 @@ import { ATTACHED_OPERATIONS, MAX_ATTACHED_INPUT_BYTES } from "../../shared/atta
 import { VERSION } from "../../shared/version.js";
 
 const USAGE =
-    'Usage: wld attached <activate|triage_report|status|plan_written|start_execution|task_completed> < input.json\n       wld attached mcp\nstatus input: {"workflowId": "..."} or {} for the latest open workflow';
+    'Usage: wld attached <activate|triage_report|status|plan_written|start_execution|task_completed|start_validation|review_diff|review_complete|validation_decision> < input.json\n       wld attached mcp\nstatus input: {"workflowId": "..."} or {} for the latest open workflow';
 
 /** Read stdin, stopping one byte past the limit so oversized input is still rejected as too large. */
 async function readBoundedStdin(): Promise<string> {

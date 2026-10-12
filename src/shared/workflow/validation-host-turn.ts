@@ -82,3 +82,34 @@ export async function continueHostTurnValidation(
         recovery: result.recovery,
     };
 }
+
+/** Reconcile a durable host claim after Core ran but the carrier lost its final write.
+ * Only checkpoint evidence of consumption permits dropping the old outcome.
+ */
+export async function reconcileConsumedHostResume(projectRoot: string, planName: string, resume: ValidationHostResume) {
+    const { resolveWorkflowPlanLocation } = await import("./plan-location.ts");
+    const { sameHostIdentity } = await import("./validation-host-contract.ts");
+    const source = await resolveWorkflowPlanLocation(projectRoot, planName, { migrateRegistry: false, readOnly: true });
+    const checkpoint = source.plan?.attrs.validationCheckpoint;
+    if (
+        !checkpoint || checkpoint.attemptId !== resume.identity.attemptId ||
+        checkpoint.generation !== resume.identity.generation
+    ) return resume;
+    if (source.plan?.attrs.status === "reviewed") return undefined;
+    if (resume.kind === "reviewer") {
+        const round = checkpoint.reviewState?.semanticRound || 0;
+        if (
+            round >= resume.identity.semanticRound || checkpoint.state === "awaiting_repair" ||
+            (checkpoint.hostReview?.semanticRound === resume.identity.semanticRound &&
+                checkpoint.hostReview.correctionCount > resume.identity.correctionCount)
+        ) return undefined;
+    }
+    if (resume.kind === "task_completed" && checkpoint.lastSettledOperationId === resume.identity.repairGeneration) {
+        return undefined;
+    }
+    if (
+        resume.kind === "decision" &&
+        (!checkpoint.pendingHostDecision || !sameHostIdentity(checkpoint.pendingHostDecision.identity, resume.identity))
+    ) return undefined;
+    return resume;
+}

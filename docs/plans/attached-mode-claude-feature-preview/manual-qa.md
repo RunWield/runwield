@@ -106,3 +106,36 @@ Manual verification steps for attached-mode-claude-feature-preview/05a-run-workf
 - [ ] Start validation through a Core Session. Confirm its review, repair, and decision behavior remains unchanged.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/05a-run-workflow-validation-without-a-core-session" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/05-validate-with-claude-owned-review-and-repair-workers" -->
+
+## Validate with Claude-owned review and repair workers
+
+- [ ] Record the Claude Code version. Launch with `MCP_TOOL_TIMEOUT=600000` and the local plugin. After implementation,
+      confirm Claude calls `start_validation` without claiming Verified or publication.
+- [ ] Make the configured CI command fail. Confirm Core returns a repair request and Claude dispatches a fresh repair
+      worker in the existing execution checkout, not another host worktree. The worker returns a per-item bullet report;
+      the conversation submits `task_completed`, then Core independently reruns CI.
+- [ ] Confirm a fresh reviewer receives Core's full instructions and RunWield MCP access. Confirm the reviewer itself
+      calls `review_diff` and uses the returned revision on each read. The conversation must not relay reads or invent
+      coverage. Missing subagent MCP access must produce an explicit capability blocker.
+- [ ] Submit approval after only listing files or reading part of a diff. Confirm Core requests a correction. Submit a
+      stale action or change the candidate after review. Confirm Core rejects the outcome and validation can recover.
+- [ ] Reject a semantic review with a named finding. Confirm a fresh focused repair worker preserves its ID, and Core's
+      next reviewer confirms or rejects that fix under the same identity. No implementation worker is reused for review.
+- [ ] Stop Core during CI. In a fresh conversation run `/runwield:validate`; confirm the saved claim resumes with no
+      competing worker. Repeat an accepted operation ID and confirm CI and evidence are not repeated.
+- [ ] Run a real configured CI check longer than five minutes (for example, 310 seconds). Confirm MCP progress arrives
+      at 30-second intervals and ends with the call.
+- [ ] Confirm user decisions are asked in Claude and sent back exactly, not automatically selected by the coordinator.
+- [ ] Confirm validation ends at Plan `reviewed` and Attached `awaiting_delivery`. No commit, push, merge, or Verified
+      claim is made by this validation handoff. Confirm the invoking checkout remains preserved.
+
+Live acceptance evidence: Claude Code 2.1.296 waited 320 seconds on one `start_validation` call without retrying. After
+the MCP server stopped during review, a fresh conversation restored the same workflow with `/runwield:validate`. Fresh
+reviewers read the diff directly through MCP, a fresh repair worker fixed the blocking value requirement, and an
+independent reviewer confirmed the fix. Core returned `reviewed` and `awaiting_delivery`, not Verified. A second live
+workflow exercised the explicit outcome schema and a correction with a fresh reviewer; worker outcomes were submitted
+without coordinator rewrites. Logs are in `/tmp/runwield-child05-live/` on the acceptance machine.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/05-validate-with-claude-owned-review-and-repair-workers" -->
