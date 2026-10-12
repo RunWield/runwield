@@ -25,6 +25,7 @@ export async function runTerminalAuthSetup(argv: string[] = []): Promise<Termina
     let view: ChatView | null = null;
     try {
         view = await createChatView({
+            documentLinks: null,
             tui,
             sessionRuntime: null,
             projectRoot,

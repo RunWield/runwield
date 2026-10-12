@@ -1,6 +1,49 @@
 /** Host contracts used by the embedded Plannotator code-review components. */
 
 import { isAbsolute, relative, resolve } from "node:path";
+import { getCwd } from "../../../../constants.js";
+
+export interface WorkspaceFile {
+    /** Canonical absolute path. Keep this inside the host, never in browser payloads. */
+    absolutePath: string;
+    /** Canonical Project-relative path. */
+    path: string;
+}
+
+export interface WorkspaceFileOptions {
+    allowRelativeTraversal?: boolean;
+}
+
+/**
+ * Resolve one regular file without scanning the Project. Both lexical and final
+ * real paths must remain inside the canonical root. Synchronous for TUI rendering.
+ * Missing files return null; unsafe paths throw a generic PermissionDenied error.
+ * Paths are already decoded by the caller; do not decode query parameters twice.
+ */
+export function resolveWorkspaceFile(
+    projectRoot: string,
+    filePath: string,
+    options: WorkspaceFileOptions = {},
+): WorkspaceFile | null {
+    if (
+        !filePath || filePath.includes("\0") || filePath.includes("\\") || isAbsolute(filePath) ||
+        /^[a-z][a-z\d+.-]*:/i.test(filePath) ||
+        (!options.allowRelativeTraversal && filePath.split("/").includes(".."))
+    ) throw new Deno.errors.PermissionDenied("File path is outside this review workspace.");
+
+    try {
+        const root = Deno.realPathSync(projectRoot);
+        const candidate = resolve(root, filePath);
+        if (!isPathInside(candidate, root)) throw new Deno.errors.PermissionDenied();
+        const absolutePath = Deno.realPathSync(candidate);
+        if (!isPathInside(absolutePath, root)) throw new Deno.errors.PermissionDenied();
+        if (!Deno.statSync(absolutePath).isFile) return null;
+        return { absolutePath, path: relative(root, absolutePath).replaceAll("\\", "/") };
+    } catch (error) {
+        if (error instanceof Deno.errors.NotFound || error instanceof Deno.errors.NotADirectory) return null;
+        throw error;
+    }
+}
 
 export interface ReviewFileContentOptions {
     cwd?: string;
@@ -26,7 +69,7 @@ export async function reviewFileContentApi(
     const baseDir = url.searchParams.get("base")?.trim() || "";
     if (!filePath) return Response.json({ error: "File path required." }, { status: 400 });
 
-    const cwd = resolve(options.cwd || Deno.cwd());
+    const cwd = resolve(options.cwd || getCwd());
     if (
         !hasSafeCandidate(filePath, baseDir, cwd) ||
         (oldPath && !hasSafeCandidate(stripLineReference(oldPath), baseDir, cwd))
@@ -95,8 +138,8 @@ async function readWorkspaceTextFile(
     baseDir: string,
 ): Promise<WorkspaceTextFile | null> {
     const realCwd = await Deno.realPath(cwd);
-    for (const candidate of candidatePaths(cwd, filePath, baseDir)) {
-        if (!isPathInside(candidate, cwd)) continue;
+    for (const candidate of candidatePaths(realCwd, filePath, baseDir)) {
+        if (!isPathInside(candidate, realCwd)) continue;
         const file = await readCandidate(realCwd, candidate);
         if (file) return file;
     }
@@ -104,18 +147,13 @@ async function readWorkspaceTextFile(
 }
 
 async function readCandidate(realCwd: string, candidate: string): Promise<WorkspaceTextFile | null> {
-    try {
-        const realPath = await Deno.realPath(candidate);
-        if (!isPathInside(realPath, realCwd)) throw new Deno.errors.PermissionDenied();
-        const stat = await Deno.stat(realPath);
-        return stat.isFile ? { path: relative(realCwd, realPath), contents: await Deno.readTextFile(realPath) } : null;
-    } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
-        throw error;
-    }
+    const file = resolveWorkspaceFile(realCwd, relative(realCwd, candidate).replaceAll("\\", "/"), {
+        allowRelativeTraversal: true,
+    });
+    return file ? { path: file.path, contents: await Deno.readTextFile(file.absolutePath) } : null;
 }
 
 function isPathInside(path: string, root: string): boolean {
     const rel = relative(resolve(root), resolve(path));
-    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+    return rel === "" || (rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\") && !isAbsolute(rel));
 }

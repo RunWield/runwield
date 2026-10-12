@@ -3,6 +3,7 @@ import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/ass
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
+import { readDeliveryEvidence } from "./delivery-evidence.ts";
 import {
     attachRecorder,
     git,
@@ -424,6 +425,11 @@ Deno.test("Code Review chat repairs rerun CI before reopening the fresh diff", a
     assertEquals(conversations[1].events[0].type, "assistant_text_delta");
     assertEquals(result.kind, "paused");
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.humanReviewDecision, "changes_requested");
+    const evidence = await readDeliveryEvidence(projectRoot, "p", "review-chat-worktree");
+    assertEquals(evidence.entries.filter((entry) => entry.kind === "human").map((entry) => entry.outcome), [
+        "Changes requested",
+    ]);
+    assertEquals(evidence.entries.filter((entry) => entry.kind === "human-revision").length, 1);
 });
 
 Deno.test("human code-review annotations are not duplicated in the engineer repair request", async () => {

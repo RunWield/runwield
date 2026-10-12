@@ -1,3 +1,4 @@
+import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     readDeliveryEvidence,
     saveDeliveredPlanEvidence,
@@ -26,7 +27,6 @@ import { AGENTS, isPlannedChangeClassification } from "../../constants.js";
 import { logValidationFailure } from "./validation-state-errors.ts";
 import { loadPlan, withPlanLock } from "../../plan-store.js";
 import { resolveTargetedWorkRecordSource } from "../work-records/auto-generation.ts";
-import { createQaChecklistGeneratedTool } from "../../tools/qa-checklist-generated.ts";
 import { findEpicManualQaSection } from "../epic-artifacts.ts";
 import { checkpointExecutionWorktree, resolveTargetBranchName } from "../worktree.js";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
@@ -41,7 +41,6 @@ import type {
     ValidationLoopArgs,
     ValidationPhaseResult,
 } from "./validation-types.ts";
-import type { OpaqueToolDefinition } from "./validation-ports.ts";
 import type { EpicContinuationResolution } from "./epic-continuation.ts";
 import { MAX_AGENT_MERGE_REPAIRS } from "./validation-types.ts";
 import {
@@ -186,12 +185,12 @@ async function prepareEpicChildManualQaArtifact(
             "### Source context",
             args.planContent,
         ].join("\n");
-        const tool = createQaChecklistGeneratedTool({
+        const manualQa = {
             projectRoot: cwd,
             epicPlanName: parentPlan,
             childPlanName: args.planName,
             childHeading: firstMarkdownHeading(args.planContent, args.planName),
-        });
+        };
         let outcome;
         try {
             outcome = await args.session.runIsolatedAgentSession({
@@ -199,8 +198,7 @@ async function prepareEpicChildManualQaArtifact(
                 agentName: AGENTS.OPERATOR,
                 userRequest,
                 cwd,
-                customTools: [tool as unknown as OpaqueToolDefinition],
-                sessionManager: args.session.createInMemorySessionManager(cwd),
+                manualQa,
             });
         } catch (caught) {
             const error = caught instanceof Error ? caught : new Error(String(caught));
@@ -306,7 +304,7 @@ async function runLockedPublicationPhase(
     // Reload the execution document under the publication lock before selecting
     // a target or sealing commits.
     const executionPlan = await loadPlan(context.executionCwd, args.planName);
-    const requestedTarget = executionPlan?.attrs.targetBranch?.trim();
+    const requestedTarget = executionPlan ? effectiveDeliveryBranch(executionPlan.attrs) : undefined;
     const worktreeBaseBranch = requestedTarget
         ? await resolveTargetBranchName(context.projectRoot, requestedTarget)
         : context.worktreeBaseBranch;

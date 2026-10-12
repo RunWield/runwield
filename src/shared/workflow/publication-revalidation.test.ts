@@ -153,7 +153,8 @@ Deno.test("publication recovery also handles pruned pre-rewrite commits", async 
     const f = await fixture();
     try {
         await f.rewrite();
-        await git(f.projectRoot, ["reflog", "expire", "--expire=now", "--all"]);
+        // The fixture must remove even entries written in the current clock second.
+        await git(f.projectRoot, ["reflog", "expire", "--expire=all", "--expire-unreachable=all", "--all"]);
         await git(f.projectRoot, ["gc", "--prune=now"]);
         await assertRejects(() => git(f.projectRoot, ["cat-file", "-e", f.attempt.artifactCommit!]));
         assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));

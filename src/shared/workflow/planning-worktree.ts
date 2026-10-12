@@ -1,4 +1,5 @@
 import { join } from "@std/path";
+import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     canonicalizeStoredPlanName,
     getPlanRevisionForText,
@@ -43,6 +44,7 @@ export interface PlanningWorktreeResult {
 interface PlanningPlanAttributes {
     planId?: string;
     targetBranch?: string;
+    deliveryBranch?: string;
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -56,7 +58,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 function targetBranchForPlan(attrs: PlanningPlanAttributes): string {
-    const targetBranch = typeof attrs.targetBranch === "string" ? attrs.targetBranch.trim() : "";
+    const targetBranch = effectiveDeliveryBranch(attrs) || "";
     if (!targetBranch) throw new Error("Epic child planning requires a targetBranch.");
     return targetBranch;
 }

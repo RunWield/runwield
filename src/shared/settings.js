@@ -852,6 +852,22 @@ export function shouldAutoGenerateWorkRecordsOnPlanCompletion(projectRoot) {
 }
 
 /**
+ * Whether standalone Planned Changes merge into their authored target branch.
+ * Defaults to false: deliver to a Plan Branch instead.
+ *
+ * @param {string} projectRoot
+ * @returns {boolean}
+ */
+export function shouldAutoMergePlansIntoTargetBranch(projectRoot) {
+    if (!projectRoot) throw new Error("shouldAutoMergePlansIntoTargetBranch: projectRoot is required");
+    const plans = getMergedCustomSetting("plans", projectRoot);
+    return Boolean(
+        plans && typeof plans === "object" && !Array.isArray(plans) &&
+            plans.autoMergeIntoTargetBranch === true,
+    );
+}
+
+/**
  * @param {unknown} value
  * @param {string} key
  * @returns {number}

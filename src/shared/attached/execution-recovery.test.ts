@@ -168,7 +168,7 @@ Deno.test("status retains the pending implementation action and resolves fronten
     });
 });
 
-Deno.test("execution evidence projects Core feedback and later validation from the worker Plan, not the invoking Plan", async () => {
+Deno.test("execution evidence projects Core feedback and later AI review from the worker Plan, not the invoking Plan", async () => {
     await withProject(async (root) => {
         const started = await implementing(root);
         const execution = started.workflow.execution;
@@ -183,7 +183,8 @@ Deno.test("execution evidence projects Core feedback and later validation from t
         assertEquals(feedback.workflow.state, "awaiting_planning");
         const current = await loadPlan(execution.executionCwd, "dark-mode-toggle");
         assert(current);
-        await updatePlanFrontMatter(execution.executionCwd, "dark-mode-toggle", { status: "validated_ci" }, {}, {
+        // Core now keeps mechanical validation at implemented; AI review advances to reviewed.
+        await updatePlanFrontMatter(execution.executionCwd, "dark-mode-toggle", { status: "reviewed" }, {}, {
             expectedRevision: current.revision,
         });
         const advanced = await runOperation("status", root, { workflowId: started.workflow.workflowId });

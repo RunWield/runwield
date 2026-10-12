@@ -1,4 +1,5 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { buildWorkRecordIndexDocument } from "./work-records/index-adapter.ts";
 import { join } from "@std/path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { parsePlanFrontMatter } from "../plan-store.js";
@@ -23,16 +24,19 @@ const fixture = defineGitFixture(async (root) => {
     );
     await Deno.writeTextFile(
         join(root, recordPath),
-        formatWorkRecordMarkdown({
-            kind: "work_record",
-            recordId,
-            status: "pending_verification",
-            scope: "planned_change",
-            origin: "internal",
-            completionMode: "verified",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            provenance: { sourcePlans: [planId] },
-        }, "# Feature\n\n## Summary\n\nAdded a feature.\n"),
+        formatWorkRecordMarkdown(
+            {
+                kind: "work_record",
+                recordId,
+                status: "pending_verification",
+                scope: "planned_change",
+                origin: "internal",
+                completionMode: "verified",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                provenance: { sourcePlans: [planId] },
+            },
+            "# Feature\n\n## Summary\n\nAdded a feature; publication pending. Full test suite has not run.\n\n## Deferred Work\n\nKeyboard navigation remains deferred.\n",
+        ),
     );
     await git(root, ["add", "."]);
     await git(root, ["commit", "-m", "Reviewed candidate with pending record"]);
@@ -57,8 +61,26 @@ for (const checkedOut of [true, false]) {
                 parseWorkRecordMarkdown(await git(root, ["show", `${target}:${recordPath}`])).attrs.status,
                 "approved",
             );
+            const finalized = parseWorkRecordMarkdown(await git(root, ["show", `${target}:${recordPath}`]));
+            assertStringIncludes(finalized.summary, `Delivery destination: \`${target}\``);
+            assertEquals(finalized.summary.includes("publication pending"), false);
+            assertStringIncludes(
+                finalized.body,
+                "> Added a feature; publication pending. Full test suite has not run.",
+            );
+            assertStringIncludes(finalized.body, "> Keyboard navigation remains deferred.");
+            assertStringIncludes(buildWorkRecordIndexDocument(finalized), "> Keyboard navigation remains deferred.");
+            assertStringIncludes(finalized.summary, "no additional or full test suite is claimed");
             assertEquals(
-                await hasFinalizedPublicationLifecycle(root, delivered, "feature", planId, candidate, [planPath]),
+                await hasFinalizedPublicationLifecycle(
+                    root,
+                    delivered,
+                    "feature",
+                    planId,
+                    candidate,
+                    [planPath],
+                    target,
+                ),
                 true,
             );
             assertEquals(
@@ -113,6 +135,29 @@ Deno.test("record changes outside the sealed candidate cannot be approved and le
             "outside its sealed publication",
         );
         assertEquals(await Deno.readTextFile(join(root, planPath)), plan);
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
+});
+
+Deno.test("already published legacy metadata still proves delivery without rewriting history", async () => {
+    const root = await fixture.checkout();
+    try {
+        const candidate = await git(root, ["rev-parse", "HEAD"]);
+        const plan = await Deno.readTextFile(join(root, planPath));
+        const record = parseWorkRecordMarkdown(await Deno.readTextFile(join(root, recordPath)));
+        await Deno.writeTextFile(join(root, planPath), plan.replace("status: reviewed", "status: verified"));
+        await Deno.writeTextFile(
+            join(root, recordPath),
+            formatWorkRecordMarkdown({ ...record.attrs, status: "approved" }, record.body),
+        );
+        await git(root, ["add", "docs"]);
+        await git(root, ["commit", "-m", "legacy publication"]);
+        const published = await git(root, ["rev-parse", "HEAD"]);
+        assert(
+            await hasFinalizedPublicationLifecycle(root, published, "feature", planId, candidate, [planPath], "main"),
+        );
+        assertEquals(await git(root, ["rev-parse", "HEAD"]), published);
     } finally {
         await Deno.remove(root, { recursive: true });
     }

@@ -162,7 +162,7 @@
         "workspace:remote:build": "deno task workspace:build && deno run -A scripts/build-workspace-runtime.js && deno run -A scripts/build-plan-server-runtime.js",
         "workspace:remote:image:check": "deno run -A scripts/assert-plan-server-image.js",
         "workspace:react:check": "deno task workspace:check",
-        "workspace:test": "deno run -A scripts/run-tests.js -A --parallel --no-check src/ui/workspace src/cmd/plans/ui.test.ts",
+        "workspace:test": "deno run -A scripts/run-tests.js --isolated src/ui/workspace src/cmd/plans/ui.test.ts",
         "workspace:build": "deno run -A --env npm:astro build --config src/ui/workspace/astro.config.mjs",
         "workspace:check": "deno run -A npm:astro check --root src/ui/workspace --tsconfig tsconfig.json",
         "compile": "deno run -A ./scripts/compile.js",

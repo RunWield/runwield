@@ -174,29 +174,64 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
             }
             if (request.type === RuntimeInteractionTypes.CODE_REVIEW) {
                 const meta = /** @type {any} */ (request._meta || {});
-                const result = await runCodeReview({
-                    planName: meta.planName,
-                    planTitle: meta.planTitle,
-                    diffText: meta.diffText,
-                    planContent: meta.planContent,
-                    planAttrs: meta.planAttrs,
-                    executionCwd: meta.executionCwd,
-                    targetBranch: typeof meta.targetBranch === "string" ? meta.targetBranch : undefined,
-                    guidedReview: meta.guidedReview,
-                    reviewConversation: meta.reviewConversation,
-                    agentLabel: typeof meta.agentLabel === "string" ? meta.agentLabel : undefined,
-                    signal,
-                    browser: ports.browser,
-                    onSurfaceReady: typeof meta.onSurfaceReady === "function" ? meta.onSurfaceReady : undefined,
-                });
-                return {
-                    outcome: result.canceled || result.exit
-                        ? RuntimeInteractionOutcomes.CANCELED
+                const block = uiAPI.startToolExecution?.(
+                    `code-review:${request.id || crypto.randomUUID()}`,
+                    "code_review",
+                    "Code Review",
+                );
+                block?.setExpanded?.(true);
+                uiAPI.setBusy?.(false);
+                let status = "Code Review ended without a decision.";
+                let failed = false;
+                try {
+                    const result = await runCodeReview({
+                        planName: meta.planName,
+                        planTitle: meta.planTitle,
+                        diffText: meta.diffText,
+                        planContent: meta.planContent,
+                        planAttrs: meta.planAttrs,
+                        executionCwd: meta.executionCwd,
+                        targetBranch: typeof meta.targetBranch === "string" ? meta.targetBranch : undefined,
+                        guidedReview: meta.guidedReview,
+                        reviewConversation: meta.reviewConversation,
+                        agentLabel: typeof meta.agentLabel === "string" ? meta.agentLabel : undefined,
+                        signal,
+                        browser: ports.browser,
+                        onSurfaceReady: (surface) => {
+                            const text = [
+                                `Plan name: docs/plans/${meta.planName}.md`,
+                                `Review Code: \x1b]8;;${surface.url}\x07${surface.url}\x1b]8;;\x07`,
+                                "Status: Waiting for code review decision.",
+                                surface.opened ? "Browser opened." : "Open the review link to continue.",
+                            ].join("\n");
+                            if (block) block.setOutput(text);
+                            else uiAPI.appendSystemMessage(text);
+                            if (typeof meta.onSurfaceReady === "function") meta.onSurfaceReady(surface);
+                        },
+                    });
+                    status = result.canceled || result.exit
+                        ? `Code Review canceled; approval is still pending. Retry or /load-plan ${meta.planName} to reopen it.`
                         : result.approved
-                        ? RuntimeInteractionOutcomes.ACCEPTED
-                        : RuntimeInteractionOutcomes.SELECTED,
-                    _meta: result,
-                };
+                        ? "Code Review approved."
+                        : "Code Review feedback received.";
+                    return {
+                        outcome: result.canceled || result.exit
+                            ? RuntimeInteractionOutcomes.CANCELED
+                            : result.approved
+                            ? RuntimeInteractionOutcomes.ACCEPTED
+                            : RuntimeInteractionOutcomes.SELECTED,
+                        _meta: result,
+                    };
+                } catch (error) {
+                    failed = true;
+                    status = "Code Review could not be opened.";
+                    throw error;
+                } finally {
+                    // A stopped surface must not leave an apparently live token in the card.
+                    block?.setOutput(status);
+                    block?.endExecution(failed, null);
+                    uiAPI.setBusy?.(true);
+                }
             }
             return {
                 outcome: RuntimeInteractionOutcomes.UNSUPPORTED,

@@ -19,6 +19,7 @@ import { loadCanonicalExecutionPlanSource } from "./execution-plan-file.js";
 import { createExecutionStartPorts } from "./execution-start.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+import { setCustomSetting } from "../settings.js";
 import { getCwd } from "../../constants.js";
 import {
     findById as findWorktreeRegistryEntryById,
@@ -227,6 +228,7 @@ Deno.test("startActiveExecutionWorkflow bases the execution worktree on the requ
         status: "ready_for_work",
         attrs: { targetBranch: " feature-base " },
     }]);
+    await setCustomSetting("plans", { autoMergeIntoTargetBranch: true }, "project", projectRoot);
     const hostedSession = makeHostedSession("targeted-workflow", projectRoot);
     await Deno.writeTextFile(`${projectRoot}/current-only-marker`, "present only in the current checkout\n");
 
@@ -354,7 +356,7 @@ Deno.test("startActiveExecutionWorkflow captures baseline after first Plan mater
         },
     });
 
-    assertEquals(order, ["load-source", "load-source"]);
+    assertEquals(order, ["load-source", "load-source", "load-source"]);
     assertEquals(metrics.at(-1)?.details.planFileMaterialized, true);
     // The ordering used to be asserted by spying on the Plan restore and the baseline
     // capture. It did not need to be: a baseline that contains the restored Plan can
@@ -509,8 +511,9 @@ Deno.test("startActiveExecutionWorkflow rolls back a worktree that fails before 
     }
 });
 
-Deno.test("startActiveExecutionWorkflow bases untargeted plans on the current target branch", async () => {
+Deno.test("startActiveExecutionWorkflow bases untargeted plans on the repository default branch", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "untargeted-plan", status: "ready_for_work" }]);
+    await setCustomSetting("plans", { autoMergeIntoTargetBranch: true }, "project", projectRoot);
     const hostedSession = makeHostedSession("untargeted-workflow", projectRoot);
     let prepareCalls = 0;
     let reuseLookups = 0;
@@ -669,6 +672,7 @@ Deno.test("startActiveExecutionWorkflow ignores an unregistered cached attempt a
         status: "ready_for_work",
         attrs: { targetBranch: "feature-base" },
     }]);
+    await setCustomSetting("plans", { autoMergeIntoTargetBranch: true }, "project", projectRoot);
     const hostedSession = makeHostedSession("unknown-active-target-workflow", projectRoot);
     hostedSession.setActiveExecutionWorkflow({
         planName: "targeted-plan",
@@ -1099,7 +1103,7 @@ Deno.test("execution preparation ignores Plan body edits the user owns", async (
 });
 
 Deno.test("execution preparation still refuses when lifecycle front matter drifts", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-exec-fm-" });
+    const projectRoot = await workflowRepo.checkout({ prefix: "runwield-exec-fm-" });
     try {
         await savePlan(projectRoot, "fm-plan", "# FM Plan\n", {
             planId: "plan-fm",

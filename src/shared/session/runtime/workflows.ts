@@ -617,7 +617,7 @@ export class RuntimeWorkflows {
         const result = await this.runWorkflowOperation(session, "runValidation", options, async () => {
             const { SYSTEM_SEMANTIC_REVIEW_PORT } = await import("../../workflow/validation.ts");
             const { runWorkflowValidationToStableBoundary } = await import(
-                "../../workflow/validation-supervisor.ts"
+                "../../workflow/validation.ts"
             );
             const { createGitPort } = await import("../../git-port.ts");
             const { systemLocalCIPort } = await import("../../workflow/validation-local-ci.ts");

@@ -74,7 +74,7 @@ function makeTuiHarness(): AgentTuiHarness {
     root.addChild(interactions);
     root.addChild(editor);
     tui.addChild(root);
-    const uiAPI = createUiApi(tui, messages, new SpinnerBlock(), undefined, undefined, interactions);
+    const uiAPI = createUiApi(null, tui, messages, new SpinnerBlock(), undefined, undefined, interactions);
     tui.start();
     tui.setFocus(editor);
     return { editor, terminal, tui, uiAPI };

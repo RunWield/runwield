@@ -81,6 +81,7 @@ function createGoldenReviewBrowser(
             if (url.includes("/review/code")) {
                 if (!humanReviewSurface) throw new Error("Unexpected Code Review interaction.");
                 const response = humanReviewSurface.submit({ url });
+                if (response.manual) return false;
                 const opened = await createScriptedReviewBrowser(response.approved ? "decision" : "feedback", {
                     approved: response.approved,
                     feedback: response.feedback,
@@ -942,7 +943,27 @@ async function runComposedTuiScenario(scenario, options) {
             const originalPromptSelect = uiAPI.promptSelect.bind(uiAPI);
             uiAPI.promptSelect = (prompt, options, hooks) => {
                 if (scenario.interactiveSelectPrompts?.some((fragment) => prompt.includes(fragment))) {
-                    return originalPromptSelect(prompt, options, hooks);
+                    const type = activeScriptedInteractionType || "select";
+                    const next = interactionSurface.interactions[0];
+                    const expected = next?.type === type && next.promptIncludes && prompt.includes(next.promptIncludes)
+                        ? next
+                        : null;
+                    return originalPromptSelect(prompt, options, hooks).then((value) => {
+                        if (expected) {
+                            const expectedValue = expected.value === "__first_option__"
+                                ? options?.[0]?.value ?? null
+                                : expected.value ?? null;
+                            if (value !== expectedValue) {
+                                throw new Error(`Interactive select returned ${value}; expected ${expectedValue}`);
+                            }
+                            if (interactionSurface.interactions[0] !== expected) {
+                                throw new Error("Scripted interaction changed while its real prompt was open.");
+                            }
+                            // Consume only after the real terminal decision matches the expectation.
+                            interactionSurface.next(type, { prompt, options });
+                        }
+                        return value;
+                    });
                 }
                 const value = interactionSurface.next(activeScriptedInteractionType || "select", {
                     prompt,

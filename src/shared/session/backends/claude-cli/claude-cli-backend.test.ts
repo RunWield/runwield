@@ -388,6 +388,7 @@ Deno.test("Claude CLI execution session appends RunWield transcript entries and 
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Guide",
+            agentDisplayName: "Guide",
             finalSystemPrompt: "system",
             model,
             sessionManager: manager,
@@ -421,6 +422,7 @@ Deno.test("captured Claude Code 2.1.284 Read stream reaches the execution owner'
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Guide",
+            agentDisplayName: "Guide",
             finalSystemPrompt: "system",
             model,
             sessionManager: manager,
@@ -469,6 +471,7 @@ Deno.test("truncated Claude stream preserves observed assistant usage on failure
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Guide",
+            agentDisplayName: "Guide",
             finalSystemPrompt: "system",
             model,
             sessionManager: SessionManager.inMemory(root),
@@ -502,13 +505,14 @@ Deno.test("Claude CLI execution session streams thinking and text runtime events
             cwd: root,
             sessionManager: manager as never,
         });
-        const events: Array<{ type?: string; delta?: string; messageId?: string }> = [];
+        const events: Array<{ type?: string; delta?: string; messageId?: string; agentName?: string }> = [];
         hostedSession.setEventSink((event: { type?: string; delta?: string; messageId?: string }) =>
             events.push(event)
         );
         const session = new ClaudeCliExecutionSession({
             cwd: root,
-            agentName: "Guide",
+            agentName: "planner",
+            agentDisplayName: "Plan Designer",
             finalSystemPrompt: "system",
             model,
             sessionManager: manager,
@@ -524,6 +528,10 @@ Deno.test("Claude CLI execution session streams thinking and text runtime events
         // The live text_delta stream events cover "reply"; the later complete `assistant` message
         // must not be re-emitted as a duplicate delta.
         assertEquals(textDeltas.map((event) => event.delta).join(""), "reply");
+        assertEquals(
+            [...thinkingDeltas, ...thinkingEnds, ...textDeltas].map((event) => event.agentName),
+            [...thinkingDeltas, ...thinkingEnds, ...textDeltas].map(() => "Plan Designer"),
+        );
         assertEquals(textDeltas.length < "reply".length, true);
         assert(thinkingDeltas.every((event) => event.messageId === thinkingDeltas[0]?.messageId));
         assert(events.indexOf(thinkingEnds[0]) < events.indexOf(textDeltas[0]));
@@ -546,6 +554,7 @@ Deno.test("Claude CLI execution metadata is sanitized", async () => {
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Guide",
+            agentDisplayName: "Guide",
             finalSystemPrompt: "secret prompt",
             model,
             sessionManager: manager,
@@ -590,6 +599,7 @@ Deno.test("^Claude CLI MCP config is additive authenticated and ephemeral$", asy
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "engineer",
+            agentDisplayName: "Engineer",
             finalSystemPrompt: "system",
             model,
             sessionManager: manager,
@@ -662,6 +672,7 @@ Deno.test("^Claude CLI missing executable fails before workflow mutation$", asyn
                 const session = new ClaudeCliExecutionSession({
                     cwd: root,
                     agentName: "Engineer",
+                    agentDisplayName: "Engineer",
                     finalSystemPrompt: "system",
                     model,
                     sessionManager: manager,
@@ -710,6 +721,7 @@ Deno.test("^Claude CLI auth failure is a sanitized visible non-zero exit$", asyn
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Engineer",
+            agentDisplayName: "Engineer",
             finalSystemPrompt: "system",
             model,
             sessionManager: manager,
@@ -753,6 +765,7 @@ Deno.test("^Claude CLI structured limit failure shows Claude's message$", async 
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Engineer",
+            agentDisplayName: "Engineer",
             finalSystemPrompt: "system",
             model,
             sessionManager: manager,
@@ -797,6 +810,7 @@ Deno.test("^Claude CLI malformed stream is a typed failure with cleanup$", async
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Engineer",
+            agentDisplayName: "Engineer",
             finalSystemPrompt: "system",
             model,
             sessionManager: manager,
@@ -844,6 +858,7 @@ Deno.test("^Claude CLI abort cancels the subprocess and preserves active workflo
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Engineer",
+            agentDisplayName: "Engineer",
             finalSystemPrompt: "system",
             model,
             sessionManager: manager,
@@ -996,6 +1011,7 @@ Deno.test("Claude owner counts an MCP bridge call once when its alias also appea
         const session = new ClaudeCliExecutionSession({
             cwd: root,
             agentName: "Guide",
+            agentDisplayName: "Guide",
             finalSystemPrompt: "system",
             model,
             sessionManager: SessionManager.inMemory(root),

@@ -794,3 +794,58 @@ Deno.test("local publication retains blocking filenames for the recovery prompt"
         await Deno.remove(worktreeRoot, { recursive: true });
     }
 });
+
+Deno.test("off-checkout local publication preserves primary Plan, context, and unrelated tracked edits", async () => {
+    const projectRoot = await makeRepo();
+    const worktreeRoot = await Deno.makeTempDir({ prefix: "off-checkout-publication-" });
+    await git(projectRoot, ["branch", "plan/p"]);
+    const worktree = await createTestWorktreeAttempt({
+        projectRoot,
+        planName: "p",
+        worktreeRoot,
+        baseBranch: "plan/p",
+        baseRef: "refs/heads/plan/p",
+    });
+    try {
+        const head = await git(projectRoot, ["rev-parse", "HEAD"]);
+        await Deno.mkdir(`${projectRoot}/docs/plans`, { recursive: true });
+        const primaryPlan = "# Untracked canonical Plan, with user prose\n";
+        await Deno.writeTextFile(`${projectRoot}/docs/plans/p.md`, primaryPlan);
+        await Deno.writeTextFile(`${projectRoot}/README.md`, "unrelated dirty edit\n");
+        await git(projectRoot, ["add", "README.md"]);
+        await Deno.writeTextFile(`${projectRoot}/.gitignore`, `user-owned primary ignore\n${RUNWIELD_GITIGNORE_BLOCK}`);
+        await Deno.mkdir(`${worktree.path}/docs/plans`, { recursive: true });
+        await Deno.writeTextFile(
+            `${worktree.path}/docs/plans/p.md`,
+            '---\nplanId: "p"\nclassification: "PLANNED_CHANGE"\nstatus: "reviewed"\ntargetBranch: "main"\ndeliveryBranch: "plan/p"\n---\n# Delivered\n',
+        );
+        await Deno.writeTextFile(`${worktree.path}/implementation.txt`, "implemented\n");
+        await git(worktree.path, ["add", "docs/plans/p.md", "implementation.txt"]);
+        await git(worktree.path, ["commit", "-m", "Seal delivery"]);
+        const index = await git(projectRoot, ["write-tree"]);
+        const published = await publishExecutionWorktreeIsolated({
+            projectRoot,
+            executionCwd: worktree.path,
+            executionBranch: worktree.branch,
+            targetBranch: "plan/p",
+            planName: "p",
+            sealedExecutionCommit: await git(worktree.path, ["rev-parse", "HEAD"]),
+            allowedPlanPaths: ["docs/plans/p.md"],
+        });
+        assertEquals(published.updatedPrimaryCheckout, false);
+        assertEquals(await git(projectRoot, ["rev-parse", "HEAD"]), head);
+        assertEquals(await git(projectRoot, ["write-tree"]), index);
+        assertEquals(await Deno.readTextFile(`${projectRoot}/docs/plans/p.md`), primaryPlan);
+        assertEquals(await Deno.readTextFile(`${projectRoot}/README.md`), "unrelated dirty edit\n");
+        assertEquals(
+            await Deno.readTextFile(`${projectRoot}/.gitignore`),
+            `user-owned primary ignore\n${RUNWIELD_GITIGNORE_BLOCK}`,
+        );
+        assertEquals(await git(projectRoot, ["show", "plan/p:implementation.txt"]), "implemented");
+        assertStringIncludes(await git(projectRoot, ["show", "plan/p:docs/plans/p.md"]), 'status: "verified"');
+    } finally {
+        await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true });
+        await Deno.remove(projectRoot, { recursive: true });
+        await Deno.remove(worktreeRoot, { recursive: true });
+    }
+});

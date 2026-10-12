@@ -207,6 +207,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {string|null} [epicDeliveryTargetBranch] - Final target of the reviewed Epic branch
  * @property {string|null} [epicBaseCommit] - Primary-branch commit the Epic branch was created from; the integration gate diffs from it
  * @property {string|null} [epicIntegrationReport] - Project-relative path of the latest failing Epic integration gate report
+ * @property {string} [deliveryBranch] - Recorded landing branch, independent of setting changes
  * @property {string} [targetBranch] - User-selected target branch, independent of the current execution attempt
  * @property {string|null} [validatedCommit] - Validated implementation commit; durable after runtime cleanup
  * @property {"mechanical"|"semantic"|"delivery"} [validationPhase] - Current Workflow Validation phase while status stays "implemented"
@@ -472,6 +473,7 @@ function formatFrontMatter(fm) {
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.worktreeBranch, fm.worktreeBranch);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.worktreeBaseBranch, fm.worktreeBaseBranch);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.targetBranch, fm.targetBranch);
+    appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.deliveryBranch, fm.deliveryBranch);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.validatedCommit, fm.validatedCommit);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.worktreeStatus, fm.worktreeStatus);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.heldFromStatus, fm.heldFromStatus);
@@ -1104,6 +1106,7 @@ export function injectFrontMatter(markdown, overrides = {}) {
         worktreeBranch: optionalFrontMatterValue(overrides, existingFm, "worktreeBranch"),
         worktreeBaseBranch: optionalFrontMatterValue(overrides, existingFm, "worktreeBaseBranch"),
         targetBranch: optionalStringValue(overrides, existingFm, "targetBranch"),
+        deliveryBranch: optionalStringValue(overrides, existingFm, "deliveryBranch"),
         validatedCommit: optionalFrontMatterValue(overrides, existingFm, "validatedCommit"),
         worktreeStatus: normalizeWorktreeStatus(
             Object.hasOwn(overrides, "worktreeStatus") ? overrides.worktreeStatus : existingFm.worktreeStatus,
@@ -1250,6 +1253,7 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
             worktreePath: attrs.worktreePath,
             worktreeBranch: attrs.worktreeBranch,
             worktreeBaseBranch: attrs.worktreeBaseBranch,
+            deliveryBranch: typeof attrs.deliveryBranch === "string" ? attrs.deliveryBranch : undefined,
             targetBranch: typeof attrs.targetBranch === "string"
                 ? attrs.targetBranch
                 : typeof attrs.worktreeBaseBranch === "string"
@@ -1301,6 +1305,9 @@ function planControllerLocation(filePath) {
 
 /** Directory that owns the selected document and its lock. @param {string} filePath */
 export function getPlanDocumentRoot(filePath) {
+    if (/^[a-f0-9]{40,64}:docs\/plans\//.test(filePath)) {
+        throw new Error(`Published Plan snapshot is not a writable document path: ${filePath}`);
+    }
     const location = planControllerLocation(filePath);
     if (!location) throw new Error(`Not a stored Plan path: ${filePath}`);
     return location.cwd;
@@ -3014,8 +3021,14 @@ async function fileExists(path) {
  */
 async function resolveActivePlanNameOrId(cwd, planNameOrId) {
     // Archive and restore move documents; resolving a name must not start a planning attempt.
-    const byName = (await resolveWorkflowPlanLocation(cwd, planNameOrId, { readOnly: true })).plan;
+    const location = await resolveWorkflowPlanLocation(cwd, planNameOrId, { readOnly: true });
+    const byName = location.plan;
     if (byName) {
+        if ("publishedSnapshot" in location && location.publishedSnapshot) {
+            throw new Error(
+                `Plan ${planNameOrId} exists only as a published read snapshot. Restore a local document before archiving.`,
+            );
+        }
         const { name } = canonicalizeStoredPlanName(planNameOrId);
         if (isHiddenPlanName(name)) {
             throw new Error(`Use an active Plan name, not ${ARCHIVED_DIR_NAME}/...: ${planNameOrId}`);

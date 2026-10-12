@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { buildDeliveryReport } from "./delivery-report.ts";
+import { buildDeliveryReport, type DeliveryReportInput } from "./delivery-report.ts";
 import { deliveryReportText } from "../../ui/tui/delivery-report-text.ts";
 import { readDeliveryEvidence, recordDeliveryEvidence, savePublicationEvidence } from "./delivery-evidence.ts";
 import { createPublicationAttempt } from "./publication-attempt.ts";
@@ -13,8 +13,8 @@ Deno.test("delivery evidence separates review, human verification and merge proo
         workRecordFailed: false,
         semanticRequired: true,
     });
-    assertEquals(report.rows.find((row) => row.label === "Human code review")?.outcome, "Approved");
-    assertEquals(report.rows.find((row) => row.label === "Human verification")?.outcome, "Not recorded");
+    assertEquals(report.rows.find((row) => row.label === "Code Review")?.outcome, "Approved");
+    assertEquals(report.rows.find((row) => row.label === "User verification")?.outcome, "Not recorded");
     assertEquals(report.rows.find((row) => row.label === "Merge")?.outcome, "Evidence unavailable");
     assertEquals(report.deliveredCommit, undefined);
     assertStringIncludes(report.settings, "guidedReview = auto");
@@ -71,6 +71,53 @@ Deno.test("delivery receipts persist recorded counts, isolate attempts and prese
     } finally {
         await Deno.remove(root, { recursive: true });
     }
+});
+
+Deno.test("confirmed Plan Branch delivery names the landing and guides the onward merge", () => {
+    const publication = {
+        ...createPublicationAttempt({
+            attemptId: "plan-landing",
+            planId: "plan-a",
+            planName: "example",
+            targetBranch: "plan/example",
+            executionBranch: "worktree/example",
+            executionCwd: "/fixture",
+            publicationRoot: "/fixture",
+            validatedCommit: "a".repeat(40),
+            targetHeadAtSeal: "c".repeat(40),
+        }),
+        publishedCommit: "b".repeat(40),
+        verifiedAt: "2026-10-08T10:00:00Z",
+    };
+    const input: DeliveryReportInput = {
+        planName: "example",
+        attrs: { classification: "PLANNED_CHANGE", targetBranch: "release", deliveryBranch: "plan/example" },
+        publication,
+        guidedReview: "auto",
+        codeReview: "none",
+        workRecordFailed: false,
+        semanticRequired: true,
+    };
+    const report = buildDeliveryReport(input);
+    assertEquals(report.heading, "Ready for your merge/PR");
+    assertEquals(report.targetBranch, "plan/example");
+    assertStringIncludes(deliveryReportText(report), "Landing branch: plan/example");
+    assertStringIncludes(report.rows.find((row) => row.label === "Merge")?.detail || "", "open a PR to release");
+    assertEquals(buildDeliveryReport({ ...input, publication: undefined }).heading, "Workflow complete");
+    assertEquals(
+        buildDeliveryReport({
+            ...input,
+            attrs: { ...input.attrs, parentPlan: "epic" },
+        }).heading,
+        "Code delivered",
+    );
+    assertEquals(
+        buildDeliveryReport({
+            ...input,
+            attrs: { ...input.attrs, targetBranch: "plan/example" },
+        }).heading,
+        "Code delivered",
+    );
 });
 
 Deno.test("resettable retry counters cannot masquerade as run totals", () => {

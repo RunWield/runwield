@@ -10,7 +10,10 @@ import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
 
 import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { sessionArtifactKindLabel } from "../../shared/session/session-sidebar.ts";
-import { extname, join, toFileUrl } from "@std/path";
+import { basename, dirname, extname, join, toFileUrl } from "@std/path";
+import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.js";
+import { workRecordNotices } from "../../shared/work-records/list.ts";
+import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
 import { RUNWIELD_ROOT, RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.js";
 import { PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../../constants.js";
 import { getWorktreeReviewDiff, WorktreeReviewComparisonError } from "../../shared/workflow/git-snapshot.ts";
@@ -43,7 +46,12 @@ import {
     reviewAgentApi,
     runConfiguredGuideCommand,
 } from "./routes/api/review-agent-handlers.js";
-import { reviewFileContentApi, reviewLocalConfigApi, reviewOpenInAppsApi } from "./routes/api/review-file-handlers.ts";
+import {
+    resolveWorkspaceFile,
+    reviewFileContentApi,
+    reviewLocalConfigApi,
+    reviewOpenInAppsApi,
+} from "./routes/api/review-file-handlers.ts";
 import { reviewWidgetApi } from "./routes/api/review-widget-handlers.js";
 import {
     devicesApi,
@@ -443,6 +451,109 @@ export function createSessionQuestionWorkspaceApp({ cwd, token, questionPayload,
             };
         },
     };
+}
+
+/**
+ * @typedef {Object} DocumentReadWorkspaceAppOptions
+ * @property {string} cwd Canonical active Project root.
+ * @property {string} token Active host bearer token.
+ */
+
+/**
+ * Passive, current-file reader. It owns no review decisions or lifecycle actions.
+ * @param {DocumentReadWorkspaceAppOptions} options
+ * @returns {WorkspaceApp}
+ */
+export function createDocumentReadWorkspaceApp({ cwd, token }) {
+    return {
+        handler() {
+            /** @param {Request} request */
+            return async (request) => {
+                const url = new URL(request.url);
+                if (isPublicWorkspaceAsset(url.pathname)) return await handleStaticRoute(url.pathname);
+                const headers = { "cache-control": "no-store", "referrer-policy": "same-origin" };
+                const imageRequest = request.method === "GET" && url.pathname === "/api/image";
+                let authenticated = hasWorkspaceToken(request, token);
+                if (imageRequest && !authenticated) {
+                    try {
+                        const referer = new URL(request.headers.get("referer") || "");
+                        authenticated = referer.origin === url.origin && referer.pathname === "/review/plan" &&
+                            referer.searchParams.get(PLAN_UI_TOKEN_QUERY) === token;
+                    } catch {
+                        authenticated = false;
+                    }
+                }
+                if (!authenticated) return new Response("Document token required.", { status: 401, headers });
+                if (imageRequest) return await reviewImageApi(request, { cwd, projectOnly: true });
+                if (request.method !== "GET" || url.pathname !== "/review/plan") {
+                    return new Response("Not found", { status: 404, headers });
+                }
+                const path = url.searchParams.get("path") || "";
+                try {
+                    if (extname(path).toLowerCase() !== ".md") {
+                        return new Response("Markdown document required.", { status: 400, headers });
+                    }
+                    const file = resolveWorkspaceFile(cwd, path);
+                    if (!file || extname(file.absolutePath).toLowerCase() !== ".md") {
+                        return new Response("Document not found.", { status: 404, headers });
+                    }
+                    const markdown = await Deno.readTextFile(file.absolutePath);
+                    const artifactKind = linkedDocumentKind(file.path);
+                    let notices = [];
+                    if (artifactKind === "work-record" && dirname(file.path) === "docs/work-records") {
+                        try {
+                            const record = parseWorkRecordMarkdown(markdown, { relativePath: file.path });
+                            notices = workRecordNotices(record);
+                        } catch {
+                            notices = ["WARNING: Work Record metadata could not be read."];
+                        }
+                    }
+                    const payload = {
+                        surface: "artifact-read",
+                        launch: "linked",
+                        mode: "workflow",
+                        token,
+                        markdown,
+                        artifactKind,
+                        title: markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || basename(file.path),
+                        artifactPath: file.path,
+                        imageBaseDir: dirname(file.path),
+                        notices,
+                    };
+                    const response = await renderAstroReviewPage(request, cwd, payload) ||
+                        renderStaticReviewFallback("plan", payload);
+                    response.headers.set("cache-control", "no-store");
+                    response.headers.set("referrer-policy", "same-origin");
+                    return response;
+                } catch (error) {
+                    const status = error instanceof Deno.errors.PermissionDenied
+                        ? 403
+                        : error instanceof Deno.errors.NotFound || error instanceof Deno.errors.NotADirectory
+                        ? 404
+                        : 500;
+                    return new Response(
+                        status === 403
+                            ? "Document path is outside this Project."
+                            : status === 404
+                            ? "Document not found."
+                            : "Unable to read document.",
+                        { status, headers },
+                    );
+                }
+            };
+        },
+    };
+}
+
+/** @param {string} path */
+function linkedDocumentKind(path) {
+    if (path.startsWith("docs/plans/")) {
+        return isEpicArtifactPlanName(path.slice("docs/plans/".length)) ? "epic-artifact" : "plan";
+    }
+    if (path.startsWith("docs/prd/")) return "prd";
+    if (path.startsWith("docs/adr/")) return "adr";
+    if (path.startsWith("docs/work-records/")) return "work-record";
+    return "document";
 }
 
 /** @param {ReviewWorkspaceServerOptions} options */

@@ -598,7 +598,7 @@ Deno.test("Agy backend status covers all closed kinds and sanitizes persisted me
 
     assertEquals(
         sanitizeAgyStatusMessage("token=secret", "auth_failed"),
-        "Antigravity CLI authentication failed. Sign in to Antigravity, then retry this turn.",
+        "Antigravity CLI needs you to sign in. Run `agy` in a terminal, complete Google sign-in, then retry this request in RunWield.",
     );
     assertEquals(
         sanitizeAgyStatusMessage("USER_NAME=alice FEATURE_VALUE=private visible", "non_zero_exit"),

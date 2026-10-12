@@ -6,6 +6,9 @@ export const DEV_DELIVERY_REPORT = buildDeliveryReport({
     planName: "Illustrative delivery fixture",
     attrs: {
         planId: "delivery-fixture",
+        classification: "PLANNED_CHANGE",
+        targetBranch: "main",
+        deliveryBranch: "plan/illustrative-delivery",
         humanReviewMode: "always",
         humanReviewDecision: "approved",
         humanReviewedAt: time,
@@ -17,7 +20,7 @@ export const DEV_DELIVERY_REPORT = buildDeliveryReport({
             attemptId: "fixture",
             planId: "delivery-fixture",
             planName: "Illustrative delivery fixture",
-            targetBranch: "main",
+            targetBranch: "plan/illustrative-delivery",
             executionBranch: "example-feature",
             executionCwd: "/fixture",
             publicationRoot: "/fixture",

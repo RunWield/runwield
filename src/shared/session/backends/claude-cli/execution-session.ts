@@ -35,6 +35,7 @@ type SessionAppendMessage = Parameters<SessionManager["appendMessage"]>[0];
 export interface ClaudeCliExecutionSessionOptions {
     cwd: string;
     agentName: string;
+    agentDisplayName: string;
     finalSystemPrompt: string;
     model: RunWieldModel;
     sessionManager: SessionManager;
@@ -99,6 +100,7 @@ export class ClaudeCliExecutionSession {
     readonly id: string;
     readonly model: RunWieldModel;
     readonly agentName: string;
+    readonly agentDisplayName: string;
     readonly sessionManager: SessionManager;
     readonly finalSystemPrompt: string;
     private readonly cwd: string;
@@ -117,6 +119,7 @@ export class ClaudeCliExecutionSession {
         this.id = `claude-cli:${crypto.randomUUID()}`;
         this.cwd = options.cwd;
         this.agentName = options.agentName;
+        this.agentDisplayName = options.agentDisplayName;
         this.finalSystemPrompt = options.finalSystemPrompt;
         this.model = options.model;
         this.sessionManager = options.sessionManager;
@@ -350,7 +353,7 @@ export class ClaudeCliExecutionSession {
                     type: RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
                     messageId,
                     delta,
-                    agentName: this.agentName,
+                    agentName: this.agentDisplayName,
                     messageKind: "assistant",
                 });
             });
@@ -359,7 +362,7 @@ export class ClaudeCliExecutionSession {
                     type: RuntimeEventTypes.ASSISTANT_THINKING_DELTA,
                     messageId: thinkingMessageId,
                     delta,
-                    agentName: this.agentName,
+                    agentName: this.agentDisplayName,
                 });
             });
             flushRuntimeDeltas = () => {
@@ -385,7 +388,7 @@ export class ClaudeCliExecutionSession {
                         emitHostedSessionRuntimeEvent(this.hostedSession, {
                             type: RuntimeEventTypes.ASSISTANT_THINKING_END,
                             messageId: thinkingMessageId,
-                            agentName: this.agentName,
+                            agentName: this.agentDisplayName,
                         });
                     },
                     onUsage: (observation) => {

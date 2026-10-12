@@ -501,6 +501,21 @@ Left by the reviewers of individual children for the integration review. These a
 
 <!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/03-workflow-outcome-observations" -->
 
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/05-workspace-usage-page" -->
+
+**reliable-usage-dashboard-and-langfuse-export/05-workspace-usage-page**
+
+- Child 09 adds the recording on/off indicator, the Settings link and the export status to `/usage`. Confirm that these
+  use the same report response, and that `usage-rendering.test.ts` (which asserts that 'Settings', 'Export', 'Recording
+  on' and 'Recording off' are absent from UsageReport.tsx) is updated in the same change and does not fail.
+  (src/ui/workspace/react/UsageReport.tsx, src/ui/workspace/usage-rendering.test.ts, child 09)
+- After children 07 and 09 add export-side clear and browser clear, confirm that `/usage` shows a clean report after a
+  clear. The Core reporter must not throw `usage_history_changed` or `history_clear_pending` into a 400 response while a
+  clear intent is pending. (src/shared/workflow/usage-reporting.ts (epoch/clear.json handling),
+  src/ui/workspace/server/owner-usage.ts, children 07 and 09)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/05-workspace-usage-page" -->
+
 ## Edge Cases & Considerations
 
 ### Reviewable assumptions

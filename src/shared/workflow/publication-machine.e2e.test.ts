@@ -28,7 +28,7 @@ async function runDriver(configPath: string, crashAfter?: string): Promise<numbe
     else delete config.crashAfter;
     await Deno.writeTextFile(configPath, JSON.stringify(config));
     const output = await new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", DRIVER, configPath],
+        args: ["run", "-A", "--node-modules-dir=manual", DRIVER, configPath],
         stdout: "piped",
         stderr: "piped",
     }).output();

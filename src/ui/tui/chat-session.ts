@@ -4,6 +4,7 @@
  */
 
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
+import { DocumentLinkHost } from "../review/document-link-host.ts";
 import { initTUI } from "./tui.ts";
 import { setTerminalTitleForName } from "./terminal-title.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
@@ -207,6 +208,8 @@ export async function startInteractiveSession(
         let sessionId = createdSession.sessionId;
         const runtimeSnapshot = () => getRuntimeSnapshot(sessionRuntime, sessionId);
         options.onSessionReady?.(sessionId, sessionRuntime);
+        const documentLinks = new DocumentLinkHost(runtimeSnapshot().cwd);
+        disposables.push(() => documentLinks.dispose());
         initSettings(runtimeSnapshot().cwd);
         const sessionStartedAt = createdSession.startedAt;
         let sessionStartedEmptyProjectDirectory = false;
@@ -224,6 +227,7 @@ export async function startInteractiveSession(
         setTerminalTitleForName(runtimeSnapshot().name);
         const suppressStartupHeader = options.sessionStartMode === "continue";
         const view = await createChatView({
+            documentLinks,
             tui,
             sessionRuntime,
             getSessionId: () => sessionId,
@@ -363,6 +367,7 @@ export async function startInteractiveSession(
                 sessionRuntime.closeSession(previousSessionId);
             }
             sessionId = nextSessionId;
+            documentLinks.rebind(runtimeSnapshot().cwd);
             options.onSessionReplaced?.(sessionId, sessionRuntime);
             footer.rebindSession(sessionId);
             tuiRuntimeAdapter = attachTuiRuntimeAdapter({

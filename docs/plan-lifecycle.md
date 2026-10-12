@@ -487,9 +487,16 @@ omitted when unused; empty runtime placeholders are never written.
 `planId`: Stable identity joining this document to its controller record.
 
 `classification`, `workKind`, `complexity`, `affectedPaths`, `executionAgent`, and `collaborationRecommendation`:
-Planning and execution policy. `targetBranch` names the actual branch selected for delivery, not a description or
-`HEAD`. Once execution starts, the registry owns the selected attempt and its target; changing unrelated checkout
-metadata does not retarget an active attempt.
+Planning and execution policy. `targetBranch` names the source and intended destination, not a description or `HEAD`.
+For a standalone Planned Change without an authored target, execution preparation records the repository default branch
+(origin's default, then configured local default, `main`, or `master`), not the current checkout branch.
+`deliveryBranch` records the actual landing separately. With `plans.autoMergeIntoTargetBranch` off (default), RunWield
+creates or reuses `plan/<plan-name>` from `targetBranch`, bases the worktree on it, and merges back into it. With the
+setting on, it skips Plan Branch creation and uses `targetBranch` for both execution and delivery. A recorded landing
+survives setting changes and retries. Epic and Sequence children keep their existing branch behavior; QUICK_FIX and
+non-Git execution do not use this setting. Confirmed Plan Branch delivery makes the Plan Verified and creates its Work
+Record; it does not claim delivery to the intended destination. The completion card says **Ready for your merge/PR**,
+names the landing branch, and guides the user's onward merge.
 
 `createdAt`, `origin`, `userVerifiedAt`, `userVerificationNote`, archive metadata, supersession links, and Epic
 completion notes: durable human-facing history. Dev-server hints and child ordering remain planning metadata when
@@ -547,10 +554,10 @@ through a Git-backed execution worktree. `non_git_in_place` means validation ran
 explicit non-Git path. Missing mode is unknown for FEATURE validation, not an implicit primary-checkout fallback.
 
 `deliveryEvidence`: Versioned candidate or non-Git evidence recorded with `validation_passed`. Worktree evidence records
-`mode: "worktree_merge"`, the sealed `executionCommit`, the concrete `targetBranch`, and `targetHeadBeforeMerge` so Git
-ancestry can later prove the candidate reached the target. These candidate fields alone are not publication proof; the
-publication record and retained receipt identify the finalized delivered commit. Non-Git evidence records only
-`{ version: 1, mode: "non_git_in_place" }`; it must not contain absolute paths.
+`mode: "worktree_merge"`, the sealed `executionCommit`, the concrete landing in `targetBranch`, and
+`targetHeadBeforeMerge` so Git ancestry can later prove the candidate reached the target. These candidate fields alone
+are not publication proof; the publication record and retained receipt identify the finalized delivered commit. Non-Git
+evidence records only `{ version: 1, mode: "non_git_in_place" }`; it must not contain absolute paths.
 
 `executionBaselineTree`: Git tree captured in the execution worktree at `execution_started`.
 

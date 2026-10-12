@@ -1,5 +1,5 @@
 import { spawnForegroundProcess } from "../../../foreground-process.ts";
-import type { ForegroundTermination } from "../../../foreground-process.ts";
+import type { ForegroundProcess, ForegroundTermination } from "../../../foreground-process.ts";
 import type { PreparedAgyCliCommand } from "./command.ts";
 import { AgyCliBackendError } from "./failure.ts";
 
@@ -38,7 +38,7 @@ export class DenoAgyCliProcessPort {
         return {
             pid: process.pid,
             stdout: process.stdout,
-            stderrText: new Response(process.stderr).text(),
+            stderrText: readAgyDiagnostics(process),
             completed: process.done.then((outcome) => ({
                 success: outcome.terminatedBy === null && outcome.exitCode === 0,
                 code: outcome.exitCode,
@@ -50,4 +50,21 @@ export class DenoAgyCliProcessPort {
             },
         };
     }
+}
+
+async function readAgyDiagnostics(process: ForegroundProcess): Promise<string> {
+    const chunks: string[] = [];
+    const decoder = new TextDecoder();
+    let tail = "";
+    for await (const bytes of process.stderr) {
+        const chunk = decoder.decode(bytes, { stream: true });
+        chunks.push(chunk);
+        const diagnostic = tail + chunk;
+        // Headless Agy waits for an OAuth code even with stdin closed. That
+        // login belongs in an interactive terminal, outside the RunWield turn.
+        if (/(?:^|\n)\s*Authentication required\b/i.test(diagnostic)) process.kill();
+        tail = diagnostic.slice(-128);
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
 }

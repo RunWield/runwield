@@ -80,7 +80,10 @@ async function readJsonMapOrEmpty(path: string): Promise<JsonMap> {
     if (!info) return {};
     if (info.isSymlink) throw new Error(`${path} must not be a symbolic link.`);
     if (!info.isFile) throw new Error(`${path} must be a regular file.`);
-    return parseJsonMap(await Deno.readTextFile(path), path);
+    const text = await Deno.readTextFile(path);
+    // Agy creates empty configuration files on first launch, before sign-in.
+    if (!text.trim()) return {};
+    return parseJsonMap(text, path);
 }
 
 function jsonArrayContains(values: JsonValue | undefined, expected: string): boolean {

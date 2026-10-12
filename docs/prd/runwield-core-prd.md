@@ -153,6 +153,18 @@ must not overwrite an unsent draft or change the active specialist.
 Returning focus to the terminal repaints the screen. Ctrl+L also forces a full redraw. Both preserve the unsent draft,
 conversation scroll position, active interaction, and running Agent turn.
 
+**Requirement: Open mentioned Project documents without changing Agent text.**
+
+In hyperlink-capable terminals, normal Agent messages link existing Project-relative Markdown files to the read-only
+Workspace reader. Plain paths, exact inline-code paths, and relative Markdown-link destinations retain their visible
+labels. User messages, tool/system output, code, images, external URLs, and non-Markdown paths stay unchanged. Without
+hyperlink support, paths remain readable without local URLs or tokens. Mentions do not register Session Artifacts.
+
+The TUI owns one lazy loopback reader for concurrent tabs. Each request checks canonical Project containment and reads
+current content, including local images. Session replacement rotates the token and Project together; old links fail
+closed. TUI disposal stops the host. Close affects only the linked tab, with manual-close guidance if the browser blocks
+closure. Known document types keep their labels and Work Record notices; other Markdown uses **Document**.
+
 **Requirement: Keep expanded tool output responsive.**
 
 Ctrl+O toggles only tool groups that intersect the current TUI viewport. Each expanded tool block shows at most 500
@@ -168,6 +180,12 @@ Session; events from the previous Session must no longer affect the view.
 
 **Acceptance scenarios:**
 
+- Given an Agent cites `(README.md)`, an exact backticked path, or a relative Markdown link to an existing file,
+  clicking opens that current file with Contents, title, type, and Project-relative path. Two tabs work independently;
+  reload shows edits, and Close does not end the TUI host. Replacing the Session rejects old links; exiting stops
+  service.
+- Given a missing file, an escaping symlink, or a terminal without hyperlink support, Agent text stays readable and no
+  local reader URL is printed.
 - Given a new conversation, when the user submits a request, Router handles initial triage; after a specialist handoff,
   follow-up messages stay with that specialist.
 - Given Router has handed off to Operator and Operator reports accepted task completion, when the user sends a
@@ -462,10 +480,10 @@ checks must not claim the change has reached its target. Technical status defini
 The ordinary public lifecycle is `draft → feedback/approved → ready_for_work → implemented → reviewed → verified`.
 Execution, failure, hold, Epic decomposition, and manual closure remain explicit intermediate or exceptional states.
 Passed mechanical checks advance durable controller progress while the Plan stays implemented. Reviewed means review
-passed and delivery is still pending. Verified means the reviewed implementation reached its target, or completed
-verification in place in a non-Git project. Legacy validated is a synonym for verified when delivery evidence supports
-it; legacy pending publication stays reviewed. UI, CLI, persisted documents, dependencies and Work Records agree on
-these meanings.
+passed and delivery is still pending. Verified means the reviewed implementation reached its recorded landing branch, or
+completed verification in place in a non-Git project. Legacy validated is a synonym for verified when delivery evidence
+supports it; legacy pending publication stays reviewed. UI, CLI, persisted documents, dependencies and Work Records
+agree on these meanings.
 
 Lifecycle requirements:
 
@@ -617,6 +635,47 @@ and siblings active. Listings keep held work distinct from active and finished w
 <a id="36-execution-worktrees-validation-and-recovery"></a>
 
 ### Execution, validation, and recovery
+
+Delivery evidence must describe its stage accurately. Finalizing a prepared Work Record adds deterministic current
+metadata and preserves recorder prose as historical pre-publication notes; pending-publication and provisional test
+caveats must not remain the current Summary. Deferred work and confirmed deviations remain available. Publication
+receipts own confirmation of the destination, and test receipts own the scope of checks; metadata does not imply an
+additional test run or a merge from a Plan Branch into the target branch. After delivery or restart, the attached Work
+Record must use the exact confirmed published commit, retained independently of staging cleanup and later deliveries.
+
+Code Review must expose a clickable live review URL in the TUI while awaiting a decision, including resumed and direct
+reviews and when automatic browser opening is unavailable. The settled card removes that live link. Delivery cards label
+automatic review **AI Code Review**, the user's review **Code Review**, and separate manual exercise of the result
+**User verification**; one does not imply the other.
+
+**Requirement: Keep standalone Plan delivery separate from the onward merge.**
+
+`plans.autoMergeIntoTargetBranch` defaults to off. Project settings override global settings; only literal `true`
+enables it. Users can choose Off or On in `wld settings`. For standalone PLANNED_CHANGE Plans (including legacy
+FEATURE), `targetBranch` remains the source and intended destination. When absent, execution records the repository
+default branch, not the current checkout. Off creates or reuses `plan/<full-plan-name-slug>` and records it as
+`deliveryBranch`; the worktree starts there and publishes back there. On skips automatic Plan Branch creation and
+records `targetBranch` as its landing. Recorded attempts retain that landing through setting changes and retries.
+Existing branches are not reset. Epic and Sequence children, PROJECT, QUICK_FIX, and non-Git execution keep their
+existing behavior.
+
+Confirmed publication to the landing branch makes the Plan Verified and settles its Work Record and worktree cleanup.
+The source branch is not merged onward when the setting is off. Existing remote publication publishes the landing
+branch; local publication to an unchecked-out branch leaves primary-checkout files and staging intact. The completion
+report says **Ready for your merge/PR**, names the landing branch, and guides the merge or PR to the retained intended
+target.
+
+**Acceptance scenarios:**
+
+- Given an untargeted standalone Plan and a checkout on an unrelated branch, setting Off records the repository default
+  as `targetBranch`, creates a Plan Branch from that default, and delivers there without advancing the source branch.
+  The Plan is Verified on the landing branch; the report names that branch and the intended onward destination.
+- Given the same Plan with setting On, execution records the repository default, creates no automatic Plan Branch, and
+  delivers to that default. An explicit `targetBranch` takes precedence with either setting value.
+- Given a resumed attempt and a changed setting, execution and publication retain the recorded landing branch.
+- Given an untracked canonical Plan and dirty unrelated files in the primary checkout, publication to an unchecked-out
+  Plan Branch preserves those files, confirms delivery, generates the Work Record, and cleans up the execution worktree.
+- Given an Epic or Sequence child, delivery still reaches its parent's branch without an extra Plan Branch.
 
 **Requirement: Identify publication blockers.** When local publication pauses for tracked or staged user changes, the
 recovery notice lists the blocking paths and preserves those changes. The filenames survive failure classification and
@@ -808,8 +867,9 @@ Workflow Validation requirements:
   previous attempt must not turn successful publication and cleanup into a reported merge failure;
 - deliver validated work to its configured target and confirm that outcome before reporting delivery complete;
 - reread the active execution Plan before every validation phase and immediately before publication; its current
-  `targetBranch` takes precedence over the Session snapshot and the branch recorded at worktree creation. If no target
-  is specified, retain the recorded branch. A saved publication with a different target must not silently continue;
+  `deliveryBranch` takes precedence over the Session snapshot and the branch recorded at worktree creation. For legacy
+  Plans without that field, `targetBranch` remains authoritative; absent both, retain the recorded branch. A saved
+  publication with a different landing must not silently continue;
 - retain the validated implementation commit and actual target branch in the committed Plan; completed delivery must
   remain recognizable from Git after temporary workflow records are removed. In non-Git projects, the completed Plan
   status is sufficient;
@@ -879,10 +939,10 @@ Recovery requirements:
   independently staged, are not overwritten or silently committed.
 - Given a ready approved Plan and existing checkout edits, when execution starts, the approved work is isolated and the
   user’s edits remain preserved.
-- Given a worktree created from `main`, when the execution Plan is edited to target `release/next` after the Session
-  loaded it, validation and publication use `release/next`, leave `main` unchanged, and record the actual delivery
-  target. Cleanup proves the source commits are on `release/next` before removing the source branch; it does not require
-  those commits to be on the current checkout's branch.
+- Given a legacy worktree created from `main` with no recorded `deliveryBranch`, when the execution Plan is edited to
+  target `release/next` after the Session loaded it, validation and publication use `release/next`, leave `main`
+  unchanged, and record the actual delivery target. Cleanup proves the source commits are on `release/next` before
+  removing the source branch; it does not require those commits to be on the current checkout's branch.
 - Given a Plan targeting `main` and a checkout on an Epic branch, when Git config points `branch.main.merge` to the Epic
   branch, publication updates remote `main` only. Verification must inspect remote `main`, not the configured upstream.
 - Given a Session that still displays failed or canceled checks from an earlier attempt, when a resumed delivery
@@ -1050,6 +1110,12 @@ When Code Review is offered, users can open it, skip it, or close the prompt to 
 review pending and preserves the Plan and its implementation without publishing. Loading the Plan again with `load-plan`
 and continuing validation offers the same choice again.
 
+Canceling an open Code Review, including Escape in the terminal, leaves approval pending. Cancellation status text and
+unsubmitted draft fields never become revision feedback, approval, or counted review/revision receipts. The UI clearly
+states that review is pending and offers Retry or Plan resume; reopening presents a current working review link.
+Previously completed checks and the implementation remain available. Explicitly submitted feedback still starts repair
+and records the corresponding review decision and revision, followed by checks and another Code Review.
+
 The round limit bounds automatic review effort, not workflow life. The user can continue toward publication or
 deliberately abandon; an exhausted or stalled review cannot become an automatic terminal outcome. Internal dispatch,
 lock, and bookkeeping failures use [automatic workflow recovery](#execution-validation-and-recovery), not another review
@@ -1077,6 +1143,9 @@ convergence without more escaped defects, not approval rate alone.
   returns to that human review without an automatic round limit ending it.
 - Given the Code Review offer, when the user chooses Close and come back later, the Plan remains at `reviewed` with no
   review decision. A later `load-plan` continuation asks again before publication.
+- Given an open Code Review, repeated terminal cancellation preserves `reviewed`, records no decision or revision, and
+  never dispatches repair. Retry or a fresh Session's Plan resume presents a working review link; approval then records
+  exactly one approved decision. Real submitted revision feedback still records a revision and starts repair.
 
 <a id="frontend-engineer-and-pair-execution"></a>
 
@@ -1538,6 +1607,10 @@ Agent definitions are markdown files with YAML front matter. Definitions are lay
 
 Scalar front matter overrides by precedence. Prompt bodies append by default unless `promptOverride: true` is set.
 
+**Agent display names.** User-facing Agent labels use the effective front matter `name`, not the definition filename.
+The filename without `.md` is an internal ID for selection, routing, and persistence. This distinction applies to all
+Execution Backends, live message headers, restored messages, and the TUI footer.
+
 **Required tools.**
 
 Users can customize Agent tools, while required workflow capabilities remain available so customization does not break
@@ -1560,6 +1633,8 @@ boundary and does not control external CLI Execution Backends' native shells. Se
 
 **Acceptance scenarios:**
 
+- Given `planner.md` with the effective front matter name `Plan Designer`, when any Execution Backend emits Agent
+  messages, the message headers and footer show `Plan Designer`; routing and saved Agent identity remain `planner`.
 - Given layered Agent definitions, when a higher layer omits `bashAllowedCommands`, its lower list remains; when it
   supplies a list it replaces the lower list, `[]` denies all commands, and `null` resets the definition to unrestricted
   bash. Invalid values fail with source-specific guidance instead of removing a limit silently.
@@ -1802,6 +1877,13 @@ controls. Genuine permission failures that remain identify the denied action and
 target, with sensitive details redacted. The failure appears once in live Sessions and remains available in replay; it
 does not discard the pending request.
 
+**Antigravity first-run setup:** Empty or whitespace-only Antigravity configuration files are treated as unconfigured
+state. Users can approve normal MCP setup without manually editing those files. Inspection and declined setup leave them
+unchanged; malformed nonempty configuration is preserved and reported instead of overwritten. When the CLI requests
+interactive authentication during a RunWield turn or preflight, RunWield stops that login wait and tells the user to run
+`agy` in a terminal, complete Google sign-in, and retry the request. Authentication failures use the same actionable
+guidance without exposing login URLs or codes in the Session. Retrying after sign-in remains available.
+
 Future/open requirements:
 
 - keep provider-specific prompt or temperature tuning only where it materially improves behavior
@@ -1838,6 +1920,12 @@ Future/open requirements:
   access without requiring a global permission bypass.
 - Given Antigravity's existing RunWield MCP entry points to another installed standalone `wld` with the same stable
   command arguments, a newly built `wld` can start an Antigravity turn without replacing the global entry.
+- Given Antigravity has created an empty or whitespace-only MCP configuration or CLI settings file, first-use setup
+  requests approval and initializes the RunWield server and permission after approval, without a JSON parsing error.
+  Declining leaves the files unchanged; invalid nonempty JSON remains unchanged and is reported.
+- Given a signed-out Antigravity CLI requests a login code during preflight or a turn, RunWield reports the terminal
+  sign-in action promptly instead of waiting for the CLI's authentication timeout or reporting user cancellation.
+  Session history contains the guidance without login URLs or codes, and the request can be retried after sign-in.
 - Given an Antigravity Engineer turn, its temporary Agent declares native `run_command`, `write_to_file`,
   `replace_file_content`, and `view_file` so it can run a test command and create a new file in the execution workspace.
 - Given Antigravity reports a native tool as active and then done, the Session shows one live tool start and one

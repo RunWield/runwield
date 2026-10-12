@@ -44,6 +44,7 @@ for (const columns of [60, 140]) {
                 let activeId = sessionId;
                 const tui = new TuiAltScreen(terminal);
                 const view = await createChatView({
+                    documentLinks: null,
                     tui,
                     sessionRuntime: runtime,
                     getSessionId: () => activeId,
@@ -210,6 +211,7 @@ for (const choice of ["skip", "open", "dismiss"]) {
             const terminal = new VirtualTerminal({ columns: 100, rows: 22 });
             const tui = new TuiAltScreen(terminal);
             const view = await createChatView({
+                documentLinks: null,
                 tui,
                 sessionRuntime: runtime,
                 getSessionId: () => sessionId,

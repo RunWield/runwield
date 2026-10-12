@@ -71,6 +71,7 @@ function executionMetadataOverrides(canonicalAttrs, executionAttrs) {
         "executionAgent",
         "collaborationRecommendation",
         "targetBranch",
+        "deliveryBranch",
         "origin",
         "parentPlan",
         "order",

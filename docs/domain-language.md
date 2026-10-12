@@ -618,6 +618,12 @@ Reviewer, red team, adversarial validation
 is Approve & Slice. A new Epic has an **Epic Branch**, which owns current child progress. _Avoid_: Initiative, umbrella
 task
 
+**Plan Branch**: The landing branch for a standalone Planned Change when `plans.autoMergeIntoTargetBranch` is off (the
+default). RunWield creates `plan/<plan-name>` from the Plan's `targetBranch`, or reuses it without resetting it.
+`targetBranch` keeps the source and intended destination; `deliveryBranch` records the landing. With no authored target,
+RunWield records the repository default branch. RunWield delivers to the Plan Branch but does not merge it onward; the
+user merges it or opens a pull request. _Avoid_: Feature branch, Epic Branch
+
 **Epic Branch**: The branch an Epic starts and ends on, recorded as the Epic's `targetBranch` (default
 `epic/<epic-name>`). RunWield creates it from the latest primary branch when the Epic first needs it, records that
 commit as `epicBaseCommit`, and puts child drafts on it. Children deliver to it. RunWield never merges it into the
@@ -668,11 +674,13 @@ express. Plan Status still selects the validation phase. Session workflow state 
 cleared when validation ends, review reopens, or the implementation attempt is replaced. _Avoid_: Second status, Session
 state
 
-**Session-Independent Validation Engine**: The Workflow Validation sequencing, convergence policy, and gate predicates
-run on a session-independent engine (`src/shared/workflow/validation-engine.ts` and its phase modules) that consumes
-Pi/session turn machinery only through a narrow `ValidationSessionPort`. The Core Session runtime's `validation.ts`
-builds that port over the HostedSession machinery; other runtimes can drive the same engine by implementing the port.
-_Avoid_: Second validation implementation, session-coupled engine
+**Session-Independent Validation Engine**: Workflow Validation sequencing, convergence policy, and gate predicates run
+on the shared engine (`src/shared/workflow/validation-engine.ts` and its phase modules). Its supervisor and local CI
+command runner also work without a Session. Core's `validation.ts` builds `ValidationSessionPort` over HostedSession;
+`validation-host-turn.ts` uses the same supervisor and engine but returns typed reviewer, repair, and decision requests
+instead of in-process waits. Request-bound outcomes resume from the Validation Checkpoint through the existing gates.
+Host-turn validation stops at `reviewed`, before delivery. _Avoid_: Second validation implementation, session-coupled
+engine
 
 **Mechanical Validation**: RunWield's automated command validation loop. In no-plan QUICK_FIX work it runs local CI only
 without semantic review or Plan status transitions; inside Workflow Validation for executable Plans it runs the

@@ -238,8 +238,9 @@ async function commitPublicationMetadata(
     planName: string,
     sealedCommit: string,
     allowedPlanPaths: string[],
+    targetBranch: string,
 ): Promise<string> {
-    await finalizePublicationLifecycle(publicationRoot, planName, sealedCommit, allowedPlanPaths);
+    await finalizePublicationLifecycle(publicationRoot, planName, sealedCommit, allowedPlanPaths, targetBranch);
     await assertNoTrackedOrIndexedRuntimePaths(publicationRoot);
     await stageGitChangesExcludingRuntime(publicationRoot);
     await assertNoTrackedOrIndexedRuntimePaths(publicationRoot);
@@ -461,6 +462,7 @@ export async function publishExecutionWorktreeIsolated(
                 args.planName,
                 args.sealedExecutionCommit,
                 args.allowedPlanPaths,
+                upstream.branch,
             );
             await assertNoRuntimePathsInNewHistory(
                 publicationRoot,
@@ -623,6 +625,7 @@ export async function publishExecutionWorktreeIsolated(
             args.planName,
             args.sealedExecutionCommit,
             args.allowedPlanPaths,
+            upstream.branch,
         );
         await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, publicationCommit);
         await args.onIntegrated?.({
@@ -681,45 +684,57 @@ async function publishToLocalTarget(
     }
     await recoverLocalPublicationLifecycle(args.projectRoot, args.targetBranch, args.sealedExecutionCommit);
     const targetHeadBeforeMerge = await runGit(args.projectRoot, ["rev-parse", `refs/heads/${args.targetBranch}`]);
+    const primaryBranch = await runGit(args.projectRoot, ["branch", "--show-current"]);
+    const updatedPrimaryCheckout = primaryBranch === args.targetBranch;
     const savedAuthoritativePlans = new Map<string, Uint8Array>();
     try {
-        await prepareProjectContextPublication(args.projectRoot, args.executionCwd, args.sealedExecutionCommit);
-        const trackedChanges = (await runGitRaw(args.projectRoot, ["diff", "--name-only", "-z", "HEAD", "--"]))
-            .split("\0")
-            .filter((path) => path.length > 0);
-        const allowedPrimaryChanges = new Set(args.allowedPlanPaths);
-        const blockingTrackedChanges = trackedChanges.filter((path) => !allowedPrimaryChanges.has(path));
-        if (blockingTrackedChanges.length > 0) {
-            throw new IsolatedPublicationError(
-                `The checked-out ${args.targetBranch} branch has unsaved tracked changes. ` +
-                    `Commit or discard them before retrying local publication: ${blockingTrackedChanges.join(", ")}.`,
-                { mergeFailureKind: "primary_checkout_dirty", blockingPaths: blockingTrackedChanges },
-            );
-        }
-        for (const relativePath of args.allowedPlanPaths) {
-            const staged = await runGitResult(args.projectRoot, ["diff", "--cached", "--quiet", "--", relativePath]);
-            if (staged.code !== 0) {
+        if (updatedPrimaryCheckout) {
+            await prepareProjectContextPublication(args.projectRoot, args.executionCwd, args.sealedExecutionCommit);
+            const trackedChanges = (await runGitRaw(args.projectRoot, ["diff", "--name-only", "-z", "HEAD", "--"]))
+                .split("\0")
+                .filter((path) => path.length > 0);
+            const allowedPrimaryChanges = new Set(args.allowedPlanPaths);
+            const blockingTrackedChanges = trackedChanges.filter((path) => !allowedPrimaryChanges.has(path));
+            if (blockingTrackedChanges.length > 0) {
                 throw new IsolatedPublicationError(
-                    `The project folder has a staged change to ${relativePath}. Commit or unstage it before retrying.`,
-                    { mergeFailureKind: "primary_checkout_dirty", blockingPaths: [relativePath] },
+                    `The checked-out ${args.targetBranch} branch has unsaved tracked changes. ` +
+                        `Commit or discard them before retrying local publication: ${
+                            blockingTrackedChanges.join(", ")
+                        }.`,
+                    { mergeFailureKind: "primary_checkout_dirty", blockingPaths: blockingTrackedChanges },
                 );
             }
-        }
-        for (const relativePath of args.allowedPlanPaths) {
-            const path = join(args.projectRoot, relativePath);
-            const bytes = await Deno.readFile(path).catch((error) => {
-                if (error instanceof Deno.errors.NotFound) return null;
-                throw error;
-            });
-            if (!bytes) continue;
-            const changed = await runGitResult(args.projectRoot, ["diff", "--quiet", "--", relativePath]);
-            const tracked = await runGitResult(args.projectRoot, ["ls-files", "--error-unmatch", relativePath]);
-            if (changed.code === 0 && tracked.code === 0) continue;
-            savedAuthoritativePlans.set(relativePath, bytes);
-            if (tracked.code === 0) {
-                await runGit(args.projectRoot, ["restore", "--worktree", "--source=HEAD", "--", relativePath]);
-            } else {
-                await Deno.remove(path);
+            for (const relativePath of args.allowedPlanPaths) {
+                const staged = await runGitResult(args.projectRoot, [
+                    "diff",
+                    "--cached",
+                    "--quiet",
+                    "--",
+                    relativePath,
+                ]);
+                if (staged.code !== 0) {
+                    throw new IsolatedPublicationError(
+                        `The project folder has a staged change to ${relativePath}. Commit or unstage it before retrying.`,
+                        { mergeFailureKind: "primary_checkout_dirty", blockingPaths: [relativePath] },
+                    );
+                }
+            }
+            for (const relativePath of args.allowedPlanPaths) {
+                const path = join(args.projectRoot, relativePath);
+                const bytes = await Deno.readFile(path).catch((error) => {
+                    if (error instanceof Deno.errors.NotFound) return null;
+                    throw error;
+                });
+                if (!bytes) continue;
+                const changed = await runGitResult(args.projectRoot, ["diff", "--quiet", "--", relativePath]);
+                const tracked = await runGitResult(args.projectRoot, ["ls-files", "--error-unmatch", relativePath]);
+                if (changed.code === 0 && tracked.code === 0) continue;
+                savedAuthoritativePlans.set(relativePath, bytes);
+                if (tracked.code === 0) {
+                    await runGit(args.projectRoot, ["restore", "--worktree", "--source=HEAD", "--", relativePath]);
+                } else {
+                    await Deno.remove(path);
+                }
             }
         }
         args.onProgress?.("combining_work");
@@ -744,7 +759,7 @@ async function publishToLocalTarget(
             args.allowedPlanPaths,
         );
         await assertNoRuntimePathsInNewHistory(args.projectRoot, targetHeadBeforeMerge, publicationCommit);
-        await settleProjectContextPublication(args.projectRoot);
+        if (updatedPrimaryCheckout) await settleProjectContextPublication(args.projectRoot);
         await args.onIntegrated?.({
             targetBaseCommit: targetHeadBeforeMerge,
             integrationCommit: publicationCommit,
@@ -771,7 +786,7 @@ async function publishToLocalTarget(
         await args.onVerified?.(publishedEvidence);
         return {
             publicationMode: "local",
-            updatedPrimaryCheckout: true,
+            updatedPrimaryCheckout,
             executionMetadataCommit,
             targetHeadBeforeMerge,
             deliveryCommit: publicationCommit,
@@ -779,7 +794,7 @@ async function publishToLocalTarget(
         };
     } catch (error) {
         const mergeHead = await runGitResult(args.projectRoot, ["rev-parse", "--verify", "MERGE_HEAD"]);
-        if (mergeHead.code === 0) await runGitResult(args.projectRoot, ["merge", "--abort"]);
+        if (updatedPrimaryCheckout && mergeHead.code === 0) await runGitResult(args.projectRoot, ["merge", "--abort"]);
         const currentTargetHead = await runGitResult(args.projectRoot, [
             "rev-parse",
             `refs/heads/${args.targetBranch}`,
@@ -798,7 +813,7 @@ async function publishToLocalTarget(
             }
         }
         try {
-            await settleProjectContextPublication(args.projectRoot);
+            if (updatedPrimaryCheckout) await settleProjectContextPublication(args.projectRoot);
         } catch (restoreError) {
             restorationError = restoreError instanceof Error ? restoreError : new Error(String(restoreError));
         }

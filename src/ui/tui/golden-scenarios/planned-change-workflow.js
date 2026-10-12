@@ -103,8 +103,13 @@ function assertRealPlanReviewRevisionAndApproval(result) {
 }
 
 export const plannedChangeReviewRepairValidationScenario = {
-    // This scenario isolates automated delivery; human policy gates have dedicated journeys.
-    globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
+    // This scenario tests direct target delivery; human policy gates have dedicated journeys.
+    globalSettings: {
+        defaultProvider: "golden",
+        defaultModel: "faux",
+        codereview: "none",
+        plans: { autoMergeIntoTargetBranch: true },
+    },
     name: "planned-change-review-repair-validation-delivery",
     composedTui: true,
     initialAgentName: "planner",
@@ -859,7 +864,12 @@ export const plannedChangeNonGitInPlaceScenario = {
 
 /** @type {import('../testing/scenario-runner.js').GoldenScenario} */
 export const plannedChangeValidationFailureRetryScenario = {
-    globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
+    globalSettings: {
+        defaultProvider: "golden",
+        defaultModel: "faux",
+        codereview: "none",
+        plans: { autoMergeIntoTargetBranch: true },
+    },
     name: "planned-change-validation-ci-failure-repair-retry-success",
     composedTui: true,
     initialAgentName: "planner",
@@ -1157,7 +1167,12 @@ export const plannedChangeValidationExhaustedScenario = {
 
 /** @type {import('../testing/scenario-runner.js').GoldenScenario} */
 export const plannedChangeFrontendIdentityScenario = {
-    globalSettings: { defaultProvider: "golden", defaultModel: "faux", codereview: "none" },
+    globalSettings: {
+        defaultProvider: "golden",
+        defaultModel: "faux",
+        codereview: "none",
+        plans: { autoMergeIntoTargetBranch: true },
+    },
     name: "planned-change-frontend-engineer-context-identity",
     composedTui: true,
     initialAgentName: "planner",

@@ -112,7 +112,7 @@ Deno.test("UserPromptBlock renders with consistent background", () => {
 
 Deno.test("AgentMessageBlock renders without background (like Pi)", () => {
     const w = 100;
-    const block = new AgentMessageBlock("TestAgent");
+    const block = new AgentMessageBlock("TestAgent", null);
     block.appendText("Some markdown **content** here.");
     const lines = block.render(w);
 
@@ -129,7 +129,7 @@ Deno.test("AgentMessageBlock renders Markdown URLs with BEL-delimited terminal h
     setCapabilities({ ...capabilities, hyperlinks: true });
     try {
         const url = "https://github.com/gandazgul/runwield/pull/80";
-        const block = new AgentMessageBlock("Operator");
+        const block = new AgentMessageBlock("Operator", null);
         block.appendText(`Opened draft PR #80: ${url}.`);
 
         const rendered = block.render(140).join("\n");
@@ -143,7 +143,7 @@ Deno.test("AgentMessageBlock renders Markdown URLs with BEL-delimited terminal h
 });
 
 Deno.test("AgentMessageBlock renders completed Mermaid fences as Unicode diagrams", () => {
-    const block = new AgentMessageBlock("Planner");
+    const block = new AgentMessageBlock("Planner", null);
     block.appendText("```mermaid\ngraph TD\n  A --> B\n```");
 
     const plain = block.render(120).map((line) => stripAnsi(line)).join("\n");

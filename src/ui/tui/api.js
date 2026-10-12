@@ -96,6 +96,7 @@ export function createFooterOnlyUiApi(parentUiAPI) {
 /**
  * Creates a UiAPI object for RunWield TUI.
  *
+ * @param {import('../review/document-link-host.ts').DocumentLinkHost | null} documentLinks
  * @param {{ requestRender: () => void, setFocus: (component: any) => void }} tui
  * @param {{ addChild: (child: any) => void, removeChild: (child: any) => void, clear: () => void, children: any[], invalidateChild?: (child: any) => void }} messageList
  * @param {import('./blocks.js').SpinnerBlock} spinner
@@ -108,6 +109,7 @@ export function createFooterOnlyUiApi(parentUiAPI) {
  * @returns {import('./types.js').UiAPI}
  */
 export function createUiApi(
+    documentLinks,
     tui,
     messageList,
     spinner,
@@ -454,7 +456,7 @@ export function createUiApi(
                 };
             }
             closeCurrentToolGroup();
-            const block = new AgentMessageBlock(agentName);
+            const block = new AgentMessageBlock(agentName, documentLinks);
             appendMessageListChild(block);
             appendMessageListChild(new Spacer(1));
             tui.requestRender();
@@ -610,7 +612,7 @@ export function createUiApi(
                 block.setExpanded(true);
                 appendMessageListChild(block);
                 appendMessageListChild(new Spacer(1));
-            } else if (WORKFLOW_TOOL_NAME_SET.has(toolName)) {
+            } else if ((WORKFLOW_TOOL_NAME_SET.has(toolName) || toolName === "code_review")) {
                 closeCurrentToolGroup();
                 appendMessageListChild(block);
                 appendMessageListChild(new Spacer(1));

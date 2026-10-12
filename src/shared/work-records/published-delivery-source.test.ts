@@ -59,6 +59,8 @@ Deno.test("sealed delivery keeps child evidence and terminal parent record despi
                 targetHeadAtSeal: commit,
             }),
             artifactCommit: commit,
+            publishedCommit: commit,
+            phase: "publication_verified" as const,
         };
         await Deno.writeTextFile(`${root}/docs/plans/epic/one.md`, "# Unrelated primary edit\n");
         await Deno.remove(`${root}/docs/work-records/epic.md`);
@@ -213,6 +215,45 @@ Deno.test("confirmed child delivery keeps the prepared reviewed Epic Work Record
             })).workRecordOwner,
             undefined,
         );
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
+});
+
+Deno.test("record attachment uses exact confirmed publication, never pending or later checkout bytes", async () => {
+    const root = await fixture.checkout();
+    try {
+        const candidate = await git(root, ["rev-parse", "HEAD"]);
+        const path = "docs/work-records/epic.md";
+        const approved = "# Finalized delivery record\n";
+        await Deno.writeTextFile(`${root}/${path}`, approved);
+        await git(root, ["add", path]);
+        await git(root, ["commit", "-m", "finalize delivery"]);
+        const publishedCommit = await git(root, ["rev-parse", "HEAD"]);
+        const attempt = {
+            ...createPublicationAttempt({
+                attemptId: "record",
+                planId: "child-id",
+                planName: "epic/one",
+                targetBranch: "main",
+                executionBranch: "feature",
+                executionCwd: root,
+                publicationRoot: root,
+                validatedCommit: candidate,
+                targetHeadAtSeal: candidate,
+            }),
+            artifactCommit: candidate,
+            publishedCommit,
+        };
+        assertEquals(await readPublishedRecordMarkdown(root, attempt, path), null);
+        await Deno.writeTextFile(`${root}/${path}`, "Later unrelated edits\n");
+        for (const phase of ["publication_verified", "cleanup_complete"] as const) {
+            assertEquals(await readPublishedRecordMarkdown(root, { ...attempt, phase }, path), approved);
+            assertEquals(
+                await readPublishedRecordMarkdown(root, { ...attempt, phase, publishedCommit: "missing" }, path),
+                null,
+            );
+        }
     } finally {
         await Deno.remove(root, { recursive: true });
     }

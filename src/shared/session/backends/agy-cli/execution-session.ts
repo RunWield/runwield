@@ -638,7 +638,7 @@ async function verifyAgyCustomAgentListed(agentName: string, cwd: string, signal
     ]);
     if (!status.success) {
         const detail = stderrText || `agy /agents exited with code ${status.code}`;
-        if (signal?.aborted || status.terminatedBy === "abort") {
+        if (signal?.aborted) {
             throw new AgyCliBackendError("canceled", { exitCode: status.code });
         }
         if (status.terminatedBy === "timeout") {
@@ -646,6 +646,9 @@ async function verifyAgyCustomAgentListed(agentName: string, cwd: string, signal
         }
         if (isAgyAuthFailure(detail)) {
             throw new AgyCliBackendError("auth_failed", { exitCode: status.code, message: detail });
+        }
+        if (status.terminatedBy === "abort") {
+            throw new AgyCliBackendError("canceled", { exitCode: status.code });
         }
         if (isAgyMcpUnavailable(detail)) {
             throw new AgyCliBackendError("mcp_unavailable", { exitCode: status.code, message: detail });

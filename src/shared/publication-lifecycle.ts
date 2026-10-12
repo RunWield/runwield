@@ -16,6 +16,33 @@ async function sealedDocument(cwd: string, commit: string, path: string): Promis
     return result.success ? new TextDecoder().decode(result.stdout) : null;
 }
 
+/** Preserve recorder prose as history; lifecycle facts are owned by publication. */
+function finalizedRecord(sealedRecord: string, sealedCommit: string, targetBranch?: string): string {
+    const original = parseWorkRecordMarkdown(sealedRecord);
+    if (original.attrs.status !== "pending_verification") {
+        return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
+    }
+    const body = [
+        `# ${original.title}`,
+        "",
+        "## Summary",
+        "",
+        "Delivery metadata has been finalized for this validated change.",
+        `Candidate containing the implementation and draft record: \`${sealedCommit}\`.`,
+        ...(targetBranch ? [`Delivery destination: \`${targetBranch}\`.`] : []),
+        "This record accompanies the delivery commit. The publication receipt confirms whether that commit reached its destination; this metadata alone does not prove a remote push or a merge into another branch.",
+        "",
+        "Validation scope is the configured workflow gate. See the delivery card's test results for the actual command output; no additional or full test suite is claimed here.",
+        "",
+        "## Historical pre-publication notes",
+        "",
+        "The recorder draft below is preserved verbatim as historical context. Its publication-pending and outstanding-validation statements describe the earlier snapshot, not the current delivery status. Implementation details, deviations and deferred work remain available here; consult the delivery evidence for final validation outcomes.",
+        "",
+        ...original.body.split("\n").map((line) => `> ${line}`),
+    ].join("\n");
+    return formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, body);
+}
+
 /**
  * Called after the candidate has merged, before the target commit is published.
  * Exact sealed identities and bytes keep a retry from approving unrelated edits.
@@ -26,6 +53,7 @@ export async function finalizePublicationLifecycle(
     planName: string,
     sealedCommit: string,
     allowedPlanPaths: string[] = [`docs/plans/${planName}.md`],
+    targetBranch?: string,
 ): Promise<string[]> {
     const firstPath = `docs/plans/${planName}.md`;
     const first = await sealedDocument(cwd, sealedCommit, firstPath);
@@ -71,11 +99,12 @@ export async function finalizePublicationLifecycle(
         const sealedRecord = await sealedDocument(cwd, sealedCommit, recordPath);
         if (!sealedRecord) throw new Error(`Work Record is absent from the sealed candidate: ${recordPath}`);
         const original = parseWorkRecordMarkdown(sealedRecord);
-        const approved = formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
-        if (recordText !== sealedRecord && recordText !== approved) {
+        const legacyApproved = formatWorkRecordMarkdown({ ...original.attrs, status: "approved" }, original.body);
+        const approved = finalizedRecord(sealedRecord, sealedCommit, targetBranch);
+        if (recordText !== sealedRecord && recordText !== approved && recordText !== legacyApproved) {
             throw new Error(`Work Record changed outside its sealed publication: ${recordPath}`);
         }
-        if (record.attrs.status === "pending_verification") writes.set(recordPath, approved);
+        if (recordText !== approved) writes.set(recordPath, approved);
         const predecessorIds = typeof record.attrs.supersedes === "string"
             ? [record.attrs.supersedes]
             : record.attrs.supersedes || [];
@@ -113,6 +142,7 @@ export async function hasFinalizedPublicationLifecycle(
     planId: string,
     sealedCommit?: string,
     planPaths: string[] = [`docs/plans/${planName}.md`],
+    targetBranch?: string,
 ): Promise<boolean> {
     const text = await sealedDocument(cwd, commit, `docs/plans/${planName}.md`);
     if (!text) return false;
@@ -131,7 +161,11 @@ export async function hasFinalizedPublicationLifecycle(
             const finalText = await sealedDocument(cwd, commit, source.workRecord.path);
             if (!originalText || !finalText) return false;
             const record = parseWorkRecordMarkdown(originalText);
-            if (finalText !== formatWorkRecordMarkdown({ ...record.attrs, status: "approved" }, record.body)) {
+            // Previously published versions finalized only frontmatter; their proof remains valid.
+            if (
+                finalText !== finalizedRecord(originalText, sealedCommit, targetBranch) &&
+                finalText !== formatWorkRecordMarkdown({ ...record.attrs, status: "approved" }, record.body)
+            ) {
                 return false;
             }
         }
@@ -184,7 +218,13 @@ export async function finalizeLocalPublicationLifecycle(
     try {
         await git(cwd, ["worktree", "add", "--detach", temporary, before]);
         attached = true;
-        const paths = await finalizePublicationLifecycle(temporary, planName, sealedCommit, allowedPlanPaths);
+        const paths = await finalizePublicationLifecycle(
+            temporary,
+            planName,
+            sealedCommit,
+            allowedPlanPaths,
+            targetBranch,
+        );
         if (!paths.length) return before;
         await git(temporary, ["add", "--", ...paths]);
         await git(temporary, [

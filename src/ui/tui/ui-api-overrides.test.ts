@@ -47,7 +47,7 @@ function makeHarness(projectRoot = "/fixture/project"): OverridesHarness {
     container.addChild(activeInteraction);
     container.addChild(editor);
     tui.addChild(container);
-    const uiAPI = createUiApi(tui, messageList, new SpinnerBlock(), undefined, undefined, activeInteraction);
+    const uiAPI = createUiApi(null, tui, messageList, new SpinnerBlock(), undefined, undefined, activeInteraction);
     installUiApiOverrides({
         uiAPI,
         tui,

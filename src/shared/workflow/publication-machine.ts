@@ -101,6 +101,7 @@ async function integratedEvidence(
             attempt.planId,
             attempt.artifactCommit,
             attempt.planPaths,
+            attempt.targetBranch,
         ))
     ) return null;
     const merges = await git(attempt.publicationRoot, ["rev-list", "--merges", "--first-parent", "HEAD"]);
@@ -185,6 +186,7 @@ async function publishedEvidence(
                 attempt.planId,
                 attempt.artifactCommit,
                 attempt.planPaths,
+                attempt.targetBranch,
             ))
         ) return null;
         return {
@@ -224,6 +226,7 @@ async function publishedEvidence(
                     attempt.planId,
                     attempt.artifactCommit,
                     attempt.planPaths,
+                    attempt.targetBranch,
                 ))
             ) return null;
         } finally {
@@ -418,6 +421,26 @@ async function retainPublicationCompletion(projectRoot: string, attempt: Publica
     });
 }
 
+/** Keep exact delivery bytes readable after staging cleanup and later target changes. */
+async function retainDeliveryCommit(
+    projectRoot: string,
+    sourceRoot: string,
+    attempt: PublicationAttempt,
+): Promise<void> {
+    if (!attempt.publishedCommit) return;
+    const ref = `refs/runwield/deliveries/${encodeURIComponent(attempt.attemptId)}`;
+    const result = sourceRoot === projectRoot
+        ? await git(projectRoot, ["update-ref", ref, attempt.publishedCommit])
+        : await git(projectRoot, [
+            "fetch",
+            "--no-tags",
+            "--no-write-fetch-head",
+            sourceRoot,
+            `${attempt.publishedCommit}:${ref}`,
+        ]);
+    if (result.code !== 0) throw new Error("Confirmed delivery evidence could not be retained.");
+}
+
 /** Retry against current target records so an older delivery cannot undo later supersession. */
 async function settlePublicationIndex(
     projectRoot: string,
@@ -431,6 +454,7 @@ async function settlePublicationIndex(
         if (head.code !== 0 || !await gitAncestor(projectRoot, attempt.publishedCommit, head.stdout)) {
             throw new Error("Published Work Record source cannot be proven on its target.");
         }
+        await retainDeliveryCommit(projectRoot, projectRoot, attempt);
         await indexPublishedWorkRecords(projectRoot, projectRoot, head.stdout, paths, port, attempt.publishedCommit);
         return;
     }
@@ -457,6 +481,7 @@ async function settlePublicationIndex(
         }
         const head = await git(inspection, ["rev-parse", "FETCH_HEAD"]);
         if (head.code !== 0) throw new Error("Published Work Record target cannot be read.");
+        await retainDeliveryCommit(projectRoot, inspection, attempt);
         await indexPublishedWorkRecords(projectRoot, inspection, head.stdout, paths, port, attempt.publishedCommit);
     } finally {
         await Deno.remove(inspection, { recursive: true });

@@ -105,6 +105,11 @@ export function buildWorkRecordIndexDocument(record: WorkRecordResource) {
         "## Summary",
         "",
         record.summary,
+        // Finalized records keep the implementation narrative under a labeled historical section.
+        // Retain that context in search without presenting its provisional status as current.
+        ...(record.body.includes("\n## Historical pre-publication notes\n")
+            ? ["", record.body.slice(record.body.indexOf("\n## Historical pre-publication notes\n") + 1)]
+            : []),
     ].join("\n").trim();
 }
 

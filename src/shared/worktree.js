@@ -69,7 +69,7 @@ async function runGitResult(cwd, args) {
 }
 
 /** @param {string} value */
-function slugify(value) {
+export function slugify(value) {
     const slug = value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
     return slug.slice(0, 48) || "plan";
 }
@@ -365,31 +365,37 @@ async function remoteBranchExists(projectRoot, branch) {
  * @returns {Promise<PreparedTargetBranchRef>}
  */
 async function createLocalBranchFromDefault(projectRoot, branch) {
-    let defaultRef = "refs/heads/main";
-    const remote = await runGitResult(projectRoot, ["remote", "get-url", "origin"]);
-    if (remote.code === 0) {
-        // Prefer origin's default branch. An origin whose HEAD is missing or names an
-        // unborn branch falls back to origin's `main`, then to the local `main`.
-        const head = await runGitResult(projectRoot, ["ls-remote", "--symref", "origin", "HEAD"]);
-        const defaultBranch = head.code === 0
-            ? head.stdout.match(/^ref: refs\/heads\/([^\t\n]+)\tHEAD/m)?.[1]
-            : undefined;
-        for (const candidate of [...new Set([defaultBranch, "main"].filter(Boolean))]) {
-            const fetched = await runGitResult(projectRoot, [
-                "fetch",
-                "origin",
-                `+refs/heads/${candidate}:refs/remotes/origin/${candidate}`,
-            ]);
-            if (fetched.code !== 0) continue;
-            defaultRef = `refs/remotes/origin/${candidate}`;
-            break;
-        }
-    }
-    if (!await gitRefExists(projectRoot, defaultRef)) {
-        throw new Error(`Cannot create target branch ${branch}: ${defaultRef} does not exist.`);
-    }
+    const defaultBranch = await resolveRepositoryDefaultBranch(projectRoot);
+    const defaultRef = await remoteBranchExists(projectRoot, defaultBranch)
+        ? `refs/remotes/origin/${defaultBranch}`
+        : `refs/heads/${defaultBranch}`;
     await runGit(projectRoot, ["branch", branch, defaultRef]);
     return { baseRef: `refs/heads/${branch}`, baseBranch: branch };
+}
+
+/** Resolve the repository default, never the current checkout.
+ * @param {string} projectRoot
+ * @returns {Promise<string>}
+ */
+export async function resolveRepositoryDefaultBranch(projectRoot) {
+    await assertGitRepository(projectRoot, "Resolving the repository default branch");
+    const remote = await runGitResult(projectRoot, ["remote", "get-url", "origin"]);
+    if (remote.code === 0) {
+        const head = await runGitResult(projectRoot, ["ls-remote", "--symref", "origin", "HEAD"]);
+        const branch = head.code === 0 ? head.stdout.match(/^ref: refs\/heads\/([^\t\n]+)\tHEAD/m)?.[1] : undefined;
+        for (const candidate of [...new Set([branch, "main", "master"].filter(Boolean))]) {
+            if (candidate && await remoteBranchExists(projectRoot, candidate)) return candidate;
+        }
+    }
+    const configured = await runGitResult(projectRoot, ["config", "--get", "init.defaultBranch"]);
+    for (
+        const branch of [
+            ...new Set([configured.code === 0 ? configured.stdout.trim() : "", "main", "master"].filter(Boolean)),
+        ]
+    ) {
+        if (await gitRefExists(projectRoot, `refs/heads/${branch}`)) return branch;
+    }
+    throw new Error("Repository default branch does not exist (main or master).");
 }
 
 /**
@@ -450,6 +456,37 @@ export async function prepareTargetBranchRef(projectRoot, branch) {
     }
 
     return await createLocalBranchFromDefault(projectRoot, target);
+}
+
+/**
+ * Ensure a local delivery branch exists without changing a checkout.
+ * An existing local branch wins; a remote-only branch is adopted before considering the source.
+ *
+ * @param {string} projectRoot
+ * @param {string} branch
+ * @param {string} [sourceBranch]
+ * @returns {Promise<{ branch: string, created: boolean }>}
+ */
+export async function ensureTargetBranchRef(projectRoot, branch, sourceBranch) {
+    const target = await resolveTargetBranchName(projectRoot, branch);
+    if (await gitRefExists(projectRoot, `refs/heads/${target}`)) return { branch: target, created: false };
+    let sourceRef;
+    if (await remoteBranchExists(projectRoot, target)) {
+        sourceRef = `refs/remotes/origin/${target}`;
+    } else if (sourceBranch) {
+        const source = await resolveTargetBranchName(projectRoot, sourceBranch);
+        sourceRef = await remoteBranchExists(projectRoot, source)
+            ? `refs/remotes/origin/${source}`
+            : !sourceBranch.startsWith("origin/") && await gitRefExists(projectRoot, `refs/heads/${source}`)
+            ? `refs/heads/${source}`
+            : undefined;
+        if (!sourceRef) throw new Error(`Source branch does not exist: ${sourceBranch}`);
+    } else {
+        await createLocalBranchFromDefault(projectRoot, target);
+        return { branch: target, created: true };
+    }
+    await runGit(projectRoot, ["branch", target, sourceRef]);
+    return { branch: target, created: true };
 }
 
 /**

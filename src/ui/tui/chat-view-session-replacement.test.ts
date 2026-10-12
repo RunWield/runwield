@@ -10,6 +10,7 @@ Deno.test("chat view refreshes warmed sidebar state for events from a replacemen
         const tui = new TuiAltScreen(terminal);
         let activeId = sessionId;
         const view = await createChatView({
+            documentLinks: null,
             tui,
             sessionRuntime: runtime,
             getSessionId: () => activeId,

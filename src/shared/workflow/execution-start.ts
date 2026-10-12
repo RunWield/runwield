@@ -6,7 +6,15 @@ import {
     findPlansByParent,
     getPlanFrontMatterRevisionForText,
     loadPlan,
+    updatePlanFrontMatter,
 } from "../../plan-store.js";
+import {
+    defaultPlanBranchName,
+    effectiveDeliveryBranch,
+    ensurePlanBranch,
+    isStandalonePlannedChange,
+    shouldAdoptPlanBranch,
+} from "./plan-branch.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
@@ -20,6 +28,7 @@ import {
     prepareTargetBranchRef,
     removeWorktreeGitArtifacts,
     resolveCurrentCheckoutBranch,
+    resolveRepositoryDefaultBranch,
     resolveTargetBranchName,
     settleWorktreeAttempt,
 } from "../worktree.js";
@@ -423,7 +432,8 @@ export async function startActiveExecutionWorkflow(
         hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
         return activeWorkflow;
     }
-    const targetBranch = normalizeExecutionTargetBranch(triageMeta.targetBranch);
+    let targetBranch = normalizeExecutionTargetBranch(triageMeta.targetBranch);
+    let deliveryBranch = effectiveDeliveryBranch(triageMeta);
     const hasRecordedWorktree = Boolean(
         triageMeta.worktreeId || triageMeta.worktreePath || triageMeta.worktreeBranch ||
             triageMeta.executionBaselineTree,
@@ -450,8 +460,8 @@ export async function startActiveExecutionWorkflow(
         : null;
     const reusable = activeReusable || planningReusable;
     if (reusable) {
-        const requestedTarget = targetBranch
-            ? await resolveTarget(projectRoot, targetBranch)
+        const requestedTarget = deliveryBranch
+            ? await resolveTarget(projectRoot, deliveryBranch)
             : await resolveCurrentBranch(projectRoot);
         assertReusableWorktreeTargetMatches(reusable.baseBranch, requestedTarget);
     }
@@ -490,9 +500,19 @@ export async function startActiveExecutionWorkflow(
             hostedSession?.recordPlanAssociation?.({ planId: stablePlanId, planName, purpose: "execution" });
         }
     }
+    targetBranch = normalizeExecutionTargetBranch(preflightCanonicalPlanSource.attrs.targetBranch);
+    const standalone = isStandalonePlannedChange(preflightCanonicalPlanSource.attrs);
+    if (!reusable && standalone && !targetBranch) {
+        targetBranch = await resolveRepositoryDefaultBranch(projectRoot);
+    }
+    deliveryBranch = effectiveDeliveryBranch(preflightCanonicalPlanSource.attrs) || targetBranch;
+    // Existing attempts retain their recorded landing across setting changes.
+    const adoptPlanBranch = !reusable && shouldAdoptPlanBranch(projectRoot, preflightCanonicalPlanSource.attrs);
     const resolvedTargetBranch = reusable
         ? normalizeExecutionTargetBranch(reusable.baseBranch) || await resolveCurrentBranch(projectRoot)
-        : targetBranch;
+        : adoptPlanBranch
+        ? defaultPlanBranchName(planName)
+        : deliveryBranch;
     const attemptId = reusable?.id || triageMeta.worktreeId || crypto.randomUUID().slice(0, 8);
     const authorityStatus = canonicalPlanForRevision?.attrs.status || currentStatus;
     const reusableBaseRef = reusable && (reusable.baseCommit || reusable.baseTree);
@@ -530,7 +550,7 @@ export async function startActiveExecutionWorkflow(
         expectedPlanEvent: needsExecutionStartedEvent,
         resumeInterrupted: sourceLocation.resumeInterruptedPreparation === true,
         prepare: async ({ beforePlan, markEffect, registerRollback }) => {
-            const canonicalPlanSource = await loadCanonicalPlanSource(planAuthorityRoot, planName);
+            let canonicalPlanSource = await loadCanonicalPlanSource(planAuthorityRoot, planName);
             if (canonicalPlanSource.kind !== "loaded") {
                 throw new Error(
                     `Cannot load canonical Project Plan ${canonicalPlanSource.relativePath}: ${
@@ -560,6 +580,24 @@ export async function startActiveExecutionWorkflow(
                     `Plan ${planName} had its front matter change while preparing execution; reload the Plan and start execution again.`,
                 );
             }
+            if (!reusable && standalone) {
+                if (adoptPlanBranch) {
+                    deliveryBranch =
+                        (await ensurePlanBranch({ projectRoot, planName, sourceBranch: targetBranch })).branch;
+                }
+                await updatePlanFrontMatter(
+                    planAuthorityRoot,
+                    planName,
+                    { targetBranch, deliveryBranch },
+                    canonicalPlanSource.attrs,
+                    { expectedRevision: beforePlan.revision },
+                );
+                Object.assign(effectiveTriageMeta, { targetBranch, deliveryBranch });
+                canonicalPlanSource = await loadCanonicalPlanSource(planAuthorityRoot, planName);
+                if (canonicalPlanSource.kind !== "loaded") {
+                    throw new Error(`Cannot reload recorded delivery branch for ${planName}.`);
+                }
+            }
             lockedCanonicalPlanSource = canonicalPlanSource;
             const reusedWorktree = Boolean(reusable);
             let preparationCommit;
@@ -577,7 +615,7 @@ export async function startActiveExecutionWorkflow(
                     branch: worktree.branch,
                 });
             } else {
-                const implicitTargetBranch = targetBranch || await resolveCurrentBranch(projectRoot);
+                const implicitTargetBranch = deliveryBranch || await resolveCurrentBranch(projectRoot);
                 const targetPreparation = implicitTargetBranch
                     ? await prepareTarget(projectRoot, implicitTargetBranch)
                     : { baseRef: "HEAD", baseBranch: "HEAD" };

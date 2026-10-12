@@ -112,6 +112,20 @@ Plan commands are covered in [Plans and workflows](workflows.md#working-with-pla
 - `!command` runs a shell command and sends its output to the model.
 - `!!command` runs a shell command without sending its output.
 
+## Document links in Agent messages
+
+In terminals that support hyperlinks, an Agent's mention of an existing Project-relative `.md` file is clickable.
+Examples include `(docs/guide.md)`, `README.md`, an exact backticked path, and a labeled Markdown link. The visible text
+stays the same. Click the link to open the read-only Workspace reader in your browser.
+
+Each tab reads the current file. Reload after an edit to see the change. Close affects only that tab; other links stay
+available while the TUI is open. Links are limited to the active Session's Project, including checks that block symlinks
+to outside files. Replacing the Session revokes its old links. Exiting the TUI stops the local reader host.
+
+User messages, tool output, code fences, images, external URLs, and non-Markdown paths do not gain these links. A
+mention is navigation only: it does not register a Session Artifact. Terminals without hyperlink support keep the
+original readable paths and do not show local reader URLs or tokens.
+
 ## Math and diagrams
 
 Completed LaTeX math in messages renders as Unicode text in the terminal: inline `$…$` or `\(…\)`, and display `$$…$$`

@@ -12,6 +12,7 @@ Deno.test("live TUI reserves mascot space and pauses for questions without cover
         const tui = new TuiAltScreen(terminal);
         session.resetAgentInfoStack("Operator", "", "", "operator");
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -62,6 +63,7 @@ Deno.test("disabling a live TUI mascot removes rail and compact face without los
         const tui = new TuiAltScreen(terminal);
         session.resetAgentInfoStack("Operator", "", "", "operator");
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,

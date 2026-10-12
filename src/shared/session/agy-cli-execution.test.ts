@@ -1,3 +1,5 @@
+import { ReviewInspection } from "../workflow/review-inspection.ts";
+import { createLedger } from "../workflow/review-ledger.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import type { SessionRuntimeEvent } from "./session-runtime-events.js";
@@ -38,6 +40,7 @@ interface AgyFixtureCall {
 
 interface RuntimeEventRecord {
     type?: string;
+    message?: string;
     agentName?: string;
     delta?: string;
     toolName?: string;
@@ -235,6 +238,15 @@ async function main(): Promise<void> {
     const home = Deno.env.get("HOME") || "";
     const prompt = readArg(args, "-p");
     const outputFormat = readArg(args, "--output-format");
+    if (Deno.env.get("RUNWIELD_AGY_REQUIRE_AUTH") === "1") {
+        const encoder = new TextEncoder();
+        await Deno.stderr.write(encoder.encode("Authenti"));
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        await Deno.stderr.write(encoder.encode("cation required. Please visit the URL to log in:\nhttps://example.test/login?code=private-code\n"));
+        await new Promise((resolve) => setTimeout(resolve, 10_000));
+        await Deno.writeTextFile(joinPath(home, "auth-wait-timed-out"), "timed out");
+        Deno.exit(1);
+    }
     if (prompt === "/agents" && outputFormat === "json") {
         const sleepAgentsPidPath = Deno.env.get("RUNWIELD_AGY_SLEEP_AGENTS_PID") || "";
         if (sleepAgentsPidPath) {
@@ -1042,8 +1054,13 @@ Deno.test("every eligible Agy role invokes its real lifecycle tool through confi
             userRequest: "review the change through validation",
             cwd,
             reviewerMode: "discovery",
-            customTools: [],
-            sessionManager: validation.createInMemorySessionManager(cwd),
+            review: {
+                fullDiff: "",
+                repairDiff: "",
+                requiredScope: "full",
+                inspection: new ReviewInspection([]),
+            },
+            ledger: createLedger(),
         });
         assertEquals(reviewResult.outcome, "completed");
         if (reviewResult.outcome !== "completed") throw new Error("Agy review did not complete");
@@ -1284,6 +1301,60 @@ Deno.test("Agy failures preserve workflow authority and terminate every owned pr
     });
 });
 
+for (const phase of ["setup", "turn"] as const) {
+    Deno.test(`Agy ${phase} stops interactive login waits and explains how to sign in`, async () => {
+        await withAgyExecutionFixture(async (home, cwd) => {
+            const previousAuth = Deno.env.get("RUNWIELD_AGY_REQUIRE_AUTH");
+            const manager = SessionManager.inMemory(cwd);
+            const events: RuntimeEventRecord[] = [];
+            const hostedSession = createHostedSession(cwd, manager, events);
+            let root: AgyRootRef | null = null;
+            try {
+                Deno.env.delete("RUNWIELD_AGY_REQUIRE_AUTH");
+                if (phase === "turn") {
+                    root = await ensureRootAgentSession({
+                        hostedSession,
+                        agentName: AGENTS.GUIDE,
+                    }) as never as AgyRootRef;
+                }
+                Deno.env.set("RUNWIELD_AGY_REQUIRE_AUTH", "1");
+                await assertRejects(
+                    () =>
+                        phase === "setup"
+                            ? ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE })
+                            : runRootTurn({
+                                hostedSession,
+                                agentName: AGENTS.GUIDE,
+                                userRequest: "first signed-out turn",
+                            }),
+                    Error,
+                    "Run `agy` in a terminal, complete Google sign-in, then retry this request in RunWield.",
+                );
+                await assertRejects(() => Deno.stat(join(home, "auth-wait-timed-out")), Deno.errors.NotFound);
+                const entries = getRootSessionBranchEntries(manager) as BranchEntryRecord[];
+                const statuses = entries.filter((entry) => entry.customType === "runwield.backend_status");
+                assertEquals(statuses.map((entry) => entry.data?.kind), ["auth_failed"]);
+                assertStringIncludes(JSON.stringify(statuses), "Run `agy` in a terminal");
+                assertEquals(
+                    events.some((event) => event.type === "system_status" && event.message?.includes("Run `agy`")),
+                    true,
+                );
+                assertEquals(JSON.stringify(entries).includes("private-code"), false);
+                assertEquals(JSON.stringify(entries).includes("example.test/login"), false);
+                if (phase === "setup") await assertNoTemporaryAgents(home);
+
+                Deno.env.delete("RUNWIELD_AGY_REQUIRE_AUTH");
+                root = await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE }) as never as AgyRootRef;
+                await runRootTurn({ hostedSession, agentName: AGENTS.GUIDE, userRequest: "retry after sign-in" });
+            } finally {
+                await root?.session.dispose();
+                if (previousAuth === undefined) Deno.env.delete("RUNWIELD_AGY_REQUIRE_AUTH");
+                else Deno.env.set("RUNWIELD_AGY_REQUIRE_AUTH", previousAuth);
+            }
+        });
+    });
+}
+
 Deno.test("Agy retry reconstructs only committed transcript after classified failure", async () => {
     await withAgyExecutionFixture(async (home, cwd, logPath) => {
         const executablePath = join(home, "bin", "agy");
@@ -1316,7 +1387,7 @@ Deno.test("Agy retry reconstructs only committed transcript after classified fai
         await assertRejects(
             () => runRootTurn({ hostedSession, agentName: AGENTS.GUIDE, userRequest: "auth stderr turn" }),
             Error,
-            "authentication failed for private account",
+            "Run `agy` in a terminal, complete Google sign-in",
         );
         branch = getRootSessionBranchEntries(manager) as BranchEntryRecord[];
         assertEquals(
@@ -1328,7 +1399,7 @@ Deno.test("Agy retry reconstructs only committed transcript after classified fai
         await assertRejects(
             () => runRootTurn({ hostedSession, agentName: AGENTS.GUIDE, userRequest: "auth stderr exit zero turn" }),
             Error,
-            "authentication failed for private account",
+            "Run `agy` in a terminal, complete Google sign-in",
         );
         branch = getRootSessionBranchEntries(manager) as BranchEntryRecord[];
         assertEquals(

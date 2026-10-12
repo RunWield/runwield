@@ -1,3 +1,4 @@
+import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
 /** Immutable recording input retained after delivery removes the execution worktree. */
 import { join } from "@std/path";
 import {
@@ -63,7 +64,12 @@ export async function retainPublishedWorkRecordSource(root: string, attempt: Pub
 export async function loadPublishedWorkRecordSource(root: string, planName: string): Promise<WorkRecordSource | null> {
     const local = await loadPlan(root, planName);
     const view = await inspectControllerView(root, { planName, planId: local?.attrs.planId }, {});
-    const receipt = view.state.recordingSource ||
+    const published = view.state.publicationReceipt;
+    const completedSource = local?.attrs.deliveryBranch && published &&
+            effectiveDeliveryBranch(local.attrs) === published.targetBranch
+        ? { commit: published.publishedCommit, planName, planId: local.attrs.planId || "" }
+        : undefined;
+    const receipt = view.state.recordingSource || completedSource ||
         (!local ? (await findRecordingControllerByName(root, planName))?.state.recordingSource : undefined);
     if (!receipt) return null;
     const source = await readSource(root, receipt.commit, receipt.planName);
@@ -137,11 +143,14 @@ export async function readPublishedRecordMarkdown(
     attempt: PublicationAttempt,
     path: string,
 ): Promise<string | null> {
-    if (!attempt.artifactCommit || !path.startsWith("docs/work-records/") || path.split("/").includes("..")) {
+    if (
+        !["publication_verified", "cleanup_complete"].includes(attempt.phase) ||
+        !attempt.publishedCommit || !/^docs\/work-records\/[^/]+\.md$/.test(path)
+    ) {
         return null;
     }
     try {
-        return await git(root, ["show", `${attempt.artifactCommit}:${path}`]);
+        return await git(root, ["show", `${attempt.publishedCommit}:${path}`]);
     } catch {
         return null;
     }

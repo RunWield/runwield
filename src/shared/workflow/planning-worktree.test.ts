@@ -1,7 +1,7 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
 import { dirname, join } from "@std/path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
-import { listPlans } from "../../plan-store.js";
+import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js";
 import { listEntries, updateEntry } from "../worktree-registry.js";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { loadControllerView } from "./controller-registry.ts";
@@ -432,4 +432,71 @@ Deno.test("planning preparation returns live execution instead of registering tw
     assertEquals(result.reused, true);
     assertEquals(result.entry.id, planning.entry.id);
     assertEquals((await listEntries(repo)).length, 1);
+});
+
+const standaloneLandingFixture = defineGitFixture(async (repo) => {
+    await writePlan(repo, "standalone", {
+        planId: "standalone-recovery",
+        classification: "PLANNED_CHANGE",
+        status: "draft",
+        targetBranch: "main",
+        deliveryBranch: "plan/standalone",
+    }, "# Standalone\n\nPRIMARY BODY\n");
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "primary plan"]);
+    await git(repo, ["switch", "-c", "plan/standalone"]);
+    await writePlan(repo, "standalone", {
+        planId: "standalone-recovery",
+        classification: "PLANNED_CHANGE",
+        status: "draft",
+        targetBranch: "main",
+        deliveryBranch: "plan/standalone",
+    }, "# Standalone\n\nLANDING BODY\n");
+    await Deno.writeTextFile(join(repo, "landing-only.txt"), "landing context\n");
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "unfinished landing"]);
+    await git(repo, ["switch", "main"]);
+});
+
+Deno.test("unfinished standalone without an attempt recovers planning from its recorded landing", async () => {
+    const repo = await standaloneLandingFixture.checkout();
+    const path = join(repo, "docs/plans/standalone.md");
+    const original = await Deno.readTextFile(path);
+    const readOnly = await resolveWorkflowPlanLocation(repo, "standalone", { readOnly: true });
+    assertEquals(readOnly.plan?.path, path);
+    assertEquals(await listEntries(repo), []);
+    const recovered = await resolveWorkflowPlanLocation(repo, "standalone");
+    assertEquals((await listEntries(repo))[0].baseBranch, "plan/standalone");
+    assertEquals((await listEntries(repo))[0].status, "planning");
+    assertEquals(recovered.plan?.attrs.targetBranch, "main");
+    assertEquals(recovered.plan?.attrs.deliveryBranch, "plan/standalone");
+    assertStringIncludes(recovered.plan?.body || "", "LANDING BODY");
+    assertEquals(await Deno.readTextFile(join(recovered.documentRoot, "landing-only.txt")), "landing context\n");
+    assertEquals(await Deno.readTextFile(path), original);
+    assertEquals((await resolveWorkflowPlanLocation(repo, "standalone")).documentRoot, recovered.documentRoot);
+});
+
+Deno.test("published-only read snapshots cannot be used as archive document paths", async () => {
+    const repo = await fixture.checkout();
+    await git(repo, ["switch", "epic-target"]);
+    await writePlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        classification: "FEATURE",
+        status: "user_verified",
+        parentPlan: "epic",
+        targetBranch: "epic-target",
+    }, "# Published child\n");
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "published child"]);
+    await git(repo, ["switch", "main"]);
+    const path = join(repo, "docs/plans/epic/01-child.md");
+    await Deno.remove(path);
+    const snapshot = await resolveWorkflowPlanLocation(repo, "epic/01-child", { readOnly: true });
+    assertEquals(snapshot.plan?.attrs.status, "user_verified");
+    assertEquals("publishedSnapshot" in snapshot && snapshot.publishedSnapshot, true);
+    assertThrows(() => getPlanDocumentRoot(snapshot.plan?.path || ""), Error, "not a writable document path");
+    assertEquals(await listEntries(repo), []);
+    await assertRejects(() => archivePlan(repo, "epic/01-child"), Error, "published read snapshot");
+    assertEquals(await Deno.stat(path).then(() => true).catch(() => false), false);
+    assertEquals(await listEntries(repo), []);
 });

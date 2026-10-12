@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertNotEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
-import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
+import { loadPlan, parsePlanFrontMatter, updatePlanFrontMatter } from "../../plan-store.js";
 import { addEntry, findById, listEntries } from "../worktree-registry.js";
 import { runOperation, spawnAttachedCli, withProject } from "./attached-test-fixture.ts";
 import { locateAttachedWorkflows } from "./record-store.ts";
@@ -20,12 +20,23 @@ Deno.test("approved handoff captures baseline, preserves invoking files, and che
         await Deno.writeTextFile(join(root, "scratch.txt"), "Untracked user work\n");
         const beforeBranch = await git(root, "branch", "--show-current");
         const beforeHead = await git(root, "rev-parse", "HEAD");
-        const primaryPlan = await Deno.readTextFile(join(root, "docs/plans/dark-mode-toggle.md"));
+        const primaryPlanPath = join(root, "docs/plans/dark-mode-toggle.md");
+        const primaryPlan = parsePlanFrontMatter(await Deno.readTextFile(primaryPlanPath));
         const started = await runOperation("start_execution", root, executionInput(ready, "start"));
         assert(started.ok && started.workflow.nextAction.kind === "implementation", JSON.stringify(started));
         const execution = started.workflow.execution;
         assert(execution?.executionCwd && execution.worktreeId && execution.baselineTree);
         assertNotEquals(execution.executionCwd, root);
+        // Core records delivery identity before handing authority to the worker.
+        // This is the only permitted change to the invoking Plan.
+        const preparedPrimaryBytes = await Deno.readTextFile(primaryPlanPath);
+        const preparedPrimaryPlan = parsePlanFrontMatter(preparedPrimaryBytes);
+        assertEquals(preparedPrimaryPlan.body, primaryPlan.body);
+        assertEquals(preparedPrimaryPlan.attrs, {
+            ...primaryPlan.attrs,
+            targetBranch: "main",
+            deliveryBranch: "plan/dark-mode-toggle",
+        });
         assertEquals((await loadPlan(execution.executionCwd, "dark-mode-toggle"))?.attrs.status, "in_progress");
         assertEquals((await findById(root, execution.worktreeId))?.executionBaselineTree, execution.baselineTree);
         assertStringIncludes(
@@ -41,7 +52,7 @@ Deno.test("approved handoff captures baseline, preserves invoking files, and che
         assertEquals(await git(execution.executionCwd, "show", "HEAD:toggle.ts"), "export const dark = true;");
         assertEquals(await Deno.readTextFile(join(root, "README.md")), "Invoking dirty work\n");
         assertEquals(await Deno.readTextFile(join(root, "scratch.txt")), "Untracked user work\n");
-        assertEquals(await Deno.readTextFile(join(root, "docs/plans/dark-mode-toggle.md")), primaryPlan);
+        assertEquals(await Deno.readTextFile(primaryPlanPath), preparedPrimaryBytes);
         assertEquals(await git(root, "branch", "--show-current"), beforeBranch);
         assertEquals(await git(root, "rev-parse", "HEAD"), beforeHead);
         assertStringIncludes(await Deno.readTextFile(join(root, ".gitignore")), "RunWield");

@@ -236,7 +236,7 @@ function transcriptRequirementFor(id: ValidationWorkflowBranchId): string[] {
     if (id === "human-review:no-answer-retry" || id === "human-review:no-answer-stop") {
         return ["Pick Retry to open it again"];
     }
-    if (id === "human-review:ask-close") return ["Code review is still waiting for your decision."];
+    if (id === "human-review:ask-close") return ["Code Review is still pending."];
     if (id.startsWith("human-review:")) return ["Need your review:"];
     if (id === "publication:non-git-success") return ["Plan: non-git-plan", "Merge: Not applicable"];
     const successfulPublicationProgress = [

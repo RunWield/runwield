@@ -2700,6 +2700,7 @@ export async function buildExecutionSession(opts) {
         ? new ClaudeCliExecutionSession({
             cwd: sessionCwd,
             agentName: opts.agentName,
+            agentDisplayName: agentDef.displayName,
             finalSystemPrompt: promptState.text,
             model: resolvedModel,
             sessionManager: effectiveSessionManager,

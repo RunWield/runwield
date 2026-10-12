@@ -157,6 +157,20 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                     );
                     assertEquals(turns, 0);
                     await service.cancelOperation({ operationId: started.operationId });
+                    const canceledReview = await interaction("select");
+                    assertStringIncludes(canceledReview.request.prompt, "Approval is still pending");
+                    await service.answerInteraction({
+                        projectId: project.projectId,
+                        operationId: started.operationId,
+                        interactionId: canceledReview.interactionId,
+                        requestId: crypto.randomUUID(),
+                        response: { outcome: "selected", value: "stop" },
+                    });
+                    for (let i = 0; i < 500 && service.getOperation(started.operationId).status === "running"; i++) {
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                    }
+                    assertEquals(service.getOperation(started.operationId).status, "completed");
+                    assertEquals(turns, 0, "Canceling Code Review must not start a repair turn");
                 }
             } finally {
                 await service.runtime.closeAllSessions();

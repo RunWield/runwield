@@ -124,7 +124,7 @@ Deno.test("ThinkingBlock hides markdown comments and unwraps emphasis markers", 
 
 Deno.test("thinking ends with one blank row before the next thinking block or tool call", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = createUiApi(tui, messageList, new SpinnerBlock());
+    const ui = createUiApi(null, tui, messageList, new SpinnerBlock());
     if (!ui.appendThinkingStart || !ui.startToolExecution) throw new Error("TUI API is incomplete.");
     const first = ui.appendThinkingStart();
     first.appendDelta("First thought.\n\n");
@@ -145,7 +145,7 @@ Deno.test("thinking ends with one blank row before the next thinking block or to
 Deno.test("createUiApi appends visible blocks, merges compatible system messages, and controls tools", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const spinner = new SpinnerBlock();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, spinner));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
 
     const thinking = ui.appendThinkingStart();
     thinking.appendDelta("thinking");
@@ -187,7 +187,7 @@ Deno.test("createUiApi appends visible blocks, merges compatible system messages
 
 Deno.test("createUiApi opens local commands by default and falls back to toggling the latest block", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     const persisted = ui.startToolExecution("bang-1", "bash", "! printf persisted");
     persisted.setOutput(Array.from({ length: 8 }, (_, index) => `persisted ${index}`).join("\n"));
@@ -210,7 +210,7 @@ Deno.test("createUiApi opens local commands by default and falls back to togglin
 
 Deno.test("createUiApi does not hide duplicate tool-start events", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     const first = ui.startToolExecution("tool-1", "code_search", "code_search createAgentJobHandler");
     const second = ui.startToolExecution("tool-1", "code_search", "code_search createAgentJobHandler");
@@ -226,7 +226,7 @@ Deno.test("createUiApi does not hide duplicate tool-start events", () => {
 
 Deno.test("createUiApi keeps workflow tools as single custom blocks", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     ui.startToolExecution("tool-1", "bash", "$ echo before");
     ui.startToolExecution("plan-1", "plan_written", "plan_written docs/plans/example.md");
@@ -250,7 +250,7 @@ Deno.test("createUiApi keeps workflow tools as single custom blocks", () => {
 
 Deno.test("createUiApi groups contiguous tool calls and closes the group at conversation boundaries", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     ui.startToolExecution("tool-1", "bash", "$ false");
     ui.startToolExecution("tool-2", "read", "read README.md");
@@ -270,6 +270,7 @@ Deno.test("createUiApi toggles only visible tool groups", () => {
     let visibleToolBlocks = [];
     const ui = /** @type {any} */ (
         createUiApi(
+            null,
             tui,
             messageList,
             new SpinnerBlock(),
@@ -313,7 +314,7 @@ Deno.test("createUiApi toggles only visible tool groups", () => {
 
 Deno.test("createUiApi keeps an active tool group while pruning bounded history", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     const active = ui.startToolExecution("tool-active", "bash", "$ sleep 10");
     for (let index = 0; index < 700; index++) {
@@ -331,7 +332,7 @@ Deno.test("createUiApi keeps an active tool group while pruning bounded history"
 
 Deno.test("createUiApi bounds completed children in a long contiguous tool group", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
     /** @type {Array<import('./types.js').ToolExecutionBlockApi>} */
     const tools = [];
 
@@ -348,7 +349,7 @@ Deno.test("createUiApi bounds completed children in a long contiguous tool group
 
 Deno.test("createUiApi releases old message blocks during long-running TUI sessions", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     for (let index = 0; index < 700; index++) {
         ui.appendUserMessage(`message ${index}`);
@@ -361,7 +362,7 @@ Deno.test("createUiApi releases old message blocks during long-running TUI sessi
 Deno.test("createUiApi toggles one transient keyboard-help block outside the message list", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const inputAccessory = makeContainer();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock(), inputAccessory));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
     const help = { title: "Keyboard shortcuts", items: [{ key: "?", description: "show help" }] };
 
     ui.showKeyboardHelp(help);
@@ -383,7 +384,7 @@ Deno.test("createUiApi toggles one transient keyboard-help block outside the mes
 Deno.test("createUiApi does not flash a managed sync block for benign syncing", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const inputAccessory = makeContainer();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock(), inputAccessory));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
 
     ui.setManagedSyncStatus({
         status: "syncing",
@@ -415,7 +416,7 @@ Deno.test("createUiApi does not flash a managed sync block for benign syncing", 
 Deno.test("createUiApi does not repaint for repeated visible managed sync state", () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const inputAccessory = makeContainer();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock(), inputAccessory));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
 
     ui.setManagedSyncStatus({
         status: "active_elsewhere",
@@ -438,7 +439,7 @@ Deno.test("createUiApi does not repaint for repeated visible managed sync state"
 Deno.test("createUiApi clearMessages removes input accessory resources", () => {
     const { tui, messageList } = makeTuiHarness();
     const inputAccessory = makeContainer();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock(), inputAccessory));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock(), inputAccessory));
 
     ui.showKeyboardHelp({ title: "Keyboard shortcuts", items: [{ key: "?", description: "show help" }] });
     ui.setManagedSyncStatus({ status: "behind", owningSurfaceKind: "workspace", owningSurfaceLabel: "Workspace" });
@@ -457,7 +458,7 @@ Deno.test("createUiApi adds and removes exact queued-message blocks by runtime i
     const { tui, messageList } = makeTuiHarness();
     const queuedInput = makeContainer();
     const ui = /** @type {any} */ (
-        createUiApi(tui, messageList, new SpinnerBlock(), undefined, undefined, undefined, queuedInput)
+        createUiApi(null, tui, messageList, new SpinnerBlock(), undefined, undefined, undefined, queuedInput)
     );
 
     ui.appendQueuedMessage("queued-1", "first");
@@ -475,7 +476,7 @@ Deno.test("createUiApi adds and removes exact queued-message blocks by runtime i
 
 Deno.test("createUiApi renders live elapsed tool time immediately and stops after completion", async () => {
     const harness = makeTuiHarness();
-    const timedUi = /** @type {any} */ (createUiApi(harness.tui, harness.messageList, new SpinnerBlock()));
+    const timedUi = /** @type {any} */ (createUiApi(null, harness.tui, harness.messageList, new SpinnerBlock()));
     const tool = /** @type {import('./blocks.js').ToolExecutionBlock} */ (
         timedUi.startToolExecution("tool-timer", "bash", "$ sleep 1")
     );
@@ -504,7 +505,7 @@ Deno.test("createUiApi renders live elapsed tool time immediately and stops afte
 
 Deno.test("createUiApi keeps semantic status messages independent from active tool output", () => {
     const { tui, messageList } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     const tool = ui.startToolExecution("plan-tool", "plan_written", "plan_written docs/plans/example.md");
     ui.appendSystemMessage("[RunWield] Plan name: docs/plans/example.md");
@@ -525,7 +526,7 @@ Deno.test("createUiApi keeps semantic status messages independent from active to
 Deno.test("createUiApi leaves a long-open Plan review idle and resumes tool updates after a decision", async () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const spinner = new SpinnerBlock();
-    const ui = createUiApi(tui, messageList, spinner);
+    const ui = createUiApi(null, tui, messageList, spinner);
     try {
         ui.setBusy?.(true);
         const tool = ui.startToolExecution?.("review", "plan_written", "Plan Written");
@@ -561,7 +562,7 @@ Deno.test("createUiApi leaves a long-open Plan review idle and resumes tool upda
 Deno.test("createUiApi pauses tool timers for terminal prompts, including tools started during the wait", async () => {
     const { tui, messageList, renders, focus } = makeTuiHarness();
     const spinner = new SpinnerBlock();
-    const ui = createUiApi(tui, messageList, spinner);
+    const ui = createUiApi(null, tui, messageList, spinner);
     try {
         ui.setBusy?.(true);
         const tool = ui.startToolExecution?.("review", "plan_written", "Plan Written");
@@ -589,7 +590,7 @@ Deno.test("createUiApi pauses tool timers for terminal prompts, including tools 
 Deno.test("createUiApi setBusy animates while Runtime remains busy and stops when idle", async () => {
     const { tui, messageList, renders } = makeTuiHarness();
     const spinner = new SpinnerBlock();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, spinner));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
 
     ui.setBusy(true);
     assertEquals(spinner.isBusy, true);
@@ -611,7 +612,7 @@ Deno.test("createUiApi setBusy animates while Runtime remains busy and stops whe
 Deno.test("createUiApi suppresses focused cursor while busy animation repaints", () => {
     const { tui, messageList } = makeTuiHarness();
     const spinner = new SpinnerBlock();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, spinner));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
     const editor = { focused: false, invalidate() {}, render: () => [] };
 
     tui.setFocus(editor);
@@ -629,7 +630,7 @@ Deno.test("createUiApi suppresses focused cursor while busy animation repaints",
 Deno.test("createUiApi pauses the busy animation while waiting for prompt input", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
     const spinner = new SpinnerBlock();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, spinner));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, spinner));
 
     ui.setBusy(true);
     assertEquals(spinner.isBusy, true);
@@ -649,6 +650,7 @@ Deno.test("createUiApi renders validation panel separately from active prompt pl
     const activeInteractionContainer = makeContainer();
     const ui = /** @type {any} */ (
         createUiApi(
+            null,
             tui,
             messageList,
             new SpinnerBlock(),
@@ -682,7 +684,7 @@ Deno.test("createUiApi marks stale reviewer feedback by report order instead of 
     const { tui, messageList } = makeTuiHarness();
     const validationPanelContainer = makeContainer();
     const ui = /** @type {any} */ (
-        createUiApi(tui, messageList, new SpinnerBlock(), undefined, validationPanelContainer)
+        createUiApi(null, tui, messageList, new SpinnerBlock(), undefined, validationPanelContainer)
     );
     const originalNow = Date.now;
     Date.now = () => 1000;
@@ -708,7 +710,7 @@ Deno.test("createUiApi marks stale reviewer feedback by report order instead of 
 
 Deno.test("createUiApi promptSelect resolves selection, cancellation, and selection-change hook", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
     /** @type {string[]} */
     const previews = [];
 
@@ -747,7 +749,7 @@ Deno.test("createUiApi promptSelect resolves selection, cancellation, and select
 
 Deno.test("createUiApi promptText resolves submit, rejects empty required submit, and aborts", async () => {
     const { tui, messageList, focus } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     const textPromise = ui.promptText("Name", { defaultValue: "Ada", allowEmpty: false });
     const textBlock = focus();
@@ -782,7 +784,7 @@ Deno.test("createUiApi clearMessages settles active prompt without orphaned inte
     const { tui, messageList, focus } = makeTuiHarness();
     const activeInteractionContainer = makeContainer();
     const ui = /** @type {any} */ (
-        createUiApi(tui, messageList, new SpinnerBlock(), undefined, undefined, activeInteractionContainer)
+        createUiApi(null, tui, messageList, new SpinnerBlock(), undefined, undefined, activeInteractionContainer)
     );
 
     const promptPromise = ui.promptText("Clear me");
@@ -801,7 +803,7 @@ Deno.test("createUiApi suppressOutput settles active prompt without stale intera
     const { tui, messageList, focus } = makeTuiHarness();
     const activeInteractionContainer = makeContainer();
     const ui = /** @type {any} */ (
-        createUiApi(tui, messageList, new SpinnerBlock(), undefined, undefined, activeInteractionContainer)
+        createUiApi(null, tui, messageList, new SpinnerBlock(), undefined, undefined, activeInteractionContainer)
     );
 
     const promptPromise = ui.promptSelect("Continue?", [{ value: "yes", label: "Yes" }]);
@@ -819,7 +821,7 @@ Deno.test("createUiApi suppressOutput settles active prompt without stale intera
 
 Deno.test("createUiApi suppressOutput silences later UI mutations except clearing existing messages", () => {
     const { tui, messageList, renders } = makeTuiHarness();
-    const ui = /** @type {any} */ (createUiApi(tui, messageList, new SpinnerBlock()));
+    const ui = /** @type {any} */ (createUiApi(null, tui, messageList, new SpinnerBlock()));
 
     ui.appendUserMessage("visible");
     const beforeSuppressChildren = messageList.children.length;
@@ -850,6 +852,7 @@ Deno.test("createUiApi dispose clears prompts, timers, focus, and validation con
     const validationPanelContainer = makeContainer();
     const activeInteractionContainer = makeContainer();
     const ui = createUiApi(
+        null,
         tui,
         messageList,
         spinner,

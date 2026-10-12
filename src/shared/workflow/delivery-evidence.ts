@@ -66,7 +66,7 @@ export async function readDeliveryEvidence(
             } catch { /* An incomplete receipt cannot count as evidence. */ }
         }
         entries.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
-        const groups = [["ci", "Test results"], ["ai", "Reviewer findings"], ["human", "Human decisions"]] as const;
+        const groups = [["ci", "Test results"], ["ai", "Reviewer findings"], ["human", "Review decisions"]] as const;
         for (const [kind, title] of groups) {
             const checks = entries.filter((entry) => entry.kind === kind);
             if (!checks.length) continue;

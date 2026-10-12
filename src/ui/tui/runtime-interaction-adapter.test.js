@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createTuiInteractionAdapter as createAdapter } from "./runtime-interaction-adapter.js";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
@@ -11,14 +11,25 @@ function createTuiInteractionAdapter(uiAPI) {
 }
 
 /**
+ * @typedef {Object} ReviewUiState
+ * @property {boolean[]} [busyValues]
+ * @property {string[]} [outputs]
+ * @property {boolean[]} [ended]
+ */
+/**
  * @param {string | null} selection
- * @param {{ busyValues?: boolean[] }} [state]
+ * @param {ReviewUiState} [state]
  */
 function makeUi(selection, state = {}) {
     return /** @type {any} */ ({
         promptSelect: () => Promise.resolve(selection),
         promptText: () => Promise.resolve(null),
         setBusy: (/** @type {boolean} */ busy) => state.busyValues?.push(busy),
+        startToolExecution: () => ({
+            setOutput: (/** @type {string} */ text) => state.outputs?.push(text),
+            endExecution: (/** @type {boolean} */ error) => state.ended?.push(error),
+            startTime: 0,
+        }),
     });
 }
 
@@ -236,4 +247,96 @@ Deno.test("TUI interaction adapter does not open a form for Pair checkpoints", a
         message: "Unsupported interaction type: pair_checkpoint",
     });
     assertEquals(promptCount, 0);
+});
+
+Deno.test("TUI code review exposes each real surface URL without browser opening and clears settled links", async () => {
+    const cwd = await Deno.makeTempDir({ prefix: "runwield-tui-code-link-" });
+    const state = {
+        busyValues: /** @type {boolean[]} */ ([]),
+        outputs: /** @type {string[]} */ ([]),
+        ended: /** @type {boolean[]} */ ([]),
+    };
+    const scripted = createScriptedReviewBrowser("decision", { approved: true }, false);
+    const adapter = createAdapter(makeUi(null, state), { browser: scripted.browser });
+    const callbacks = /** @type {string[]} */ ([]);
+    try {
+        // A resumed review creates a new surface; direct review has no caller callback.
+        for (const hasCallback of [true, false]) {
+            const response = await adapter.requestInteraction({
+                type: RuntimeInteractionTypes.CODE_REVIEW,
+                prompt: "Review",
+                _meta: {
+                    planName: "feature",
+                    diffText: "diff --git a/a b/a\n",
+                    executionCwd: cwd,
+                    onSurfaceReady: hasCallback
+                        ? (/** @type {{url: string}} */ surface) => callbacks.push(surface.url)
+                        : undefined,
+                },
+            });
+            assertEquals(response.outcome, "accepted");
+        }
+        assertEquals(callbacks, [scripted.urls[0]]);
+        assertEquals(state.busyValues, [false, true, false, true]);
+        assertEquals(state.ended, [false, false]);
+        assertEquals(scripted.urls[0] === scripted.urls[1], false);
+        for (let index = 0; index < 2; index++) {
+            assertStringIncludes(state.outputs[index * 2], `Review Code: \x1b]8;;${scripted.urls[index]}\x07`);
+            assertStringIncludes(state.outputs[index * 2], "Open the review link to continue.");
+            assertEquals(state.outputs[index * 2 + 1], "Code Review approved.");
+        }
+    } finally {
+        await Deno.remove(cwd, { recursive: true });
+    }
+});
+
+Deno.test("TUI code review closes the live link and restores progress on cancellation", async () => {
+    const cwd = await Deno.makeTempDir({ prefix: "runwield-tui-code-cancel-" });
+    const state = {
+        busyValues: /** @type {boolean[]} */ ([]),
+        outputs: /** @type {string[]} */ ([]),
+        ended: /** @type {boolean[]} */ ([]),
+    };
+    const controller = new AbortController();
+    const adapter = createAdapter(makeUi(null, state), { browser: NO_OPEN_BROWSER_PORT });
+    try {
+        const response = await adapter.requestInteraction({
+            type: RuntimeInteractionTypes.CODE_REVIEW,
+            prompt: "Review",
+            _meta: {
+                planName: "feature",
+                diffText: "diff --git a/a b/a\n",
+                executionCwd: cwd,
+                onSurfaceReady: () => controller.abort(),
+            },
+        }, controller.signal);
+        assertEquals(response.outcome, "canceled");
+        assertEquals(
+            state.outputs.at(-1),
+            "Code Review canceled; approval is still pending. Retry or /load-plan feature to reopen it.",
+        );
+        assertEquals(state.busyValues, [false, true]);
+        assertEquals(state.ended, [false]);
+    } finally {
+        await Deno.remove(cwd, { recursive: true });
+    }
+});
+
+Deno.test("TUI review setup failure closes its block as an error", async () => {
+    const state = {
+        busyValues: /** @type {boolean[]} */ ([]),
+        outputs: /** @type {string[]} */ ([]),
+        ended: /** @type {boolean[]} */ ([]),
+    };
+    const adapter = createAdapter(makeUi(null, state), { browser: NO_OPEN_BROWSER_PORT });
+    await assertRejects(async () =>
+        await adapter.requestInteraction({
+            type: RuntimeInteractionTypes.CODE_REVIEW,
+            prompt: "Review",
+            _meta: { planName: "feature", diffText: "", executionCwd: "" },
+        })
+    );
+    assertEquals(state.outputs.at(-1), "Code Review could not be opened.");
+    assertEquals(state.ended, [true]);
+    assertEquals(state.busyValues, [false, true]);
 });

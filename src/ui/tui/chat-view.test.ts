@@ -40,6 +40,7 @@ Deno.test("TUI artifact shortcut opens the shared-reader picker without changing
         const terminal = new VirtualTerminal({ columns: 150, rows: 30 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -70,6 +71,7 @@ Deno.test("chat view reconstructs delayed mouse-wheel input without changing a d
         const tui = new RunWieldTui(terminal);
         const focus = installTerminalFocusState(terminal, () => tui.requestRender(true));
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -174,6 +176,7 @@ Deno.test("chat view shows messages appended after the first frame", async () =>
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -207,6 +210,7 @@ Deno.test("chat view keeps unchanged retained blocks out of live-update renders"
             const terminal = new VirtualTerminal({ columns: 150, rows: 12 });
             const tui = new RunWieldTui(terminal);
             const view = await createChatView({
+                documentLinks: null,
                 tui,
                 suppressStartupHeader: true,
                 getSessionId: () => sessionId,
@@ -332,6 +336,7 @@ Deno.test("chat view refreshes an active tool without reformatting retained mess
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -386,6 +391,7 @@ Deno.test("chat view keeps sidebar tabs on the first row above a queued steering
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -422,6 +428,7 @@ Deno.test("chat view tracks quick fix validation in the workflow sidebar", async
         const terminal = new VirtualTerminal({ columns: 150, rows: 28 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -454,6 +461,7 @@ Deno.test("chat view keeps block backgrounds out of the sidebar when the scrollb
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -489,6 +497,7 @@ Deno.test("chat view keeps scrollback position during live thinking updates", as
         const terminal = new VirtualTerminal({ columns: 80, rows: 10 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -532,6 +541,7 @@ Deno.test("chat view keeps settled tool lines cached across a keystroke", async 
         const terminal = new VirtualTerminal({ columns: 100, rows: 20 });
         const tui = new TuiAltScreen(terminal);
         const view = await createChatView({
+            documentLinks: null,
             tui,
             suppressStartupHeader: true,
             getSessionId: () => sessionId,
@@ -572,6 +582,7 @@ for (const recovery of ["ctrl+l", "focus"] as const) {
             const tui = new RunWieldTui(terminal);
             const focus = installTerminalFocusState(terminal, () => tui.requestRender(true));
             const view = await createChatView({
+                documentLinks: null,
                 tui,
                 suppressStartupHeader: true,
                 getSessionId: () => sessionId,

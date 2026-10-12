@@ -227,8 +227,21 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     assertEquals((await loadPlan(workflow.executionCwd, "saved-plan")).attrs.status, "implemented");
                     await service.cancelOperation({ operationId: result.operationId });
                     for (let i = 0; i < 500 && service.getOperation(result.operationId).status === "running"; i++) {
+                        const stopped = service.getOperation(result.operationId);
+                        if (stopped.liveInteraction?.request.type === "select") {
+                            assertStringIncludes(stopped.liveInteraction.request.prompt, "stopped");
+                            await service.answerInteraction({
+                                projectId: project.projectId,
+                                operationId: result.operationId,
+                                interactionId: stopped.liveInteraction.interactionId,
+                                runwieldSessionId: managed.runwieldSessionId,
+                                requestId: crypto.randomUUID(),
+                                response: "stop",
+                            });
+                        }
                         await new Promise((resolve) => setTimeout(resolve, 20));
                     }
+                    assertEquals(service.getOperation(result.operationId).status, "completed");
                     assertEquals(turns, 2);
                     const after = store.listSessionTranscriptSegments(managed.runwieldSessionId).at(-1);
                     assertEquals(after.segmentId, before.segmentId);

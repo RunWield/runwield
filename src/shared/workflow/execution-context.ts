@@ -1,3 +1,4 @@
+import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /**
  * Fail-closed resolver for Workflow Validation execution context.
  */
@@ -555,7 +556,7 @@ export async function resolveValidationExecutionContext({
     }
     // The registry describes where execution started. The freshly loaded Plan
     // owns where it will be delivered; session snapshots cannot override an edit.
-    const requestedTarget = asString(attrs.targetBranch);
+    const requestedTarget = effectiveDeliveryBranch(attrs);
     if (requestedTarget) {
         try {
             worktreeBaseBranch = await resolveTargetBranchName(projectRoot, requestedTarget);
@@ -633,13 +634,18 @@ export async function resolveValidationExecutionContext({
         }
         persistedLegacyExecutionMode = currentExecutionPlan.attrs.executionMode !== "worktree";
     }
-    await recordResolutionMetric({
-        cwd: projectRoot,
-        planName,
-        reason: selected.source,
-        recovered: selected.source === "durable_recovery",
-        planFileRestored: Boolean(restoredPlanFile),
-    });
+    // A host reviewer continuation resolves the same round again. Its checkpoint
+    // already records that round's context; process re-entry is not another check.
+    if (!attrs.validationCheckpoint?.hostReview) {
+        await recordResolutionMetric({
+            cwd: projectRoot,
+            planName,
+            reason: selected.source,
+            recovered: selected.source === "durable_recovery",
+            planFileRestored: Boolean(restoredPlanFile),
+        });
+    }
+
     return {
         kind: "ok",
         context: {

@@ -67,7 +67,10 @@ export interface ChatViewSessionSnapshot extends TuiSessionSidebarSnapshot {
     activeModel: { model?: string | null; provider?: string | null };
 }
 
+import type { DocumentLinkHost } from "../review/document-link-host.ts";
+
 interface ChatViewSharedOptions {
+    documentLinks: DocumentLinkHost | null;
     tui: TUI;
     getSessionId(): string;
     suppressStartupHeader: boolean;
@@ -531,6 +534,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     });
     tui.setFocus(editor);
     const uiAPI = createUiApi(
+        options.documentLinks,
         tui,
         messageList,
         runningTasksComponent,

@@ -66,6 +66,34 @@ Deno.test("settings exposes existing review policies and persists scope without 
     });
 });
 
+Deno.test("settings saves Plan auto-merge booleans in the selected scope and keeps other Plan keys", async () => {
+    await withRuntimeCommandFixture("runwield-plan-merge-policy-", async ({ projectRoot }) => {
+        await setCustomSetting("plans", { archiveKeepLast: 7 }, "project", projectRoot);
+        const { runtime, sessionId } = await createPromptReadyRuntime(projectRoot);
+        const harness = makeUiHarness([
+            "plans.autoMergeIntoTargetBranch",
+            "project",
+            "false",
+            "plans.autoMergeIntoTargetBranch",
+            "global",
+            "true",
+            "done",
+        ]);
+        try {
+            await runSettingsCommand([], { uiAPI: harness.uiAPI, sessionRuntime: runtime, sessionId });
+            assertEquals(getCustomSetting("plans", "project", projectRoot), {
+                archiveKeepLast: 7,
+                autoMergeIntoTargetBranch: false,
+            });
+            assertEquals(getCustomSetting("plans", "global", projectRoot), { autoMergeIntoTargetBranch: true });
+            assert(harness.selects.some((record) => record.title === "Save auto-merge into target branch for"));
+            assert(harness.messages.some((message) => message.includes("explicit override remains in effect")));
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
+});
+
 Deno.test("cancelling review policy selection preserves persisted choices", async () => {
     await withRuntimeCommandFixture("runwield-policy-cancel-", async ({ projectRoot }) => {
         await setCustomSetting("codereview", "none", "project", projectRoot);

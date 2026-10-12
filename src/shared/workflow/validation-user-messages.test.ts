@@ -241,6 +241,7 @@ Deno.test("all validation recovery and doctor messages stay plain", async () => 
         buildValidationUserMessage({ kind: "human_review_prompt", planName: "demo" }),
         buildValidationUserMessage({ kind: "human_review_approved" }),
         buildValidationUserMessage({ kind: "human_review_skipped" }),
+        buildValidationUserMessage({ kind: "human_review_pending", planName: "demo" }),
         buildValidationUserMessage({ kind: "qa_prepare", planName: "demo" }),
         buildValidationUserMessage({ kind: "qa_ready", path: "docs/qa/demo.md", existed: false }),
         ...([

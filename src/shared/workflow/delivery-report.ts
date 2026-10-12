@@ -42,6 +42,10 @@ export interface DeliveryReportInput {
 export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport {
     const { attrs, publication } = input;
     const confirmed = Boolean(publication?.verifiedAt && publication.publishedCommit);
+    const landingBranch = publication?.targetBranch || attrs.deliveryBranch || attrs.targetBranch;
+    const intendedTarget = attrs.targetBranch?.trim();
+    const readyForMerge = confirmed && !attrs.parentPlan && Boolean(attrs.deliveryBranch) &&
+        Boolean(intendedTarget) && landingBranch !== intendedTarget?.replace(/^origin\//, "");
     const humanApproved = attrs.humanReviewDecision === "approved" && Boolean(attrs.humanReviewedAt);
     const mode = attrs.humanReviewMode || input.codeReview;
     const skipped = attrs.humanReviewDecision === "skipped" || attrs.humanReviewDecision === "not_required";
@@ -69,11 +73,11 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
             }`,
         },
         {
-            label: "Semantic AI review",
+            label: "AI Code Review",
             outcome: !input.semanticRequired
                 ? "Not required"
                 : semantic?.kind === "ai-skip"
-                ? semantic.outcome === "Human takeover" ? "Handed to human" : "Skipped"
+                ? semantic.outcome === "Human takeover" ? "Handed to user" : "Skipped"
                 : semantic?.outcome === "Approved"
                 ? "Passed"
                 : "Evidence unavailable",
@@ -89,7 +93,7 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
                 : "This workflow does not require semantic review. Run and repair totals unavailable.",
         },
         {
-            label: "Human code review",
+            label: "Code Review",
             outcome: humanApproved ? "Approved" : skipped ? "Skipped" : "Not recorded",
             tone: humanApproved ? "success" : "warning",
             detail: humanApproved
@@ -100,10 +104,10 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
                 ? "Reason: codereview = Never (stored: none). Rounds and revisions unavailable."
                 : skipped
                 ? "Skipped by user. Rounds and revisions unavailable."
-                : "No recorded human approval. Rounds and revisions unavailable.",
+                : "No recorded user approval. Rounds and revisions unavailable.",
         },
         {
-            label: "Human verification",
+            label: "User verification",
             outcome: humanVerified ? "Attested by user" : "Not recorded",
             tone: humanVerified ? "success" : "warning",
             detail: humanVerified
@@ -119,7 +123,10 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
                 : "Evidence unavailable",
             tone: confirmed ? "success" : "neutral",
             detail: confirmed
-                ? `Published commit confirmed on ${publication?.targetBranch}.`
+                ? `Published commit confirmed on ${landingBranch}.` +
+                    (readyForMerge
+                        ? ` Merge ${landingBranch} into ${intendedTarget}, or open a PR to ${intendedTarget}.`
+                        : "")
                 : "A completed status alone is not proof of a merge.",
         },
         {
@@ -137,10 +144,10 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
         version: 1,
         planName: input.planName,
         planId: attrs.planId,
-        heading: confirmed ? "Code delivered" : "Workflow complete",
+        heading: readyForMerge ? "Ready for your merge/PR" : confirmed ? "Code delivered" : "Workflow complete",
         checkedCommit: publication?.validatedCommit || attrs.validatedCommit || undefined,
         deliveredCommit: confirmed ? publication?.publishedCommit : undefined,
-        targetBranch: publication?.targetBranch || attrs.targetBranch,
+        targetBranch: landingBranch,
         rows,
         artifacts: [
             ...(input.evidence?.artifacts || []),
@@ -159,8 +166,11 @@ export function buildDeliveryReport(input: DeliveryReportInput): DeliveryReport 
 export function deliveryRowArtifacts(report: DeliveryReport, label: string): DeliveryReportArtifact[] {
     const titles: Record<string, string[]> = {
         "Mechanical tests / CI": ["Test results"],
+        "AI Code Review": ["Reviewer findings"],
+        "Code Review": ["Review decisions", "Human decisions"],
+        // Saved delivery reports retain their original row labels.
+        "Human code review": ["Review decisions", "Human decisions"],
         "Semantic AI review": ["Reviewer findings"],
-        "Human code review": ["Human decisions"],
         "Merge": ["Merge confirmation"],
         "Work Record": ["Work Record"],
     };

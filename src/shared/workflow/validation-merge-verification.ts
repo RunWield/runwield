@@ -1,3 +1,4 @@
+import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /**
  * @module shared/workflow/validation-merge-verification
  *
@@ -77,7 +78,7 @@ export async function verifyRecordedPublication(
     if (!(await hasGitDirectory(projectRoot))) return { published: attrs.status !== "reviewed" };
     const evidence = attrs.deliveryEvidence;
     const legacy = evidence?.mode === "worktree_merge" ? evidence : undefined;
-    const targetBranch = attrs.targetBranch || legacy?.targetBranch;
+    const targetBranch = effectiveDeliveryBranch(attrs) || legacy?.targetBranch;
     if (!targetBranch) return { published: false };
     const commit = attrs.validatedCommit || legacy?.executionCommit;
     let unavailable = false;

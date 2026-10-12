@@ -1,3 +1,4 @@
+import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus, loadPlan } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
@@ -104,7 +105,7 @@ export async function resolveWorkflowPlanLocation(
     }
     if (!await isGitRepository(registryRoot)) return { registryRoot, documentRoot: cwd, plan };
 
-    const localTargetBranch = typeof plan?.attrs.targetBranch === "string" ? plan.attrs.targetBranch.trim() : "";
+    const localTargetBranch = plan ? effectiveDeliveryBranch(plan.attrs) || "" : "";
     const parentPlanName = typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim()
         ? plan.attrs.parentPlan.trim()
         : inferParentPlanName(planName);
@@ -113,7 +114,7 @@ export async function resolveWorkflowPlanLocation(
         const parentPlan = await loadPlan(cwd, parentPlanName);
         targetBranch = typeof parentPlan?.attrs.targetBranch === "string" ? parentPlan.attrs.targetBranch.trim() : "";
     }
-    if (targetBranch && parentPlanName) {
+    if (targetBranch && (parentPlanName || plan?.attrs.deliveryBranch)) {
         const targetPlan = await findTargetBranchPlan(registryRoot, targetBranch, planName);
         if (
             targetPlan &&
@@ -121,9 +122,18 @@ export async function resolveWorkflowPlanLocation(
         ) {
             // Reading a published child must not start a fresh planning attempt after its worktree was cleaned up.
             if (isCompletedPlanStatus(targetPlan.attrs.status)) {
-                return { registryRoot, documentRoot: cwd, plan: plan || targetPlan };
+                return {
+                    registryRoot,
+                    documentRoot: cwd,
+                    // The local document owns its bytes and carries the current shared
+                    // lifecycle. A Git snapshot has neither a writable path nor newer events.
+                    plan: plan || targetPlan,
+                    publishedSnapshot: !plan,
+                };
             }
-            if (options.readOnly) return { registryRoot, documentRoot: cwd, plan: plan || targetPlan };
+            if (options.readOnly) {
+                return { registryRoot, documentRoot: cwd, plan: plan || targetPlan, publishedSnapshot: !plan };
+            }
             const planning = await preparePlanningWorktreeForPlan(registryRoot, planName, targetPlan.attrs);
             return { registryRoot, documentRoot: planning.entry.path, plan: planning.plan };
         }

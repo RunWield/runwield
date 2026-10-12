@@ -2,9 +2,13 @@
 
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { getCwd } from "../../../../constants.js";
+import { resolveWorkspaceFile } from "./review-file-handlers.ts";
 
 export interface ReviewImageOptions {
     cwd?: string;
+    /** Linked readers cannot access temporary uploads or absolute paths. */
+    projectOnly?: boolean;
 }
 
 const MAX_REVIEW_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -53,30 +57,59 @@ export async function reviewImageUploadApi(request: Request): Promise<Response> 
 
 export async function reviewImageApi(request: Request, options: ReviewImageOptions = {}): Promise<Response> {
     const url = new URL(request.url);
-    const rawPath = url.searchParams.get("path")?.trim();
-    if (!rawPath) return new Response("Image path required.", { status: 400 });
+    let rawPath = url.searchParams.get("path")?.trim();
+    if (rawPath && options.projectOnly) {
+        try {
+            // Markdown destinations can already contain URL escapes before the query is encoded.
+            rawPath = decodeURIComponent(rawPath);
+        } catch {
+            // A literal percent sign can also be part of a local filename.
+        }
+    }
+    const headers = { "cache-control": "no-store" };
+    if (!rawPath) return new Response("Image path required.", { status: 400, headers });
 
     const extension = normalizedImageExtension(rawPath);
-    if (!extension) return new Response("Unsupported image type.", { status: 400 });
+    if (!extension) return new Response("Unsupported image type.", { status: 400, headers });
 
-    const cwd = resolve(options.cwd || Deno.cwd());
-    const base = url.searchParams.get("base")?.trim();
-    const path = isAbsolute(rawPath) ? resolve(rawPath) : resolve(base || cwd, rawPath);
-    if (!isPathInside(path, REVIEW_UPLOAD_DIR) && !isPathInside(path, cwd)) {
-        return new Response("Image path is outside this review workspace.", { status: 403 });
-    }
-
+    const cwd = resolve(options.cwd || getCwd());
+    const base = url.searchParams.get("base")?.trim() || "";
     try {
-        const bytes = await Deno.readFile(path);
+        if (options.projectOnly) {
+            for (const value of [rawPath, base]) {
+                if (
+                    isAbsolute(value) || value.includes("\0") || value.includes("\\") ||
+                    /^[a-z][a-z\d+.-]*:/i.test(value)
+                ) throw new Deno.errors.PermissionDenied();
+            }
+        }
+        // Relative image bases are Project-relative, never process-relative.
+        const path = isAbsolute(rawPath) ? resolve(rawPath) : resolve(cwd, base, rawPath);
+        const root = isPathInside(path, cwd)
+            ? cwd
+            : !options.projectOnly && isPathInside(path, REVIEW_UPLOAD_DIR)
+            ? REVIEW_UPLOAD_DIR
+            : null;
+        if (!root) throw new Deno.errors.PermissionDenied();
+        const file = resolveWorkspaceFile(root, relative(root, path).replaceAll("\\", "/"), {
+            allowRelativeTraversal: true,
+        });
+        if (!file) return new Response("Image not found.", { status: 404, headers });
+        const finalExtension = normalizedImageExtension(file.absolutePath);
+        if (!finalExtension) return new Response("Unsupported image type.", { status: 400, headers });
+        const bytes = await Deno.readFile(file.absolutePath);
         return new Response(bytes, {
             headers: {
-                "content-type": IMAGE_CONTENT_TYPES.get(extension) || "application/octet-stream",
-                "cache-control": "no-store",
+                "content-type": IMAGE_CONTENT_TYPES.get(finalExtension) || "application/octet-stream",
+                ...headers,
             },
         });
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return new Response("Image not found.", { status: 404 });
-        return new Response("Unable to read image.", { status: 500 });
+        if (error instanceof Deno.errors.PermissionDenied) {
+            return new Response("Image path is outside this review workspace.", { status: 403, headers });
+        }
+        if (error instanceof Deno.errors.NotFound) return new Response("Image not found.", { status: 404, headers });
+        return new Response("Unable to read image.", { status: 500, headers });
     }
 }
 
@@ -100,5 +133,5 @@ function normalizedImageExtension(path: string): string {
 
 function isPathInside(path: string, root: string): boolean {
     const rel = relative(resolve(root), resolve(path));
-    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+    return rel === "" || (rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\") && !isAbsolute(rel));
 }

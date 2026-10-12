@@ -38,7 +38,7 @@ function makeBannerHarness(): BannerHarness {
     return {
         messageList,
         tui,
-        uiAPI: createUiApi(tui, messageList, new SpinnerBlock()),
+        uiAPI: createUiApi(null, tui, messageList, new SpinnerBlock()),
     };
 }
 

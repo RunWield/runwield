@@ -40,6 +40,40 @@ async function readJson(path: string) {
     return JSON.parse(await Deno.readTextFile(path));
 }
 
+for (const initialText of ["", " \n\t\r\n"]) {
+    Deno.test(`Agy MCP setup initializes ${initialText === "" ? "empty" : "whitespace-only"} files after approval`, async () => {
+        await withSetupHome(async (home, binDir) => {
+            const configPath = join(home, ".gemini", "config", "mcp_config.json");
+            const settingsPath = join(home, ".gemini", "antigravity-cli", "settings.json");
+            await Deno.mkdir(join(home, ".gemini", "config"), { recursive: true });
+            await Deno.mkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+            await Deno.writeTextFile(configPath, initialText);
+            await Deno.writeTextFile(settingsPath, initialText);
+
+            const status = await inspectAgyCliMcpSetup();
+            assertEquals(status.ok, false);
+            assertEquals(status.repairable, true);
+            await assertRejects(() => ensureAgyCliMcpSetup(), Error, "needs approval");
+            assertEquals(await Deno.readTextFile(configPath), initialText);
+            assertEquals(await Deno.readTextFile(settingsPath), initialText);
+
+            const approved = new HostedSession({ id: "agy-mcp-empty-approved", cwd: home });
+            approved.setInteractionAdapter({
+                requestInteraction: () => ({ outcome: "accepted", value: "approve" }),
+                supportsInteraction: () => true,
+            });
+            await ensureAgyCliMcpSetup({ hostedSession: approved });
+            assertEquals(await readJson(configPath), {
+                mcpServers: {
+                    runwield: { command: await Deno.realPath(join(binDir, "wld")), args: [...AGY_MCP_ARGS] },
+                },
+            });
+            assertEquals(await readJson(settingsPath), { permissions: { allow: [AGY_MCP_PERMISSION] } });
+            assertEquals((await inspectAgyCliMcpSetup()).ok, true);
+        });
+    });
+}
+
 Deno.test("Agy MCP setup installs the exact stable server and preserves unrelated settings", async () => {
     await withSetupHome(async (home, binDir) => {
         const configPath = join(home, ".gemini", "config", "mcp_config.json");
@@ -278,6 +312,11 @@ Deno.test("Agy MCP setup rejects malformed files and symbolic links", async () =
         await Deno.writeTextFile(configPath, "[]");
         await Deno.writeTextFile(settingsPath, JSON.stringify({ permissions: { allow: [] } }));
         await assertRejects(() => installAgyCliMcpSetup(), Error, "must contain a JSON object");
+
+        await Deno.writeTextFile(configPath, '{"mcpServers":');
+        assertEquals((await inspectAgyCliMcpSetup()).repairable, false);
+        await assertRejects(() => installAgyCliMcpSetup(), Error);
+        assertEquals(await Deno.readTextFile(configPath), '{"mcpServers":');
 
         await Deno.writeTextFile(configPath, JSON.stringify({ mcpServers: {} }));
         await Deno.remove(settingsPath);

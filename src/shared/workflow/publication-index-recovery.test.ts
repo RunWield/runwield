@@ -4,6 +4,7 @@ import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "../work-records/markdown.js";
+import { readPublishedRecordMarkdown } from "../work-records/published-source.ts";
 import { syncWorkRecordToIndex } from "../work-records/index-adapter.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
@@ -128,6 +129,7 @@ Deno.test("remote delivery retains verification through index failure and recove
         assertEquals(attempt.phase, "target_published");
         assertEquals(parsePlanFrontMatter(await git(remote, ["show", `main:${planPath}`])).attrs.status, "verified");
         assertEquals(index.snapshot().length, 1);
+        await assertRejects(() => git(root, ["cat-file", "-e", `${delivered.publicationCommit}^{commit}`]));
         const failed = await cleanupStoredPublication(root, attempt, {
             run: () => Promise.reject(new Error("Index service unavailable")),
         });
@@ -142,7 +144,14 @@ Deno.test("remote delivery retains verification through index failure and recove
 
         // Recover with only persisted state and the recorded remote available.
         await Deno.remove(attempt.publicationRoot, { recursive: true });
-        await assertRejects(() => git(root, ["cat-file", "-e", `${delivered.publicationCommit}^{commit}`]));
+        assertEquals(
+            await git(root, ["rev-parse", `refs/runwield/deliveries/${encodeURIComponent(entry.id)}`]),
+            delivered.publicationCommit,
+        );
+        const attached = await readPublishedRecordMarkdown(root, failed.attempt, successorPath);
+        assert(attached);
+        assertStringIncludes(attached, "Delivery destination: `main`");
+        assertEquals(parseWorkRecordMarkdown(attached).attrs.status, "approved");
         await git(root, ["remote", "add", "decoy", decoy]);
         await git(root, ["config", "branch.main.remote", "decoy"]);
         await git(root, ["config", "branch.main.merge", "refs/heads/unrelated"]);
@@ -172,6 +181,7 @@ Deno.test("remote delivery retains verification through index failure and recove
         const repeated = await cleanupStoredPublication(root, recovered.attempt, index);
         assertEquals(repeated.complete, true);
         assertEquals(index.snapshot().length, 2);
+        assertEquals(await readPublishedRecordMarkdown(root, repeated.attempt, successorPath), attached);
     } finally {
         await Deno.remove(root, { recursive: true });
         await Deno.remove(temporary, { recursive: true });

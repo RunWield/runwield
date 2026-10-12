@@ -17,6 +17,9 @@
 #     -e ANTHROPIC_API_KEY \
 #     -e OPENAI_API_KEY \
 #     runwield-wld-ux:local
+#
+# Test Antigravity's first-run login with an isolated home:
+#   podman run --rm -it --entrypoint agy runwield-wld-ux:local
 
 FROM denoland/deno:2.9.3 AS wld-ux-base
 
@@ -62,6 +65,12 @@ WORKDIR /workspace/project
 ARG WLD_INSTALL_REFRESH=manual
 RUN echo "[wld-ux] install refresh: ${WLD_INSTALL_REFRESH}" \
     && bash /tmp/install.sh
+
+# Keep Google authentication inside the disposable new-user environment.
+RUN curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/install-agy.sh \
+    && bash /tmp/install-agy.sh \
+    && agy --version \
+    && rm /tmp/install-agy.sh
 
 VOLUME ["/workspace/project", "/home/deno/.wld"]
 

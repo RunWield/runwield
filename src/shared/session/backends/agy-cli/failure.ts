@@ -42,7 +42,8 @@ export interface AgyCliBackendStatusOptions {
 const DEFAULT_MESSAGES: Record<AgyCliBackendStatusKind, string> = {
     missing_executable:
         "Antigravity CLI is not available. Install `agy` and ensure it is on PATH, then retry this turn.",
-    auth_failed: "Antigravity CLI authentication failed. Sign in to Antigravity, then retry this turn.",
+    auth_failed:
+        "Antigravity CLI needs you to sign in. Run `agy` in a terminal, complete Google sign-in, then retry this request in RunWield.",
     custom_agent_invalid:
         "Antigravity CLI works, but it did not load RunWield's temporary Agent. Restart this RunWield session, then retry. If it still fails, run `wld mcp agy-cli --setup`.",
     permission_denied:
@@ -123,6 +124,7 @@ export function agyBackendStatusLevel(entry: Pick<AgyCliBackendStatusEntry, "kin
 }
 
 export function sanitizeAgyStatusMessage(message: string, kind: AgyCliBackendStatusKind): string {
+    if (kind === "auth_failed") return DEFAULT_MESSAGES.auth_failed;
     const redactedHome = redactHomePath(message)
         .replace(URL, "[redacted-url]")
         .replace(SECRET_VALUE, "$1=[redacted]")

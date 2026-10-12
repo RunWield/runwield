@@ -1,3 +1,4 @@
+import { effectiveDeliveryBranch } from "../../shared/workflow/plan-branch.ts";
 /**
  * @module cmd/plans/doctor
  * Report and safely repair Plan/worktree lifecycle drift.
@@ -939,7 +940,7 @@ async function runPlansDoctorPass(projectRoot: string, repair: boolean, layout: 
         const evidence = plan.attrs.deliveryEvidence;
         const legacy = evidence?.mode === "worktree_merge" ? evidence : undefined;
         const commit = plan.attrs.validatedCommit || legacy?.executionCommit;
-        const targetBranch = plan.attrs.targetBranch || legacy?.targetBranch;
+        const targetBranch = effectiveDeliveryBranch(plan.attrs) || legacy?.targetBranch;
         // Older documents may make no Git publication claim at all. Missing
         // disposable metadata alone is not a new publication failure.
         if (!commit && !targetBranch) continue;

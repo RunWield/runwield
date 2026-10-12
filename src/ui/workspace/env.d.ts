@@ -15,6 +15,7 @@ declare namespace Deno {
     function cwd(): string;
     function realPath(path: string | URL): Promise<string>;
     function stat(path: string | URL): Promise<WorkspaceFileInfo>;
+    function statSync(path: string | URL): WorkspaceFileInfo;
     function mkdir(path: string | URL, options?: WorkspaceMkdirOptions): Promise<void>;
     function readFile(path: string | URL): Promise<Uint8Array<ArrayBuffer>>;
     function writeFile(path: string | URL, data: Uint8Array): Promise<void>;
@@ -22,6 +23,7 @@ declare namespace Deno {
 
     namespace errors {
         class NotFound extends Error {}
+        class NotADirectory extends Error {}
         class PermissionDenied extends Error {}
     }
 }
