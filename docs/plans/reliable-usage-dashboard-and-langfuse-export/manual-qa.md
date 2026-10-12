@@ -125,3 +125,18 @@ reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-del
 - [ ] Cause the exporter to hang or exit; confirm local recording and the host process continue.
 
 <!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states" -->
+
+<!-- runwield:manual-qa:start child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
+
+## Langfuse Exporter Package
+
+Manual verification steps for reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package
+
+- [ ] Install the package from a supported local package source and confirm that the install completes.
+- [ ] With owner authorization, send synthetic observations to a disposable supported Langfuse v4 project. Read them
+      back through the public API and confirm usage buckets, known-count subtotals, supplied costs, and availability
+      metadata match the sent observations.
+- [ ] Confirm that an unavailable cost is not inferred and that missing usage buckets are not reported as measured
+      values.
+
+<!-- runwield:manual-qa:end child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
