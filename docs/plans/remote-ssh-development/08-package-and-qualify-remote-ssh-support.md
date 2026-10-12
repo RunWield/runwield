@@ -109,6 +109,10 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   interrupted setup, and loss during write, sync, rollover, commit, review, merge, and publication.
 - Lasting delivered and unresolved requirements, observable outcomes, and acceptance scenarios move into their Core
   capability owners; references are fixed and the transient Remote SSH PRD is removed only when nothing is lost.
+- (Moved from child04.) When `wld remote` connects to a target whose host identity matches a saved remote project only
+  partly (for example, the same host key but a different alias, hostname, or user), the user confirms once whether it is
+  the same target. A confirmed match reuses the saved project identity and its Session history. A refusal keeps a
+  separate target. The choice is retained, and history is never merged without confirmation.
 - ADR-018 is accepted, ADR-015 matches the implemented writer extension, and the glossary defines only shipped
   relationships and avoided aliases.
 

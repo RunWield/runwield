@@ -627,23 +627,24 @@ carries that file path to the recovery prompt; the file contents and target bran
 
 **Scope and maturity:** Existing execution and validation baseline, with the owner's clarified completion and automatic
 recovery requirements below. These requirements do not certify that every current failure path already meets them.
-QUICK_FIX keeps its explicitly lighter behavior; answering a question does not require publication. The remote
-connection currently has setup/process cleanup and a personal mount; remote Session or workflow recovery remains target
-scope.
+QUICK_FIX keeps its explicitly lighter behavior; answering a question does not require publication. Remote connection
+setup, process cleanup, and personal-resource mounting use the connection owner; Session-save reconciliation follows the
+[laptop-owned save contract](#laptop-owned-remote-session-saves).
 
 **Requirement: Clean up connection-owned remote setup without claiming workflow recovery.**
 
-The connection-only remote supervisor monitors its control channel separately from the TUI and stops owned processes,
-including the connection-owned personal SFTP/SSHFS transport, on normal exit or detected loss. Failed or interrupted
-runtime preparation leaves the existing profile, project files, and verified runtime cache in place; the next attempt
-can repair private staging. If process exit cannot be confirmed, report uncertainty. No remote Agent or Session work
-exists yet to resume or recover. The broader connected-only and uncertain-effects requirements remain
-[proposed](remote-ssh-prd.md#disconnect-and-recovery).
+The remote supervisor monitors its control channel separately from the TUI and stops owned processes, including the
+connection-owned personal SFTP/SSHFS transport, on normal exit or detected loss. Failed or interrupted runtime
+preparation leaves the existing profile, project files, and verified runtime cache in place; the next attempt can repair
+private staging. If process exit cannot be confirmed, report uncertainty. Session-save uncertainty follows the
+[laptop-owned save contract](#laptop-owned-remote-session-saves) without replaying external effects. The
+[Remote SSH requirements](remote-ssh-prd.md#disconnect-and-recovery) define connected-only Agent and workflow behavior.
 
 **Acceptance scenarios:**
 
-- Given connection loss or view exit, the supervisor stops its connection-owned view rather than leaving a detached
-  Agent; unrelated server processes are not part of its cleanup.
+- Given connection loss or TUI exit, the supervisor stops its owned runtime rather than leaving a detached Agent;
+  unrelated server processes are not part of its cleanup. The compiled `sct` conversation pilot verified owned SSH
+  interruption and same-Session resume without repeating model requests, tools, or a remote write.
 - Given interrupted setup, reconnecting checks the private runtime cache and can prepare the matching executable without
   asking the user to remove internal staging or altering their personal profile. This does not claim recovery of an
   interrupted remote edit or publication.
@@ -1126,23 +1127,44 @@ executable extensions. Public configuration is in the [theme reference](../user-
 ### Project context and initialization
 
 **Scope and maturity:** Current baseline; compressed Project Brief and further code-intelligence improvements are target
-scope. Remote location resolution is available only in the connection-only subset described below; remote Project
-Runtime State access is target scope.
+scope. Remote location and Session project identity support conversation and resume; the compiled macOS/Linux `sct`
+pilot passed with an authenticated synthetic provider. Remote workflow Project Runtime State remains target scope.
 
-**Requirement: Resolve an existing remote location without starting project work.**
+**Requirement: Resolve the requested remote location for conversation tools.**
 
 `wld remote <host>[:<directory>]` resolves the remote account's home by default or an existing requested directory on
-the server. It shows the canonical remote directory in a connection-only TUI. Relative paths and `~` refer to the remote
-account. Git is optional; discovery can report a repository or worktree without entering its Project Runtime State. This
-connection does not start Init, project tools, an Agent, or a saved Session. Full remote project work remains
-[proposed](remote-ssh-prd.md#remote-workflows-and-local-review).
+the server. The normal remote TUI shows the canonical directory. Relative paths and `~` refer to the remote account. Git
+is optional. Connection alone does not initialize a project or create a saved Session. Conversation turns can use core
+project tools there; full delivery workflows remain [target scope](remote-ssh-prd.md#remote-workflows-and-local-review).
 
-**Acceptance scenarios:**
+**Requirement: Keep a remote project locator separate from execution cwd.**
 
-- Given a remote home without Git, when the user connects without a path, the connection view shows that home and does
-  not create a repository or Project Runtime State.
-- Given an existing remote path through a symlink or a Git worktree, when the user connects, the view shows its
-  canonical directory; a missing or inaccessible directory fails without creating or selecting a fallback directory.
+Laptop history identifies a remote project by exact host identity plus its canonical remote project root. Host identity
+uses the effective hostname, user, and port from OpenSSH configuration and the verified host key fingerprint. The typed
+SSH alias is a display label, not identity. Aliases with all the same values reuse identity; a changed hostname, user,
+port, or fingerprint creates a distinct target and never merges history. If OpenSSH reports a host certificate but no
+stable host key fingerprint, the fingerprint is `null`; matching then uses hostname, user, port, and that `null` value.
+A `null` fingerprint does not match a known fingerprint. OpenSSH host verification still applies.
+
+The root is remote `primaryRoot`, then `gitRoot`, then `cwd` when the preceding value is absent. A worktree shares its
+primary checkout's project identity; each Session stores execution cwd separately. Neither temporary personal mount
+paths nor laptop paths identify the project. Local history surfaces do not treat a remote root as a laptop directory.
+Records without a remote locator remain local. Remote Memory binding remains
+[target scope](remote-ssh-prd.md#local-memories-and-saved-sessions), as does ambiguous host confirmation.
+
+**Conversation acceptance scenarios:**
+
+- Given a remote home without Git, when the user connects without a path, the TUI opens there without inventing a
+  repository. An empty composer creates no saved Session.
+- Given an existing remote path through a symlink or a Git worktree, the TUI shows its canonical directory; a missing or
+  inaccessible directory fails without creating or selecting a fallback directory.
+- Given a remote project and a same-named laptop folder with different files, conversation reads and edits use the
+  remote execution cwd and leave the laptop folder unchanged.
+- Given two remote hosts with same-named folders, their Session project identities remain distinct. Two aliases reuse
+  history only if the effective hostname, user, port, fingerprint, and project root all match.
+- Given a remote worktree, its history belongs to the primary checkout's project while tools use its own execution cwd.
+- Given a certificate connection without a reported stable fingerprint, only an exact hostname, user, port, and `null`
+  fingerprint match reuses its host identity; it never merges with fingerprint-bearing history.
 
 **Requirement: Preserve useful project facts and retrieve relevant context.**
 
@@ -1478,11 +1500,13 @@ scope.
 
 **Scope and maturity:** Current baseline. New specialization proposals follow the project’s document conventions. The
 remote personal-resource mount and direct personal Skill file edits have bounded proof on the approved Linux `sct`
-pilot; ordinary remote Session customization remains target behavior.
+pilot. The conversation journey passed on `sct` with an authenticated synthetic provider; full customization coverage
+remains target qualification.
 
 **Requirement: Keep personal files on the laptop during a remote connection.** The approved Linux `sct` pilot mounts
 laptop `~/.wld` at a private remote root through stock SFTP/SSHFS; the remote project's `.wld` stays remote. This is
-direct trusted-host access, not a copy or a confinement boundary. A normal connection still does not accept user turns.
+direct trusted-host access, not a copy or a confinement boundary. The normal remote TUI uses these resources for
+conversation turns. Remote Memory and delivery workflows follow in their owning child Plans.
 
 **Current bounded acceptance scenario:** Given a personal Skill file and a remote project `.wld`, when the personal file
 changes through the mount, the laptop sees it; a laptop edit is also visible through the mount, while project `.wld`
@@ -1620,10 +1644,11 @@ unknown tools as protocol errors, and support human-paced review waits. The priv
 `/mcp` prints server status and `/mcp reconnect <server>` reconnects without a model request. MCP tools use direct
 calls; codemode is deferred as a separate capability.
 
-**Remote target:** [Local personal environment](remote-ssh-prd.md#local-personal-environment) specifies direct access to
-laptop `~/.wld` at a fresh private remote mount path, with project `.wld` remaining remote. Personal Agent, prompt, and
-Skill file edits change laptop files directly; there is no copy, sync, or special resource-save operation. A private
-mount path is not confinement of trusted remote users. This target is not yet a delivered Session.
+**Remote conversation scope:** [Local personal environment](remote-ssh-prd.md#local-personal-environment) specifies
+direct access to laptop `~/.wld` at a fresh private remote mount path, with project `.wld` remaining remote. Personal
+Agent, prompt, and Skill file edits change laptop files directly; there is no copy, sync, or special resource-save
+operation. A private mount path is not confinement of trusted remote users. The `sct` pilot verified conversation with
+this environment; full customization and remote workflow coverage remain separate qualification.
 
 **Acceptance scenarios:**
 
@@ -1675,17 +1700,17 @@ mount path is not confinement of trusted remote users. This target is not yet a 
 - Invoking a template with invalid execution settings reports the problem before a user-message event or model call.
 - Invoking `/release` from a Router Session presents the release-operation choices as a structured interview on clients
   that support forms; canceling the interview does not start a release.
-- **Remote target, not yet delivered:** Given a trusted remote connection with a private mount of laptop `~/.wld`, when
-  the user edits a personal Skill file, the laptop file changes directly without a resource copy or sync; a project
-  `.wld` override stays on the server.
+- **Remote customization scenario (personal-file mount proof on `sct`):** Given a trusted remote connection with a
+  private mount of laptop `~/.wld`, when the user edits a personal Skill file, the laptop file changes directly without
+  a resource copy or sync; a project `.wld` override stays on the server.
 
 <a id="8-models-and-providers"></a>
 
 ### Models and providers
 
-**Scope and maturity:** Current baseline with explicitly labeled future tuning questions. Remote model execution from an
-ordinary remote Session is target behavior. The connection-only view accepts no user turns; an optional native Pi bridge
-proof uses a synthetic HTTP provider through the laptop service.
+**Scope and maturity:** Current baseline with explicitly labeled future tuning questions. Remote conversation passed the
+compiled macOS/Linux `sct` pilot using the laptop model connection and an authenticated synthetic OpenAI-compatible SSE
+provider. Production-provider and platform matrices remain target qualification.
 
 **Requirement: Change models without losing Session or workflow context.**
 
@@ -1720,18 +1745,28 @@ Current requirements:
 - keep Pi automatic prompt-cache warming off so RunWield does not add warming requests or charges; a user-facing warming
   setting remains deferred
 
-**Remote boundary and target:** The [Remote SSH proposal](remote-ssh-prd.md#local-personal-environment) keeps
+**Remote conversation boundary:** The [Remote SSH proposal](remote-ssh-prd.md#local-personal-environment) keeps
 authenticated model requests, credentials, provider callbacks, and renewal in the laptop runtime while remote project
-tools execute on the server. On the approved built macOS/Linux `sct` pilot, an optional native Pi proof sent two
-synthetic HTTP provider requests; the second contained a remote-only tool result, cancellation closed the upstream
-request, and two reconnects completed the bounded path. This is not proof of an authenticated production provider or an
-ordinary remote user turn. The active full laptop `.wld` mount can expose credential files through broad standard SFTP
-access; local model execution is not filesystem confinement. Ordinary remote Agent support remains target behavior.
+tools execute on the server. The compiled macOS/Linux `sct` conversation journey sent remote-only tool context and
+laptop clipboard image bytes through an authenticated synthetic OpenAI-compatible SSE provider on the laptop. Connected
+resume preserved earlier context, and recovery did not repeat previous requests or effects. Production-provider
+authentication, renewal, and compatibility remain separate qualification. The active full laptop `.wld` mount can expose
+credential files through broad standard SFTP access; local model execution is not filesystem confinement.
 
-**Remote target acceptance scenario (not yet delivered):** Given a Pi provider authenticated only on the laptop, when a
-remote Agent uses the model after a remote project tool result, the laptop runtime sends the authenticated request
-without a second sign-in or a model substitution. The trusted server can still access laptop-account files via SFTP;
-this is not confinement.
+**Requirement: Use only the explicitly installed laptop model connection in a remote context.** Normal model consumers
+must use the credential-free laptop catalog and runtime after connection setup. Before setup, during setup, after a
+setup failure, and after connection cleanup, they must fail closed, not load mounted or remote-local model credentials.
+Provider authentication and catalog mutations remain laptop-owned. This composition boundary does not enable ordinary
+remote user turns by itself.
+
+**Composition acceptance scenario:** Given an active personal mount and an authenticated laptop control connection, when
+Core installs the connection, normal model consumers see the laptop's available Pi models and send requests through its
+runtime. When setup fails or the connection is cleared, those consumers cannot fall back to local model setup.
+
+**Remote conversation acceptance scenario:** Given a Pi provider authenticated only on the laptop, when a remote Agent
+uses the model after a remote project tool result, the laptop runtime sends the authenticated request without a second
+sign-in or a model substitution. The trusted server can still access laptop-account files via SFTP; this is not
+confinement.
 
 **Requirement: Recover from temporary model-service failures.**
 
@@ -1827,11 +1862,12 @@ Future/open requirements:
 
 **Scope and maturity:** Current Candidate release isolation and shell installation baseline. Prepared Homebrew and
 Windows WinGet support; public package availability is pending owner publication/submission. Remote development runtime
-preparation is a connection-only development-build subset, not a qualified production release.
+preparation supports the remote conversation journey verified on the compiled `sct` pilot. Production-provider and
+platform qualification remain target scope.
 
 **Requirement: Prepare only a matching remote development runtime.**
 
-For the current `wld remote` connection view, build the launcher and Linux artifacts explicitly from the same unchanged
+For a `wld remote` development bundle, build the launcher and Linux artifacts explicitly from the same unchanged
 checkout and compiler (Deno 2.9.3 or newer). A connection never compiles on demand or substitutes a released binary for
 a missing development artifact. The launcher verifies matching build/protocol identity, human-readable `VERSION`, and
 artifact checksum, then privately stages and preflights the executable on the remote host. An interrupted stage is
@@ -1850,15 +1886,18 @@ deno run -A scripts/release-assets.js development bin/wld bin/wld-linux-x64 bin/
 Use `bin/remote-build/wld-launcher` with its adjacent Linux GNU target files and `.build.json` files. The current remote
 host needs an OpenSSH server that can allocate a terminal and forward loopback ports, `python3`, a writable private
 cache, SSHFS/FUSE for the personal mount, and a runnable glibc-linked Linux x86-64 or ARM64 executable. Git is optional
-for a non-Git directory. The approved Linux `sct` pilot starts a stock SFTP/SSHFS personal mount before showing the
-dormant view. These steps do not prepare guarded Session access or production release assets; see the
-[Remote SSH proposal](remote-ssh-prd.md#remote-connection-and-setup).
+for a non-Git directory. Normal runtime startup also requires `mnemoteca`, `cymbal`, and `ketch` on the remote `PATH`,
+with successful `--help` checks. Staging the RunWield executable does not install these helpers. The `sct` pilot used
+authentic, verified helper installations under `/usr/local/bin`. The launcher starts a stock SFTP/SSHFS personal mount
+before opening the normal remote TUI and connects Session operations to the laptop-owned save service. The matching
+compiled macOS/Linux conversation, offline-history, and resume journey passed with an authenticated synthetic provider.
+See the [Remote SSH proposal](remote-ssh-prd.md#remote-connection-and-setup).
 
 **Acceptance scenarios:**
 
 - Given a matching development bundle and a supported remote Linux host, connecting transfers or reuses a verified
-  executable, mounts the laptop personal root on the approved `sct` pilot, and opens only the connection view; it does
-  not initialize a remote personal profile.
+  executable, mounts the laptop personal root, and opens the normal remote TUI for conversation turns. It does not
+  initialize a remote personal profile or create a saved Session before the first message.
 - Given a missing or mismatched artifact, incompatible executable, or missing remote prerequisite, connection fails with
   the cause rather than compiling, using another version, or starting a Session. A later attempt can repair an
   interrupted private staging file without overwriting a package-managed install.
@@ -2034,7 +2073,10 @@ Open product questions:
 ### Session continuity
 
 **Scope and maturity:** Current shared Session baseline; reliable end-to-end continuation remains required wherever gaps
-exist.
+exist. Remote conversation, image paste, offline history, and connected resume passed the compiled macOS/Linux `sct`
+pilot with an authenticated synthetic provider. Offline remote history and connected remote resume are separate from
+local client continuation. Remote Memory, workflows, child Sessions, write delegation, Plan review, and transcript
+rollover remain target scope in the [Remote SSH journey](remote-ssh-prd.md#local-memories-and-saved-sessions).
 
 **Requirement: Continue the same saved work across clients.**
 
@@ -2074,6 +2116,102 @@ Required outcomes:
 The file storage, operation-scoped writer lock, transcript segments, and synchronization design live in
 [ADR-015](../adr/015-file-authoritative-session-bundles.md). These mechanisms implement the outcomes above; they do not
 create additional product restrictions on which screen the owner may use.
+
+**Requirement: Read remote history offline and reconnect to continue conversation.**
+
+Remote history stays laptop-owned but is not offered in local TUI `/resume`, ACP Session lists, Workspace project scans,
+or `/load-plan`. A connected remote `/resume` lists and continues only Sessions whose exact host identity and project
+root match the connection's [remote project locator](#project-context-and-initialization). The current slice resumes
+conversation context, not a remote delivery workflow.
+
+`wld remote <target>` connects without choosing a saved Session. `wld remote sessions` is a laptop-only read-only
+history command. It lists saved remote Sessions by target, title, and last update without SSH. Selection replays
+committed history in the normal TUI transcript renderer with no composer and no Session Writer Lock. One footer names
+the target and says to connect with `wld remote <target>`, then use `/resume`. Reading remains possible with the host
+offline. Opening the remote TUI alone creates no bundle, catalog record, transcript, writer lock, or writer owner; the
+first message creates laptop-owned history and is saved before the model request starts.
+
+**Requirement: Use current saved settings across remote connections.**
+
+Each new managed operation reads fresh laptop evidence under writer authority. An idle terminal must not replace newer
+saved Agent, model, or thinking settings with its older snapshot. An explicit new selection for the current operation
+applies after hydration and retains the same Session ID. A lost admission reply is cancelled by its request identity,
+not retried as a second creation or turn; uncertainty must not leave an idle writer held.
+
+**Requirement: Paste laptop clipboard images with stable Session references.**
+
+On macOS laptops, Ctrl+V in the connected remote TUI reads the current laptop clipboard image through the authenticated
+connection. Only image bytes cross this boundary, not laptop file paths. The Session saves those bytes on the laptop
+before the transcript records `attachment:<id>` references. Image markers remain stable in offline history and after
+reconnect. Closing the connection does not fall back to the server clipboard. Project-relative image reads still use the
+remote project.
+
+**Remote conversation acceptance scenarios:**
+
+- Given an empty remote composer, connection and exit without a message leave no saved Session. The first message
+  creates history on the laptop before the provider request.
+- Given a saved remote conversation with the host offline, `wld remote sessions` renders the saved transcript without a
+  composer, SSH, or a writer lock, and its footer gives the target and reconnect instructions.
+- Given a reconnected target, `/resume` offers only its matching Sessions. Continuing appends to the same Session with
+  saved Agent and model context, without repeating earlier model requests, tools, or remote edits.
+- Given a saved remote Session, local TUI, ACP, Workspace, and `/load-plan` lists omit it and do not inspect its root as
+  a laptop directory.
+- Given an image in the macOS laptop clipboard, Ctrl+V in the remote TUI reads that current image. Submission sends its
+  bytes to the laptop provider and saves stable attachment references for history and resume.
+- Given an idle remote terminal and newer Agent, model, or thinking settings saved by another connection, the next
+  operation uses the fresh saved settings unless the user explicitly selects a new value for that operation.
+- Given a lost create/begin reply, cancellation of that admission releases any acquired writer without repeating the
+  turn or creating a second Session.
+
+#### Laptop-owned remote Session saves
+
+**Scope and maturity:** The registered-bundle save contract is integrated with remote conversation. The compiled
+macOS/Linux `sct` pilot passed conversation, image, offline-history, and same-Session recovery with an authenticated
+synthetic provider. Workflow authorization and rollover remain save-contract requirements for their target user paths.
+
+**Requirement: A remote append returns only after its exact bytes are saved on the laptop.**
+
+The save bridge operates on registered laptop-owned Session bundles. Remote Pi hydrates validated laptop evidence into
+an in-memory manager and creates no transcript file. Each entry waits for authenticated write-and-sync acknowledgement
+under the laptop's native Session Writer Lock. Neither a mounted personal directory nor a mounted lock grants writer
+access. Model, tool, workflow, and generation-publication work cannot use an unsaved record as authorization. Session
+attachments stay on the laptop; vision reads receive bytes and stable references without a connection-specific path.
+
+**Requirement: Recover save uncertainty without repeating external work.**
+
+A save fault remains sticky for the operation, including swallowed recorder errors. A late reply cannot restore health.
+Identical request retries do not duplicate entries; conflicting or stale requests are refused. Recovery discards remote
+memory and reconciles laptop evidence under the existing lock. It retains complete saved entries, handles an interrupted
+final append or migration from exact evidence, and never replays a model request, tool call, or external effect.
+Rollover retains laptop ownership while committing predecessor evidence and successor lineage.
+
+**Acceptance scenarios:**
+
+- Given an acknowledgement held after disk synchronization, the append and dependent model, tool, or workflow action
+  remain blocked until that acknowledgement arrives.
+- Given a caught metadata-save error or a timed-out save, later reads, writes, model calls, tools, and publication
+  remain stopped for that manager. A fresh operation hydrates only laptop evidence, without repeating the earlier
+  effect.
+- Given a duplicate request, the saved bytes do not change; conflicting content or an old operation cannot alter a
+  successor. A second OS process cannot acquire the held native lock.
+- Given a saved attachment and a fresh remote manager, vision reads use laptop bytes without a remote Session path;
+  project-relative image reads still use the remote project.
+
+**Conversation journey qualification:** Matching-identity compiled macOS and Linux `sct` runtimes passed normal remote
+turns, remote-only reads and writes with laptop files unchanged, current laptop clipboard image submission with stable
+attachment references, offline history with SSH denied, and same-ID/context resume. Killing the owned SSH transport
+during a turn preserved saved entries; recovery repeated no earlier model request, tool call, or write. This used an
+authenticated synthetic OpenAI-compatible SSE provider, not a production-provider matrix. See
+[the journey evidence](remote-ssh-prd.md#conversation-journey-evidence).
+
+**Earlier save-bridge qualification samples:** The native macOS ARM64 laptop and compiled Linux x64 `sct` client
+completed a full Pi 1.0.0 turn, metadata, compaction, disconnect/reconnect, and fresh hydration. Nine append waits
+measured 19.6–36.7 ms. A stalled save hit its 1.5-second test deadline at 1,501 ms. Independent owned-process Stop took
+5,177 ms remotely and 6,205 ms including SSH, before a 15-second blocked-save deadline; the existing five-second
+termination grace applies. These are samples, not product thresholds or a keyboard-usability judgment. The qualification
+used a synthetic laptop provider; Windows and other platform combinations are not qualified. Synchronization does not
+claim power-loss durability. Run `deno run -A src/shared/remote/verify-remote-session-save.ts` for the owned-scratch SSH
+qualification.
 
 **Acceptance scenario: Choose a planning Session by its title.**
 

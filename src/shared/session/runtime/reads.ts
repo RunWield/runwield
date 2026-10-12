@@ -382,6 +382,12 @@ export class RuntimeReads {
         }
         const managed = session.getManagedMetadata?.() || null;
         const manager = session.getRootSessionManager();
+        if (managed && !manager && this.services.remotePersistence) {
+            const saved = await this.services.remotePersistence.read(managed.runwieldSessionId);
+            const events = createProjectedReplayEvents(sessionId, saved.entries);
+            for (const event of events) this.events.emitSessionEvent(sessionId, event);
+            return { ok: true, replayed: events.length };
+        }
         if (managed && !manager) {
             const projected = await this.readManagedCommittedProjection(sessionId);
             if (!projected.ok) return { ok: false, replayed: 0, error: projected.error };
@@ -397,6 +403,11 @@ export class RuntimeReads {
     async getLastAssistantText(sessionId: string) {
         const session = this.services.sessionHost.getSession(sessionId);
         const managed = session?.getManagedMetadata?.() || null;
+        if (managed && !session?.getRootSessionManager?.() && this.services.remotePersistence) {
+            return getProjectedLastAssistantText(
+                (await this.services.remotePersistence.read(managed.runwieldSessionId)).entries,
+            );
+        }
         if (managed && !session?.getRootSessionManager?.()) {
             const projected = await this.readManagedCommittedProjection(sessionId);
             return projected.ok ? getProjectedLastAssistantText(projected.entries) : {
@@ -424,6 +435,14 @@ export class RuntimeReads {
         if (!session) return null;
         const managed = session.getManagedMetadata?.() || null;
         const manager = session.getRootSessionManager();
+        if (managed && !manager && this.services.remotePersistence) {
+            const saved = await this.services.remotePersistence.read(managed.runwieldSessionId);
+            return buildProjectedSessionInfo(saved.entries, {
+                sessionId: managed.piSessionId,
+                cwd: session.cwd,
+                transcriptPath: "",
+            });
+        }
         if (managed && !manager) {
             const projected = await this.readManagedCommittedProjection(sessionId);
             return projected.ok
@@ -513,6 +532,13 @@ export class RuntimeReads {
         if (!cwd || !isAbsolute(cwd)) {
             throw new Error("SessionRuntime.listResumableSessions requires an absolute cwd");
         }
+        if (this.services.remotePersistence) {
+            return (await this.services.remotePersistence.control.list()).map((summary) => ({
+                ...summary,
+                cwd,
+                path: "",
+            }));
+        }
         const sessionStore = this.services.sessionStoreOwner.ensure();
         return await listRecentResumableSessions(cwd, sessionStore);
     }
@@ -532,6 +558,9 @@ export class RuntimeReads {
     }
 
     async inspectResumableSession(options: { cwd: string; sessionId: string; sessionPath?: string }) {
+        if (this.services.remotePersistence) {
+            return inspectProjectedTranscript((await this.services.remotePersistence.read(options.sessionId)).entries);
+        }
         if (!this.services.sessionStore) {
             return {
                 estimatedTokens: 0,

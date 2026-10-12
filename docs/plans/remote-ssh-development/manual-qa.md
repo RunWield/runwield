@@ -69,3 +69,36 @@ Manual verification steps for remote-ssh-development/02-bridge-local-models-and-
 - [ ] Reconnect and confirm the current laptop resources load, with no writes to the remote user's personal profile.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/02-bridge-local-models-and-personal-resources" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/03-guard-remote-session-writer-access" -->
+
+## Guard Remote Session Writer Access
+
+Manual verification steps for remote-ssh-development/03-guard-remote-session-writer-access
+
+- [ ] Over the trusted SSH connection, run a remote turn with a tool call and confirm its messages and results appear in
+      laptop Session history.
+- [ ] Disconnect and reconnect, then resume the Session. Confirm saved history is present and no completed tool action
+      runs again.
+- [ ] Interrupt a save or disconnect during a save. Confirm the operation stops without publishing success, then recover
+      from laptop evidence.
+- [ ] Confirm no remote transcript file appears and the personal-resource mount does not receive Session history.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/03-guard-remote-session-writer-access" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history" -->
+
+## Run and Resume Remote Sessions with Local History
+
+Manual verification steps for remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history
+
+- [ ] Connect with `wld remote <target>`, submit turns that read and edit remote files, and verify local files do not
+      change.
+- [ ] Attach an image in the remote session and verify the model analyzes the image.
+- [ ] Disconnect from the network, run `wld remote sessions` locally, and verify the transcript replays in read-only
+      mode without network access.
+- [ ] Reconnect to the remote host, run `/resume`, and verify the previous session continues with full history.
+- [ ] Stop network transport during an active turn, reconnect, and verify existing history remains without repeated tool
+      calls.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history" -->

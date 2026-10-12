@@ -654,6 +654,11 @@ export class RuntimeAgentSettings {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, error: "not_found" };
         if (session.isTurnActive()) throw new SessionTurnInProgressError(session.id);
+        if (this.services.remotePersistence && this.lifecycle.hasPendingProject(sessionId)) {
+            const selected = this.markPromptReadyAgent(sessionId, options);
+            if (selected.ok) await this.events.emitCommandCatalogChanged(sessionId, session);
+            return selected;
+        }
         if (this.managedOperations.hasPendingCreationProof(sessionId) || this.lifecycle.hasPendingProject(sessionId)) {
             if (this.managedOperations.hasOperation(sessionId)) {
                 return { ok: false, error: "managed_operation_in_progress" };

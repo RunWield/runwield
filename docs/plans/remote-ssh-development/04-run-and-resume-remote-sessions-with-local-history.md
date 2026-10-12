@@ -2,7 +2,7 @@
 planId: "ec285d14-a71f-464c-a934-47c209958966"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
-complexity: "MEDIUM"
+complexity: "HIGH"
 affectedPaths:
     - "src/cmd/remote/index.ts"
     - "src/shared/remote/entry.ts"
@@ -21,15 +21,18 @@ affectedPaths:
     - "docs/prd/remote-ssh-prd.md"
     - "docs/domain-language.md"
 executionAgent: "engineer"
+collaborationRecommendation: "pair"
 createdAt: "2026-09-21T02:05:49.975Z"
-status: "draft"
+status: "verified"
 origin: "internal"
 parentPlan: "remote-ssh-development"
 order: 4
 dependencies:
     - "02-bridge-local-models-and-personal-resources"
     - "03-guard-remote-session-writer-access"
+userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
+validatedCommit: "68ff6362164a60d51360741fdbd8f0bf65f1dce4"
 ---
 
 # Run and Resume Remote Sessions with Local History
