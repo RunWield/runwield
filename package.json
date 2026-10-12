@@ -90,7 +90,7 @@
         "@earendil-works/pi-ai": "1.0.0",
         "@earendil-works/pi-coding-agent": "1.0.0",
         "@earendil-works/pi-mcp": "1.0.0",
-        "@earendil-works/pi-tui": "1.0.0",
+        "@earendil-works/pi-tui": "1.0.3",
         "@lezer/common": "1.5.2",
         "@lezer/highlight": "1.2.3",
         "@modelcontextprotocol/sdk": "1.30.0",
