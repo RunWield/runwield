@@ -29,7 +29,7 @@ export function getRunWieldSessionsBaseDir() {
 function canonicalizeCwd(cwd) {
     let canonicalCwd = resolve(cwd);
     try {
-        canonicalCwd = realpathSync(canonicalCwd);
+        canonicalCwd = realpathSync.native(canonicalCwd);
     } catch {
         // A not-yet-created cwd still gets a stable absolute locator.
     }

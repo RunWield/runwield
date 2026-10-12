@@ -6,8 +6,12 @@ permissions:
 jobs:
     paths:
         runs-on: windows-2025
-        timeout-minutes: 5
+        timeout-minutes: 10
         steps:
+            - uses: actions/checkout@v5
+              with:
+                  submodules: recursive
+                  persist-credentials: false
             - uses: actions/setup-node@v4
               with:
                   node-version: "24"
@@ -40,3 +44,18 @@ jobs:
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
                   deno run --no-config -A $file $root
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            - name: Install frozen Bun graphs
+              run: bun run install:locked
+            - name: Run native Project and Session regressions
+              shell: pwsh
+              run: |
+                  bun scripts/write-version.js
+                  bun scripts/run-bun-tests.ts src/shared/owner-coordination/projects.test.js src/shared/owner-coordination/sessions.test.js src/shared/session/file-session-store.test.js src/shared/session/root-session.test.js
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            - name: Verify regression rejects previous resolver
+              shell: pwsh
+              run: |
+                  bun -e 'for (const file of ["src/shared/owner-coordination/projects.js", "src/shared/owner-coordination/sessions.js", "src/shared/session/file-session-storage.ts", "src/shared/session/root-session.js", "src/ui/workspace/server/owner-projects.ts"]) { const text = await Bun.file(file).text(); await Bun.write(file, text.replaceAll("realpathSync.native(", "realpathSync(")); }'
+                  bun scripts/run-bun-tests.ts src/shared/owner-coordination/projects.test.js src/shared/session/file-session-store.test.js src/shared/session/root-session.test.js
+                  if ($LASTEXITCODE -eq 0) { throw 'Regression did not reject previous resolver' }
+                  exit 0

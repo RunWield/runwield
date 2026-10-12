@@ -78,7 +78,7 @@ function canonicalizeExistingDirectory(path) {
         throw new Error(`Project root is not available: ${path}`, { cause: error });
     }
     if (!stat.isDirectory()) throw new Error(`Project root must be a directory: ${path}`);
-    return realpathSync(path);
+    return realpathSync.native(path);
 }
 
 /**
@@ -327,7 +327,7 @@ export function getProjectHealth(database, projectId) {
             evidence.push("Registered root exists but is not a directory.");
         } else {
             try {
-                observedRealRoot = realpathSync(project.registeredRoot);
+                observedRealRoot = realpathSync.native(project.registeredRoot);
             } catch (error) {
                 status = "unreadable";
                 evidence.push(error instanceof Error ? error.message : "Registered root cannot be resolved.");

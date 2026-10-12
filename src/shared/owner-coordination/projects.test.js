@@ -66,6 +66,35 @@ test("Project registration converges symlink duplicates and re-adding after remo
     }
 });
 
+test(
+    "Windows Project aliases retain native canonical identity and health",
+    { skip: platform !== "win32" },
+    async () => {
+        const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-alias-"));
+        const database = openOwnerCoordinationDatabase({ dbPath: join(dir, "owner.sqlite3") });
+        try {
+            const root = join(dir, "Mixed Case Project");
+            await fsMkdir(root);
+            const canonicalRoot = await fsRealpath(root);
+            const enteredRoot = root.toLowerCase();
+            assertNotEquals(enteredRoot, canonicalRoot);
+            const project = registerProject(database, { root: enteredRoot });
+            assertEquals(project.currentRoot, canonicalRoot);
+            assertEquals(getProjectHealth(database, project.projectId).status, "available");
+            assertEquals(getProjectHealth(database, project.projectId).observedRealRoot, canonicalRoot);
+            assertEquals(registerProject(database, { root: canonicalRoot }).projectId, project.projectId);
+            assertEquals(listProjects(database).length, 1);
+            assertEquals(
+                listProjectRootEvidence(database, project.projectId).map((item) => item.canonicalRoot),
+                [canonicalRoot, canonicalRoot],
+            );
+        } finally {
+            database.close();
+            await fsRm(dir, { recursive: true });
+        }
+    },
+);
+
 test("disabled Projects stay disabled on duplicate registration", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-disabled-"));
     const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });

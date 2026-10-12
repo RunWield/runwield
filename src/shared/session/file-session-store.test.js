@@ -1,3 +1,4 @@
+import { platform } from "node:process";
 import { readdirSync } from "node:fs";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { test } from "node:test";
@@ -8,7 +9,7 @@ import { dirname, join } from "@std/path";
 import { createHash } from "node:crypto";
 import { classifyRootSessionLocator, encodeCwdForSessionDir } from "./root-session.js";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
+import { catalogLockPath, lockPath, manifestPath, sessionDirForRoot } from "./file-session-storage.ts";
 
 const TIMESTAMP = "2026-01-01T00:00:00.000Z";
 
@@ -73,6 +74,37 @@ test("Core catalogs every local Session without creating a Workspace database", 
         await rm(fixture.rootDir, { recursive: true });
     }
 });
+
+test(
+    "Windows aliases share Session authority and transcript catalog locks",
+    { skip: platform !== "win32" },
+    async () => {
+        const fixture = await makeFixture();
+        const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
+        try {
+            const canonicalRoot = await realpath(fixture.projectRoot);
+            const alias = fixture.projectRoot.toUpperCase();
+            const project = store.ensureRuntimeProject({ root: alias });
+            assertEquals(project.currentRoot, canonicalRoot);
+            assertEquals(store.ensureRuntimeProject({ root: canonicalRoot }).projectId, project.projectId);
+            assertEquals(store.listSessionProjects().length, 1);
+            assertEquals(sessionDirForRoot(fixture.sessionBaseDir, alias), fixture.sessionDir);
+            const transcriptPath = await writeTranscript(fixture.sessionDir, alias, "Alias Transcript");
+            assertEquals(
+                catalogLockPath(fixture.sessionDir, transcriptPath.toUpperCase()),
+                catalogLockPath(fixture.sessionDir, await realpath(transcriptPath)),
+            );
+            const sessions = await store.listProjectSessions(project.projectId);
+            assertEquals(
+                sessions.sessions.map((session) => session.piSessionId),
+                ["Alias Transcript"],
+            );
+        } finally {
+            store.close();
+            await rm(fixture.rootDir, { recursive: true });
+        }
+    },
+);
 
 test("Project Session listing paginates and provides a sorted unpaged snapshot", async () => {
     const fixture = await makeFixture();

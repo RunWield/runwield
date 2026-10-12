@@ -1174,7 +1174,7 @@ export async function catalogProjectSessions(database, projectId, options = {}) 
 function isLocatorForRoot(headerCwd, evidence) {
     const resolvedHeaderCwd = resolve(headerCwd);
     try {
-        return realpathSync(resolvedHeaderCwd) === evidence.canonicalRoot;
+        return realpathSync.native(resolvedHeaderCwd) === evidence.canonicalRoot;
     } catch {
         if (evidence.rootState !== "historical") return false;
         return resolvedHeaderCwd === resolve(evidence.enteredRoot) ||

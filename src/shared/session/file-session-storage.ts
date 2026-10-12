@@ -65,7 +65,7 @@ export function lockPath(sessionDir: string, runwieldSessionId: string): string 
 export function catalogLockPath(sessionDir: string, transcriptPath: string): string {
     const directory = join(metadataDir(sessionDir), "catalog-locks");
     ensurePrivateDir(directory);
-    const canonicalPath = realpathSync(transcriptPath);
+    const canonicalPath = realpathSync.native(transcriptPath);
     const key = createHash("sha256").update(canonicalPath).digest("hex");
     return join(directory, `${key}.lock`);
 }
@@ -73,7 +73,7 @@ export function catalogLockPath(sessionDir: string, transcriptPath: string): str
 export function sessionDirForRoot(baseDir: string, root: string): string {
     let canonicalRoot = resolve(root);
     try {
-        canonicalRoot = realpathSync(canonicalRoot);
+        canonicalRoot = realpathSync.native(canonicalRoot);
     } catch {
         // A not-yet-created root still gets a stable absolute locator.
     }
@@ -94,7 +94,7 @@ export function ensureProject(
     const enteredRoot = resolve(root);
     const stat = statSync(enteredRoot);
     if (!stat.isDirectory()) throw new Error("Project root must be a directory");
-    const canonicalRoot = realpathSync(enteredRoot);
+    const canonicalRoot = realpathSync.native(enteredRoot);
     const existing = listProjectsFromDisk(baseDir).find((project) =>
         resolve(project.currentRoot) === resolve(canonicalRoot) || resolve(project.registeredRoot) === enteredRoot
     );

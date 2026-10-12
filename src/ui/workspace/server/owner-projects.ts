@@ -81,7 +81,7 @@ export function sessionBelongsToOwnerProject(
     const project = store.getProjectById(projectId);
     if (!project) return false;
     try {
-        return resolve(realpathSync(session.transcriptCwd)) === resolve(realpathSync(project.currentRoot));
+        return resolve(realpathSync.native(session.transcriptCwd)) === resolve(realpathSync.native(project.currentRoot));
     } catch {
         return resolve(session.transcriptCwd) === resolve(project.currentRoot);
     }
