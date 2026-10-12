@@ -30,8 +30,8 @@ dependencies:
     - "07-core-export-coordination-and-delivery-states"
 userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-status: "reviewed"
 validatedCommit: "34f411af3b2b7d1ad31b75b8b96b4fca66a7e68f"
+status: "verified"
 ---
 
 # Langfuse Exporter Package
