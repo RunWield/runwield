@@ -1,3 +1,7 @@
+import { env as processEnv, execPath } from "node:process";
+import { clearTimeout, setTimeout } from "node:timers";
+import { getCwd } from "../../../constants.js";
+import { spawnNativeProcess } from "../../../shared/foreground-process.ts";
 /**
  * @module ui/tui/testing/subprocess-runner
  * Bounded subprocess runner used by Golden TUI scenarios.
@@ -50,12 +54,14 @@ async function readStream(stream, onText) {
     return text + decoder.decode();
 }
 
-/** @param {Record<string, string>} env */
-export function sanitizeGoldenChildEnv(env = Deno.env.toObject()) {
+/** @param {Record<string, string | undefined>} env */
+export function sanitizeGoldenChildEnv(
+    env = processEnv,
+) {
     /** @type {Record<string, string>} */
     const sanitized = {};
     for (const [key, value] of Object.entries(env)) {
-        if (SECRET_ENV_PATTERNS.some((pattern) => pattern.test(key))) continue;
+        if (value === undefined || SECRET_ENV_PATTERNS.some((pattern) => pattern.test(key))) continue;
         sanitized[key] = value;
     }
     return sanitized;
@@ -71,14 +77,14 @@ export function sanitizeGoldenChildEnv(env = Deno.env.toObject()) {
  * @returns {Promise<GoldenChildResult>}
  */
 export async function runGoldenChild(args, options = {}) {
-    const command = new Deno.Command(Deno.execPath(), {
+    const child = spawnNativeProcess(execPath, {
         args,
-        cwd: options.cwd,
+        cwd: options.cwd ?? getCwd(),
+        stdin: "null",
         env: { ...sanitizeGoldenChildEnv(), ...(options.env || {}) },
         stdout: "piped",
         stderr: "piped",
     });
-    const child = command.spawn();
     const scenarioTimeoutMs = options.timeoutMs || 5000;
     let timedOut = false;
     /** @type {ReturnType<typeof setTimeout> | null} */
@@ -101,7 +107,7 @@ export async function runGoldenChild(args, options = {}) {
                 // Process exited during the grace window, which is the good case.
             }
         }, options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS);
-        Deno.unrefTimer(escalation);
+        escalation.unref();
     };
     let ready = !options.awaitReadyMarker;
     const startupTimeoutMs = options.startupTimeoutMs || DEFAULT_STARTUP_TIMEOUT_MS;

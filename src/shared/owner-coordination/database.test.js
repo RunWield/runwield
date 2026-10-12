@@ -1,20 +1,24 @@
-import { assertEquals, assertFalse, assertThrows } from "@std/assert";
-import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
+import { test } from "node:test";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { assertEquals, assertFalse, assertThrows } from "../../testing/assertions.ts";
+import { DatabaseSync } from "../sqlite.ts";
 import { getLatestOwnerCoordinationSchemaVersion, openOwnerCoordinationDatabase } from "./database.js";
 import { OWNER_COORDINATION_SCHEMA_V1_SQL, OWNER_COORDINATION_SCHEMA_VERSION } from "./schema.ts";
 
 /** @param {string} path */
 async function exists(path) {
     try {
-        await Deno.stat(path);
+        await stat(path);
         return true;
     } catch {
         return false;
     }
 }
 
-Deno.test("owner database opens on disk with schema, WAL, foreign keys, and rollback-safe transactions", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-db-" });
+test("owner database opens on disk with schema, WAL, foreign keys, and rollback-safe transactions", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runwield-owner-db-"));
     const dbPath = `${dir}/owner.sqlite3`;
     try {
         const database = openOwnerCoordinationDatabase({ dbPath });
@@ -43,12 +47,12 @@ Deno.test("owner database opens on disk with schema, WAL, foreign keys, and roll
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await rm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner database refuses newer schema without recording local migrations", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-newer-" });
+test("owner database refuses newer schema without recording local migrations", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runwield-owner-newer-"));
     const dbPath = `${dir}/owner.sqlite3`;
     try {
         const fixture = new DatabaseSync(dbPath);
@@ -78,27 +82,27 @@ Deno.test("owner database refuses newer schema without recording local migration
             check.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await rm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner database reports corrupted files visibly and does not delete them", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-corrupt-" });
+test("owner database reports corrupted files visibly and does not delete them", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runwield-owner-corrupt-"));
     const dbPath = `${dir}/owner.sqlite3`;
     try {
-        await Deno.writeTextFile(dbPath, "not sqlite");
+        await writeFile(dbPath, "not sqlite");
         assertThrows(
             () => openOwnerCoordinationDatabase({ dbPath }),
             Error,
         );
-        assertEquals(await Deno.readTextFile(dbPath), "not sqlite");
+        assertEquals(await readFile(dbPath, "utf8"), "not sqlite");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await rm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner database enforces transcript locator Project consistency", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-fk-" });
+test("owner database enforces transcript locator Project consistency", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runwield-owner-fk-"));
     const dbPath = `${dir}/owner.sqlite3`;
     try {
         const database = openOwnerCoordinationDatabase({ dbPath });
@@ -123,12 +127,12 @@ Deno.test("owner database enforces transcript locator Project consistency", asyn
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await rm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner database migration rejects existing locator Project mismatches", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-migration-mismatch-" });
+test("owner database migration rejects existing locator Project mismatches", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runwield-owner-migration-mismatch-"));
     const dbPath = `${dir}/owner.sqlite3`;
     try {
         const fixture = new DatabaseSync(dbPath);
@@ -194,12 +198,12 @@ CREATE TABLE owner_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_a
             "mismatched Project IDs",
         );
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await rm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner database backs up extensionless explicit paths without truncating the filename", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-backup-extensionless-" });
+test("owner database backs up extensionless explicit paths without truncating the filename", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runwield-owner-backup-extensionless-"));
     const dbPath = `${dir}/ownerdb`;
     try {
         const fixture = new DatabaseSync(dbPath);
@@ -217,12 +221,12 @@ Deno.test("owner database backs up extensionless explicit paths without truncati
         assertEquals(await exists(`${dir}/ownerdb.backup-v1-2026-01-01T00-00-00-000Z.sqlite3`), true);
         assertEquals(await exists(`${dir}/.backup-v1-2026-01-01T00-00-00-000Z.sqlite3`), false);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await rm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner database migration backs up committed WAL contents before changing the schema", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-wal-backup-" });
+test("owner database migration backs up committed WAL contents before changing the schema", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runwield-owner-wal-backup-"));
     const dbPath = `${dir}/owner.sqlite3`;
     const fixture = new DatabaseSync(dbPath);
     try {
@@ -231,7 +235,7 @@ Deno.test("owner database migration backs up committed WAL contents before chang
         fixture.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)").run(1, "v1");
         fixture.exec("CREATE TABLE backup_probe(value TEXT NOT NULL)");
         fixture.prepare("INSERT INTO backup_probe(value) VALUES (?)").run("committed WAL contents");
-        assertEquals((await Deno.stat(`${dbPath}-wal`)).size > 0, true);
+        assertEquals((await stat(`${dbPath}-wal`)).size > 0, true);
         const database = openOwnerCoordinationDatabase({ dbPath, now: () => "2026-01-01T00:00:00.000Z" });
         try {
             const backup = new DatabaseSync(`${dir}/owner.backup-v1-2026-01-01T00-00-00-000Z.sqlite3`, {
@@ -250,6 +254,6 @@ Deno.test("owner database migration backs up committed WAL contents before chang
         }
     } finally {
         fixture.close();
-        await Deno.remove(dir, { recursive: true });
+        await rm(dir, { recursive: true });
     }
 });

@@ -1,6 +1,16 @@
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 import { getCwd, getHomeDir } from "../../constants.js";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     formatImageAttachmentMarker,
@@ -27,10 +37,10 @@ async function removeTempDir(path) {
     let lastError;
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            await Deno.remove(path, { recursive: true });
+            await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return;
+            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
             lastError = error;
             await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
         }
@@ -38,19 +48,19 @@ async function removeTempDir(path) {
     throw lastError;
 }
 
-Deno.test("modelSupportsImageInput checks image modality", () => {
+test("modelSupportsImageInput checks image modality", () => {
     assertEquals(modelSupportsImageInput({ input: ["text", "image"] }), true);
     assertEquals(modelSupportsImageInput({ input: ["text"] }), false);
     assertEquals(modelSupportsImageInput({}), false);
 });
 
-Deno.test("persistImageAttachment stores session-scoped file and resolves attachment ref", async () => {
+test("persistImageAttachment stores session-scoped file and resolves attachment ref", async () => {
     await withProcessGlobalTestLock(async () => {
         const originalHome = getHomeDir();
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-images-home-" });
-        const cwd = await Deno.makeTempDir({ prefix: "runwield-images-project-" });
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-images-home-"));
+        const cwd = await fsMkdtemp(join(tmpdir(), "runwield-images-project-"));
         try {
-            Deno.env.set("HOME", tempHome);
+            process.env["HOME"] = tempHome;
             const sessionManager = makeSessionManager("abc");
             const stored = await persistImageAttachment(
                 { base64: btoa("hello"), mimeType: "image/png" },
@@ -58,7 +68,7 @@ Deno.test("persistImageAttachment stores session-scoped file and resolves attach
                 cwd,
             );
             assertEquals(stored.ref?.startsWith("attachment:"), true);
-            assertEquals(await Deno.readTextFile(stored.path || ""), "hello");
+            assertEquals(await fsReadFile(stored.path || "", "utf8"), "hello");
             assertEquals(stored.path?.startsWith(getSessionImageDir(/** @type {any} */ (sessionManager), cwd)), true);
 
             const resolved = await resolveImageRef(stored.ref || "", {
@@ -68,18 +78,18 @@ Deno.test("persistImageAttachment stores session-scoped file and resolves attach
             assertEquals(resolved.mimeType, "image/png");
             assertEquals(resolved.refType, "attachment");
         } finally {
-            if (originalHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", originalHome);
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
             await removeTempDir(tempHome);
             await removeTempDir(cwd);
         }
     });
 });
 
-Deno.test("resolveImageRef resolves safe project-relative paths and rejects escapes", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-image-path-" });
+test("resolveImageRef resolves safe project-relative paths and rejects escapes", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-image-path-"));
     try {
-        await Deno.writeFile(join(cwd, "screenshot.png"), new Uint8Array([1, 2, 3]));
+        await fsWriteFile(join(cwd, "screenshot.png"), new Uint8Array([1, 2, 3]));
         const local = await resolveImageRef("@screenshot.png", { cwd });
         assertEquals(local.mimeType, "image/png");
         assertEquals(local.refType, "local");
@@ -91,7 +101,7 @@ Deno.test("resolveImageRef resolves safe project-relative paths and rejects esca
     }
 });
 
-Deno.test("prepareImagesForModel sends direct images or fallback markers", () => {
+test("prepareImagesForModel sends direct images or fallback markers", () => {
     const img = { base64: "a", mimeType: "image/png", ref: "attachment:abc" };
     assertEquals(prepareImagesForModel({ text: "look", images: [img], activeModel: { input: ["text", "image"] } }), {
         ok: true,
@@ -116,7 +126,7 @@ Deno.test("prepareImagesForModel sends direct images or fallback markers", () =>
     assertEquals(formatImageAttachmentMarker(img), "[Image attached: attachment:abc image/png]");
 });
 
-Deno.test("preflightImageAttachments blocks text-only model without fallback", () => {
+test("preflightImageAttachments blocks text-only model without fallback", () => {
     assertEquals(
         preflightImageAttachments([{ base64: "a", mimeType: "image/png" }], { activeModel: { input: ["text"] } }).ok,
         false,
@@ -137,26 +147,26 @@ Deno.test("preflightImageAttachments blocks text-only model without fallback", (
 async function withVisionSettings(settings, fn) {
     const originalHome = getHomeDir();
     const originalCwd = getCwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-vision-settings-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-vision-settings-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-vision-settings-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-vision-settings-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
-        await Deno.mkdir(".wld", { recursive: true });
-        await Deno.writeTextFile(".wld/settings.json", JSON.stringify(settings));
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
+        await fsMkdir(".wld", { recursive: true });
+        await fsWriteFile(".wld/settings.json", JSON.stringify(settings));
         __resetSettingsForTests();
         await fn(tempHome, tempProject);
     } finally {
         __resetSettingsForTests();
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
         await removeTempDir(tempHome);
         await removeTempDir(tempProject);
     }
 }
 
-Deno.test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-vision fallback", async () => {
+test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-vision fallback", async () => {
     await withProcessGlobalTestLock(async () => {
         await withVisionSettings({ visionFallback: { model: "test/missing" } }, async () => {
             await assertRejects(
@@ -210,11 +220,11 @@ Deno.test("resolveVisionFallbackModel reports unknown, unauthenticated, and non-
     });
 });
 
-Deno.test("resolveVisionFallbackModel discovers configured provider models", async () => {
+test("resolveVisionFallbackModel discovers configured provider models", async () => {
     await withProcessGlobalTestLock(async () => {
         await withVisionSettings({ visionFallback: { model: "local/discovered" } }, async (tempHome, tempProject) => {
-            await Deno.mkdir(join(tempHome, ".wld"), { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(join(tempHome, ".wld"), { recursive: true });
+            await fsWriteFile(
                 join(tempHome, ".wld", "models.json"),
                 JSON.stringify({
                     providers: {
@@ -240,7 +250,7 @@ Deno.test("resolveVisionFallbackModel discovers configured provider models", asy
                 },
             };
             const network = {
-                fetch: /** @type {typeof fetch} */ (() =>
+                fetch: /** @type {import("../fetch-request.ts").FetchRequest} */ (() =>
                     Promise.resolve(
                         /** @type {Response} */ ({
                             ok: true,
@@ -256,7 +266,7 @@ Deno.test("resolveVisionFallbackModel discovers configured provider models", asy
     });
 });
 
-Deno.test("submit-time image preflight blocks non-destructively after fallback disappears", () => {
+test("submit-time image preflight blocks non-destructively after fallback disappears", () => {
     const typedText = "draft prompt";
     const images = [{ base64: "a", mimeType: "image/png", ref: "attachment:abc" }];
     const beforeImages = [...images];

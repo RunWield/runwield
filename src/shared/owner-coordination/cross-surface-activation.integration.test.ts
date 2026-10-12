@@ -1,11 +1,13 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { readdir as fsReaddir } from "node:fs/promises";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import {
     appendTranscriptEntry,
     makeManagedSessionFixture,
     readTranscriptEvidence,
 } from "../../testing/managed-session-fixture.ts";
 
-Deno.test("competing Workspace and TUI processes allow exactly one managed Session writer", async () => {
+test("competing Workspace and TUI processes allow exactly one managed Session writer", async () => {
     const fixture = await makeManagedSessionFixture();
     const workspace = fixture.openStore();
     const tui = fixture.openStore();
@@ -13,7 +15,9 @@ Deno.test("competing Workspace and TUI processes allow exactly one managed Sessi
         const before = workspace.inspectSessionActivation(fixture.session.runwieldSessionId);
         const currentSegmentId = before.generation?.currentSegmentId ?? null;
         const beforeTranscriptEvidence = await readTranscriptEvidence(fixture.transcriptPath);
-        const beforeProjectEntries = await Array.fromAsync(Deno.readDir(fixture.projectRoot));
+        const beforeProjectEntries = await Array.fromAsync(
+            await fsReaddir(fixture.projectRoot, { withFileTypes: true }),
+        );
         const workspaceProof = workspace.acquireSessionActivation({
             runwieldSessionId: fixture.session.runwieldSessionId,
             projectId: fixture.project.projectId,
@@ -57,7 +61,7 @@ Deno.test("competing Workspace and TUI processes allow exactly one managed Sessi
             0,
         );
         assertEquals(
-            (await Array.fromAsync(Deno.readDir(fixture.projectRoot))).map((entry) => entry.name).sort(),
+            (await fsReaddir(fixture.projectRoot, { withFileTypes: true })).map((entry) => entry.name).sort(),
             beforeProjectEntries.map((entry) => entry.name).sort(),
         );
 

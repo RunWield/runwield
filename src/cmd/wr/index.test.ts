@@ -1,5 +1,8 @@
+import process from "node:process";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import type { WorkRecordFrontMatter } from "../../shared/work-records/schema.ts";
 import { findWorkRecordById, listWorkRecords, writeWorkRecord } from "../../shared/work-records/index.ts";
@@ -90,9 +93,9 @@ async function captureCommand(
     return logs.join("\n");
 }
 
-Deno.test("wld wr defaults to current Work Records from the project store", async () => {
+test("wld wr defaults to current Work Records from the project store", async () => {
     await withRuntimeCommandFixture("wr-list-current-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeFixtureRecords(projectRoot);
 
         const output = await captureCommand([]);
@@ -104,9 +107,9 @@ Deno.test("wld wr defaults to current Work Records from the project store", asyn
     });
 });
 
-Deno.test("wld wr list --all includes archived project records with warnings", async () => {
+test("wld wr list --all includes archived project records with warnings", async () => {
     await withRuntimeCommandFixture("wr-list-all-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeFixtureRecords(projectRoot);
 
         const output = await captureCommand(["list", "--all"]);
@@ -116,9 +119,9 @@ Deno.test("wld wr list --all includes archived project records with warnings", a
     });
 });
 
-Deno.test("wld wr --help uses the registered command documentation", async () => {
+test("wld wr --help uses the registered command documentation", async () => {
     await withRuntimeCommandFixture("wr-help-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
 
         const output = await captureCommand(["--help"]);
 
@@ -127,9 +130,9 @@ Deno.test("wld wr --help uses the registered command documentation", async () =>
     });
 });
 
-Deno.test("wld wr backfill --dry-run previews a real completed Plan without writing", async () => {
+test("wld wr backfill --dry-run previews a real completed Plan without writing", async () => {
     await withRuntimeCommandFixture("wr-backfill-preview-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
 
         const output = await captureCommand(["backfill", "--dry-run"]);
@@ -142,41 +145,41 @@ Deno.test("wld wr backfill --dry-run previews a real completed Plan without writ
     });
 });
 
-Deno.test("wld wr backfill accepts older Result headings without rewriting records", async () => {
+test("wld wr backfill accepts older Result headings without rewriting records", async () => {
     await withRuntimeCommandFixture("wr-backfill-result-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
         await writeFixtureRecords(projectRoot);
         const path = `${projectRoot}/docs/work-records/2026-07-14-current.md`;
-        const legacy = (await Deno.readTextFile(path)).replace("## Summary", "## Result");
-        await Deno.writeTextFile(path, legacy);
+        const legacy = (await fsReadFile(path, "utf8")).replace("## Summary", "## Result");
+        await fsWriteFile(path, legacy);
         const output = await captureCommand(["backfill", "--dry-run"]);
         assertStringIncludes(output, "standalone");
         assertStringIncludes(output, "Dry run only");
-        assertEquals(await Deno.readTextFile(path), legacy);
+        assertEquals(await fsReadFile(path, "utf8"), legacy);
     });
 });
 
-Deno.test("wld wr backfill names an invalid existing record without crashing or writing", async () => {
+test("wld wr backfill names an invalid existing record without crashing or writing", async () => {
     await withRuntimeCommandFixture("wr-backfill-invalid-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
         await writeFixtureRecords(projectRoot);
         const path = `${projectRoot}/docs/work-records/2026-07-14-current.md`;
-        const invalid = (await Deno.readTextFile(path)).replace("## Summary", "## Unrelated");
-        await Deno.writeTextFile(path, invalid);
+        const invalid = (await fsReadFile(path, "utf8")).replace("## Summary", "## Unrelated");
+        await fsWriteFile(path, invalid);
         const output = await captureCommand(["backfill", "--yes"]);
         assertStringIncludes(output, "docs/work-records/2026-07-14-current.md");
         assertStringIncludes(output, "Summary");
         assertStringIncludes(output, "No files were changed");
-        assertEquals(await Deno.readTextFile(path), invalid);
+        assertEquals(await fsReadFile(path, "utf8"), invalid);
         assertEquals((await loadPlan(projectRoot, "standalone"))?.attrs.workRecord, undefined);
     });
 });
 
-Deno.test("wld wr backfill --yes writes a Work Record and its Plan backlink", async () => {
+test("wld wr backfill --yes writes a Work Record and its Plan backlink", async () => {
     await withRuntimeCommandFixture("wr-backfill-write-", async ({ projectRoot, setModelMessages }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
         setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
             title: "Standalone Outcome",
@@ -198,9 +201,9 @@ Deno.test("wld wr backfill --yes writes a Work Record and its Plan backlink", as
     });
 });
 
-Deno.test("wld wr index rebuild and search hydrate canonical project records", async () => {
+test("wld wr index rebuild and search hydrate canonical project records", async () => {
     await withRuntimeCommandFixture("wr-search-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeFixtureRecords(projectRoot);
 
         const mnemotecaPort = createWorkRecordMnemotecaFixture();
@@ -220,9 +223,9 @@ Deno.test("wld wr index rebuild and search hydrate canonical project records", a
     });
 });
 
-Deno.test("wld wr read --no-open serves canonical Markdown without launching a browser", async () => {
+test("wld wr read --no-open serves canonical Markdown without launching a browser", async () => {
     await withRuntimeCommandFixture("wr-read-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeFixtureRecords(projectRoot);
         const logs: string[] = [];
         const urlReady = Promise.withResolvers<string>();
@@ -272,9 +275,9 @@ Deno.test("wld wr read --no-open serves canonical Markdown without launching a b
     });
 });
 
-Deno.test("wld wr supersede lists pending reasons and confirms one pending relation", async () => {
+test("wld wr supersede lists pending reasons and confirms one pending relation", async () => {
     await withRuntimeCommandFixture("wr-supersede-confirm-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeSupersessionFixture(projectRoot);
         const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
 
@@ -297,9 +300,9 @@ Deno.test("wld wr supersede lists pending reasons and confirms one pending relat
     });
 });
 
-Deno.test("wld wr supersede matches explicit UUID arguments case-insensitively", async () => {
+test("wld wr supersede matches explicit UUID arguments case-insensitively", async () => {
     await withRuntimeCommandFixture("wr-supersede-case-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeSupersessionFixture(projectRoot);
 
         const output = await captureCommand(
@@ -315,9 +318,9 @@ Deno.test("wld wr supersede matches explicit UUID arguments case-insensitively",
     });
 });
 
-Deno.test("wld wr supersede supports reject and interactive cancel without losing pending state", async () => {
+test("wld wr supersede supports reject and interactive cancel without losing pending state", async () => {
     await withRuntimeCommandFixture("wr-supersede-reject-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeSupersessionFixture(projectRoot);
         const mnemotecaPort = createWorkRecordMnemotecaFixture();
         const messages: string[] = [];
@@ -347,9 +350,9 @@ Deno.test("wld wr supersede supports reject and interactive cancel without losin
     });
 });
 
-Deno.test("wld wr rejects invalid command arguments before touching project state", async () => {
+test("wld wr rejects invalid command arguments before touching project state", async () => {
     await withRuntimeCommandFixture("wr-invalid-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
 
         await assertRejects(
             () =>
@@ -379,16 +382,16 @@ Deno.test("wld wr rejects invalid command arguments before touching project stat
     });
 });
 
-Deno.test("wld wr retry regenerates only its completed Plan and is idempotent", async () => {
+test("wld wr retry regenerates only its completed Plan and is idempotent", async () => {
     await withRuntimeCommandFixture("wr-targeted-retry-", async ({ projectRoot, setModelMessages }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveVerifiedPlan(projectRoot);
         await savePlan(projectRoot, "unrelated", "# Unrelated", {
             planId: "unrelated",
             classification: "PLANNED_CHANGE",
             status: "verified",
         });
-        const unrelated = await Deno.readTextFile(`${projectRoot}/docs/plans/unrelated.md`);
+        const unrelated = await fsReadFile(`${projectRoot}/docs/plans/unrelated.md`, "utf8");
         setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
             title: "Retried record",
             summary: "Regenerated the selected record.",
@@ -397,7 +400,7 @@ Deno.test("wld wr retry regenerates only its completed Plan and is idempotent", 
         assertStringIncludes(await captureCommand(["retry", "standalone"], options), "Work Record generated");
         assertEquals((await loadPlan(projectRoot, "standalone"))?.attrs.status, "verified");
         assertEquals((await listWorkRecords(projectRoot)).length, 1);
-        assertEquals(await Deno.readTextFile(`${projectRoot}/docs/plans/unrelated.md`), unrelated);
+        assertEquals(await fsReadFile(`${projectRoot}/docs/plans/unrelated.md`, "utf8"), unrelated);
         assertStringIncludes(await captureCommand(["retry", "standalone"], options), "existing_backlink");
         assertEquals((await listWorkRecords(projectRoot)).length, 1);
     });

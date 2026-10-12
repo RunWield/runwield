@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
 import { archivePlan, ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
@@ -23,7 +26,7 @@ async function createReviewPlan(root: string, name: string, content = `# ${name}
     return plan;
 }
 
-Deno.test("the Session reopens B with its latest contents after reviews of A and B and a newer unrelated C", async () => {
+test("the Session reopens B with its latest contents after reviews of A and B and a newer unrelated C", async () => {
     await withRuntimeCommandFixture("reopen-last-target-", async ({ homeDir, setModelResponseFactory }) => {
         const root = await gitFixture.checkout();
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
@@ -70,7 +73,7 @@ Deno.test("the Session reopens B with its latest contents after reviews of A and
                     assertEquals(request._meta?.planningAgentName, "architect");
                     assertEquals(request._meta?.planId, b.attrs.planId);
                     assertStringIncludes(
-                        await Deno.readTextFile(String(request._meta?.planPath)),
+                        await fsReadFile(String(request._meta?.planPath), "utf8"),
                         "The revised B, not A or C.",
                     );
                     return { outcome: "canceled" };
@@ -88,12 +91,12 @@ Deno.test("the Session reopens B with its latest contents after reviews of A and
         } finally {
             await runtime.closeAllSessionsWhenIdle();
             store.close();
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 });
 
-Deno.test("a deleted reviewed Plan is not replaced by another Plan", async () => {
+test("a deleted reviewed Plan is not replaced by another Plan", async () => {
     await withRuntimeCommandFixture("reopen-deleted-", async ({ homeDir, setModelResponseFactory }) => {
         const root = await gitFixture.checkout();
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
@@ -107,7 +110,7 @@ Deno.test("a deleted reviewed Plan is not replaced by another Plan", async () =>
                 prompt: "Review target",
                 _meta: { planId: target.attrs.planId, planName: "target", planningAgentName: "planner" },
             });
-            await Deno.remove(target.path);
+            await fsRm(target.path);
             await createReviewPlan(root, "other");
             let turns = 0;
             setModelResponseFactory(() => {
@@ -119,12 +122,12 @@ Deno.test("a deleted reviewed Plan is not replaced by another Plan", async () =>
         } finally {
             await runtime.closeAllSessionsWhenIdle();
             store.close();
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 });
 
-Deno.test("a reused Plan name with a different identity is not reopened", async () => {
+test("a reused Plan name with a different identity is not reopened", async () => {
     await withRuntimeCommandFixture("reopen-reused-name-", async ({ homeDir }) => {
         const root = await gitFixture.checkout();
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
@@ -138,7 +141,7 @@ Deno.test("a reused Plan name with a different identity is not reopened", async 
                 prompt: "Review target",
                 _meta: { planId: target.attrs.planId, planName: "target", planningAgentName: "planner" },
             });
-            await Deno.remove(target.path);
+            await fsRm(target.path);
             const replacement = await createReviewPlan(
                 root,
                 "target",
@@ -150,13 +153,13 @@ Deno.test("a reused Plan name with a different identity is not reopened", async 
         } finally {
             await runtime.closeAllSessionsWhenIdle();
             store.close();
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 });
 
 for (const status of ["archived", "verified"] as const) {
-    Deno.test(`a reviewed Plan in ${status} status cannot reopen or reset its lifecycle`, async () => {
+    test(`a reviewed Plan in ${status} status cannot reopen or reset its lifecycle`, async () => {
         await withRuntimeCommandFixture(`reopen-${status}-`, async ({ homeDir, setModelResponseFactory }) => {
             const root = await gitFixture.checkout();
             const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
@@ -197,13 +200,13 @@ for (const status of ["archived", "verified"] as const) {
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
                 store.close();
-                await Deno.remove(root, { recursive: true });
+                await fsRm(root, { recursive: true });
             }
         });
     });
 }
 
-Deno.test("an unrelated active turn reports busy rather than launching the saved review", async () => {
+test("an unrelated active turn reports busy rather than launching the saved review", async () => {
     await withRuntimeCommandFixture("reopen-other-turn-", async ({ homeDir, setModelResponseFactory }) => {
         const root = await gitFixture.checkout();
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
@@ -248,7 +251,7 @@ Deno.test("an unrelated active turn reports busy rather than launching the saved
         } finally {
             await runtime.closeAllSessionsWhenIdle();
             store.close();
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 });

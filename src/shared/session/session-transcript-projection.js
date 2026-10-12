@@ -1,9 +1,12 @@
+import { constants } from "node:fs";
+import { open as fsOpen } from "node:fs/promises";
+import { mkdir as fsMkdir, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 /*
  * @module shared/session/session-transcript-projection
  * Non-mutating committed-prefix Session Transcript reader and semantic projector.
  */
 
-import { dirname, resolve } from "@std/path";
+import { dirname, resolve } from "node:path";
 import { ACTIVE_AGENT_CUSTOM_TYPE, readActiveAgentFromEntry } from "./active-agent-session.js";
 import { readPersistedWorkflowContext } from "./workflow-context-session.js";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";
@@ -516,21 +519,21 @@ export async function sha256Hex(bytes) {
  * @param {number} byteLength
  */
 async function readPrefixBytes(path, byteLength) {
-    const file = await Deno.open(path, { read: true });
+    const file = await fsOpen(path, "r");
     try {
         const stat = await file.stat();
         if (stat.size < byteLength) throw new Error("Committed transcript prefix is shorter than published evidence");
         const bytes = new Uint8Array(byteLength);
         let offset = 0;
         while (offset < byteLength) {
-            const read = await file.read(bytes.subarray(offset));
-            if (read === null) break;
-            offset += read;
+            const { bytesRead } = await file.read(bytes, offset, byteLength - offset, offset);
+            if (bytesRead === 0) break;
+            offset += bytesRead;
         }
         if (offset !== byteLength) throw new Error("Unable to read committed transcript prefix");
         return bytes;
     } finally {
-        file.close();
+        await file.close();
     }
 }
 
@@ -556,7 +559,7 @@ function terminalEntryId(entries) {
  */
 export async function captureTranscriptEvidence(options) {
     const path = resolve(options.transcriptPath);
-    const stat = await Deno.stat(path);
+    const stat = await fsStat(path);
     const byteLength = options.byteLength ?? stat.size;
     const bytes = await readPrefixBytes(path, byteLength);
     const entries = parseJsonlPrefix(bytes);
@@ -796,18 +799,18 @@ export function getCommittedTranscriptAuthorityFacts(projection) {
  * @param {string} transcriptPath
  */
 export async function syncTranscriptFileAndParent(transcriptPath) {
-    const file = await Deno.open(transcriptPath, { write: true });
+    const file = await fsOpen(transcriptPath, constants.O_WRONLY);
     try {
         await file.sync();
     } finally {
-        file.close();
+        await file.close();
     }
     try {
-        const dir = await Deno.open(dirname(transcriptPath), { read: true });
+        const dir = await fsOpen(dirname(transcriptPath), "r");
         try {
             await dir.sync();
         } finally {
-            dir.close();
+            await dir.close();
         }
     } catch {
         // Directory fsync is not available on every platform/filesystem. File fsync is still required.
@@ -1075,10 +1078,10 @@ export function getProjectedLastAssistantText(entries) {
 export async function exportProjectedTranscript(entries, options, outputPath) {
     const filePath = resolve(outputPath);
     const parent = dirname(filePath);
-    await Deno.mkdir(parent, { recursive: true });
+    await fsMkdir(parent, { recursive: true });
     if (filePath.toLowerCase().endsWith(".jsonl")) {
         const lines = entries.map((entry) => JSON.stringify(entry));
-        await Deno.writeTextFile(filePath, `${lines.join("\n")}\n`);
+        await fsWriteFile(filePath, `${lines.join("\n")}\n`);
         return filePath;
     }
     const escapeHtml = (/** @type {string} */ value) =>
@@ -1107,7 +1110,7 @@ export async function exportProjectedTranscript(entries, options, outputPath) {
             `<section class="entry"><header>${escapeHtml(value.type || "entry")}</header><pre>${text}</pre></section>`,
         ];
     }).join("\n");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         filePath,
         [
             "<!doctype html>",

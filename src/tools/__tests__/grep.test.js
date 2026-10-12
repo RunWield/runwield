@@ -1,5 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { __test, createRunWieldGrepToolDefinition } from "../grep.js";
 
 /**
@@ -14,7 +17,7 @@ async function executeGrep(tool, params) {
     return await execute("grep-call-1", params, new AbortController().signal, () => {}, {});
 }
 
-Deno.test("grep wrapper exposes expected metadata and prepares paths alias", () => {
+test("grep wrapper exposes expected metadata and prepares paths alias", () => {
     const tool = createRunWieldGrepToolDefinition("/tmp");
 
     assertEquals(tool.name, "grep");
@@ -27,22 +30,22 @@ Deno.test("grep wrapper exposes expected metadata and prepares paths alias", () 
     });
 });
 
-Deno.test("grep wrapper splits shell-shaped paths while preserving quotes", () => {
+test("grep wrapper splits shell-shaped paths while preserving quotes", () => {
     assertEquals(__test.splitShellLike("src/shared/session src/cmd"), ["src/shared/session", "src/cmd"]);
     assertEquals(__test.splitShellLike('"src/with space" src/cmd'), ["src/with space", "src/cmd"]);
     assertEquals(__test.splitShellLike("'docs/plans/feature*.md' src"), ["docs/plans/feature*.md", "src"]);
 });
 
-Deno.test("grep wrapper searches multiple paths passed as one string", async () => {
-    const dir = await Deno.makeTempDir();
+test("grep wrapper searches multiple paths passed as one string", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await Deno.mkdir(join(dir, "src", "shared", "session"), { recursive: true });
-        await Deno.mkdir(join(dir, "src", "cmd"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(dir, "src", "shared", "session"), { recursive: true });
+        await fsMkdir(join(dir, "src", "cmd"), { recursive: true });
+        await fsWriteFile(
             join(dir, "src", "shared", "session", "chat-session.js"),
             "export function setActiveAgent() {}\n",
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(dir, "src", "cmd", "agents.js"),
             "const current = 'setActiveAgent';\n",
         );
@@ -57,18 +60,18 @@ Deno.test("grep wrapper searches multiple paths passed as one string", async () 
         assertStringIncludes(text, "src/shared/session/chat-session.js:1:");
         assertStringIncludes(text, "src/cmd/agents.js:1:");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("grep wrapper searches a path glob mixed with a normal path", async () => {
-    const dir = await Deno.makeTempDir();
+test("grep wrapper searches a path glob mixed with a normal path", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await Deno.mkdir(join(dir, "docs", "plans"), { recursive: true });
-        await Deno.mkdir(join(dir, "src"), { recursive: true });
-        await Deno.writeTextFile(join(dir, "docs", "plans", "feature-one.md"), "finalize this slice\n");
-        await Deno.writeTextFile(join(dir, "docs", "plans", "project.md"), "finalize the project\n");
-        await Deno.writeTextFile(join(dir, "src", "workflow.js"), "const step = 'finalize';\n");
+        await fsMkdir(join(dir, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(dir, "src"), { recursive: true });
+        await fsWriteFile(join(dir, "docs", "plans", "feature-one.md"), "finalize this slice\n");
+        await fsWriteFile(join(dir, "docs", "plans", "project.md"), "finalize the project\n");
+        await fsWriteFile(join(dir, "src", "workflow.js"), "const step = 'finalize';\n");
 
         const tool = createRunWieldGrepToolDefinition(dir);
         const result = await executeGrep(tool, {
@@ -81,15 +84,15 @@ Deno.test("grep wrapper searches a path glob mixed with a normal path", async ()
         assertStringIncludes(text, "src/workflow.js:1:");
         assertEquals(text.includes("docs/plans/project.md"), false);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("grep wrapper preserves path prefix for a single path glob", async () => {
-    const dir = await Deno.makeTempDir();
+test("grep wrapper preserves path prefix for a single path glob", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await Deno.mkdir(join(dir, "docs", "plans"), { recursive: true });
-        await Deno.writeTextFile(join(dir, "docs", "plans", "feature-two.md"), "finalize this slice\n");
+        await fsMkdir(join(dir, "docs", "plans"), { recursive: true });
+        await fsWriteFile(join(dir, "docs", "plans", "feature-two.md"), "finalize this slice\n");
 
         const tool = createRunWieldGrepToolDefinition(dir);
         const result = await executeGrep(tool, {
@@ -100,6 +103,6 @@ Deno.test("grep wrapper preserves path prefix for a single path glob", async () 
 
         assertStringIncludes(text, "docs/plans/feature-two.md:1:");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

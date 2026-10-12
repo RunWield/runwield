@@ -1,3 +1,4 @@
+import { serveHttp } from "../http-server.ts";
 /* Connection-scoped local control and authenticated laptop model bridge. */
 
 import { createRunWieldModelRuntime } from "../models/model-registry.ts";
@@ -193,7 +194,7 @@ export function startRemoteControlService(identity: RemoteControlIdentity): Remo
         }
     };
     const abort = new AbortController();
-    const server = Deno.serve(
+    const server = serveHttp(
         { hostname: "127.0.0.1", port: 0, signal: abort.signal, onListen() {} },
         async (request) => {
             if (closed || !equalSecret(request.headers.get("Authorization") ?? "", `Bearer ${credential}`)) {

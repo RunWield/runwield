@@ -6,7 +6,8 @@
  * `import.meta.url` has the same base here in both source and bundled modes.
  */
 
-import { dirname, fromFileUrl, join } from "@std/path";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 /** Root containing the embedded `src/` and `dist/` trees. */
 export const RUNWIELD_ROOT = dirname(fromFileUrl(import.meta.url));

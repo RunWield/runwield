@@ -67,7 +67,10 @@ export interface ChatViewSessionSnapshot extends TuiSessionSidebarSnapshot {
     activeModel: { model?: string | null; provider?: string | null };
 }
 
+import type { DocumentLinkHost } from "../review/document-link-host.ts";
+
 interface ChatViewSharedOptions {
+    documentLinks: DocumentLinkHost | null;
     tui: TUI;
     getSessionId(): string;
     suppressStartupHeader: boolean;
@@ -531,6 +534,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     });
     tui.setFocus(editor);
     const uiAPI = createUiApi(
+        options.documentLinks,
         tui,
         messageList,
         runningTasksComponent,
@@ -581,7 +585,9 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const removeSidebarActionListener = tui.addInputListener((data) => {
         if (!isSessionSidebarActionKey(data)) return undefined;
         const snapshot = options.sessionRuntime?.getSessionSnapshot(options.getSessionId());
-        const action = sessionSidebar.currentAction(snapshot || undefined);
+        const action = sessionSidebar.currentAction(
+            snapshot ? { ...snapshot, validationProgress: liveValidationProgress } : undefined,
+        );
         if (!snapshot || !action) return undefined;
         void Promise.resolve(options.onWorkflowAction?.(action, snapshot)).catch((error) => {
             uiAPI.appendSystemMessage(error instanceof Error ? error.message : String(error), true, "Workflow action");

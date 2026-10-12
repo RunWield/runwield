@@ -1,4 +1,7 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import process from "node:process";
+import { rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
 import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
@@ -14,7 +17,7 @@ interface PlanSeed {
 }
 
 function plansTest(name: string, run: (fixture: PlanCommandFixture) => Promise<void>): void {
-    Deno.test(name, () => withPlanCommandFixture("runwield-plans-command-", run));
+    test(name, () => withPlanCommandFixture("runwield-plans-command-", run));
 }
 
 async function seedPlans(projectRoot: string, seeds: PlanSeed[]): Promise<void> {
@@ -108,7 +111,7 @@ plansTest("plans lists a standalone Planned Change from the fixture store", asyn
 plansTest("plans renders real Epic child progress and worktree metadata", async () => {
     const projectRoot = await defineCommittedGitFixture({ ".gitignore": ".wld/\ndelivered-tree/\n" }).checkout();
     const previousCwd = getCwd();
-    Deno.chdir(projectRoot);
+    process.chdir(projectRoot);
     try {
         await seedPlans(projectRoot, [
             {
@@ -171,8 +174,8 @@ plansTest("plans renders real Epic child progress and worktree metadata", async 
         assertStringIncludes(output, "- big-project/01-first");
         assertStringIncludes(output, "Worktree: completed (feature/first)");
     } finally {
-        Deno.chdir(previousCwd);
-        await Deno.remove(projectRoot, { recursive: true });
+        process.chdir(previousCwd);
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 

@@ -1,5 +1,6 @@
 // @ts-nocheck: browser component tests provide a small DOM boundary.
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { Window } from "happy-dom";
 import { RunWieldSearchDialog } from "../design-system/components/react/RunWieldSearchPrimitives.tsx";
 import { fullSearchHref, resultHref, UnifiedWorkspaceSearch } from "./react/UnifiedWorkspaceSearch.tsx";
@@ -39,7 +40,7 @@ function response(body: unknown) {
     );
 }
 
-Deno.test("full Search pages page results and show Work Record evidence", async () => {
+test("full Search pages page results and show Work Record evidence", async () => {
     const previous = {
         document: globalThis.document,
         location: globalThis.location,
@@ -98,7 +99,7 @@ Deno.test("full Search pages page results and show Work Record evidence", async 
     }
 });
 
-Deno.test("a refresh response cannot replace a newer Search query", async () => {
+test("a refresh response cannot replace a newer Search query", async () => {
     const previous = {
         document: globalThis.document,
         location: globalThis.location,
@@ -163,7 +164,7 @@ Deno.test("a refresh response cannot replace a newer Search query", async () => 
     }
 });
 
-Deno.test("quick Search View all results carries the query and filters", async () => {
+test("quick Search View all results carries the query and filters", async () => {
     const previous = {
         location: globalThis.location,
         act: globalThis.IS_REACT_ACT_ENVIRONMENT,
@@ -199,7 +200,7 @@ Deno.test("quick Search View all results carries the query and filters", async (
     }
 });
 
-Deno.test("quick and full Search keep result order and support focus and keyboard navigation", async () => {
+test("quick and full Search keep result order and support focus and keyboard navigation", async () => {
     const previous = {
         document: globalThis.document,
         location: globalThis.location,
@@ -300,7 +301,7 @@ Deno.test("quick and full Search keep result order and support focus and keyboar
     }
 });
 
-Deno.test("quick Search dialog traps focus and restores the opening control", async () => {
+test("quick Search dialog traps focus and restores the opening control", async () => {
     const window = new Window();
     const browserGlobals = [
         "window",
@@ -362,7 +363,7 @@ Deno.test("quick Search dialog traps focus and restores the opening control", as
     }
 });
 
-Deno.test("quick Search destinations preserve one Search return URL", () => {
+test("quick Search destinations preserve one Search return URL", () => {
     const previousLocation = globalThis.location;
     globalThis.location = { origin: "http://workspace.test" };
     try {

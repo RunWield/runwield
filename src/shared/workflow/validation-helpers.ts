@@ -7,7 +7,8 @@
  * the pieces it calls out to.
  */
 
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
 import { loadPlan } from "../../plan-store.js";
 
@@ -149,19 +150,6 @@ export function resolveWorkRecordSupersessionProposalsWithUi({
 }
 
 export const __dirname = dirname(fromFileUrl(import.meta.url));
-type AgentMessage = import("@earendil-works/pi-agent-core").AgentMessage;
-interface WorkflowValidationResult {
-    kind: "verified" | "paused" | "failed";
-    planName: string;
-    projectRoot: string;
-    classification?: string;
-    reason?: string;
-    epicContinuation?: {
-        completedPlanName: string;
-        projectRoot: string;
-        resolution?: import("./epic-continuation.ts").EpicContinuationResolution;
-    };
-}
 
 interface RunManualQaChecklistPromptOptions {
     hostedSession: import("../session/hosted-session.js").HostedSession;
@@ -410,18 +398,6 @@ async function runCompletionGatedRepair({
  * @returns {string[]}
  */
 export { unaccountedOpenItems } from "./review-ledger.ts";
-
-/**
- * HumanReviewDecision is declared below as a TypeScript union.
- */
-
-type HumanReviewDecision = "not_required" | "skipped" | "approved";
-
-interface HumanReviewMetadata {
-    humanReviewMode: "none" | "ask" | "always";
-    humanReviewDecision: HumanReviewDecision;
-    humanReviewedAt: string | null;
-}
 
 /**
  * @param {import('../../tools/plan-written.ts').TriageMeta} triageMeta

@@ -1,3 +1,6 @@
+import process from "node:process";
+import { isStandaloneExecutable } from "../runtime-identity.ts";
+import { readStreamInto } from "../socket-listener.ts";
 /* Private entry points run before ordinary CLI initialization. This module must
  * not import the command registry, browser, settings or project runtime. */
 
@@ -7,7 +10,7 @@ async function readPrivateHeader(): Promise<string> {
     const byte = new Uint8Array(1);
     const parts: number[] = [];
     while (parts.length < MAX_VIEW_HEADER_BYTES) {
-        const count = await Deno.stdin.read(byte);
+        const count = await readStreamInto(process.stdin, byte);
         if (count === null) throw new Error("Remote view configuration is missing or incomplete");
         if (byte[0] === 10) return new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(parts));
         parts.push(byte[0]);
@@ -17,14 +20,21 @@ async function readPrivateHeader(): Promise<string> {
 
 /** Run the bounded proof outside the supervisor so stalled resource reads cannot stop supervision. */
 export async function runRemoteModelProofEntry(): Promise<void> {
-    if (!Deno.build.standalone || Deno.args.length !== 1 || Deno.args[0] !== "--remote-model-proof") {
+    if (
+        !isStandaloneExecutable() ||
+        process.argv.slice(2).length !== 1 ||
+        process.argv.slice(2)[0] !== "--remote-model-proof"
+    ) {
         throw new Error("Remote model proof requires its own compiled process");
     }
     const input = JSON.parse(await readPrivateHeader());
     const { runRemoteModelProof } = await import("./model-proof.ts");
     const abort = new AbortController();
     // EOF means the supervising process ended, even when it could not signal us.
-    void Deno.stdin.read(new Uint8Array(1)).then(() => abort.abort(), () => abort.abort());
+    void readStreamInto(process.stdin, new Uint8Array(1)).then(
+        () => abort.abort(),
+        () => abort.abort(),
+    );
     await runRemoteModelProof({
         proof: input.proof,
         connection: input.connection,
@@ -46,15 +56,22 @@ export async function runRemotePreflight(): Promise<void> {
     if (!/^[a-f0-9]{64}$/.test(BUILD_ID) || !Number.isInteger(REMOTE_PROTOCOL_VERSION)) {
         throw new Error("Invalid remote build identity");
     }
-    console.log(JSON.stringify({ buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION, version: VERSION }));
+    console.log(
+        JSON.stringify({
+            buildId: BUILD_ID,
+            protocol: REMOTE_PROTOCOL_VERSION,
+            version: VERSION,
+            runtime: "bun",
+            runtimeVersion: process.versions.bun,
+        }),
+    );
 }
 
 /** Read the complete view configuration before starting ProcessTerminal. */
 export async function runRemoteView(): Promise<void> {
     const header = await readPrivateHeader();
-    const { parseRemoteConnectionViewConfig, showRemoteConnectionView } = await import(
-        "../../ui/tui/remote-connection-view.ts"
-    );
+    const { parseRemoteConnectionViewConfig, showRemoteConnectionView } =
+        await import("../../ui/tui/remote-connection-view.ts");
     const config = parseRemoteConnectionViewConfig(header);
     const { initRunWieldTheme } = await import("../../ui/theme/theme.js");
     initRunWieldTheme(); // Embedded theme only; no settings lookup or profile initialization.

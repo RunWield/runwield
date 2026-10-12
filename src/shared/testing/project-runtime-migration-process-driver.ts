@@ -1,4 +1,9 @@
-import { dirname, join } from "@std/path";
+import fsPromises from "node:fs/promises";
+import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
+import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
+import { setInterval } from "node:timers";
+import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.js";
 import { getLockHostname } from "../process-liveness.ts";
 import { migrateLegacyProjectRuntimeState, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -31,7 +36,7 @@ type MigrationExitEffect =
     | "recovery-registry-retirement"
     | "recovery-retirement";
 
-const [command, checkoutRoot, extra] = Deno.args;
+const [command, checkoutRoot, extra] = process.argv.slice(2);
 
 if (command === "migrate") {
     const result = await migrateLegacyProjectRuntimeState(checkoutRoot);
@@ -42,8 +47,8 @@ if (command === "migrate") {
     console.log(JSON.stringify(result));
 } else if (command === "hold-controller-lock") {
     const lockPath = extra || join(getRunWieldRuntimeDir(checkoutRoot), "controller", "plans", "driver.json.lock");
-    await Deno.mkdir(dirname(lockPath), { recursive: true }).catch(() => {});
-    const file = await Deno.open(lockPath, { create: true, read: true, write: true });
+    await fsMkdir(dirname(lockPath), { recursive: true }).catch(() => {});
+    const file = openNativeFileLock(lockPath);
     await file.lock(true);
     console.log(JSON.stringify({ ready: true, lockPath }));
     await holdProcess();
@@ -63,58 +68,59 @@ if (command === "migrate") {
     await holdLegacyWorkRecordLock(checkoutRoot, "work-record-supersession-recovery.lock");
 } else {
     console.error(`Unknown project runtime migration process driver command: ${command}`);
-    Deno.exit(2);
+    process.exit(2);
 }
 
 async function holdInitializingMigrationLocks(checkoutRoot: string, signalPath: string): Promise<void> {
     const layout = resolveProjectRuntimeLayout(checkoutRoot);
     const registryLockPath = join(getRunWieldRuntimeDir(layout.primary.checkoutRoot), "worktrees.lock");
-    await Deno.mkdir(dirname(layout.primary.layoutMigrationLockPath), { recursive: true });
-    await Deno.mkdir(dirname(registryLockPath), { recursive: true });
-    (await Deno.open(layout.primary.layoutMigrationLockPath, { createNew: true, write: true })).close();
-    (await Deno.open(registryLockPath, { createNew: true, write: true })).close();
+    await fsMkdir(dirname(layout.primary.layoutMigrationLockPath), { recursive: true });
+    await fsMkdir(dirname(registryLockPath), { recursive: true });
+    (await fsPromises.open(layout.primary.layoutMigrationLockPath, "wx")).close();
+    (await fsPromises.open(registryLockPath, "wx")).close();
     console.log(JSON.stringify({ ready: true, lockPath: registryLockPath }));
-    while (!(await Deno.lstat(signalPath).catch(() => null))) {
+    while (!(await fsLstat(signalPath).catch(() => null))) {
         await new Promise((resolveTimer) => setTimeout(resolveTimer, 5));
     }
     await new Promise((resolveTimer) => setTimeout(resolveTimer, 50));
     const now = Date.now();
     const owner = JSON.stringify({
         token: crypto.randomUUID(),
-        pid: Deno.pid,
+        pid: process.pid,
         hostname: getLockHostname(),
         createdAtMs: now,
         updatedAtMs: now,
     });
-    await Deno.writeTextFile(layout.primary.layoutMigrationLockPath, owner);
-    await Deno.writeTextFile(registryLockPath, owner);
+    await fsWriteFile(layout.primary.layoutMigrationLockPath, owner);
+    await fsWriteFile(registryLockPath, owner);
     await new Promise((resolveTimer) => setTimeout(resolveTimer, 50));
-    await Deno.remove(registryLockPath);
-    await Deno.remove(layout.primary.layoutMigrationLockPath);
+    await fsRm(registryLockPath);
+    await fsRm(layout.primary.layoutMigrationLockPath);
 }
 
 async function holdLegacyPlanLock(checkoutRoot: string, planName: string): Promise<never> {
     const lockPath = join(getRunWieldRuntimeDir(checkoutRoot), "plan-locks", `${lockSafeSegment(planName)}.lock`);
-    await Deno.mkdir(dirname(lockPath), { recursive: true });
-    const file = await Deno.open(lockPath, { createNew: true, read: true, write: true });
+    await fsMkdir(dirname(lockPath), { recursive: true });
+    const file = openNativeFileLock(lockPath, "exclusive");
     file.lockSync(true);
     const token = crypto.randomUUID();
-    await writePlanLockFile(file, { token, pid: Deno.pid, hostname: getLockHostname(), updatedAtMs: Date.now() });
+    await writePlanLockFile(file, { token, pid: process.pid, hostname: getLockHostname(), updatedAtMs: Date.now() });
     const heartbeat = setInterval(() => {
-        writePlanLockFile(file, { token, pid: Deno.pid, hostname: getLockHostname(), updatedAtMs: Date.now() }).catch(
-            () => {},
-        );
+        writePlanLockFile(file, { token, pid: process.pid, hostname: getLockHostname(), updatedAtMs: Date.now() })
+            .catch(
+                () => {},
+            );
     }, 1_000);
     // Keep the lock holder alive until the parent terminates it.
-    Deno.refTimer(heartbeat);
+    heartbeat.ref();
     console.log(JSON.stringify({ ready: true, lockPath }));
     return await new Promise<never>(() => {});
 }
 
 async function holdLegacyWorkRecordLock(checkoutRoot: string, lockName: string): Promise<never> {
     const lockPath = join(getRunWieldRuntimeDir(checkoutRoot), lockName);
-    await Deno.mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
-    const file = await Deno.open(lockPath, { createNew: true, read: true, write: true, mode: 0o600 });
+    await fsMkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
+    const file = openNativeFileLock(lockPath, "exclusive");
     file.lockSync(true);
     const token = crypto.randomUUID();
     const now = Date.now();
@@ -123,7 +129,7 @@ async function holdLegacyWorkRecordLock(checkoutRoot: string, lockName: string):
         writeWorkRecordLockFile(file, { token, createdAt: now, updatedAt: Date.now() }).catch(() => {});
     }, 1_000);
     // Keep the lock holder alive until the parent terminates it.
-    Deno.refTimer(heartbeat);
+    heartbeat.ref();
     console.log(JSON.stringify({ ready: true, lockPath }));
     return await new Promise<never>(() => {});
 }
@@ -132,19 +138,16 @@ function lockSafeSegment(value: string): string {
     return String(value || "plan").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "plan";
 }
 
-async function writePlanLockFile(file: Deno.FsFile, record: LegacyPlanLockRecord): Promise<void> {
+async function writePlanLockFile(file: NativeFileLock, record: LegacyPlanLockRecord): Promise<void> {
     await writeJsonFile(file, `${JSON.stringify(record)}\n`);
 }
 
-async function writeWorkRecordLockFile(file: Deno.FsFile, record: LegacyWorkRecordLockRecord): Promise<void> {
+async function writeWorkRecordLockFile(file: NativeFileLock, record: LegacyWorkRecordLockRecord): Promise<void> {
     await writeJsonFile(file, `${JSON.stringify(record)}\n`);
 }
 
-async function writeJsonFile(file: Deno.FsFile, text: string): Promise<void> {
-    await file.truncate(0);
-    await file.seek(0, Deno.SeekMode.Start);
-    await file.write(new TextEncoder().encode(text));
-    await file.sync();
+function writeJsonFile(file: NativeFileLock, text: string): void {
+    file.replaceTextSync(text);
 }
 
 function parseMigrationExitEffect(value: string | undefined): MigrationExitEffect {
@@ -156,29 +159,39 @@ function parseMigrationExitEffect(value: string | undefined): MigrationExitEffec
         value === "recovery-registry" || value === "recovery-registry-retirement"
     ) return value;
     console.error(`Unknown migration exit effect: ${value || ""}`);
-    Deno.exit(2);
+    process.exit(2);
 }
 
 function installExitAfterEffect(checkoutRoot: string, effect: MigrationExitEffect): void {
     const layout = resolveProjectRuntimeLayout(checkoutRoot);
     const legacyBase = getRunWieldRuntimeDir(checkoutRoot);
-    const originalRename = Deno.rename;
-    const originalRemove = Deno.remove;
-    Object.defineProperty(Deno, "rename", {
+    const originalRename = fsPromises.rename;
+    const originalRemove = fsPromises.rm;
+    Object.defineProperty(fsPromises, "rename", {
         configurable: true,
         value: async (from: string | URL, to: string | URL): Promise<void> => {
             await originalRename(from, to);
             if (typeof from === "string" && typeof to === "string" && shouldExitAfterRename(effect, from, to, layout)) {
-                Deno.exit(86);
+                process.exit(86);
             }
         },
     });
-    Object.defineProperty(Deno, "remove", {
+    const originalLink = fsPromises.link;
+    Object.defineProperty(fsPromises, "link", {
         configurable: true,
-        value: async (path: string | URL, options?: Deno.RemoveOptions): Promise<void> => {
+        value: async (from: string | URL, to: string | URL): Promise<void> => {
+            await originalLink(from, to);
+            if (typeof from === "string" && typeof to === "string" && shouldExitAfterRename(effect, from, to, layout)) {
+                process.exit(86);
+            }
+        },
+    });
+    Object.defineProperty(fsPromises, "rm", {
+        configurable: true,
+        value: async (path: string | URL, options?: import("node:fs").RmOptions): Promise<void> => {
             await originalRemove(path, options);
             if (typeof path === "string" && shouldExitAfterRemove(effect, path, layout, legacyBase)) {
-                Deno.exit(86);
+                process.exit(86);
             }
         },
     });
@@ -190,7 +203,7 @@ function shouldExitAfterRename(
     to: string,
     layout: ReturnType<typeof resolveProjectRuntimeLayout>,
 ): boolean {
-    if (effect === "recovery-backup") return to.includes("/legacy-recovery/") && to.endsWith("/contents");
+    if (effect === "recovery-backup") return to.replaceAll("\\", "/").includes("/legacy-recovery/") && to.replaceAll("\\", "/").endsWith("/contents");
     if (effect === "recovery-controller") return to === join(layout.primary.controllerPlansDir, "plan.json");
     if (effect === "recovery-registry") return to === layout.primary.worktreeRegistryPath;
     if (effect === "journal-commit") return to === layout.primary.layoutMigrationJournalPath;

@@ -1,9 +1,12 @@
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { opendir } from "node:fs/promises";
+import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 /**
  * @module shared/owner-coordination/sessions
  * Stable RunWield Session catalog APIs for owner coordination.
  */
 
-import { isAbsolute, join, resolve } from "@std/path";
+import { isAbsolute, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
     getRunWieldSessionDir,
@@ -129,9 +132,9 @@ function terminalEntryId(entries) {
 
 /** @param {string} transcriptPath @param {number} byteLength */
 function captureTranscriptEvidenceSync(transcriptPath, byteLength) {
-    const stat = Deno.statSync(transcriptPath);
+    const stat = statSync(transcriptPath);
     if (stat.size < byteLength) throw new Error("Sealed segment transcript is shorter than supplied evidence");
-    const fullBytes = Deno.readFileSync(transcriptPath);
+    const fullBytes = readFileSync(transcriptPath);
     const bytes = fullBytes.subarray(0, byteLength);
     if (bytes.byteLength !== byteLength) throw new Error("Unable to read sealed segment transcript evidence");
     const text = new TextDecoder().decode(bytes);
@@ -201,15 +204,15 @@ function recordCatalogScan(database, projectId, cwd, sessionDir, dirMtimeMs, jso
 /** @param {string} path */
 async function inspectSessionDirectory(path) {
     try {
-        const stat = await Deno.stat(path);
-        if (!stat.isDirectory) return null;
+        const stat = await fsStat(path);
+        if (!stat.isDirectory()) return null;
         let jsonlCount = 0;
-        for await (const entry of Deno.readDir(path)) {
-            if ((entry.isFile || entry.isSymlink) && entry.name.endsWith(".jsonl")) jsonlCount++;
+        for await (const entry of (await opendir(path))) {
+            if ((entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".jsonl")) jsonlCount++;
         }
         return { stat, jsonlCount };
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
@@ -227,13 +230,15 @@ async function listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscri
     const diagnostics = [];
     let stat;
     try {
-        stat = await Deno.stat(sessionDir);
+        stat = await fsStat(sessionDir);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return { locators, diagnostics, dirMtimeMs: null, scanned: false };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+            return { locators, diagnostics, dirMtimeMs: null, scanned: false };
+        }
         throw error;
     }
-    for await (const entry of Deno.readDir(sessionDir)) {
-        if (!(entry.isFile || entry.isSymlink) || !entry.name.endsWith(".jsonl")) continue;
+    for await (const entry of (await opendir(sessionDir))) {
+        if (!(entry.isFile() || entry.isSymbolicLink()) || !entry.name.endsWith(".jsonl")) continue;
         const sessionPath = join(sessionDir, entry.name);
         if (knownTranscriptPaths.has(resolve(sessionPath))) continue;
         try {
@@ -259,7 +264,7 @@ async function listIncrementalRootSessionLocators(cwd, sessionDir, knownTranscri
  * @returns {Promise<import('../types.js').SessionSegmentLineageEvidence | null>}
  */
 async function readSegmentLineageEvidenceFromTranscript(sessionPath) {
-    const text = await Deno.readTextFile(sessionPath);
+    const text = await fsReadFile(sessionPath, "utf8");
     const lines = text.split("\n");
     for (let index = lines.length - 1; index >= 0; index--) {
         const line = lines[index].trim();
@@ -845,12 +850,12 @@ export async function inspectSegmentRolloverRecovery(database, options) {
         return { state: "no_op_retry", transcriptPath: null, segmentId: null, reason: "successor_not_created" };
     }
     try {
-        const stat = await Deno.stat(transcriptPath);
-        if (!stat.isFile) {
+        const stat = await fsStat(transcriptPath);
+        if (!stat.isFile()) {
             return { state: "no_op_retry", transcriptPath, segmentId: null, reason: "successor_not_a_file" };
         }
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
             return { state: "no_op_retry", transcriptPath, segmentId: null, reason: "successor_not_created" };
         }
         throw error;
@@ -920,7 +925,7 @@ export async function discardOrphanRolloverCandidate(database, options) {
         transcriptPath,
     );
     if (row) throw new Error("Orphan candidate already has a segment row");
-    const text = await Deno.readTextFile(transcriptPath);
+    const text = await fsReadFile(transcriptPath, "utf8");
     const entries = text.split("\n").filter(Boolean).map((line) => JSON.parse(line));
     if (entries.length < 1) throw new Error("Orphan candidate is empty");
     for (let index = 1; index < entries.length; index++) {
@@ -933,7 +938,7 @@ export async function discardOrphanRolloverCandidate(database, options) {
             throw new Error("Orphan candidate contains non-marker entries");
         }
     }
-    await Deno.remove(transcriptPath);
+    await fsRm(transcriptPath);
 }
 
 /**
@@ -1169,7 +1174,7 @@ export async function catalogProjectSessions(database, projectId, options = {}) 
 function isLocatorForRoot(headerCwd, evidence) {
     const resolvedHeaderCwd = resolve(headerCwd);
     try {
-        return Deno.realPathSync(resolvedHeaderCwd) === evidence.canonicalRoot;
+        return realpathSync.native(resolvedHeaderCwd) === evidence.canonicalRoot;
     } catch {
         if (evidence.rootState !== "historical") return false;
         return resolvedHeaderCwd === resolve(evidence.enteredRoot) ||

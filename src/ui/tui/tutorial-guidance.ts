@@ -1,4 +1,6 @@
-import { join } from "@std/path";
+import { opendir as fsOpendir } from "node:fs/promises";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { join } from "node:path";
 import { AGENTS } from "../../constants.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { listWorkRecords } from "../../shared/work-records/store.js";
@@ -165,9 +167,9 @@ async function buildRecap(
         if (workRecord) lines.push(`Work Record: ${workRecord.relativePath}`);
         else {
             const directory = join(projectRoot, "docs", "work-records");
-            for await (const entry of Deno.readDir(directory)) {
-                if (!entry.isFile || !entry.name.endsWith(".md")) continue;
-                const text = await Deno.readTextFile(join(directory, entry.name));
+            for await (const entry of await fsOpendir(directory)) {
+                if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+                const text = await fsReadFile(join(directory, entry.name), "utf8");
                 if (text.includes(planId)) {
                     lines.push(`Work Record: docs/work-records/${entry.name}`);
                     break;

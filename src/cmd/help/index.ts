@@ -1,9 +1,10 @@
+import process from "node:process";
 /**
  * @module cmd/help
  * Global and command-specific help command.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN } from "../../constants.js";
 import { getCliCommandDefinitions, getCommandDefinition, getSlashCommandDefinitions } from "../registry.js";
 
@@ -98,7 +99,7 @@ export async function runHelpCommand(argv: string[], options: HelpCommandOptions
     if (!found && commandName) {
         console.error(`[RunWield] Unknown command for help: ${commandName}`);
         console.log();
-        Deno.exit(1);
+        process.exit(1);
     }
 
     if (!commandName) printGlobalHelp();

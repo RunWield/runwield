@@ -70,6 +70,16 @@ export async function runHumanReviewPhase(
             ],
         });
         if (response.outcome !== "selected" || (response.value !== "open" && response.value !== "skip")) {
+            emitProgress(
+                args,
+                buildValidationUserMessage({ kind: "human_review_pending", planName: args.planName }),
+                "info",
+                {
+                    outcome: "paused",
+                    stage: "terminal",
+                    checks: { humanReview: "pending" },
+                },
+            );
             return {
                 kind: "paused",
                 planName: args.planName,
@@ -133,13 +143,18 @@ export async function runHumanReviewPhase(
         // it must not throw the work back to the start — ask what the user meant.
         // Retry opens the same review again; Stop leaves the Plan ready to publish
         // whenever they come back, with the review still outstanding.
+        emitProgress(args, outcome.pause.whatHappened, "info", {
+            outcome: "paused",
+            stage: "terminal",
+            checks: { humanReview: "pending" },
+        });
         if (await pauseForUserAction(args, outcome.pause) === "retry") continue;
         return {
             kind: "paused",
             planName: args.planName,
             projectRoot: context.projectRoot,
-            reason:
-                `${outcome.pause.whatHappened} Run this Plan again when you are ready and RunWield will pick up at the review.`,
+            awaitingUserAction: true,
+            reason: `${outcome.pause.whatHappened} Resume with /load-plan ${args.planName} to reopen the review.`,
         };
     }
 
@@ -177,6 +192,9 @@ export async function runHumanReviewPhase(
             },
         });
         const humanReview = normalizeHumanReview(humanReviewResponse);
+        // Cancellation carries status text, not a submitted decision or revision.
+        // It must win even if an adapter also returns stale approval/draft fields.
+        if (humanReview.canceled) return noAnswer(true);
         if (humanReview.approved) {
             await recordDeliveryEvidence(
                 context.projectRoot,
@@ -289,12 +307,16 @@ export async function runHumanReviewPhase(
             };
         }
 
+        return noAnswer(false);
+    }
+
+    function noAnswer(canceled: boolean): { kind: "no_answer"; pause: UserActionPause } {
         return {
             kind: "no_answer",
             pause: {
-                whatHappened: humanReview.canceled
-                    ? `You closed the code review for "${args.planName}" without approving it or leaving notes.`
-                    : `The code review for "${args.planName}" ended without an approval or any notes.`,
+                whatHappened: canceled
+                    ? `Code Review canceled. You closed the code review for "${args.planName}" without approving it or leaving notes. Approval is still pending; no revision was requested.`
+                    : `The code review for "${args.planName}" ended without an approval or any notes. Approval is still pending.`,
                 doThis: "Pick Retry to open it again, or Stop to come back to it later. Nothing has been thrown away.",
             },
         };
@@ -321,13 +343,25 @@ export function normalizeHumanReview(response: ValidationInteractionResponse): {
             conversationTurn?: boolean;
         }
         : {};
+    const canceled = meta.canceled === true || meta.exit === true || response.outcome === "canceled";
+    if (canceled) {
+        return {
+            approved: false,
+            feedback: "",
+            annotations: [],
+            images: [],
+            exit: true,
+            canceled: true,
+            conversationTurn: false,
+        };
+    }
     return {
         approved: meta.approved === true,
         feedback: typeof meta.feedback === "string" ? meta.feedback : response.message || "",
         annotations: Array.isArray(meta.annotations) ? meta.annotations : [],
         images: Array.isArray(meta.images) ? meta.images : [],
         exit: meta.exit === true,
-        canceled: meta.canceled === true || response.outcome === "canceled",
+        canceled: false,
         conversationTurn: meta.conversationTurn === true,
     };
 }

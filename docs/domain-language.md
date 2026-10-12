@@ -404,6 +404,13 @@ compares the approved Plan with the full proposed branch patch from the recorded
 current execution-worktree files. TUI and Workspace progress copy calls this **AI review**. _Avoid_: Code Review, Forge
 review, automated tests
 
+**Standalone Code Review**: Code Review of a PR, branch, or uncommitted changes without a Plan or Plan lifecycle.
+Started with `wld review`. The gate **Code Review** still means the Plan validation gate.
+
+**Review Worktree**: A worktree created on demand for Standalone Code Review, outside the Plan worktree registry.
+RunWield preserves it when it holds uncommitted or unpushed work. An existing branch checkout can be reused but is not
+owned or removed by Standalone Code Review.
+
 **Code Review**: The optional RunWield gate where a person reviews the same full proposed branch patch used by Semantic
 Review before delivery. Reload recomputes it from the recorded target, execution HEAD, and current worktree files. The
 user approves the diff or sends feedback. Internal compatibility identifiers can still use `humanReview` or
@@ -544,7 +551,7 @@ bug-finding. _Avoid_: Unit test writer, test framework specialist
 
 **Agent Definition**: A markdown file with YAML front matter defining an Agent's display name, model, tools, and system
 prompt. An optional `bashAllowedCommands` list limits RunWield-managed bash and background shell starts without granting
-bash. Layered definitions inherit an omitted field, replace with a list, deny all with `[]`, or reset the definition's
+bash. Layered definitions inherit an omitted field, merge non-empty lists without duplicate entries, deny all with `[]`, or reset the definition's
 inherited list with `null`; an absent list means unrestricted bash. This best-effort filter is not a sandbox and does
 not limit external CLI native shells. _Avoid_: Agent def, agent prompt, agent config
 
@@ -618,6 +625,12 @@ Reviewer, red team, adversarial validation
 is Approve & Slice. A new Epic has an **Epic Branch**, which owns current child progress. _Avoid_: Initiative, umbrella
 task
 
+**Plan Branch**: The landing branch for a standalone Planned Change when `plans.autoMergeIntoTargetBranch` is off (the
+default). RunWield creates `plan/<plan-name>` from the Plan's `targetBranch`, or reuses it without resetting it.
+`targetBranch` keeps the source and intended destination; `deliveryBranch` records the landing. With no authored target,
+RunWield records the repository default branch. RunWield delivers to the Plan Branch but does not merge it onward; the
+user merges it or opens a pull request. _Avoid_: Feature branch, Epic Branch
+
 **Epic Branch**: The branch an Epic starts and ends on, recorded as the Epic's `targetBranch` (default
 `epic/<epic-name>`). RunWield creates it from the latest primary branch when the Epic first needs it, records that
 commit as `epicBaseCommit`, and puts child drafts on it. Children deliver to it. RunWield never merges it into the
@@ -668,11 +681,13 @@ express. Plan Status still selects the validation phase. Session workflow state 
 cleared when validation ends, review reopens, or the implementation attempt is replaced. _Avoid_: Second status, Session
 state
 
-**Session-Independent Validation Engine**: The Workflow Validation sequencing, convergence policy, and gate predicates
-run on a session-independent engine (`src/shared/workflow/validation-engine.ts` and its phase modules) that consumes
-Pi/session turn machinery only through a narrow `ValidationSessionPort`. The Core Session runtime's `validation.ts`
-builds that port over the HostedSession machinery; other runtimes can drive the same engine by implementing the port.
-_Avoid_: Second validation implementation, session-coupled engine
+**Session-Independent Validation Engine**: Workflow Validation sequencing, convergence policy, and gate predicates run
+on the shared engine (`src/shared/workflow/validation-engine.ts` and its phase modules). Its supervisor and local CI
+command runner also work without a Session. Core's `validation.ts` builds `ValidationSessionPort` over HostedSession;
+`validation-host-turn.ts` uses the same supervisor and engine but returns typed reviewer, repair, and decision requests
+instead of in-process waits. Request-bound outcomes resume from the Validation Checkpoint through the existing gates.
+Host-turn validation stops at `reviewed`, before delivery. _Avoid_: Second validation implementation, session-coupled
+engine
 
 **Mechanical Validation**: RunWield's automated command validation loop. In no-plan QUICK_FIX work it runs local CI only
 without semantic review or Plan status transitions; inside Workflow Validation for executable Plans it runs the
@@ -898,7 +913,7 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   Proposal**. RunWield asks for a separate decision for each proposed predecessor in the interactive TUI and after
   interactive backfill.
 - Headless completion leaves each **Supersession Proposal** pending and reports `wld wr supersede
-  <successorRecordId>`
+<successorRecordId>`
   for later confirmation or rejection. The command also lists pending proposals and their reasons.
 - **Superseded Work Records** and **Archived Work Records** remain durable but are excluded from default planning
   retrieval. Supersession does not change a Work Record's completion mode or remove its applicable confidence notices

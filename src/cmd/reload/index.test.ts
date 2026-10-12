@@ -1,11 +1,13 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { isMascotEnabled } from "../../shared/settings.js";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runReloadCommand } from "./index.ts";
 
-Deno.test("successful reload applies manual mascot settings edits to an open Session", async () => {
+test("successful reload applies manual mascot settings edits to an open Session", async () => {
     await withRuntimeCommandFixture("reload-mascot-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
@@ -13,8 +15,8 @@ Deno.test("successful reload applies manual mascot settings edits to an open Ses
         try {
             assertEquals(isMascotEnabled(projectRoot), true);
             const path = join(projectRoot, ".wld", "settings.json");
-            await Deno.mkdir(join(projectRoot, ".wld"), { recursive: true });
-            await Deno.writeTextFile(path, JSON.stringify({ mascot: false }));
+            await fsMkdir(join(projectRoot, ".wld"), { recursive: true });
+            await fsWriteFile(path, JSON.stringify({ mascot: false }));
             assertEquals(isMascotEnabled(projectRoot), true);
             await runReloadCommand([], {
                 sessionRuntime: runtime,

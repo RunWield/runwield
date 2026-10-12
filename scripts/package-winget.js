@@ -1,8 +1,19 @@
+import { captureScriptProcess } from "./script-process.ts";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /**
  * Generate WinGet manifests for a published RunWield Windows ZIP.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { parseReleaseTag } from "./release.js";
 import { sha256 } from "./package-windows.js";
 
@@ -45,7 +56,7 @@ function assetBaseUrl(tag, baseUrl) {
 
 /** @param {string} version */
 function renderVersionManifest(version) {
-    return `# Created by deno task package:winget
+    return `# Created by bun run package:winget
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
 PackageIdentifier: ${PACKAGE_ID}
 PackageVersion: ${version}
@@ -57,7 +68,7 @@ ManifestVersion: 1.10.0
 
 /** @param {string} version */
 function renderLocaleManifest(version) {
-    return `# Created by deno task package:winget
+    return `# Created by bun run package:winget
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
 PackageIdentifier: ${PACKAGE_ID}
 PackageVersion: ${version}
@@ -84,7 +95,7 @@ ManifestVersion: 1.10.0
 
 /** @param {string} version @param {string} url @param {string} checksum */
 function renderInstallerManifest(version, url, checksum) {
-    return `# Created by deno task package:winget
+    return `# Created by bun run package:winget
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
 PackageIdentifier: ${PACKAGE_ID}
 PackageVersion: ${version}
@@ -111,7 +122,7 @@ ManifestVersion: 1.10.0
 
 /** @param {string} command @param {string[]} args @param {string} [cwd] */
 async function run(command, args, cwd) {
-    const result = await new Deno.Command(command, { args, cwd, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureScriptProcess(command, { args, cwd, stdout: "piped", stderr: "piped" });
     if (result.success) return;
     const decoder = new TextDecoder();
     throw new Error(
@@ -130,18 +141,18 @@ async function readPublishedChecksum(url) {
 
 /** @param {string} root @param {string} path */
 async function assertFile(root, path) {
-    const stat = await Deno.stat(join(root, path)).catch(() => null);
-    if (!stat?.isFile) throw new Error(`Published Windows ZIP is missing ${path}.`);
+    const stat = await fsStat(join(root, path)).catch(() => null);
+    if (!stat?.isFile()) throw new Error(`Published Windows ZIP is missing ${path}.`);
 }
 
 /** @param {Uint8Array} bytes @param {string} versionTag */
 async function assertZipHasPackageMetadata(bytes, versionTag) {
-    const work = await Deno.makeTempDir({ prefix: "runwield-winget-zip-" });
+    const work = await fsMkdtemp(join(tmpdir(), "runwield-winget-zip-"));
     try {
         const zipPath = join(work, "package.zip");
         const extractDir = join(work, "extract");
-        await Deno.writeFile(zipPath, bytes);
-        await Deno.mkdir(extractDir, { recursive: true });
+        await fsWriteFile(zipPath, bytes);
+        await fsMkdir(extractDir, { recursive: true });
         await run("unzip", ["-q", zipPath, "-d", extractDir]);
         for (
             const path of [
@@ -158,7 +169,7 @@ async function assertZipHasPackageMetadata(bytes, versionTag) {
                 "licenses/agent-browser-LICENSE.txt",
             ]
         ) await assertFile(extractDir, path);
-        const metadata = JSON.parse(await Deno.readTextFile(join(extractDir, "runwield-install.json")));
+        const metadata = JSON.parse(await fsReadFile(join(extractDir, "runwield-install.json"), "utf8"));
         const expectedMetadata = {
             schemaVersion: 1,
             packageManager: "winget",
@@ -174,7 +185,7 @@ async function assertZipHasPackageMetadata(bytes, versionTag) {
             }
         }
     } finally {
-        await Deno.remove(work, { recursive: true }).catch(() => {});
+        await fsRm(work, { recursive: true }).catch(() => {});
     }
 }
 
@@ -194,15 +205,15 @@ export async function packageWinget(options) {
     }
 
     const manifestDir = join(options.output, PACKAGE_ID, version);
-    await Deno.remove(manifestDir, { recursive: true }).catch(() => {});
-    await Deno.mkdir(manifestDir, { recursive: true });
-    await Deno.writeTextFile(join(manifestDir, `${PACKAGE_ID}.yaml`), renderVersionManifest(version));
-    await Deno.writeTextFile(join(manifestDir, `${PACKAGE_ID}.locale.en-US.yaml`), renderLocaleManifest(version));
-    await Deno.writeTextFile(
+    await fsRm(manifestDir, { recursive: true }).catch(() => {});
+    await fsMkdir(manifestDir, { recursive: true });
+    await fsWriteFile(join(manifestDir, `${PACKAGE_ID}.yaml`), renderVersionManifest(version));
+    await fsWriteFile(join(manifestDir, `${PACKAGE_ID}.locale.en-US.yaml`), renderLocaleManifest(version));
+    await fsWriteFile(
         join(manifestDir, `${PACKAGE_ID}.installer.yaml`),
         renderInstallerManifest(version, url, checksum),
     );
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(options.output, "runwield-winget-package.json"),
         `${
             JSON.stringify(
@@ -214,7 +225,7 @@ export async function packageWinget(options) {
     );
 }
 
-export async function main(args = Deno.args) {
+export async function main(args = process.argv.slice(2)) {
     await packageWinget(parsePackageWingetArgs(args));
 }
 

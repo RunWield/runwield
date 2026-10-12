@@ -1,3 +1,7 @@
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/epic-integration
  * How an Epic with its own branch finishes.
@@ -12,7 +16,7 @@
  * into the primary branch.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     compareChildPlansByOrder,
     findPlansByParent,
@@ -34,11 +38,10 @@ import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
 import { ensureEpicBranch } from "./epic-branch.ts";
 import type { LocalCIPort, LocalCIResult } from "./validation-local-ci.ts";
 import { createValidationSessionPort, type SemanticReviewPort } from "./validation-session-adapter.ts";
-import { createReviewDiffTool } from "./review-diff-tool.js";
+import { ReviewInspection } from "./review-inspection.ts";
 import { createLedger } from "./review-ledger.ts";
 import { formatCodeReviewAnnotations, normalizeHumanReview } from "./validation-human-review.ts";
 import {
-    type OpaqueToolDefinition,
     ValidationInteractionTypes,
     type ValidationReviewOutcome,
     type ValidationSessionPort,
@@ -120,7 +123,7 @@ interface GitResult {
 }
 
 async function runGitResult(cwd: string, args: string[]): Promise<GitResult> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     return {
         success: output.success,
         stdout: new TextDecoder().decode(output.stdout),
@@ -416,22 +419,24 @@ async function runIntegrationReview(
     diffText: string,
     request: string,
 ): Promise<{ kind: "completed"; outcome: ValidationReviewOutcome } | { kind: "paused"; reason: string }> {
-    const sessionManager = port.createInMemorySessionManager(checkoutPath);
+    // Integration reads are selective; an empty inspection keeps that policy.
+    const review = {
+        fullDiff: diffText,
+        repairDiff: "",
+        requiredScope: "full" as const,
+        inspection: new ReviewInspection([]),
+    };
+    const ledger = createLedger();
     let prompt = request;
     for (let attempt = 1; attempt <= MAX_REVIEWER_ATTEMPTS; attempt++) {
-        // No full-read gate: each child was read line by line in its own review, and
-        // this reviewer reads selectively from the Epic outcomes and Integration Notes.
-        const customTools = [
-            createReviewDiffTool({ full: diffText }, { ledger: createLedger() }) as unknown as OpaqueToolDefinition,
-        ];
         const session = await port.runIsolatedAgentSession({
             kind: "reviewer",
             agentName: AGENTS.REVIEWER,
             userRequest: prompt,
             cwd: checkoutPath,
             reviewerMode: "integration",
-            customTools,
-            sessionManager,
+            review,
+            ledger,
         });
         if (session.outcome === "operational_failure") {
             return { kind: "paused", reason: session.failure.message };
@@ -615,7 +620,7 @@ async function addRepairChild(
 
 /** A temporary detached checkout of the exact Epic commit, owned and removed by the gate. */
 async function withGateCheckout<T>(primaryRoot: string, commit: string, run: (path: string) => Promise<T>): Promise<T> {
-    const parent = await Deno.makeTempDir({ prefix: "wld-epic-gate-" });
+    const parent = await mkdtemp(join(tmpdir(), "wld-epic-gate-"));
     const path = join(parent, "checkout");
     await runGit(primaryRoot, ["worktree", "add", "--detach", path, commit]);
     try {
@@ -623,7 +628,7 @@ async function withGateCheckout<T>(primaryRoot: string, commit: string, run: (pa
     } finally {
         await runGitResult(primaryRoot, ["worktree", "remove", "--force", path]);
         await runGitResult(primaryRoot, ["worktree", "prune"]);
-        await Deno.remove(parent, { recursive: true }).catch(() => {});
+        await fsRm(parent, { recursive: true }).catch(() => {});
     }
 }
 
@@ -744,8 +749,8 @@ export async function runEpicIntegrationGate(
 
     const reportPath = getEpicArtifactPath(location.documentRoot, epicPlanName, EPIC_INTEGRATION_REPORT_FILE_NAME);
     const reportRelativePath = `docs/plans/${epicPlanName}/${EPIC_INTEGRATION_REPORT_FILE_NAME}`;
-    await Deno.mkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
-    await Deno.writeTextFile(reportPath, renderReport(epicPlanName, state, base, run.findings));
+    await fsMkdir(join(location.documentRoot, "docs", "plans", epicPlanName), { recursive: true });
+    await fsWriteFile(reportPath, renderReport(epicPlanName, state, base, run.findings));
     await recordPlanEvent({
         cwd: primaryRoot,
         planName: epicPlanName,

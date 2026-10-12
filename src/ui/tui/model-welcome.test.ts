@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     registerScriptedOAuthProvider,
     SCRIPTED_OAUTH_MODEL,
@@ -72,7 +75,7 @@ async function waitForWelcomeRePrompt(harness: InteractiveCompositionHarness): P
     );
 }
 
-Deno.test("detectModelAvailability treats at least one available model as usable", () => {
+test("detectModelAvailability treats at least one available model as usable", () => {
     assertEquals(detectModelAvailability(registryValue([])), { available: false, error: null });
     assertEquals(
         detectModelAvailability(registryValue([{ id: "model", provider: "fixture" }])),
@@ -80,7 +83,7 @@ Deno.test("detectModelAvailability treats at least one available model as usable
     );
 });
 
-Deno.test("detectModelAvailability captures registry errors as no model", () => {
+test("detectModelAvailability captures registry errors as no model", () => {
     const result = detectModelAvailability({
         getAvailable: () => {
             throw new Error("broken registry");
@@ -89,9 +92,9 @@ Deno.test("detectModelAvailability captures registry errors as no model", () => 
     assertEquals(result, { available: false, error: "broken registry" });
 });
 
-Deno.test("a malformed models.json in the fixture HOME degrades to no configured models without throwing", async () => {
+test("a malformed models.json in the fixture HOME degrades to no configured models without throwing", async () => {
     await withRuntimeCommandFixture("model-welcome-malformed-", async ({ homeDir, projectRoot }) => {
-        await Deno.writeTextFile(join(homeDir, ".wld", "models.json"), "{ not valid json !!!");
+        await fsWriteFile(join(homeDir, ".wld", "models.json"), "{ not valid json !!!");
         const availability = getConfiguredModelAvailability();
         assertEquals(availability.available, false);
         const selected = getSelectedDefaultModelAvailability(projectRoot);
@@ -100,7 +103,7 @@ Deno.test("a malformed models.json in the fixture HOME degrades to no configured
     }, { providerState: "none" });
 });
 
-Deno.test("a usable selected fixture model bypasses onboarding without eager Router activation", async () => {
+test("a usable selected fixture model bypasses onboarding without eager Router activation", async () => {
     await withRuntimeCommandFixture("model-welcome-bypass-", async () => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -118,7 +121,7 @@ Deno.test("a usable selected fixture model bypasses onboarding without eager Rou
     });
 });
 
-Deno.test("no-provider onboarding can choose Claude Code CLI without login", async () => {
+test("no-provider onboarding can choose Claude Code CLI without login", async () => {
     await withRuntimeCommandFixture("model-welcome-claude-cli-", async ({ projectRoot }) => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -140,7 +143,7 @@ Deno.test("no-provider onboarding can choose Claude Code CLI without login", asy
     }, { providerState: "none" });
 });
 
-Deno.test("no providers opens the real welcome prompt and never the model selector", async () => {
+test("no providers opens the real welcome prompt and never the model selector", async () => {
     await withRuntimeCommandFixture("model-welcome-no-providers-", async () => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -158,7 +161,7 @@ Deno.test("no providers opens the real welcome prompt and never the model select
     }, { providerState: "none" });
 });
 
-Deno.test("a configured provider without a selected model opens the real model selector", async () => {
+test("a configured provider without a selected model opens the real model selector", async () => {
     await withRuntimeCommandFixture("model-welcome-provider-no-model-", async () => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -174,7 +177,7 @@ Deno.test("a configured provider without a selected model opens the real model s
     }, { providerState: "provider-no-model" });
 });
 
-Deno.test("cancelled model selection activates no root Session", async () => {
+test("cancelled model selection activates no root Session", async () => {
     await withRuntimeCommandFixture("model-welcome-selector-cancel-", async () => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -192,7 +195,7 @@ Deno.test("cancelled model selection activates no root Session", async () => {
     }, { providerState: "provider-no-model" });
 });
 
-Deno.test("subscription login through the scripted OAuth fixture runs the real /login then /model order and activates the root Session", async () => {
+test("subscription login through the scripted OAuth fixture runs the real /login then /model order and activates the root Session", async () => {
     await withRuntimeCommandFixture("model-welcome-subscription-", async ({ projectRoot }) => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -231,7 +234,7 @@ Deno.test("subscription login through the scripted OAuth fixture runs the real /
     }, { providerState: "none" });
 });
 
-Deno.test("selecting a model offers the Tutorial in an Empty Project Directory", async () => {
+test("selecting a model offers the Tutorial in an Empty Project Directory", async () => {
     await withRuntimeCommandFixture("model-welcome-tutorial-offer-", async () => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -257,7 +260,7 @@ Deno.test("selecting a model offers the Tutorial in an Empty Project Directory",
     }, { providerState: "none", offerTutorial: true });
 });
 
-Deno.test("login failure renders a user-visible error and activates no root Session", async () => {
+test("login failure renders a user-visible error and activates no root Session", async () => {
     await withRuntimeCommandFixture("model-welcome-login-failure-", async () => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -286,7 +289,7 @@ Deno.test("login failure renders a user-visible error and activates no root Sess
     }, { providerState: "none" });
 });
 
-Deno.test("cancelled login re-prompts instead of returning to chat", async () => {
+test("cancelled login re-prompts instead of returning to chat", async () => {
     await withRuntimeCommandFixture("model-welcome-login-cancel-", async () => {
         const harness = await createInteractiveCompositionHarness({});
         try {
@@ -317,7 +320,7 @@ Deno.test("cancelled login re-prompts instead of returning to chat", async () =>
     }, { providerState: "none" });
 });
 
-Deno.test("failed root activation returns focus to the editor with recovery guidance", async () => {
+test("failed root activation returns focus to the editor with recovery guidance", async () => {
     await withRuntimeCommandFixture("model-welcome-fail-root-", async () => {
         const harness = await createInteractiveCompositionHarness({ initialAgentName: "no-such-agent" });
         try {

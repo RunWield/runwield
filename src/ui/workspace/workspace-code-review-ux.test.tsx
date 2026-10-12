@@ -1,15 +1,16 @@
-import { assertFalse, assertRejects, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { assertFalse, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
-Deno.test("Code Review styles inherited annotation modals with CSS only", async () => {
-    const surface = await Deno.readTextFile(new URL("./react/CodeReviewSurface.tsx", import.meta.url));
-    const workspaceStyles = await Deno.readTextFile(new URL("./react/plannotator.css", import.meta.url));
-    const designSystemStyles = await Deno.readTextFile(
-        new URL("../design-system/components.css", import.meta.url),
-    );
+test("Code Review styles inherited annotation modals with CSS only", async () => {
+    const surface = await fsReadFile(new URL("./react/CodeReviewSurface.tsx", import.meta.url), "utf8");
+    const workspaceStyles = await fsReadFile(new URL("./react/plannotator.css", import.meta.url), "utf8");
+    const designSystemStyles = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
 
     await assertRejects(
-        () => Deno.readTextFile(new URL("./react/RunWieldCodeAnnotationPopoverAdapter.tsx", import.meta.url)),
-        Deno.errors.NotFound,
+        () => fsReadFile(new URL("./react/RunWieldCodeAnnotationPopoverAdapter.tsx", import.meta.url), "utf8"),
+        Error,
+        "ENOENT",
     );
 
     assertFalse(surface.includes("RunWieldCodeAnnotationPopoverAdapter"));

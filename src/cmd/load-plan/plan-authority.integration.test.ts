@@ -1,5 +1,8 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { runLoadPlanCommand } from "./index.ts";
@@ -10,13 +13,13 @@ import { resolveValidationExecutionContext } from "../../shared/workflow/executi
 import type { UiAPI } from "../../ui/tui/types.js";
 
 for (const action of ["hold", "review", "validate"]) {
-    Deno.test(`load-plan ${action} acts on the execution Plan and leaves primary bytes unchanged`, async () => {
+    test(`load-plan ${action} acts on the execution Plan and leaves primary bytes unchanged`, async () => {
         await withRuntimeCommandFixture("rw-authority-load-", async ({ projectRoot, alternateRoot }) => {
             await git(projectRoot, ["init", "-b", "main"]);
             await git(projectRoot, ["config", "user.name", "Authority Fixture"]);
             await git(projectRoot, ["config", "user.email", "authority@example.test"]);
-            await Deno.writeTextFile(join(projectRoot, ".gitignore"), ".wld/\n");
-            await Deno.writeTextFile(join(projectRoot, "app.ts"), "export const ready = false;\n");
+            await fsWriteFile(join(projectRoot, ".gitignore"), ".wld/\n");
+            await fsWriteFile(join(projectRoot, "app.ts"), "export const ready = false;\n");
             await savePlan(projectRoot, "demo", "# Demo\n\n## Context\n\nDemo.", {
                 planId: "authority-plan",
                 classification: "PLANNED_CHANGE",
@@ -58,13 +61,13 @@ for (const action of ["hold", "review", "validate"]) {
             );
             const primaryPath = join(projectRoot, "docs/plans/demo.md");
             if (action === "validate") {
-                await Deno.writeTextFile(primaryPath, '---\nstatus: "unfinished edit\n---\n# Demo\n');
-                await Deno.writeTextFile(join(alternateRoot, "app.ts"), "export const ready = true;\n");
+                await fsWriteFile(primaryPath, '---\nstatus: "unfinished edit\n---\n# Demo\n');
+                await fsWriteFile(join(alternateRoot, "app.ts"), "export const ready = true;\n");
                 const context = await resolveValidationExecutionContext({ projectRoot, planName: "demo" });
                 assertEquals(context.kind, "ok");
                 if (context.kind === "ok") assertEquals(context.context.executionCwd, alternateRoot);
             }
-            const primaryBytes = await Deno.readTextFile(primaryPath);
+            const primaryBytes = await fsReadFile(primaryPath, "utf8");
             const runtime = createSessionRuntime();
             const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
             const messages: string[] = [];
@@ -96,7 +99,7 @@ for (const action of ["hold", "review", "validate"]) {
                         "active",
                     );
                 }
-                assertEquals(await Deno.readTextFile(primaryPath), primaryBytes);
+                assertEquals(await fsReadFile(primaryPath, "utf8"), primaryBytes);
             } finally {
                 runtime.closeAllSessions();
             }

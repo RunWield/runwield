@@ -1,3 +1,5 @@
+import { captureScriptProcess } from "./script-process.ts";
+import process from "node:process";
 import { getCwd } from "../src/constants.js";
 import { PUBLIC_DOCS } from "./public-docs.ts";
 
@@ -18,12 +20,12 @@ const ALLOWED_PATHS = new Set([
 ]);
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
-    const result = await new Deno.Command("git", {
+    const result = await captureScriptProcess("git", {
         args,
         cwd,
         stdout: "piped",
         stderr: "piped",
-    }).output();
+    });
     const stdout = new TextDecoder().decode(result.stdout).trim();
     if (!result.success) {
         throw new Error(new TextDecoder().decode(result.stderr).trim() || `git ${args.join(" ")} failed`);
@@ -47,7 +49,7 @@ export async function verifyDocsSource(cwd: string, documentedTag: string, sourc
 }
 
 async function main(): Promise<void> {
-    const [documentedTag, sourceSha] = Deno.args;
+    const [documentedTag, sourceSha] = process.argv.slice(2);
     if (!documentedTag || !sourceSha) {
         throw new Error("Usage: verify-docs-source.ts <documented-tag> <source-sha>");
     }

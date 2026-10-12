@@ -429,6 +429,28 @@ attached to the Session.
   for a second image.
 - The Agent cannot change the model or provider; only your settings can.
 
+## Plan Delivery
+
+### `plans.autoMergeIntoTargetBranch`
+
+Type: boolean inside `plans`. Default: `false`. Project settings override global settings. Only `true` enables it.
+Choose **Auto-merge into target branch** in `wld settings` to save Off or On for this project or all projects.
+
+- **Off (default):** standalone Planned Changes deliver to `plan/<plan-name>`. The completion card says **Ready for your
+  merge/PR** and names the landing branch. You merge that branch or open a PR to the retained `targetBranch`.
+- **On:** RunWield skips automatic Plan Branch creation and delivers directly to `targetBranch`.
+
+With either choice, an absent `targetBranch` becomes the repository's default branch, not the current checkout branch.
+RunWield records the actual landing separately as `deliveryBranch`. Setting changes do not redirect a recorded attempt.
+Epic and Sequence children, QUICK_FIX, and non-Git execution are unchanged. A successful Plan Branch delivery is
+Verified; it does not mean the onward merge has happened.
+
+```jsonc
+{
+    "plans": { "autoMergeIntoTargetBranch": true }
+}
+```
+
 ## Work Records
 
 ### `workRecords.autoGenerateOnPlanCompletion`
@@ -482,9 +504,10 @@ These keys are read by RunWield outside the upstream Pi `SettingsManager` schema
 | `imageGeneration`                          | object            | unset                                           | global + project | Image model used by the `create_image` tool. See [`imageGeneration`](#imagegeneration).                                                                                                                                                               |
 | `compactOnResumeThresholdPercent`          | integer           | `1`-`100`, default `50`                         | global + project | `/resume` offers compaction when estimated context reaches this percentage of the selected model context window.                                                                                                                                      |
 | `verification_command`                     | string            | no default                                      | project          | Command used by Workflow Validation. Init infers candidates from repository evidence, asks the user to confirm one, and saves the confirmed project command. Selecting no implemented verification saves `echo "verification not implemented yet"`.   |
-| `codereview`                               | string            | `none`, `ask`, `always`; default `none`         | global + project | Optional Plannotator human code review gate after local validation and semantic review pass, before merge-back. Invalid values fall back to `none`.                                                                                                   |
+| `codereview`                               | string            | `none`, `ask`, `always`; default `ask`          | global + project | Optional Plannotator human code review gate after local validation and semantic review pass, before merge-back. Invalid values fall back to `none`.                                                                                                   |
 | `guidedReview`                             | string            | `none`, `ask`, `auto`, `always`; default `auto` | global + project | Guided Review Explainer generation policy inside human code review. Invalid values fall back to `none`; manual generation remains available when supported.                                                                                           |
 | `cleanupMergedWorktrees`                   | boolean           | default `true`                                  | global + project | When true, successful merge-back removes a clean execution checkout, deletes its registry entry, and clears Plan worktree metadata. Unexpected dirty state is preserved rather than force-deleted. Set false to keep merged worktrees for inspection. |
+| `plans.autoMergeIntoTargetBranch`          | boolean           | default `false`                                 | global + project | Standalone Plans deliver to a Plan Branch when off, or directly to `targetBranch` when on. See [Plan Delivery](#plan-delivery).                                                                                                                       |
 | `workRecords.autoGenerateOnPlanCompletion` | boolean           | default `true`                                  | global + project | Writes a Work Record when a Plan finishes. Only `false` turns it off.                                                                                                                                                                                 |
 | `mascot`                                   | boolean           | default `true`                                  | global + project | Hides the agent mascot in TUI and Workspace when false.                                                                                                                                                                                               |
 | `notifications`                            | object            | enabled by default                              | global + project | Attention notifications. TUI uses terminal BEL/OSC for agent stops, `plan_written`, `user_interview`, and `/compact`. Workspace uses browser alerts for live `agentStopped` events. Focused surfaces stay quiet by default.                           |

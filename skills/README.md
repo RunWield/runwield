@@ -26,7 +26,7 @@ capability the Agent calls a tool for, it describes the capability instead of na
 project has its own.
 
 A skill may also stand on its own, with no `source` in the baseline. `review` does: it takes the judgment discipline
-from the Reviewer prompt but drops the Plan, and adds two review axes and pull-request comments that the workflow
+from the Reviewer prompt but drops the Plan, and adds three review axes and pull-request comments that the workflow
 Reviewer has no concept of. Pairing the two would fail this check every time either one was tuned, and force an edit to
 a document with no matching idea in it.
 

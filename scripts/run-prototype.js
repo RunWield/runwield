@@ -1,23 +1,27 @@
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env bun
+import { captureScriptProcess } from "./script-process.ts";
+import { getCwd } from "../src/constants.js";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import process from "node:process";
 /**
  * Launch local throwaway prototypes from the ignored prototypes/<slug>/ root.
  *
  * @module run-prototype
  */
 
-import { join, normalize, relative, resolve } from "@std/path";
+import { join, normalize, relative, resolve } from "node:path";
 
 const SAFE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const THROWAWAY_MARKER = ["THROWAWAY", "PROTOTYPE"].join(" ");
 
 /**
  * @typedef {Object} PrototypeProcessPort
- * @property {(command: string, options: Deno.CommandOptions) => { status: Promise<{ code: number }> }} spawn
+ * @property {(command: string, options: import("./script-process.ts").ScriptProcessOptions) => { status: Promise<{ code: number }> }} spawn
  */
 
 /** @type {PrototypeProcessPort} */
 const SYSTEM_PROTOTYPE_PROCESS_PORT = Object.freeze({
-    spawn: (command, options) => new Deno.Command(command, options).spawn(),
+    spawn: (command, options) => ({ status: captureScriptProcess(command, options) }),
 });
 
 /** @param {string} slug */
@@ -54,34 +58,34 @@ export async function validatePrototypeSetup(cwd, slug) {
     }
     let stat;
     try {
-        stat = await Deno.stat(dir);
+        stat = await fsStat(dir);
     } catch {
-        throw new Error(`Prototype not found: ${relativeDir}/. Create it with README.md and deno.json first.`);
+        throw new Error(`Prototype not found: ${relativeDir}/. Create it with README.md and package.json first.`);
     }
-    if (!stat.isDirectory) throw new Error(`Prototype path is not a directory: ${relativeDir}/`);
+    if (!stat.isDirectory()) throw new Error(`Prototype path is not a directory: ${relativeDir}/`);
 
-    const configPath = join(dir, "deno.json");
+    const configPath = join(dir, "package.json");
     let config;
     try {
-        config = JSON.parse(await Deno.readTextFile(configPath));
+        config = JSON.parse(await fsReadFile(configPath, "utf8"));
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Prototype ${relativeDir}/deno.json is missing or invalid: ${message}`);
+        throw new Error(`Prototype ${relativeDir}/package.json is missing or invalid: ${message}`);
     }
-    if (!config || typeof config !== "object" || typeof config.tasks?.dev !== "string") {
-        throw new Error(`Prototype ${relativeDir}/deno.json must define a local tasks.dev command.`);
+    if (!config || typeof config !== "object" || typeof config.scripts?.dev !== "string") {
+        throw new Error(`Prototype ${relativeDir}/package.json must define a local scripts.dev command.`);
     }
     return { dir, configPath, relativeConfigPath: repoRelative(cwd, configPath) };
 }
 
 /** @param {string} cwd @param {string} relativePath */
 export async function isGitIgnored(cwd, relativePath) {
-    const output = await new Deno.Command("git", {
+    const output = await captureScriptProcess("git", {
         args: ["check-ignore", "-q", relativePath],
         cwd,
         stdout: "null",
         stderr: "null",
-    }).output();
+    });
     return output.success;
 }
 
@@ -91,10 +95,10 @@ export async function isGitIgnored(cwd, relativePath) {
  * @returns {Promise<number>}
  */
 export async function runPrototype(opts, processPort) {
-    const cwd = opts.cwd || Deno.cwd();
+    const cwd = opts.cwd || getCwd();
     const setup = await validatePrototypeSetup(cwd, opts.slug);
-    const args = ["task", "-c", setup.relativeConfigPath, "dev"];
-    const child = processPort.spawn(Deno.execPath(), {
+    const args = ["run", "--cwd", setup.dir, "dev"];
+    const child = processPort.spawn(process.execPath, {
         args,
         cwd,
         stdin: "inherit",
@@ -110,13 +114,13 @@ export async function runPrototype(opts, processPort) {
  * @returns {Promise<string[]>}
  */
 export async function findTrackedPrototypeArtifacts(opts = {}) {
-    const cwd = opts.cwd || Deno.cwd();
-    const output = await new Deno.Command("git", {
+    const cwd = opts.cwd || getCwd();
+    const output = await captureScriptProcess("git", {
         args: ["ls-files", "-z"],
         cwd,
         stdout: "piped",
         stderr: "piped",
-    }).output();
+    });
     if (!output.success) throw new Error("Could not inspect tracked files for prototype artifacts.");
     const files = new TextDecoder().decode(output.stdout).split("\0").filter(Boolean);
     const violations = [];
@@ -132,7 +136,7 @@ export async function findTrackedPrototypeArtifacts(opts = {}) {
             continue;
         }
         try {
-            const text = await Deno.readTextFile(join(cwd, file));
+            const text = await fsReadFile(join(cwd, file), "utf8");
             if (text.includes(THROWAWAY_MARKER)) violations.push(file);
         } catch {
             // Deleted paths are already leaving the tree; do not block the convention check on them.
@@ -155,15 +159,15 @@ function isAllowedPrototypeConventionFile(file) {
 }
 
 if (import.meta.main) {
-    const [slug, ...extra] = Deno.args;
+    const [slug, ...extra] = process.argv.slice(2);
     if (!slug || extra.length > 0) {
-        console.error("Usage: deno task prototype <kebab-case-slug>");
-        Deno.exit(2);
+        console.error("Usage: bun run prototype <kebab-case-slug>");
+        process.exit(2);
     }
     try {
-        Deno.exit(await runPrototype({ slug }, SYSTEM_PROTOTYPE_PROCESS_PORT));
+        process.exit(await runPrototype({ slug }, SYSTEM_PROTOTYPE_PROCESS_PORT));
     } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
-        Deno.exit(1);
+        process.exit(1);
     }
 }

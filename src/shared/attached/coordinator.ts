@@ -229,7 +229,7 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
             // the validated_* names are retained for records written before it.
             "reviewed",
             "validated_ci",
-            "validated_reviewer",
+            "reviewed",
             "validated",
             "verified",
             "user_verified",

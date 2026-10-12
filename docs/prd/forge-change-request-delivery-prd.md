@@ -7,9 +7,12 @@ Last updated: 2026-08-12 10:29 EDT
 Add an explicitly selected **Change Request Delivery** path that publishes RunWield-validated work through GitHub pull
 requests or GitLab merge requests, waits for the Forge merge, and then records truthful Plan and Work Record evidence.
 
-The existing **Direct Delivery** path remains the default and keeps its current behavior: RunWield stages verified Plan
-metadata with the validated implementation and merges both into the local target branch. Change Request Delivery is a
-conditional alternative, not a replacement for current shared-repository execution.
+The existing **Direct Delivery** path remains the default. For standalone Planned Changes,
+`plans.autoMergeIntoTargetBranch` defaults to off: RunWield delivers the validated implementation and Plan outcome to a
+Plan Branch, leaving the onward merge or pull request to the user. Setting On delivers to `targetBranch` directly.
+`targetBranch` keeps the intended destination; an absent target defaults to the repository default branch. See the
+[Core delivery requirement](runwield-core-prd.md#execution-validation-and-recovery). Change Request Delivery is a
+conditional alternative, not a replacement for Direct Delivery.
 
 The product promise is:
 
@@ -32,7 +35,9 @@ review, and memory live in RunWield. Change Request Delivery therefore builds th
 
 ## Problem Statement
 
-Direct Delivery currently validates planned work and merges it into the local target branch with its Plan outcome.
+Direct Delivery validates planned work and publishes it with its Plan outcome to the recorded landing branch. For a
+standalone Planned Change, the default landing is its Plan Branch; `plans.autoMergeIntoTargetBranch: true` uses the
+intended target directly. Direct Delivery does not manage the user's onward pull request or prove its merge.
 
 That finalization model is incompatible with repositories where code must arrive through a pull request or merge
 request:

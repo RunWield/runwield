@@ -1,5 +1,8 @@
-import { assertEquals, assertRejects } from "@std/assert";
-import { dirname, fromFileUrl, join, relative, resolve } from "@std/path";
+import { test } from "node:test";
+import { readdir as fsReaddir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
 
 const REPO_ROOT = resolve(dirname(fromFileUrl(import.meta.url)), "../../..");
@@ -8,14 +11,14 @@ const SKIPPED_SOURCE_DIRECTORIES = new Set([".astro", "dist", "node_modules"]);
 /** @param {string} path @returns {Promise<string[]>} */
 async function productionSourceFiles(path) {
     const files = [];
-    for await (const entry of Deno.readDir(path)) {
+    for await (const entry of await fsReaddir(path, { withFileTypes: true })) {
         const entryPath = join(path, entry.name);
-        if (entry.isDirectory) {
+        if (entry.isDirectory()) {
             if (SKIPPED_SOURCE_DIRECTORIES.has(entry.name)) continue;
             files.push(...await productionSourceFiles(entryPath));
             continue;
         }
-        if (!entry.isFile || !/\.[jt]sx?$/.test(entry.name)) continue;
+        if (!entry.isFile() || !/\.[jt]sx?$/.test(entry.name)) continue;
         if (/\.test\.[jt]sx?$/.test(entry.name) || /_test\.[jt]sx?$/.test(entry.name)) continue;
         files.push(entryPath);
     }
@@ -47,8 +50,8 @@ async function findViolations(roots, rules, options = {}) {
             ? await productionJavaScriptFiles(join(REPO_ROOT, root))
             : await productionSourceFiles(join(REPO_ROOT, root));
         for (const file of files) {
-            const path = relative(REPO_ROOT, file);
-            const source = await Deno.readTextFile(file);
+            const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
+            const source = await fsReadFile(file, "utf8");
             for (const rule of rules) {
                 if (rule.allowPath?.(path)) continue;
                 const ruleSource = rule.sourceForRule?.(path, source) || source;
@@ -71,7 +74,7 @@ function resolvedImportTargets(file, source) {
     for (const match of source.matchAll(importPattern)) {
         const specifier = match[1];
         if (!specifier.startsWith(".")) continue;
-        targets.push(relative(REPO_ROOT, resolve(dirname(file), specifier)));
+        targets.push(relative(REPO_ROOT, resolve(dirname(file), specifier)).replaceAll("\\", "/"));
     }
     return targets;
 }
@@ -95,7 +98,7 @@ function sourceWithoutApprovedWorkspaceRootSessionDirImport(path, source) {
     );
 }
 
-Deno.test("core has no consumer presentation knowledge", async () => {
+test("core has no consumer presentation knowledge", async () => {
     const violations = await findViolations(["src/shared", "src/tools"], [
         { label: "UI API reference", pattern: /\buiAPI\b|\bUiAPI\b|SessionUiPort/ },
         { label: "consumer name", pattern: /\bTUI\b|\bACP\b|Plannotator/ },
@@ -104,7 +107,7 @@ Deno.test("core has no consumer presentation knowledge", async () => {
     assertEquals(violations, []);
 });
 
-Deno.test("TUI, ACP, and Workspace remain sibling Runtime consumers", async () => {
+test("TUI, ACP, and Workspace remain sibling Runtime consumers", async () => {
     const violations = [];
     const surfaceRules = [
         { root: "src/ui/tui", forbidden: ["src/acp", "src/ui/workspace"] },
@@ -114,8 +117,8 @@ Deno.test("TUI, ACP, and Workspace remain sibling Runtime consumers", async () =
 
     for (const { root, forbidden } of surfaceRules) {
         for (const file of await productionSourceFiles(join(REPO_ROOT, root))) {
-            const path = relative(REPO_ROOT, file);
-            const source = await Deno.readTextFile(file);
+            const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
+            const source = await fsReadFile(file, "utf8");
             for (const target of resolvedImportTargets(file, source)) {
                 if (forbidden.some((prefix) => target === prefix || target.startsWith(`${prefix}/`))) {
                     violations.push(`${path}: sibling adapter import ${target}`);
@@ -127,7 +130,7 @@ Deno.test("TUI, ACP, and Workspace remain sibling Runtime consumers", async () =
     assertEquals(violations, []);
 });
 
-Deno.test("Core session surfaces do not open or import the Workspace database", async () => {
+test("Core session surfaces do not open or import the Workspace database", async () => {
     const violations = await findViolations(["src/ui/tui", "src/acp"], [
         {
             label: "Workspace database dependency",
@@ -136,7 +139,7 @@ Deno.test("Core session surfaces do not open or import the Workspace database", 
     ]);
     const runtimeSources = await Promise.all(
         (await productionSourceFiles(join(REPO_ROOT, "src/shared/session/runtime"))).map((file) =>
-            Deno.readTextFile(file)
+            fsReadFile(file, "utf8")
         ),
     );
     const runtimeSource = runtimeSources.join("\n");
@@ -148,7 +151,7 @@ Deno.test("Core session surfaces do not open or import the Workspace database", 
     assertEquals(violations, []);
 });
 
-Deno.test("TUI, ACP, Workspace, commands, and scripts use the public Runtime surface only", async () => {
+test("TUI, ACP, Workspace, commands, and scripts use the public Runtime surface only", async () => {
     const violations = await findViolations(["src/ui/tui", "src/acp", "src/ui/workspace", "src/cmd", "scripts"], [
         {
             label: "HostedSession reference",
@@ -187,7 +190,7 @@ Deno.test("TUI, ACP, Workspace, commands, and scripts use the public Runtime sur
     assertEquals(violations, []);
 });
 
-Deno.test("writable transcript hydration stays inside SessionRuntime lease enforcement", async () => {
+test("writable transcript hydration stays inside SessionRuntime lease enforcement", async () => {
     const allowed = new Set([
         "src/shared/session/root-session.js",
         "src/shared/session/segment-rollover.ts",
@@ -206,7 +209,7 @@ Deno.test("writable transcript hydration stays inside SessionRuntime lease enfor
     assertEquals(violations, []);
 });
 
-Deno.test("Session writer mutators stay behind approved state-machine seams", async () => {
+test("Session writer mutators stay behind approved state-machine seams", async () => {
     const violations = await findViolations(["src", "scripts"], [
         {
             label: "Session Activation Lease mutator outside Runtime or approved coordination service",
@@ -229,19 +232,20 @@ Deno.test("Session writer mutators stay behind approved state-machine seams", as
     assertEquals(violations, []);
 });
 
-Deno.test("the file Session contract is host-neutral and the store remains decomposed", async () => {
-    const contract = await Deno.readTextFile(join(REPO_ROOT, "src/shared/session/file-session-store-types.ts"));
+test("the file Session contract is host-neutral and the store remains decomposed", async () => {
+    const contract = await fsReadFile(join(REPO_ROOT, "src/shared/session/file-session-store-types.ts"), "utf8");
     assertEquals(/owner-coordination|heartbeat|activation.?protocol|expired/i.test(contract), false);
 
-    const facade = await Deno.readTextFile(join(REPO_ROOT, "src/shared/session/file-session-store.ts"));
+    const facade = await fsReadFile(join(REPO_ROOT, "src/shared/session/file-session-store.ts"), "utf8");
     assertEquals(facade.split("\n").length <= 650, true);
     assertEquals(facade.includes("createFileSessionControl"), true);
 });
 
-Deno.test("non-owning Session generation synchronization remains read-only", async () => {
+test("non-owning Session generation synchronization remains read-only", async () => {
     const violations = [];
-    const workspaceContinuationSource = await Deno.readTextFile(
+    const workspaceContinuationSource = await fsReadFile(
         join(REPO_ROOT, "src/ui/workspace/server/session-continuation.js"),
+        "utf8",
     );
     const timelineIndex = workspaceContinuationSource.indexOf("async timeline(runwieldSessionId, options = {})");
     const bootstrapIndex = workspaceContinuationSource.indexOf("async bootstrap(options)", timelineIndex);
@@ -258,9 +262,9 @@ Deno.test("non-owning Session generation synchronization remains read-only", asy
     }
 
     for (const file of await productionSourceFiles(join(REPO_ROOT, "src/ui/tui"))) {
-        const path = relative(REPO_ROOT, file);
+        const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
         if (!/(managed-session-sync|chat-session)\.[jt]sx?$/.test(path)) continue;
-        const source = await Deno.readTextFile(file);
+        const source = await fsReadFile(file, "utf8");
         if (/SessionManager\.open|openPersistedRootSession/.test(source)) {
             violations.push(`${path}: managed Session synchronization opens writable transcript state`);
         }
@@ -277,7 +281,7 @@ Deno.test("non-owning Session generation synchronization remains read-only", asy
     assertEquals(violations, []);
 });
 
-Deno.test("stable RunWield Session IDs are not confused with Hosted or Pi session ids", async () => {
+test("stable RunWield Session IDs are not confused with Hosted or Pi session ids", async () => {
     const violations = await findViolations(["src", "scripts"], [
         {
             label: "stable runwieldSessionId assigned from in-process or Pi session id",
@@ -291,7 +295,7 @@ Deno.test("stable RunWield Session IDs are not confused with Hosted or Pi sessio
     assertEquals(violations, []);
 });
 
-Deno.test("session/Pi coupling in workflow validation stays at the adapter boundary", async () => {
+test("session/Pi coupling in workflow validation stays at the adapter boundary", async () => {
     // The session-independent validation engine must not creep back toward the
     // session runtime: any production `validation*.ts` module in shared/workflow
     // that imports Pi packages or ../session/ modules must be one of the whitelisted
@@ -309,10 +313,10 @@ Deno.test("session/Pi coupling in workflow validation stays at the adapter bound
     ]);
     const violations = [];
     for (const file of await productionSourceFiles(join(REPO_ROOT, "src/shared/workflow"))) {
-        const path = relative(REPO_ROOT, file);
+        const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
         if (!/validation[^/]*\.ts$/.test(path)) continue;
         if (validationAdapterWhitelist.has(path)) continue;
-        const source = await Deno.readTextFile(file);
+        const source = await fsReadFile(file, "utf8");
         if (
             /(?:from|import\()\s*["'][^"']*@earendil-works[^"']*["']/.test(source) ||
             /(?:from|import\()\s*["'][^"']*\.\.\/session\/[^"']*["']/.test(source)
@@ -323,7 +327,7 @@ Deno.test("session/Pi coupling in workflow validation stays at the adapter bound
     assertEquals(violations, []);
 });
 
-Deno.test("active and isolated Agents have exactly one production lifecycle boundary each", async () => {
+test("active and isolated Agents have exactly one production lifecycle boundary each", async () => {
     const files = await productionSourceFiles(join(REPO_ROOT, "src"));
     const activeMutationModules = new Set([
         "src/shared/session/hosted-session.js",
@@ -341,8 +345,8 @@ Deno.test("active and isolated Agents have exactly one production lifecycle boun
     const violations = [];
 
     for (const file of files) {
-        const path = relative(REPO_ROOT, file);
-        const source = await Deno.readTextFile(file);
+        const path = relative(REPO_ROOT, file).replaceAll("\\", "/");
+        const source = await fsReadFile(file, "utf8");
         if (/\brunAgentSession\b|\buseRootSession\b/.test(source)) {
             violations.push(`${path}: legacy mixed root/isolated Agent runner`);
         }
@@ -360,7 +364,7 @@ Deno.test("active and isolated Agents have exactly one production lifecycle boun
     assertEquals(violations, []);
 });
 
-Deno.test("command surfaces do not use SessionSnapshot as active runtime authority", async () => {
+test("command surfaces do not use SessionSnapshot as active runtime authority", async () => {
     const violations = await findViolations(["src/cmd"], [
         {
             label: "active Agent read from display SessionSnapshot",
@@ -375,13 +379,11 @@ Deno.test("command surfaces do not use SessionSnapshot as active runtime authori
     assertEquals(violations, []);
 });
 
-Deno.test("managed projection caches do not drive live activation transitions", async () => {
-    const runtimeSource = await Deno.readTextFile(
-        join(REPO_ROOT, "src/shared/session/runtime/managed-operations.ts"),
-    );
+test("managed projection caches do not drive live activation transitions", async () => {
+    const runtimeSource = await fsReadFile(join(REPO_ROOT, "src/shared/session/runtime/managed-operations.ts"), "utf8");
     const workflowOperationIndex = runtimeSource.indexOf("async runManagedOperation<T>(");
     const activationTail = runtimeSource.slice(workflowOperationIndex);
-    const hostedSource = await Deno.readTextFile(join(REPO_ROOT, "src/shared/session/hosted-session.js"));
+    const hostedSource = await fsReadFile(join(REPO_ROOT, "src/shared/session/hosted-session.js"), "utf8");
     const setManagedIndex = hostedSource.indexOf("setManagedMetadata(metadata)");
     const getManagedIndex = hostedSource.indexOf("getManagedMetadata()", setManagedIndex);
     const setManagedBody = hostedSource.slice(setManagedIndex, getManagedIndex);
@@ -397,9 +399,9 @@ Deno.test("managed projection caches do not drive live activation transitions", 
     );
 });
 
-Deno.test("TUI submission flow does not branch on managed SessionSnapshot projection", async () => {
-    const orchestratorSource = await Deno.readTextFile(join(REPO_ROOT, "src/ui/tui/chat-session.ts"));
-    const inputSource = await Deno.readTextFile(join(REPO_ROOT, "src/ui/tui/chat-input-controller.ts"));
+test("TUI submission flow does not branch on managed SessionSnapshot projection", async () => {
+    const orchestratorSource = await fsReadFile(join(REPO_ROOT, "src/ui/tui/chat-session.ts"), "utf8");
+    const inputSource = await fsReadFile(join(REPO_ROOT, "src/ui/tui/chat-input-controller.ts"), "utf8");
     const source = `${orchestratorSource}\n${inputSource}`;
 
     assertEquals(/getRuntimeSnapshot\(\)\.managed\b/.test(source), false);
@@ -407,7 +409,7 @@ Deno.test("TUI submission flow does not branch on managed SessionSnapshot projec
     assertEquals(/promptSession\s*\(sessionId/.test(source), false);
 });
 
-Deno.test("SessionRuntime public surface remains adapter-neutral and explicit", () => {
+test("SessionRuntime public surface remains adapter-neutral and explicit", () => {
     const methods = Object.getOwnPropertyNames(SessionRuntime.prototype).sort();
     const allowedMethods = [
         "answerInteraction",
@@ -540,7 +542,7 @@ for (
         "src/shared/workflow/submit-plan.js",
     ]
 ) {
-    Deno.test(`removed compatibility seam stays deleted: ${deletedPath}`, async () => {
-        await assertRejects(() => Deno.stat(join(REPO_ROOT, deletedPath)), Deno.errors.NotFound);
+    test(`removed compatibility seam stays deleted: ${deletedPath}`, async () => {
+        await assertRejects(() => fsStat(join(REPO_ROOT, deletedPath)), Error, "ENOENT");
     });
 }

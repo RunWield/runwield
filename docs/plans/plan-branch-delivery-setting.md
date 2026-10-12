@@ -14,13 +14,26 @@ affectedPaths:
     - "docs/plan-lifecycle.md"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/forge-change-request-delivery-prd.md"
+planDeviations:
+    - id: "call_e6f2eab49a3f42ee9fd11b4ef362af69|fc_0bfcdaa1ef300d2e016ac84d022788819384d95bdbb228557c"
+      supersededRequirement: "When the setting is off, RunWield adopts the Plan Branch as the Plan's `targetBranch` at execution start. Every downstream consumer — worktree base selection, merge-back, publication attempts, delivery evidence, Verified semantics, Work Records, cleanup, recovery — already reads `targetBranch`, so none of the merge machinery changes.\n\nNo change to `src/shared/workflow/validation-publication.ts`, `src/shared/isolated-publication.ts`, or `src/shared/worktree.js` merge logic is required for the off-path; an integration test proves the merge lands on `plan/<plan-name>`, the source branch's head is unchanged, the Plan becomes `verified` with delivery evidence recording the Plan Branch, and the Work Record generates.\n\nThe on-path is provably unchanged: with `plans.autoMergeIntoTargetBranch: true`, a standalone Plan without `targetBranch` bases its worktree on the current checkout branch and merges back into it, exactly as today."
+      replacementRequirement: "For standalone PLANNED_CHANGE and legacy FEATURE Plans without parentPlan, preserve targetBranch as both the source and the ultimate intended destination. Do not overwrite targetBranch with an automatically created Plan Branch. When targetBranch is absent, resolve the project's repository default branch (main, master, or its actual configured default) and persist it as targetBranch; use that default rather than the current checkout for both setting values. When plans.autoMergeIntoTargetBranch is off (default), create or reuse plan/<slug-of-full-plan-name> from targetBranch, base the execution worktree on that Plan Branch, and publish/merge the worktree back into the Plan Branch without merging onward into targetBranch. Track the actual landing branch separately and use it consistently in publication, delivery evidence, verification, recovery, Work Records, and cleanup; resumed attempts retain their recorded landing branch. When auto-merge is on, skip automatic Plan Branch creation, base the worktree on targetBranch, and commit/merge delivery back into targetBranch. Off-path successful delivery is Verified at its recorded landing branch, and the end summary card says “Ready for your merge/PR”, clearly names that landing branch, and preserves the intended target to guide the user's onward merge/PR. Epic/Sequence children, PROJECT, QUICK_FIX, non-Git execution, and the Forge Epic scope remain unchanged. Correct local publication to leave primary-checkout files untouched when delivering to an unchecked-out branch and report whether the primary checkout was actually updated. Update affected implementation steps, tests, acceptance journeys, glossary, lifecycle, and PRD descriptions to these semantics; existing merge machinery can remain where it already supports the behavior."
+      reason: "User explicitly revised branch semantics and completion messaging, and approved fixing the discovered local-publication assumption that could erase an uncommitted canonical Plan."
+      approvedAt: "2026-10-09T02:12:06.618Z"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-08T21:42:24-0400"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
+targetBranch: "main"
 routingIntent: "PLANNED_CHANGE"
+validatedCommit: "566ae990661a165f56a5dfa7c7ed726c7dbbb693"
+workRecord:
+    status: "generated"
+    recordId: "335cc883-ce2f-4fec-9bf9-ca9fc792868a"
+    path: "docs/work-records/2026-10-09-default-off-plan-branch-delivery-implemented.md"
+    lastAttemptAt: "2026-10-09T17:17:12.873Z"
+status: "verified"
 ---
 
 # Plan Branch Delivery Setting

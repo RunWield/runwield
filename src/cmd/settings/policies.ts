@@ -1,4 +1,10 @@
-import { getCodeReviewMode, getCustomSetting, getGuidedReviewMode, setCustomSetting } from "../../shared/settings.js";
+import {
+    getCodeReviewMode,
+    getCustomSetting,
+    getGuidedReviewMode,
+    setCustomSetting,
+    shouldAutoMergePlansIntoTargetBranch,
+} from "../../shared/settings.js";
 
 interface PolicyOption {
     value: string;
@@ -13,7 +19,7 @@ interface PolicyUi {
 }
 
 interface PolicySetting {
-    key: "codereview" | "guidedReview" | "defaultProjectTrust";
+    key: "codereview" | "guidedReview" | "defaultProjectTrust" | "plans.autoMergeIntoTargetBranch";
     title: string;
     current: string;
     description: string;
@@ -49,6 +55,16 @@ export function getPolicySettings(projectRoot: string): PolicySetting[] {
             ],
         },
         {
+            key: "plans.autoMergeIntoTargetBranch",
+            title: "Auto-merge into target branch",
+            current: String(shouldAutoMergePlansIntoTargetBranch(projectRoot)),
+            description: "Standalone Plans deliver to a Plan Branch when off; Epic children are unchanged",
+            choices: [
+                { value: "false", label: "Off (default)", description: "Deliver to plan/<plan-name>" },
+                { value: "true", label: "On", description: "Merge into targetBranch (repository default when unset)" },
+            ],
+        },
+        {
             key: "defaultProjectTrust",
             title: "Default project trust",
             current: trust === "always" || trust === "never" ? trust : "ask",
@@ -77,10 +93,26 @@ export async function editPolicySetting(policy: PolicySetting, projectRoot: stri
         })),
     );
     if (!policy.choices.some((choice) => choice.value === selection)) return;
-    await setCustomSetting(policy.key, selection, scope, projectRoot);
+    const isPlanMergePolicy = policy.key === "plans.autoMergeIntoTargetBranch";
+    if (isPlanMergePolicy) {
+        const plans = getCustomSetting("plans", scope, projectRoot);
+        await setCustomSetting(
+            "plans",
+            {
+                ...(plans && typeof plans === "object" && !Array.isArray(plans) ? plans : {}),
+                autoMergeIntoTargetBranch: selection === "true",
+            },
+            scope,
+            projectRoot,
+        );
+    } else {
+        await setCustomSetting(policy.key, selection, scope, projectRoot);
+    }
     const label = policy.choices.find((choice) => choice.value === selection)!.label;
     const overridden = scope === "global" && !policy.globalOnly &&
-        getCustomSetting(policy.key, "project", projectRoot) !== undefined;
+        (isPlanMergePolicy
+            ? getCustomSetting("plans", "project", projectRoot)?.autoMergeIntoTargetBranch !== undefined
+            : getCustomSetting(policy.key, "project", projectRoot) !== undefined);
     ui.appendSystemMessage(
         `${policy.title}: ${label} (${scope}).${
             overridden ? " This project's explicit override remains in effect." : ""

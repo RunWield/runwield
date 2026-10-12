@@ -41,8 +41,10 @@ times. Quick fixes have no Plan, no AI review, and no separate worktree.
    - An AI reviewer compares the change with the Plan. Its findings are fixed and checked again, for a limited number of
      rounds.
    - If you turned on [`codereview`](settings.md#codereview), you review the code yourself before it's merged.
-5. **RunWield merges it** into the target branch, confirms delivery, and marks the Plan verified. Until delivery is
-   confirmed, the Plan stays reviewed and publication can be retried.
+5. **RunWield delivers it** to the recorded landing branch, confirms delivery, and marks the Plan verified. By default,
+   standalone Plans land on `plan/<plan-name>`; you then merge that branch or open a PR to the intended target. To deliver
+   directly to the target, enable [Auto-merge into target branch](settings.md#plan-delivery). Until delivery is confirmed,
+   the Plan stays reviewed and publication can be retried.
 
 If you change your mind about a requirement while Engineer is working, say so. Engineer records it as a **Plan
 Deviation**, and you confirm it before it's saved to the Plan. The AI reviewer then follows your replacement, and the
@@ -86,8 +88,8 @@ You see a Plan's status in `wld plans` and on the Plan Board.
 | `in_progress`                 | Being built.                                                              |
 | `failed`                      | The build stopped before finishing. Load the Plan to continue.            |
 | `implemented`                 | Built; checks or AI review are next. Passed checks are saved for resume.  |
-| `reviewed`                    | AI review passed; code review and merging are next.                       |
-| `verified`                    | Checks and review passed, and delivery to the target was confirmed.       |
+| `reviewed`                    | AI review passed; any required code review and delivery are pending.                       |
+| `verified`                    | Checks and review passed; delivery to the recorded landing, including a Plan branch, was confirmed.       |
 | `user_verified`               | You marked it done yourself, with a note, without RunWield validation.    |
 | `closed_without_verification` | You closed it without verification, including an Epic marked done enough. |
 | `on_hold`                     | Paused. Resume it from `wld load-plan` or the Plan Board.                 |

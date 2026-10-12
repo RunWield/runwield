@@ -1,7 +1,19 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
+import { getCwd } from "../../constants.js";
+import process from "node:process";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { AGENTS } from "../../constants.js";
 import { loadAgentDef } from "./agents.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -37,10 +49,10 @@ import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts"
 function sessionPromptTest(testDefinition, fn) {
     if (typeof testDefinition === "string") {
         if (!fn) throw new Error("sessionPromptTest requires a test function");
-        Deno.test(testDefinition, () => withProcessGlobalTestLock(async () => await fn()));
+        test(testDefinition, () => withProcessGlobalTestLock(async () => await fn()));
         return;
     }
-    Deno.test(
+    test(
         /** @type {any} */ ({
             ...testDefinition,
             fn: () => withProcessGlobalTestLock(async () => await testDefinition.fn()),
@@ -61,69 +73,54 @@ sessionPromptTest("assembleFinalSystemPrompt includes project-state context only
             "## Project Context\n\n{{PROJECT_STATE_CONTEXT}}\n{{PROJECT_AGENTSMD}}\n\n{{AVAILABLE_TOOLS}}\n{{GLOBAL_AGENTSMD}}\n{{MEMORIES}}\n{{SKILLS}}\n{{IMAGE_ATTACHMENTS_SECTION}}\n{{BUNDLED_AGENT_DEFS_DIR}}",
     };
 
-    const withoutContext = await assembleFinalSystemPrompt(agentDef, [], [], Deno.cwd());
-    const withContext = await assembleFinalSystemPrompt(agentDef, [], [], Deno.cwd(), "Greenfield note.");
+    const withoutContext = await assembleFinalSystemPrompt(agentDef, [], [], getCwd());
+    const withContext = await assembleFinalSystemPrompt(agentDef, [], [], getCwd(), "Greenfield note.");
 
     assertEquals(withoutContext.includes("### Project State"), false);
     assertStringIncludes(withContext, "### Project State\n\nGreenfield note.");
 });
 
 sessionPromptTest("assembleFinalSystemPrompt includes the Session naming reminder only while unnamed", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-prompt-session-name-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-prompt-session-name-"));
     try {
         const reminder = "If this Session is unnamed, call `set_session_name` early with a short descriptive name.";
         const agentDef = await loadAgentDef(AGENTS.GUIDE, projectRoot);
         const sessionManager = SessionManager.inMemory(projectRoot);
 
-        const unnamed = await assembleFinalSystemPrompt(
-            agentDef,
-            agentDef.tools,
-            [],
-            projectRoot,
-            "",
-            { sessionManager },
-        );
+        const unnamed = await assembleFinalSystemPrompt(agentDef, agentDef.tools, [], projectRoot, "", {
+            sessionManager,
+        });
 
         sessionManager.appendSessionInfo("router supplied name");
-        const named = await assembleFinalSystemPrompt(
-            agentDef,
-            agentDef.tools,
-            [],
-            projectRoot,
-            "",
-            { sessionManager },
-        );
+        const named = await assembleFinalSystemPrompt(agentDef, agentDef.tools, [], projectRoot, "", {
+            sessionManager,
+        });
 
         assertStringIncludes(unnamed, reminder);
         assertStringIncludes(unnamed, "set_session_name");
         assertEquals(named.includes(reminder), false);
         assertEquals(named.includes("{{SESSION_NAME_REMINDER}}"), false);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
 sessionPromptTest("assembleFinalSystemPrompt suppresses the Session naming reminder for sanitized names", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-prompt-sanitized-session-name-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-prompt-sanitized-session-name-"));
     try {
         const reminder = "If this Session is unnamed, call `set_session_name` early with a short descriptive name.";
         const agentDef = await loadAgentDef(AGENTS.GUIDE, projectRoot);
         const sessionManager = SessionManager.inMemory(projectRoot);
         sessionManager.appendSessionInfo("  router\n\tsupplied name  ");
 
-        const prompt = await assembleFinalSystemPrompt(
-            agentDef,
-            agentDef.tools,
-            [],
-            projectRoot,
-            "",
-            { sessionManager },
-        );
+        const prompt = await assembleFinalSystemPrompt(agentDef, agentDef.tools, [], projectRoot, "", {
+            sessionManager,
+        });
 
         assertEquals(prompt.includes(reminder), false);
         assertEquals(prompt.includes("{{SESSION_NAME_REMINDER}}"), false);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
@@ -146,14 +143,14 @@ sessionPromptTest("assembleFinalSystemPrompt includes Git branch and clean state
 
         assertStringIncludes(prompt, "- Git Branch: main\n- Git Work tree: clean");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
 sessionPromptTest("assembleFinalSystemPrompt includes Git branch and dirty state for Git projects", async () => {
     const projectRoot = await promptGitFixture.checkout({ prefix: "runwield-prompt-git-dirty-" });
     try {
-        await Deno.writeTextFile(join(projectRoot, "dirty.txt"), "changed\n");
+        await fsWriteFile(join(projectRoot, "dirty.txt"), "changed\n");
         await git(projectRoot, ["checkout", "-b", "feature/git-prompt-state"]);
 
         const prompt = await assembleFinalSystemPrompt(
@@ -172,12 +169,12 @@ sessionPromptTest("assembleFinalSystemPrompt includes Git branch and dirty state
 
         assertStringIncludes(prompt, "- Git Branch: feature/git-prompt-state\n- Git Work tree: dirty");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
 sessionPromptTest("assembleFinalSystemPrompt omits Git state outside Git projects", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-prompt-non-git-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-prompt-non-git-"));
     try {
         const prompt = await assembleFinalSystemPrompt(
             {
@@ -195,26 +192,26 @@ sessionPromptTest("assembleFinalSystemPrompt omits Git state outside Git project
 
         assertEquals(prompt.includes("### Git State"), false);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
 sessionPromptTest("assembleFinalSystemPromptWithContextProjection attributes resident context", async () => {
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-context-home-" });
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-context-project-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-context-home-"));
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-context-project-"));
     const localSkillDir = join(projectRoot, ".wld", "skills", "visible-skill");
     const hiddenSkillDir = join(projectRoot, ".wld", "skills", "hidden-skill");
     try {
-        await Deno.mkdir(join(tempHome, ".wld"), { recursive: true });
-        await Deno.writeTextFile(join(tempHome, ".wld", "RUNWIELD.md"), "Global context instructions");
-        await Deno.writeTextFile(join(projectRoot, "RUNWIELD.md"), "Project context instructions");
-        await Deno.mkdir(localSkillDir, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(tempHome, ".wld"), { recursive: true });
+        await fsWriteFile(join(tempHome, ".wld", "RUNWIELD.md"), "Global context instructions");
+        await fsWriteFile(join(projectRoot, "RUNWIELD.md"), "Project context instructions");
+        await fsMkdir(localSkillDir, { recursive: true });
+        await fsWriteFile(
             join(localSkillDir, "SKILL.md"),
             ["---", "name: visible-skill", "description: Visible skill", "---", "Full skill body"].join("\n"),
         );
-        await Deno.mkdir(hiddenSkillDir, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(hiddenSkillDir, { recursive: true });
+        await fsWriteFile(
             join(hiddenSkillDir, "SKILL.md"),
             [
                 "---",
@@ -260,12 +257,21 @@ sessionPromptTest("assembleFinalSystemPromptWithContextProjection attributes res
         assertStringIncludes(prompt, "Runtime project state");
         assertStringIncludes(prompt, "visible-skill");
         assertEquals(prompt.includes("hidden-skill"), false);
-        assertEquals(projection.instructionFiles.map((file) => file.source), ["home", "local"]);
-        assertEquals(projection.skills.some((skill) => skill.name === "visible-skill"), true);
-        assertEquals(projection.skills.some((skill) => skill.name === "hidden-skill"), false);
-        const customToolItem = projection.categories.find((category) => category.id === "tools")?.items?.find((item) =>
-            item.name === "custom_tool"
+        assertEquals(
+            projection.instructionFiles.map((file) => file.source),
+            ["home", "local"],
         );
+        assertEquals(
+            projection.skills.some((skill) => skill.name === "visible-skill"),
+            true,
+        );
+        assertEquals(
+            projection.skills.some((skill) => skill.name === "hidden-skill"),
+            false,
+        );
+        const customToolItem = projection.categories
+            .find((category) => category.id === "tools")
+            ?.items?.find((item) => item.name === "custom_tool");
         assertEquals(typeof customToolItem?.tokens, "number");
         assertEquals(
             (customToolItem?.tokens || 0) >
@@ -276,34 +282,37 @@ sessionPromptTest("assembleFinalSystemPromptWithContextProjection attributes res
             projection.categories.some((category) => category.id === "project_state" && category.tokens > 0),
             true,
         );
-        assertEquals(projection.categories.some((category) => category.id === "tools" && category.tokens > 0), true);
+        assertEquals(
+            projection.categories.some((category) => category.id === "tools" && category.tokens > 0),
+            true,
+        );
     } finally {
-        await Deno.remove(tempHome, { recursive: true }).catch(() => {});
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(tempHome, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
 sessionPromptTest("assembleFinalSystemPromptWithContextProjection includes Core Memory from Mnemoteca", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-context-project-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-context-project-"));
     const fakeBin = join(projectRoot, "fake-bin");
     const commandLog = join(projectRoot, "mnemoteca-command.log");
-    const previousPath = Deno.env.get("PATH");
-    const pathSeparator = Deno.build.os === "windows" ? ";" : ":";
+    const previousPath = process.env["PATH"];
+    const pathSeparator = process.platform === "win32" ? ";" : ":";
     try {
-        await Deno.mkdir(fakeBin);
-        await Deno.writeTextFile(
-            join(fakeBin, "mnemoteca"),
-            `#!/usr/bin/env bash
-set -euo pipefail
-printf 'args=%s\n' "$*" > '${commandLog}'
-if [[ "$*" != 'list -t core -f plain' ]]; then
-  exit 64
-fi
-printf 'Core memory from Mnemoteca\nSecond core memory\n'
+        await fsMkdir(fakeBin);
+        const source = join(fakeBin, "mnemoteca.ts");
+        await fsWriteFile(
+            source,
+            `
+import { writeFileSync } from "node:fs";
+const args = process.argv.slice(2).join(" ");
+writeFileSync(${JSON.stringify(commandLog)}, "args=" + args + "\\n");
+if (args !== "list -t core -f plain") process.exit(64);
+console.log("Core memory from Mnemoteca\\nSecond core memory");
 `,
         );
-        await Deno.chmod(join(fakeBin, "mnemoteca"), 0o755);
-        Deno.env.set("PATH", previousPath ? `${fakeBin}${pathSeparator}${previousPath}` : fakeBin);
+        await writeRuntimeExecutableFixture(join(fakeBin, "mnemoteca"), source);
+        process.env["PATH"] = previousPath ? `${fakeBin}${pathSeparator}${previousPath}` : fakeBin;
 
         const { prompt, projection } = await assembleFinalSystemPromptWithContextProjection(
             /** @type {any} */ ({
@@ -319,29 +328,29 @@ printf 'Core memory from Mnemoteca\nSecond core memory\n'
 
         assertStringIncludes(prompt, "Core memory from Mnemoteca");
         assertStringIncludes(prompt, "Second core memory");
-        assertEquals(await Deno.readTextFile(commandLog), "args=list -t core -f plain\n");
+        assertEquals(await fsReadFile(commandLog, "utf8"), "args=list -t core -f plain\n");
         const coreMemoryItem = projection.categories.find((category) => category.id === "core_memories")?.items?.[0];
         assertEquals(coreMemoryItem?.source, "mnemoteca");
         assertEquals(coreMemoryItem?.label, "Core Memories");
     } finally {
-        if (previousPath === undefined) Deno.env.delete("PATH");
-        else Deno.env.set("PATH", previousPath);
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        if (previousPath === undefined) delete process.env["PATH"];
+        else process.env["PATH"] = previousPath;
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
 sessionPromptTest("assembleFinalSystemPromptWithContextProjection excludes omitted placeholder context", async () => {
-    const originalHome = Deno.env.get("HOME");
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-context-home-" });
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-context-project-" });
+    const originalHome = process.env["HOME"];
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-context-home-"));
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-context-project-"));
     const localSkillDir = join(projectRoot, ".wld", "skills", "visible-skill");
     try {
-        Deno.env.set("HOME", tempHome);
-        await Deno.mkdir(join(tempHome, ".wld"), { recursive: true });
-        await Deno.writeTextFile(join(tempHome, ".wld", "RUNWIELD.md"), "Global context instructions");
-        await Deno.writeTextFile(join(projectRoot, "RUNWIELD.md"), "Project context instructions");
-        await Deno.mkdir(localSkillDir, { recursive: true });
-        await Deno.writeTextFile(
+        process.env["HOME"] = tempHome;
+        await fsMkdir(join(tempHome, ".wld"), { recursive: true });
+        await fsWriteFile(join(tempHome, ".wld", "RUNWIELD.md"), "Global context instructions");
+        await fsWriteFile(join(projectRoot, "RUNWIELD.md"), "Project context instructions");
+        await fsMkdir(localSkillDir, { recursive: true });
+        await fsWriteFile(
             join(localSkillDir, "SKILL.md"),
             ["---", "name: visible-skill", "description: Visible skill", "---", "Full skill body"].join("\n"),
         );
@@ -366,8 +375,14 @@ sessionPromptTest("assembleFinalSystemPromptWithContextProjection excludes omitt
         assertEquals(prompt.includes("Image Attachments"), false);
         assertEquals(projection.instructionFiles, []);
         assertEquals(projection.skills, []);
-        assertEquals(projection.categories.some((category) => category.id === "project_state"), false);
-        assertEquals(projection.categories.some((category) => category.id === "skill_catalog"), false);
+        assertEquals(
+            projection.categories.some((category) => category.id === "project_state"),
+            false,
+        );
+        assertEquals(
+            projection.categories.some((category) => category.id === "skill_catalog"),
+            false,
+        );
         const agentItem = projection.categories.find((category) => category.id === "agent_instructions")?.items?.[0];
         const timezoneLine = `Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`;
         assertEquals(
@@ -375,70 +390,70 @@ sessionPromptTest("assembleFinalSystemPromptWithContextProjection excludes omitt
             estimateContextTextTokens(["Bare agent instructions.", timezoneLine].join("\n")),
         );
     } finally {
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
-        await Deno.remove(tempHome, { recursive: true }).catch(() => {});
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
+        await fsRm(tempHome, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
 sessionPromptTest("readGlobalAgentMd falls back from ~/.wld/RUNWIELD.md to ~/.wld/AGENTS.md", async () => {
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-agents-md-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-agents-md-"));
 
     try {
-        await Deno.mkdir(join(tempHome, ".wld"), { recursive: true });
-        await Deno.writeTextFile(join(tempHome, ".wld", "AGENTS.md"), "Global AGENTS fallback");
+        await fsMkdir(join(tempHome, ".wld"), { recursive: true });
+        await fsWriteFile(join(tempHome, ".wld", "AGENTS.md"), "Global AGENTS fallback");
 
         const prompt = await readGlobalAgentMd(tempHome);
 
         assertEquals(prompt, "Global AGENTS fallback");
     } finally {
-        await Deno.remove(tempHome, { recursive: true });
+        await fsRm(tempHome, { recursive: true });
     }
 });
 
 sessionPromptTest("readGlobalAgentMd falls back to ~/.agents/AGENTS.md by default", async () => {
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-agents-md-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-agents-md-"));
 
     try {
-        await Deno.mkdir(join(tempHome, ".agents"), { recursive: true });
-        await Deno.writeTextFile(join(tempHome, ".agents", "AGENTS.md"), "External AGENTS fallback");
+        await fsMkdir(join(tempHome, ".agents"), { recursive: true });
+        await fsWriteFile(join(tempHome, ".agents", "AGENTS.md"), "External AGENTS fallback");
 
         const prompt = await readGlobalAgentMd(tempHome);
 
         assertEquals(prompt, "External AGENTS fallback");
     } finally {
-        await Deno.remove(tempHome, { recursive: true });
+        await fsRm(tempHome, { recursive: true });
     }
 });
 
 sessionPromptTest("readGlobalAgentMd can disable ~/.agents/AGENTS.md fallback", async () => {
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-agents-md-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-agents-md-"));
 
     try {
-        await Deno.mkdir(join(tempHome, ".agents"), { recursive: true });
-        await Deno.writeTextFile(join(tempHome, ".agents", "AGENTS.md"), "External AGENTS fallback");
+        await fsMkdir(join(tempHome, ".agents"), { recursive: true });
+        await fsWriteFile(join(tempHome, ".agents", "AGENTS.md"), "External AGENTS fallback");
 
         const prompt = await readGlobalAgentMd(tempHome, { includeExternal: false });
 
         assertEquals(prompt, "");
     } finally {
-        await Deno.remove(tempHome, { recursive: true });
+        await fsRm(tempHome, { recursive: true });
     }
 });
 
 sessionPromptTest("getGlobalAgentMdPaths stays inside ~/.wld", () => {
     assertEquals(getGlobalAgentMdPaths("/tmp/home", { includeExternal: false }), [
-        "/tmp/home/.wld/RUNWIELD.md",
-        "/tmp/home/.wld/AGENTS.md",
+        join("/tmp/home", ".wld/RUNWIELD.md"),
+        join("/tmp/home", ".wld/AGENTS.md"),
     ]);
 });
 
 sessionPromptTest("getGlobalAgentMdPaths includes shared ~/.agents/AGENTS.md when enabled", () => {
     assertEquals(getGlobalAgentMdPaths("/tmp/home", { includeExternal: true }), [
-        "/tmp/home/.wld/RUNWIELD.md",
-        "/tmp/home/.wld/AGENTS.md",
-        "/tmp/home/.agents/AGENTS.md",
+        join("/tmp/home", ".wld/RUNWIELD.md"),
+        join("/tmp/home", ".wld/AGENTS.md"),
+        join("/tmp/home", ".agents/AGENTS.md"),
     ]);
 });
 
@@ -471,20 +486,26 @@ sessionPromptTest("applyAttentionNudge only injects scheduled long-lived agent n
 
 sessionPromptTest("shouldReuseExistingRootSession ignores undefined optional overrides", () => {
     assertEquals(
-        shouldReuseExistingRootSession({
-            agentName: AGENTS.OPERATOR,
-            userRequest: "commit",
-            modelOverride: undefined,
-        }, AGENTS.OPERATOR),
+        shouldReuseExistingRootSession(
+            {
+                agentName: AGENTS.OPERATOR,
+                userRequest: "commit",
+                modelOverride: undefined,
+            },
+            AGENTS.OPERATOR,
+        ),
         true,
     );
 
     assertEquals(
-        shouldReuseExistingRootSession({
-            agentName: AGENTS.OPERATOR,
-            userRequest: "commit",
-            modelOverride: "test/model",
-        }, AGENTS.OPERATOR),
+        shouldReuseExistingRootSession(
+            {
+                agentName: AGENTS.OPERATOR,
+                userRequest: "commit",
+                modelOverride: "test/model",
+            },
+            AGENTS.OPERATOR,
+        ),
         false,
     );
 });
@@ -636,15 +657,15 @@ sessionPromptTest("Engineer threshold respects disabled automatic compaction", a
 });
 
 sessionPromptTest("runPrompt sends fallback image markers without raw image content to text-only model", async () => {
-    const originalHome = Deno.env.get("HOME");
-    const originalCwd = Deno.cwd();
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-runprompt-home-" });
-    const tempProject = await Deno.makeTempDir({ prefix: "runwield-runprompt-project-" });
+    const originalHome = process.env["HOME"];
+    const originalCwd = getCwd();
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-runprompt-home-"));
+    const tempProject = await fsMkdtemp(join(tmpdir(), "runwield-runprompt-project-"));
     try {
-        Deno.env.set("HOME", tempHome);
-        Deno.chdir(tempProject);
-        await Deno.mkdir(".wld", { recursive: true });
-        await Deno.writeTextFile(".wld/settings.json", JSON.stringify({ visionFallback: { model: "test/vision" } }));
+        process.env["HOME"] = tempHome;
+        process.chdir(tempProject);
+        await fsMkdir(".wld", { recursive: true });
+        await fsWriteFile(".wld/settings.json", JSON.stringify({ visionFallback: { model: "test/vision" } }));
         const fallbackModel = { provider: "test", id: "vision", input: ["text", "image"] };
         /** @type {Array<{ text: string, options: any }>} */
         const prompts = [];
@@ -679,11 +700,13 @@ sessionPromptTest("runPrompt sends fallback image markers without raw image cont
             agentName: "operator",
             userRequest: "please inspect",
             finalSystemPrompt: "system",
-            images: /** @type {import('./types.js').ImageAttachment[]} */ ([{
-                base64: "abc",
-                mimeType: "image/png",
-                ref: "attachment:123",
-            }]),
+            images: /** @type {import('./types.js').ImageAttachment[]} */ ([
+                {
+                    base64: "abc",
+                    mimeType: "image/png",
+                    ref: "attachment:123",
+                },
+            ]),
             subscriberState,
         });
 
@@ -691,11 +714,11 @@ sessionPromptTest("runPrompt sends fallback image markers without raw image cont
         assertEquals(prompts[0].text, "please inspect\n\n[Image attached: attachment:123 image/png]");
         assertEquals(prompts[0].options.images, undefined);
     } finally {
-        Deno.chdir(originalCwd);
-        if (originalHome === undefined) Deno.env.delete("HOME");
-        else Deno.env.set("HOME", originalHome);
-        await Deno.remove(tempHome, { recursive: true });
-        await Deno.remove(tempProject, { recursive: true });
+        process.chdir(originalCwd);
+        if (originalHome === undefined) delete process.env["HOME"];
+        else process.env["HOME"] = originalHome;
+        await fsRm(tempHome, { recursive: true });
+        await fsRm(tempProject, { recursive: true });
     }
 });
 
@@ -708,7 +731,7 @@ function makeHostedRuntimeSession(projectRoot, id) {
     return new HostedSession({ id, cwd: projectRoot, sessionManager: /** @type {any} */ (manager) });
 }
 
-Deno.test("ensureRootAgentSession scopes real roots and transcripts to each HostedSession", async () => {
+test("ensureRootAgentSession scopes real roots and transcripts to each HostedSession", async () => {
     await withRuntimeCommandFixture("session-root-scope-", async ({ projectRoot }) => {
         const hostedA = makeHostedRuntimeSession(projectRoot, "root-a");
         const hostedB = makeHostedRuntimeSession(projectRoot, "root-b");
@@ -732,7 +755,7 @@ Deno.test("ensureRootAgentSession scopes real roots and transcripts to each Host
     });
 });
 
-Deno.test("ensureRootAgentSession rejects a real replacement for a closed HostedSession", async () => {
+test("ensureRootAgentSession rejects a real replacement for a closed HostedSession", async () => {
     await withRuntimeCommandFixture("session-root-closed-", async ({ projectRoot }) => {
         const hostedSession = makeHostedRuntimeSession(projectRoot, "closed-before-build");
         hostedSession.dispose();
@@ -751,7 +774,7 @@ sessionPromptTest("backend-neutral root message accessor reads Claude CLI messag
     assertEquals(getRootExecutionMessages(/** @type {any} */ (root)), messages);
 });
 
-Deno.test("runRootTurn completes through the real root prompt machinery", async () => {
+test("runRootTurn completes through the real root prompt machinery", async () => {
     await withRuntimeCommandFixture("session-root-turn-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("The real root turn completed.");
         const hostedSession = makeHostedRuntimeSession(projectRoot, "turn-root");
@@ -769,7 +792,7 @@ Deno.test("runRootTurn completes through the real root prompt machinery", async 
     });
 });
 
-Deno.test("runIsolatedAgentSession keeps real disposable agents scoped to their HostedSessions", async () => {
+test("runIsolatedAgentSession keeps real disposable agents scoped to their HostedSessions", async () => {
     await withRuntimeCommandFixture("session-isolated-scope-", async ({ projectRoot, setModelMessages }) => {
         setModelMessages([
             fauxAssistantMessage(fauxText("Guide isolated response.")),
@@ -802,7 +825,7 @@ Deno.test("runIsolatedAgentSession keeps real disposable agents scoped to their 
     });
 });
 
-Deno.test("runIsolatedAgentSession clears its real child after an external model failure", async () => {
+test("runIsolatedAgentSession clears its real child after an external model failure", async () => {
     await withRuntimeCommandFixture("session-isolated-error-", async ({ projectRoot, setModelResponseFactory }) => {
         setModelResponseFactory(() => {
             throw new Error("fixture model failed");
@@ -823,7 +846,7 @@ Deno.test("runIsolatedAgentSession clears its real child after an external model
     });
 });
 
-Deno.test("runNonInteractiveAgentPrompt completes a real high-thinking disposable turn", async () => {
+test("runNonInteractiveAgentPrompt completes a real high-thinking disposable turn", async () => {
     await withRuntimeCommandFixture("session-non-interactive-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Non-interactive response.");
 
@@ -838,7 +861,7 @@ Deno.test("runNonInteractiveAgentPrompt completes a real high-thinking disposabl
     });
 });
 
-Deno.test("runIsolatedAgentSession does not call the external model when already canceled", async () => {
+test("runIsolatedAgentSession does not call the external model when already canceled", async () => {
     await withRuntimeCommandFixture("session-isolated-canceled-", async ({ projectRoot, setModelResponseFactory }) => {
         let modelCalls = 0;
         setModelResponseFactory(() => {

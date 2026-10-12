@@ -106,7 +106,10 @@ type OwnerStore = {
     listProjects(): OwnerProject[];
     getProjectHealth(projectId: string): OwnerProjectHealth;
     requireEnabledProjectRoot(projectId: string): string;
-    listSessionPlanAssociations?: (runwieldSessionId: string, projectId?: string) => Array<{
+    listSessionPlanAssociations?: (
+        runwieldSessionId: string,
+        projectId?: string,
+    ) => Array<{
         planId?: string;
         committedGeneration?: number | null;
     }>;
@@ -225,8 +228,14 @@ function planStatus(plan: OwnerPlan): string {
 function planUpdatedAt(plan: OwnerPlan): string {
     const attrs = plan.attrs || {};
     return safeText(
-        attrs.updatedAt || attrs.failedAt || attrs.implementedAt || attrs.validatedAt || attrs.verifiedAt ||
-            attrs.userVerifiedAt || attrs.closedWithoutVerificationAt || attrs.epicDoneEnoughAt,
+        attrs.updatedAt ||
+            attrs.failedAt ||
+            attrs.implementedAt ||
+            attrs.validatedAt ||
+            attrs.verifiedAt ||
+            attrs.userVerifiedAt ||
+            attrs.closedWithoutVerificationAt ||
+            attrs.epicDoneEnoughAt,
     );
 }
 
@@ -244,8 +253,9 @@ function publicationPhaseAtLeast(entry: WorktreeRegistryEntry | null, phase: str
 
 function registryMatchesPlan(plan: OwnerPlan, registry: WorktreeRegistryEntry | null): boolean {
     return Boolean(
-        registry?.publication && registry.publication.planId === plan.planId &&
-            registry.publication.attemptId === registry.id,
+        registry?.publication &&
+        registry.publication.planId === plan.planId &&
+        registry.publication.attemptId === registry.id,
     );
 }
 
@@ -265,7 +275,8 @@ function completionTime(plan: OwnerPlan, registry: WorktreeRegistryEntry | null 
         return safeText(attrs.verifiedAt || attrs.validatedAt);
     }
     if (
-        status === "validated" && registryMatchesPlan(plan, registry) &&
+        status === "validated" &&
+        registryMatchesPlan(plan, registry) &&
         publicationPhaseAtLeast(registry, "publication_verified")
     ) {
         return safeText(registry?.publication?.verifiedAt || attrs.verifiedAt || attrs.validatedAt);
@@ -312,20 +323,25 @@ function dashboardItem(
         projectName: project.displayName || "Project",
         planId: plan.planId,
         title: plan.title || plan.name || plan.planName || plan.planId,
-        statusLabel: category === "needs-you"
-            ? evidence.attentionLabel || "Agent stopped before completing the workflow"
-            : plan.statusLabel || plan.status || plan.attrs?.status || "unknown",
-        actionLabel: category === "needs-you"
-            ? evidence.liveQuestion ? attentionAction(evidence.attentionLabel) : "Resume Session"
-            : category === "ready"
-            ? "View Plan"
-            : category === "in-progress"
-            ? "View progress"
-            : "View outcome",
+        statusLabel:
+            category === "needs-you"
+                ? evidence.attentionLabel || "Agent stopped before completing the workflow"
+                : plan.statusLabel || plan.status || plan.attrs?.status || "unknown",
+        actionLabel:
+            category === "needs-you"
+                ? evidence.liveQuestion
+                    ? attentionAction(evidence.attentionLabel)
+                    : "Resume Session"
+                : category === "ready"
+                  ? "View Plan"
+                  : category === "in-progress"
+                    ? "View progress"
+                    : "View outcome",
         summary: plan.summary || plan.attrs?.summary || "",
-        href: category === "needs-you" && evidence.attentionHref
-            ? evidence.attentionHref
-            : planHref(project.projectId, plan.planId),
+        href:
+            category === "needs-you" && evidence.attentionHref
+                ? evidence.attentionHref
+                : planHref(project.projectId, plan.planId),
         recentAt: completionTime(plan, registry),
         updatedAt: latestTimestamp(
             planUpdatedAt(plan),
@@ -337,8 +353,11 @@ function dashboardItem(
 }
 
 function latestTimestamp(...values: Array<string | undefined>): string {
-    return values.filter((value): value is string => Boolean(value && Number.isFinite(Date.parse(value))))
-        .sort((left, right) => Date.parse(right) - Date.parse(left))[0] || "";
+    return (
+        values
+            .filter((value): value is string => Boolean(value && Number.isFinite(Date.parse(value))))
+            .sort((left, right) => Date.parse(right) - Date.parse(left))[0] || ""
+    );
 }
 
 function interactionLabel(operation: WorkspaceOperation): string {
@@ -381,15 +400,21 @@ function operationItem(
         projectId: project.projectId,
         projectName: project.displayName || "Project",
         planId: plan?.planId || safeText(interactionPlan(operation).planId),
-        title: plan?.title || plan?.name || plan?.planName || safeText(interactionPlan(operation).planName) ||
-            session?.displayName || session?.name || "Untitled Session",
+        title:
+            plan?.title ||
+            plan?.name ||
+            plan?.planName ||
+            safeText(interactionPlan(operation).planName) ||
+            session?.displayName ||
+            session?.name ||
+            "Untitled Session",
         statusLabel: waiting ? interactionLabel(operation) : "active Session",
         actionLabel: waiting ? attentionAction(interactionLabel(operation)) : "View Session",
         summary: operation.liveInteraction?.request?.prompt || operation.error || operationId,
         href: sessionId
             ? `${sessionHref(project.projectId, sessionId)}#interaction-${
-                operation.liveInteraction?.interactionId || ""
-            }`
+                  operation.liveInteraction?.interactionId || ""
+              }`
             : "/",
         recentAt: "",
         updatedAt: latestTimestamp(...(operation.events || []).map((event) => event.timestamp)),
@@ -511,9 +536,9 @@ async function projectPayload(
             includeTotal: false,
             archiveState: "all",
         });
-        sessions = (result.sessions || []).filter((session) => session.runwieldSessionId).map((session) =>
-            sessionSummary(project.projectId, session)
-        );
+        sessions = (result.sessions || [])
+            .filter((session) => session.runwieldSessionId)
+            .map((session) => sessionSummary(project.projectId, session));
         for (const diagnostic of result.diagnostics || []) {
             diagnostics.push({
                 source: safeText(diagnostic.source || diagnostic.code || "sessions-reader"),
@@ -541,13 +566,19 @@ async function projectPayload(
     for (const session of sessions) {
         if (!session.runwieldSessionId) continue;
         const associations = store.listSessionPlanAssociations?.(session.runwieldSessionId, project.projectId) || [];
-        const currentPlanId = associations.filter((association) => association.committedGeneration !== null).at(-1)
-            ?.planId;
+        const currentPlanId = associations
+            .filter((association) => association.committedGeneration !== null)
+            .at(-1)?.planId;
         if (currentPlanId) currentPlanBySession.set(session.runwieldSessionId, currentPlanId);
         const committedPlanIds = new Set(
-            associations.filter((association) =>
-                association.committedGeneration !== null && association.planId && planIds.has(association.planId)
-            ).map((association) => association.planId),
+            associations
+                .filter(
+                    (association) =>
+                        association.committedGeneration !== null &&
+                        association.planId &&
+                        planIds.has(association.planId),
+                )
+                .map((association) => association.planId),
         );
         for (const planId of committedPlanIds) {
             if (!planId) continue;
@@ -561,59 +592,71 @@ async function projectPayload(
     const activeEvidenceByPlan = new Map<string, ClassificationEvidence>();
     const dashboardSessions: DashboardItem[] = [];
     const currentOperations = new Map(
-        [...(sessionContinuation.operations?.entries() || [])].filter(([, operation]) =>
-            operation.projectId === project.projectId && operation.status === "running" && !operation.remote
+        [...(sessionContinuation.operations?.entries() || [])].filter(
+            ([, operation]) =>
+                operation.projectId === project.projectId && operation.status === "running" && !operation.remote,
         ),
     );
     // Observe active TUI Sessions too; never infer a pending question from transcript history.
     const liveBySession = new Map(
-        sessions.filter((session) => session.runwieldSessionId).map((session) => [
-            session.runwieldSessionId!,
-            (async () => {
-                const sessionId = session.runwieldSessionId;
-                if (!sessionId) return;
-                const activation = store.inspectSessionActivation?.(sessionId).activation;
-                const planId = currentPlanBySession.get(sessionId);
-                if (planId && activation) {
-                    const current = activeEvidenceByPlan.get(planId) || {};
-                    activeEvidenceByPlan.set(planId, {
-                        ...current,
-                        activeSession: current.activeSession || activation.state === "active",
-                        stopped: current.stopped || activation.state === "idle" || activation.state === "interrupted",
-                        attentionHref: current.attentionHref || sessionHref(project.projectId, sessionId),
-                        updatedAt: latestTimestamp(current.updatedAt, activation.updatedAt, session.headerTimestamp),
-                    });
-                }
-                if (
-                    activation?.state !== "active" || !activation.operationId ||
-                    currentOperations.has(activation.operationId)
-                ) return;
-                try {
-                    const live = await readLiveSessionConnection(sessionId, activation.operationId);
-                    currentOperations.set(activation.operationId, {
-                        projectId: project.projectId,
-                        runwieldSessionId: sessionId,
-                        status: "running",
-                        events: live.events,
-                        liveInteraction: live.interaction?.id
-                            ? { interactionId: live.interaction.id, request: live.interaction }
-                            : undefined,
-                    });
-                } catch {
-                    // A turn can finish while its live socket is being observed. Retry on the next refresh.
-                }
-            })(),
-        ]),
+        sessions
+            .filter((session) => session.runwieldSessionId)
+            .map((session) => [
+                session.runwieldSessionId!,
+                (async () => {
+                    const sessionId = session.runwieldSessionId;
+                    if (!sessionId) return;
+                    const activation = store.inspectSessionActivation?.(sessionId).activation;
+                    const planId = currentPlanBySession.get(sessionId);
+                    if (planId && activation) {
+                        const current = activeEvidenceByPlan.get(planId) || {};
+                        activeEvidenceByPlan.set(planId, {
+                            ...current,
+                            activeSession: current.activeSession || activation.state === "active",
+                            stopped:
+                                current.stopped || activation.state === "idle" || activation.state === "interrupted",
+                            attentionHref: current.attentionHref || sessionHref(project.projectId, sessionId),
+                            updatedAt: latestTimestamp(
+                                current.updatedAt,
+                                activation.updatedAt,
+                                session.headerTimestamp,
+                            ),
+                        });
+                    }
+                    if (
+                        activation?.state !== "active" ||
+                        !activation.operationId ||
+                        currentOperations.has(activation.operationId)
+                    )
+                        return;
+                    try {
+                        const live = await readLiveSessionConnection(sessionId, activation.operationId);
+                        currentOperations.set(activation.operationId, {
+                            projectId: project.projectId,
+                            runwieldSessionId: sessionId,
+                            status: "running",
+                            events: live.events,
+                            liveInteraction: live.interaction?.id
+                                ? { interactionId: live.interaction.id, request: live.interaction }
+                                : undefined,
+                        });
+                    } catch {
+                        // A turn can finish while its live socket is being observed. Retry on the next refresh.
+                    }
+                })(),
+            ]),
     );
     const allLive = Promise.all(liveBySession.values());
     // Resolve a Plan after only its own live connections (and any unassociated
     // Session that could identify it by name). Other live sockets remain independent.
     const liveForPlan = (plan: OwnerPlan) =>
         Promise.all(
-            [...liveBySession].filter(([sessionId]) => {
-                const linked = currentPlanBySession.get(sessionId);
-                return !linked || linked === plan.planId;
-            }).map(([, result]) => result),
+            [...liveBySession]
+                .filter(([sessionId]) => {
+                    const linked = currentPlanBySession.get(sessionId);
+                    return !linked || linked === plan.planId;
+                })
+                .map(([, result]) => result),
         );
     const publishedStandalone = new Set<string>();
     const publishStandalone = () => {
@@ -621,9 +664,11 @@ async function projectPayload(
             if (operation.projectId !== project.projectId || operation.status !== "running") continue;
             const reference = interactionPlan(operation);
             const candidateId = operationPlanId(store, project.projectId, operation);
-            const plan = plans.find((candidate) => candidate.planId === candidateId) ||
-                plans.find((candidate) =>
-                    reference.planName && [candidate.name, candidate.planName].includes(reference.planName)
+            const plan =
+                plans.find((candidate) => candidate.planId === candidateId) ||
+                plans.find(
+                    (candidate) =>
+                        reference.planName && [candidate.name, candidate.planName].includes(reference.planName),
                 );
             const planId = plan?.planId;
             const session = sessions.find((candidate) => candidate.runwieldSessionId === operation.runwieldSessionId);
@@ -661,15 +706,19 @@ async function projectPayload(
             if (session.runwieldSessionId) associatedSessionIds.add(session.runwieldSessionId);
         }
     }
-    const standaloneSessions = sessions.filter((session) =>
-        session.runwieldSessionId && !session.archivedAt && !associatedSessionIds.has(session.runwieldSessionId)
+    const standaloneSessions = sessions.filter(
+        (session) =>
+            session.runwieldSessionId && !session.archivedAt && !associatedSessionIds.has(session.runwieldSessionId),
     );
     // A resolved live socket can publish its standalone Session without waiting for other sockets.
     for (const task of liveBySession.values()) task.then(publishStandalone);
     publishStandalone();
     const registries = new Map<string, WorktreeRegistryEntry | null>();
     const registryBatch = root
-        ? findByPlanIds(root, plans.map((plan) => plan.planId)).catch(() => null)
+        ? findByPlanIds(
+              root,
+              plans.map((plan) => plan.planId),
+          ).catch(() => null)
         : Promise.resolve(null);
     // Each Plan settles after its own evidence, not after another Plan's readiness.
     const remaining = new Map<DashboardCategory, number>(CATEGORY_ORDER.map((category) => [category, 0]));
@@ -700,69 +749,75 @@ async function projectPayload(
         finish(["needs-you", "in-progress"]);
     });
     let nextPlan = 0;
-    await Promise.all(Array.from({ length: Math.min(6, plans.length) }, async () => {
-        while (nextPlan < plans.length) {
-            const plan = plans[nextPlan++];
-            const [, batch] = await Promise.all([liveForPlan(plan), registryBatch]);
-            let ready = false;
-            if (root && READY.has(planStatus(plan))) {
-                try {
-                    const result = await loadPlanActionEvidence(root, plan.planId);
-                    if (result.kind === "success") ready = READY.has(result.evidence.status);
-                    else {
+    await Promise.all(
+        Array.from({ length: Math.min(6, plans.length) }, async () => {
+            while (nextPlan < plans.length) {
+                const plan = plans[nextPlan++];
+                const [, batch] = await Promise.all([liveForPlan(plan), registryBatch]);
+                let ready = false;
+                if (root && READY.has(planStatus(plan))) {
+                    try {
+                        const result = await loadPlanActionEvidence(root, plan.planId);
+                        if (result.kind === "success") ready = READY.has(result.evidence.status);
+                        else {
+                            diagnostics.push({
+                                source: "readiness-reader",
+                                message: result.message,
+                                repairHref: settingsHref(project.projectId),
+                                repairLabel: "Open Project settings",
+                            });
+                            reportFailure(["ready"]);
+                        }
+                    } catch (error) {
                         diagnostics.push({
                             source: "readiness-reader",
-                            message: result.message,
+                            message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
                             repairHref: settingsHref(project.projectId),
                             repairLabel: "Open Project settings",
                         });
                         reportFailure(["ready"]);
                     }
-                } catch (error) {
-                    diagnostics.push({
-                        source: "readiness-reader",
-                        message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
-                        repairHref: settingsHref(project.projectId),
-                        repairLabel: "Open Project settings",
-                    });
-                    reportFailure(["ready"]);
                 }
+                const registry = batch
+                    ? batch.get(plan.planId) || null
+                    : root
+                      ? await registryFor(root, plan, diagnostics, project.projectId, () =>
+                            reportFailure(categoriesFor(plan)),
+                        )
+                      : null;
+                registries.set(plan.planId, registry);
+                const evidence = activeEvidenceByPlan.get(plan.planId) || {};
+                for (const [operationId, operation] of currentOperations) {
+                    if (operation.projectId !== project.projectId || operation.status !== "running") continue;
+                    const reference = interactionPlan(operation);
+                    const candidateId = operationPlanId(store, project.projectId, operation);
+                    if (
+                        candidateId !== plan.planId &&
+                        !(reference.planName && [plan.name, plan.planName].includes(reference.planName))
+                    )
+                        continue;
+                    const session = sessions.find(
+                        (candidate) => candidate.runwieldSessionId === operation.runwieldSessionId,
+                    );
+                    const item = operationItem(project, operationId, operation, plan, session);
+                    const waiting = Boolean(operation.liveInteraction?.interactionId);
+                    evidence.activeSession = true;
+                    evidence.liveQuestion = evidence.liveQuestion || waiting;
+                    evidence.attentionLabel = waiting ? interactionLabel(operation) : evidence.attentionLabel;
+                    evidence.attentionHref = waiting ? item.href : evidence.attentionHref;
+                    evidence.updatedAt = latestTimestamp(evidence.updatedAt, item.updatedAt);
+                }
+                if (ready) evidence.ready = true;
+                activeEvidenceByPlan.set(plan.planId, evidence);
+                const category = classifyPlan(plan, registry, evidence);
+                if (category) publish(dashboardItem(project, plan, category, registry, evidence));
+                finish(categoriesFor(plan));
             }
-            const registry = batch
-                ? batch.get(plan.planId) || null
-                : root
-                ? await registryFor(root, plan, diagnostics, project.projectId, () =>
-                    reportFailure(categoriesFor(plan)))
-                : null;
-            registries.set(plan.planId, registry);
-            const evidence = activeEvidenceByPlan.get(plan.planId) || {};
-            for (const [operationId, operation] of currentOperations) {
-                if (operation.projectId !== project.projectId || operation.status !== "running") continue;
-                const reference = interactionPlan(operation);
-                const candidateId = operationPlanId(store, project.projectId, operation);
-                if (
-                    candidateId !== plan.planId &&
-                    !(reference.planName && [plan.name, plan.planName].includes(reference.planName))
-                ) continue;
-                const session = sessions.find((candidate) =>
-                    candidate.runwieldSessionId === operation.runwieldSessionId
-                );
-                const item = operationItem(project, operationId, operation, plan, session);
-                const waiting = Boolean(operation.liveInteraction?.interactionId);
-                evidence.activeSession = true;
-                evidence.liveQuestion = evidence.liveQuestion || waiting;
-                evidence.attentionLabel = waiting ? interactionLabel(operation) : evidence.attentionLabel;
-                evidence.attentionHref = waiting ? item.href : evidence.attentionHref;
-                evidence.updatedAt = latestTimestamp(evidence.updatedAt, item.updatedAt);
-            }
-            if (ready) evidence.ready = true;
-            activeEvidenceByPlan.set(plan.planId, evidence);
-            const category = classifyPlan(plan, registry, evidence);
-            if (category) publish(dashboardItem(project, plan, category, registry, evidence));
-            finish(categoriesFor(plan));
-        }
-    }));
-    await allLive;
+        }),
+    );
+    // Empty Projects have no Plan worker to await their registry read.
+    // Drain it before reporting completion or releasing the Project's files.
+    await Promise.all([allLive, registryBatch]);
     plansForSidebar.sort((left, right) => {
         const leftHold = planStatus(left) === "on_hold" ? 1 : 0;
         const rightHold = planStatus(right) === "on_hold" ? 1 : 0;
@@ -773,15 +828,17 @@ async function projectPayload(
         const rightCategory =
             classifyPlan(right, registries.get(right.planId) || null, activeEvidenceByPlan.get(right.planId) || {}) ||
             "recently-finished";
-        return STATUS_PRIORITY[leftCategory] - STATUS_PRIORITY[rightCategory] ||
+        return (
+            STATUS_PRIORITY[leftCategory] - STATUS_PRIORITY[rightCategory] ||
             (Date.parse(planUpdatedAt(right)) || 0) - (Date.parse(planUpdatedAt(left)) || 0) ||
-            left.planId.localeCompare(right.planId);
+            left.planId.localeCompare(right.planId)
+        );
     });
     return {
         ...project,
         root,
         plans: plansForSidebar.map((plan) =>
-            sidebarPlan(project, plan, associatedSessionsByPlan.get(plan.planId) || [])
+            sidebarPlan(project, plan, associatedSessionsByPlan.get(plan.planId) || []),
         ),
         hasMorePlans: plansForSidebar.length > 5,
         sessions: standaloneSessions.slice(0, 5),
@@ -804,134 +861,144 @@ export async function loadOwnerSidebar(
         const records = store.listProjects();
         const projects: SidebarProject[] = new Array(records.length);
         let next = 0;
-        await Promise.all(Array.from({ length: Math.min(4, records.length) }, async () => {
-            while (next < records.length) {
-                const index = next++;
-                const record = records[index];
-                const project = serializeOwnerProject(
-                    record,
-                    store.getProjectHealth(record.projectId),
-                ) as SidebarProject;
-                const diagnostics: Diagnostic[] = [];
-                let root = "";
-                try {
-                    root = requireOwnerProjectRoot(store, record.projectId);
-                } catch (error) {
-                    if (record.lifecycle === "enabled") {
-                        diagnostics.push({
-                            source: "project-reader",
-                            message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
-                            repairHref: settingsHref(record.projectId),
-                            repairLabel: "Open Project settings",
-                        });
-                    }
-                }
-                const plansRead = (async (): Promise<OwnerPlan[]> => {
-                    if (!root) return [];
+        await Promise.all(
+            Array.from({ length: Math.min(4, records.length) }, async () => {
+                while (next < records.length) {
+                    const index = next++;
+                    const record = records[index];
+                    const project = serializeOwnerProject(
+                        record,
+                        store.getProjectHealth(record.projectId),
+                    ) as SidebarProject;
+                    const diagnostics: Diagnostic[] = [];
+                    let root = "";
                     try {
-                        return (await loadPlanSummaries(root)) as OwnerPlan[];
+                        root = requireOwnerProjectRoot(store, record.projectId);
                     } catch (error) {
-                        diagnostics.push({
-                            source: "plans-reader",
-                            message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
-                            repairHref: settingsHref(record.projectId),
-                            repairLabel: "Open Project settings",
-                        });
-                        return [];
-                    }
-                })();
-                const sessionsRead = (async () => {
-                    try {
-                        const result = await continuation.listSessions(record.projectId, {
-                            page: 0,
-                            pageSize: 100,
-                            includeTotal: false,
-                            archiveState: "all",
-                        });
-                        for (const diagnostic of result.diagnostics || []) {
+                        if (record.lifecycle === "enabled") {
                             diagnostics.push({
-                                source: safeText(diagnostic.source || diagnostic.code || "sessions-reader"),
-                                message: scrubLocalPaths(
-                                    safeText(diagnostic.message || diagnostic.code || "Session reader failed."),
-                                ),
+                                source: "project-reader",
+                                message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
                                 repairHref: settingsHref(record.projectId),
                                 repairLabel: "Open Project settings",
                             });
                         }
-                        return {
-                            sessions: (result.sessions || []).filter((session) => session.runwieldSessionId).map((
-                                session,
-                            ) => sessionSummary(record.projectId, session)),
-                            hasMoreSessions: result.hasNext === true,
-                        };
-                    } catch (error) {
-                        diagnostics.push({
-                            source: "sessions-reader",
-                            message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
-                            repairHref: settingsHref(record.projectId),
-                            repairLabel: "Open Project settings",
-                        });
-                        const sessions: SessionSummary[] = [];
-                        return { sessions, hasMoreSessions: false };
                     }
-                })();
-                const [plans, { sessions, hasMoreSessions }] = await Promise.all([plansRead, sessionsRead]);
-                const plansForSidebar = plans.filter((plan) =>
-                    safeText(plan.planId) && !TERMINAL.has(planStatus(plan)) && !isSequencePlan(plan.attrs || {})
-                );
-                const associations = new Map<string, SessionSummary[]>();
-                const associatedIds = new Set<string>();
-                const planIds = new Set(plansForSidebar.map((plan) => plan.planId));
-                const stateByPlan = new Map<string, { activeSession: boolean; stopped: boolean }>();
-                for (const session of sessions) {
-                    const id = session.runwieldSessionId!;
-                    const committed = new Set(
-                        (store.listSessionPlanAssociations?.(id, record.projectId) || [])
-                            .filter((association) =>
-                                association.committedGeneration !== null && planIds.has(association.planId || "")
-                            )
-                            .map((association) => association.planId!),
+                    const plansRead = (async (): Promise<OwnerPlan[]> => {
+                        if (!root) return [];
+                        try {
+                            return (await loadPlanSummaries(root)) as OwnerPlan[];
+                        } catch (error) {
+                            diagnostics.push({
+                                source: "plans-reader",
+                                message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
+                                repairHref: settingsHref(record.projectId),
+                                repairLabel: "Open Project settings",
+                            });
+                            return [];
+                        }
+                    })();
+                    const sessionsRead = (async () => {
+                        try {
+                            const result = await continuation.listSessions(record.projectId, {
+                                page: 0,
+                                pageSize: 100,
+                                includeTotal: false,
+                                archiveState: "all",
+                            });
+                            for (const diagnostic of result.diagnostics || []) {
+                                diagnostics.push({
+                                    source: safeText(diagnostic.source || diagnostic.code || "sessions-reader"),
+                                    message: scrubLocalPaths(
+                                        safeText(diagnostic.message || diagnostic.code || "Session reader failed."),
+                                    ),
+                                    repairHref: settingsHref(record.projectId),
+                                    repairLabel: "Open Project settings",
+                                });
+                            }
+                            return {
+                                sessions: (result.sessions || [])
+                                    .filter((session) => session.runwieldSessionId)
+                                    .map((session) => sessionSummary(record.projectId, session)),
+                                hasMoreSessions: result.hasNext === true,
+                            };
+                        } catch (error) {
+                            diagnostics.push({
+                                source: "sessions-reader",
+                                message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
+                                repairHref: settingsHref(record.projectId),
+                                repairLabel: "Open Project settings",
+                            });
+                            const sessions: SessionSummary[] = [];
+                            return { sessions, hasMoreSessions: false };
+                        }
+                    })();
+                    const [plans, { sessions, hasMoreSessions }] = await Promise.all([plansRead, sessionsRead]);
+                    const plansForSidebar = plans.filter(
+                        (plan) =>
+                            safeText(plan.planId) &&
+                            !TERMINAL.has(planStatus(plan)) &&
+                            !isSequencePlan(plan.attrs || {}),
                     );
-                    for (const planId of committed) {
-                        const matches = associations.get(planId) || [];
-                        matches.push(session);
-                        associations.set(planId, matches);
-                        associatedIds.add(id);
-                        const state = stateByPlan.get(planId) || { activeSession: false, stopped: false };
-                        state.activeSession ||= session.state === "active";
-                        state.stopped ||= session.state === "idle" || session.state === "interrupted";
-                        stateByPlan.set(planId, state);
+                    const associations = new Map<string, SessionSummary[]>();
+                    const associatedIds = new Set<string>();
+                    const planIds = new Set(plansForSidebar.map((plan) => plan.planId));
+                    const stateByPlan = new Map<string, { activeSession: boolean; stopped: boolean }>();
+                    for (const session of sessions) {
+                        const id = session.runwieldSessionId!;
+                        const committed = new Set(
+                            (store.listSessionPlanAssociations?.(id, record.projectId) || [])
+                                .filter(
+                                    (association) =>
+                                        association.committedGeneration !== null &&
+                                        planIds.has(association.planId || ""),
+                                )
+                                .map((association) => association.planId!),
+                        );
+                        for (const planId of committed) {
+                            const matches = associations.get(planId) || [];
+                            matches.push(session);
+                            associations.set(planId, matches);
+                            associatedIds.add(id);
+                            const state = stateByPlan.get(planId) || { activeSession: false, stopped: false };
+                            state.activeSession ||= session.state === "active";
+                            state.stopped ||= session.state === "idle" || session.state === "interrupted";
+                            stateByPlan.set(planId, state);
+                        }
                     }
+                    plansForSidebar.sort((left, right) => {
+                        const leftHold = planStatus(left) === "on_hold" ? 1 : 0;
+                        const rightHold = planStatus(right) === "on_hold" ? 1 : 0;
+                        const rank = (plan: OwnerPlan) =>
+                            STATUS_PRIORITY[
+                                classifyPlan(plan, null, {
+                                    ...stateByPlan.get(plan.planId),
+                                    ready: READY.has(planStatus(plan)),
+                                }) || "recently-finished"
+                            ];
+                        return (
+                            leftHold - rightHold ||
+                            rank(left) - rank(right) ||
+                            (Date.parse(planUpdatedAt(right)) || 0) - (Date.parse(planUpdatedAt(left)) || 0) ||
+                            left.planId.localeCompare(right.planId)
+                        );
+                    });
+                    const standalone = sessions.filter(
+                        (session) => !session.archivedAt && !associatedIds.has(session.runwieldSessionId!),
+                    );
+                    projects[index] = {
+                        ...project,
+                        plans: plansForSidebar.map((plan) =>
+                            sidebarPlan(project, plan, associations.get(plan.planId) || []),
+                        ),
+                        hasMorePlans: plansForSidebar.length > 5,
+                        sessions: standalone.slice(0, 5),
+                        hasMoreSessions: hasMoreSessions || standalone.length > 5,
+                        diagnostics,
+                    };
                 }
-                plansForSidebar.sort((left, right) => {
-                    const leftHold = planStatus(left) === "on_hold" ? 1 : 0;
-                    const rightHold = planStatus(right) === "on_hold" ? 1 : 0;
-                    const rank = (plan: OwnerPlan) =>
-                        STATUS_PRIORITY[
-                            classifyPlan(plan, null, {
-                                ...stateByPlan.get(plan.planId),
-                                ready: READY.has(planStatus(plan)),
-                            }) || "recently-finished"
-                        ];
-                    return leftHold - rightHold || rank(left) - rank(right) ||
-                        (Date.parse(planUpdatedAt(right)) || 0) - (Date.parse(planUpdatedAt(left)) || 0) ||
-                        left.planId.localeCompare(right.planId);
-                });
-                const standalone = sessions.filter((session) =>
-                    !session.archivedAt && !associatedIds.has(session.runwieldSessionId!)
-                );
-                projects[index] = {
-                    ...project,
-                    plans: plansForSidebar.map((plan) =>
-                        sidebarPlan(project, plan, associations.get(plan.planId) || [])
-                    ),
-                    hasMorePlans: plansForSidebar.length > 5,
-                    sessions: standalone.slice(0, 5),
-                    hasMoreSessions: hasMoreSessions || standalone.length > 5,
-                    diagnostics,
-                };
-            }
-        }));
+            }),
+        );
         return projects;
     });
 }
@@ -987,18 +1054,22 @@ function startDashboardRead(store: OwnerStore, continuation: SessionContinuation
         }
     };
     read.promise = withProjectRuntimeReadScope(() => readOwnerDashboard(store, continuation, emit))
-        .then((payload) => {
-            emit({ ...read.frame, type: "complete", progress: { ...read.frame.progress, pending: false } });
-            return payload;
-        }, (error: Error) => {
-            emit({
-                ...read.frame,
-                type: "error",
-                error: diagnosticMessage(error),
-                progress: { ...read.frame.progress, pending: false },
-            });
-            throw error;
-        }).finally(() => {
+        .then(
+            (payload) => {
+                emit({ ...read.frame, type: "complete", progress: { ...read.frame.progress, pending: false } });
+                return payload;
+            },
+            (error: Error) => {
+                emit({
+                    ...read.frame,
+                    type: "error",
+                    error: diagnosticMessage(error),
+                    progress: { ...read.frame.progress, pending: false },
+                });
+                throw error;
+            },
+        )
+        .finally(() => {
             pending.delete(continuation);
             read.listeners.clear();
         });
@@ -1046,9 +1117,10 @@ async function readOwnerDashboard(
             if (item.category !== "recently-finished" || isRecent(item)) sections[item.category].items.push(item);
         }
         for (const value of Object.values(sections)) {
-            value.items.sort((left, right) =>
-                (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0) ||
-                left.href.localeCompare(right.href)
+            value.items.sort(
+                (left, right) =>
+                    (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0) ||
+                    left.href.localeCompare(right.href),
             );
         }
         const diagnostics = projects.filter(Boolean).flatMap((project) => project.diagnostics);
@@ -1057,10 +1129,15 @@ async function readOwnerDashboard(
             sections: CATEGORY_ORDER.map((category) => sections[category]),
             progress: { completedProjects, totalProjects: records.length, pending: completedProjects < records.length },
             diagnostics,
-            sectionProgress: Object.fromEntries(CATEGORY_ORDER.map((category) => [category, {
-                pending: projectProgress.some((progress) => progress.pending.has(category)),
-                failed: projectProgress.some((progress) => progress.failed.has(category)),
-            }])) as DashboardFrame["sectionProgress"],
+            sectionProgress: Object.fromEntries(
+                CATEGORY_ORDER.map((category) => [
+                    category,
+                    {
+                        pending: projectProgress.some((progress) => progress.pending.has(category)),
+                        failed: projectProgress.some((progress) => progress.failed.has(category)),
+                    },
+                ]),
+            ) as DashboardFrame["sectionProgress"],
         };
         emit(frame);
         return frame;
@@ -1068,66 +1145,78 @@ async function readOwnerDashboard(
     snapshot();
     // A small worker pool bounds simultaneous Project readers without serializing independent Projects.
     let next = 0;
-    await Promise.all(Array.from({ length: Math.min(4, records.length) }, async () => {
-        while (next < records.length) {
-            const index = next++;
-            const record = records[index];
-            try {
-                const project = await projectPayload(store, continuation, record, (item) => {
-                    items.set(
-                        `${item.projectId}:${item.type}:${item.type === "session" ? item.href : item.planId}`,
-                        item,
+    await Promise.all(
+        Array.from({ length: Math.min(4, records.length) }, async () => {
+            while (next < records.length) {
+                const index = next++;
+                const record = records[index];
+                try {
+                    const project = await projectPayload(
+                        store,
+                        continuation,
+                        record,
+                        (item) => {
+                            items.set(
+                                `${item.projectId}:${item.type}:${item.type === "session" ? item.href : item.planId}`,
+                                item,
+                            );
+                            snapshot();
+                        },
+                        (categories) => {
+                            projectProgress[index].pending = new Set(categories);
+                            snapshot();
+                        },
+                        (categories) => {
+                            for (const category of categories) projectProgress[index].failed.add(category);
+                            snapshot();
+                        },
                     );
-                    snapshot();
-                }, (categories) => {
-                    projectProgress[index].pending = new Set(categories);
-                    snapshot();
-                }, (categories) => {
-                    for (const category of categories) projectProgress[index].failed.add(category);
-                    snapshot();
-                });
-                for (const diagnostic of project.diagnostics) {
-                    const affected: DashboardCategory[] = diagnostic.source === "readiness-reader"
-                        ? ["ready"]
-                        : diagnostic.source === "sessions-reader"
-                        ? ["needs-you", "in-progress", "recently-finished"]
-                        : CATEGORY_ORDER;
-                    for (const category of affected) projectProgress[index].failed.add(category);
+                    for (const diagnostic of project.diagnostics) {
+                        const affected: DashboardCategory[] =
+                            diagnostic.source === "readiness-reader"
+                                ? ["ready"]
+                                : diagnostic.source === "sessions-reader"
+                                  ? ["needs-you", "in-progress", "recently-finished"]
+                                  : CATEGORY_ORDER;
+                        for (const category of affected) projectProgress[index].failed.add(category);
+                    }
+                    delete project.dashboardPlans;
+                    delete project.dashboardSessions;
+                    delete project.activeEvidenceByPlan;
+                    delete project.registryByPlan;
+                    delete project.root;
+                    projects[index] = project;
+                } catch (error) {
+                    projectProgress[index].failed = new Set(CATEGORY_ORDER);
+                    // Rows already verified within this Project remain available with an incomplete warning.
+                    projects[index] = {
+                        projectId: record.projectId,
+                        displayName: record.displayName || "Project",
+                        rootLabel: "registered Project",
+                        lifecycle: record.lifecycle || "enabled",
+                        healthStatus: "unavailable",
+                        healthEvidence: [],
+                        enabled: false,
+                        plans: [],
+                        sessions: [],
+                        hasMorePlans: false,
+                        hasMoreSessions: false,
+                        diagnostics: [
+                            {
+                                source: "project-reader",
+                                message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
+                                repairHref: settingsHref(record.projectId),
+                                repairLabel: "Open Project settings",
+                            },
+                        ],
+                    } as SidebarProject;
                 }
-                delete project.dashboardPlans;
-                delete project.dashboardSessions;
-                delete project.activeEvidenceByPlan;
-                delete project.registryByPlan;
-                delete project.root;
-                projects[index] = project;
-            } catch (error) {
-                projectProgress[index].failed = new Set(CATEGORY_ORDER);
-                // Rows already verified within this Project remain available with an incomplete warning.
-                projects[index] = {
-                    projectId: record.projectId,
-                    displayName: record.displayName || "Project",
-                    rootLabel: "registered Project",
-                    lifecycle: record.lifecycle || "enabled",
-                    healthStatus: "unavailable",
-                    healthEvidence: [],
-                    enabled: false,
-                    plans: [],
-                    sessions: [],
-                    hasMorePlans: false,
-                    hasMoreSessions: false,
-                    diagnostics: [{
-                        source: "project-reader",
-                        message: diagnosticMessage(error instanceof Error ? error : new Error(String(error))),
-                        repairHref: settingsHref(record.projectId),
-                        repairLabel: "Open Project settings",
-                    }],
-                } as SidebarProject;
+                projectProgress[index].pending.clear();
+                completedProjects++;
+                snapshot();
             }
-            projectProgress[index].pending.clear();
-            completedProjects++;
-            snapshot();
-        }
-    }));
+        }),
+    );
     const final = snapshot();
     return { projects, dashboard: { sections: final.sections } };
 }

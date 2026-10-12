@@ -2,7 +2,7 @@ import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "./hosted-session.js";
 import { readRequestAttemptEntries, type RequestAttemptEntry } from "./request-dispatch.ts";
 import { workflowAttemptKey } from "./task-completion-session.ts";
-import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.js";
+import { readExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { readPersistedActiveAgentName } from "./active-agent-session.js";
 
 export const PAIR_CHECKPOINT_CUSTOM_TYPE = "runwield.pair_checkpoint";

@@ -142,6 +142,8 @@ export function sessionArtifactKindLabel(kind: string): string {
             return "Plan";
         case "report":
             return "Report";
+        case "document":
+            return "Document";
         default:
             return "Artifact";
     }

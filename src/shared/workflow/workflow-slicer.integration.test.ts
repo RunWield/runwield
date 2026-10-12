@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -87,7 +90,7 @@ async function executeFinalizeTool(
     ) as SlicerFinalizeResult;
 }
 
-Deno.test("Slicer starts a clean context phase and receives persisted Epic and child evidence", async () => {
+test("Slicer starts a clean context phase and receives persisted Epic and child evidence", async () => {
     await withRuntimeCommandFixture(
         "workflow-slicer-agent-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -147,12 +150,12 @@ Deno.test("Slicer starts a clean context phase and receives persisted Epic and c
     );
 });
 
-Deno.test("Slicer restores the prior Agent and reports an external model failure", async () => {
+test("Slicer restores the prior Agent and reports an external model failure", async () => {
     await withRuntimeCommandFixture(
         "workflow-slicer-failure-",
         async ({ projectRoot, settingsPath }) => {
             await saveEpic(projectRoot);
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 settingsPath,
                 JSON.stringify({ defaultProvider: "missing-fixture-provider", defaultModel: "missing-model" }),
             );
@@ -186,7 +189,7 @@ Deno.test("Slicer restores the prior Agent and reports an external model failure
     );
 });
 
-Deno.test("Slicer finalize commits child Plans and the Epic lifecycle transition together", async () => {
+test("Slicer finalize commits child Plans and the Epic lifecycle transition together", async () => {
     await withRuntimeCommandFixture("workflow-slicer-finalize-", async ({ projectRoot }) => {
         await saveEpic(projectRoot);
         const tool = createSlicerFinalizeTool({ planName: "epic-a", cwd: projectRoot });
@@ -218,7 +221,7 @@ Deno.test("Slicer finalize commits child Plans and the Epic lifecycle transition
     });
 });
 
-Deno.test("Slicer finalize reuses existing children and is idempotent after the Epic is ready", async () => {
+test("Slicer finalize reuses existing children and is idempotent after the Epic is ready", async () => {
     await withRuntimeCommandFixture("workflow-slicer-idempotent-", async ({ projectRoot }) => {
         await saveEpic(projectRoot, "ready_for_decomposition");
         await savePlan(projectRoot, "epic-a/01-child", "# Child", {
@@ -241,7 +244,7 @@ Deno.test("Slicer finalize reuses existing children and is idempotent after the 
     });
 });
 
-Deno.test("openSlicerDecomposition reads the persisted Plan and invokes the real Slicer machinery", async () => {
+test("openSlicerDecomposition reads the persisted Plan and invokes the real Slicer machinery", async () => {
     await withRuntimeCommandFixture(
         "workflow-slicer-open-",
         async ({ projectRoot, setModelMessages }) => {
@@ -266,12 +269,12 @@ Deno.test("openSlicerDecomposition reads the persisted Plan and invokes the real
     );
 });
 
-Deno.test("openSlicerDecomposition returns the real Slicer model failure at the Slicer stage", async () => {
+test("openSlicerDecomposition returns the real Slicer model failure at the Slicer stage", async () => {
     await withRuntimeCommandFixture(
         "workflow-slicer-open-failure-",
         async ({ projectRoot, settingsPath }) => {
             const planPath = await saveEpic(projectRoot);
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 settingsPath,
                 JSON.stringify({ defaultProvider: "missing-fixture-provider", defaultModel: "missing-model" }),
             );
@@ -297,7 +300,7 @@ Deno.test("openSlicerDecomposition returns the real Slicer model failure at the 
     );
 });
 
-Deno.test("beginSlicerContextPhase leaves an already-active Slicer boundary unchanged", async () => {
+test("beginSlicerContextPhase leaves an already-active Slicer boundary unchanged", async () => {
     await withRuntimeCommandFixture("workflow-slicer-boundary-", async ({ projectRoot }) => {
         await Promise.resolve();
         const fixture = createSessionFixture(projectRoot, "architect");

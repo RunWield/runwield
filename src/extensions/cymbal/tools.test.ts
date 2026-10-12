@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertMatch, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { createCymbalTools, type CymbalToolHost, MAX_CODE_BATCH_OUTPUT_CHARS } from "./tools.ts";
 import type { HelperBinaryExecResult } from "../helper-binary-exec.ts";
@@ -56,7 +58,7 @@ function firstText(result: Awaited<ReturnType<typeof executeTool>>): string {
     return result.content[0]?.type === "text" ? result.content[0].text : "";
 }
 
-Deno.test("every Cymbal invocation starts with no-federate", async () => {
+test("every Cymbal invocation starts with no-federate", async () => {
     const { calls, getTool } = setup(() => ({ code: 0, stdout: "ok", stderr: "" }));
 
     await executeTool(getTool("code_search"), { query: "Session", textSearch: true });
@@ -70,7 +72,7 @@ Deno.test("every Cymbal invocation starts with no-federate", async () => {
     assertEquals(calls[0]?.args, ["--no-federate", "search", "--text", "Session"]);
 });
 
-Deno.test("Cymbal failures strip Usage tail and return text", async () => {
+test("Cymbal failures strip Usage tail and return text", async () => {
     const { getTool } = setup(() => ({ code: 2, stdout: "", stderr: "bad args\nUsage: cymbal ..." }));
 
     const result = await executeTool(getTool("code_refs"), { symbol: "Thing" });
@@ -79,7 +81,7 @@ Deno.test("Cymbal failures strip Usage tail and return text", async () => {
     assertEquals(toolFailed(result), true);
 });
 
-Deno.test("empty Cymbal output returns no results text", async () => {
+test("empty Cymbal output returns no results text", async () => {
     const { getTool } = setup(() => ({ code: 0, stdout: "", stderr: "" }));
 
     const result = await executeTool(getTool("code_outline"), { file: "src/a.ts" });
@@ -88,7 +90,7 @@ Deno.test("empty Cymbal output returns no results text", async () => {
     assertEquals(toolFailed(result), false);
 });
 
-Deno.test("code_batch validates operations and limits batch size", async () => {
+test("code_batch validates operations and limits batch size", async () => {
     const { getTool } = setup(() => ({ code: 0, stdout: "ok", stderr: "" }));
     const tool = getTool("code_batch");
 
@@ -110,7 +112,7 @@ Deno.test("code_batch validates operations and limits batch size", async () => {
     assertMatch(firstText(malformed), /target must be/);
 });
 
-Deno.test("code_batch limits a large first result without hiding later results", async () => {
+test("code_batch limits a large first result without hiding later results", async () => {
     const longText = "x".repeat(MAX_CODE_BATCH_OUTPUT_CHARS + 10);
     const { getTool } = setup((_command, args) => ({
         code: 0,
@@ -138,7 +140,7 @@ Deno.test("code_batch limits a large first result without hiding later results",
     assertEquals(toolFailed(result), false);
 });
 
-Deno.test("code_batch groups interleaved reads into one native call per kind and restores order", async () => {
+test("code_batch groups interleaved reads into one native call per kind and restores order", async () => {
     const { calls, getTool } = setup((_command, args) => ({
         code: 0,
         stdout: JSON.stringify({
@@ -191,7 +193,7 @@ Deno.test("code_batch groups interleaved reads into one native call per kind and
     });
 });
 
-Deno.test("code_batch reads duplicate targets once while retaining every requested section", async () => {
+test("code_batch reads duplicate targets once while retaining every requested section", async () => {
     const { calls, getTool } = setup(() => ({ code: 0, stdout: "function Alpha() {}", stderr: "" }));
     const result = await executeTool(getTool("code_batch"), {
         operations: [{ op: "show", target: "Alpha" }, { op: "show", target: "Alpha" }],
@@ -209,7 +211,7 @@ Deno.test("code_batch reads duplicate targets once while retaining every request
     });
 });
 
-Deno.test("code_batch keeps ambiguous symbol alternatives visible", async () => {
+test("code_batch keeps ambiguous symbol alternatives visible", async () => {
     const { getTool } = setup(() => ({
         code: 0,
         stdout: JSON.stringify({
@@ -239,7 +241,7 @@ Deno.test("code_batch keeps ambiguous symbol alternatives visible", async () => 
     assertMatch(firstText(result), /Also: b.ts:5/);
 });
 
-Deno.test("code_batch isolates invalid and missing result entries", async () => {
+test("code_batch isolates invalid and missing result entries", async () => {
     const { getTool } = setup(() => ({
         code: 0,
         stdout: JSON.stringify({
@@ -259,7 +261,7 @@ Deno.test("code_batch isolates invalid and missing result entries", async () => 
     assertMatch(sections[2], /function Good\(\)/);
 });
 
-Deno.test("code_batch reports invalid JSON or command failures without per-target retries", async () => {
+test("code_batch reports invalid JSON or command failures without per-target retries", async () => {
     for (
         const response of [
             { code: 0, stdout: "not JSON", stderr: "" },
@@ -280,7 +282,7 @@ Deno.test("code_batch reports invalid JSON or command failures without per-targe
     }
 });
 
-Deno.test("code_batch bounds every result including large errors and preserves the final item", async () => {
+test("code_batch bounds every result including large errors and preserves the final item", async () => {
     const { getTool } = setup(() => ({
         code: 0,
         stdout: JSON.stringify({
@@ -305,7 +307,7 @@ Deno.test("code_batch bounds every result including large errors and preserves t
     assertEquals(toolFailed(result), false);
 });
 
-Deno.test("code_batch marks all native target failures as a failed tool call", async () => {
+test("code_batch marks all native target failures as a failed tool call", async () => {
     const { getTool } = setup(() => ({
         code: 0,
         stdout: JSON.stringify({ results: { A: { error: "missing A" }, B: { error: "missing B" } } }),
@@ -318,14 +320,14 @@ Deno.test("code_batch marks all native target failures as a failed tool call", a
     assertEquals(firstText(result).match(/Status: error/g)?.length, 2);
 });
 
-Deno.test("code_batch marks a failed single target as a failed tool call", async () => {
+test("code_batch marks a failed single target as a failed tool call", async () => {
     const { getTool } = setup(() => ({ code: 1, stdout: "", stderr: "missing A" }));
     const result = await executeTool(getTool("code_batch"), { operations: [{ op: "show", target: "A" }] });
     assertEquals(toolFailed(result), true);
     assertMatch(firstText(result), /Status: error/);
 });
 
-Deno.test("successful source beginning with Error is not mistaken for a tool failure", async () => {
+test("successful source beginning with Error is not mistaken for a tool failure", async () => {
     const { getTool } = setup(() => ({ code: 0, stdout: "Error is a source identifier", stderr: "" }));
     assertEquals(toolFailed(await executeTool(getTool("code_show"), { target: "A" })), false);
     const result = await executeTool(getTool("code_batch"), { operations: [{ op: "show", target: "A" }] });
@@ -333,7 +335,7 @@ Deno.test("successful source beginning with Error is not mistaken for a tool fai
     assertMatch(firstText(result), /Status: success/);
 });
 
-Deno.test("Cymbal process exceptions mark tool calls as failed", async () => {
+test("Cymbal process exceptions mark tool calls as failed", async () => {
     const { getTool } = setup(() => {
         throw new Error("missing executable");
     });
@@ -342,7 +344,7 @@ Deno.test("Cymbal process exceptions mark tool calls as failed", async () => {
     assertMatch(firstText(result), /missing executable/);
 });
 
-Deno.test("code_batch stops before the next group after cancellation", async () => {
+test("code_batch stops before the next group after cancellation", async () => {
     const controller = new AbortController();
     const { calls, getTool } = setup(() => {
         controller.abort(new Error("Cancelled batch"));

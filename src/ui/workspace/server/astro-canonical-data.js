@@ -1,4 +1,6 @@
 // @ts-nocheck: Compiled Workspace injects its bundled adapter. Astro dev can fall back to a native dynamic import
+import { stat } from "node:fs/promises";
+import { getCwd } from "../../../constants.js";
 // so both surfaces use the canonical adapter without reimplementing it.
 
 import { isAstroDevelopmentMode } from "./astro-dev-mode.ts";
@@ -16,7 +18,7 @@ async function workspaceAdapter() {
     try {
         return await nativeImport(await devVersionedAdapterUrl(ADAPTER_URL));
     } catch (error) {
-        const cwd = runtime.Deno?.cwd?.();
+        const cwd = getCwd();
         if (!cwd) throw error;
         const sourceAdapterUrl = new URL("src/ui/workspace/server/plan-adapter.js", `file://${cwd}/`).href;
         return await nativeImport(await devVersionedAdapterUrl(sourceAdapterUrl));
@@ -25,9 +27,9 @@ async function workspaceAdapter() {
 
 /** @param {string} url */
 async function devVersionedAdapterUrl(url) {
-    if (!devMode() || !runtime.Deno?.stat || !url.startsWith("file:")) return url;
+    if (!devMode() || !url.startsWith("file:")) return url;
     try {
-        const info = await runtime.Deno.stat(new URL(url));
+        const info = await stat(new URL(url));
         const next = new URL(url);
         next.searchParams.set("workspace-dev-mtime", String(info.mtime?.getTime() || 0));
         return next.href;

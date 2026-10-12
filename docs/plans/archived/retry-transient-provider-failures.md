@@ -191,7 +191,7 @@ Pi fork, dependency upgrade, longer default retry window, or automatic abandonme
 Run focused tests through the sandboxed runner only; include new provider-error/stream test files in the commands:
 
 ```sh
-deno run -A scripts/run-tests.js --isolated src/shared/session/provider-errors.test.js src/shared/session/session-provider-retry.test.js src/shared/session/session-subscribers.test.js src/shared/session/session-transcript-projection.test.js src/shared/session/session-temperature.test.js
+deno run -A scripts/run-tests.js --isolated src/shared/session/provider-errors.test.ts src/shared/session/session-provider-retry.test.js src/shared/session/session-subscribers.test.js src/shared/session/session-transcript-projection.test.js src/shared/session/session-temperature.test.js
 deno run -A scripts/run-tests.js --isolated src/shared/session/session-runtime.test.js src/shared/session/deferred-validation-repair.integration.test.js src/ui/tui/runtime-adapter.test.js src/ui/workspace/workspace-session-ux.test.tsx src/acp/server.test.js
 deno task check
 deno task seams:check

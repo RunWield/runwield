@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "../captured-process.ts";
+import { getCwd } from "../../constants.js";
 /** External Mnemoteca process capability used by Work Record indexing. */
 
 export interface MnemotecaCommandResult {
@@ -12,11 +14,8 @@ export interface WorkRecordMnemotecaPort {
 }
 
 export const SYSTEM_WORK_RECORD_MNEMOTECA_PORT: WorkRecordMnemotecaPort = {
-    run: (args, options) =>
-        new Deno.Command("mnemoteca", {
-            args,
-            cwd: options?.cwd,
-            stdout: "piped",
-            stderr: "piped",
-        }).output(),
+    run: async (args, options) => {
+        const result = await captureForegroundProcess("mnemoteca", { args, cwd: options?.cwd ?? getCwd() });
+        return { ...result, success: result.code === 0 };
+    },
 };

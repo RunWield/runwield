@@ -1,3 +1,6 @@
+import process from "node:process";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
 import {
     fauxAssistantMessage,
     fauxText,
@@ -5,7 +8,7 @@ import {
     type Message,
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import {
@@ -71,7 +74,7 @@ function estimateFirstFauxUsage(context: TranscriptContext, output: string) {
     };
 }
 
-Deno.test("guided-review emits the exact runtime usage frame before completing and cleans up its listener and Session", async () => {
+test("guided-review emits the exact runtime usage frame before completing and cleans up its listener and Session", async () => {
     await withRuntimeCommandFixture(
         "guided-review-command-usage-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -92,7 +95,7 @@ Deno.test("guided-review emits the exact runtime usage frame before completing a
                 expectedUsage = estimateFirstFauxUsage(context, reviewJson);
                 return fauxAssistantMessage(fauxText(reviewJson));
             });
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             let stdout = "";
             let stderr = "";
             const outputEvents: string[] = [];
@@ -154,7 +157,7 @@ Deno.test("guided-review emits the exact runtime usage frame before completing a
                 store.close();
             }
 
-            const commandSource = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+            const commandSource = await fsReadFile(new URL("./index.ts", import.meta.url), "utf8");
             const unsubscribeIndex = commandSource.indexOf("unsubscribe();");
             const closeIndex = commandSource.indexOf("runtime.closeSession(sessionId);");
             assertEquals(unsubscribeIndex > 0, true);

@@ -1,5 +1,7 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -31,24 +33,24 @@ interface SlashFixtureOptions {
 async function writeCatalogFixtures(projectRoot: string, options: SlashFixtureOptions): Promise<void> {
     if (options.promptTemplate) {
         const promptDir = join(projectRoot, ".wld", "prompts");
-        await Deno.mkdir(promptDir, { recursive: true });
-        await Deno.writeTextFile(
-            join(promptDir, "review.md"),
+        await fsMkdir(promptDir, { recursive: true });
+        await fsWriteFile(
+            join(promptDir, "review-fixture.md"),
             ["---", 'description: "Review fixture"', "---", "Review the fixture carefully."].join("\n"),
         );
     }
     if (options.initPromptTemplate) {
         const promptDir = join(projectRoot, ".wld", "prompts");
-        await Deno.mkdir(promptDir, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(promptDir, { recursive: true });
+        await fsWriteFile(
             join(promptDir, "init.md"),
             ["---", 'description: "Init fixture"', "---", "Initialize from the fixture."].join("\n"),
         );
     }
     if (options.skill) {
         const skillDir = join(projectRoot, ".wld", "skills", "diagnose-fixture");
-        await Deno.mkdir(skillDir, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(skillDir, { recursive: true });
+        await fsWriteFile(
             join(skillDir, "SKILL.md"),
             [
                 "---",
@@ -65,82 +67,79 @@ async function withSlashFixture(
     options: SlashFixtureOptions,
     run: (fixture: SlashFixture, projectRoot: string) => Promise<void>,
 ): Promise<void> {
-    await withRuntimeCommandFixture(
-        "runwield-slash-dispatch-",
-        async ({ projectRoot, setModelResponse }) => {
-            await writeCatalogFixtures(projectRoot, options);
-            setModelResponse("Fixture turn complete.");
-            const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-            await runtime.renameSession(created.sessionId, "Slash fixture");
-            const messages: string[] = [];
-            const submittedRequests: string[] = [];
-            runtime.subscribeSessionEvents(created.sessionId, (event) => {
-                if (event.type === RuntimeEventTypes.USER_MESSAGE) submittedRequests.push(event.text);
-            });
+    await withRuntimeCommandFixture("runwield-slash-dispatch-", async ({ projectRoot, setModelResponse }) => {
+        await writeCatalogFixtures(projectRoot, options);
+        setModelResponse("Fixture turn complete.");
+        const runtime = createSessionRuntime();
+        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        await runtime.renameSession(created.sessionId, "Slash fixture");
+        const messages: string[] = [];
+        const submittedRequests: string[] = [];
+        runtime.subscribeSessionEvents(created.sessionId, (event) => {
+            if (event.type === RuntimeEventTypes.USER_MESSAGE) submittedRequests.push(event.text);
+        });
 
-            const templates = await runtime.listSessionPromptTemplates(created.sessionId);
-            const promptTemplateByName = new Map(templates.map((template) => [template.name, template]));
-            const skills = (await runtime.listSessionSkills(created.sessionId)).map((skill): SkillMeta => ({
-                name: skill.name,
-                description: skill.description,
-                path: skill.path,
-                source: skill.source,
-                disableModelInvocation: skill.disableModelInvocation,
-            }));
-            const uiAPI: SlashContext["uiAPI"] = {
-                abortActivePrompt: () => {},
-                appendSystemMessage: (message) => messages.push(message),
-                appendAgentMessageStart: () => ({ appendText: () => {} }),
-                requestRender: () => {},
-                promptSelect: () => Promise.resolve(options.selectedAgent ?? null),
-                promptText: () => Promise.resolve(null),
-                showModelSelector: () => {},
-            };
-            const editor: SlashContext["editor"] = {
-                disableSubmit: false,
-                setText: () => {},
-                setAutocompleteProvider: () => {},
-                handleInput: () => {},
-            };
-            const tui: SlashContext["tui"] = {
-                requestRender: () => {},
-                setFocus: () => {},
-            };
-            const context = (userRequest: string): SlashContext => ({
-                userRequest,
-                savedImages: [],
-                sessionId: created.sessionId,
-                sessionRuntime: runtime,
-                uiAPI,
-                editor,
-                tui,
-                sessionStartedAt: new Date().toISOString(),
-                originalHandleInput: () => {},
-                initCommandAvailable: true,
-                promptTemplateByName,
-                skills,
-                chatPromptAgentName: "operator",
-                resolveTemplateModel: () => ({ ok: false }),
-                dispatchExpandedUserRequest: async (text, images) => {
-                    await runtime.promptUserTurn(created.sessionId, {
-                        initialRequest: text,
-                        initialImages: images,
-                    });
-                },
-                generationGuard: createGenerationGuard(),
-            });
+        const templates = await runtime.listSessionPromptTemplates(created.sessionId);
+        const promptTemplateByName = new Map(templates.map((template) => [template.name, template]));
+        const skills = (await runtime.listSessionSkills(created.sessionId)).map((skill): SkillMeta => ({
+            name: skill.name,
+            description: skill.description,
+            path: skill.path,
+            source: skill.source,
+            disableModelInvocation: skill.disableModelInvocation,
+        }));
+        const uiAPI: SlashContext["uiAPI"] = {
+            abortActivePrompt: () => {},
+            appendSystemMessage: (message) => messages.push(message),
+            appendAgentMessageStart: () => ({ appendText: () => {} }),
+            requestRender: () => {},
+            promptSelect: () => Promise.resolve(options.selectedAgent ?? null),
+            promptText: () => Promise.resolve(null),
+            showModelSelector: () => {},
+        };
+        const editor: SlashContext["editor"] = {
+            disableSubmit: false,
+            setText: () => {},
+            setAutocompleteProvider: () => {},
+            handleInput: () => {},
+        };
+        const tui: SlashContext["tui"] = {
+            requestRender: () => {},
+            setFocus: () => {},
+        };
+        const context = (userRequest: string): SlashContext => ({
+            userRequest,
+            savedImages: [],
+            sessionId: created.sessionId,
+            sessionRuntime: runtime,
+            uiAPI,
+            editor,
+            tui,
+            sessionStartedAt: new Date().toISOString(),
+            originalHandleInput: () => {},
+            initCommandAvailable: true,
+            promptTemplateByName,
+            skills,
+            chatPromptAgentName: "operator",
+            resolveTemplateModel: () => ({ ok: false }),
+            dispatchExpandedUserRequest: async (text, images) => {
+                await runtime.promptUserTurn(created.sessionId, {
+                    initialRequest: text,
+                    initialImages: images,
+                });
+            },
+            generationGuard: createGenerationGuard(),
+        });
 
-            try {
-                await run({ context, messages, runtime, sessionId: created.sessionId, submittedRequests }, projectRoot);
-            } finally {
-                runtime.closeAllSessions();
-            }
-        },
-    );
+        try {
+            await run({ context, messages, runtime, sessionId: created.sessionId, submittedRequests }, projectRoot);
+        } finally {
+            runtime.closeAllSessions();
+        }
+    });
 }
 
-Deno.test("TUI picker cancellation and unavailable init persist truthful command lifecycles", async () => {
+test("TUI picker cancellation and unavailable init persist truthful command lifecycles", async () => {
     await withSlashFixture({}, async ({ context }, projectRoot) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         assertEquals(await handleSlashCommand(context("/agent")), true);
@@ -148,46 +147,62 @@ Deno.test("TUI picker cancellation and unavailable init persist truthful command
         unavailable.initCommandAvailable = false;
         assertEquals(await handleSlashCommand(unavailable), true);
         await drainWorkflowMetrics();
-        const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n")
-            .map((line) => JSON.parse(line)).filter((row) => row.category === "command");
-        assertEquals(rows.map((row) => [row.command, row.event, row.phase, row.outcome]), [
-            ["agent", "command_started", "opened", undefined],
-            ["agent", "command_finished", "finish", "canceled"],
-            ["init", "command_started", "start", undefined],
-            ["init", "command_finished", "rejected", "rejected"],
-        ]);
+        const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+            .filter((row) => row.category === "command");
+        assertEquals(
+            rows.map((row) => [row.command, row.event, row.phase, row.outcome]),
+            [
+                ["agent", "command_started", "opened", undefined],
+                ["agent", "command_finished", "finish", "canceled"],
+                ["init", "command_started", "start", undefined],
+                ["init", "command_finished", "rejected", "rejected"],
+            ],
+        );
         assertEquals(rows[0].commandId, rows[1].commandId);
         assertEquals(rows[2].commandId, rows[3].commandId);
     });
 });
 
-Deno.test("TUI picker selection records failure after dispatch when Agent cannot switch", async () => {
+test("TUI picker selection records failure after dispatch when Agent cannot switch", async () => {
     await withSlashFixture({ selectedAgent: "not-an-agent" }, async ({ context }, projectRoot) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         assertEquals(await handleSlashCommand(context("/agent")), true);
         await drainWorkflowMetrics();
-        const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n")
-            .map((line) => JSON.parse(line)).filter((row) => row.category === "command");
-        assertEquals(rows.map((row) => [row.event, row.phase, row.outcome]), [
-            ["command_started", "opened", undefined],
-            ["command_dispatched", "dispatched", undefined],
-            ["command_finished", "finish", "failed"],
-        ]);
+        const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+            .filter((row) => row.category === "command");
+        assertEquals(
+            rows.map((row) => [row.event, row.phase, row.outcome]),
+            [
+                ["command_started", "opened", undefined],
+                ["command_dispatched", "dispatched", undefined],
+                ["command_finished", "finish", "failed"],
+            ],
+        );
         assertEquals(new Set(rows.map((row) => row.commandId)).size, 1);
     });
 });
 
-Deno.test("TUI caught export write error settles the built-in as failed", async () => {
+test("TUI caught export write error settles the built-in as failed", async () => {
     await withSlashFixture({}, async ({ context }, projectRoot) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
-        await handleSlashCommand(context("/export /nonexistent-runwield-directory/session.jsonl"));
-        const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n")
+        await fsWriteFile(join(projectRoot, "not-a-directory"), "Preserve this file");
+        await handleSlashCommand(context("/export not-a-directory/session.jsonl"));
+        await drainWorkflowMetrics();
+        const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+            .trim()
+            .split("\n")
             .map((line) => JSON.parse(line));
         assertEquals(rows.find((row) => row.event === "command_finished")?.outcome, "failed");
     });
 });
 
-Deno.test("isImmediateBuiltinSlashCommandWhileStreaming recognizes safe one-shot built-ins only", () => {
+test("isImmediateBuiltinSlashCommandWhileStreaming recognizes safe one-shot built-ins only", () => {
     assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/name Project Session"), true);
     assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/context"), true);
     assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("/help"), true);
@@ -198,7 +213,7 @@ Deno.test("isImmediateBuiltinSlashCommandWhileStreaming recognizes safe one-shot
     assertEquals(isImmediateBuiltinSlashCommandWhileStreaming("hello"), false);
 });
 
-Deno.test("handleSlashCommand distinguishes regular input and unknown commands through the real registry", async () => {
+test("handleSlashCommand distinguishes regular input and unknown commands through the real registry", async () => {
     await withSlashFixture({}, async ({ context, messages }) => {
         assertEquals(await handleSlashCommand(context("hello")), false);
         assertEquals(await handleSlashCommand(context("/not-a-runwield-command")), true);
@@ -206,7 +221,7 @@ Deno.test("handleSlashCommand distinguishes regular input and unknown commands t
     });
 });
 
-Deno.test("handleSlashCommand runs onboarding only through the active TUI flow", async () => {
+test("handleSlashCommand runs onboarding only through the active TUI flow", async () => {
     await withSlashFixture({}, async ({ context, submittedRequests }) => {
         const slashContext = context("/onboard");
         let calls = 0;
@@ -221,7 +236,7 @@ Deno.test("handleSlashCommand runs onboarding only through the active TUI flow",
     });
 });
 
-Deno.test("handleSlashCommand executes built-in help through the real command registry", async () => {
+test("handleSlashCommand executes built-in help through the real command registry", async () => {
     await withSlashFixture({}, async ({ context, messages }) => {
         assertEquals(await handleSlashCommand(context("/help model")), true);
         assertEquals(messages.length, 1);
@@ -229,7 +244,7 @@ Deno.test("handleSlashCommand executes built-in help through the real command re
     });
 });
 
-Deno.test("handleSlashCommand keeps the MCP adapter shell-only instead of dispatching a prompt template", async () => {
+test("handleSlashCommand keeps the MCP adapter shell-only instead of dispatching a prompt template", async () => {
     await withSlashFixture({}, async ({ context, messages, submittedRequests }) => {
         const slashContext = context("/mcp agy-cli");
         slashContext.promptTemplateByName.set("mcp", {
@@ -243,7 +258,7 @@ Deno.test("handleSlashCommand keeps the MCP adapter shell-only instead of dispat
     });
 });
 
-Deno.test("handleSlashCommand keeps hidden init reserved instead of dispatching a same-named prompt template", async () => {
+test("handleSlashCommand keeps hidden init reserved instead of dispatching a same-named prompt template", async () => {
     await withSlashFixture({ initPromptTemplate: true }, async ({ context, messages, submittedRequests }) => {
         const slashContext = context("/init use fixture state");
         slashContext.initCommandAvailable = false;
@@ -256,22 +271,28 @@ Deno.test("handleSlashCommand keeps hidden init reserved instead of dispatching 
     });
 });
 
-Deno.test("handleSlashCommand shows expanded prompt template text from the Core runtime", async () => {
+test("handleSlashCommand shows expanded prompt template text from the Core runtime", async () => {
     await withSlashFixture({ promptTemplate: true }, async ({ context, submittedRequests }, projectRoot) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
-        assertEquals(await handleSlashCommand(context("/review focus on tests")), true);
+        assertEquals(await handleSlashCommand(context("/review-fixture focus on tests")), true);
         assertEquals(submittedRequests, ["Review the fixture carefully.\n\nfocus on tests"]);
         await drainWorkflowMetrics();
-        const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n")
-            .map((line) => JSON.parse(line)).filter((row) => row.category === "command" && row.command === "review");
-        assertEquals(rows.map((row) => row.event), ["command_started", "command_finished"]);
+        const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+            .filter((row) => row.category === "command" && row.command === "review-fixture");
+        assertEquals(
+            rows.map((row) => row.event),
+            ["command_started", "command_finished"],
+        );
         assertEquals(new Set(rows.map((row) => row.commandId)).size, 1);
         assertEquals(rows[0].sourceSurface, "tui");
         assertEquals(JSON.stringify(rows).includes("focus on tests"), false);
     });
 });
 
-Deno.test("handleSlashCommand does not read prompt-template files in the TUI", async () => {
+test("handleSlashCommand does not read prompt-template files in the TUI", async () => {
     await withSlashFixture({}, async ({ context, messages, submittedRequests }) => {
         const slashContext = context("/missing-template");
         slashContext.promptTemplateByName.set("missing-template", {
@@ -285,7 +306,7 @@ Deno.test("handleSlashCommand does not read prompt-template files in the TUI", a
     });
 });
 
-Deno.test("handleSlashCommand submits skill slash text through the active runtime", async () => {
+test("handleSlashCommand submits skill slash text through the active runtime", async () => {
     await withSlashFixture({ skill: true }, async ({ context, runtime, sessionId, submittedRequests }, projectRoot) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         await runtime.switchAgent(sessionId, { agentName: "operator" });
@@ -293,19 +314,23 @@ Deno.test("handleSlashCommand submits skill slash text through the active runtim
         assertEquals(await handleSlashCommand(context("/skill:diagnose-fixture inspect the failure")), true);
         assertEquals(submittedRequests, ["/skill:diagnose-fixture inspect the failure"]);
         await drainWorkflowMetrics();
-        const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n")
-            .map((line) => JSON.parse(line)).filter((row) =>
-                row.category === "command" && row.command === "diagnose-fixture"
-            );
-        assertEquals(rows.map((row) => row.event), ["command_started", "command_finished"]);
+        const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line))
+            .filter((row) => row.category === "command" && row.command === "diagnose-fixture");
+        assertEquals(
+            rows.map((row) => row.event),
+            ["command_started", "command_finished"],
+        );
         assertEquals(new Set(rows.map((row) => row.commandId)).size, 1);
         assertEquals(JSON.stringify(rows).includes("inspect the failure"), false);
     });
 });
 
-Deno.test("handleSlashCommand does not read skill files in the TUI", async () => {
+test("handleSlashCommand does not read skill files in the TUI", async () => {
     await withSlashFixture({ skill: true }, async ({ context, messages, submittedRequests }, projectRoot) => {
-        await Deno.remove(join(projectRoot, ".wld", "skills", "diagnose-fixture"), { recursive: true });
+        await fsRm(join(projectRoot, ".wld", "skills", "diagnose-fixture"), { recursive: true });
 
         assertEquals(await handleSlashCommand(context("/skill:diagnose-fixture")), true);
         assertEquals(messages, []);

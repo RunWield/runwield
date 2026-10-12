@@ -1,5 +1,5 @@
 import { renderMermaidASCII } from "beautiful-mermaid";
-import { Markdown, visibleWidth } from "@earendil-works/pi-tui";
+import { getCapabilities, hyperlink, Markdown, visibleWidth } from "@earendil-works/pi-tui";
 
 const MERMAID_RENDER_OPTIONS = Object.freeze({
     useAscii: false,
@@ -12,6 +12,17 @@ const MERMAID_RENDER_OPTIONS = Object.freeze({
 /** @typedef {import('@earendil-works/pi-tui').MarkdownTheme} MarkdownTheme */
 /** @typedef {import('@earendil-works/pi-tui').DefaultTextStyle} DefaultTextStyle */
 /** @typedef {import('@earendil-works/pi-tui').MarkdownOptions} MarkdownOptions */
+/**
+ * @typedef {Object} InlineStyleContext
+ * @property {(text: string) => string} applyText
+ * @property {string} stylePrefix
+ */
+
+/**
+ * @typedef {Object} InlineBoundaries
+ * @property {string} previousText
+ * @property {string} nextText
+ */
 
 /**
  * @typedef {Object} MermaidMarkdownOptions
@@ -70,6 +81,16 @@ function normalizeOsc8Terminators(line) {
 }
 
 /**
+ * @param {import('marked').Token | undefined} token
+ * @returns {string}
+ */
+function inlineBoundaryText(token) {
+    if (token?.type === "br") return "\n";
+    if (token && "tokens" in token && token.tokens?.length) return token.tokens.map(inlineBoundaryText).join("");
+    return token && "text" in token ? token.text || token.raw : token?.raw || "";
+}
+
+/**
  * Markdown adapter that renders completed top-level Mermaid fences as compact
  * Unicode diagrams when they fit, otherwise preserving upstream Markdown output.
  */
@@ -90,6 +111,11 @@ export class MermaidMarkdown extends RuntimeMarkdown {
         /** @type {MarkdownTheme} */
         this.markdownTheme = theme;
         this.renderDepth = 0;
+        /** @type {import('../review/document-link-host.ts').DocumentLinkHost | null} */
+        this.documentLinks = null;
+        this.insideLink = false;
+        /** @type {InlineBoundaries} */
+        this.inlineBoundaries = { previousText: "", nextText: "" };
         /** @type {Map<string, CachedMermaidResult>} */
         this.mermaidCache = new Map();
         this.renderMermaid = mermaidOptions.renderMermaid ||
@@ -102,6 +128,76 @@ export class MermaidMarkdown extends RuntimeMarkdown {
      */
     render(width) {
         return /** @type {string[]} */ (super.render(width)).map((line) => normalizeOsc8Terminators(line));
+    }
+
+    /** @param {import('../review/document-link-host.ts').DocumentLinkHost | null} host */
+    setDocumentLinks(host) {
+        this.documentLinks = host;
+    }
+
+    /**
+     * Adapt inline tokens only. Never rewrite the source or mutate parsed tokens.
+     * @param {import('marked').Token[]} tokens
+     * @param {InlineStyleContext} [styleContext]
+     * @returns {string}
+     */
+    renderInlineTokens(tokens, styleContext) {
+        const upstream = (/** @type {import('marked').Token[]} */ values) =>
+            super.renderInlineTokens(values, styleContext);
+        const host = this.documentLinks;
+        if (!host || this.insideLink || !getCapabilities().hyperlinks) return upstream(tokens);
+        const outerBoundaries = this.inlineBoundaries;
+        return tokens.map((token, tokenIndex) => {
+            const previousText = outerBoundaries.previousText +
+                tokens.slice(0, tokenIndex).map(inlineBoundaryText).join("");
+            const nextText = tokens.slice(tokenIndex + 1).map(inlineBoundaryText).join("") + outerBoundaries.nextText;
+            if (token.type === "link" || token.type === "image") {
+                const url = token.type === "link" ? host.resolve(token.href) : null;
+                this.insideLink = true;
+                try {
+                    return upstream([url ? { ...token, href: url } : token]);
+                } finally {
+                    this.insideLink = false;
+                }
+            }
+            if (token.type === "codespan") {
+                const url = host.resolve(token.text, "literal");
+                const label = upstream([token]);
+                return url ? hyperlink(label, url) : label;
+            }
+            if (token.type !== "text" || token.tokens?.length) {
+                // Upstream recurses through this adapter for formatted child tokens.
+                this.inlineBoundaries = { previousText, nextText };
+                try {
+                    return upstream([token]);
+                } finally {
+                    this.inlineBoundaries = outerBoundaries;
+                }
+            }
+            // Unquoted paths cannot contain whitespace, URL schemes, or delimiters.
+            // Require a complete token: file.md.txt and file.md:12 are not mentions.
+            const pattern =
+                /(^|[\s([{"'“‘])([^\s()[\]{}<>"'“”‘’:,;!?`#]+\.md(?:#[^\s()[\]{}<>"'“”‘’:,;.!?`]+)?)(?=$|[\s)\]}"'”’,;!]|[.?](?![\p{L}\p{N}_./%=-]))/gu;
+            let result = "";
+            let start = 0;
+            for (const match of token.text.matchAll(pattern)) {
+                const index = match.index + match[1].length;
+                const path = match[2];
+                const followingText = (token.text.slice(index + path.length) + nextText).slice(0, 2);
+                // Escapes and formatting can split one visible word across tokens.
+                if (index === 0 && previousText && !/[\s([{"'“‘]$/u.test(previousText)) continue;
+                if (
+                    followingText &&
+                    !/^(?:[\s)\]}"'”’,;!]|[.?](?![\p{L}\p{N}_./%=-]))/u.test(followingText)
+                ) continue;
+                const url = host.resolve(path);
+                if (!url) continue;
+                result += upstream([{ ...token, text: token.text.slice(start, index) }]);
+                result += hyperlink(upstream([{ ...token, text: path }]), url);
+                start = index + path.length;
+            }
+            return result + upstream([{ ...token, text: token.text.slice(start) }]);
+        }).join("");
     }
 
     /**

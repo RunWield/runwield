@@ -19,6 +19,30 @@ export class ReviewInspection {
 
     constructor(private readonly files: ReviewDiffSize[]) {}
 
+    /** Rebuild receipts only after checking them against the current required diff. */
+    static fromRecorded(
+        files: ReviewDiffSize[],
+        requiredScope: ReviewDiffScope,
+        spans: ReviewDiffSpan[],
+    ): ReviewInspection {
+        for (const span of spans) {
+            if (span.scope !== requiredScope) {
+                throw new Error(`Invalid review coverage scope: ${span.scope}; required ${requiredScope}.`);
+            }
+            const file = files.find((file) => file.scope === requiredScope && file.path === span.path);
+            if (!file) throw new Error(`Invalid review coverage path: ${span.path}.`);
+            if (
+                !Number.isSafeInteger(span.start) || !Number.isSafeInteger(span.end) ||
+                span.start < 0 || span.end < span.start || span.end > file.byteLength
+            ) {
+                throw new Error(`Invalid review coverage range for ${span.path}: ${span.start}–${span.end}.`);
+            }
+        }
+        const inspection = new ReviewInspection(files.filter((file) => file.scope === requiredScope));
+        for (const span of spans) inspection.record(span.scope, span.path, span.start, span.end);
+        return inspection;
+    }
+
     record(scope: ReviewDiffScope, path: string, start: number, end: number): void {
         if (end > start) this.reads.push({ scope, path, start, end });
     }

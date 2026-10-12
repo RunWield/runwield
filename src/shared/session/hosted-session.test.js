@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE } from "./workflow-context-session.js";
 import { TUTORIAL_CONTEXT_CUSTOM_TYPE } from "./tutorial-context-session.ts";
@@ -32,7 +35,7 @@ function makeDisposableSession(id) {
     };
 }
 
-Deno.test("HostedSession requires an absolute project root", () => {
+test("HostedSession requires an absolute project root", () => {
     assertThrows(
         () => new HostedSession({ id: "missing-root" }),
         Error,
@@ -45,13 +48,13 @@ Deno.test("HostedSession requires an absolute project root", () => {
     );
 });
 
-Deno.test("HostedSession accepts max as a thinking level", () => {
-    const session = new HostedSession({ id: "max-thinking", cwd: Deno.cwd() });
+test("HostedSession accepts max as a thinking level", () => {
+    const session = new HostedSession({ id: "max-thinking", cwd: getCwd() });
     session.setThinkingLevel("max");
     assertEquals(session.getThinkingLevel(), "max");
 });
 
-Deno.test("HostedSession stores mutable root runtime state per session", () => {
+test("HostedSession stores mutable root runtime state per session", () => {
     const sessionManager = makeSessionManager("alpha-manager");
     const eventSink = { name: "sink-alpha" };
     const activeHandler = () => {};
@@ -95,7 +98,7 @@ Deno.test("HostedSession stores mutable root runtime state per session", () => {
     assertEquals(session.getActiveExecutionCwd(), "/exec/a");
 });
 
-Deno.test("HostedSession keeps user model overrides independent from agent model state", () => {
+test("HostedSession keeps user model overrides independent from agent model state", () => {
     const session = new HostedSession({
         id: "models",
         cwd: "/work/models",
@@ -114,7 +117,7 @@ Deno.test("HostedSession keeps user model overrides independent from agent model
     assertEquals(session.getActiveModelState(), { model: "openai/default", provider: "openai" });
 });
 
-Deno.test("HostedSession treats managed metadata as projection cache, not live runtime authority", () => {
+test("HostedSession treats managed metadata as projection cache, not live runtime authority", () => {
     const session = new HostedSession({
         id: "managed-cache",
         cwd: "/work/managed-cache",
@@ -147,7 +150,7 @@ Deno.test("HostedSession treats managed metadata as projection cache, not live r
     assertEquals(session.getWorkflowContext(), { routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM" });
 });
 
-Deno.test("HostedSession dehydrates managed sessions by clearing live activation state", () => {
+test("HostedSession dehydrates managed sessions by clearing live activation state", () => {
     const rootManager = makeSessionManager("managed-dehydrate-manager");
     const rootAgentSession = makeDisposableSession("managed-root-agent");
     const subAgentSession = makeDisposableSession("managed-sub-agent");
@@ -208,7 +211,7 @@ Deno.test("HostedSession dehydrates managed sessions by clearing live activation
     assertEquals(session.getManagedMetadata()?.activeAgent, "router");
 });
 
-Deno.test("two Hosted Sessions do not share session-scoped runtime state", () => {
+test("two Hosted Sessions do not share session-scoped runtime state", () => {
     const alphaRoot = makeDisposableSession("alpha-root");
     const betaRoot = makeDisposableSession("beta-root");
     const alphaSub = makeDisposableSession("alpha-sub");
@@ -285,7 +288,7 @@ Deno.test("two Hosted Sessions do not share session-scoped runtime state", () =>
     assertEquals(beta.getEventSink(), { session: "beta-sink" });
 });
 
-Deno.test("HostedSession rejects ownerless active execution workflows", () => {
+test("HostedSession rejects ownerless active execution workflows", () => {
     const session = new HostedSession({ id: "owner-invariant", cwd: "/work/owner-invariant" });
 
     assertThrows(
@@ -299,7 +302,7 @@ Deno.test("HostedSession rejects ownerless active execution workflows", () => {
     assertEquals(session.getActiveExecutionWorkflow(), null);
 });
 
-Deno.test("HostedSession validates Pair execution runtime state", () => {
+test("HostedSession validates Pair execution runtime state", () => {
     const session = new HostedSession({ id: "pair-state", cwd: "/work/pair-state" });
     session.setActiveExecutionWorkflow({
         planName: "visual-plan",
@@ -341,7 +344,7 @@ Deno.test("HostedSession validates Pair execution runtime state", () => {
     );
 });
 
-Deno.test("HostedSession validates execution attempt timestamp", () => {
+test("HostedSession validates execution attempt timestamp", () => {
     const session = new HostedSession({ id: "attempt-timestamp", cwd: "/work/attempt-timestamp" });
     session.setActiveExecutionWorkflow({
         planName: "visual-plan",
@@ -381,7 +384,7 @@ Deno.test("HostedSession validates execution attempt timestamp", () => {
     );
 });
 
-Deno.test("HostedSession hydrates and persists workflow context defensively", () => {
+test("HostedSession hydrates and persists workflow context defensively", () => {
     /** @type {Array<Record<string, unknown>>} */
     const entries = [
         {
@@ -416,8 +419,8 @@ Deno.test("HostedSession hydrates and persists workflow context defensively", ()
     });
 });
 
-Deno.test("HostedSession workflow context setters are fail-open after disposal", async () => {
-    const session = new HostedSession({ id: "disposed-workflow", cwd: Deno.cwd() });
+test("HostedSession workflow context setters are fail-open after disposal", async () => {
+    const session = new HostedSession({ id: "disposed-workflow", cwd: getCwd() });
     await session.dispose();
 
     session.setWorkflowTriageContext({ routingIntent: "PLANNED_CHANGE", complexity: "LOW" });
@@ -426,8 +429,8 @@ Deno.test("HostedSession workflow context setters are fail-open after disposal",
     assertEquals(session.getWorkflowContext(), null);
 });
 
-Deno.test("HostedSession stores internal agent names in active agent stack", () => {
-    const session = new HostedSession({ id: "agent-info", cwd: Deno.cwd() });
+test("HostedSession stores internal agent names in active agent stack", () => {
+    const session = new HostedSession({ id: "agent-info", cwd: getCwd() });
 
     session.resetAgentInfoStack("Planner", "model", "provider", "planner");
     session.pushAgentInfo("Engineer", "model2", "provider2", "engineer");
@@ -446,8 +449,8 @@ Deno.test("HostedSession stores internal agent names in active agent stack", () 
     });
 });
 
-Deno.test("HostedSession removes delegated agent display entries by id when completion order differs", () => {
-    const session = new HostedSession({ id: "agent-info-concurrent", cwd: Deno.cwd() });
+test("HostedSession removes delegated agent display entries by id when completion order differs", () => {
+    const session = new HostedSession({ id: "agent-info-concurrent", cwd: getCwd() });
 
     session.resetAgentInfoStack("Router", "model", "provider", "router");
     const readerA = session.pushAgentInfo("Reader A", "model-a", "provider", "reader");
@@ -464,7 +467,7 @@ Deno.test("HostedSession removes delegated agent display entries by id when comp
     assertEquals(session.getActiveAgentName(), "Router");
 });
 
-Deno.test("HostedSession consumes pending task completion once and clears it on new workflow start", () => {
+test("HostedSession consumes pending task completion once and clears it on new workflow start", () => {
     const session = new HostedSession({ id: "task-completion-state", cwd: "/tmp/task-completion-state" });
     const rootAgentSession = makeDisposableSession("root");
     const isolatedAgentSession = makeDisposableSession("isolated");
@@ -494,7 +497,7 @@ Deno.test("HostedSession consumes pending task completion once and clears it on 
     assertEquals(session.consumePendingTaskCompletion(null), null);
 });
 
-Deno.test("HostedSession preserves steering received during an Agent transition", () => {
+test("HostedSession preserves steering received during an Agent transition", () => {
     const session = new HostedSession({ id: "agent-transition-steering", cwd: "/tmp/agent-transition-steering" });
     const transitionId = session.beginAgentTransition();
     const images = [{ base64: "abc123", mimeType: "image/png" }];
@@ -509,7 +512,7 @@ Deno.test("HostedSession preserves steering received during an Agent transition"
     session.dispose();
 });
 
-Deno.test("two Hosted Sessions do not share workflow context", () => {
+test("two Hosted Sessions do not share workflow context", () => {
     const alpha = new HostedSession({ id: "workflow-alpha", sessionManager: makeSessionManager("workflow-alpha") });
     const beta = new HostedSession({ id: "workflow-beta", sessionManager: makeSessionManager("workflow-beta") });
 
@@ -520,7 +523,7 @@ Deno.test("two Hosted Sessions do not share workflow context", () => {
     assertEquals(beta.getWorkflowContext(), { planName: "beta-plan" });
 });
 
-Deno.test("HostedSession dispose clears owned runtime references and rejects later mutation", async () => {
+test("HostedSession dispose clears owned runtime references and rejects later mutation", async () => {
     const sessionManager = makeSessionManager("disposing-manager");
     const root = makeDisposableSession("root");
     const sub = makeDisposableSession("sub");
@@ -560,7 +563,7 @@ Deno.test("HostedSession dispose clears owned runtime references and rejects lat
     );
 });
 
-Deno.test("HostedSession delegated-agent leases allow three readers and reject a fourth", () => {
+test("HostedSession delegated-agent leases allow three readers and reject a fourth", () => {
     const session = new HostedSession({ id: "delegated-readers", cwd: "/tmp/delegated-readers" });
     const releaseA = session.acquireDelegatedAgentLease("read");
     const releaseB = session.acquireDelegatedAgentLease("read");
@@ -573,7 +576,7 @@ Deno.test("HostedSession delegated-agent leases allow three readers and reject a
     assertEquals(session.getDelegatedAgentLeaseState(), { readers: 0, writer: false });
 });
 
-Deno.test("HostedSession delegated-agent leases enforce writer exclusivity", () => {
+test("HostedSession delegated-agent leases enforce writer exclusivity", () => {
     const session = new HostedSession({ id: "delegated-writer", cwd: "/tmp/delegated-writer" });
     const releaseReader = session.acquireDelegatedAgentLease("read");
     assertThrows(() => session.acquireDelegatedAgentLease("write"), Error, "exclusive access");
@@ -585,7 +588,7 @@ Deno.test("HostedSession delegated-agent leases enforce writer exclusivity", () 
     assertEquals(session.getDelegatedAgentLeaseState(), { readers: 0, writer: false });
 });
 
-Deno.test("HostedSession delegated-agent leases are scoped per session and cleared on dispose", () => {
+test("HostedSession delegated-agent leases are scoped per session and cleared on dispose", () => {
     const sessionA = new HostedSession({ id: "delegated-a", cwd: "/tmp/delegated-a" });
     const sessionB = new HostedSession({ id: "delegated-b", cwd: "/tmp/delegated-b" });
     sessionA.acquireDelegatedAgentLease("write");
@@ -596,7 +599,7 @@ Deno.test("HostedSession delegated-agent leases are scoped per session and clear
     sessionA.dispose();
 });
 
-Deno.test("HostedSession preserves workflow context across empty root manager swap and persists it", () => {
+test("HostedSession preserves workflow context across empty root manager swap and persists it", () => {
     const firstEntries = /** @type {Array<Record<string, unknown>>} */ ([]);
     const secondEntries = /** @type {Array<Record<string, unknown>>} */ ([]);
     const session = new HostedSession({
@@ -629,7 +632,7 @@ Deno.test("HostedSession preserves workflow context across empty root manager sw
     }]);
 });
 
-Deno.test("HostedSession null root manager does not clear workflow context", () => {
+test("HostedSession null root manager does not clear workflow context", () => {
     const session = new HostedSession({
         id: "context-null-manager",
         cwd: "/work/context-null-manager",
@@ -649,7 +652,7 @@ Deno.test("HostedSession null root manager does not clear workflow context", () 
     });
 });
 
-Deno.test("HostedSession triage setter preserves plan name without persistence", () => {
+test("HostedSession triage setter preserves plan name without persistence", () => {
     const session = new HostedSession({
         id: "context-triage-no-manager",
         cwd: "/work/context-triage-no-manager",
@@ -670,7 +673,7 @@ Deno.test("HostedSession triage setter preserves plan name without persistence",
     });
 });
 
-Deno.test("HostedSession plan setter preserves triage fields without persistence", () => {
+test("HostedSession plan setter preserves triage fields without persistence", () => {
     const session = new HostedSession({
         id: "context-plan-no-manager",
         cwd: "/work/context-plan-no-manager",
@@ -725,7 +728,7 @@ function makeManagedCapability() {
     };
 }
 
-Deno.test("HostedSession requires the current managed operation capability for writable managed state", () => {
+test("HostedSession requires the current managed operation capability for writable managed state", () => {
     const session = new HostedSession({
         id: "managed-capability",
         cwd: "/work/managed-capability",
@@ -774,7 +777,7 @@ Deno.test("HostedSession requires the current managed operation capability for w
     assertEquals(session.getSubAgentSessions().size, 0);
 });
 
-Deno.test("HostedSession restores tutorial context and requires managed writer ownership", () => {
+test("HostedSession restores tutorial context and requires managed writer ownership", () => {
     /** @type {Array<Record<string, unknown>>} */
     const entries = [{
         type: "custom",
@@ -842,7 +845,7 @@ Deno.test("HostedSession restores tutorial context and requires managed writer o
     assertEquals(entries.at(-1)?.customType, TUTORIAL_CONTEXT_CUSTOM_TYPE);
 });
 
-Deno.test("HostedSession records Plan Association through the managed capability", () => {
+test("HostedSession records Plan Association through the managed capability", () => {
     /** @type {Array<Record<string, unknown>>} */
     const entries = [];
     const manager = makeSessionManager("plan-association-session", entries);
@@ -881,7 +884,7 @@ Deno.test("HostedSession records Plan Association through the managed capability
     assertEquals(entries.at(-1)?.data, entry);
 });
 
-Deno.test("HostedSession rejects Plan Association recording without a writable manager", () => {
+test("HostedSession rejects Plan Association recording without a writable manager", () => {
     const session = new HostedSession({ id: "plan-association-nowrite", cwd: "/work/plan-association-nowrite" });
     assertThrows(
         () => session.recordPlanAssociation({ planId: "plan-1", planName: "example-plan", purpose: "planning" }),

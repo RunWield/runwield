@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * @module extensions/re-anchor
  * Re-anchors the active agent on its durable artifact after context compaction.
@@ -51,7 +52,7 @@ function resolveReAnchorContext(options: ReAnchorOptions): ReAnchorResolution {
     if (planName && EXECUTION_AGENTS.has(options.agentName)) {
         const executionCwd = activeWorkflow?.executionCwd || activeWorkflow?.projectRoot || hostedSession?.cwd || "";
         if (executionCwd) {
-            const markdown = Deno.readTextFileSync(getStoredPlanPath(executionCwd, planName));
+            const markdown = readFileSync(getStoredPlanPath(executionCwd, planName), "utf8");
             planBody = projectEngineerPlanBody(markdown);
         }
     }

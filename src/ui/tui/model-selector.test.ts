@@ -1,4 +1,5 @@
-import { assertEquals, assertInstanceOf, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
@@ -31,7 +32,7 @@ function makeTui(): { tui: TUI; terminal: CompatibleVirtualTerminal; container: 
     return { tui, terminal, container, editor };
 }
 
-Deno.test("^TUI model selector exposes Pi, Claude CLI, and Agy CLI models without API auth$", async () => {
+test("^TUI model selector exposes Pi, Claude CLI, and Agy CLI models without API auth$", async () => {
     await withRuntimeCommandFixture("model-selector-mixed-", async () => {
         const { tui, container, editor } = makeTui();
         const selected: Array<{ id: string; provider: string }> = [];
@@ -78,7 +79,7 @@ Deno.test("^TUI model selector exposes Pi, Claude CLI, and Agy CLI models withou
     });
 });
 
-Deno.test("TUI model selector cancellation leaves selection callbacks untouched", async () => {
+test("TUI model selector cancellation leaves selection callbacks untouched", async () => {
     await withRuntimeCommandFixture("model-selector-cancel-", async () => {
         const { tui } = makeTui();
         let selected = false;

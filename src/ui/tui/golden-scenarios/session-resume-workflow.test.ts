@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import {
     resumeCorruptSessionScenario,
     resumeInterruptedSessionScenario,
@@ -20,7 +22,7 @@ const scenarioExportNames = new Map<object, string>([
     [resumeInterruptedSessionScenario, "resumeInterruptedSessionScenario"],
 ]);
 
-Deno.test("execution Agent context identity survives recovery", async () => {
+test("execution Agent context identity survives recovery", async () => {
     const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
     const result = await runGoldenScenarioChildProcess({
         scenarioModule: "src/ui/tui/golden-scenarios/session-resume-workflow.ts",
@@ -49,16 +51,13 @@ Deno.test("execution Agent context identity survives recovery", async () => {
 });
 
 for (const scenario of sessionResumeWorkflowScenarios) {
-    Deno.test({
-        name: `golden Session resume: ${scenario.name}`,
-        fn: async () => {
-            const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
-            const result = await runGoldenScenarioChildProcess({
-                scenarioModule: "src/ui/tui/golden-scenarios/session-resume-workflow.ts",
-                exportName: scenarioExportNames.get(scenario) || "",
-                timeoutMs: scenario.timeoutMs || 90000,
-            });
-            assertEquals(result.result.actor.remaining, []);
-        },
+    test(`golden Session resume: ${scenario.name}`, async () => {
+        const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
+        const result = await runGoldenScenarioChildProcess({
+            scenarioModule: "src/ui/tui/golden-scenarios/session-resume-workflow.ts",
+            exportName: scenarioExportNames.get(scenario) || "",
+            timeoutMs: scenario.timeoutMs || 90000,
+        });
+        assertEquals(result.result.actor.remaining, []);
     });
 }

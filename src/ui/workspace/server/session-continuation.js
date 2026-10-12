@@ -1,3 +1,4 @@
+import fs, { stat as fsStat } from "node:fs/promises";
 import { validateSequenceReviewDecision } from "../../../shared/workflow/sequence-review.ts";
 import { resolveWorkflowPlanLocation } from "../../../shared/workflow/plan-location.ts";
 /* @module ui/workspace/server/session-continuation */
@@ -234,14 +235,14 @@ function compactSessionName(value) {
 /** @param {string} transcriptPath */
 async function readSessionListInfo(transcriptPath) {
     try {
-        const stat = await Deno.stat(transcriptPath);
+        const stat = await fsStat(transcriptPath);
         const cached = sessionListInfoCache.get(transcriptPath);
         if (
             cached && cached.size === stat.size && cached.mtime === stat.mtime?.getTime() &&
             cached.ctime === stat.ctime?.getTime()
         ) return cached.info;
         const entries = [];
-        const transcript = await Deno.readTextFile(transcriptPath);
+        const transcript = await fs.readFile(transcriptPath, "utf8");
         for (const line of transcript.split("\n")) {
             if (!line.trim()) continue;
             try {

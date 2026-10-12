@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import {
     buildRouterGoldenReport,
     createBenchmarkBashNudgeTool,
@@ -10,7 +11,7 @@ import {
     runRouterGoldenSetWithSelection,
 } from "./run-router-golden-set.js";
 
-Deno.test("normalizeGoldenRow fills stable defaults and router metrics", () => {
+test("normalizeGoldenRow fills stable defaults and router metrics", () => {
     assertEquals(
         normalizeGoldenRow({
             requestText: "fix it",
@@ -36,7 +37,7 @@ Deno.test("normalizeGoldenRow fills stable defaults and router metrics", () => {
     );
 });
 
-Deno.test("runRouterForGoldenRequest returns latest triage_report outcome", async () => {
+test("runRouterForGoldenRequest returns latest triage_report outcome", async () => {
     /** @type {string[] | undefined} */
     let capturedToolNames;
     /** @type {string[] | undefined} */
@@ -65,7 +66,7 @@ Deno.test("runRouterForGoldenRequest returns latest triage_report outcome", asyn
     assertEquals(capturedCustomToolNames?.includes("bash"), true);
 });
 
-Deno.test("benchmark bash tool nudges without executing commands", async () => {
+test("benchmark bash tool nudges without executing commands", async () => {
     const tool = createBenchmarkBashNudgeTool();
     const result = await tool.execute(
         "call-1",
@@ -86,7 +87,7 @@ Deno.test("benchmark bash tool nudges without executing commands", async () => {
     assertEquals(content.text.includes("QUICK_FIX"), false);
 });
 
-Deno.test("runRouterForGoldenRequest accepts injected triage outcome", async () => {
+test("runRouterForGoldenRequest accepts injected triage outcome", async () => {
     const triage = await runRouterForGoldenRequest("where is router?", {
         runAgentSession: () =>
             Promise.resolve(
@@ -105,7 +106,7 @@ Deno.test("runRouterForGoldenRequest accepts injected triage outcome", async () 
     assertEquals(triage.routingIntent, "INQUIRY");
 });
 
-Deno.test("runRouterGoldenSet updates labelled rows and honors limit", async () => {
+test("runRouterGoldenSet updates labelled rows and honors limit", async () => {
     const rows = await runRouterGoldenSet([
         { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
         { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX" },
@@ -132,7 +133,7 @@ Deno.test("runRouterGoldenSet updates labelled rows and honors limit", async () 
     assertEquals(rows[1].routerDecision, "");
 });
 
-Deno.test("runRouterGoldenSetWithSelection returns selected indexes for limited reports", async () => {
+test("runRouterGoldenSetWithSelection returns selected indexes for limited reports", async () => {
     const result = await runRouterGoldenSetWithSelection([
         { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
         { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX", routerDecision: "QUICK_FIX" },
@@ -168,7 +169,7 @@ Deno.test("runRouterGoldenSetWithSelection returns selected indexes for limited 
     });
 });
 
-Deno.test("runRouterGoldenSet clears stale decisions only when rerunning rows", async () => {
+test("runRouterGoldenSet clears stale decisions only when rerunning rows", async () => {
     /** @type {Array<Array<Record<string, unknown>>>} */
     const checkpoints = [];
     const rows = await runRouterGoldenSet([
@@ -195,7 +196,7 @@ Deno.test("runRouterGoldenSet clears stale decisions only when rerunning rows", 
     assertEquals(checkpoints[0][0].routerDecision, "");
 });
 
-Deno.test("runRouterGoldenSet resume skips completed rows and runs unfinished rows", async () => {
+test("runRouterGoldenSet resume skips completed rows and runs unfinished rows", async () => {
     /** @type {string[]} */
     const requests = [];
     const result = await runRouterGoldenSetWithSelection([
@@ -239,7 +240,7 @@ Deno.test("runRouterGoldenSet resume skips completed rows and runs unfinished ro
     assertEquals(result.rows[1].routerSummary, "fixed route");
 });
 
-Deno.test("mergeGoldenRowsWithResultRows keeps labels from the golden rows and completed router results", () => {
+test("mergeGoldenRowsWithResultRows keeps labels from the golden rows and completed router results", () => {
     const rows = mergeGoldenRowsWithResultRows([
         { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
         { decisionId: "d2", requestText: "fix it", humanJudgement: "QUICK_FIX" },
@@ -273,7 +274,7 @@ Deno.test("mergeGoldenRowsWithResultRows keeps labels from the golden rows and c
     ]);
 });
 
-Deno.test("runRouterGoldenSet records row errors and continues", async () => {
+test("runRouterGoldenSet records row errors and continues", async () => {
     const rows = await runRouterGoldenSet([
         { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
     ], {
@@ -287,7 +288,7 @@ Deno.test("runRouterGoldenSet records row errors and continues", async () => {
     assertEquals(rows[0].routerAgreesWithHuman, "");
 });
 
-Deno.test("runRouterGoldenSet times out slow rows", async () => {
+test("runRouterGoldenSet times out slow rows", async () => {
     const rows = await runRouterGoldenSet([
         { decisionId: "d1", requestText: "hi", humanJudgement: "INQUIRY" },
     ], {
@@ -299,7 +300,7 @@ Deno.test("runRouterGoldenSet times out slow rows", async () => {
     assertEquals(rows[0].routerSummary, "ERROR: Router golden row timed out after 1ms.");
 });
 
-Deno.test("buildRouterGoldenReport scores router decisions", () => {
+test("buildRouterGoldenReport scores router decisions", () => {
     assertEquals(
         buildRouterGoldenReport([
             { humanJudgement: "INQUIRY", routerDecision: "INQUIRY" },
@@ -322,11 +323,11 @@ Deno.test("buildRouterGoldenReport scores router decisions", () => {
     );
 });
 
-Deno.test("router benchmark rejects invalid thinking levels before reading the dataset", async () => {
+test("router benchmark rejects invalid thinking levels before reading the dataset", async () => {
     await assertRejects(() => main(["--thinking-level", "invalid"]), Error, "Invalid --thinking-level");
 });
 
-Deno.test("router benchmark rejects invalid temperatures before reading the dataset", async () => {
+test("router benchmark rejects invalid temperatures before reading the dataset", async () => {
     for (const temperature of ["", "NaN", "Infinity", "-0.1", "2.1"]) {
         await assertRejects(() => main(["--temperature", temperature]), Error, "Invalid --temperature");
     }

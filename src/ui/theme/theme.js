@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * @module ui/theme/theme
  * Theme integration — wraps Pi's Theme class with RunWield-local registration,
@@ -11,7 +12,7 @@ import {
     getMarkdownTheme as upstreamGetMarkdownTheme,
     getSelectListTheme as upstreamGetSelectListTheme,
 } from "@earendil-works/pi-coding-agent";
-import { CATPPUCCIN_MOCHA_THEME_PATH } from "../../constants.js";
+import { CATPPUCCIN_MOCHA_THEME_PATH, getCwd } from "../../constants.js";
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { loadExternalThemeJsons } from "./theme-discovery.ts";
 import { createThemeFromJson } from "./theme-json.ts";
@@ -79,7 +80,7 @@ export const imageTheme = {
 // ─── Theme JSON → Theme instance ─────────────────────────────────────────────
 
 export const DEFAULT_THEME_JSON = /** @type {ThemeJson} */ (JSON.parse(
-    Deno.readTextFileSync(CATPPUCCIN_MOCHA_THEME_PATH),
+    readFileSync(CATPPUCCIN_MOCHA_THEME_PATH, "utf8"),
 ));
 
 // Construct the embedded theme once at module load. It's both the boot default
@@ -204,14 +205,14 @@ export async function discoverAndRegisterThemes() {
 export async function resolveAvailableThemeJsons() {
     const settings = getSettingsManager();
     const packageManager = new DefaultPackageManager({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         agentDir: getSettingsDir("global"),
         settingsManager: settings,
     });
 
     const externalThemeJsons = await loadExternalThemeJsons({
         packageManager,
-        readTextFile: Deno.readTextFileSync,
+        readTextFile: (path) => readFileSync(path, "utf8"),
         defaultThemeName: DEFAULT_THEME_NAME,
         baseThemeJson: DEFAULT_THEME_JSON,
     });

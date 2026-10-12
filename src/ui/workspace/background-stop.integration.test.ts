@@ -1,10 +1,12 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 
-Deno.test("Workspace releases an idle retained owner after Stop cancels its task", async () => {
+test("Workspace releases an idle retained owner after Stop cancels its task", async () => {
     await withRuntimeCommandFixture(
         "workspace-stop-owner-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {

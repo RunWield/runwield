@@ -1,9 +1,10 @@
+import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /**
  * @module tools/plan-safe-file-tools
  * Safety wrappers for Agent file tools that touch canonical Plan markdown.
  */
 
-import { dirname, isAbsolute, join, relative } from "@std/path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import {
     atomicWriteTextFileIfAbsent,
     getPlanRevisionForText,
@@ -95,8 +96,8 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
                 const absolute = isAbsolute(path) ? path : join(cwd, path);
                 if (mode === "write") {
                     try {
-                        const stat = await Deno.stat(absolute);
-                        if (stat.isFile) {
+                        const stat = await fsStat(absolute);
+                        if (stat.isFile()) {
                             return {
                                 content: [{
                                     type: "text",
@@ -107,7 +108,7 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
                             };
                         }
                     } catch (error) {
-                        if (!(error instanceof Deno.errors.NotFound)) throw error;
+                        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                     }
                     const content = typeof params?.content === "string"
                         ? params.content
@@ -126,12 +127,14 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
                             async () =>
                                 await withPlanLock(cwd, planNameFromCanonicalMarkdownPath(cwd, path), async () => {
                                     try {
-                                        await Deno.stat(absolute);
+                                        await fsStat(absolute);
                                         throw new Error(`Plan already exists: ${path}`);
                                     } catch (error) {
-                                        if (!(error instanceof Deno.errors.NotFound)) throw error;
+                                        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+                                            throw error;
+                                        }
                                     }
-                                    await Deno.mkdir(dirname(absolute), { recursive: true });
+                                    await fsMkdir(dirname(absolute), { recursive: true });
                                     await atomicWriteTextFileIfAbsent(absolute, content);
                                 }),
                         );
@@ -153,7 +156,7 @@ export function wrapPlanSafeFileTool<T extends { execute: unknown }>(
                         if (oldText === undefined || newText === undefined) {
                             throw new Error("Plan edit requires path, oldText, and newText.");
                         }
-                        const current = await Deno.readTextFile(absolute);
+                        const current = await fsReadFile(absolute, "utf8");
                         const expectedRevision = await getPlanRevisionForText(current);
                         const next = applySingleExactEdit(current, oldText, newText, path);
                         await writePlanMarkdownWithRevisionLocked(

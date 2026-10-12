@@ -1,5 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { Text } from "@earendil-works/pi-tui";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { __test, createRunWieldReadToolDefinition } from "../read.js";
@@ -18,7 +21,7 @@ async function executeRead(tool, params) {
     return await execute("read-call-1", params, new AbortController().signal, () => {}, {});
 }
 
-Deno.test("read wrapper exposes expected metadata", () => {
+test("read wrapper exposes expected metadata", () => {
     const tool = createRunWieldReadToolDefinition("/tmp");
 
     assertEquals(tool.name, "read");
@@ -27,11 +30,11 @@ Deno.test("read wrapper exposes expected metadata", () => {
     assertStringIncludes(tool.description || "", "Suppresses binary/control-byte text");
 });
 
-Deno.test("read wrapper still returns binary git index content to the model", async () => {
-    const dir = await Deno.makeTempDir();
+test("read wrapper still returns binary git index content to the model", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await Deno.mkdir(join(dir, ".git"), { recursive: true });
-        await Deno.writeFile(join(dir, ".git", "index"), new Uint8Array([68, 73, 82, 67, 0, 7, 1, 2]));
+        await fsMkdir(join(dir, ".git"), { recursive: true });
+        await fsWriteFile(join(dir, ".git", "index"), new Uint8Array([68, 73, 82, 67, 0, 7, 1, 2]));
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: ".git/index" });
@@ -41,14 +44,14 @@ Deno.test("read wrapper still returns binary git index content to the model", as
         assertStringIncludes(result.content[0].text || "", "DIRC");
         assertEquals((result.content[0].text || "").includes("\u0007"), true);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("read wrapper renders binary/control-byte results as header-only output", async () => {
-    const dir = await Deno.makeTempDir();
+test("read wrapper renders binary/control-byte results as header-only output", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await Deno.writeFile(join(dir, "blob.bin"), new Uint8Array([97, 7, 98]));
+        await fsWriteFile(join(dir, "blob.bin"), new Uint8Array([97, 7, 98]));
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "blob.bin" });
@@ -62,14 +65,14 @@ Deno.test("read wrapper renders binary/control-byte results as header-only outpu
         assertEquals(__test.resultHasBinaryDisplaySuppression(result), true);
         assertEquals(component.render(80), []);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("read wrapper keeps binary display suppression after result serialization", async () => {
-    const dir = await Deno.makeTempDir();
+test("read wrapper keeps binary display suppression after result serialization", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await Deno.writeFile(join(dir, "archive.zip"), new Uint8Array([80, 75, 3, 4, 20, 0, 0, 0]));
+        await fsWriteFile(join(dir, "archive.zip"), new Uint8Array([80, 75, 3, 4, 20, 0, 0, 0]));
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "archive.zip" });
@@ -85,15 +88,15 @@ Deno.test("read wrapper keeps binary display suppression after result serializat
         assertEquals(__test.resultHasBinaryDisplaySuppression(serializedResult), true);
         assertEquals(component.render(80), []);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("read wrapper attaches display images for at-prefixed image paths", async () => {
-    const dir = await Deno.makeTempDir();
+test("read wrapper attaches display images for at-prefixed image paths", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
         const imageBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
-        await Deno.writeFile(join(dir, "image.png"), imageBytes);
+        await fsWriteFile(join(dir, "image.png"), imageBytes);
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "@image.png" });
@@ -101,26 +104,26 @@ Deno.test("read wrapper attaches display images for at-prefixed image paths", as
         assertEquals(result.details?.runwieldDisplayImages, [{ base64: "iVBORw0KGgo=", mimeType: "image/png" }]);
         assertEquals(__test.resultHasBinaryDisplaySuppression(result), false);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("read wrapper exposes image files to the model when upstream returns text only", async () => {
-    const dir = await Deno.makeTempDir();
+test("read wrapper exposes image files to the model when upstream returns text only", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
         const imageBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
-        await Deno.writeFile(join(dir, "image.png"), imageBytes);
+        await fsWriteFile(join(dir, "image.png"), imageBytes);
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "@image.png" });
 
         assertEquals(result.content.some((part) => part.type === "image"), true);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("read wrapper delegates image rendering to terminal capability handling", () => {
+test("read wrapper delegates image rendering to terminal capability handling", () => {
     const tool = createRunWieldReadToolDefinition("/tmp");
     const component = /** @type {Text} */ (tool.renderResult?.(
         /** @type {any} */ ({
@@ -143,10 +146,10 @@ Deno.test("read wrapper delegates image rendering to terminal capability handlin
     assertStringIncludes(rendered, "image/png");
 });
 
-Deno.test("read wrapper allows normal text files to render normally", async () => {
-    const dir = await Deno.makeTempDir();
+test("read wrapper allows normal text files to render normally", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     try {
-        await Deno.writeTextFile(join(dir, "README.md"), "# Hello\n\nSafe text.\n");
+        await fsWriteFile(join(dir, "README.md"), "# Hello\n\nSafe text.\n");
 
         const tool = createRunWieldReadToolDefinition(dir);
         const result = await executeRead(tool, { path: "README.md" });
@@ -161,11 +164,11 @@ Deno.test("read wrapper allows normal text files to render normally", async () =
         assertStringIncludes(result.content[0].text || "", "# Hello");
         assertEquals(component.render(80).join("\n").includes("# Hello"), true);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("read wrapper unsafe display detection catches bell, nul, and replacement chars", () => {
+test("read wrapper unsafe display detection catches bell, nul, and replacement chars", () => {
     assertEquals(__test.containsUnsafeDisplayText("A\t\n\rB"), false);
     assertEquals(__test.containsUnsafeDisplayText("A\u0007B"), true);
     assertEquals(__test.containsUnsafeDisplayText("A\u0000B"), true);

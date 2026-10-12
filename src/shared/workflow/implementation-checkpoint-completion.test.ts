@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { type ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan } from "../../plan-store.js";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
@@ -10,7 +11,7 @@ import { makeValidationProjectRoot } from "./validation-test-helpers.js";
 const EXTENSION_CONTEXT = {} as ExtensionToolContext;
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;
 
-Deno.test("implementation checkpoint acknowledges its accepted task_completed JSONL event", async () => {
+test("implementation checkpoint acknowledges its accepted task_completed JSONL event", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "PLANNED_CHANGE",
         status: "in_progress",

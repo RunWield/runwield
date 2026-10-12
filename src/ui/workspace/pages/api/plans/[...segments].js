@@ -1,3 +1,4 @@
+import { getCwd } from "../../../../../constants.js";
 import {
     applyCanonicalDevLifecycleAction,
     loadCanonicalWorkspaceDetail,
@@ -14,8 +15,7 @@ function json(data, status = 200) {
 
 /** @param {any} context */
 function requestContext(context) {
-    const runtime = globalThis;
-    const cwd = context.request.headers.get("x-runwield-workspace-cwd") || runtime.Deno?.cwd?.() || ".";
+    const cwd = context.request.headers.get("x-runwield-workspace-cwd") || getCwd();
     const segments = String(context.params.segments || "").split("/").filter(Boolean).map(decodeURIComponent);
     return { cwd, segments };
 }

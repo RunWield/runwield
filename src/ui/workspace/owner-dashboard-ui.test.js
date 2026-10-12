@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { markup, mountDashboard, newDashboardWindow } from "./dashboard-test-dom.ts";
 
 const labels = ["Needs You", "Ready to Continue", "In Progress", "Recently Finished"];
@@ -56,7 +57,7 @@ function dashboard() {
     return { window, start, tick };
 }
 
-Deno.test("Dashboard initial HTML shows four pending cards before JavaScript or data", () => {
+test("Dashboard initial HTML shows four pending cards before JavaScript or data", () => {
     const window = newDashboardWindow();
     window.document.body.innerHTML = markup;
     assertEquals(
@@ -68,7 +69,7 @@ Deno.test("Dashboard initial HTML shows four pending cards before JavaScript or 
     window.happyDOM.abort();
 });
 
-Deno.test("Dashboard shows verified rows while other cards are loading, then distinguishes empty and errors", async () => {
+test("Dashboard shows verified rows while other cards are loading, then distinguishes empty and errors", async () => {
     const { window, start } = dashboard();
     try {
         const stream = await start();
@@ -88,7 +89,7 @@ Deno.test("Dashboard shows verified rows while other cards are loading, then dis
     }
 });
 
-Deno.test("Dashboard preserves verified rows on failed refresh and replaces them on Retry", async () => {
+test("Dashboard preserves verified rows on failed refresh and replaces them on Retry", async () => {
     const { window, start, tick } = dashboard();
     try {
         let stream = await start();
@@ -115,7 +116,7 @@ Deno.test("Dashboard preserves verified rows on failed refresh and replaces them
     }
 });
 
-Deno.test("Dashboard keeps sort, expansion and focused row during incremental updates", async () => {
+test("Dashboard keeps sort, expansion and focused row during incremental updates", async () => {
     const { window, start } = dashboard();
     try {
         const stream = await start();
@@ -153,7 +154,7 @@ Deno.test("Dashboard keeps sort, expansion and focused row during incremental up
     }
 });
 
-Deno.test("Dashboard first-load error keeps verified partial rows and offers Retry", async () => {
+test("Dashboard first-load error keeps verified partial rows and offers Retry", async () => {
     const { window, start } = dashboard();
     try {
         const stream = await start();
@@ -171,7 +172,7 @@ Deno.test("Dashboard first-load error keeps verified partial rows and offers Ret
     }
 });
 
-Deno.test("a failed card retains old rows while another completed card replaces its rows", async () => {
+test("a failed card retains old rows while another completed card replaces its rows", async () => {
     const { window, start } = dashboard();
     try {
         let stream = await start();
@@ -210,7 +211,7 @@ Deno.test("a failed card retains old rows while another completed card replaces 
     }
 });
 
-Deno.test("Dashboard shows loading and failure together while checks remain pending", async () => {
+test("Dashboard shows loading and failure together while checks remain pending", async () => {
     const { window, start } = dashboard();
     try {
         const stream = await start();
@@ -234,7 +235,7 @@ Deno.test("Dashboard shows loading and failure together while checks remain pend
     }
 });
 
-Deno.test("Dashboard treats Project diagnostics as incomplete rather than empty", async () => {
+test("Dashboard treats Project diagnostics as incomplete rather than empty", async () => {
     const { window, start } = dashboard();
     try {
         const stream = await start();

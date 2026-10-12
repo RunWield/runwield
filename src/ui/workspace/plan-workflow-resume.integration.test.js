@@ -1,5 +1,14 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -15,14 +24,14 @@ const repository = defineCommittedGitFixture({
     "implementation.txt": "before\n",
 });
 
-Deno.test("Workspace Resume continues a paused validation repair in its existing worktree", async () => {
+test("Workspace Resume continues a paused validation repair in its existing worktree", async () => {
     await withRuntimeCommandFixture("deferred-validation-repair-", async (fixture) => {
         const { setModelResponseFactories, settingsPath } = fixture;
-        const settings = JSON.parse(await Deno.readTextFile(settingsPath));
+        const settings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
         settings.retry = { enabled: false };
-        await Deno.writeTextFile(settingsPath, JSON.stringify(settings));
+        await fsWriteFile(settingsPath, JSON.stringify(settings));
         const root = await repository.checkout();
-        const worktreeRoot = await Deno.makeTempDir({ prefix: "deferred-repair-tree-" });
+        const worktreeRoot = await fsMkdtemp(join(tmpdir(), "deferred-repair-tree-"));
         const store = openOwnerCoordinationStore();
         const project = store.registerProject({ root });
         const runtime = createSessionRuntime({ sessionStore: store });
@@ -45,7 +54,7 @@ Deno.test("Workspace Resume continues a paused validation repair in its existing
                 planId: "interrupted-repair-plan",
                 worktreeRoot,
             });
-            await Deno.writeTextFile(join(tree.path, "implementation.txt"), "implemented\n");
+            await fsWriteFile(join(tree.path, "implementation.txt"), "implemented\n");
             const plan = await loadPlan(tree.path, name);
             assertExists(plan);
             await savePlan(tree.path, name, body, {
@@ -143,9 +152,9 @@ Deno.test("Workspace Resume continues a paused validation repair in its existing
                 assertEquals(store.inspectSessionActivation(managed.runwieldSessionId).activation?.state, "idle");
                 const resumedSegments = store.listSessionTranscriptSegments(managed.runwieldSessionId);
                 assertEquals(resumedSegments.every((segment) => segment.kind !== "execution"), true);
-                assertEquals(resumedSegments.at(-1).transcriptCwd, await Deno.realPath(tree.path));
+                assertEquals(resumedSegments.at(-1).transcriptCwd, await fsRealpath(tree.path));
                 assertStringIncludes(
-                    await Deno.readTextFile(resumedSegments.at(-1).transcriptPath),
+                    await fsReadFile(resumedSegments.at(-1).transcriptPath, "utf8"),
                     "Continuing the interrupted repair.",
                 );
             } finally {
@@ -155,8 +164,8 @@ Deno.test("Workspace Resume continues a paused validation repair in its existing
         } finally {
             await runtime.closeAllSessionsWhenIdle();
             store.close();
-            await Deno.remove(worktreeRoot, { recursive: true });
-            await Deno.remove(root, { recursive: true });
+            await fsRm(worktreeRoot, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 });

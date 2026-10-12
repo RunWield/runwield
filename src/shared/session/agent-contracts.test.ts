@@ -1,10 +1,19 @@
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
 /**
  * Execution Agents each declare one context contract, and tests hold the line
  * between those contracts. The declaration is metadata for diagnostics and
  * regression tests. Runtime workflow state still decides which Agent runs.
  */
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { SUBAGENTS } from "../../constants.js";
 import { isWorkflowOnlyAgent, listAllAgentDefinitions, listAvailableAgents, loadAgentDef } from "./agents.js";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
@@ -110,7 +119,7 @@ async function readBundledFrontMatter(agentName: string, loader: "agent" | "suba
     const filePath = loader === "subagent"
         ? join("src", "agent-definitions", "subagent-definitions", `${agentName}.md`)
         : join("src", "agent-definitions", `${agentName}.md`);
-    const contents = await Deno.readTextFile(filePath);
+    const contents = await fsReadFile(filePath, "utf8");
     const result = new Map<string, string[]>();
     const scalarMatches = contents.match(/^---\n([\s\S]*?)\n---/m)?.[1] || "";
     let currentList = "";
@@ -131,7 +140,7 @@ async function readBundledFrontMatter(agentName: string, loader: "agent" | "suba
     return result;
 }
 
-Deno.test("declared context contracts and prompt boundaries", async () => {
+test("declared context contracts and prompt boundaries", async () => {
     const selectable = (await listAvailableAgents()).map((agent) => agent.name);
     const allTopLevel = (await listAllAgentDefinitions()).map((agent) => agent.name);
 
@@ -184,25 +193,25 @@ Deno.test("declared context contracts and prompt boundaries", async () => {
     }
 });
 
-Deno.test("Plan execution agents declare the Plan Deviation tool", async () => {
+test("Plan execution agents declare the Plan Deviation tool", async () => {
     for (const name of ["plan-engineer", "frontend-engineer"]) {
         const definition = await loadAgentDef(name);
         assertEquals(definition.tools.includes("record_plan_deviation"), true, `${name} needs Plan Deviation access`);
     }
 });
 
-Deno.test("project overrides may not silently invent a context contract", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-agent-contracts-" });
+test("project overrides may not silently invent a context contract", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-agent-contracts-"));
     try {
         const agentsDir = join(projectRoot, ".wld", "agents");
-        await Deno.mkdir(agentsDir, { recursive: true });
+        await fsMkdir(agentsDir, { recursive: true });
 
-        await Deno.writeTextFile(join(agentsDir, "engineer.md"), "---\nworkflowOnly: true\n---\n\nOverride body.\n");
+        await fsWriteFile(join(agentsDir, "engineer.md"), "---\nworkflowOnly: true\n---\n\nOverride body.\n");
         const inherited = await loadAgentDef("engineer", projectRoot);
         assertEquals(inherited.contextContract, "quick-fix");
         assertEquals(inherited.workflowOnly, true);
 
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(agentsDir, "engineer.md"),
             "---\ncontextContract: plan-execution\n---\n\nOverride body.\n",
         );
@@ -210,7 +219,7 @@ Deno.test("project overrides may not silently invent a context contract", async 
         assertEquals(relabeled.contextContract, "plan-execution");
         assertEquals(relabeled.name, "engineer", "contextContract must not become runtime identity");
 
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(agentsDir, "engineer.md"),
             "---\ncontextContract: launch-authority\n---\n\nOverride body.\n",
         );
@@ -220,11 +229,11 @@ Deno.test("project overrides may not silently invent a context contract", async 
             "invalid contextContract",
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("static prompt baseline is recorded as comparison data only", async () => {
+test("static prompt baseline is recorded as comparison data only", async () => {
     const baselines = [];
     for (const contract of EXECUTION_CONTRACTS) {
         const def = await loadContractDef(contract.agentName, contract.loader);

@@ -216,15 +216,17 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
                 : undefined,
         }
         : undefined;
-    emitHostedSessionRuntimeEvent(hostedSession, {
-        type: RuntimeEventTypes.INTERACTION_REQUESTED,
-        interactionId: id,
-        interactionType: request.type,
-        prompt: request.prompt,
-        ...(reviewMeta && { review: reviewMeta }),
-    });
+    const emitRequested = () =>
+        emitHostedSessionRuntimeEvent(hostedSession, {
+            type: RuntimeEventTypes.INTERACTION_REQUESTED,
+            interactionId: id,
+            interactionType: request.type,
+            prompt: request.prompt,
+            ...(reviewMeta && { review: reviewMeta }),
+        });
     const adapter = hostedSession.getInteractionAdapter?.();
     if (!adapter || typeof adapter.requestInteraction !== "function") {
+        emitRequested();
         if (reviewContainerPlanId) hostedSession.planReviewConversations.stopCapture(reviewContainerPlanId);
         const response = {
             outcome: RuntimeInteractionOutcomes.UNSUPPORTED,
@@ -273,9 +275,11 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
         });
     });
     try {
+        emitRequested();
         if (signal?.aborted || operationSignal?.aborted || abortController.signal.aborted) {
             if (reviewContainerPlanId) hostedSession.planReviewConversations.stopCapture(reviewContainerPlanId);
             const response = { outcome: RuntimeInteractionOutcomes.CANCELED, message: "Interaction canceled." };
+            hostedSession.removeActiveInteraction(id);
             emitHostedSessionRuntimeEvent(hostedSession, {
                 type: RuntimeEventTypes.INTERACTION_CANCELED,
                 interactionId: id,
@@ -307,6 +311,7 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
                 canceled,
             ])),
         );
+        hostedSession.removeActiveInteraction(id);
         emitHostedSessionRuntimeEvent(hostedSession, {
             type: response.outcome === RuntimeInteractionOutcomes.CANCELED
                 ? RuntimeEventTypes.INTERACTION_CANCELED
@@ -325,6 +330,7 @@ export async function requestHostedSessionInteraction(hostedSession, request, si
         return response;
     } catch (error) {
         const response = interactionErrorToResponse(error);
+        hostedSession.removeActiveInteraction(id);
         if (reviewContainerPlanId && response.outcome === RuntimeInteractionOutcomes.CANCELED) {
             hostedSession.planReviewConversations.stopCapture(reviewContainerPlanId);
         }

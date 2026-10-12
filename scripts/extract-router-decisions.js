@@ -1,11 +1,14 @@
+import { getCwd } from "../src/constants.js";
+import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
 /**
  * @module scripts/extract-router-decisions
  *
  * Extract Router triage decisions from persisted RunWield session JSONL files.
  */
 
-import { basename, join } from "@std/path";
-import { parseArgs } from "@std/cli/parse-args";
+import { basename, join } from "node:path";
+import { parseArgs } from "../src/shared/cli-args.ts";
 import { ROUTING_INTENTS } from "../src/constants.js";
 
 const PLAN_ROUTING_INTENTS = ["FEATURE", "PROJECT"];
@@ -250,7 +253,7 @@ export function parseJsonlEntries(text) {
  * @returns {Promise<RouterDecision[]>}
  */
 export async function extractRouterDecisionsFromFile(path) {
-    const entries = parseJsonlEntries(await Deno.readTextFile(path));
+    const entries = parseJsonlEntries(await fsReadFile(path, "utf8"));
     return extractRouterDecisionsFromEntries(entries, { sessionFile: path });
 }
 
@@ -261,8 +264,8 @@ export async function extractRouterDecisionsFromFile(path) {
 export async function listSessionFiles(dir) {
     /** @type {string[]} */
     const files = [];
-    for await (const entry of Deno.readDir(dir)) {
-        if (entry.isFile && entry.name.endsWith(".jsonl")) files.push(join(dir, entry.name));
+    for await (const entry of await fsReaddir(dir, { withFileTypes: true })) {
+        if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(join(dir, entry.name));
     }
     return files.sort();
 }
@@ -276,7 +279,7 @@ export async function extractRouterDecisions(options) {
     /** @type {RouterDecision[]} */
     const rows = [];
     for (const file of files) {
-        const entries = parseJsonlEntries(await Deno.readTextFile(file));
+        const entries = parseJsonlEntries(await fsReadFile(file, "utf8"));
         rows.push(...extractRouterDecisionsFromEntries(entries, { sessionFile: file }));
         if (options.limit && rows.length >= options.limit) return rows.slice(0, options.limit);
     }
@@ -295,7 +298,9 @@ function toJsonl(rows) {
  * @param {string} text
  */
 async function writeStdout(text) {
-    await Deno.stdout.write(new TextEncoder().encode(text));
+    await new Promise((resolve, reject) =>
+        process.stdout.write(text, (error) => error ? reject(error) : resolve(undefined))
+    );
 }
 
 /**
@@ -319,7 +324,7 @@ export async function main(argv) {
 
     if (args.help) {
         console.log([
-            "Usage: deno run -A scripts/extract-router-decisions.js [options]",
+            "Usage: bun scripts/extract-router-decisions.js [options]",
             "",
             "Options:",
             "  --sessions-dir <dir>  Session directory to read",
@@ -330,8 +335,8 @@ export async function main(argv) {
         return;
     }
 
-    const cwd = args.cwd || Deno.cwd();
-    const home = Deno.env.get("HOME") || "";
+    const cwd = args.cwd || getCwd();
+    const home = process.env["HOME"] || "";
     const sessionsDir = args["sessions-dir"] || join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
     const rows = await extractRouterDecisions({
         sessionsDir,
@@ -339,10 +344,10 @@ export async function main(argv) {
     });
     const output = toJsonl(rows);
 
-    if (args.out) await Deno.writeTextFile(args.out, output);
+    if (args.out) await fsWriteFile(args.out, output);
     else await writeStdout(output);
 }
 
 if (import.meta.main) {
-    await main(Deno.args);
+    await main(process.argv.slice(2));
 }

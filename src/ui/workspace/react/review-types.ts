@@ -40,13 +40,14 @@ export type ArtifactReadOptions = {
         | "epic-artifact"
         | "report"
         | "design-system"
-        | "domain-language";
+        | "domain-language"
+        | "document";
     title: string;
     artifactPath?: string;
     notices?: string[];
     sourceLinks?: Array<{ label: string; href: string }>;
     mode: "workflow" | "dev";
-    launch?: "standalone" | "session" | "project";
+    launch?: "standalone" | "session" | "project" | "linked";
     imageBaseDir?: string;
     returnHref?: string;
     returnLabel?: string;

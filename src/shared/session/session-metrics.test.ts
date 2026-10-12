@@ -1,8 +1,9 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder } from "../workflow/execution-metrics.ts";
 
-Deno.test("Delegated background session links parentToolCallId and taskId", async () => {
+test("Delegated background session links parentToolCallId and taskId", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const parentExecutionId = "exec-root-1";
         const parentToolCallId = "call-delegate-42";

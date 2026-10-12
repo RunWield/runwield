@@ -9,16 +9,21 @@ Lifecycle, close Review Issues, move a target branch, or authorize cleanup.
 | Fact                                                         | Durable owner                                                                                                                                           | Read/resume rule                                                                                                          |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Plan definition and lifecycle status                         | Primary Plan before execution; execution-worktree Plan after activation                                                                                 | Locate the live attempt in the registry and read that document. Never compare its runtime metadata with another copy.     |
-| Human planning policy and history                            | Plan document: identity, classification, execution policy, actual `targetBranch`, relationships, holds, Plan Deviations, archive and verification notes | Preserve the body and human fields. Derive summaries from Context.                                                        |
+| Human planning policy and history                            | Plan document: identity, classification, execution policy, intended `targetBranch`, relationships, holds, Plan Deviations, archive and verification notes | Preserve the body and human fields. Derive summaries from Context.                                                        |
 | Validation attempt, next phase, counters, and repair receipt | `.wld/internal/controller/plans/<planId>.json`                                                                                                          | Reload the controller record and claim with its revision; a Plan revision is not a checkpoint revision.                   |
 | Review Issues and semantic repair generation                 | Controller `validationCheckpoint.reviewState` and repair fields                                                                                         | Resume the same ledger and consume the matching repair completion once.                                                   |
 | Human code-review decision                                   | Controller human-review fields                                                                                                                          | Reload the decision; a closed browser is not approval.                                                                    |
 | Worktree identity, path, branch, target and baseline         | `.wld/internal/worktrees.json` and Git                                                                                                                  | The registry is the owner, not a value to compare against Plan YAML. Verify actual Git facts before a destructive action. |
 | Mechanical repair result                                     | Structured isolated Agent result                                                                                                                        | Rerun CI after completion; after process loss rerun checks, never replay an Agent turn.                                   |
 | Publication phase and target movement                        | Registry publication record and local/remote Git refs                                                                                                   | Reconcile idempotent effects from Git; retain the attempt until publication and cleanup are proven.                       |
-| Completed implementation stamp                               | Committed Plan `validatedCommit` and actual `targetBranch`; Git ancestry                                                                                | Completion remains recognizable without controller records. Non-Git completion uses Plan status.                          |
+| Completed implementation stamp                               | Committed Plan `validatedCommit` and `deliveryBranch` (legacy fallback: `targetBranch`); Git ancestry                                                                                | Completion remains recognizable without controller records. Non-Git completion uses Plan status.                          |
 | Intermediate delivery evidence and workflow timestamps       | Controller record; implementation and delivery commits in Git                                                                                           | Runtime receipts do not become Plan Front Matter.                                                                         |
 | Interrupted lifecycle transition                             | Controller/Plan transition journal                                                                                                                      | Restore only writes owned by the transition. Include controller state when proving rollback or restart safety.            |
+
+The Plan's `targetBranch` records the source and intended onward destination; `deliveryBranch` records the actual
+landing. A publication attempt's own `targetBranch` names that actual landing. Use the recorded delivery branch when
+proving completion, falling back to the Plan's `targetBranch` only when `deliveryBranch` is absent. Confirmed delivery
+to a Plan branch does not prove an onward merge to the intended destination.
 
 ## Typed inputs
 
@@ -28,7 +33,9 @@ The workflow distinguishes these inputs before choosing a lifecycle event:
 - accepted `review_complete` calls contain approval, stable Review Issues, and non-blocking advisories;
 - repair completion contains a consume-once repair generation and an untrusted per-item report;
 - publication returns committed, rolled back, blocked, or needs recovery, retaining the typed cause;
-- user decisions are explicit interaction outcomes, including stop, cancel, and confirmed Plan Deviations.
+- user decisions are explicit interaction outcomes, including stop, cancel, and confirmed Plan Deviations;
+- host-turn continuation supplies a typed resume input to the validation supervisor: a request identity and either a
+  reviewer outcome with recorded diff-coverage spans, a user decision, or a repair completion report.
 
 Error text is for people and diagnostics. It is not a lifecycle discriminator.
 
@@ -40,6 +47,28 @@ approval and the user must confirm again. If execution stops after that write, r
 saved entry by tool-call identity and does not replay transcript approval. Semantic Review reloads that Plan and treats
 the replacement as higher priority than conflicting original text. Work Record generation renders the saved entries
 deterministically.
+
+### Continuation without a Session
+
+`continueHostTurnValidation` uses the same supervisor, engine, and validation gates as Core Sessions. It returns one
+reviewer, repair, or decision request instead of waiting in-process. It stops at `awaiting_delivery` when the Plan is
+`reviewed`; it does not run human review or publication. This shared entry point does not supply the Attached validation
+journey.
+
+A reviewer request binds the attempt, validation generation, semantic round, review mode, correction count, and hash of
+both the full and repair diffs. The engine checks this identity against the current Git diff before accepting an
+outcome. It rebuilds inspection from recorded read spans and rejects paths, scopes, or byte ranges outside that diff. A
+host claim cannot replace observed diff reads, close Review Issues, or bypass the existing review gates. Corrections and
+user choices are saved in the Validation Checkpoint. Each new decision wait has its own identity; an old answer cannot
+apply to a new wait with the same prompt.
+
+Repair completion records a matching repair generation before validation resumes. A fresh process can consume a saved
+receipt and run CI; repeating a settled completion runs no checks and writes no new evidence. CI-exhaustion answers
+enter the same Core decision branches without running CI first: Retry runs CI once, Engineer follow-up returns a repair
+request, and Stop pauses. A later invocation without an answer runs CI again. Operational retry waits return a pause
+instead of sleeping.
+
+### Session completion events
 
 Every Agent-owned workflow step ends through its accepted completion tool. The validation owner registers its listener
 before dispatch, accepts only events from that invocation, then stops the producer before starting the next phase.

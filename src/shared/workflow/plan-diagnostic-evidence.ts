@@ -1,5 +1,6 @@
+import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 /** Read-only identity evidence for repairing a registry that cannot route normal reads. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getPlansDir, parsePlanFrontMatter, type PlanFrontMatter } from "../../plan-store.js";
 import { isEpicArtifactPlanName } from "../epic-artifacts.ts";
 
@@ -22,16 +23,16 @@ async function readDocuments(root: string, prefix: string[] = []): Promise<PlanI
     const documents: PlanIdentityDocument[] = [];
     const directory = join(getPlansDir(root), ...prefix);
     try {
-        for await (const entry of Deno.readDir(directory)) {
-            if (entry.isDirectory && !entry.name.endsWith(".md")) {
+        for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
+            if (entry.isDirectory() && !entry.name.endsWith(".md")) {
                 if (prefix.length === 0 && entry.name === "archived") continue;
                 documents.push(...await readDocuments(root, [...prefix, entry.name]));
-            } else if (entry.isFile && entry.name.endsWith(".md")) {
+            } else if (entry.isFile() && entry.name.endsWith(".md")) {
                 const name = [...prefix, entry.name.slice(0, -3)].join("/");
                 if (isEpicArtifactPlanName(name)) continue;
                 const path = join(directory, entry.name);
                 try {
-                    const { attrs } = parsePlanFrontMatter(await Deno.readTextFile(path));
+                    const { attrs } = parsePlanFrontMatter(await fsReadFile(path, "utf8"));
                     documents.push({ name, path, attrs });
                 } catch {
                     // Malformed documents are reported by doctor, never identity proof.
@@ -39,7 +40,7 @@ async function readDocuments(root: string, prefix: string[] = []): Promise<PlanI
             }
         }
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     return documents;
 }

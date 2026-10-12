@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { getPlanRevisionForText, injectFrontMatter, loadPlan, savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";
@@ -8,7 +12,7 @@ function cookiePair(credential, csrf = "csrf-secret") {
     return `rw_owner_device=${encodeURIComponent(credential)}; rw_owner_csrf=${encodeURIComponent(csrf)}`;
 }
 
-Deno.test("startWorkspaceServer enforces owner non-loopback TLS policy at the exported entry point", () => {
+test("startWorkspaceServer enforces owner non-loopback TLS policy at the exported entry point", () => {
     assertThrows(
         () =>
             startWorkspaceServer({
@@ -35,8 +39,8 @@ Deno.test("startWorkspaceServer enforces owner non-loopback TLS policy at the ex
     );
 });
 
-Deno.test("owner Workspace redirects unpaired browsers and serves pairing code bootstrap", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-ui-" });
+test("owner Workspace redirects unpaired browsers and serves pairing code bootstrap", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-ui-"));
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const ownerApp = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
     try {
@@ -82,18 +86,18 @@ Deno.test("owner Workspace redirects unpaired browsers and serves pairing code b
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner Workspace requires CSRF for Project mutation and resolves Project Plan Board by registered Project", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-project-" });
+test("owner Workspace requires CSRF for Project mutation and resolves Project Plan Board by registered Project", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-project-"));
     const projectRoot = `${dir}/project`;
     const otherProjectRoot = `${dir}/other-project`;
-    await Deno.mkdir(projectRoot);
-    await Deno.mkdir(otherProjectRoot);
-    await Deno.mkdir(`${projectRoot}/src`);
-    await Deno.writeTextFile(`${projectRoot}/src/referenced.ts`, "export const referenced = true;\n");
+    await fsMkdir(projectRoot);
+    await fsMkdir(otherProjectRoot);
+    await fsMkdir(`${projectRoot}/src`);
+    await fsWriteFile(`${projectRoot}/src/referenced.ts`, "export const referenced = true;\n");
     await savePlan(projectRoot, "owner-plan", "# Owner Plan\n\n## Context\n\nVisible owner plan", {
         planId: "owner-plan-id",
         classification: "FEATURE",
@@ -289,7 +293,7 @@ Deno.test("owner Workspace requires CSRF for Project mutation and resolves Proje
         assertEquals(homeHtml.includes("Relink Project root"), false);
 
         const transcriptPath = `${projectRoot}/phone-session.jsonl`;
-        await Deno.writeTextFile(
+        await fsWriteFile(
             transcriptPath,
             [
                 { type: "session", id: "phone-session", cwd: projectRoot },
@@ -632,14 +636,14 @@ Deno.test("owner Workspace requires CSRF for Project mutation and resolves Proje
     } finally {
         await appObject?.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner Workspace rejects stale live Plan review before answering Runtime", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-plan-review-stale-" });
+test("owner Workspace rejects stale live Plan review before answering Runtime", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-plan-review-stale-"));
     const projectRoot = `${dir}/project`;
-    await Deno.mkdir(projectRoot);
+    await fsMkdir(projectRoot);
     await savePlan(projectRoot, "owner-plan", "# Owner Plan\n\nBody", {
         planId: "owner-plan-id",
         classification: "PLANNED_CHANGE",
@@ -658,7 +662,7 @@ Deno.test("owner Workspace rejects stale live Plan review before answering Runti
         }));
         const plan = await loadPlan(projectRoot, "owner-plan");
         const openedRevision = await getPlanRevisionForText(plan.markdown);
-        await Deno.writeTextFile(plan.path, injectFrontMatter(plan.markdown, { status: "feedback" }));
+        await fsWriteFile(plan.path, injectFrontMatter(plan.markdown, { status: "feedback" }));
 
         let resolved = false;
         let rejectedMessage = "";
@@ -719,12 +723,12 @@ Deno.test("owner Workspace rejects stale live Plan review before answering Runti
     } finally {
         await appObject?.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner Workspace rejects Shared Space bearer capabilities on owner APIs", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-isolation-" });
+test("owner Workspace rejects Shared Space bearer capabilities on owner APIs", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-isolation-"));
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const ownerApp = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
     try {
@@ -738,14 +742,14 @@ Deno.test("owner Workspace rejects Shared Space bearer capabilities on owner API
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner Workspace keeps read-only Project Plan progress API and removes progress page", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-progress-" });
+test("owner Workspace keeps read-only Project Plan progress API and removes progress page", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-progress-"));
     const projectRoot = `${dir}/project`;
-    await Deno.mkdir(projectRoot);
+    await fsMkdir(projectRoot);
     await savePlan(projectRoot, "progress-plan", "# Progress Plan\n\nBody", {
         planId: "progress-plan-id",
         classification: "PLANNED_CHANGE",
@@ -790,16 +794,16 @@ Deno.test("owner Workspace keeps read-only Project Plan progress API and removes
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner Workspace reviews a complete Sequence and rejects stale sibling evidence", async () => {
+test("owner Workspace reviews a complete Sequence and rejects stale sibling evidence", async () => {
     const { prepareSequenceReview } = await import("../../shared/workflow/sequence-review.ts");
     const { WorkspaceSessionContinuationService } = await import("./server/session-continuation.js");
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-sequence-review-" });
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-sequence-review-"));
     const root = `${dir}/project`;
-    await Deno.mkdir(root);
+    await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     try {
         await savePlan(root, "sequence", "# Sequence", {
@@ -835,7 +839,7 @@ Deno.test("owner Workspace reviews a complete Sequence and rejects stale sibling
             answer: { resolve: (answer) => answers.push(answer), reject: () => {} },
         });
         const second = documents[2];
-        await Deno.writeTextFile(second.planPath, `${second.plan}\nNew requirements.`);
+        await fsWriteFile(second.planPath, `${second.plan}\nNew requirements.`);
         const decision = {
             approved: true,
             approvalAction: "run",
@@ -853,7 +857,7 @@ Deno.test("owner Workspace reviews a complete Sequence and rejects stale sibling
         await assertRejects(() => service.answerInteraction(request), Error, "changed while review was open");
         assertEquals(answers.length, 0);
         assertEquals((await loadPlan(root, "sequence/first"))?.attrs.status, "draft");
-        await Deno.writeTextFile(second.planPath, second.plan);
+        await fsWriteFile(second.planPath, second.plan);
         await service.answerInteraction({ ...request, requestId: "current-sequence" });
         assertEquals(answers.length, 1);
         assertEquals(
@@ -892,6 +896,6 @@ Deno.test("owner Workspace reviews a complete Sequence and rejects stale sibling
         assertEquals(answers[1]._meta.sequenceDecision.feedback, "Clarify the group.");
     } finally {
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

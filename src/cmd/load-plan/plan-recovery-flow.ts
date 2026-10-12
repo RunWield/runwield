@@ -1,3 +1,6 @@
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { normalize } from "node:path";
+import { stat as fsStat } from "node:fs/promises";
 /**
  * @module cmd/load-plan/plan-recovery-flow
  * The Plan Recovery menu coordinator for in-progress, failed, and implemented Plans.
@@ -121,11 +124,7 @@ export async function handlePlanRecovery(
         }
     } catch (error) {
         console.error("[RunWield] recovery_safe_repair_failed", error);
-        uiAPI.appendSystemMessage(
-            buildValidationUserMessage({ kind: "recovery_repair_failed" }),
-            true,
-            "RunWield",
-        );
+        uiAPI.appendSystemMessage(buildValidationUserMessage({ kind: "recovery_repair_failed" }), true, "RunWield");
         return "handled";
     }
     const initialPolicy = resolvePlanExecutionPolicy(plan.attrs);
@@ -155,12 +154,15 @@ export async function handlePlanRecovery(
     };
     context.recordRecoveryResult = async (action: string, result: string, details: RecoveryMetricDetails = {}) => {
         const hasWorktree = hasWorktreeContext(context.worktreeContext);
-        await opts.ports.recordWorkflowMetric({
-            category: "recovery",
-            event: "recovery_action_result",
-            planName: plan.planName,
-            details: { action, result, currentStatus: plan.attrs.status, hasWorktree, ...details },
-        }, projectRoot);
+        await opts.ports.recordWorkflowMetric(
+            {
+                category: "recovery",
+                event: "recovery_action_result",
+                planName: plan.planName,
+                details: { action, result, currentStatus: plan.attrs.status, hasWorktree, ...details },
+            },
+            projectRoot,
+        );
     };
     // The first menu is built on one selected-Plan snapshot. When the caller
     // already resolved the recorded attempt, reuse it: re-resolving repeats the
@@ -168,9 +170,10 @@ export async function handlePlanRecovery(
     // Plans. Persisting discovered worktree metadata is a lifecycle mutation, so
     // it still waits for an action that actually needs it
     // (`refreshRecoveryWorktree`), keeping the first menu cheap.
-    context.worktreeContext = opts.recordedAttempt !== undefined
-        ? opts.recordedAttempt
-        : await resolveRecoveryWorktree(projectRoot, plan, { migrateRegistry: false });
+    context.worktreeContext =
+        opts.recordedAttempt !== undefined
+            ? opts.recordedAttempt
+            : await resolveRecoveryWorktree(projectRoot, plan, { migrateRegistry: false });
     if (context.worktreeContext?.path && context.worktreeContext.path !== projectRoot) {
         const executionRecovery = await healSettledTransitionRecords(context.worktreeContext.path, {
             planName: plan.planName,
@@ -179,10 +182,12 @@ export async function handlePlanRecovery(
         const settledIds = new Set(executionRecovery.closed.map((record) => record.transitionId));
         context.unresolvedRecords = context.unresolvedRecords
             .filter((record) => !record.transitionId || !settledIds.has(record.transitionId))
-            .concat(executionRecovery.remaining.map((record) => ({
-                ...record,
-                authorityRoot: context.worktreeContext?.path,
-            })));
+            .concat(
+                executionRecovery.remaining.map((record) => ({
+                    ...record,
+                    authorityRoot: context.worktreeContext?.path,
+                })),
+            );
         if (executionRecovery.closed.length > 0) {
             uiAPI.appendSystemMessage(
                 buildPlanRecoveryUserMessage({ kind: "records_settled", count: executionRecovery.closed.length }),
@@ -216,9 +221,9 @@ export async function handlePlanRecovery(
     // action completes.
     let gitProbeCache: Awaited<ReturnType<RecoveryFlowPorts["probeGitRepository"]>> | null = null;
     let physicallyLostCache: boolean | null = null;
-    const getGitProbe = async () => gitProbeCache ??= await opts.ports.probeGitRepository(projectRoot);
+    const getGitProbe = async () => (gitProbeCache ??= await opts.ports.probeGitRepository(projectRoot));
     const getPhysicallyLost = async () =>
-        physicallyLostCache ??= await isAttemptPhysicallyLost(projectRoot, context.worktreeContext);
+        (physicallyLostCache ??= await isAttemptPhysicallyLost(projectRoot, context.worktreeContext));
     const invalidateRecoveryFacts = () => {
         gitProbeCache = null;
         physicallyLostCache = null;
@@ -227,22 +232,21 @@ export async function handlePlanRecovery(
     while (true) {
         const hasWorktree = hasWorktreeContext(context.worktreeContext);
         const gitProbe = await getGitProbe();
-        const hasGitRecoveryMetadata = hasWorktree ||
+        const hasGitRecoveryMetadata =
+            hasWorktree ||
             (plan.attrs.executionMode !== "non_git_in_place" && Boolean(plan.attrs.executionBaselineTree));
         const gitRecoveryBlocked = !gitProbe.ok && hasGitRecoveryMetadata;
         const physicallyLost = await getPhysicallyLost();
-        const answer = await promptRecoveryAction(
-            context,
-            gitRecoveryBlocked,
-            hasWorktree,
-            physicallyLost,
+        const answer = await promptRecoveryAction(context, gitRecoveryBlocked, hasWorktree, physicallyLost);
+        await opts.ports.recordWorkflowMetric(
+            {
+                category: "recovery",
+                event: "recovery_action_selected",
+                planName: plan.planName,
+                details: { action: answer || "cancel", currentStatus: plan.attrs.status, hasWorktree },
+            },
+            projectRoot,
         );
-        await opts.ports.recordWorkflowMetric({
-            category: "recovery",
-            event: "recovery_action_selected",
-            planName: plan.planName,
-            details: { action: answer || "cancel", currentStatus: plan.attrs.status, hasWorktree },
-        }, projectRoot);
         if (!answer || answer === "cancel") {
             await context.recordRecoveryResult("cancel", "handled");
             return "handled";
@@ -262,30 +266,32 @@ async function isAttemptPhysicallyLost(
     worktree: RecoveryWorktreeContext | null,
 ): Promise<boolean> {
     if (!worktree?.id || !worktree.path || !worktree.branch) return false;
-    const pathExists = await Deno.stat(worktree.path).then((info) => info.isDirectory).catch(() => false);
+    const pathExists = await fsStat(worktree.path)
+        .then((info) => info.isDirectory())
+        .catch(() => false);
     if (pathExists) return false;
-    const branchExists = await createGitPort().branchHead(projectRoot, worktree.branch)
+    const branchExists = await createGitPort()
+        .branchHead(projectRoot, worktree.branch)
         .then(() => true)
         .catch(() => false);
     if (branchExists) return false;
-    const command = new Deno.Command("git", {
-        cwd: projectRoot,
-        args: ["worktree", "list", "--porcelain"],
-        stdout: "piped",
-        stderr: "null",
-    });
-    const output = await command.output().catch(() => null);
+    const command = captureForegroundProcess("git", { cwd: projectRoot, args: ["worktree", "list", "--porcelain"] });
+    const output = await command.catch(() => null);
     if (!output || !output.success) return true;
+    const expectedPath = normalize(worktree.path);
     const records = new TextDecoder().decode(output.stdout).trim().split(/\n\n+/);
-    const record = records.find((value) => value.split("\n").includes(`worktree ${worktree.path}`));
-    const head = record?.split("\n").find((line) => line.startsWith("HEAD "))?.slice(5);
+    const record = records.find((value) =>
+        value.split("\n").some((line) => line.startsWith("worktree ") && normalize(line.slice(9)) === expectedPath),
+    );
+    const head = record
+        ?.split("\n")
+        .find((line) => line.startsWith("HEAD "))
+        ?.slice(5);
     if (!head) return true;
-    const proof = await new Deno.Command("git", {
+    const proof = await captureForegroundProcess("git", {
         cwd: projectRoot,
         args: ["rev-parse", "--verify", `${head}^{commit}`],
-        stdout: "null",
-        stderr: "null",
-    }).output().catch(() => null);
+    }).catch(() => null);
     return !proof?.success;
 }
 
@@ -297,21 +303,20 @@ async function promptRecoveryAction(
 ): Promise<RecoveryMenuAnswer | null | undefined> {
     if (physicallyLost) {
         const userVerifyOptions: RecoveryMenuOption[] = isUserVerifiableStatus(context.plan.attrs.status)
-            ? [{
-                value: "user_verify",
-                label: "Mark as User Verified (user attestation; no Workflow Validation claim)",
-            }]
+            ? [
+                  {
+                      value: "user_verify",
+                      label: "Mark as User Verified (user attestation; no Workflow Validation claim)",
+                  },
+              ]
             : [];
-        return await context.uiAPI.promptSelect(
-            validationUserMessage("lost_attempt"),
-            [
-                { value: "reset", label: "Try the implementation again" },
-                { value: "abandon", label: "Abandon the lost worktree" },
-                ...userVerifyOptions,
-                { value: "review", label: "Send the Plan back to Planner" },
-                { value: "stop_lost", label: "Stop here" },
-            ],
-        ) as RecoveryMenuAnswer | null;
+        return (await context.uiAPI.promptSelect(validationUserMessage("lost_attempt"), [
+            { value: "reset", label: "Try the implementation again" },
+            { value: "abandon", label: "Abandon the lost worktree" },
+            ...userVerifyOptions,
+            { value: "review", label: "Send the Plan back to Planner" },
+            { value: "stop_lost", label: "Stop here" },
+        ])) as RecoveryMenuAnswer | null;
     }
     const userVerifyOptions: RecoveryMenuOption[] = isUserVerifiableStatus(context.plan.attrs.status)
         ? [{ value: "user_verify", label: "Mark as User Verified (user attestation; no Workflow Validation claim)" }]
@@ -319,20 +324,25 @@ async function promptRecoveryAction(
     const resetLabel = gitRecoveryBlocked
         ? "Clear stale Git recovery metadata"
         : hasWorktree
-        ? "Delete/recreate worktree and start over"
-        : "Reset tree and start over";
-    const restoreRecordOptions: RecoveryMenuOption[] = context.plan.attrs.status !== "validated" &&
-            context.worktreeContext?.id && !context.loadedWorktreeId
-        ? [{ value: "restore_record", label: "Restore worktree record and continue" }]
-        : [];
-    const recordOptions: RecoveryMenuOption[] = context.unresolvedRecords.length > 0
-        ? [{
-            value: "settle_records",
-            label: `Close ${
-                context.unresolvedRecords.length === 1 ? "the unfinished Plan update" : "unfinished Plan updates"
-            } (you confirm the state)`,
-        }]
-        : [];
+          ? "Delete/recreate worktree and start over"
+          : "Reset tree and start over";
+    const restoreRecordOptions: RecoveryMenuOption[] =
+        context.plan.attrs.status !== "validated" && context.worktreeContext?.id && !context.loadedWorktreeId
+            ? [{ value: "restore_record", label: "Restore worktree record and continue" }]
+            : [];
+    const recordOptions: RecoveryMenuOption[] =
+        context.unresolvedRecords.length > 0
+            ? [
+                  {
+                      value: "settle_records",
+                      label: `Close ${
+                          context.unresolvedRecords.length === 1
+                              ? "the unfinished Plan update"
+                              : "unfinished Plan updates"
+                      } (you confirm the state)`,
+                  },
+              ]
+            : [];
     const common: RecoveryMenuOption[] = [
         { value: "inspect", label: "Inspect and report current state" },
         { value: "reset", label: resetLabel },
@@ -343,34 +353,39 @@ async function promptRecoveryAction(
         { value: "cancel", label: "Cancel" },
     ];
     const policy = resolvePlanExecutionPolicy(context.plan.attrs);
-    const followUpAgentLabel = policy.ok && policy.policy.executionAgent === "frontend-engineer"
-        ? "Frontend Engineer"
-        : "Plan Engineer";
-    const followUpOptions: RecoveryMenuOption[] = context.plan.attrs.status === "implemented" && hasWorktree &&
-            !gitRecoveryBlocked
-        ? [{ value: "follow_up", label: `Open ${followUpAgentLabel} for follow-up` }]
-        : [];
+    const followUpAgentLabel =
+        policy.ok && policy.policy.executionAgent === "frontend-engineer" ? "Frontend Engineer" : "Plan Engineer";
+    const followUpOptions: RecoveryMenuOption[] =
+        context.plan.attrs.status === "implemented" && hasWorktree && !gitRecoveryBlocked
+            ? [{ value: "follow_up", label: `Open ${followUpAgentLabel} for follow-up` }]
+            : [];
     const options = isInValidation(context.plan.attrs.status)
         ? [
-            ...recordOptions,
-            ...restoreRecordOptions,
-            ...(gitRecoveryBlocked ? [] : [{
-                value: "validate" as const,
-                label: context.worktreeContext?.publication ? "Resume publication" : "Retry Workflow Validation",
-            }]),
-            ...followUpOptions,
-            common[0],
-            ...common.slice(1),
-        ]
+              ...recordOptions,
+              ...restoreRecordOptions,
+              ...(gitRecoveryBlocked
+                  ? []
+                  : [
+                        {
+                            value: "validate" as const,
+                            label: context.worktreeContext?.publication
+                                ? "Resume publication"
+                                : "Retry Workflow Validation",
+                        },
+                    ]),
+              ...followUpOptions,
+              common[0],
+              ...common.slice(1),
+          ]
         : [
-            ...recordOptions,
-            ...restoreRecordOptions,
-            common[0],
-            ...(gitRecoveryBlocked
-                ? []
-                : [{ value: "continue" as const, label: "Continue execution from current worktree" }]),
-            ...common.slice(1),
-        ];
+              ...recordOptions,
+              ...restoreRecordOptions,
+              common[0],
+              ...(gitRecoveryBlocked
+                  ? []
+                  : [{ value: "continue" as const, label: "Continue execution from current worktree" }]),
+              ...common.slice(1),
+          ];
     const answer = await context.uiAPI.promptSelect(`Plan recovery (${context.plan.attrs.status}):`, options);
     return answer as RecoveryMenuAnswer | null;
 }
@@ -382,11 +397,7 @@ async function dispatchRecoveryAction(
     gitState: string,
 ): Promise<RecoveryActionOutcome> {
     if (gitRecoveryBlocked && ["continue", "validate", "follow_up", "merge"].includes(action)) {
-        context.uiAPI.appendSystemMessage(
-            buildPlanRecoveryUserMessage({ kind: "git_blocked" }),
-            true,
-            "RunWield",
-        );
+        context.uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "git_blocked" }), true, "RunWield");
         await context.recordRecoveryResult(action, "blocked", { gitState });
         return { kind: "menu" };
     }

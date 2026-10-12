@@ -1,5 +1,8 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { readFile as fsReadFile, realpath as fsRealpath, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { Buffer } from "node:buffer";
-import { isAbsolute, join, relative } from "@std/path";
+import { isAbsolute, join, relative } from "node:path";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { getHomeDir } from "../../../../constants.js";
 import { getModelRegistry } from "../../../models/model-registry.ts";
@@ -36,7 +39,7 @@ export async function generateAgyImage(request: AgyImageRequest): Promise<ImageC
     }
     const effort = thinkingLevelToEffort(request.model, request.settings.thinkingLevel);
     request.signal?.throwIfAborted();
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-create-image-" });
+    const cwd = await mkdtemp(join(tmpdir(), "runwield-create-image-"));
     const prompt = [
         "Generate exactly one image using your native generate_image tool exactly once.",
         "Do not use MCP tools, shell commands, subagents, browser, or skills. Do not modify project files.",
@@ -103,23 +106,23 @@ export async function generateAgyImage(request: AgyImageRequest): Promise<ImageC
         }
         const session = parsed.metadata.sessionId;
         if (!session || !/^[a-zA-Z0-9_-]+$/.test(session)) throw new Error("Agy did not identify its image session.");
-        const source = await Deno.realPath(result.path);
-        const temporaryRoot = await Deno.realPath(cwd);
+        const source = await fsRealpath(result.path);
+        const temporaryRoot = await fsRealpath(cwd);
         const hostRoot = join(getHomeDir(), ".gemini", "antigravity-cli", "brain", session);
         let currentSessionRoot = "";
         try {
-            currentSessionRoot = await Deno.realPath(hostRoot);
+            currentSessionRoot = await fsRealpath(hostRoot);
         } catch { /* host may return the temporary path */ }
         if (!inside(temporaryRoot, source) && (!currentSessionRoot || !inside(currentSessionRoot, source))) {
             throw new Error("Agy returned an image outside this request's output directories.");
         }
-        const stat = await Deno.stat(source);
-        if (!stat.isFile || stat.size === 0 || stat.size > 32 * 1024 * 1024) {
+        const stat = await fsStat(source);
+        if (!stat.isFile() || stat.size === 0 || stat.size > 32 * 1024 * 1024) {
             throw new Error("Agy image output must be a nonempty image file under 32 MiB.");
         }
         return {
             type: "image",
-            data: Buffer.from(await Deno.readFile(source)).toString("base64"),
+            data: Buffer.from(await fsReadFile(source)).toString("base64"),
             mimeType: mimeTypeForImagePath(source),
         };
     } finally {
@@ -127,6 +130,6 @@ export async function generateAgyImage(request: AgyImageRequest): Promise<ImageC
             process.kill();
             await Promise.allSettled([process.completed, process.stderrText]);
         }
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 }

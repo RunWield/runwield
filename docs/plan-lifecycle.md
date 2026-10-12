@@ -81,8 +81,9 @@ follows the existing PROJECT order, dependency, hold and recovery rules.
 `ready_for_decomposition`: An Epic PROJECT Plan has been approved and can be opened by the Slicer. This is not an
 executable status.
 
-`ready_for_work`: The executable status for FEATURE Plans. For a PROJECT Epic, it means decomposition has been finalized
-and child FEATURE Plans can be selected; the Epic itself is still a container, not executable implementation work.
+`ready_for_work`: The executable status for PLANNED_CHANGE Plans (including legacy FEATURE). For a PROJECT Epic, it
+means decomposition has been finalized and child Planned Changes can be selected; the Epic itself is still a container,
+not executable implementation work.
 
 `in_progress`: Execution has started. For executable plans, implementation work runs in the recorded execution worktree.
 
@@ -101,7 +102,8 @@ passes; `validationPhase: semantic` ensures a fresh process resumes review witho
 Plan remains reviewed while artifacts are prepared or publication is pending. The sealed execution candidate never
 claims delivery.
 
-`verified`: The reviewed work reached its configured target branch and publication was confirmed. The target commit
+`verified`: The reviewed work reached its recorded landing branch, including a default Plan branch, and publication
+was confirmed. This does not prove an onward merge to the intended target. The delivery commit
 contains the verified Plan and any successfully prepared Work Record in approved state; the checked candidate and
 published commit remain separate identities. Non-Git projects reach verified after their in-place checks and review.
 Runtime receipts preserve this outcome when a remote delivery leaves the primary checkout behind.
@@ -329,13 +331,14 @@ mechanical. It preserves identity/context fields such as `classification`, `comp
 
 The Readiness Gate is classification-aware.
 
-For FEATURE Plans, the gate does not call an LLM. It promotes `approved` to `ready_for_work`.
+For PLANNED_CHANGE Plans (including legacy FEATURE), the gate does not call an LLM. It promotes `approved` to
+`ready_for_work`.
 
 For PROJECT Epics, the gate records `epic_readiness_passed` and promotes `approved` to `ready_for_decomposition`. The
 Slicer then runs as an interactive decomposition agent. When the user explicitly finalizes the decomposition seams, the
-Slicer materializes child FEATURE Plans as `draft`, records `decomposition_finalized`, and the Epic becomes
-`ready_for_work` for child selection. That status does not mean the Epic itself can be executed, and draft child FEATURE
-Plans still go through Planner/Plannotator review before execution.
+Slicer materializes child PLANNED_CHANGE Plans as `draft`, records `decomposition_finalized`, and the Epic becomes
+`ready_for_work` for child selection. That status does not mean the Epic itself can be executed, and draft child Planned
+Changes still go through Planner/Plannotator review before execution.
 
 ## Execution Worktrees
 
@@ -487,9 +490,16 @@ omitted when unused; empty runtime placeholders are never written.
 `planId`: Stable identity joining this document to its controller record.
 
 `classification`, `workKind`, `complexity`, `affectedPaths`, `executionAgent`, and `collaborationRecommendation`:
-Planning and execution policy. `targetBranch` names the actual branch selected for delivery, not a description or
-`HEAD`. Once execution starts, the registry owns the selected attempt and its target; changing unrelated checkout
-metadata does not retarget an active attempt.
+Planning and execution policy. `targetBranch` names the source and intended destination, not a description or `HEAD`.
+For a standalone Planned Change without an authored target, execution preparation records the repository default branch
+(origin's default, then configured local default, `main`, or `master`), not the current checkout branch.
+`deliveryBranch` records the actual landing separately. With `plans.autoMergeIntoTargetBranch` off (default), RunWield
+creates or reuses `plan/<plan-name>` from `targetBranch`, bases the worktree on it, and merges back into it. With the
+setting on, it skips Plan Branch creation and uses `targetBranch` for both execution and delivery. A recorded landing
+survives setting changes and retries. Epic and Sequence children keep their existing branch behavior; QUICK_FIX and
+non-Git execution do not use this setting. Confirmed Plan Branch delivery makes the Plan Verified and creates its Work
+Record; it does not claim delivery to the intended destination. The completion card says **Ready for your merge/PR**,
+names the landing branch, and guides the user's onward merge.
 
 `createdAt`, `origin`, `userVerifiedAt`, `userVerificationNote`, archive metadata, supersession links, and Epic
 completion notes: durable human-facing history. Dev-server hints and child ordering remain planning metadata when
@@ -499,7 +509,7 @@ There is no stored `summary`: lists and prompts derive it from the first paragra
 
 `status`: Current Plan Status.
 
-`parentPlan`: Child FEATURE pointer to the parent Epic plan name.
+`parentPlan`: Child Planned Change pointer to the parent Epic plan name.
 
 `dependencies`: Optional sibling FEATURE Plan identifiers that should be complete first. Loading a child FEATURE warns
 when dependencies are missing or neither RunWield Verified nor User Verified, but the user may choose to proceed. User
@@ -547,10 +557,10 @@ through a Git-backed execution worktree. `non_git_in_place` means validation ran
 explicit non-Git path. Missing mode is unknown for FEATURE validation, not an implicit primary-checkout fallback.
 
 `deliveryEvidence`: Versioned candidate or non-Git evidence recorded with `validation_passed`. Worktree evidence records
-`mode: "worktree_merge"`, the sealed `executionCommit`, the concrete `targetBranch`, and `targetHeadBeforeMerge` so Git
-ancestry can later prove the candidate reached the target. These candidate fields alone are not publication proof; the
-publication record and retained receipt identify the finalized delivered commit. Non-Git evidence records only
-`{ version: 1, mode: "non_git_in_place" }`; it must not contain absolute paths.
+`mode: "worktree_merge"`, the sealed `executionCommit`, the concrete landing in `targetBranch`, and
+`targetHeadBeforeMerge` so Git ancestry can later prove the candidate reached the target. These candidate fields alone
+are not publication proof; the publication record and retained receipt identify the finalized delivered commit. Non-Git
+evidence records only `{ version: 1, mode: "non_git_in_place" }`; it must not contain absolute paths.
 
 `executionBaselineTree`: Git tree captured in the execution worktree at `execution_started`.
 

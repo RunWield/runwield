@@ -36,6 +36,9 @@ uncommitted work; target-only changes are not proposed changes.
   fallbacks, dependency bags, test-only branches, and injectable transaction, persistence, lifecycle, registry, or lock
   collaborators as architectural regressions. Required ports are legitimate only for genuine external capabilities;
   renaming an override bag or making an internal collaborator required does not make it a port.
+- A changed test that would still pass with a plausible wrong implementation of the behavior it claims to cover: it
+  asserts the fake rather than the behavior, or a fixture or double bypasses the product-owned code path. Name the wrong
+  implementation that would pass.
 
 Advisories for this round include code smells — speculative generality, duplicated logic, repeated conditionals, shotgun
 surgery, data clumps, confusing domain boundaries — and genuine ambiguity in the Plan: quote the ambiguous requirement,
@@ -72,8 +75,12 @@ nothing to note, leave `integrationNotes` out.
    behavior. Map applicable Plan and repository rules, including path exclusions, to the files they cover.
 4. Work through the Plan's Objective, Implementation Steps, deliverables, constraints, and named edge cases. Every
    material requirement gets examined — approving without having looked is not the same as approving.
-5. Scan changed tests. Treat them as blocking only when the Plan required test changes, or when a touched test is
-   broken, misleading, or contradicts the implemented behavior.
+5. Scan changed tests. For each test the change adds or modifies, ask: what plausible wrong implementation would still
+   pass this test? Check the assertions, the boundaries, and fakes that bypass real behavior. This is a static judgment;
+   mechanical validation owns whether tests ran, so never require execution proof. Treat a test as blocking only when
+   the Plan required test changes, or when a touched test is broken, misleading, or contradicts the implemented behavior
+   — a test that green-lights a fake is misleading. Observations about strengthening an honest test beyond that gate are
+   advisories.
 6. Scan production changes for new injection seams. Confirm that every new port represents a genuine external capability
    and that tests still exercise product-owned machinery through observable behavior and real fixtures.
 7. Validate each candidate against the code path. Finding one issue does not finish the round. Collect every independent

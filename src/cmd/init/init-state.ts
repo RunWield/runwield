@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { readFile as fsReadFile } from "node:fs/promises";
 /**
  * @module cmd/init/init-state
  * Global state module for tracking init status per project.
@@ -7,7 +9,7 @@
  * conditionally hide `/init` from autocomplete once done.
  */
 
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { getCwd, getHomeDir } from "../../constants.js";
 
 interface InitStateEntry {
@@ -66,7 +68,7 @@ async function sha256(input: string): Promise<string> {
 async function readState(): Promise<InitState> {
     const path = getStatePath();
     try {
-        const raw = await Deno.readTextFile(path);
+        const raw = await fsReadFile(path, "utf8");
         const parsed: InitState = JSON.parse(raw);
         if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
             return parsed;
@@ -85,11 +87,11 @@ function writeStateSync(state: InitState): void {
     const path = getStatePath();
     const dir = dirname(path);
     try {
-        Deno.mkdirSync(dir, { recursive: true });
+        mkdirSync(dir, { recursive: true });
     } catch (_e) {
         // directory already exists or cannot be created; proceed
     }
-    Deno.writeTextFileSync(path, JSON.stringify(state, null, 2) + "\n");
+    writeFileSync(path, JSON.stringify(state, null, 2) + "\n");
 }
 
 /**

@@ -3,6 +3,9 @@
  * closes them when the invocation exits.
  */
 
+import { spawnSync } from "node:child_process";
+import { env } from "node:process";
+
 interface AgentBrowserCommandRuntime {
     envSet(name: string, value: string): void;
     spawnCleanup(): void;
@@ -14,13 +17,12 @@ function createNamespace(): string {
 
 function createSystemRuntime(): AgentBrowserCommandRuntime {
     return {
-        envSet: (name, value) => Deno.env.set(name, value),
-        spawnCleanup: () =>
-            new Deno.Command("agent-browser", {
-                args: ["close", "--all"],
-                stdout: "null",
-                stderr: "null",
-            }).outputSync(),
+        envSet: (name, value) => {
+            env[name] = value;
+        },
+        spawnCleanup: () => {
+            spawnSync("agent-browser", ["close", "--all"], { stdio: "ignore" });
+        },
     };
 }
 

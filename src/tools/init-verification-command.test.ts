@@ -1,6 +1,15 @@
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
-import { parse as parseJsonc } from "@std/jsonc";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
+import { join } from "node:path";
+import { parse as parseJsonc } from "../shared/jsonc.ts";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import {
     createInitVerificationCommandOperation,
@@ -35,12 +44,12 @@ async function executeTool(
 }
 
 async function readProjectSettings(projectRoot: string) {
-    const text = await Deno.readTextFile(join(projectRoot, ".wld", "settings.json"));
+    const text = await fsReadFile(join(projectRoot, ".wld", "settings.json"), "utf8");
     return parseJsonc(text) as { verification_command?: string; codereview?: string; nested?: { retained?: boolean } };
 }
 
-Deno.test("init verification command operation saves a confirmed command in project settings", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "init-verification-command-" });
+test("init verification command operation saves a confirmed command in project settings", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "init-verification-command-"));
     const operation = createInitVerificationCommandOperation({ projectRoot });
 
     const result = await executeTool(operation, { command: "deno task ci" });
@@ -51,8 +60,8 @@ Deno.test("init verification command operation saves a confirmed command in proj
     assertEquals((await readProjectSettings(projectRoot)).verification_command, "deno task ci");
 });
 
-Deno.test("init verification command operation saves the exact placeholder for no implemented verification", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "init-verification-placeholder-" });
+test("init verification command operation saves the exact placeholder for no implemented verification", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "init-verification-placeholder-"));
     const operation = createInitVerificationCommandOperation({ projectRoot });
 
     const result = await executeTool(operation, { verificationNotImplemented: true });
@@ -65,10 +74,10 @@ Deno.test("init verification command operation saves the exact placeholder for n
     assertEquals((await readProjectSettings(projectRoot)).verification_command, INIT_VERIFICATION_COMMAND_PLACEHOLDER);
 });
 
-Deno.test("init verification command operation preserves unrelated project settings", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "init-verification-preserve-" });
-    await Deno.mkdir(join(projectRoot, ".wld"));
-    await Deno.writeTextFile(
+test("init verification command operation preserves unrelated project settings", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "init-verification-preserve-"));
+    await fsMkdir(join(projectRoot, ".wld"));
+    await fsWriteFile(
         join(projectRoot, ".wld", "settings.json"),
         '{\n  // keep review gate\n  "codereview": "ask",\n  "nested": { "retained": true }\n}\n',
     );
@@ -83,8 +92,8 @@ Deno.test("init verification command operation preserves unrelated project setti
     });
 });
 
-Deno.test("init verification command operation rejects unresolved outcomes", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "init-verification-reject-" });
+test("init verification command operation rejects unresolved outcomes", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "init-verification-reject-"));
     const cases: InitVerificationCommandParams[] = [
         {},
         { command: "   " },
@@ -100,7 +109,8 @@ Deno.test("init verification command operation rejects unresolved outcomes", asy
     }
 
     await assertRejects(
-        () => Deno.stat(join(projectRoot, ".wld", "settings.json")),
-        Deno.errors.NotFound,
+        () => fsStat(join(projectRoot, ".wld", "settings.json")),
+        Error,
+        "ENOENT",
     );
 });

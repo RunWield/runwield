@@ -1,5 +1,17 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { getCwd } from "../../constants.js";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { resolveInstalledWldExtensionResources } from "../../shared/extensions/wld-extension-manifest.js";
 import { resolveInstalledPackagePromptResources } from "../../shared/package-resources.ts";
 import { __resetSettingsForTests, getSettingsManager } from "../../shared/settings.js";
@@ -39,14 +51,14 @@ async function writeFixturePackage(packageDir: string, options: InstallPackageFi
         pi.skills = ["skills"];
         pi.themes = ["themes/*.json"];
         await Promise.all([
-            Deno.mkdir(join(packageDir, "prompts"), { recursive: true }),
-            Deno.mkdir(join(packageDir, "skills", "fixture-skill"), { recursive: true }),
-            Deno.mkdir(join(packageDir, "themes"), { recursive: true }),
+            fsMkdir(join(packageDir, "prompts"), { recursive: true }),
+            fsMkdir(join(packageDir, "skills", "fixture-skill"), { recursive: true }),
+            fsMkdir(join(packageDir, "themes"), { recursive: true }),
         ]);
         await Promise.all([
-            Deno.writeTextFile(join(packageDir, "prompts", "fixture.md"), "# Fixture prompt\n"),
-            Deno.writeTextFile(join(packageDir, "skills", "fixture-skill", "SKILL.md"), "# Fixture skill\n"),
-            Deno.writeTextFile(
+            fsWriteFile(join(packageDir, "prompts", "fixture.md"), "# Fixture prompt\n"),
+            fsWriteFile(join(packageDir, "skills", "fixture-skill", "SKILL.md"), "# Fixture skill\n"),
+            fsWriteFile(
                 join(packageDir, "themes", "fixture-theme.json"),
                 JSON.stringify({
                     name: "fixture-install-theme",
@@ -59,8 +71,8 @@ async function writeFixturePackage(packageDir: string, options: InstallPackageFi
 
     if (options.extension !== "none") {
         pi.extensions = ["extensions/index.js"];
-        await Deno.mkdir(join(packageDir, "extensions"), { recursive: true });
-        await Deno.writeTextFile(join(packageDir, "extensions", "index.js"), "export default () => ({});\n");
+        await fsMkdir(join(packageDir, "extensions"), { recursive: true });
+        await fsWriteFile(join(packageDir, "extensions", "index.js"), "export default () => ({});\n");
         if (options.extension === "compatible") {
             pi.wld = {
                 compatible: true,
@@ -70,7 +82,7 @@ async function writeFixturePackage(packageDir: string, options: InstallPackageFi
         }
     }
 
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(packageDir, "package.json"),
         JSON.stringify({ name: "fixture-install-package", version: "1.0.0", pi }),
     );
@@ -81,29 +93,29 @@ async function withInstallCommandFixture(
     run: (fixture: InstallCommandFixture) => Promise<void>,
 ): Promise<void> {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const previousSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        const previousCwd = Deno.cwd();
-        const previousExitCode = Deno.exitCode;
+        const previousHome = process.env["HOME"];
+        const previousSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
+        const previousCwd = getCwd();
+        const previousExitCode = process.exitCode;
         const previousPrompt = globalThis.prompt;
-        const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-install-command-" });
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-install-command-"));
         const homeDir = join(fixtureRoot, "home");
         const packageDir = join(fixtureRoot, "fixture-package");
         const projectRoot = join(fixtureRoot, "project");
         await Promise.all([
-            Deno.mkdir(homeDir, { recursive: true }),
-            Deno.mkdir(packageDir, { recursive: true }),
-            Deno.mkdir(projectRoot, { recursive: true }),
+            fsMkdir(homeDir, { recursive: true }),
+            fsMkdir(packageDir, { recursive: true }),
+            fsMkdir(projectRoot, { recursive: true }),
         ]);
         await writeFixturePackage(packageDir, options);
-        const canonicalPackageDir = await Deno.realPath(packageDir);
-        const canonicalProjectRoot = await Deno.realPath(projectRoot);
+        const canonicalPackageDir = await fsRealpath(packageDir);
+        const canonicalProjectRoot = await fsRealpath(projectRoot);
 
         try {
-            Deno.env.set("HOME", homeDir);
-            Deno.env.set("WLD_TEST_SANDBOX_HOME", homeDir);
-            Deno.chdir(canonicalProjectRoot);
-            Deno.exitCode = 0;
+            process.env["HOME"] = homeDir;
+            process.env["WLD_TEST_SANDBOX_HOME"] = homeDir;
+            process.chdir(canonicalProjectRoot);
+            process.exitCode = 0;
             __resetSettingsForTests();
             initRunWieldTheme();
             await run({
@@ -115,13 +127,13 @@ async function withInstallCommandFixture(
             globalThis.prompt = previousPrompt;
             initRunWieldTheme();
             __resetSettingsForTests();
-            Deno.chdir(previousCwd);
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", previousSandboxHome);
-            Deno.exitCode = previousExitCode;
-            await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+            process.chdir(previousCwd);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            if (previousSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = previousSandboxHome;
+            process.exitCode = previousExitCode;
+            await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
         }
     });
 }
@@ -142,7 +154,7 @@ async function captureConsole(run: () => Promise<void>): Promise<{ logs: string[
     return { logs, errors };
 }
 
-Deno.test("runInstallCommand installs and reports real local package resources", async () => {
+test("runInstallCommand installs and reports real local package resources", async () => {
     await withInstallCommandFixture(
         { extension: "incompatible", passiveResources: true },
         async ({ packageDir, projectRoot, source }) => {
@@ -164,12 +176,12 @@ Deno.test("runInstallCommand installs and reports real local package resources",
                 [join(packageDir, "prompts", "fixture.md")],
             );
             assert(getAvailableThemes().includes("fixture-install-theme"));
-            assertEquals(Deno.exitCode, 0);
+            assertEquals(process.exitCode, 0);
         },
     );
 });
 
-Deno.test("runInstallCommand enables a compatible local extension after consent", async () => {
+test("runInstallCommand enables a compatible local extension after consent", async () => {
     await withInstallCommandFixture({ extension: "compatible" }, async ({ packageDir, source }) => {
         const prompts: string[] = [];
         globalThis.prompt = (message = "") => {
@@ -187,7 +199,7 @@ Deno.test("runInstallCommand enables a compatible local extension after consent"
     });
 });
 
-Deno.test("runInstallCommand disables a compatible local extension when consent is declined", async () => {
+test("runInstallCommand disables a compatible local extension when consent is declined", async () => {
     await withInstallCommandFixture({ extension: "compatible" }, async ({ projectRoot, source }) => {
         globalThis.prompt = () => "";
 
@@ -204,7 +216,7 @@ Deno.test("runInstallCommand disables a compatible local extension when consent 
     });
 });
 
-Deno.test("runInstallCommand reports usage without terminating the test process", async () => {
+test("runInstallCommand reports usage without terminating the test process", async () => {
     await withInstallCommandFixture({ extension: "none" }, async () => {
         const output = await captureConsole(() => runInstallCommand([]));
 
@@ -213,11 +225,11 @@ Deno.test("runInstallCommand reports usage without terminating the test process"
             "Usage: wld install <source>",
             "Sources: npm:<spec>, git:<url>, local:<path>",
         ]);
-        assertEquals(Deno.exitCode, 1);
+        assertEquals(process.exitCode, 1);
     });
 });
 
-Deno.test("runInstallCommand reports a real missing local package", async () => {
+test("runInstallCommand reports a real missing local package", async () => {
     await withInstallCommandFixture({ extension: "none" }, async ({ projectRoot }) => {
         const missingSource = join(projectRoot, "missing-package");
         const output = await captureConsole(() => runInstallCommand([missingSource]));
@@ -225,6 +237,6 @@ Deno.test("runInstallCommand reports a real missing local package", async () => 
         assertEquals(output.logs, []);
         assertEquals(output.errors.length, 1);
         assertStringIncludes(output.errors[0], `Installation failed: Path does not exist: ${missingSource}`);
-        assertEquals(Deno.exitCode, 1);
+        assertEquals(process.exitCode, 1);
     });
 });

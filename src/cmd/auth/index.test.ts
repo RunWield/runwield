@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     registerScriptedOAuthProvider,
     SCRIPTED_OAUTH_PROVIDER_ID,
@@ -54,7 +56,7 @@ async function withAuthTest(
     });
 }
 
-Deno.test("subscription provider choices come from the hydrated fixture registry", async () => {
+test("subscription provider choices come from the hydrated fixture registry", async () => {
     await withAuthTest("auth-provider-list-", async ({ harness }) => {
         const provider = await registerScriptedOAuthProvider();
         await harness.type("/login subscription\r");
@@ -68,7 +70,7 @@ Deno.test("subscription provider choices come from the hydrated fixture registry
     });
 });
 
-Deno.test("API-key login offers OpenAI even when it supports subscription login", async () => {
+test("API-key login offers OpenAI even when it supports subscription login", async () => {
     await withAuthTest("auth-openai-api-key-", async ({ registry, harness }) => {
         assert(registry.getOAuthProviders().some((provider) => provider.id === "openai"));
         await harness.type("/login api-key openai\r");
@@ -78,7 +80,7 @@ Deno.test("API-key login offers OpenAI even when it supports subscription login"
     });
 });
 
-Deno.test("API-key login persists through the fixture credential store and status command", async () => {
+test("API-key login persists through the fixture credential store and status command", async () => {
     await withAuthTest("auth-api-key-login-", async ({ harness, registry }) => {
         await registry.logoutProvider(FIXTURE_PROVIDER);
         assertEquals(await registry.getStoredCredentialType(FIXTURE_PROVIDER), undefined);
@@ -99,7 +101,7 @@ Deno.test("API-key login persists through the fixture credential store and statu
     });
 });
 
-Deno.test("external CLI credentials stay out of API auth login, status, and logout choices", async () => {
+test("external CLI credentials stay out of API auth login, status, and logout choices", async () => {
     await withAuthTest("auth-external-cli-exclusion-", async ({ harness, registry }) => {
         await registry.credentialStore.modify("claude-cli", () => Promise.resolve({ type: "api_key", key: "fake" }));
         await registry.credentialStore.modify("agy-cli", () => Promise.resolve({ type: "api_key", key: "fake" }));
@@ -128,7 +130,7 @@ Deno.test("external CLI credentials stay out of API auth login, status, and logo
     });
 });
 
-Deno.test("post-login setup shows the model selector and switches the real Session to Router", async () => {
+test("post-login setup shows the model selector and switches the real Session to Router", async () => {
     await withAuthTest("auth-post-login-session-", async ({ harness, registry, runtime, sessionId }) => {
         await harness.type(`/login api-key ${FIXTURE_PROVIDER}\r`);
         await harness.waitForScreen(API_KEY_PROMPT);
@@ -147,7 +149,7 @@ Deno.test("post-login setup shows the model selector and switches the real Sessi
     });
 });
 
-Deno.test("logout removes the fixture credential and status reflects the fallback model key", async () => {
+test("logout removes the fixture credential and status reflects the fallback model key", async () => {
     await withAuthTest("auth-logout-", async ({ harness, registry }) => {
         assertEquals(await registry.getStoredCredentialType(FIXTURE_PROVIDER), "api_key");
         await harness.type(`/logout ${FIXTURE_PROVIDER}\r`);
@@ -161,7 +163,7 @@ Deno.test("logout removes the fixture credential and status reflects the fallbac
     });
 });
 
-Deno.test("cancelling API-key input leaves the fixture credential store unchanged", async () => {
+test("cancelling API-key input leaves the fixture credential store unchanged", async () => {
     await withAuthTest("auth-api-key-cancel-", async ({ harness, registry }) => {
         await registry.logoutProvider(FIXTURE_PROVIDER);
         assertEquals(await registry.getStoredCredentialType(FIXTURE_PROVIDER), undefined);
@@ -174,7 +176,7 @@ Deno.test("cancelling API-key input leaves the fixture credential store unchange
     });
 });
 
-Deno.test("API-key login rejects whitespace-only keys and reports failure", async () => {
+test("API-key login rejects whitespace-only keys and reports failure", async () => {
     await withRuntimeCommandFixture("auth-api-key-blank-", async () => {
         const registry = getModelRegistry();
         await registry.logoutProvider(FIXTURE_PROVIDER);

@@ -1,4 +1,10 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { makeTempFile } from "../../testing/temp-file.ts";
+import { test } from "node:test";
+import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import {
     createAgentSession,
@@ -6,7 +12,8 @@ import {
     SessionManager,
     type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { getCwd } from "../../constants.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { SessionHost } from "../session/session-host.ts";
@@ -37,21 +44,21 @@ function callFixtureTool(
 
 async function readLog(path: string): Promise<string[]> {
     try {
-        return (await Deno.readTextFile(path)).trim().split("\n").filter(Boolean);
+        return (await fsReadFile(path, "utf8")).trim().split("\n").filter(Boolean);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return [];
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
         throw error;
     }
 }
 
 async function startFixtureIntegration(env: Record<string, string> = {}) {
-    const logPath = await Deno.makeTempFile({ prefix: "runwield-mcp-log-" });
+    const logPath = await makeTempFile({ prefix: "runwield-mcp-log-" });
     const integrationResult = await startMcpIntegration({
         cwd: getCwd(),
         servers: [{
             name: "fixture",
-            command: Deno.execPath(),
-            args: ["run", "-A", fixtureServer],
+            command: process.execPath,
+            args: runtimeSourceArgs(["run", "-A", fixtureServer]),
             env: { RUNWIELD_MCP_FIXTURE_LOG: logPath, ...env },
             source: "request",
         }],
@@ -59,7 +66,7 @@ async function startFixtureIntegration(env: Record<string, string> = {}) {
     return { ...integrationResult, logPath };
 }
 
-Deno.test("MCP integration exposes a real stdio tool and forwards arguments", async () => {
+test("MCP integration exposes a real stdio tool and forwards arguments", async () => {
     const integrationResult = await startFixtureIntegration();
     try {
         assertEquals(integrationResult.warnings, []);
@@ -73,13 +80,13 @@ Deno.test("MCP integration exposes a real stdio tool and forwards arguments", as
         assertStringIncludes(logLines.join("\n"), '"marker":"real-call"');
     } finally {
         await integrationResult.integration.close();
-        await Deno.remove(integrationResult.logPath).catch(() => {});
+        await fsRm(integrationResult.logPath).catch(() => {});
     }
 });
 
-Deno.test("root Pi turns can call a real MCP fixture tool", async () => {
+test("root Pi turns can call a real MCP fixture tool", async () => {
     await withRuntimeCommandFixture("runwield-root-mcp-call-", async (fixture) => {
-        const logPath = await Deno.makeTempFile({ prefix: "runwield-root-mcp-log-" });
+        const logPath = await makeTempFile({ prefix: "runwield-root-mcp-log-" });
         const runtime = createSessionRuntime();
         let sawToolResultInTurn = false;
         let sawErrorResultInTurn = false;
@@ -104,8 +111,8 @@ Deno.test("root Pi turns can call a real MCP fixture tool", async () => {
                 cwd: fixture.projectRoot,
                 mcpServers: [{
                     name: "fixture",
-                    command: Deno.execPath(),
-                    args: ["run", "-A", fixtureServer],
+                    command: process.execPath,
+                    args: runtimeSourceArgs(["run", "-A", fixtureServer]),
                     env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
                     source: "request",
                 }],
@@ -118,12 +125,12 @@ Deno.test("root Pi turns can call a real MCP fixture tool", async () => {
             assertStringIncludes(logLines.join("\n"), '"marker":"root-pi"');
         } finally {
             await runtime.closeAllSessionsWhenIdle?.();
-            await Deno.remove(logPath).catch(() => {});
+            await fsRm(logPath).catch(() => {});
         }
     });
 });
 
-Deno.test("Pi MCP client follows paginated tool lists and retains tool annotations", async () => {
+test("Pi MCP client follows paginated tool lists and retains tool annotations", async () => {
     const integrationResult = await startFixtureIntegration({
         RUNWIELD_MCP_FIXTURE_PAGINATED: "1",
         RUNWIELD_MCP_FIXTURE_TOOLS: "first,second",
@@ -137,11 +144,11 @@ Deno.test("Pi MCP client follows paginated tool lists and retains tool annotatio
         assertEquals(result.content, [{ type: "text", text: "fixture-result:paginated" }]);
     } finally {
         await integrationResult.integration.close();
-        await Deno.remove(integrationResult.logPath).catch(() => {});
+        await fsRm(integrationResult.logPath).catch(() => {});
     }
 });
 
-Deno.test("Pi MCP content conversion preserves structured results, errors, and embedded images", async () => {
+test("Pi MCP content conversion preserves structured results, errors, and embedded images", async () => {
     const integrationResult = await startFixtureIntegration();
     try {
         const [tool] = integrationResult.integration.getTools();
@@ -166,11 +173,11 @@ Deno.test("Pi MCP content conversion preserves structured results, errors, and e
         assertEquals(image.content, [{ type: "image", data: "aW1hZ2U=", mimeType: "image/png" }]);
     } finally {
         await integrationResult.integration.close();
-        await Deno.remove(integrationResult.logPath).catch(() => {});
+        await fsRm(integrationResult.logPath).catch(() => {});
     }
 });
 
-Deno.test("Pi MCP progress reaches the RunWield tool update callback", async () => {
+test("Pi MCP progress reaches the RunWield tool update callback", async () => {
     const integrationResult = await startFixtureIntegration();
     try {
         const [tool] = integrationResult.integration.getTools();
@@ -182,14 +189,14 @@ Deno.test("Pi MCP progress reaches the RunWield tool update callback", async () 
         assertEquals(result.content, [{ type: "text", text: "fixture-result:progress" }]);
     } finally {
         await integrationResult.integration.close();
-        await Deno.remove(integrationResult.logPath).catch(() => {});
+        await fsRm(integrationResult.logPath).catch(() => {});
     }
 });
 
-Deno.test("Pi MCP transport inherits only RunWield's minimal environment and configured credentials", async () => {
+test("Pi MCP transport inherits only RunWield's minimal environment and configured credentials", async () => {
     await withProcessGlobalTestLock(async () => {
-        const prior = Deno.env.get("RUNWIELD_MCP_UNCONFIGURED_SECRET");
-        Deno.env.set("RUNWIELD_MCP_UNCONFIGURED_SECRET", "host-secret");
+        const prior = process.env["RUNWIELD_MCP_UNCONFIGURED_SECRET"];
+        process.env["RUNWIELD_MCP_UNCONFIGURED_SECRET"] = "host-secret";
         try {
             const integrationResult = await startFixtureIntegration({
                 RUNWIELD_MCP_CONFIGURED_SECRET: "configured-secret",
@@ -203,18 +210,18 @@ Deno.test("Pi MCP transport inherits only RunWield's minimal environment and con
                 }]);
             } finally {
                 await integrationResult.integration.close();
-                await Deno.remove(integrationResult.logPath).catch(() => {});
+                await fsRm(integrationResult.logPath).catch(() => {});
             }
         } finally {
-            if (prior === undefined) Deno.env.delete("RUNWIELD_MCP_UNCONFIGURED_SECRET");
-            else Deno.env.set("RUNWIELD_MCP_UNCONFIGURED_SECRET", prior);
+            if (prior === undefined) delete process.env["RUNWIELD_MCP_UNCONFIGURED_SECRET"];
+            else process.env["RUNWIELD_MCP_UNCONFIGURED_SECRET"] = prior;
         }
     });
 });
 
-Deno.test("root Agent handoff keeps the MCP fixture tool available", async () => {
+test("root Agent handoff keeps the MCP fixture tool available", async () => {
     await withRuntimeCommandFixture("runwield-root-mcp-handoff-", async (fixture) => {
-        const logPath = await Deno.makeTempFile({ prefix: "runwield-root-mcp-handoff-log-" });
+        const logPath = await makeTempFile({ prefix: "runwield-root-mcp-handoff-log-" });
         const runtime = createSessionRuntime();
         let sawToolResultAfterHandoff = false;
         fixture.setModelResponseFactories([
@@ -229,8 +236,8 @@ Deno.test("root Agent handoff keeps the MCP fixture tool available", async () =>
                 cwd: fixture.projectRoot,
                 mcpServers: [{
                     name: "fixture",
-                    command: Deno.execPath(),
-                    args: ["run", "-A", fixtureServer],
+                    command: process.execPath,
+                    args: runtimeSourceArgs(["run", "-A", fixtureServer]),
                     env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
                     source: "request",
                 }],
@@ -245,20 +252,20 @@ Deno.test("root Agent handoff keeps the MCP fixture tool available", async () =>
             assertStringIncludes((await readLog(logPath)).join("\n"), '"marker":"handoff"');
         } finally {
             await runtime.closeAllSessionsWhenIdle?.();
-            await Deno.remove(logPath).catch(() => {});
+            await fsRm(logPath).catch(() => {});
         }
     });
 });
 
-Deno.test("two Runtime Sessions own and close their MCP integrations independently", async () => {
+test("two Runtime Sessions own and close their MCP integrations independently", async () => {
     await withRuntimeCommandFixture("runwield-mcp-two-session-", async (fixture) => {
-        const firstLog = await Deno.makeTempFile({ prefix: "runwield-mcp-first-log-" });
-        const secondLog = await Deno.makeTempFile({ prefix: "runwield-mcp-second-log-" });
+        const firstLog = await makeTempFile({ prefix: "runwield-mcp-first-log-" });
+        const secondLog = await makeTempFile({ prefix: "runwield-mcp-second-log-" });
         const runtime = createSessionRuntime();
         const serverFor = (logPath: string) => ({
             name: "fixture",
-            command: Deno.execPath(),
-            args: ["run", "-A", fixtureServer],
+            command: process.execPath,
+            args: runtimeSourceArgs(["run", "-A", fixtureServer]),
             env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
             source: "request" as const,
         });
@@ -284,13 +291,13 @@ Deno.test("two Runtime Sessions own and close their MCP integrations independent
             assertStringIncludes((await readLog(secondLog)).join("\n"), '"marker":"second-live"');
         } finally {
             await runtime.closeAllSessionsWhenIdle?.();
-            await Deno.remove(firstLog).catch(() => {});
-            await Deno.remove(secondLog).catch(() => {});
+            await fsRm(firstLog).catch(() => {});
+            await fsRm(secondLog).catch(() => {});
         }
     });
 });
 
-Deno.test("HostedSession dehydration keeps MCP ownership and direct disposal closes only its integration", async () => {
+test("HostedSession dehydration keeps MCP ownership and direct disposal closes only its integration", async () => {
     const host = new SessionHost();
     const first = await startFixtureIntegration();
     const second = await startFixtureIntegration();
@@ -355,14 +362,14 @@ Deno.test("HostedSession dehydration keeps MCP ownership and direct disposal clo
         assertEquals(liveResult.content, [{ type: "text", text: "fixture-result:second-owned" }]);
     } finally {
         await host.dispose();
-        await Deno.remove(first.logPath).catch(() => {});
-        await Deno.remove(second.logPath).catch(() => {});
+        await fsRm(first.logPath).catch(() => {});
+        await fsRm(second.logPath).catch(() => {});
     }
 });
 
-Deno.test("Runtime replacement carries MCP ownership to the new Session", async () => {
+test("Runtime replacement carries MCP ownership to the new Session", async () => {
     await withRuntimeCommandFixture("runwield-mcp-replacement-", async (fixture) => {
-        const logPath = await Deno.makeTempFile({ prefix: "runwield-mcp-replacement-log-" });
+        const logPath = await makeTempFile({ prefix: "runwield-mcp-replacement-log-" });
         const runtime = createSessionRuntime();
         fixture.setModelMessages([
             fauxAssistantMessage(fauxToolCall("mcp__fixture__fixture_echo", { marker: "replacement" })),
@@ -373,8 +380,8 @@ Deno.test("Runtime replacement carries MCP ownership to the new Session", async 
                 cwd: fixture.projectRoot,
                 mcpServers: [{
                     name: "fixture",
-                    command: Deno.execPath(),
-                    args: ["run", "-A", fixtureServer],
+                    command: process.execPath,
+                    args: runtimeSourceArgs(["run", "-A", fixtureServer]),
                     env: { RUNWIELD_MCP_FIXTURE_LOG: logPath },
                     source: "request",
                 }],
@@ -393,12 +400,12 @@ Deno.test("Runtime replacement carries MCP ownership to the new Session", async 
             assertStringIncludes((await readLog(logPath)).join("\n"), '"event":"shutdown"');
         } finally {
             await runtime.closeAllSessionsWhenIdle?.();
-            await Deno.remove(logPath).catch(() => {});
+            await fsRm(logPath).catch(() => {});
         }
     });
 });
 
-Deno.test("MCP integration warnings identify connection failures without exposing raw server text", async () => {
+test("MCP integration warnings identify connection failures without exposing raw server text", async () => {
     const spawnFailure = await startMcpIntegration({
         cwd: getCwd(),
         servers: [{ name: "dead", command: "/definitely/not/runwield-mcp", args: [], env: {}, source: "request" }],
@@ -420,7 +427,7 @@ Deno.test("MCP integration warnings identify connection failures without exposin
         assertEquals(initFailure.warnings[0].message.includes("--secret"), false);
     } finally {
         await initFailure.integration.close();
-        await Deno.remove(initFailure.logPath).catch(() => {});
+        await fsRm(initFailure.logPath).catch(() => {});
     }
 
     const listFailure = await startFixtureIntegration({ RUNWIELD_MCP_FIXTURE_LIST_ERROR: "1" });
@@ -431,11 +438,11 @@ Deno.test("MCP integration warnings identify connection failures without exposin
         assertEquals(listFailure.warnings[0].message.includes("--flag"), false);
     } finally {
         await listFailure.integration.close();
-        await Deno.remove(listFailure.logPath).catch(() => {});
+        await fsRm(listFailure.logPath).catch(() => {});
     }
 });
 
-Deno.test("MCP integration uses stable aliases for normalized-name collisions", async () => {
+test("MCP integration uses stable aliases for normalized-name collisions", async () => {
     const first = await startFixtureIntegration({ RUNWIELD_MCP_FIXTURE_TOOLS: "same-name,same_name" });
     const second = await startFixtureIntegration({ RUNWIELD_MCP_FIXTURE_TOOLS: "same_name,same-name" });
     try {
@@ -446,12 +453,12 @@ Deno.test("MCP integration uses stable aliases for normalized-name collisions", 
     } finally {
         await first.integration.close();
         await second.integration.close();
-        await Deno.remove(first.logPath).catch(() => {});
-        await Deno.remove(second.logPath).catch(() => {});
+        await fsRm(first.logPath).catch(() => {});
+        await fsRm(second.logPath).catch(() => {});
     }
 });
 
-Deno.test("Pi MCP preserves embedded text and saves full oversized output", async () => {
+test("Pi MCP preserves embedded text and saves full oversized output", async () => {
     const integrationResult = await startFixtureIntegration();
     try {
         const [tool] = integrationResult.integration.getTools();
@@ -469,17 +476,17 @@ Deno.test("Pi MCP preserves embedded text and saves full oversized output", asyn
         assert((resourceLink.content[0] as { type: "text"; text: string }).text.length < 22_000);
         const path = (resourceLink.details as McpResultDetails).fullOutputPath;
         assert(path);
-        const fullOutput = await Deno.readTextFile(path);
+        const fullOutput = await fsReadFile(path, "utf8");
         assertStringIncludes(fullOutput, "t".repeat(20_000));
         assertStringIncludes(fullOutput, "u".repeat(20_000));
-        await Deno.remove(path);
+        await fsRm(path);
     } finally {
         await integrationResult.integration.close();
-        await Deno.remove(integrationResult.logPath).catch(() => {});
+        await fsRm(integrationResult.logPath).catch(() => {});
     }
 });
 
-Deno.test("Pi MCP updates root declarations and withdraws tools without reconnecting", async () => {
+test("Pi MCP updates root declarations and withdraws tools without reconnecting", async () => {
     const { integration, logPath } = await startFixtureIntegration();
     const cwd = getCwd();
     const binding = integration.bindRoot();
@@ -523,11 +530,11 @@ Deno.test("Pi MCP updates root declarations and withdraws tools without reconnec
         binding.dispose();
         session.dispose();
         await integration.close();
-        await Deno.remove(logPath).catch(() => {});
+        await fsRm(logPath).catch(() => {});
     }
 });
 
-Deno.test("Pi MCP exposes and reads native resource tools", async () => {
+test("Pi MCP exposes and reads native resource tools", async () => {
     const { integration, logPath } = await startFixtureIntegration({ RUNWIELD_MCP_FIXTURE_RESOURCES: "1" });
     try {
         const tools = integration.getTools();
@@ -545,11 +552,11 @@ Deno.test("Pi MCP exposes and reads native resource tools", async () => {
         assertStringIncludes(JSON.stringify(result.content), "fixture-resource");
     } finally {
         await integration.close();
-        await Deno.remove(logPath).catch(() => {});
+        await fsRm(logPath).catch(() => {});
     }
 });
 
-Deno.test("RunWield root MCP updates preserve a narrowed Agent's other tool restrictions", async () => {
+test("RunWield root MCP updates preserve a narrowed Agent's other tool restrictions", async () => {
     await withRuntimeCommandFixture("runwield-mcp-live-policy-", async (fixture) => {
         const { integration, logPath } = await startFixtureIntegration();
         const hosted = new HostedSession({ id: "mcp-policy", cwd: fixture.projectRoot });
@@ -578,21 +585,21 @@ Deno.test("RunWield root MCP updates preserve a narrowed Agent's other tool rest
         } finally {
             session.dispose();
             await hosted.dispose();
-            await Deno.remove(logPath).catch(() => {});
+            await fsRm(logPath).catch(() => {});
         }
     });
 });
 
-Deno.test("an initially empty MCP inventory updates its root while isolated calls stay restricted", async () => {
+test("an initially empty MCP inventory updates its root while isolated calls stay restricted", async () => {
     await withRuntimeCommandFixture("runwield-empty-mcp-", async (fixture) => {
         const toolsPath = join(fixture.projectRoot, "mcp-tools.txt");
-        await Deno.writeTextFile(toolsPath, "");
+        await fsWriteFile(toolsPath, "");
         const { integration } = await startMcpIntegration({
             cwd: fixture.projectRoot,
             servers: [{
                 name: "fixture",
-                command: Deno.execPath(),
-                args: ["run", "-A", fixtureServer],
+                command: process.execPath,
+                args: runtimeSourceArgs(["run", "-A", fixtureServer]),
                 env: { RUNWIELD_MCP_FIXTURE_TOOLS_PATH: toolsPath },
                 source: "request",
             }],
@@ -607,7 +614,7 @@ Deno.test("an initially empty MCP inventory updates its root while isolated call
             mcpIntegration: integration,
         });
         try {
-            await Deno.writeTextFile(toolsPath, "replacement");
+            await fsWriteFile(toolsPath, "replacement");
             const deadline = Date.now() + 5_000;
             while (!session.getActiveToolNames().includes("mcp__fixture__replacement") && Date.now() < deadline) {
                 await new Promise((resolve) => setTimeout(resolve, 10));
@@ -640,16 +647,16 @@ Deno.test("an initially empty MCP inventory updates its root while isolated call
     });
 });
 
-Deno.test("a root with failed initial discovery receives tools after official MCP reconnect", async () => {
+test("a root with failed initial discovery receives tools after official MCP reconnect", async () => {
     await withRuntimeCommandFixture("runwield-recovered-mcp-", async (fixture) => {
         const failurePath = join(fixture.projectRoot, "init-error.txt");
-        await Deno.writeTextFile(failurePath, "1");
+        await fsWriteFile(failurePath, "1");
         const { integration, warnings } = await startMcpIntegration({
             cwd: fixture.projectRoot,
             servers: [{
                 name: "fixture",
-                command: Deno.execPath(),
-                args: ["run", "-A", fixtureServer],
+                command: process.execPath,
+                args: runtimeSourceArgs(["run", "-A", fixtureServer]),
                 env: { RUNWIELD_MCP_FIXTURE_INIT_ERROR_PATH: failurePath },
                 source: "request",
             }],
@@ -665,7 +672,7 @@ Deno.test("a root with failed initial discovery receives tools after official MC
             mcpIntegration: integration,
         });
         try {
-            await Deno.writeTextFile(failurePath, "0");
+            await fsWriteFile(failurePath, "0");
             await integration.runCommand("reconnect fixture");
             assert(session.getActiveToolNames().includes("mcp__fixture__fixture_echo"));
             assertEquals((await callFixtureTool(integration.getTools()[0], "recovered")).content, [{
@@ -679,7 +686,7 @@ Deno.test("a root with failed initial discovery receives tools after official MC
     });
 });
 
-Deno.test("Pi MCP status and reconnect commands work without a model turn", async () => {
+test("Pi MCP status and reconnect commands work without a model turn", async () => {
     const { integration, logPath } = await startFixtureIntegration();
     try {
         const status = await integration.runCommand("");
@@ -691,19 +698,19 @@ Deno.test("Pi MCP status and reconnect commands work without a model turn", asyn
         assertEquals(result.content, [{ type: "text", text: "fixture-result:reconnected" }]);
     } finally {
         await integration.close();
-        await Deno.remove(logPath).catch(() => {});
+        await fsRm(logPath).catch(() => {});
     }
 });
 
-Deno.test("MCP integration close waits for fixture server shutdown", async () => {
+test("MCP integration close waits for fixture server shutdown", async () => {
     const integrationResult = await startFixtureIntegration();
     await integrationResult.integration.close();
     const logLines = await readLog(integrationResult.logPath);
     assertStringIncludes(logLines.join("\n"), '"event":"shutdown"');
-    await Deno.remove(integrationResult.logPath).catch(() => {});
+    await fsRm(integrationResult.logPath).catch(() => {});
 });
 
-Deno.test("MCP tool calls honor cancellation signals and shut down cleanly", async () => {
+test("MCP tool calls honor cancellation signals and shut down cleanly", async () => {
     const integrationResult = await startFixtureIntegration();
     try {
         const [tool] = integrationResult.integration.getTools();
@@ -716,6 +723,6 @@ Deno.test("MCP tool calls honor cancellation signals and shut down cleanly", asy
         assertStringIncludes((await readLog(integrationResult.logPath)).join("\n"), '"event":"shutdown"');
     } finally {
         await integrationResult.integration.close();
-        await Deno.remove(integrationResult.logPath).catch(() => {});
+        await fsRm(integrationResult.logPath).catch(() => {});
     }
 });

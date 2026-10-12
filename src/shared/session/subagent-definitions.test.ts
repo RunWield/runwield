@@ -1,6 +1,9 @@
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import { opendir } from "node:fs/promises";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { checkBashCommand, intersectBashAllowedCommands } from "../bash-command-policy.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { AGENTS, SUBAGENTS } from "../../constants.js";
 import {
     DELEGATED_ROLE_IDS,
@@ -31,16 +34,16 @@ function sourcePromptPath(fileName: string) {
     return join("src", "agent-definitions", "subagent-definitions", fileName);
 }
 
-Deno.test("subagent prompt files live only in the subagent definitions directory", async () => {
+test("subagent prompt files live only in the subagent definitions directory", async () => {
     const entries = [];
-    for await (const entry of Deno.readDir(join("src", "agent-definitions", "subagent-definitions"))) {
-        if (entry.isFile) entries.push(entry.name);
+    for await (const entry of (await opendir(join("src", "agent-definitions", "subagent-definitions")))) {
+        if (entry.isFile()) entries.push(entry.name);
     }
     entries.sort();
 
     const roleEntries = [];
-    for await (const entry of Deno.readDir(join("src", "agent-definitions", "subagent-definitions", "roles"))) {
-        if (entry.isFile) roleEntries.push(entry.name);
+    for await (const entry of (await opendir(join("src", "agent-definitions", "subagent-definitions", "roles")))) {
+        if (entry.isFile()) roleEntries.push(entry.name);
     }
     roleEntries.sort();
 
@@ -48,17 +51,18 @@ Deno.test("subagent prompt files live only in the subagent definitions directory
     assertEquals(roleEntries, EXPECTED_ROLE_OVERLAY_FILES);
     const oldPromptDirectory = join("src", "agent-definitions", "workflow-" + "prompts");
     await assertRejects(
-        () => Deno.stat(oldPromptDirectory),
-        Deno.errors.NotFound,
+        () => fsStat(oldPromptDirectory),
+        Error,
+        "ENOENT",
     );
 });
 
-Deno.test("every registered subagent loads from the moved bundled prompt files", async () => {
+test("every registered subagent loads from the moved bundled prompt files", async () => {
     const loadedIds: string[] = [];
     for (const id of Object.keys(SUBAGENT_DEFINITIONS) as SubAgentDefinitionId[]) {
         const definition = SUBAGENT_DEFINITIONS[id];
         const agentDef = await loadSubAgentDefinition(id);
-        const prompt = await Deno.readTextFile(sourcePromptPath(definition.file));
+        const prompt = await fsReadFile(sourcePromptPath(definition.file), "utf8");
 
         loadedIds.push(id);
         assertEquals(agentDef.name, definition.agentName);
@@ -76,7 +80,7 @@ Deno.test("every registered subagent loads from the moved bundled prompt files",
     assertEquals(loadedIds.sort(), Object.values(SUBAGENTS).sort());
 });
 
-Deno.test("read delegates can inspect GitHub and GitLab without forge mutation commands", async () => {
+test("read delegates can inspect GitHub and GitLab without forge mutation commands", async () => {
     const definition = await loadSubAgentDefinition(SUBAGENTS.DELEGATED_READ);
     for (
         const command of [
@@ -119,14 +123,14 @@ Deno.test("read delegates can inspect GitHub and GitLab without forge mutation c
     ) assertThrows(() => checkBashCommand(command, definition.bashAllowedCommands));
 });
 
-Deno.test("read-delegate forge inspection cannot remove a parent shell restriction", async () => {
+test("read-delegate forge inspection cannot remove a parent shell restriction", async () => {
     const definition = await loadSubAgentDefinition(SUBAGENTS.DELEGATED_READ);
     const effective = intersectBashAllowedCommands(["git status"], definition.bashAllowedCommands);
     assertThrows(() => checkBashCommand("gh pr list", effective));
     assertThrows(() => checkBashCommand("glab mr list", effective));
 });
 
-Deno.test("reviewer discovery and verify prompts load through one registry id", async () => {
+test("reviewer discovery and verify prompts load through one registry id", async () => {
     const discovery = await loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
     const verify = await loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "verify" });
 
@@ -138,7 +142,7 @@ Deno.test("reviewer discovery and verify prompts load through one registry id", 
     assertEquals(verify.systemPrompt.includes(USER_AUTHORITY_MARKER), false);
 });
 
-Deno.test("the Integration Reviewer is its own subagent sharing review practice with the Semantic Reviewer", async () => {
+test("the Integration Reviewer is its own subagent sharing review practice with the Semantic Reviewer", async () => {
     const integration = await loadSubAgentDefinition(SUBAGENTS.INTEGRATION_REVIEWER);
     const discovery = await loadSubAgentDefinition(SUBAGENTS.REVIEWER, { reviewerMode: "discovery" });
 
@@ -155,7 +159,7 @@ Deno.test("the Integration Reviewer is its own subagent sharing review practice 
     assertEquals(integration.tools.includes("delegate_agent"), true);
 });
 
-Deno.test("bare-prompt subagents receive canonical tool ceilings without the shared system prompt", async () => {
+test("bare-prompt subagents receive canonical tool ceilings without the shared system prompt", async () => {
     const delegated = await loadSubAgentDefinition(SUBAGENTS.DELEGATED);
     const manualQa = await loadSubAgentDefinition(SUBAGENTS.MANUAL_QA);
     const reviewer = await loadSubAgentDefinition(SUBAGENTS.REVIEWER);
@@ -194,7 +198,7 @@ Deno.test("bare-prompt subagents receive canonical tool ceilings without the sha
     assertEquals(manualQa.name, AGENTS.OPERATOR);
 });
 
-Deno.test("bare-prompt subagents without a tool ceiling fail closed instead of silently running tool-free", async () => {
+test("bare-prompt subagents without a tool ceiling fail closed instead of silently running tool-free", async () => {
     // A registry regression that drops `allowedTools` from a tools-carrying
     // subagent must throw at load time: the silent `tools: []` fallback once
     // let the Semantic Reviewer start with no `review_complete` (and no
@@ -220,7 +224,7 @@ Deno.test("bare-prompt subagents without a tool ceiling fail closed instead of s
     assertStringIncludes(error.message, "reviewer");
 });
 
-Deno.test("full-agent subagents keep shared system-prompt composition and runtime names", async () => {
+test("full-agent subagents keep shared system-prompt composition and runtime names", async () => {
     const slicer = await loadSubAgentDefinition(SUBAGENTS.SLICER);
     const init = await loadSubAgentDefinition(SUBAGENTS.INIT);
     const feedbackEngineer = await loadSubAgentDefinition(SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER);
@@ -240,7 +244,7 @@ Deno.test("full-agent subagents keep shared system-prompt composition and runtim
     assertStringIncludes(init.systemPrompt, 'echo "verification not implemented yet"');
 });
 
-Deno.test("Init prompt focuses on project setup without a test-seam audit", async () => {
+test("Init prompt focuses on project setup without a test-seam audit", async () => {
     const init = await loadSubAgentDefinition(SUBAGENTS.INIT);
 
     for (
@@ -258,7 +262,7 @@ Deno.test("Init prompt focuses on project setup without a test-seam audit", asyn
     assertStringIncludes(init.systemPrompt, "Seed the memory system");
 });
 
-Deno.test("loadSubAgentDefinition composes delegated role overlays", async () => {
+test("loadSubAgentDefinition composes delegated role overlays", async () => {
     const general = await loadSubAgentDefinition(SUBAGENTS.DELEGATED);
     const adversary = await loadSubAgentDefinition(SUBAGENTS.DELEGATED, {
         delegatedRole: "verification-adversary",
@@ -277,7 +281,7 @@ Deno.test("loadSubAgentDefinition composes delegated role overlays", async () =>
     assertEquals(adversary.displayName, "Verification Adversary");
 });
 
-Deno.test("explicit general role reproduces the unspecialized delegated prompt", async () => {
+test("explicit general role reproduces the unspecialized delegated prompt", async () => {
     const implicit = await loadSubAgentDefinition(SUBAGENTS.DELEGATED);
     const explicit = await loadSubAgentDefinition(SUBAGENTS.DELEGATED, { delegatedRole: "general" });
 
@@ -285,7 +289,7 @@ Deno.test("explicit general role reproduces the unspecialized delegated prompt",
     assertEquals(explicit.displayName, implicit.displayName);
 });
 
-Deno.test("every registered delegated role resolves and declares an authority ceiling", async () => {
+test("every registered delegated role resolves and declares an authority ceiling", async () => {
     assertEquals([...DELEGATED_ROLE_IDS], ["general", "verification-adversary"]);
     assertEquals(getDelegatedRole("general")?.authorityCeiling, "write");
     assertEquals(getDelegatedRole("verification-adversary")?.authorityCeiling, "read");
@@ -295,12 +299,12 @@ Deno.test("every registered delegated role resolves and declares an authority ce
     for (const id of DELEGATED_ROLE_IDS) {
         const role = DELEGATED_ROLES[id];
         if (!role.overlayFile) continue;
-        const overlay = await Deno.readTextFile(sourcePromptPath(join("roles", role.overlayFile)));
+        const overlay = await fsReadFile(sourcePromptPath(join("roles", role.overlayFile)), "utf8");
         assertEquals(overlay.trim().length > 0, true);
     }
 });
 
-Deno.test("an unregistered delegated role fails the load and names the valid roles", async () => {
+test("an unregistered delegated role fails the load and names the valid roles", async () => {
     const error = await assertRejects(
         () =>
             loadSubAgentDefinition(SUBAGENTS.DELEGATED, {

@@ -1,5 +1,19 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { platform } from "node:process";
+import fs from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    utimes as fsUtimes,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     acquireRecoveryLock,
     acquireSupersessionLock,
@@ -31,11 +45,11 @@ const SUCCESSOR_ID = "33333333-3333-4333-8333-333333333333";
 type WorkRecordLockAcquire = (cwd: string) => Promise<() => Promise<void>>;
 
 function selectedInternalPath(cwd: string, fileName: string): string {
-    return join(getRunWieldRuntimeDir(Deno.realPathSync(cwd)), PROJECT_INTERNAL_RUNTIME_DIR_NAME, fileName);
+    return join(getRunWieldRuntimeDir(realpathSync(cwd)), PROJECT_INTERNAL_RUNTIME_DIR_NAME, fileName);
 }
 
 async function assertMissing(path: string): Promise<void> {
-    await assertRejects(() => Deno.stat(path), Deno.errors.NotFound);
+    await assertRejects(() => fsStat(path), Error, "ENOENT");
 }
 
 async function assertLinkedWorkRecordLockExclusion(
@@ -44,7 +58,7 @@ async function assertLinkedWorkRecordLockExclusion(
     acquire: WorkRecordLockAcquire,
 ): Promise<void> {
     const root = await linkedCheckoutFixture.checkout({ prefix: "rw-work-record-lock-primary-" });
-    const container = await Deno.makeTempDir({ prefix: "rw-work-record-lock-tree-" });
+    const container = await fsMkdtemp(join(tmpdir(), "rw-work-record-lock-tree-"));
     const selected = join(container, "selected");
     try {
         await enterProjectRuntime(root);
@@ -52,17 +66,18 @@ async function assertLinkedWorkRecordLockExclusion(
         await enterProjectRuntime(selected);
         const selectedPath = selectedInternalPath(selected, fileName);
         const primaryPath = selectedInternalPath(root, fileName);
-        const legacySelectedPath = join(getRunWieldRuntimeDir(Deno.realPathSync(selected)), fileName);
+        const legacySelectedPath = join(getRunWieldRuntimeDir(realpathSync(selected)), fileName);
         const entries: string[] = [];
         let releaseFirst = () => {};
         let signalFirst = () => {};
-        const firstMayFinish = new Promise<void>((resolve) => releaseFirst = resolve);
-        const firstEntered = new Promise<void>((resolve) => signalFirst = resolve);
+        const firstMayFinish = new Promise<void>((resolve) => (releaseFirst = resolve));
+        const firstEntered = new Promise<void>((resolve) => (signalFirst = resolve));
         const first = (async () => {
             const release = await acquire(selected);
             try {
                 entries.push("selected-first");
-                assertEquals(JSON.parse(await Deno.readTextFile(selectedPath)).token.length > 0, true);
+                if (platform === "win32") await assertRejects(() => fsReadFile(selectedPath, "utf8"));
+                else assertEquals(JSON.parse(await fsReadFile(selectedPath, "utf8")).token.length > 0, true);
                 await assertMissing(primaryPath);
                 await assertMissing(legacySelectedPath);
                 signalFirst();
@@ -85,7 +100,8 @@ async function assertLinkedWorkRecordLockExclusion(
         const releasePrimary = await acquire(root);
         try {
             entries.push("primary");
-            assertEquals(JSON.parse(await Deno.readTextFile(primaryPath)).token.length > 0, true);
+            if (platform === "win32") await assertRejects(() => fsReadFile(primaryPath, "utf8"));
+            else assertEquals(JSON.parse(await fsReadFile(primaryPath, "utf8")).token.length > 0, true);
         } finally {
             await releasePrimary();
         }
@@ -96,8 +112,8 @@ async function assertLinkedWorkRecordLockExclusion(
         await assertMissing(primaryPath);
     } finally {
         await git(root, ["worktree", "remove", "--force", selected]).catch(() => {});
-        await Deno.remove(container, { recursive: true }).catch(() => {});
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(container, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 }
 
@@ -122,13 +138,13 @@ async function seed(cwd: string, withProposal = true) {
             ...attrs(SUCCESSOR_ID),
             ...(withProposal
                 ? {
-                    supersessionProposal: {
-                        candidates: [
-                            { recordId: PREDECESSOR_ID, reason: "Replaced by the complete result." },
-                            { recordId: OTHER_ID, reason: "Combined into the complete result." },
-                        ],
-                    },
-                }
+                      supersessionProposal: {
+                          candidates: [
+                              { recordId: PREDECESSOR_ID, reason: "Replaced by the complete result." },
+                              { recordId: OTHER_ID, reason: "Combined into the complete result." },
+                          ],
+                      },
+                  }
                 : {}),
         },
         "# New\n\n## Summary\n\nNew work.",
@@ -136,8 +152,8 @@ async function seed(cwd: string, withProposal = true) {
     );
 }
 
-Deno.test("Work Record supersession applies canonical files and keeps the index derived", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record supersession applies canonical files and keeps the index derived", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seed(cwd, false);
         const mnemotecaPort = createWorkRecordMnemotecaFixture();
@@ -151,11 +167,11 @@ Deno.test("Work Record supersession applies canonical files and keeps the index 
         assertEquals((await findWorkRecordById(cwd, SUCCESSOR_ID))?.attrs.supersedes, [PREDECESSOR_ID]);
         assertEquals(mnemotecaPort.snapshot().length, 2);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Work Record locks exclude the same linked checkout but not the primary checkout", async () => {
+test("Work Record locks exclude the same linked checkout but not the primary checkout", async () => {
     await assertLinkedWorkRecordLockExclusion(
         "work-record-supersession.lock",
         "worktree/work-record-supersession-locks",
@@ -168,15 +184,15 @@ Deno.test("Work Record locks exclude the same linked checkout but not the primar
     );
 });
 
-Deno.test("supersession lock release does not remove a replacement owned by another token", async () => {
-    const cwd = await Deno.makeTempDir();
+test("supersession lock release does not remove a replacement owned by another token", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seed(cwd, false);
         const fixture = createWorkRecordMnemotecaFixture();
         let signalSync: (() => void) | undefined;
-        const syncStarted = new Promise<void>((resolve) => signalSync = resolve);
+        const syncStarted = new Promise<void>((resolve) => (signalSync = resolve));
         let releaseSync: (() => void) | undefined;
-        const syncGate = new Promise<void>((resolve) => releaseSync = resolve);
+        const syncGate = new Promise<void>((resolve) => (releaseSync = resolve));
         let delayed = false;
         const mnemotecaPort = {
             async run(args: string[], options?: { cwd?: string }) {
@@ -196,36 +212,36 @@ Deno.test("supersession lock release does not remove a replacement owned by anot
         await syncStarted;
 
         const lockPath = selectedInternalPath(cwd, "work-record-supersession.lock");
-        await Deno.remove(lockPath);
+        await fsRm(lockPath);
         const replacementTime = Date.now();
-        await Deno.writeTextFile(
+        await fsWriteFile(
             lockPath,
             JSON.stringify({ token: "replacement-owner", createdAt: replacementTime, updatedAt: replacementTime }),
-            { createNew: true },
+            { flag: "wx" },
         );
         releaseSync?.();
         await operation;
 
-        assertEquals(JSON.parse(await Deno.readTextFile(lockPath)).token, "replacement-owner");
+        assertEquals(JSON.parse(await fsReadFile(lockPath, "utf8")).token, "replacement-owner");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("supersession recovers malformed locks only after their file mtimes are stale", async () => {
-    const cwd = await Deno.makeTempDir();
+test("supersession recovers malformed locks only after their file mtimes are stale", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seed(cwd, false);
         await enterProjectRuntime(cwd);
-        const runtimeDir = join(getRunWieldRuntimeDir(Deno.realPathSync(cwd)), PROJECT_INTERNAL_RUNTIME_DIR_NAME);
+        const runtimeDir = join(getRunWieldRuntimeDir(realpathSync(cwd)), PROJECT_INTERNAL_RUNTIME_DIR_NAME);
         const lockPath = join(runtimeDir, "work-record-supersession.lock");
         const recoveryLockPath = join(runtimeDir, "work-record-supersession-recovery.lock");
-        await Deno.mkdir(runtimeDir, { recursive: true });
-        await Deno.writeTextFile(lockPath, '{"token":');
-        await Deno.writeTextFile(recoveryLockPath, '{"createdAt":');
+        await fsMkdir(runtimeDir, { recursive: true });
+        await fsWriteFile(lockPath, '{"token":');
+        await fsWriteFile(recoveryLockPath, '{"createdAt":');
         const staleTime = new Date(Date.now() - 11 * 60_000);
-        await Deno.utime(lockPath, staleTime, staleTime);
-        await Deno.utime(recoveryLockPath, staleTime, staleTime);
+        await fsUtimes(lockPath, staleTime, staleTime);
+        await fsUtimes(recoveryLockPath, staleTime, staleTime);
 
         await applyWorkRecordSupersession(cwd, {
             successorRecordId: SUCCESSOR_ID,
@@ -235,19 +251,19 @@ Deno.test("supersession recovers malformed locks only after their file mtimes ar
 
         assertEquals((await findWorkRecordById(cwd, PREDECESSOR_ID))?.attrs.supersededBy, SUCCESSOR_ID);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("concurrent supersession projection indexes the latest canonical successor", async () => {
-    const cwd = await Deno.makeTempDir();
+test("concurrent supersession projection indexes the latest canonical successor", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seed(cwd, false);
         const fixture = createWorkRecordMnemotecaFixture();
         let signalFirstSync: (() => void) | undefined;
-        const firstSync = new Promise<void>((resolve) => signalFirstSync = resolve);
+        const firstSync = new Promise<void>((resolve) => (signalFirstSync = resolve));
         let releaseFirstSync: (() => void) | undefined;
-        const firstSyncGate = new Promise<void>((resolve) => releaseFirstSync = resolve);
+        const firstSyncGate = new Promise<void>((resolve) => (releaseFirstSync = resolve));
         let delayed = false;
         const mnemotecaPort = {
             async run(args: string[], options?: { cwd?: string }) {
@@ -281,12 +297,12 @@ Deno.test("concurrent supersession projection indexes the latest canonical succe
         assertEquals(indexed?.content, buildWorkRecordIndexDocument(successor));
         assertEquals(indexed?.tags, buildWorkRecordIndexTags(successor));
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Work Record proposals list, confirm only pending IDs, and retain unrequested candidates", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record proposals list, confirm only pending IDs, and retain unrequested candidates", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seed(cwd);
         assertEquals((await listWorkRecordSupersessionProposals(cwd)).length, 2);
@@ -306,14 +322,17 @@ Deno.test("Work Record proposals list, confirm only pending IDs, and retain unre
             mnemotecaPort: createWorkRecordMnemotecaFixture(),
         });
         const successor = await findWorkRecordById(cwd, SUCCESSOR_ID);
-        assertEquals(successor?.attrs.supersessionProposal?.candidates.map((item) => item.recordId), [OTHER_ID]);
+        assertEquals(
+            successor?.attrs.supersessionProposal?.candidates.map((item) => item.recordId),
+            [OTHER_ID],
+        );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("apply validates duplicate, self, missing, conflict, and idempotent requests case-insensitively", async () => {
-    const cwd = await Deno.makeTempDir();
+test("apply validates duplicate, self, missing, conflict, and idempotent requests case-insensitively", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seed(cwd, false);
         const options = { mnemotecaPort: createWorkRecordMnemotecaFixture() };
@@ -372,18 +391,18 @@ Deno.test("apply validates duplicate, self, missing, conflict, and idempotent re
             "already superseded by",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("partial supersession write rolls back canonical records", async () => {
+test("partial supersession write rolls back canonical records", async () => {
     await withProcessGlobalTestLock(async () => {
-        const cwd = await Deno.makeTempDir();
-        const originalRename = Deno.rename;
+        const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const originalRename = fs.rename;
         try {
             await seed(cwd, false);
             let calls = 0;
-            Deno.rename = (oldpath, newpath) => {
+            fs.rename = (oldpath, newpath) => {
                 calls += 1;
                 if (calls === 2) return Promise.reject(new Error("injected second replacement failure"));
                 return originalRename(oldpath, newpath);
@@ -401,21 +420,21 @@ Deno.test("partial supersession write rolls back canonical records", async () =>
             assertEquals((await findWorkRecordById(cwd, SUCCESSOR_ID))?.attrs.supersedes, undefined);
             assertEquals((await findWorkRecordById(cwd, PREDECESSOR_ID))?.attrs.status, "approved");
         } finally {
-            Deno.rename = originalRename;
-            await Deno.remove(cwd, { recursive: true });
+            fs.rename = originalRename;
+            await fsRm(cwd, { recursive: true });
         }
     });
 });
 
-Deno.test("rollback failure reports original error and every uncertain canonical path", async () => {
+test("rollback failure reports original error and every uncertain canonical path", async () => {
     await withProcessGlobalTestLock(async () => {
-        const cwd = await Deno.makeTempDir();
-        const originalRename = Deno.rename;
+        const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const originalRename = fs.rename;
         try {
             await seed(cwd, false);
             await enterProjectRuntime(cwd);
             let calls = 0;
-            Deno.rename = (oldpath, newpath) => {
+            fs.rename = (oldpath, newpath) => {
                 calls += 1;
                 if (calls >= 2) return Promise.reject(new Error(`injected rename failure ${calls}`));
                 return originalRename(oldpath, newpath);
@@ -434,16 +453,16 @@ Deno.test("rollback failure reports original error and every uncertain canonical
             assertStringIncludes(error.message, "docs/work-records/new.md");
             assertEquals(error.originalError.message, "injected rename failure 2");
         } finally {
-            Deno.rename = originalRename;
-            await Deno.remove(cwd, { recursive: true });
+            fs.rename = originalRename;
+            await fsRm(cwd, { recursive: true });
         }
     });
 });
 
-Deno.test("generation preserves its successor when supersession rollback is incomplete", async () => {
+test("generation preserves its successor when supersession rollback is incomplete", async () => {
     await withProcessGlobalTestLock(async () => {
-        const cwd = await Deno.makeTempDir();
-        const originalRename = Deno.rename;
+        const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const originalRename = fs.rename;
         try {
             await writeWorkRecord(cwd, attrs(PREDECESSOR_ID), "# Old\n\n## Summary\n\nOld work.", {
                 fileName: "old.md",
@@ -460,7 +479,7 @@ Deno.test("generation preserves its successor when supersession rollback is inco
             });
             const source = (await previewWorkRecordBackfill(cwd)).eligible[0];
             let calls = 0;
-            Deno.rename = (oldpath, newpath) => {
+            fs.rename = (oldpath, newpath) => {
                 calls += 1;
                 if (calls >= 2) return Promise.reject(new Error(`injected generation rename failure ${calls}`));
                 return originalRename(oldpath, newpath);
@@ -477,14 +496,14 @@ Deno.test("generation preserves its successor when supersession rollback is inco
             assertStringIncludes(outcome.error || "", "docs/work-records/2026-08-03-successor.md");
             assertEquals((await findWorkRecordById(cwd, SUCCESSOR_ID))?.attrs.recordId, SUCCESSOR_ID);
         } finally {
-            Deno.rename = originalRename;
-            await Deno.remove(cwd, { recursive: true });
+            fs.rename = originalRename;
+            await fsRm(cwd, { recursive: true });
         }
     });
 });
 
-Deno.test("reject removes only named pending proposal and reports index failure as a warning", async () => {
-    const cwd = await Deno.makeTempDir();
+test("reject removes only named pending proposal and reports index failure as a warning", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await seed(cwd);
         const result = await rejectWorkRecordSupersession(cwd, {
@@ -501,9 +520,12 @@ Deno.test("reject removes only named pending proposal and reports index failure 
             },
         });
         assertStringIncludes(result.indexWarning || "", "index rebuild");
-        assertEquals(result.record.attrs.supersessionProposal?.candidates.map((item) => item.recordId), [OTHER_ID]);
+        assertEquals(
+            result.record.attrs.supersessionProposal?.candidates.map((item) => item.recordId),
+            [OTHER_ID],
+        );
         assertEquals((await findWorkRecordById(cwd, PREDECESSOR_ID))?.attrs.status, "approved");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });

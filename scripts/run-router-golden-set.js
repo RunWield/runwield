@@ -1,3 +1,13 @@
+import { captureScriptProcess } from "./script-process.ts";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /**
  * @module scripts/run-router-golden-set
  *
@@ -5,10 +15,10 @@
  * triage_report decision to humanJudgement.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../src/shared/cli-args.ts";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { AGENTS, getCwd, getHomeDir } from "../src/constants.js";
 import { createSessionRuntime } from "../src/shared/session/session-runtime.ts";
 import { readLatestTriageOutcome as readLatestTriageOutcomeFn } from "../src/shared/workflow/orchestrator.ts";
@@ -230,9 +240,9 @@ export function mergeGoldenRowsWithResultRows(goldenRows, resultRows) {
  */
 async function readExistingCsv(path) {
     try {
-        return parseCsv(await Deno.readTextFile(path));
+        return parseCsv(await fsReadFile(path, "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return [];
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
         throw error;
     }
 }
@@ -243,7 +253,7 @@ async function readExistingCsv(path) {
  * @returns {Promise<string>}
  */
 async function runContextGit(cwd, args) {
-    const result = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureScriptProcess("git", { cwd, args, stdout: "piped", stderr: "piped" });
     const decoder = new TextDecoder();
     if (!result.success) {
         throw new Error(`Context Git failed: ${decoder.decode(result.stderr).trim()}`);
@@ -378,7 +388,7 @@ export async function runRouterGoldenSetWithSelection(rows, options = {}) {
         }
         const commit = await runContextGit(sourceCwd, ["rev-parse", "--verify", `${contextCommit}^{commit}`]);
         if (!worktreeAdded) {
-            tempDir ||= await Deno.makeTempDir({ prefix: "runwield-router-context-" });
+            tempDir ||= await fsMkdtemp(join(tmpdir(), "runwield-router-context-"));
             worktree = join(tempDir, "checkout");
             await runContextGit(sourceCwd, ["worktree", "add", "--detach", worktree, commit]);
             worktreeAdded = true;
@@ -427,7 +437,7 @@ export async function runRouterGoldenSetWithSelection(rows, options = {}) {
         // Remove only this benchmark's worktree, including generated files, when the run ends.
         // If Git cleanup fails, preserve the directory and surface the failure.
         if (worktreeAdded) await runContextGit(sourceCwd, ["worktree", "remove", "--force", worktree]);
-        if (tempDir) await Deno.remove(tempDir, { recursive: true });
+        if (tempDir) await fsRm(tempDir, { recursive: true });
     }
 
     return { rows: normalized, selectedIndexes };
@@ -462,7 +472,7 @@ export async function main(argv) {
 
     if (args.help) {
         console.log([
-            "Usage: deno run -A scripts/run-router-golden-set.js [options]",
+            "Usage: bun scripts/run-router-golden-set.js [options]",
             "",
             "Runs the real Router against labelled Router judgement rows.",
             "",
@@ -499,10 +509,10 @@ export async function main(argv) {
     const csvPath = args.csv || getDefaultRouterGoldenCsvPath();
     const outputPath = args.out || getDefaultRouterResultCsvPath();
     const resume = !args.rerun;
-    const goldenRows = parseCsv(await Deno.readTextFile(csvPath));
+    const goldenRows = parseCsv(await fsReadFile(csvPath, "utf8"));
     const priorResultRows = resume ? await readExistingCsv(outputPath) : [];
     const rows = resume ? mergeGoldenRowsWithResultRows(goldenRows, priorResultRows) : goldenRows;
-    await Deno.mkdir(dirname(outputPath), { recursive: true });
+    await fsMkdir(dirname(outputPath), { recursive: true });
     const result = await runRouterGoldenSetWithSelection(rows, {
         limit: parsePositiveInt(args.limit),
         cwd: args.cwd,
@@ -512,17 +522,17 @@ export async function main(argv) {
         rowTimeoutMs: parsePositiveInt(args["row-timeout-ms"]) || DEFAULT_ROW_TIMEOUT_MS,
         resume,
         onRowComplete: async (checkpointRows) => {
-            await Deno.writeTextFile(outputPath, toCsv(ROUTER_JUDGEMENT_COLUMNS, checkpointRows));
+            await fsWriteFile(outputPath, toCsv(ROUTER_JUDGEMENT_COLUMNS, checkpointRows));
         },
         onProgress: (message) => console.error(message),
     });
     const resultRows = result.rows;
 
-    await Deno.writeTextFile(outputPath, toCsv(ROUTER_JUDGEMENT_COLUMNS, resultRows));
+    await fsWriteFile(outputPath, toCsv(ROUTER_JUDGEMENT_COLUMNS, resultRows));
     const scoredRows = args.limit ? result.selectedIndexes.map((index) => resultRows[index]) : resultRows;
     console.log(JSON.stringify(buildRouterGoldenReport(scoredRows), null, 2));
 }
 
 if (import.meta.main) {
-    await main(Deno.args);
+    await main(process.argv.slice(2));
 }

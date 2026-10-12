@@ -1,4 +1,10 @@
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
     archiveWorkRecord,
     buildWorkRecordFileName,
@@ -68,7 +74,7 @@ function recorderResponse(sections) {
 
 /** @param {string} cwd */
 async function cleanupTempProject(cwd) {
-    await Deno.remove(cwd, { recursive: true });
+    await fsRm(cwd, { recursive: true });
 }
 
 /**
@@ -76,12 +82,10 @@ async function cleanupTempProject(cwd) {
  * @param {string[]} args
  */
 async function git(cwd, args) {
-    const result = await new Deno.Command("git", {
+    const result = await captureForegroundProcess("git", {
         args,
         cwd,
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    });
     if (result.code !== 0) {
         const decoder = new TextDecoder();
         throw new Error(
@@ -91,7 +95,7 @@ async function git(cwd, args) {
     return new TextDecoder().decode(result.stdout).trim();
 }
 
-Deno.test("Work Record markdown parses nested provenance and body sections", () => {
+test("Work Record markdown parses nested provenance and body sections", () => {
     const markdown = formatWorkRecordMarkdown({
         ...INTERNAL_ATTRS,
         provenance: {
@@ -110,7 +114,7 @@ Deno.test("Work Record markdown parses nested provenance and body sections", () 
     assertStringIncludes(markdown, "    evidence:\n        - path:");
 });
 
-Deno.test("Work Record supersession proposals normalize, deduplicate, and round-trip", () => {
+test("Work Record supersession proposals normalize, deduplicate, and round-trip", () => {
     const markdown = formatWorkRecordMarkdown({
         ...INTERNAL_ATTRS,
         supersessionProposal: {
@@ -133,7 +137,7 @@ Deno.test("Work Record supersession proposals normalize, deduplicate, and round-
     );
 });
 
-Deno.test("Work Record supersession proposals reject every malformed candidate before deduplication", () => {
+test("Work Record supersession proposals reject every malformed candidate before deduplication", () => {
     const malformedCandidates = [
         {},
         { recordId: "", reason: "Reason." },
@@ -178,7 +182,7 @@ Deno.test("Work Record supersession proposals reject every malformed candidate b
     assertEquals(empty.includes("supersessionProposal:"), false);
 });
 
-Deno.test("Work Record validation rejects missing required fields", () => {
+test("Work Record validation rejects missing required fields", () => {
     assertThrows(
         () => parseWorkRecordMarkdown(`---\nkind: work_record\n---\n# Missing\n\n## Summary\n\nNo metadata.`),
         Error,
@@ -194,7 +198,7 @@ Deno.test("Work Record validation rejects missing required fields", () => {
     );
 });
 
-Deno.test("Work Record validation reports malformed provenance evidence entries", () => {
+test("Work Record validation reports malformed provenance evidence entries", () => {
     assertThrows(
         () =>
             parseWorkRecordMarkdown(
@@ -214,7 +218,7 @@ Deno.test("Work Record validation reports malformed provenance evidence entries"
     );
 });
 
-Deno.test("Work Record formatting omits empty optional provenance fields", () => {
+test("Work Record formatting omits empty optional provenance fields", () => {
     const markdown = formatWorkRecordMarkdown({
         ...INTERNAL_ATTRS,
         origin: "external",
@@ -224,8 +228,8 @@ Deno.test("Work Record formatting omits empty optional provenance fields", () =>
     assertEquals(markdown.includes("provenance:"), false);
 });
 
-Deno.test("Work Record store writes flat files and resolves by recordId", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record store writes flat files and resolves by recordId", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const written = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
         assertEquals(written.relativePath, "docs/work-records/2026-07-14-example.md");
@@ -241,8 +245,8 @@ Deno.test("Work Record store writes flat files and resolves by recordId", async 
     }
 });
 
-Deno.test("Work Record create collision preserves the old record and uses a deterministic identity path", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record create collision preserves the old record and uses a deterministic identity path", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const fileName = "2026-07-14-example.md";
         const oldRecord = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName });
@@ -265,14 +269,14 @@ Deno.test("Work Record create collision preserves the old record and uses a dete
     }
 });
 
-Deno.test("Work Record lifecycle helpers update final state fields only", () => {
+test("Work Record lifecycle helpers update final state fields only", () => {
     const archived = archiveWorkRecord(INTERNAL_ATTRS, { now: "2026-07-15T00:00:00.000Z" });
     assertEquals(archived.archivedAt, "2026-07-15T00:00:00.000Z");
     assertEquals(restoreWorkRecord(archived).archivedAt, undefined);
     assertEquals(supersedeWorkRecord(INTERNAL_ATTRS, "33333333-3333-4333-8333-333333333333").status, "superseded");
 });
 
-Deno.test("Work Record documentation Work Kind normalizes and displays", () => {
+test("Work Record documentation Work Kind normalizes and displays", () => {
     const record = parseWorkRecordMarkdown(
         formatWorkRecordMarkdown({
             ...INTERNAL_ATTRS,
@@ -286,7 +290,7 @@ Deno.test("Work Record documentation Work Kind normalizes and displays", () => {
     assertStringIncludes(formatWorkRecordList([record]), "Planned documentation");
 });
 
-Deno.test("Work Record list defaults to current records and warns on all records", () => {
+test("Work Record list defaults to current records and warns on all records", () => {
     const current = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
         relativePath: "docs/work-records/current.md",
     });
@@ -316,14 +320,14 @@ Deno.test("Work Record list defaults to current records and warns on all records
     assertStringIncludes(output, "WARNING: superseded by 55555555-5555-4555-8555-555555555555.");
 });
 
-Deno.test("Work Record path slug uses date-prefixed flat markdown filenames", () => {
+test("Work Record path slug uses date-prefixed flat markdown filenames", () => {
     assertEquals(
         buildWorkRecordFileName("Durable Store!", new Date("2026-07-14T08:32:00-04:00")),
         "2026-07-14-durable-store.md",
     );
 });
 
-Deno.test("Recorder structured output parses JSON and rejects empty sections", () => {
+test("Recorder structured output parses JSON and rejects empty sections", () => {
     assertEquals(parseRecorderSections('{"title":"Outcome","summary":"Completed."}'), {
         title: "Outcome",
         summary: "Completed.",
@@ -359,7 +363,7 @@ Deno.test("Recorder structured output parses JSON and rejects empty sections", (
     );
 });
 
-Deno.test("default Recorder generation invokes the Recorder prompt boundary", async () => {
+test("default Recorder generation invokes the Recorder prompt boundary", async () => {
     /** @type {string[]} */
     const prompts = [];
     const sections = await generateRecorderSections("/tmp/project", {
@@ -385,8 +389,8 @@ Deno.test("default Recorder generation invokes the Recorder prompt boundary", as
     assertStringIncludes(prompts[0], "Generate a concise Work Record body draft");
 });
 
-Deno.test("Work Record backfill previews eligible sources, child skips, and existing record links", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record backfill previews eligible sources, child skips, and existing record links", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-standalone",
@@ -454,8 +458,8 @@ Deno.test("Work Record backfill previews eligible sources, child skips, and exis
     }
 });
 
-Deno.test("Work Record generation writes a record and active Plan backlink", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation writes a record and active Plan backlink", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-standalone",
@@ -489,8 +493,8 @@ Deno.test("Work Record generation writes a record and active Plan backlink", asy
     }
 });
 
-Deno.test("Work Record generation always includes confirmed Plan Deviations", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation always includes confirmed Plan Deviations", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "deviated", "# Deviated\n\n## Plan\n\nReplace nav.", {
             planId: "plan-deviated",
@@ -533,8 +537,8 @@ Deno.test("Work Record generation always includes confirmed Plan Deviations", as
     }
 });
 
-Deno.test("Work Record generation includes confirmed child Plan Deviations in Epic records", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation includes confirmed child Plan Deviations in Epic records", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "epic", "# Epic\n\n## Plan\n\nParent body.", {
             planId: "plan-epic-deviated",
@@ -588,7 +592,7 @@ Deno.test("Work Record generation includes confirmed child Plan Deviations in Ep
     }
 });
 
-Deno.test("Work Record generation rejects missing and self Recorder proposals before successor write", async () => {
+test("Work Record generation rejects missing and self Recorder proposals before successor write", async () => {
     const cases = [
         {
             name: "missing-proposal",
@@ -604,7 +608,7 @@ Deno.test("Work Record generation rejects missing and self Recorder proposals be
         },
     ];
     for (const testCase of cases) {
-        const cwd = await Deno.makeTempDir();
+        const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         try {
             await savePlan(cwd, testCase.name, `# ${testCase.name}\n\n## Plan\n\nBody`, {
                 planId: `plan-${testCase.name}`,
@@ -636,8 +640,8 @@ Deno.test("Work Record generation rejects missing and self Recorder proposals be
     }
 });
 
-Deno.test("Work Record generation preserves canonical state when the external index is unavailable", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation preserves canonical state when the external index is unavailable", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "index-unavailable", "# Index Unavailable\n\n## Plan\n\nBody", {
             planId: "plan-index-unavailable",
@@ -683,8 +687,8 @@ Deno.test("Work Record generation preserves canonical state when the external in
     }
 });
 
-Deno.test("Work Record generation distills the task completion report into the summary", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation distills the task completion report into the summary", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const executionReport = "- Implemented the settings save action.\n- Verification passed: deno task ci.";
         await savePlan(cwd, "reported", "# Reported\n\n## Plan\n\nBody", {
@@ -720,8 +724,8 @@ Deno.test("Work Record generation distills the task completion report into the s
     }
 });
 
-Deno.test("Work Record generation includes deterministic Plan record requirements", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation includes deterministic Plan record requirements", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const required = "The generated Work Record must include the approved delivery decision.";
         await savePlan(cwd, "required-note", `# Required note\n\n## Work Record Requirements\n\n${required}\n`, {
@@ -750,7 +754,7 @@ Deno.test("Work Record generation includes deterministic Plan record requirement
     }
 });
 
-Deno.test("Work Record recorder prompt includes the task completion report as source material", async () => {
+test("Work Record recorder prompt includes the task completion report as source material", async () => {
     /** @type {import('./generation.js').WorkRecordSource} */
     const source = {
         sourceKind: "active",
@@ -788,7 +792,7 @@ Deno.test("Work Record recorder prompt includes the task completion report as so
     };
     let prompt = "";
 
-    const sections = await generateRecorderSections(Deno.cwd(), source, {
+    const sections = await generateRecorderSections(getCwd(), source, {
         runRecorderStep: (value) => {
             prompt = value;
             return Promise.resolve({ title: "Reported", summary: "Distilled the execution report." });
@@ -802,8 +806,8 @@ Deno.test("Work Record recorder prompt includes the task completion report as so
     assertStringIncludes(prompt, "Distill executionReport facts");
 });
 
-Deno.test("Work Record generation discloses skipped verification reason fallback", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation discloses skipped verification reason fallback", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "closed", "# Closed\n\n## Plan\n\nBody", {
             planId: "plan-closed",
@@ -830,8 +834,8 @@ Deno.test("Work Record generation discloses skipped verification reason fallback
     }
 });
 
-Deno.test("Work Record generation preserves User Verification attribution and note", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation preserves User Verification attribution and note", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "user-verified", "# User Verified\n\n## Plan\n\nBody", {
             planId: "plan-user-verified",
@@ -867,8 +871,8 @@ Deno.test("Work Record generation preserves User Verification attribution and no
     }
 });
 
-Deno.test("Work Record backfill updates archived Plan backlinks", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record backfill updates archived Plan backlinks", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "archived-source", "# Archived Source\n\n## Plan\n\nBody", {
             planId: "plan-archived",
@@ -896,8 +900,8 @@ Deno.test("Work Record backfill updates archived Plan backlinks", async () => {
     }
 });
 
-Deno.test("Work Record backfill retries failed Plan backlinks", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record backfill retries failed Plan backlinks", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "retry", "# Retry\n\n## Plan\n\nBody", {
             planId: "plan-retry",
@@ -933,8 +937,8 @@ Deno.test("Work Record backfill retries failed Plan backlinks", async () => {
     }
 });
 
-Deno.test("Work Record generation rejects empty structured sections and records failure backlink", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation rejects empty structured sections and records failure backlink", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "empty", "# Empty\n\n## Plan\n\nBody", {
             planId: "plan-empty",
@@ -963,8 +967,8 @@ Deno.test("Work Record generation rejects empty structured sections and records 
     }
 });
 
-Deno.test("Work Record generation records failure backlink without changing terminal status", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation records failure backlink without changing terminal status", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "bad", "# Bad\n\n## Plan\n\nBody", {
             planId: "plan-bad",
@@ -993,8 +997,8 @@ Deno.test("Work Record generation records failure backlink without changing term
     }
 });
 
-Deno.test("Work Record backfill preview does not create docs/work-records", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record backfill preview does not create docs/work-records", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-dry-run",
@@ -1010,16 +1014,17 @@ Deno.test("Work Record backfill preview does not create docs/work-records", asyn
 
         assertEquals(preview.eligible.length, 1);
         await assertRejects(
-            () => Deno.stat(`${cwd}/docs/work-records`),
-            Deno.errors.NotFound,
+            () => fsStat(`${cwd}/docs/work-records`),
+            Error,
+            "ENOENT",
         );
     } finally {
         await cleanupTempProject(cwd);
     }
 });
 
-Deno.test("Work Record backfill ignores non-linkable existing records and generates approved internal record", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record backfill ignores non-linkable existing records and generates approved internal record", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "standalone", "# Standalone\n\n## Plan\n\nBody", {
             planId: "plan-needs-approved",
@@ -1066,7 +1071,7 @@ Deno.test("Work Record backfill ignores non-linkable existing records and genera
     }
 });
 
-Deno.test("Work Record index document uses compact summary metadata and tags only", () => {
+test("Work Record index document uses compact summary metadata and tags only", () => {
     const record = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
         relativePath: "docs/work-records/example.md",
     });
@@ -1087,7 +1092,7 @@ Deno.test("Work Record index document uses compact summary metadata and tags onl
     assertEquals(tags.includes("superseded:false"), true);
 });
 
-Deno.test("Work Record index emptiness ignores Mnemoteca plain-list footer", async () => {
+test("Work Record index emptiness ignores Mnemoteca plain-list footer", async () => {
     assertEquals(
         await isWorkRecordIndexEmpty("/tmp/project", {
             mnemotecaPort: createCommandMnemotecaPort(
@@ -1101,27 +1106,27 @@ Deno.test("Work Record index emptiness ignores Mnemoteca plain-list footer", asy
     );
 });
 
-Deno.test("Work Record index collection name is stable across linked git worktrees", async () => {
-    const primary = await Deno.makeTempDir();
-    const worktreeParent = await Deno.makeTempDir();
+test("Work Record index collection name is stable across linked git worktrees", async () => {
+    const primary = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const worktreeParent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const worktree = `${worktreeParent}/linked-worktree`;
     try {
         await git(primary, ["init"]);
         await git(primary, ["config", "user.email", "test@example.com"]);
         await git(primary, ["config", "user.name", "Test User"]);
-        await Deno.writeTextFile(`${primary}/README.md`, "# Test\n");
+        await fsWriteFile(`${primary}/README.md`, "# Test\n");
         await git(primary, ["add", "README.md"]);
         await git(primary, ["commit", "-m", "init"]);
         await git(primary, ["worktree", "add", worktree, "HEAD"]);
 
         assertEquals(await getWorkRecordIndexCollectionName(worktree), await getWorkRecordIndexCollectionName(primary));
     } finally {
-        await Deno.remove(worktreeParent, { recursive: true }).catch(() => {});
-        await Deno.remove(primary, { recursive: true }).catch(() => {});
+        await fsRm(worktreeParent, { recursive: true }).catch(() => {});
+        await fsRm(primary, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("Work Record index sync adds absent records and strictly updates existing records", async () => {
+test("Work Record index sync adds absent records and strictly updates existing records", async () => {
     const record = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
         relativePath: "docs/work-records/example.md",
     });
@@ -1156,7 +1161,7 @@ Deno.test("Work Record index sync adds absent records and strictly updates exist
     assertEquals(updateCall?.includes(`work-record:${INTERNAL_ATTRS.recordId}`), true);
 });
 
-Deno.test("Work Record index sync rejects duplicate locator matches with rebuild guidance", async () => {
+test("Work Record index sync rejects duplicate locator matches with rebuild guidance", async () => {
     const record = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
         relativePath: "docs/work-records/example.md",
     });
@@ -1180,8 +1185,8 @@ Deno.test("Work Record index sync rejects duplicate locator matches with rebuild
     );
 });
 
-Deno.test("Work Record search rejects duplicate indexed locator candidates", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record search rejects duplicate indexed locator candidates", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
         await assertRejects(
@@ -1211,14 +1216,8 @@ Deno.test("Work Record search rejects duplicate indexed locator candidates", asy
     }
 });
 
-Deno.test("Work Record search hydrates indexed candidates from a single canonical scan", async () => {
-    const cwd = await Deno.makeTempDir();
-    const originalReadTextFile = Deno.readTextFile;
-    let workRecordFileReads = 0;
-    Deno.readTextFile = (path) => {
-        if (typeof path === "string" && path.includes("docs/work-records")) workRecordFileReads += 1;
-        return originalReadTextFile(path);
-    };
+test("Work Record search hydrates indexed candidates from a single canonical scan", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const first = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
         const second = await writeWorkRecord(
@@ -1241,15 +1240,17 @@ Deno.test("Work Record search hydrates indexed candidates from a single canonica
             BODY.replace("Example", "Third"),
             { fileName: "2026-07-16-third.md" },
         );
-        workRecordFileReads = 0;
 
-        await searchWorkRecords(cwd, "durable", {
-            mnemotecaPort: createCommandMnemotecaPort((
+        const result = await searchWorkRecords(cwd, "durable", {
+            mnemotecaPort: createCommandMnemotecaPort(async (
                 /** @type {string} */ _command,
                 /** @type {string[]} */ args,
             ) => {
                 if (args[0] === "list") return Promise.resolve(ok("[1] indexed"));
                 if (args[0] === "search") {
+                    // Once the external search begins, remove its canonical
+                    // source. Hydration must use the one completed scan.
+                    await fsRm(join(cwd, "docs", "work-records"), { recursive: true });
                     return Promise.resolve(ok(JSON.stringify({
                         results: [first, second, third].map((record, index) => ({
                             document_id: index + 1,
@@ -1261,15 +1262,18 @@ Deno.test("Work Record search hydrates indexed candidates from a single canonica
             }),
         });
 
-        assertEquals(workRecordFileReads, 3);
+        assertEquals(
+            result.records.map((record) => record.recordId),
+            [first, second, third].map((record) => record.attrs.recordId),
+        );
+        assertEquals(result.staleRecordIds, []);
     } finally {
-        Deno.readTextFile = originalReadTextFile;
         await cleanupTempProject(cwd);
     }
 });
 
-Deno.test("Work Record search bootstraps empty index, filters current records, and omits body from results", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record search bootstraps empty index, filters current records, and omits body from results", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const currentRecord = await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
         const draftAttrs = { ...INTERNAL_ATTRS, recordId: "33333333-3333-4333-8333-333333333333", status: "draft" };
@@ -1315,8 +1319,8 @@ Deno.test("Work Record search bootstraps empty index, filters current records, a
     }
 });
 
-Deno.test("Work Record read current-only rejects non-current body while all mode returns it", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record read current-only rejects non-current body while all mode returns it", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const draftAttrs = { ...INTERNAL_ATTRS, recordId: "44444444-4444-4444-8444-444444444444", status: "draft" };
         const draft = await writeWorkRecord(cwd, /** @type {any} */ (draftAttrs), BODY, {
@@ -1334,8 +1338,8 @@ Deno.test("Work Record read current-only rejects non-current body while all mode
     }
 });
 
-Deno.test("Work Record index rebuild forgets only the dedicated collection and reports partial failures", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record index rebuild forgets only the dedicated collection and reports partial failures", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await writeWorkRecord(cwd, INTERNAL_ATTRS, BODY, { fileName: "2026-07-14-example.md" });
         const mnemotecaPort = createWorkRecordMnemotecaFixture();
@@ -1354,7 +1358,7 @@ Deno.test("Work Record index rebuild forgets only the dedicated collection and r
     }
 });
 
-Deno.test("Work Record index sync rejects locator listing without numeric document ID", async () => {
+test("Work Record index sync rejects locator listing without numeric document ID", async () => {
     const record = parseWorkRecordMarkdown(formatWorkRecordMarkdown(INTERNAL_ATTRS, BODY), {
         relativePath: "docs/work-records/example.md",
     });
@@ -1383,7 +1387,7 @@ Deno.test("Work Record index sync rejects locator listing without numeric docume
     assertEquals(calls.some((args) => args[0] === "add"), false);
 });
 
-Deno.test("Work Record markdown round-trips Ticket References and index/search surfaces include URLs", () => {
+test("Work Record markdown round-trips Ticket References and index/search surfaces include URLs", () => {
     const markdown = formatWorkRecordMarkdown({
         ...INTERNAL_ATTRS,
         tickets: [{ url: " https://example.com/tickets/ABC-123 ", label: "Primary" }],
@@ -1398,8 +1402,8 @@ Deno.test("Work Record markdown round-trips Ticket References and index/search s
     }]);
 });
 
-Deno.test("Work Record generation preserves child Ticket References when assigning active Epic planId", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation preserves child Ticket References when assigning active Epic planId", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "epic-without-plan-id", "# Epic", {
             classification: "PROJECT",
@@ -1440,8 +1444,8 @@ Deno.test("Work Record generation preserves child Ticket References when assigni
     }
 });
 
-Deno.test("Work Record generation snapshots standalone and Epic Ticket References deterministically", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Work Record generation snapshots standalone and Epic Ticket References deterministically", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "standalone", "# Standalone", {
             planId: "plan-standalone",

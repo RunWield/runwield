@@ -8,7 +8,7 @@
  * read/write surface onto the durable Plan.
  */
 
-import { extractYaml } from "@std/front-matter";
+import { extractYaml } from "../front-matter.ts";
 import { AGENTS } from "../../constants.js";
 import { recordWorkflowMetric } from "./metrics.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";

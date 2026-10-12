@@ -1,3 +1,7 @@
+import { resolve } from "node:path";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { realpath as fsRealpath } from "node:fs/promises";
+import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /**
  * Fail-closed resolver for Workflow Validation execution context.
  */
@@ -14,6 +18,7 @@ import {
     updateEntry as updateWorktreeRegistryEntry,
 } from "../worktree-registry.js";
 import { prepareExecutionPlanFile } from "./execution-plan-file.js";
+import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { resolveTargetBranchName } from "../worktree.js";
 import { getWorkflowDiff } from "./git-snapshot.ts";
 import { recordWorkflowMetric } from "./metrics.js";
@@ -111,8 +116,8 @@ export interface ResolveValidationExecutionContextOptions {
 }
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
-    const command = new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" });
-    const output = await command.output();
+    const command = captureForegroundProcess("git", { cwd, args });
+    const output = await command;
     const stdout = new TextDecoder().decode(output.stdout).trim();
     const stderr = new TextDecoder().decode(output.stderr).trim();
     if (output.code !== 0) throw new Error(stderr || stdout || `git ${args.join(" ")} failed`);
@@ -164,7 +169,7 @@ function blocked(reason: string, message: string): BlockedValidationContext {
 async function realPath(value: string | undefined): Promise<string | undefined> {
     if (!isNonEmptyString(value)) return undefined;
     try {
-        return await Deno.realPath(String(value));
+        return await fsRealpath(String(value));
     } catch {
         return undefined;
     }
@@ -196,7 +201,14 @@ async function recordResolutionMetric({
     }, cwd).catch(() => {});
 }
 
-export async function resolveValidationExecutionContext({
+/** One validation context resolution verifies each checkout's runtime layout once. */
+export async function resolveValidationExecutionContext(
+    options: ResolveValidationExecutionContextOptions,
+): Promise<ValidationContextResolution> {
+    return await withProjectRuntimeReadScope(() => resolveValidationExecutionContextInScope(options));
+}
+
+async function resolveValidationExecutionContextInScope({
     projectRoot,
     planName,
     triageMeta = {},
@@ -527,10 +539,10 @@ export async function resolveValidationExecutionContext({
     const projectCommonDir = await runGit(projectRoot, ["rev-parse", "--git-common-dir"]);
     const worktreeCommonDir = await runGit(canonicalWorktreePath, ["rev-parse", "--git-common-dir"]);
     const projectCommonReal = await realPath(
-        projectCommonDir.startsWith("/") ? projectCommonDir : `${projectRoot}/${projectCommonDir}`,
+        resolve(projectRoot, projectCommonDir),
     );
     const worktreeCommonReal = await realPath(
-        worktreeCommonDir.startsWith("/") ? worktreeCommonDir : `${canonicalWorktreePath}/${worktreeCommonDir}`,
+        resolve(canonicalWorktreePath, worktreeCommonDir),
     );
     if (!projectCommonReal || !worktreeCommonReal || projectCommonReal !== worktreeCommonReal) {
         return blocked(
@@ -555,7 +567,7 @@ export async function resolveValidationExecutionContext({
     }
     // The registry describes where execution started. The freshly loaded Plan
     // owns where it will be delivered; session snapshots cannot override an edit.
-    const requestedTarget = asString(attrs.targetBranch);
+    const requestedTarget = effectiveDeliveryBranch(attrs);
     if (requestedTarget) {
         try {
             worktreeBaseBranch = await resolveTargetBranchName(projectRoot, requestedTarget);
@@ -633,13 +645,18 @@ export async function resolveValidationExecutionContext({
         }
         persistedLegacyExecutionMode = currentExecutionPlan.attrs.executionMode !== "worktree";
     }
-    await recordResolutionMetric({
-        cwd: projectRoot,
-        planName,
-        reason: selected.source,
-        recovered: selected.source === "durable_recovery",
-        planFileRestored: Boolean(restoredPlanFile),
-    });
+    // A host reviewer continuation resolves the same round again. Its checkpoint
+    // already records that round's context; process re-entry is not another check.
+    if (!attrs.validationCheckpoint?.hostReview) {
+        await recordResolutionMetric({
+            cwd: projectRoot,
+            planName,
+            reason: selected.source,
+            recovered: selected.source === "durable_recovery",
+            planFileRestored: Boolean(restoredPlanFile),
+        });
+    }
+
     return {
         kind: "ok",
         context: {

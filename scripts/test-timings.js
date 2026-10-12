@@ -1,4 +1,10 @@
-import { dirname, relative } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rename as fsRename,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { dirname, relative } from "node:path";
 
 const TIMING_FILE_VERSION = 1;
 // A timing changes order, never membership or assertions. Use the first real
@@ -20,7 +26,7 @@ const MINIMUM_SCHEDULING_RUNS = 1;
 /** @param {string} path @returns {Promise<Record<string, TestTiming>>} */
 export async function readTestTimings(path) {
     try {
-        const parsed = JSON.parse(await Deno.readTextFile(path));
+        const parsed = JSON.parse(await fsReadFile(path, "utf8"));
         if (parsed?.version !== TIMING_FILE_VERSION || !parsed.files || Array.isArray(parsed.files)) return {};
         /** @type {Record<string, TestTiming>} */
         const timings = {};
@@ -35,7 +41,7 @@ export async function readTestTimings(path) {
         }
         return timings;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return {};
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return {};
         console.error(
             `[tests] ignored invalid timing history ${path}: ${error instanceof Error ? error.message : error}`,
         );
@@ -94,10 +100,10 @@ export function mergeTestTimings(previous, observed) {
 
 /** @param {string} path @param {Record<string, TestTiming>} files */
 export async function writeTestTimings(path, files) {
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const temporaryPath = `${path}.${crypto.randomUUID()}.tmp`;
     /** @type {TestTimingFile} */
     const payload = { version: TIMING_FILE_VERSION, files };
-    await Deno.writeTextFile(temporaryPath, `${JSON.stringify(payload, null, 2)}\n`);
-    await Deno.rename(temporaryPath, path);
+    await fsWriteFile(temporaryPath, `${JSON.stringify(payload, null, 2)}\n`);
+    await fsRename(temporaryPath, path);
 }

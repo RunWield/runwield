@@ -1,10 +1,13 @@
-import { assert, assertEquals, assertMatch } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { createUserInterviewTool } from "../user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 
 /** @param {{ promptSelect?: () => Promise<string | null>, promptText?: () => Promise<string | null> }} overrides */
 function makeUi(overrides) {
-    const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: Deno.cwd() });
+    const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: getCwd() });
     hostedSession.setInteractionAdapter({
         requestInteraction: async (request) => {
             if (request.type === "text") {
@@ -40,7 +43,7 @@ function firstText(result) {
     return first.text ?? "";
 }
 
-Deno.test("userInterviewTool exposes expected metadata", () => {
+test("userInterviewTool exposes expected metadata", () => {
     const tool = createUserInterviewTool(undefined);
 
     assertEquals(tool.name, "user_interview");
@@ -51,7 +54,7 @@ Deno.test("userInterviewTool exposes expected metadata", () => {
     assertEquals(typeof tool.execute, "function");
 });
 
-Deno.test("userInterviewTool completes a single yes/no question", async () => {
+test("userInterviewTool completes a single yes/no question", async () => {
     const tool = createUserInterviewTool(makeUi({
         promptSelect: () => Promise.resolve("yes"),
     }));
@@ -83,7 +86,7 @@ Deno.test("userInterviewTool completes a single yes/no question", async () => {
     assertMatch(firstText(result), /"answers"\s*:\s*\[/);
 });
 
-Deno.test("userInterviewTool result text shows the question and selected answer", async () => {
+test("userInterviewTool result text shows the question and selected answer", async () => {
     const tool = createUserInterviewTool(makeUi({
         promptSelect: () => Promise.resolve("2"),
     }));
@@ -103,7 +106,7 @@ Deno.test("userInterviewTool result text shows the question and selected answer"
     assertMatch(firstText(result), /Question blah blah\nmultiline\?\n\n2\. Answer selected was 2/);
 });
 
-Deno.test("userInterviewTool result text shows Other answers", async () => {
+test("userInterviewTool result text shows Other answers", async () => {
     const tool = createUserInterviewTool(makeUi({
         promptSelect: () => Promise.resolve("other"),
         promptText: () => Promise.resolve("text from user here"),
@@ -124,7 +127,7 @@ Deno.test("userInterviewTool result text shows Other answers", async () => {
     assertMatch(firstText(result), /Question blah blah\n\n1\. Answer selected was Other: text from user here/);
 });
 
-Deno.test("userInterviewTool returns to choices when multiple-choice Other text is canceled", async () => {
+test("userInterviewTool returns to choices when multiple-choice Other text is canceled", async () => {
     const selectedValues = ["other", "high"];
     const textValues = [null];
 
@@ -151,7 +154,7 @@ Deno.test("userInterviewTool returns to choices when multiple-choice Other text 
     assertEquals(textValues, []);
 });
 
-Deno.test("userInterviewTool returns to yes/no choices when Other text is canceled", async () => {
+test("userInterviewTool returns to yes/no choices when Other text is canceled", async () => {
     const selectedValues = ["other", "no"];
     const textValues = [null];
 
@@ -174,7 +177,7 @@ Deno.test("userInterviewTool returns to yes/no choices when Other text is cancel
     assertEquals(textValues, []);
 });
 
-Deno.test("userInterviewTool completes a mixed 3-question batch", async () => {
+test("userInterviewTool completes a mixed 3-question batch", async () => {
     const selectedValues = ["high", "frontend"];
     const textValues = ["Use design tokens."];
 
@@ -222,8 +225,8 @@ Deno.test("userInterviewTool completes a mixed 3-question batch", async () => {
     assertEquals(result.details.answers[2]?.value, "frontend");
 });
 
-Deno.test("userInterviewTool does not duplicate recommended marker when default choice label already includes it", async () => {
-    const hostedSession = new HostedSession({ id: "recommended-label", cwd: Deno.cwd() });
+test("userInterviewTool does not duplicate recommended marker when default choice label already includes it", async () => {
+    const hostedSession = new HostedSession({ id: "recommended-label", cwd: getCwd() });
     /** @type {Array<{ value: string, label: string }>} */
     let displayedOptions = [];
     hostedSession.setInteractionAdapter({
@@ -258,7 +261,7 @@ Deno.test("userInterviewTool does not duplicate recommended marker when default 
     );
 });
 
-Deno.test("userInterviewTool returns invalid_request when both question and questions are provided", async () => {
+test("userInterviewTool returns invalid_request when both question and questions are provided", async () => {
     const tool = createUserInterviewTool(undefined);
 
     const result = await executeTool(tool, {
@@ -277,7 +280,7 @@ Deno.test("userInterviewTool returns invalid_request when both question and ques
     assertMatch(result.details.errors?.[0]?.message ?? "", /either 'question' or 'questions'/i);
 });
 
-Deno.test("userInterviewTool returns invalid_request for validation errors", async () => {
+test("userInterviewTool returns invalid_request for validation errors", async () => {
     const tool = createUserInterviewTool(undefined);
 
     const result = await executeTool(tool, {
@@ -307,7 +310,7 @@ Deno.test("userInterviewTool returns invalid_request for validation errors", asy
     assert(codes.has("DUPLICATE_ID"));
 });
 
-Deno.test("userInterviewTool returns canceled when user cancels", async () => {
+test("userInterviewTool returns canceled when user cancels", async () => {
     const tool = createUserInterviewTool(makeUi({
         promptSelect: () => Promise.resolve(null),
     }));
@@ -327,7 +330,7 @@ Deno.test("userInterviewTool returns canceled when user cancels", async () => {
     assertEquals(result.details.errors?.[0]?.code, "USER_CANCELED");
 });
 
-Deno.test("userInterviewTool returns validation_error for empty text answer when allowEmpty=false", async () => {
+test("userInterviewTool returns validation_error for empty text answer when allowEmpty=false", async () => {
     const tool = createUserInterviewTool(makeUi({
         promptText: () => Promise.resolve("   "),
     }));
@@ -345,7 +348,7 @@ Deno.test("userInterviewTool returns validation_error for empty text answer when
     assertEquals(result.details.errors?.[0]?.code, "EMPTY_ANSWER");
 });
 
-Deno.test("userInterviewTool returns validation_error for invalid multiple-choice selection", async () => {
+test("userInterviewTool returns validation_error for invalid multiple-choice selection", async () => {
     const tool = createUserInterviewTool(makeUi({
         promptSelect: () => Promise.resolve("not-a-real-option"),
     }));
@@ -367,7 +370,7 @@ Deno.test("userInterviewTool returns validation_error for invalid multiple-choic
     assertMatch(result.details.errors?.[0]?.message ?? "", /does not exist/i);
 });
 
-Deno.test("userInterviewTool returns invalid_request when payload is missing", async () => {
+test("userInterviewTool returns invalid_request when payload is missing", async () => {
     const tool = createUserInterviewTool(undefined);
     const result = await executeTool(tool, {});
 
@@ -376,7 +379,7 @@ Deno.test("userInterviewTool returns invalid_request when payload is missing", a
     assertMatch(result.details.errors?.[0]?.message ?? "", /Missing interview payload/i);
 });
 
-Deno.test("userInterviewTool returns invalid_request for invalid id and choices", async () => {
+test("userInterviewTool returns invalid_request for invalid id and choices", async () => {
     const tool = createUserInterviewTool(undefined);
     const result = await executeTool(tool, {
         question: {
@@ -396,7 +399,7 @@ Deno.test("userInterviewTool returns invalid_request for invalid id and choices"
     assert(codes.has("EMPTY_CHOICE_VALUE"));
 });
 
-Deno.test("userInterviewTool returns validation_error for invalid yes/no response", async () => {
+test("userInterviewTool returns validation_error for invalid yes/no response", async () => {
     const tool = createUserInterviewTool(makeUi({
         promptSelect: () => Promise.resolve("maybe"),
     }));
@@ -414,8 +417,8 @@ Deno.test("userInterviewTool returns validation_error for invalid yes/no respons
     assertMatch(result.details.errors?.[0]?.message ?? "", /Unexpected yes\/no response/i);
 });
 
-Deno.test("userInterviewTool uses HostedSession interaction broker when available", async () => {
-    const hostedSession = new HostedSession({ id: "brokered-interview", cwd: Deno.cwd() });
+test("userInterviewTool uses HostedSession interaction broker when available", async () => {
+    const hostedSession = new HostedSession({ id: "brokered-interview", cwd: getCwd() });
     /** @type {string[]} */
     const prompts = [];
     hostedSession.setInteractionAdapter({

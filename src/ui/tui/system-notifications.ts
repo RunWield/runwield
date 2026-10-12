@@ -1,3 +1,5 @@
+import { writeSync } from "node:fs";
+import process from "node:process";
 /**
  * @module ui/tui/system-notifications
  * Best-effort terminal bell and native terminal OSC notifications for TUI attention events.
@@ -76,12 +78,17 @@ interface TerminalProcessSnapshot {
 }
 
 function writeTerminal(bytes: Uint8Array): void {
-    Deno.stdout.writeSync(bytes);
+    let offset = 0;
+    while (offset < bytes.length) {
+        const written = writeSync(process.stdout.fd, bytes, offset, bytes.length - offset);
+        if (written === 0) throw new Error("Terminal notification write made no progress");
+        offset += written;
+    }
 }
 
 const systemNotificationPort: SystemNotificationPort = {
-    readEnvironment: () => Deno.env.toObject(),
-    getProcessId: () => Deno.pid,
+    readEnvironment: () => ({ ...process.env }),
+    getProcessId: () => process.pid,
     readNotificationSetting: () => getMergedCustomSetting("notifications"),
     writeTerminal,
 };

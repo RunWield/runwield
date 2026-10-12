@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module cmd/resume
  * Browse and resume a persisted conversation through SessionRuntime.
@@ -103,7 +104,7 @@ export function getCompactThresholdPercent(): number {
 
 function getTerminalColumns(): number {
     try {
-        const { columns } = Deno.consoleSize();
+        const columns = process.stdout.columns;
         if (columns > 0) return columns;
     } catch {
         // Non-TTY output (tests, pipes) uses the fallback width.

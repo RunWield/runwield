@@ -1,4 +1,7 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 
 /**
  * @param {string} source
@@ -21,10 +24,10 @@ function extractFunctionSource(source, marker) {
     throw new Error(`${marker} body was not closed`);
 }
 
-Deno.test("runValidationLoop is a single-phase dispatcher", async () => {
+test("runValidationLoop is a single-phase dispatcher", async () => {
     // The dispatcher lives in the engine after the session-independent split; the
     // public entry in validation.ts only builds the port and delegates.
-    const source = await Deno.readTextFile(new URL("./validation-engine.ts", import.meta.url));
+    const source = await fsReadFile(new URL("./validation-engine.ts", import.meta.url), "utf8");
     const functionSource = extractFunctionSource(source, "async function runValidationPhase");
 
     assert(functionSource.split("\n").length < 200, "the phase dispatcher should stay under 200 lines");
@@ -32,9 +35,9 @@ Deno.test("runValidationLoop is a single-phase dispatcher", async () => {
     assert(!functionSource.includes("for ("), "the phase dispatcher must not loop over phases");
 });
 
-Deno.test("legacy validation drivers are not reachable", async () => {
-    const lifecycleSource = await Deno.readTextFile(new URL("./validation.ts", import.meta.url));
-    const legacySource = await Deno.readTextFile(new URL("./validation-helpers.ts", import.meta.url));
+test("legacy validation drivers are not reachable", async () => {
+    const lifecycleSource = await fsReadFile(new URL("./validation.ts", import.meta.url), "utf8");
+    const legacySource = await fsReadFile(new URL("./validation-helpers.ts", import.meta.url), "utf8");
 
     assertEquals(lifecycleSource.includes("runLegacyValidationMachine"), false);
     assertEquals(lifecycleSource.includes("runLegacyPhaseAdapter"), false);
@@ -45,8 +48,8 @@ Deno.test("legacy validation drivers are not reachable", async () => {
     assertEquals(legacySource.includes("pauseForExecutionContinuation"), false);
 });
 
-Deno.test("publication records every irreversible Git boundary in the durable state machine", async () => {
-    const source = await Deno.readTextFile(new URL("./validation-publication.ts", import.meta.url));
+test("publication records every irreversible Git boundary in the durable state machine", async () => {
+    const source = await fsReadFile(new URL("./validation-publication.ts", import.meta.url), "utf8");
     const publication = extractFunctionSource(source, "async function runLockedPublicationPhase");
     assert(publication.includes("startPublicationAttempt"));
     assert(publication.includes('"artifacts_committed"'));

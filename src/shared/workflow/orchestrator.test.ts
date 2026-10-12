@@ -1,4 +1,6 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     fauxAssistantMessage,
     fauxText,
@@ -103,12 +105,12 @@ async function initializeGitProject(projectRoot: string): Promise<void> {
     await git(projectRoot, ["init", "-b", "main"]);
     await git(projectRoot, ["config", "user.email", "test@example.com"]);
     await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-    await Deno.writeTextFile(`${projectRoot}/README.md`, "fixture\n");
+    await fsWriteFile(`${projectRoot}/README.md`, "fixture\n");
     await git(projectRoot, ["add", "."]);
     await git(projectRoot, ["commit", "-m", "fixture: initial project"]);
 }
 
-Deno.test("readLatestTriageOutcome normalizes the latest current-turn report", () => {
+test("readLatestTriageOutcome normalizes the latest current-turn report", () => {
     const messages: AgentMessage[] = [
         triageToolResult({
             routingIntent: "QUICK_FIX",
@@ -133,7 +135,7 @@ Deno.test("readLatestTriageOutcome normalizes the latest current-turn report", (
     });
 });
 
-Deno.test("readLatestTriageOutcome normalizes a report without affectedPaths", () => {
+test("readLatestTriageOutcome normalizes a report without affectedPaths", () => {
     const messages: AgentMessage[] = [
         triageToolResult({
             routingIntent: "PLANNED_CHANGE",
@@ -153,7 +155,7 @@ Deno.test("readLatestTriageOutcome normalizes a report without affectedPaths", (
     });
 });
 
-Deno.test("readLatestTriageOutcome ignores reports before the current turn", () => {
+test("readLatestTriageOutcome ignores reports before the current turn", () => {
     const messages: AgentMessage[] = [
         triageToolResult({
             classification: "OPERATION",
@@ -166,7 +168,7 @@ Deno.test("readLatestTriageOutcome ignores reports before the current turn", () 
     assertEquals(readLatestTriageOutcome(messages, 1), null);
 });
 
-Deno.test("dispatchPostTriage routes conversational intents through real Agent sessions", async () => {
+test("dispatchPostTriage routes conversational intents through real Agent sessions", async () => {
     await withRuntimeCommandFixture("orchestrator-conversation-", async ({ projectRoot, setModelMessages }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         setModelMessages([
@@ -207,7 +209,7 @@ Deno.test("dispatchPostTriage routes conversational intents through real Agent s
             "ideator",
         ]);
         assertEquals(ci.calls, []);
-        const metrics = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n").map(
+        const metrics = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim().split("\n").map(
             (line) => JSON.parse(line),
         );
         assertEquals(
@@ -219,7 +221,7 @@ Deno.test("dispatchPostTriage routes conversational intents through real Agent s
     });
 });
 
-Deno.test("OPERATION completion stays with Operator without validation", async () => {
+test("OPERATION completion stays with Operator without validation", async () => {
     await withRuntimeCommandFixture("orchestrator-operation-", async ({ projectRoot, setModelMessages }) => {
         setModelMessages([taskCompleted("Repository status inspected.")]);
         const fixture = createSessionFixture(projectRoot);
@@ -244,7 +246,7 @@ Deno.test("OPERATION completion stays with Operator without validation", async (
     });
 });
 
-Deno.test("QUICK_FIX completion runs real Mechanical Validation around the CI port", async () => {
+test("QUICK_FIX completion runs real Mechanical Validation around the CI port", async () => {
     await withRuntimeCommandFixture("orchestrator-quick-fix-", async ({ projectRoot, setModelMessages }) => {
         await initializeGitProject(projectRoot);
         setModelMessages([
@@ -284,7 +286,7 @@ Deno.test("QUICK_FIX completion runs real Mechanical Validation around the CI po
     });
 });
 
-Deno.test("QUICK_FIX keeps its real workflow when Engineer stops before task_completed", async () => {
+test("QUICK_FIX keeps its real workflow when Engineer stops before task_completed", async () => {
     await withRuntimeCommandFixture("orchestrator-quick-fix-paused-", async ({ projectRoot, setModelMessages }) => {
         await initializeGitProject(projectRoot);
         setModelMessages([fauxAssistantMessage(fauxText("I need another turn."))]);
@@ -311,7 +313,7 @@ Deno.test("QUICK_FIX keeps its real workflow when Engineer stops before task_com
     });
 });
 
-Deno.test("non-Git QUICK_FIX cancellation stops before creating an Agent session", async () => {
+test("non-Git QUICK_FIX cancellation stops before creating an Agent session", async () => {
     await withRuntimeCommandFixture("orchestrator-quick-fix-cancel-", async ({ projectRoot }) => {
         const interactions: RuntimeInteractionRequest[] = [];
         const fixture = createSessionFixture(projectRoot, (request) => {
@@ -341,7 +343,7 @@ Deno.test("non-Git QUICK_FIX cancellation stops before creating an Agent session
     });
 });
 
-Deno.test("planned work with no Plan declaration stays with the real Planner", async () => {
+test("planned work with no Plan declaration stays with the real Planner", async () => {
     await withRuntimeCommandFixture("orchestrator-planning-paused-", async ({ projectRoot, setModelMessages }) => {
         setModelMessages([fauxAssistantMessage(fauxText("I need more requirements before writing the Plan."))]);
         const fixture = createSessionFixture(projectRoot);
@@ -362,13 +364,13 @@ Deno.test("planned work with no Plan declaration stays with the real Planner", a
         });
 
         assertEquals(fixture.hostedSession.getRootAgentName(), "planner");
-        assertEquals(await Deno.stat(`${projectRoot}/docs/plans`).then((entry) => entry.isDirectory), true);
+        assertEquals(await fsStat(`${projectRoot}/docs/plans`).then((entry) => entry.isDirectory()), true);
         assertEquals(ci.calls, []);
         fixture.hostedSession.dispose();
     });
 });
 
-Deno.test("Router-to-Planner dispatch sends Planner system instructions despite Router transcript history", async () => {
+test("Router-to-Planner dispatch sends Planner system instructions despite Router transcript history", async () => {
     await withRuntimeCommandFixture(
         "orchestrator-planner-prompt-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -426,7 +428,7 @@ Deno.test("Router-to-Planner dispatch sends Planner system instructions despite 
     );
 });
 
-Deno.test("PROJECT approval runs the real readiness transition and Slicer", async () => {
+test("PROJECT approval runs the real readiness transition and Slicer", async () => {
     await withRuntimeCommandFixture("orchestrator-project-", async ({ projectRoot, setModelMessages }) => {
         await savePlan(projectRoot, "epic-a", "# Epic A", {
             classification: "PROJECT",
@@ -470,7 +472,7 @@ Deno.test("PROJECT approval runs the real readiness transition and Slicer", asyn
     });
 });
 
-Deno.test("approved planned work executes through real lifecycle machinery and pauses with Engineer", async () => {
+test("approved planned work executes through real lifecycle machinery and pauses with Engineer", async () => {
     await withRuntimeCommandFixture("orchestrator-feature-", async ({ projectRoot, setModelMessages }) => {
         await savePlan(projectRoot, "feature-a", "# Feature A", {
             classification: "PLANNED_CHANGE",
@@ -521,12 +523,12 @@ Deno.test("approved planned work executes through real lifecycle machinery and p
     });
 });
 
-Deno.test("completed planned work runs the real validation lifecycle around external ports", async () => {
+test("completed planned work runs the real validation lifecycle around external ports", async () => {
     await withRuntimeCommandFixture(
         "orchestrator-feature-validated-",
         async ({ projectRoot, setModelMessages }) => {
-            await Deno.mkdir(`${projectRoot}/.wld`, { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(`${projectRoot}/.wld`, { recursive: true });
+            await fsWriteFile(
                 `${projectRoot}/.wld/settings.json`,
                 JSON.stringify({ codereview: "none", workRecords: { autoGenerateOnPlanCompletion: false } }),
             );
@@ -575,7 +577,7 @@ Deno.test("completed planned work runs the real validation lifecycle around exte
 
             assertEquals(result?.kind, "verified");
             assertEquals((await loadPlan(projectRoot, "feature-validated"))?.attrs.status, "verified");
-            assertEquals(await Deno.readTextFile(`${projectRoot}/implemented.txt`), "implemented\n");
+            assertEquals(await fsReadFile(`${projectRoot}/implemented.txt`, "utf8"), "implemented\n");
             assertEquals(ci.calls, [projectRoot]);
             assertEquals(
                 fixture.sessionManager.getBranch().some((entry) =>
@@ -588,7 +590,7 @@ Deno.test("completed planned work runs the real validation lifecycle around exte
     );
 });
 
-Deno.test("Router session names are persisted and emitted before specialist dispatch", async () => {
+test("Router session names are persisted and emitted before specialist dispatch", async () => {
     await withRuntimeCommandFixture("orchestrator-session-name-", async ({ projectRoot, setModelMessages }) => {
         setModelMessages([fauxAssistantMessage(fauxText("Guide answer."))]);
         const fixture = createSessionFixture(projectRoot);
@@ -616,7 +618,7 @@ Deno.test("Router session names are persisted and emitted before specialist disp
     });
 });
 
-Deno.test("dispatch only mutates the supplied HostedSession", async () => {
+test("dispatch only mutates the supplied HostedSession", async () => {
     await withRuntimeCommandFixture("orchestrator-session-scope-", async ({ projectRoot, setModelMessages }) => {
         setModelMessages([fauxAssistantMessage(fauxText("Scoped guide answer."))]);
         const target = createSessionFixture(projectRoot);

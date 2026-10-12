@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { loadPlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { loadEpicReviewContext, recordIntegrationNotes, withIntegrationNotes } from "./epic-review-context.ts";
@@ -9,7 +12,7 @@ type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
 
 async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes, body: string) {
     const path = join(cwd, "docs", "plans", `${name}.md`);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const lines = ["---"];
     for (const [key, value] of Object.entries(attrs)) {
         if (Array.isArray(value)) {
@@ -20,7 +23,7 @@ async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes
         }
     }
     lines.push("---", "", body);
-    await Deno.writeTextFile(path, lines.join("\n"));
+    await fsWriteFile(path, lines.join("\n"));
 }
 
 const EPIC_BODY = [
@@ -41,12 +44,12 @@ const EPIC_BODY = [
 ].join("\n");
 
 const repoFixture = defineGitFixture(async (repo) => {
-    await Deno.writeTextFile(join(repo, "README.md"), "# Fixture\n");
+    await fsWriteFile(join(repo, "README.md"), "# Fixture\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "primary"]);
 });
 
-Deno.test("Integration Notes go in a managed subsection at the end of the Verification Plan", () => {
+test("Integration Notes go in a managed subsection at the end of the Verification Plan", () => {
     const next = withIntegrationNotes(EPIC_BODY, "epic/01-index", [{ check: "Search reads the new index", where: "" }]);
 
     const notesAt = next.indexOf("### Integration Notes");
@@ -58,7 +61,7 @@ Deno.test("Integration Notes go in a managed subsection at the end of the Verifi
     assertStringIncludes(next, "## Edge Cases\n\n- Empty query.");
 });
 
-Deno.test("a child's notes replace its earlier notes and other children's notes stay", () => {
+test("a child's notes replace its earlier notes and other children's notes stay", () => {
     const first = withIntegrationNotes(EPIC_BODY, "epic/01-index", [{ check: "Old note", where: "" }]);
     const second = withIntegrationNotes(first, "epic/02-query", [{ check: "Query uses the index", where: "query.ts" }]);
     const third = withIntegrationNotes(second, "epic/01-index", [{ check: "New note", where: "index.ts" }]);
@@ -70,7 +73,7 @@ Deno.test("a child's notes replace its earlier notes and other children's notes 
     assert(third.indexOf("### Integration Notes") < third.indexOf("## Edge Cases"));
 });
 
-Deno.test("an Epic child is reviewed with its Epic context; a standalone Plan is not", async () => {
+test("an Epic child is reviewed with its Epic context; a standalone Plan is not", async () => {
     const repo = await repoFixture.checkout();
     await writePlan(repo, "epic", {
         planId: "plan-epic",
@@ -115,7 +118,7 @@ Deno.test("an Epic child is reviewed with its Epic context; a standalone Plan is
     assertEquals(standalone, null);
 });
 
-Deno.test("recording notes writes the Epic's managed section; nothing to note writes nothing", async () => {
+test("recording notes writes the Epic's managed section; nothing to note writes nothing", async () => {
     const repo = await repoFixture.checkout();
     await writePlan(repo, "epic", {
         planId: "plan-epic",

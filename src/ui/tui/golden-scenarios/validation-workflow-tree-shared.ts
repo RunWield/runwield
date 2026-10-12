@@ -24,12 +24,13 @@ export function withValidationBranches(
 ) {
     return {
         ...base,
-        // Automated phase journeys choose their review policy. Human-review journeys
+        // These phase journeys use direct target delivery. Human-review journeys
         // override it in project settings and assert the real offer/decision branch.
         globalSettings: {
             defaultProvider: "golden",
             defaultModel: "faux",
             codereview: "none",
+            plans: { autoMergeIntoTargetBranch: true },
             ...base.globalSettings,
         },
         name,

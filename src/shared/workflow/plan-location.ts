@@ -1,8 +1,10 @@
+import { effectiveDeliveryBranch } from "./plan-branch.ts";
 /** Locate the editable document independently from the shared controller files. */
 import { canonicalizeStoredPlanName, isCompletedPlanStatus, loadPlan } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
 import { isGitRepository } from "../git.ts";
+import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 import { findTargetBranchPlan, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
@@ -31,10 +33,19 @@ function inferParentPlanName(planName: string): string {
     return segments.join("/");
 }
 
+/** One Plan location lookup verifies each checkout's runtime layout once. */
 export async function resolveWorkflowPlanLocation(
     cwd: string,
     planName: string,
     options: ResolveWorkflowPlanLocationOptions = {},
+) {
+    return await withProjectRuntimeReadScope(() => resolveWorkflowPlanLocationInScope(cwd, planName, options));
+}
+
+async function resolveWorkflowPlanLocationInScope(
+    cwd: string,
+    planName: string,
+    options: ResolveWorkflowPlanLocationOptions,
 ) {
     planName = canonicalizeStoredPlanName(planName).name;
     const registryRoot = resolvePrimaryCheckoutRoot(cwd);
@@ -104,7 +115,7 @@ export async function resolveWorkflowPlanLocation(
     }
     if (!await isGitRepository(registryRoot)) return { registryRoot, documentRoot: cwd, plan };
 
-    const localTargetBranch = typeof plan?.attrs.targetBranch === "string" ? plan.attrs.targetBranch.trim() : "";
+    const localTargetBranch = plan ? effectiveDeliveryBranch(plan.attrs) || "" : "";
     const parentPlanName = typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim()
         ? plan.attrs.parentPlan.trim()
         : inferParentPlanName(planName);
@@ -113,7 +124,7 @@ export async function resolveWorkflowPlanLocation(
         const parentPlan = await loadPlan(cwd, parentPlanName);
         targetBranch = typeof parentPlan?.attrs.targetBranch === "string" ? parentPlan.attrs.targetBranch.trim() : "";
     }
-    if (targetBranch && parentPlanName) {
+    if (targetBranch && (parentPlanName || plan?.attrs.deliveryBranch)) {
         const targetPlan = await findTargetBranchPlan(registryRoot, targetBranch, planName);
         if (
             targetPlan &&
@@ -121,9 +132,18 @@ export async function resolveWorkflowPlanLocation(
         ) {
             // Reading a published child must not start a fresh planning attempt after its worktree was cleaned up.
             if (isCompletedPlanStatus(targetPlan.attrs.status)) {
-                return { registryRoot, documentRoot: cwd, plan: plan || targetPlan };
+                return {
+                    registryRoot,
+                    documentRoot: cwd,
+                    // The local document owns its bytes and carries the current shared
+                    // lifecycle. A Git snapshot has neither a writable path nor newer events.
+                    plan: plan || targetPlan,
+                    publishedSnapshot: !plan,
+                };
             }
-            if (options.readOnly) return { registryRoot, documentRoot: cwd, plan: plan || targetPlan };
+            if (options.readOnly) {
+                return { registryRoot, documentRoot: cwd, plan: plan || targetPlan, publishedSnapshot: !plan };
+            }
             const planning = await preparePlanningWorktreeForPlan(registryRoot, planName, targetPlan.attrs);
             return { registryRoot, documentRoot: planning.entry.path, plan: planning.plan };
         }

@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../src/testing/assertions.ts";
+import { test } from "node:test";
 import {
     classifyRoutingIntentDisagreement,
     normalizeRoutingIntentCell,
@@ -9,7 +10,7 @@ import {
     withRouterJudgementMetrics,
 } from "./router-eval-utils.js";
 
-Deno.test("CSV utilities round-trip quoted cells", () => {
+test("CSV utilities round-trip quoted cells", () => {
     const csv = toCsv(["decisionId", "requestText"], [{
         decisionId: "d1",
         requestText: 'hello, "Router"\nplease',
@@ -21,7 +22,7 @@ Deno.test("CSV utilities round-trip quoted cells", () => {
     }]);
 });
 
-Deno.test("routingIntentDistance follows routing-intent workflow order", () => {
+test("routingIntentDistance follows routing-intent workflow order", () => {
     assertEquals(routingIntentDistance("OPERATION", "QUICK_FIX"), 1);
     assertEquals(routingIntentDistance("QUICK_FIX", "PLANNED_CHANGE"), 1);
     assertEquals(routingIntentDistance("QUICK_FIX", "INQUIRY"), 3);
@@ -29,7 +30,7 @@ Deno.test("routingIntentDistance follows routing-intent workflow order", () => {
     assertEquals(routingIntentDistance("bad", "PROJECT"), null);
 });
 
-Deno.test("normalizeRoutingIntentCell aliases legacy FEATURE to PLANNED_CHANGE", () => {
+test("normalizeRoutingIntentCell aliases legacy FEATURE to PLANNED_CHANGE", () => {
     assertEquals(normalizeRoutingIntentCell("FEATURE"), "PLANNED_CHANGE");
     assertEquals(normalizeRoutingIntentCell("feature"), "PLANNED_CHANGE");
     assertEquals(normalizeRoutingIntentCell("PLANNED_CHANGE"), "PLANNED_CHANGE");
@@ -37,7 +38,7 @@ Deno.test("normalizeRoutingIntentCell aliases legacy FEATURE to PLANNED_CHANGE",
     assertEquals(normalizeRoutingIntentCell("bogus"), "");
 });
 
-Deno.test("classifyRoutingIntentDisagreement names common router-eval cases", () => {
+test("classifyRoutingIntentDisagreement names common router-eval cases", () => {
     assertEquals(classifyRoutingIntentDisagreement("QUICK_FIX", "INQUIRY"), "legacy_quick_fix_to_inquiry");
     assertEquals(classifyRoutingIntentDisagreement("OPERATION", "QUICK_FIX"), "operation_quick_fix_boundary");
     assertEquals(classifyRoutingIntentDisagreement("QUICK_FIX", "PLANNED_CHANGE"), "scope_underestimated");
@@ -46,7 +47,7 @@ Deno.test("classifyRoutingIntentDisagreement names common router-eval cases", ()
     assertEquals(classifyRoutingIntentDisagreement("QUICK_FIX", "FEATURE"), "scope_underestimated");
 });
 
-Deno.test("scoreAgainstHuman reports agreement and correction counts", () => {
+test("scoreAgainstHuman reports agreement and correction counts", () => {
     const score = scoreAgainstHuman([
         { humanJudgement: "PLANNED_CHANGE", routerDecision: "QUICK_FIX" },
         { humanJudgement: "INQUIRY", routerDecision: "INQUIRY" },
@@ -65,7 +66,7 @@ Deno.test("scoreAgainstHuman reports agreement and correction counts", () => {
     });
 });
 
-Deno.test("withRouterJudgementMetrics annotates Router agreement columns", () => {
+test("withRouterJudgementMetrics annotates Router agreement columns", () => {
     assertEquals(
         withRouterJudgementMetrics({
             routerDecision: "PLANNED_CHANGE",
@@ -82,7 +83,7 @@ Deno.test("withRouterJudgementMetrics annotates Router agreement columns", () =>
     );
 });
 
-Deno.test("withRouterJudgementMetrics aliases legacy FEATURE cells", () => {
+test("withRouterJudgementMetrics aliases legacy FEATURE cells", () => {
     assertEquals(
         withRouterJudgementMetrics({
             routerDecision: "FEATURE",

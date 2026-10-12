@@ -1,9 +1,11 @@
+import { getCwd } from "../../constants.js";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /**
  * @module shared/extensions/wld-extension-manifest
  * Helpers for allowing only WLD-compatible Pi package code extensions.
  */
 
-import { dirname, join, parse } from "@std/path";
+import { dirname, join, parse } from "node:path";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { getSettingsDir, getSettingsManager } from "../settings.js";
 import { isEnabledPackageResource } from "../package-resources.ts";
@@ -41,8 +43,8 @@ export function isWldCompatibleExtensionManifest(manifest) {
  */
 async function fileExists(filePath) {
     try {
-        const stat = await Deno.stat(filePath);
-        return stat.isFile;
+        const stat = await fsStat(filePath);
+        return stat.isFile();
     } catch {
         return false;
     }
@@ -78,7 +80,7 @@ export async function findPackageRootForExtensionResource(resource) {
  */
 async function readPackageJson(packageRoot) {
     try {
-        const raw = await Deno.readTextFile(join(packageRoot, "package.json"));
+        const raw = await fsReadFile(join(packageRoot, "package.json"), "utf8");
         const parsed = JSON.parse(raw);
         return isRecord(parsed) ? parsed : null;
     } catch {
@@ -136,7 +138,7 @@ export function getWldExtensionPaths(resources) {
  */
 export async function resolveInstalledWldExtensionResources(options = {}) {
     const packageManager = new DefaultPackageManager({
-        cwd: options.cwd || Deno.cwd(),
+        cwd: options.cwd || getCwd(),
         agentDir: options.agentDir || getSettingsDir("global"),
         settingsManager: /** @type {any} */ (options.settingsManager || getSettingsManager()),
     });

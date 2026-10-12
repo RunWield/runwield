@@ -342,8 +342,11 @@ export class ThinkingBlock {
  * Renders without a background, matching the upstream Pi style.
  */
 export class AgentMessageBlock {
-    /** @param {string} agentName */
-    constructor(agentName) {
+    /**
+     * @param {string} agentName
+     * @param {import('../review/document-link-host.ts').DocumentLinkHost | null} documentLinks
+     */
+    constructor(agentName, documentLinks) {
         this.container = new Container();
 
         if (agentName) {
@@ -352,6 +355,7 @@ export class AgentMessageBlock {
 
         this.currentText = "";
         this.markdown = new MermaidMarkdown("", 0, 0, getMarkdownTheme());
+        this.markdown.setDocumentLinks(documentLinks);
         this.container.addChild(
             /** @type {import('@earendil-works/pi-tui').Component} */ (/** @type {unknown} */ (this.markdown)),
         );
@@ -456,8 +460,11 @@ export class ValidationHandoffBlock {
 
     /** @param {import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress} progress */
     formatHeading(progress) {
-        const checks = progress.checks ? ` • ${validationProgressCheckSummary(progress)}` : "";
-        return `${validationProgressHeading(progress)}${checks}`;
+        const heading = validationProgressHeading(progress);
+        const checks = progress.checks
+            ? validationProgressCheckSummary(progress).split(", ").filter((check) => check !== heading).join(", ")
+            : "";
+        return checks ? `${heading} • ${checks}` : heading;
     }
 
     /**
@@ -570,12 +577,12 @@ export class SystemMessageBlock {
 }
 
 export class ManagedSyncStatusBlock {
-    /** @param {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent} state */
+    /** @param {import('./types.js').ManagedSyncStatus} state */
     constructor(state) {
         this.state = { ...state };
     }
 
-    /** @param {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent} state */
+    /** @param {import('./types.js').ManagedSyncStatus} state */
     setState(state) {
         this.state = { ...state };
     }
@@ -762,7 +769,7 @@ export class ToolExecutionBlock {
             return;
         }
         const renderedText = shown.map((line) => {
-            if (!this.isError && line.startsWith("Review Plan:")) {
+            if (!this.isError && (line.startsWith("Review Plan:") || line.startsWith("Review Code:"))) {
                 return theme.fg("success", theme.bold(line));
             }
             return this.isError ? theme.fg("text", line) : theme.fg("toolOutput", line);

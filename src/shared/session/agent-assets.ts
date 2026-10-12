@@ -1,9 +1,17 @@
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import {
+    mkdir as fsMkdir,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+} from "node:fs/promises";
 /**
  * @module shared/session/agent-assets
  * Public, session-independent access to bundled agent prompt assets.
  */
 
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { AGENT_DEFS_DIR, getHomeDir, SKILLS_DIR } from "../../constants.js";
 import { directoryExists, fileExists } from "../helpers.ts";
 
@@ -24,34 +32,34 @@ let bundledSkillsExtractionPromise: Promise<string | null> | null = null;
 let pathPromise: Promise<string> | null = null;
 
 async function copyTreeFromBundle(sourceDir: string, destinationDir: string): Promise<void> {
-    await Deno.mkdir(destinationDir, { recursive: true });
+    await fsMkdir(destinationDir, { recursive: true });
     const currentEntries = new Set();
-    for await (const entry of Deno.readDir(sourceDir)) {
+    for await (const entry of await fsReaddir(sourceDir, { withFileTypes: true })) {
         currentEntries.add(entry.name);
         const sourcePath = join(sourceDir, entry.name);
         const destinationPath = join(destinationDir, entry.name);
-        if (entry.isDirectory) {
+        if (entry.isDirectory()) {
             try {
-                const destinationStat = await Deno.stat(destinationPath);
-                if (!destinationStat.isDirectory) await Deno.remove(destinationPath, { recursive: true });
+                const destinationStat = await fsStat(destinationPath);
+                if (!destinationStat.isDirectory()) await fsRm(destinationPath, { recursive: true });
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
             await copyTreeFromBundle(sourcePath, destinationPath);
-        } else if (entry.isFile) {
+        } else if (entry.isFile()) {
             try {
-                const destinationStat = await Deno.stat(destinationPath);
-                if (destinationStat.isDirectory) await Deno.remove(destinationPath, { recursive: true });
+                const destinationStat = await fsStat(destinationPath);
+                if (destinationStat.isDirectory()) await fsRm(destinationPath, { recursive: true });
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
-            await Deno.writeFile(destinationPath, await Deno.readFile(sourcePath));
+            await fsWriteFile(destinationPath, await fsReadFile(sourcePath));
         }
     }
 
-    for await (const entry of Deno.readDir(destinationDir)) {
+    for await (const entry of await fsReaddir(destinationDir, { withFileTypes: true })) {
         if (currentEntries.has(entry.name)) continue;
-        await Deno.remove(join(destinationDir, entry.name), { recursive: true });
+        await fsRm(join(destinationDir, entry.name), { recursive: true });
     }
 }
 
@@ -107,14 +115,17 @@ export async function ensureBundledAgentDefFile(relativePath: string): Promise<s
     let lastError: Error | string | undefined;
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            const bytes = await Deno.readFile(sourcePath);
-            await Deno.mkdir(dirname(targetPath), { recursive: true });
-            await Deno.writeFile(targetPath, bytes);
+            const bytes = await fsReadFile(sourcePath);
+            await fsMkdir(dirname(targetPath), { recursive: true });
+            await fsWriteFile(targetPath, bytes);
             return targetPath;
         } catch (error) {
             if (await fileExists(targetPath)) return targetPath;
             lastError = error instanceof Error ? error : String(error);
-            if (!(error instanceof Deno.errors.NotFound || error instanceof Deno.errors.AlreadyExists)) break;
+            if (
+                !((error instanceof Error && "code" in error && error.code === "ENOENT") ||
+                    (error instanceof Error && "code" in error && error.code === "EEXIST"))
+            ) break;
             await delay(20 * (attempt + 1));
         }
     }

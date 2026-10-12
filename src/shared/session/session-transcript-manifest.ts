@@ -1,9 +1,10 @@
+import { stat as fsStat } from "node:fs/promises";
 /*
  * @module shared/session/session-transcript-manifest
  * Aggregate non-mutating reader for segmented Session transcripts.
  */
 
-import { dirname, resolve } from "@std/path";
+import { dirname, resolve } from "node:path";
 import { readCatalogSafeRootSessionLocator } from "./root-session.js";
 import type { TutorialContextCandidate } from "./tutorial-context-session.ts";
 import {
@@ -134,7 +135,7 @@ async function verifySealedSegment(segment: TranscriptSegment) {
         throw new Error("Sealed segment evidence is missing");
     }
     const transcriptPath = await verifyPath(segment);
-    const stat = await Deno.stat(transcriptPath);
+    const stat = await fsStat(transcriptPath);
     if (stat.size !== segment.sealedByteLength) throw new Error("Sealed segment byte length does not match evidence");
     const evidence = await captureTranscriptEvidence({
         transcriptPath,

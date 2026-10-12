@@ -1,9 +1,11 @@
-import { FakeTime } from "@std/testing/time";
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { install } from "@sinonjs/fake-timers";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { TuiAgentMascot, type TuiMascotState } from "./agent-mascot.ts";
 import { mascotForAgent } from "../mascot/mascot.ts";
 
-Deno.test("mascot centers on its stable drawing width across poses and compact widths", () => {
+test("mascot centers on its stable drawing width across poses and compact widths", () => {
     const renderer = new TuiAgentMascot(() => {});
     try {
         for (const width of [20, 22, 34, 35, 60]) {
@@ -27,8 +29,8 @@ Deno.test("mascot centers on its stable drawing width across poses and compact w
     }
 });
 
-Deno.test("base dot blinks without moving the W body", () => {
-    const clock = new FakeTime();
+test("base dot blinks without moving the W body", () => {
+    const clock = install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
     const renderer = new TuiAgentMascot(() => {});
     const sprite = mascotForAgent("router")!;
     const state: TuiMascotState = { agentName: "router", sessionId: "one", pose: "thinking" };
@@ -44,11 +46,11 @@ Deno.test("base dot blinks without moving the W body", () => {
         assertEquals(dotOn[1], dotOff[1]);
     } finally {
         renderer.dispose();
-        clock.restore();
+        clock.uninstall();
     }
 });
 
-Deno.test("pausing a running mascot stops its clock until visible again", async () => {
+test("pausing a running mascot stops its clock until visible again", async () => {
     let renders = 0;
     const renderer = new TuiAgentMascot(() => renders++);
     const state: TuiMascotState = { agentName: "architect", sessionId: "one", pose: "thinking" };
@@ -65,7 +67,7 @@ Deno.test("pausing a running mascot stops its clock until visible again", async 
     }
 });
 
-Deno.test("mascot clock advances only full active sprites and resets on Session replacement", async () => {
+test("mascot clock advances only full active sprites and resets on Session replacement", async () => {
     let renders = 0;
     const mascot = new TuiAgentMascot(() => renders++);
     const state: TuiMascotState = { agentName: "architect", sessionId: "one", pose: "thinking" };

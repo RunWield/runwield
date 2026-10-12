@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { animateSidebarChange } from "./sidebar-motion.js";
 
 type TestTransition = {
@@ -52,7 +53,7 @@ function installBrowser(reducedMotion = false) {
     };
 }
 
-Deno.test("sidebar changes stay immediate without animation support or with reduced motion", () => {
+test("sidebar changes stay immediate without animation support or with reduced motion", () => {
     for (const reduced of [false, true]) {
         const fixture = installBrowser(reduced);
         try {
@@ -71,7 +72,7 @@ Deno.test("sidebar changes stay immediate without animation support or with redu
     }
 });
 
-Deno.test("rapid sidebar toggles preserve order before and during the animation", async () => {
+test("rapid sidebar toggles preserve order before and during the animation", async () => {
     const fixture = installBrowser();
     const finished = Promise.withResolvers<void>();
     let commit = () => {};
@@ -102,7 +103,7 @@ Deno.test("rapid sidebar toggles preserve order before and during the animation"
     }
 });
 
-Deno.test("a skipped sidebar snapshot still applies the change and clears motion styles", async () => {
+test("a skipped sidebar snapshot still applies the change and clears motion styles", async () => {
     const fixture = installBrowser();
     const finished = Promise.withResolvers<void>();
     let commit = () => {};

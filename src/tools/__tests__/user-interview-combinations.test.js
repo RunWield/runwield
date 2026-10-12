@@ -1,10 +1,12 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
 import { createUserInterviewTool } from "../../tools/user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 
 /** @param {Array<string | null>} [responses] */
 function createInterviewTool(responses = []) {
-    const session = new HostedSession({ id: `interview-${crypto.randomUUID()}`, cwd: Deno.cwd() });
+    const session = new HostedSession({ id: `interview-${crypto.randomUUID()}`, cwd: getCwd() });
     let callCount = 0;
     session.setInteractionAdapter({
         requestInteraction: (request) => {
@@ -28,7 +30,7 @@ async function executeTool(tool, params) {
     return await execute("tool-call-1", params, new AbortController().signal, () => {}, {});
 }
 
-Deno.test("user_interview - Single Yes/No Question (Happy Path)", async () => {
+test("user_interview - Single Yes/No Question (Happy Path)", async () => {
     const tool = createInterviewTool(["yes"]);
     const result = await executeTool(tool, {
         question: {
@@ -41,7 +43,7 @@ Deno.test("user_interview - Single Yes/No Question (Happy Path)", async () => {
     assertEquals(result.details.answers[0]?.value, true);
 });
 
-Deno.test("user_interview - Single Yes/No with Other (Happy Path)", async () => {
+test("user_interview - Single Yes/No with Other (Happy Path)", async () => {
     const tool = createInterviewTool(["other", "I have a custom thought"]);
     const result = await executeTool(tool, {
         question: {
@@ -56,7 +58,7 @@ Deno.test("user_interview - Single Yes/No with Other (Happy Path)", async () => 
     assertEquals(result.details.answers[0]?.otherText, "I have a custom thought");
 });
 
-Deno.test("user_interview - Multiple Choice (Happy Path)", async () => {
+test("user_interview - Multiple Choice (Happy Path)", async () => {
     const tool = createInterviewTool(["option_b"]);
     const result = await executeTool(tool, {
         question: {
@@ -73,7 +75,7 @@ Deno.test("user_interview - Multiple Choice (Happy Path)", async () => {
     assertEquals(result.details.answers[0]?.value, "option_b");
 });
 
-Deno.test("user_interview - Text Question (Happy Path)", async () => {
+test("user_interview - Text Question (Happy Path)", async () => {
     const tool = createInterviewTool(["Hello World"]);
     const result = await executeTool(tool, {
         question: {
@@ -86,7 +88,7 @@ Deno.test("user_interview - Text Question (Happy Path)", async () => {
     assertEquals(result.details.answers[0]?.value, "Hello World");
 });
 
-Deno.test("user_interview - Batch of Questions (Happy Path)", async () => {
+test("user_interview - Batch of Questions (Happy Path)", async () => {
     const tool = createInterviewTool(["yes", "option_a", "My Text"]);
     const result = await executeTool(tool, {
         questions: [
@@ -103,7 +105,7 @@ Deno.test("user_interview - Batch of Questions (Happy Path)", async () => {
     assertEquals(result.details.answers[2]?.value, "My Text");
 });
 
-Deno.test("user_interview - Invalid Request (Both question and questions)", async () => {
+test("user_interview - Invalid Request (Both question and questions)", async () => {
     const tool = createInterviewTool();
     const result = await executeTool(tool, {
         question: { type: "text", prompt: "Q1" },
@@ -114,7 +116,7 @@ Deno.test("user_interview - Invalid Request (Both question and questions)", asyn
     assertEquals(result.details.errors?.[0]?.code, "INVALID_BATCH");
 });
 
-Deno.test("user_interview - Validation Error (Empty Prompt)", async () => {
+test("user_interview - Validation Error (Empty Prompt)", async () => {
     const tool = createInterviewTool();
     const result = await executeTool(tool, {
         question: { type: "text", prompt: "" },
@@ -124,7 +126,7 @@ Deno.test("user_interview - Validation Error (Empty Prompt)", async () => {
     assertEquals(result.details.errors?.[0]?.code, "EMPTY_PROMPT");
 });
 
-Deno.test("user_interview - User Cancelled", async () => {
+test("user_interview - User Cancelled", async () => {
     const tool = createInterviewTool([null]);
     const result = await executeTool(tool, {
         question: { type: "text", prompt: "Q1" },
@@ -134,7 +136,7 @@ Deno.test("user_interview - User Cancelled", async () => {
     assertEquals(result.details.canceled, true);
 });
 
-Deno.test("user_interview - Multiple Choice Validation (Too few choices)", async () => {
+test("user_interview - Multiple Choice Validation (Too few choices)", async () => {
     const tool = createInterviewTool();
     const result = await executeTool(tool, {
         question: {

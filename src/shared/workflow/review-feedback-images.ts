@@ -1,3 +1,4 @@
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 /** Image loading shared by single and grouped review decisions. */
 import { isAbsolute, resolve } from "node:path";
 import { mimeTypeForImagePath } from "../session/image-attachments.ts";
@@ -38,11 +39,11 @@ export async function loadReviewFeedbackImages(
     for (const attachment of attachments) {
         try {
             const path = isAbsolute(attachment.path) ? attachment.path : resolve(cwd, attachment.path);
-            const stat = await Deno.stat(path);
-            if (!stat.isFile || stat.size > MAX_REVIEW_IMAGE_BYTES) {
+            const stat = await fsStat(path);
+            if (!stat.isFile() || stat.size > MAX_REVIEW_IMAGE_BYTES) {
                 throw new Error(stat.size > MAX_REVIEW_IMAGE_BYTES ? "image exceeds 20 MB" : "path is not a file");
             }
-            const bytes = await Deno.readFile(path);
+            const bytes = await fsReadFile(path);
             images.push({
                 base64: bytesToBase64(bytes),
                 mimeType: mimeTypeForImagePath(path),

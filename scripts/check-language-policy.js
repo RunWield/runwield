@@ -1,6 +1,9 @@
-#!/usr/bin/env -S deno run --allow-read --allow-run --allow-write=scripts/language-policy-baseline.json
+#!/usr/bin/env bun
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
 
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 
 const BASELINE_PATH = new URL("./language-policy-baseline.json", import.meta.url);
@@ -42,7 +45,7 @@ async function collectProductionJavaScriptFiles() {
 
 /** @returns {Promise<string[]>} */
 async function readBaseline() {
-    const parsed = JSON.parse(await Deno.readTextFile(BASELINE_PATH));
+    const parsed = JSON.parse(await fsReadFile(BASELINE_PATH, "utf8"));
     if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
         throw new Error("language-policy-baseline.json must contain a JSON array of path strings");
     }
@@ -64,12 +67,12 @@ function formatList(entries) {
 }
 
 if (import.meta.main) {
-    const update = Deno.args.includes("--update");
+    const update = process.argv.slice(2).includes("--update");
     const currentFiles = await collectProductionJavaScriptFiles();
     if (update) {
-        await Deno.writeTextFile(BASELINE_PATH, `${JSON.stringify(currentFiles, null, 4)}\n`);
+        await fsWriteFile(BASELINE_PATH, `${JSON.stringify(currentFiles, null, 4)}\n`);
         console.log("Updated scripts/language-policy-baseline.json.");
-        Deno.exit(0);
+        process.exit(0);
     }
     const baselineFiles = await readBaseline();
     const newFiles = difference(currentFiles, baselineFiles);
@@ -88,7 +91,7 @@ if (import.meta.main) {
             );
         }
         console.error(sections.join("\n\n"));
-        Deno.exit(1);
+        process.exit(1);
     }
 
     console.log("Language policy baseline matches current production JS/JSX files.");

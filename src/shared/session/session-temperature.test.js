@@ -1,4 +1,6 @@
-import { assertEquals, assertStrictEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import {
     createAssistantMessageEventStream,
     getCurrentSystemPrompt,
@@ -95,7 +97,7 @@ function testModel(overrides) {
     };
 }
 
-Deno.test("applySessionTemperature omits temperature for known no-sampling model families", async () => {
+test("applySessionTemperature omits temperature for known no-sampling model families", async () => {
     const noSamplingModels = [
         testModel({
             id: "gpt-5.6-sol",
@@ -129,7 +131,7 @@ Deno.test("applySessionTemperature omits temperature for known no-sampling model
     }
 });
 
-Deno.test("applySessionTemperature still configures providers that accept it", async () => {
+test("applySessionTemperature still configures providers that accept it", async () => {
     const { session, calls } = fakeSession((model) => completedStream(model));
     applySessionTemperature(session, 0.4);
 
@@ -147,7 +149,7 @@ Deno.test("applySessionTemperature still configures providers that accept it", a
     assertEquals(calls[0].options, { maxTokens: 100, temperature: 0.4 });
 });
 
-Deno.test("applySessionTemperature retries exact unsupported parameter errors without duplicate start", async () => {
+test("applySessionTemperature retries exact unsupported parameter errors without duplicate start", async () => {
     const { session, calls } = fakeSession((model, options) => {
         if (options?.temperature !== undefined) {
             return completedStream(model, "Codex error: Unsupported parameter: temperature");
@@ -200,7 +202,7 @@ Deno.test("applySessionTemperature retries exact unsupported parameter errors wi
     assertEquals(events, ["start", "done"]);
 });
 
-Deno.test("applySessionTemperature retries temperature capability errors", async () => {
+test("applySessionTemperature retries temperature capability errors", async () => {
     const temperatureCapabilityErrors = [
         '400: {"message":"invalid temperature: only 1 is allowed for this model","type":"invalid_request_error"}',
         "temperature is not supported by this model",
@@ -235,7 +237,7 @@ Deno.test("applySessionTemperature retries temperature capability errors", async
     }
 });
 
-Deno.test("applySessionTemperature remembers discovered temperature capability failures", async () => {
+test("applySessionTemperature remembers discovered temperature capability failures", async () => {
     const model = testModel({ id: "runtime-discovered-no-temperature" });
     const { session, calls } = fakeSession((model, options) => {
         if (options?.temperature !== undefined) {
@@ -263,7 +265,7 @@ Deno.test("applySessionTemperature remembers discovered temperature capability f
     ]);
 });
 
-Deno.test("applySessionTemperature retries rejected temperature capability requests", async () => {
+test("applySessionTemperature retries rejected temperature capability requests", async () => {
     const model = testModel({ id: "kimi-k3-preview", provider: "moonshotai", api: "openai-completions" });
     const { session, calls } = fakeSession((model, options) => {
         if (options?.temperature !== undefined) {
@@ -294,7 +296,7 @@ Deno.test("applySessionTemperature retries rejected temperature capability reque
     assertEquals(events, ["start", "done"]);
 });
 
-Deno.test("applySessionTemperature terminates wrapped streams on rejected provider errors and cancellation", async () => {
+test("applySessionTemperature terminates wrapped streams on rejected provider errors and cancellation", async () => {
     const cases = [
         { error: new Error("provider offline"), reason: "error" },
         { error: new DOMException("turn canceled", "AbortError"), reason: "aborted" },
@@ -324,7 +326,7 @@ Deno.test("applySessionTemperature terminates wrapped streams on rejected provid
     }
 });
 
-Deno.test("applySessionTemperature does not retry unsupported temperature after content starts", async () => {
+test("applySessionTemperature does not retry unsupported temperature after content starts", async () => {
     const model = testModel({ id: "partial-temperature-rejection" });
     const { session, calls } = fakeSession((model) => {
         const stream = createAssistantMessageEventStream();

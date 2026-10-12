@@ -1,4 +1,6 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { setCustomSetting } from "../settings.js";
@@ -12,7 +14,7 @@ import {
     SessionContextMetricsRecorder,
 } from "./execution-metrics.ts";
 
-Deno.test("normalizeBashCommand normalizes simple and subcommand structures", () => {
+test("normalizeBashCommand normalizes simple and subcommand structures", () => {
     assertEquals(normalizeBashCommand("git status"), ["git status"]);
     assertEquals(normalizeBashCommand("git commit -m 'Initial commit'"), ["git commit"]);
     assertEquals(normalizeBashCommand("git diff HEAD~1"), ["git diff"]);
@@ -29,7 +31,7 @@ Deno.test("normalizeBashCommand normalizes simple and subcommand structures", ()
     assertEquals(normalizeBashCommand("cat package.json"), ["cat"]);
 });
 
-Deno.test("normalizeBashCommand handles pipelines, logical chains, and redirects", () => {
+test("normalizeBashCommand handles pipelines, logical chains, and redirects", () => {
     assertEquals(
         normalizeBashCommand("git status | grep modified"),
         ["git status", "grep"],
@@ -44,7 +46,7 @@ Deno.test("normalizeBashCommand handles pipelines, logical chains, and redirects
     );
 });
 
-Deno.test("normalizeBashCommand classifies command substitution and unbalanced quotes as unknown", () => {
+test("normalizeBashCommand classifies command substitution and unbalanced quotes as unknown", () => {
     assertEquals(normalizeBashCommand("echo $(whoami)"), ["unknown"]);
     assertEquals(normalizeBashCommand("env sh -c 'git status'"), ["unknown"]);
     assertEquals(normalizeBashCommand("cat `pwd`/file"), ["unknown"]);
@@ -54,7 +56,7 @@ Deno.test("normalizeBashCommand classifies command substitution and unbalanced q
     assertEquals(normalizeBashCommand("   "), ["unknown"]);
 });
 
-Deno.test("classifyMemoryOperation identifies action and scope", () => {
+test("classifyMemoryOperation identifies action and scope", () => {
     assertEquals(
         classifyMemoryOperation("memory", { action: "recall", query: "auth secret" }),
         { action: "recall", scope: "unified" },
@@ -81,7 +83,7 @@ Deno.test("classifyMemoryOperation identifies action and scope", () => {
     );
 });
 
-Deno.test("extractCodeBatchOperations parses show and outline child operations", () => {
+test("extractCodeBatchOperations parses show and outline child operations", () => {
     const rawArgs = {
         operations: [
             { op: "show", target: "MyClass" },
@@ -111,7 +113,7 @@ Deno.test("extractCodeBatchOperations parses show and outline child operations",
     });
 });
 
-Deno.test("interrupted code_batch preserves known child results and marks unobserved children unavailable", async () => {
+test("interrupted code_batch preserves known child results and marks unobserved children unavailable", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({
             projectRoot,
@@ -151,7 +153,7 @@ Deno.test("interrupted code_batch preserves known child results and marks unobse
     });
 });
 
-Deno.test("estimateToolSchemaTokens calculates non-zero schema and resident tokens", () => {
+test("estimateToolSchemaTokens calculates non-zero schema and resident tokens", () => {
     const tool = {
         name: "test_tool",
         description: "A test tool for demonstration purposes",
@@ -169,7 +171,7 @@ Deno.test("estimateToolSchemaTokens calculates non-zero schema and resident toke
     assert(estimates.residentTokens >= estimates.schemaTokens, "residentTokens must be >= schemaTokens");
 });
 
-Deno.test("ExecutionMetricsRecorder writes exposure, tool start/finish, usage, snapshots, and settlement", async () => {
+test("ExecutionMetricsRecorder writes exposure, tool start/finish, usage, snapshots, and settlement", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({
             projectRoot,
@@ -292,7 +294,7 @@ Deno.test("ExecutionMetricsRecorder writes exposure, tool start/finish, usage, s
     });
 });
 
-Deno.test("ExecutionMetricsRecorder handles >40 tools with individual exposure records", async () => {
+test("ExecutionMetricsRecorder handles >40 tools with individual exposure records", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({
             projectRoot,
@@ -326,7 +328,7 @@ Deno.test("ExecutionMetricsRecorder handles >40 tools with individual exposure r
     });
 });
 
-Deno.test("duplicate tool observations leave one start and one terminal record", async () => {
+test("duplicate tool observations leave one start and one terminal record", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot });
         await recorder.recordToolStart("one", "read");
@@ -342,7 +344,7 @@ Deno.test("duplicate tool observations leave one start and one terminal record",
     });
 });
 
-Deno.test("Pi usage reconciliation excludes history and deduplicates entry IDs", async () => {
+test("Pi usage reconciliation excludes history and deduplicates entry IDs", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot });
         const usage = {
@@ -369,7 +371,7 @@ Deno.test("Pi usage reconciliation excludes history and deduplicates entry IDs",
     });
 });
 
-Deno.test("parallel v2 observations leave complete JSONL rows with unique observation identities", async () => {
+test("parallel v2 observations leave complete JSONL rows with unique observation identities", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot });
         await Promise.all(
@@ -387,7 +389,7 @@ Deno.test("parallel v2 observations leave complete JSONL rows with unique observ
     });
 });
 
-Deno.test("v2 writer excludes private content in errors, links, and nested measurements", async () => {
+test("v2 writer excludes private content in errors, links, and nested measurements", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const secret = "PRIVATE-PROVIDER-ERROR /private/repo/file";
         await recordWorkflowMetric({
@@ -412,7 +414,7 @@ Deno.test("v2 writer excludes private content in errors, links, and nested measu
     });
 });
 
-Deno.test("CLI detail usage remains explicitly non-additive and repeated sources do not change coverage", async () => {
+test("CLI detail usage remains explicitly non-additive and repeated sources do not change coverage", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot });
         const detail = {
@@ -449,13 +451,13 @@ Deno.test("CLI detail usage remains explicitly non-additive and repeated sources
     });
 });
 
-Deno.test("shell normalization rejects dynamic arithmetic and unfinished chains", () => {
+test("shell normalization rejects dynamic arithmetic and unfinished chains", () => {
     assertEquals(normalizeBashCommand("echo $[1+1]"), ["unknown"]);
     assertEquals(normalizeBashCommand("git status |"), ["unknown"]);
     assertEquals(normalizeBashCommand("git status && ; echo done"), ["unknown"]);
 });
 
-Deno.test("unified Memory recall and absent batch truncation preserve unknown measurements", () => {
+test("unified Memory recall and absent batch truncation preserve unknown measurements", () => {
     assertEquals(classifyMemoryOperation("memory", { action: "recall", scope: "project" }), {
         action: "recall",
         scope: "unified",
@@ -463,7 +465,7 @@ Deno.test("unified Memory recall and absent batch truncation preserve unknown me
     assertEquals(extractCodeBatchOperations({ operations: [{ op: "show" }] })[0].truncated, null);
 });
 
-Deno.test("reconciled Pi tool-result usage retains zero cost and observed turn identity", async () => {
+test("reconciled Pi tool-result usage retains zero cost and observed turn identity", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot, sessionId: "pi-usage" });
         await recorder.recordResponseLatency("turn_start");
@@ -511,7 +513,7 @@ Deno.test("reconciled Pi tool-result usage retains zero cost and observed turn i
     });
 });
 
-Deno.test("native duplicate source and bridge rejections keep one safe observation and truthful reason", async () => {
+test("native duplicate source and bridge rejections keep one safe observation and truthful reason", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot });
         await recorder.recordNativeToolInfo({ toolName: "view_file", stepIndex: 2 });
@@ -550,7 +552,7 @@ Deno.test("native duplicate source and bridge rejections keep one safe observati
     });
 });
 
-Deno.test("each new metric family obeys opt-out and omits private tool and command content", async () => {
+test("each new metric family obeys opt-out and omits private tool and command content", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         await setCustomSetting("workflowMetrics", false, "project", projectRoot);
         const emit = async () => {
@@ -610,7 +612,7 @@ Deno.test("each new metric family obeys opt-out and omits private tool and comma
     });
 });
 
-Deno.test("known package-task labels survive the writer", async () => {
+test("known package-task labels survive the writer", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot });
         await recorder.recordToolStart("npm-call", "bash", { command: "npm run build && pnpm run lint" });
@@ -624,7 +626,7 @@ Deno.test("known package-task labels survive the writer", async () => {
     });
 });
 
-Deno.test("standalone summary retry retains source, index, delay and settled outcome", async () => {
+test("standalone summary retry retains source, index, delay and settled outcome", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new SessionContextMetricsRecorder(projectRoot, "summary-session", null);
         await recorder.retryStart(2, 3, 250);

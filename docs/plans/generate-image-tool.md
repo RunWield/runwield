@@ -1,6 +1,6 @@
 ---
-classification: "PROJECT"
-complexity: "HIGH"
+classification: "PLANNED_CHANGE"
+complexity: "MEDIUM"
 affectedPaths:
     - "src/tools/create-image.ts"
     - "src/shared/image-generation.ts"
@@ -14,9 +14,18 @@ affectedPaths:
     - "scripts/compile.js"
     - "docs/settings.md"
 createdAt: "2026-09-06"
-status: "draft"
 origin: "internal"
 planId: "3fff46f4-f3d0-4247-8709-e03d80dfbdca"
+targetBranch: "epic/generate-image-tool"
+epicBaseCommit: "4ad3b2642cbcd931d7dd354ba1f8f92fb66cdbaa"
+status: "user_verified"
+userVerifiedAt: "2026-10-11T03:18:29.495Z"
+userVerificationNote: "This was implemented by Codex"
+workRecord:
+    status: "generated"
+    recordId: "0b0ff924-dff9-40d5-a9b4-10a3d258f090"
+    path: "docs/work-records/2026-10-11-configurable-image-generation-and-editing-tool.md"
+    lastAttemptAt: "2026-10-11T03:18:43.358Z"
 ---
 
 # Create Image Tool

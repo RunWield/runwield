@@ -1,7 +1,8 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../../../testing/assertions.ts";
 import { submitWorkflowAction } from "./workflow-action.ts";
 
-Deno.test("held Plan warnings require confirmation and preserve revision on retry", async () => {
+test("held Plan warnings require confirmation and preserve revision on retry", async () => {
     const originalFetch = globalThis.fetch;
     const originalConfirm = Object.getOwnPropertyDescriptor(globalThis, "confirm");
     const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");

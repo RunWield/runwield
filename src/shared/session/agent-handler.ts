@@ -1,3 +1,4 @@
+import { readFile as fsReadFile } from "node:fs/promises";
 /**
  * @module shared/session/agent-handler
  * Workflow-aware handler for the active Agent. It runs one Agent turn, then
@@ -23,7 +24,7 @@ import {
     SYSTEM_SEMANTIC_REVIEW_PORT,
     type WorkflowValidationResult,
 } from "../workflow/validation.ts";
-import { runWorkflowValidationToStableBoundary } from "../workflow/validation-supervisor.ts";
+import { runWorkflowValidationToStableBoundary } from "../workflow/validation.ts";
 import { switchActiveAgent } from "./agent-switching.js";
 import { getAgentDisplayName } from "./agents.js";
 import { emitHostedSessionRuntimeEvent, emitSystemStatus, RuntimeEventTypes } from "./session-runtime-events.js";
@@ -372,7 +373,7 @@ export function createAgentHandler(agentName: string, options: AgentHandlerOptio
                 }
             } catch {
                 try {
-                    planContent = await Deno.readTextFile(getStoredPlanPath(projectRoot, planName));
+                    planContent = await fsReadFile(getStoredPlanPath(projectRoot, planName), "utf8");
                 } catch {
                     // Ignore in tests or if neither authoritative nor fallback Plan exists.
                 }

@@ -1,5 +1,8 @@
-import { assertArrayIncludes, assertEquals, assertMatch } from "@std/assert";
-import { basename } from "@std/path";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { assertEquals, assertArrayIncludes } from "../../testing/assertions.ts";
+import { match as assertMatch } from "node:assert/strict";
+import { basename } from "node:path";
 import mnemotecaExtension from "./index.ts";
 
 /**
@@ -63,7 +66,7 @@ function firstText(result) {
     return first.text ?? "";
 }
 
-Deno.test("mnemoteca extension registers one action-based memory tool", () => {
+test("mnemoteca extension registers one action-based memory tool", () => {
     const { tools } = setup(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
 
     const names = tools.map((tool) => tool.name);
@@ -77,7 +80,7 @@ Deno.test("mnemoteca extension registers one action-based memory tool", () => {
     }
 });
 
-Deno.test("memory recall searches both scopes and escapes quotes", async () => {
+test("memory recall searches both scopes and escapes quotes", async () => {
     const { getTool, calls } = setup((_command, args) => {
         if (args[0] === "init") return Promise.resolve({ code: 0, stdout: "", stderr: "" });
         if (args.includes("--global")) return Promise.resolve({ code: 0, stdout: "global hit", stderr: "" });
@@ -92,16 +95,16 @@ Deno.test("memory recall searches both scopes and escapes quotes", async () => {
     assertEquals(
         firstText(result),
         `Project memories (${
-            basename(Deno.cwd())
+            basename(getCwd())
         }) — these take precedence over global memories:\nfound memory\n\nGlobal memories (cross-project defaults):\nglobal hit`,
     );
     assertArrayIncludes(calls.map((call) => call.args.join(" ")), [
-        ["search", "--name", basename(Deno.cwd()), "--format", "plain", '"he said ""hello"""'].join(" "),
+        ["search", "--name", basename(getCwd()), "--format", "plain", '"he said ""hello"""'].join(" "),
         ["search", "--global", "--format", "plain", '"he said ""hello"""'].join(" "),
     ]);
 });
 
-Deno.test("memory recall returns one missing binary message when mnemoteca is unavailable", async () => {
+test("memory recall returns one missing binary message when mnemoteca is unavailable", async () => {
     const { getTool } = setup(() => Promise.resolve({ code: 127, stdout: "", stderr: "" }));
     const tool = getTool("memory");
 
@@ -112,7 +115,7 @@ Deno.test("memory recall returns one missing binary message when mnemoteca is un
     assertEquals(firstText(result).match(/mnemoteca binary not found/gi)?.length, 1);
 });
 
-Deno.test("memory stores project memory with optional core tag", async () => {
+test("memory stores project memory with optional core tag", async () => {
     const { getTool, calls } = setup(() => Promise.resolve({ code: 0, stdout: "stored", stderr: "" }));
     const tool = getTool("memory");
 
@@ -125,14 +128,14 @@ Deno.test("memory stores project memory with optional core tag", async () => {
     assertEquals(calls.at(-1)?.args, [
         "add",
         "--name",
-        basename(Deno.cwd()),
+        basename(getCwd()),
         "--tag",
         "core",
         "Use deno task ci",
     ]);
 });
 
-Deno.test("memory initializes global storage then adds memory", async () => {
+test("memory initializes global storage then adds memory", async () => {
     const { getTool, calls } = setup(() => Promise.resolve({ code: 0, stdout: "ok", stderr: "" }));
     const tool = getTool("memory");
 
@@ -152,7 +155,7 @@ Deno.test("memory initializes global storage then adds memory", async () => {
     ]);
 });
 
-Deno.test("memory delete checks the requested scope before deleting by id", async () => {
+test("memory delete checks the requested scope before deleting by id", async () => {
     const { getTool, calls } = setup((_command, args) => {
         if (args[0] === "init") return Promise.resolve({ code: 0, stdout: "", stderr: "" });
         if (args[0] === "list" && args.includes("--global")) {

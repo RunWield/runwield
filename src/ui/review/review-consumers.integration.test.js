@@ -1,4 +1,7 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import process from "node:process";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { captureWorktreeTree, diffTrees, getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
@@ -59,7 +62,7 @@ function reviewPort(runIsolatedAgentSession) {
     });
 }
 
-Deno.test("AI, repair, and both human review surfaces receive the same patch", () =>
+test("AI, repair, and both human review surfaces receive the same patch", () =>
     withProcessGlobalTestLock(async () => {
         const projectRoot = await makeValidationProjectRoot("p", {
             classification: "QUICK_FIX",
@@ -69,13 +72,13 @@ Deno.test("AI, repair, and both human review surfaces receive the same patch", (
         await git(projectRoot, ["init", "-b", "target"]);
         await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
         await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-        await Deno.writeTextFile(`${projectRoot}/.gitignore`, "docs/plans/\n");
+        await fsWriteFile(`${projectRoot}/.gitignore`, "docs/plans/\n");
         await git(projectRoot, ["add", "."]);
         await git(projectRoot, ["commit", "-m", "execution baseline"]);
         const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
         await git(projectRoot, ["switch", "-c", "execution"]);
         await git(projectRoot, ["switch", "target"]);
-        await Deno.writeTextFile(`${projectRoot}/target-only.js`, "export const targetOnly = true;\n");
+        await fsWriteFile(`${projectRoot}/target-only.js`, "export const targetOnly = true;\n");
         await git(projectRoot, ["add", "target-only.js"]);
         await git(projectRoot, ["commit", "-m", "target-only behavior"]);
         await git(projectRoot, ["switch", "execution"]);
@@ -83,7 +86,7 @@ Deno.test("AI, repair, and both human review surfaces receive the same patch", (
             { length: 40 },
             (_, index) => `export const planned${index} = true;`,
         ).join("\n") + "\n";
-        await Deno.writeTextFile(`${projectRoot}/plan-change.js`, implementation);
+        await fsWriteFile(`${projectRoot}/plan-change.js`, implementation);
         hostedSession.setActiveExecutionWorkflow({
             planName: "p",
             triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
@@ -143,8 +146,8 @@ Deno.test("AI, repair, and both human review surfaces receive the same patch", (
         const currentTree = await captureWorktreeTree(projectRoot);
         const expectedPatch = await diffTrees(projectRoot, baselineTree, currentTree);
         assertEquals(await getWorktreeReviewDiff(projectRoot, "target"), expectedPatch);
-        const previousDisableBuiltServer = Deno.env.get("WLD_WORKSPACE_DISABLE_BUILT_SERVER");
-        Deno.env.set("WLD_WORKSPACE_DISABLE_BUILT_SERVER", "1");
+        const previousDisableBuiltServer = process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"];
+        process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"] = "1";
         const standalone = await startCodeReviewSurface({
             rawPatch: "stale patch",
             gitRef: "target-relative",
@@ -160,8 +163,8 @@ Deno.test("AI, repair, and both human review surfaces receive the same patch", (
             standalonePatch = JSON.parse(embedded).rawPatch;
         } finally {
             await standalone.stop();
-            if (previousDisableBuiltServer === undefined) Deno.env.delete("WLD_WORKSPACE_DISABLE_BUILT_SERVER");
-            else Deno.env.set("WLD_WORKSPACE_DISABLE_BUILT_SERVER", previousDisableBuiltServer);
+            if (previousDisableBuiltServer === undefined) delete process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"];
+            else process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"] = previousDisableBuiltServer;
         }
 
         const workspace = new WorkspaceSessionContinuationService({ store: /** @type {any} */ ({}) });

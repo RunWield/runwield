@@ -1,5 +1,18 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    truncate as fsTruncate,
+    utimes as fsUtimes,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { openOwnerCoordinationDatabase } from "../owner-coordination/database.js";
 import { registerProject } from "../owner-coordination/projects.js";
 import {
@@ -21,13 +34,13 @@ function idFactory(prefix = "id") {
 /** @param {string} cwd @param {string} piSessionId @param {string} timestamp @param {Array<Record<string, unknown>>} bodyEntries */
 async function writeTranscript(cwd, piSessionId, timestamp, bodyEntries) {
     const sessionDir = getRunWieldSessionDir(cwd);
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     const path = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
     const entries = [
         { type: "session", id: piSessionId, cwd, timestamp },
         ...bodyEntries,
     ];
-    await Deno.writeTextFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    await fsWriteFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     return { path, entries };
 }
 
@@ -52,10 +65,10 @@ async function createTwoSegmentFixture(firstBodyEntries = null, secondBodyEntrie
             message: { role: "assistant", content: "second" },
         },
     ];
-    const dir = await Deno.makeTempDir({ prefix: "runwield-aggregate-transcript-" });
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-aggregate-transcript-"));
     const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     const root = `${dir}/repo`;
-    await Deno.mkdir(root);
+    await fsMkdir(root);
     const project = registerProject(database, { root, idFactory: idFactory("project"), now: () => "t0" });
     const first = await writeTranscript(root, "pi-one", "2026-01-01T00:00:00.000Z", firstEntries);
     const session = await ensureSessionCatalogRecord(database, {
@@ -101,10 +114,10 @@ async function createTwoSegmentFixture(firstBodyEntries = null, secondBodyEntrie
 /** @param {Awaited<ReturnType<typeof createTwoSegmentFixture>>} fixture */
 async function cleanupFixture(fixture) {
     fixture.database.close();
-    await Deno.remove(fixture.dir, { recursive: true });
+    await fsRm(fixture.dir, { recursive: true });
 }
 
-Deno.test("aggregate projection adds safe segment context without exposing segment evidence", async () => {
+test("aggregate projection adds safe segment context without exposing segment evidence", async () => {
     const fixture = await createTwoSegmentFixture();
     try {
         const projected = await projectAggregateTranscript({
@@ -140,13 +153,13 @@ Deno.test("aggregate projection adds safe segment context without exposing segme
     }
 });
 
-Deno.test("aggregate projection reads segments from each segment transcript directory", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-aggregate-transcript-dirs-" });
+test("aggregate projection reads segments from each segment transcript directory", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-aggregate-transcript-dirs-"));
     try {
         const firstRoot = `${dir}/repo`;
         const secondRoot = `${dir}/worktree-repo`;
-        await Deno.mkdir(firstRoot);
-        await Deno.mkdir(secondRoot);
+        await fsMkdir(firstRoot);
+        await fsMkdir(secondRoot);
         const first = await writeTranscript(firstRoot, "pi-one", "2026-01-01T00:00:00.000Z", [
             {
                 type: "message",
@@ -216,11 +229,11 @@ Deno.test("aggregate projection reads segments from each segment transcript dire
             "segment-2:second:assistant_text_delta:0",
         ]);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("aggregate projection carries active Agent state across segment boundaries", async () => {
+test("aggregate projection carries active Agent state across segment boundaries", async () => {
     const fixture = await createTwoSegmentFixture(
         [
             {
@@ -296,16 +309,16 @@ Deno.test("aggregate projection carries active Agent state across segment bounda
     }
 });
 
-Deno.test("aggregate projection fails closed with zero events when sealed segment evidence is unavailable", async () => {
+test("aggregate projection fails closed with zero events when sealed segment evidence is unavailable", async () => {
     for (const mutate of ["missing", "truncated", "extended", "byte-modified"]) {
         const fixture = await createTwoSegmentFixture();
         try {
-            if (mutate === "missing") await Deno.remove(fixture.first.path);
-            if (mutate === "truncated") await Deno.truncate(fixture.first.path, fixture.firstEvidence.byteLength - 1);
-            if (mutate === "extended") await Deno.writeTextFile(fixture.first.path, "{}\n", { append: true });
+            if (mutate === "missing") await fsRm(fixture.first.path);
+            if (mutate === "truncated") await fsTruncate(fixture.first.path, fixture.firstEvidence.byteLength - 1);
+            if (mutate === "extended") await fsWriteFile(fixture.first.path, "{}\n", { flag: "a" });
             if (mutate === "byte-modified") {
-                const text = await Deno.readTextFile(fixture.first.path);
-                await Deno.writeTextFile(fixture.first.path, text.replace("first", "FIrst"));
+                const text = await fsReadFile(fixture.first.path, "utf8");
+                await fsWriteFile(fixture.first.path, text.replace("first", "FIrst"));
             }
             const projected = await projectAggregateTranscript({
                 cwd: fixture.root,
@@ -325,7 +338,7 @@ Deno.test("aggregate projection fails closed with zero events when sealed segmen
     }
 });
 
-Deno.test("aggregate projection fails closed when segments extend beyond committed generation", async () => {
+test("aggregate projection fails closed when segments extend beyond committed generation", async () => {
     const fixture = await createTwoSegmentFixture();
     try {
         const projected = await projectAggregateTranscript({
@@ -351,7 +364,7 @@ Deno.test("aggregate projection fails closed when segments extend beyond committ
     }
 });
 
-Deno.test("aggregate projection replays from start when a cursor is absent after full verification", async () => {
+test("aggregate projection replays from start when a cursor is absent after full verification", async () => {
     const fixture = await createTwoSegmentFixture();
     try {
         const projected = await projectAggregateTranscript({
@@ -370,7 +383,7 @@ Deno.test("aggregate projection replays from start when a cursor is absent after
     }
 });
 
-Deno.test("aggregate projection fails closed after a same-size sealed segment mutation with restored mtime", async () => {
+test("aggregate projection fails closed after a same-size sealed segment mutation with restored mtime", async () => {
     const fixture = await createTwoSegmentFixture();
     try {
         const firstProjection = await projectAggregateTranscript({
@@ -381,10 +394,10 @@ Deno.test("aggregate projection fails closed after a same-size sealed segment mu
             segments: listSessionTranscriptSegments(fixture.database, fixture.session.runwieldSessionId),
         });
         assert(firstProjection.ok);
-        const stat = await Deno.stat(fixture.first.path);
-        const text = await Deno.readTextFile(fixture.first.path);
-        await Deno.writeTextFile(fixture.first.path, text.replace("first", "FIrst"));
-        if (stat.atime && stat.mtime) await Deno.utime(fixture.first.path, stat.atime, stat.mtime);
+        const stat = await fsStat(fixture.first.path);
+        const text = await fsReadFile(fixture.first.path, "utf8");
+        await fsWriteFile(fixture.first.path, text.replace("first", "FIrst"));
+        if (stat.atime && stat.mtime) await fsUtimes(fixture.first.path, stat.atime, stat.mtime);
         const secondProjection = await projectAggregateTranscript({
             cwd: fixture.root,
             runwieldSessionId: fixture.session.runwieldSessionId,
@@ -399,7 +412,7 @@ Deno.test("aggregate projection fails closed after a same-size sealed segment mu
     }
 });
 
-Deno.test("aggregate projection resumes across a segment boundary", async () => {
+test("aggregate projection resumes across a segment boundary", async () => {
     const fixture = await createTwoSegmentFixture();
     try {
         const projected = await projectAggregateTranscript({

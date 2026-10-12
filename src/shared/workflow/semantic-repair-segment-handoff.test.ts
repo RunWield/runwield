@@ -1,5 +1,7 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 
 async function writeRepairTranscript(
@@ -17,11 +19,11 @@ async function writeRepairTranscript(
         timestamp,
         message: { role: "user", content: "Repair open review issues with current CI state and diff access." },
     };
-    await Deno.writeTextFile(path, `${JSON.stringify(header)}\n${JSON.stringify(seed)}\n`);
+    await fsWriteFile(path, `${JSON.stringify(header)}\n${JSON.stringify(seed)}\n`);
     return path;
 }
 
-Deno.test("two real semantic rejections create two ordered repair segments and no Reviewer segments", async () => {
+test("two real semantic rejections create two ordered repair segments and no Reviewer segments", async () => {
     const fixture = await makeManagedSessionFixture();
     const store = fixture.openStore();
     try {
@@ -93,7 +95,7 @@ Deno.test("two real semantic rejections create two ordered repair segments and n
     }
 });
 
-Deno.test("pending semantic repair markers resume the repair turn", async () => {
+test("pending semantic repair markers resume the repair turn", async () => {
     const fixture = await makeManagedSessionFixture();
     try {
         const seedPacket = "frozen Plan; current CI state; open Review Issues; repair claims; diff access";
@@ -105,12 +107,12 @@ Deno.test("pending semantic repair markers resume the repair turn", async () => 
     }
 });
 
-Deno.test("semantic repair handoff preserves current CI state", () => {
+test("semantic repair handoff preserves current CI state", () => {
     const repairContext = { ciState: "deno task ci failed", openIssues: 2 };
     assertEquals(repairContext.ciState, "deno task ci failed");
 });
 
-Deno.test("repair root context excludes predecessor Engineer and Reviewer history", () => {
+test("repair root context excludes predecessor Engineer and Reviewer history", () => {
     const repairPrompt = "Fix open issues. Use diff access. Do not include predecessor transcript sentinels.";
     assertEquals(repairPrompt.includes("ENGINEER_SENTINEL_SHOULD_NOT_REPAIR"), false);
     assertEquals(repairPrompt.includes("REVIEWER_SENTINEL_SHOULD_NOT_REPAIR"), false);

@@ -92,7 +92,7 @@ export function ArtifactReadSurface(
         setClosing(true);
         setError("");
         try {
-            if (initialPayload.mode !== "dev") {
+            if (initialPayload.mode !== "dev" && initialPayload.launch !== "linked") {
                 const response = await fetch(`/api/review/exit?token=${encodeURIComponent(initialPayload.token)}`, {
                     method: "POST",
                     headers: {
@@ -163,7 +163,10 @@ export function ArtifactReadSurface(
                                     <div className="rw-artifact-read-title-block">
                                         <h1>{title}</h1>
                                         {initialPayload.artifactPath && (
-                                            <p className="rw-artifact-path">{initialPayload.artifactPath}</p>
+                                            <p className="rw-artifact-path">
+                                                {initialPayload.launch === "linked" && `${artifactLabel} · `}
+                                                {initialPayload.artifactPath}
+                                            </p>
                                         )}
                                     </div>
                                 </div>
@@ -211,8 +214,9 @@ export function ArtifactReadSurface(
                         <div className="rw-artifact-close-notice" role="status">
                             <strong>{artifactLabel} view closed.</strong>
                             <span>
-                                The RunWield read session has ended. Your browser blocked automatic tab closure; you can
-                                close this tab manually.
+                                {initialPayload.launch === "linked"
+                                    ? "Your browser blocked automatic tab closure. Close this tab manually. Other document links remain available."
+                                    : "The RunWield read session has ended. Your browser blocked automatic tab closure; you can close this tab manually."}
                             </span>
                         </div>
                     )}

@@ -1,4 +1,10 @@
-import { fromFileUrl, join } from "@std/path";
+import { copyFile, link, mkdir as fsMkdir, mkdtemp, readFile as fsReadFile, symlink } from "node:fs/promises";
+import { rmSync } from "node:fs";
+import process, { execPath, platform, versions } from "node:process";
+import { tmpdir } from "node:os";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
+import { captureForegroundProcess } from "../shared/captured-process.ts";
 
 // Only the executable contents are shared. Every fixture has its own command
 // paths and logs; PATH still changes so production availability checks run.
@@ -15,36 +21,50 @@ export async function writeWorkflowBinaryFixtures(
     options: WorkflowBinaryFixtureOptions = {},
 ): Promise<string> {
     const binDir = join(root, "bin");
-    await Deno.mkdir(binDir, { recursive: true });
+    await fsMkdir(binDir, { recursive: true });
     const names = options.githubUnavailable ? [...BINARIES, "gh"] : BINARIES;
-    const script = Deno.build.os === "windows" ? await Deno.readTextFile(EXECUTABLE) : "";
+    const native = platform === "win32" ? await nativeFixture() : null;
     await Promise.all(names.map(async (name) => {
-        const path = join(binDir, name);
-        // Windows symlink creation can require privileges. Preserve the previous
-        // independent-file behavior there without requiring Developer Mode.
-        if (Deno.build.os === "windows") {
-            const quotedBinDir = "'" + binDir.replaceAll("'", "'\\''") + "'";
-            await Deno.writeTextFile(
-                path,
-                script
-                    .replace("fixture_bin_dir=${0%/*}", `fixture_bin_dir=${quotedBinDir}`)
-                    .replace("fixture_name=${0##*/}", `fixture_name='${name}'`),
-            );
-            await Deno.chmod(path, 0o755);
+        const path = join(binDir, native ? `${name}.exe` : name);
+        if (native) {
+            try {
+                await link(native, path);
+            } catch (error) {
+                if (!(error instanceof Error && "code" in error && error.code === "EXDEV")) throw error;
+                await copyFile(native, path);
+            }
         } else {
-            await Deno.symlink(EXECUTABLE, path);
+            await symlink(EXECUTABLE, path);
         }
     }));
     return binDir;
+}
+
+let nativeCompilation: Promise<string> | undefined;
+function nativeFixture(): Promise<string> {
+    return nativeCompilation ??= (async () => {
+        const root = await mkdtemp(join(tmpdir(), "workflow-native-fixture-"));
+        const binary = join(root, "helper.exe");
+        process.once("exit", () => rmSync(root, { recursive: true, force: true }));
+        const source = fromFileUrl(new URL("./workflow-binary-fixture.ts", import.meta.url));
+        const args = versions.bun
+            ? ["build", "--compile", "--no-compile-autoload-dotenv", "--no-compile-autoload-bunfig", source, "--outfile", binary]
+            : ["compile", "-A", "--no-check", "--output", binary, source];
+        const result = await captureForegroundProcess(execPath, { args, cwd: root, timeoutMs: 60_000 });
+        if (result.code !== 0) {
+            throw new Error(`Native workflow fixture compilation failed: ${new TextDecoder().decode(result.stderr)}`);
+        }
+        return binary;
+    })();
 }
 
 /** Fail even if an optional external-call error was caught by the application. */
 export async function assertWorkflowBinaryCallsSupported(root: string): Promise<void> {
     let unexpected = "";
     try {
-        unexpected = await Deno.readTextFile(join(root, "bin", "unexpected.log"));
+        unexpected = await fsReadFile(join(root, "bin", "unexpected.log"), "utf8");
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     if (unexpected) throw new Error(unexpected.trim());
 }

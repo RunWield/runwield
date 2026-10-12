@@ -1,9 +1,10 @@
+import { getCwd } from "../../constants.js";
 import { listAvailableAgents } from "../../shared/session/agents.js";
 import { AGENTS } from "../../constants.js";
 import type { CommandCompletionItem } from "../registry.js";
 
 export async function getAgentCompletions(argumentPrefix: string): Promise<CommandCompletionItem[]> {
-    const agents = await listAvailableAgents(Deno.cwd());
+    const agents = await listAvailableAgents(getCwd());
     return agents
         .map((agent) => ({
             value: agent.name,

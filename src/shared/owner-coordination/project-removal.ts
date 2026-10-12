@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "../sqlite.ts";
 
 /**
  * Remove a Workspace registration and its dependent database records.

@@ -1,7 +1,18 @@
-import { assertEquals } from "@std/assert";
-import { FakeTime } from "@std/testing/time";
+import { assertEquals } from "../../testing/assertions.ts";
+import { createHash } from "node:crypto";
+import { Agent, request } from "node:http";
+import { platform } from "node:process";
+import { getHomeDir } from "../../constants.js";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { mock, test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { HostedSession } from "./hosted-session.js";
-import { openLiveSessionConnection, readLiveSessionConnection, type LiveSessionRuntime } from "./live-session-connection.ts";
+import {
+    type LiveSessionRuntime,
+    openLiveSessionConnection,
+    readLiveSessionConnection,
+} from "./live-session-connection.ts";
 import type { SteerSessionResult } from "./runtime/types.ts";
 import type { RegisterSessionArtifactOptions, SessionArtifactReference } from "./file-session-store-types.ts";
 
@@ -39,7 +50,7 @@ function fakeManagedOperationCapability() {
 }
 
 async function fixture(steerSession: LiveSessionRuntime["steerSession"]) {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-live-session-" });
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-live-session-"));
     const session = new HostedSession({ id: "runtime-session", cwd });
     session.setManagedMetadata({
         runwieldSessionId: "umbrella-session",
@@ -66,12 +77,12 @@ async function fixture(steerSession: LiveSessionRuntime["steerSession"]) {
         close,
         cleanup: async () => {
             await close();
-            await Deno.remove(cwd, { recursive: true });
+            await fsRm(cwd, { recursive: true });
         },
     };
 }
 
-Deno.test("a connection retry with the same requestId does not steer twice", async () => {
+test("a connection retry with the same requestId does not steer twice", async () => {
     let calls = 0;
     const steerSession: LiveSessionRuntime["steerSession"] = () => {
         calls++;
@@ -94,7 +105,7 @@ Deno.test("a connection retry with the same requestId does not steer twice", asy
 // connection retry arriving after that window must still dedupe against the original request
 // instead of invoking runtime.steerSession() again. This drives fake time past the old window to
 // prove the receipt no longer expires, independent of a real five-minute wait.
-Deno.test("a retry after five elapsed minutes still does not steer twice", async () => {
+test("a retry after five elapsed minutes still does not steer twice", async () => {
     let calls = 0;
     const steerSession: LiveSessionRuntime["steerSession"] = () => {
         calls++;
@@ -102,16 +113,50 @@ Deno.test("a retry after five elapsed minutes still does not steer twice", async
         return Promise.resolve(result);
     };
     const f = await fixture(steerSession);
-    const time = new FakeTime();
+    mock.timers.enable({ apis: ["setTimeout", "Date"] });
     try {
         const command = { action: "steer" as const, requestId: "retry-1", text: "change direction" };
         const first = await readLiveSessionConnection("umbrella-session", f.operationId, command);
-        time.tick(5 * 60 * 1000 + 1);
+        mock.timers.tick(5 * 60 * 1000 + 1);
         const second = await readLiveSessionConnection("umbrella-session", f.operationId, command);
         assertEquals(calls, 1);
         assertEquals(first, second);
     } finally {
-        time.restore();
+        mock.timers.reset();
+        await f.cleanup();
+    }
+});
+
+
+test("closing a live connection releases an idle HTTP keep-alive client", async () => {
+    const f = await fixture(() => Promise.resolve({ ok: true, queued: true }));
+    const agent = new Agent({ keepAlive: true });
+    const key = createHash("sha256")
+        .update(`${getHomeDir()}:umbrella-session:${f.operationId}`).digest("hex").slice(0, 40);
+    const path = platform === "win32" ? `\\\\.\\pipe\\runwield-${key}` : `/tmp/runwield-${key}.sock`;
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const req = request({ socketPath: path, path: "/", agent }, (response) => {
+                response.resume();
+                response.once("end", resolve);
+                response.once("error", reject);
+            });
+            req.once("error", reject);
+            req.end();
+        });
+        let timer: ReturnType<typeof setTimeout>;
+        try {
+            await Promise.race([
+                f.close(),
+                new Promise<void>((_resolve, reject) => {
+                    timer = setTimeout(() => reject(new Error("An idle client blocked live connection shutdown")), 1000);
+                }),
+            ]);
+        } finally {
+            clearTimeout(timer!);
+        }
+    } finally {
+        agent.destroy();
         await f.cleanup();
     }
 });

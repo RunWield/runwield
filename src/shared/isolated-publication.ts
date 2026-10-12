@@ -1,9 +1,19 @@
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { captureForegroundProcess } from "./captured-process.ts";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 /**
  * Assemble Direct Delivery in a temporary clone and push it when an upstream
  * exists. Local-only projects publish through their checked-out target branch.
  */
 
-import { basename, dirname, join } from "@std/path";
+import { basename, dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { assertPreMergeCandidateUnchanged, mergeExecutionWorktree } from "./worktree.js";
 import { prepareProjectContextPublication, settleProjectContextPublication } from "./project-context-publication.ts";
@@ -120,7 +130,7 @@ export class IsolatedPublicationError extends Error {
 }
 
 async function runGitResult(cwd: string, args: string[]): Promise<CommandResult> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     return {
         code: output.code,
         stdout: new TextDecoder().decode(output.stdout).trim(),
@@ -135,7 +145,7 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
 }
 
 async function runGitRaw(cwd: string, args: string[]): Promise<string> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     const decoder = new TextDecoder();
     const stdout = decoder.decode(output.stdout);
     const stderr = decoder.decode(output.stderr);
@@ -238,8 +248,9 @@ async function commitPublicationMetadata(
     planName: string,
     sealedCommit: string,
     allowedPlanPaths: string[],
+    targetBranch: string,
 ): Promise<string> {
-    await finalizePublicationLifecycle(publicationRoot, planName, sealedCommit, allowedPlanPaths);
+    await finalizePublicationLifecycle(publicationRoot, planName, sealedCommit, allowedPlanPaths, targetBranch);
     await assertNoTrackedOrIndexedRuntimePaths(publicationRoot);
     await stageGitChangesExcludingRuntime(publicationRoot);
     await assertNoTrackedOrIndexedRuntimePaths(publicationRoot);
@@ -288,7 +299,7 @@ export async function isCommitPublishedToTarget(
         ]);
         return localResult.code === 0;
     }
-    const inspectionRoot = await Deno.makeTempDir({ prefix: `runwield-inspect-${basename(args.projectRoot)}-` });
+    const inspectionRoot = await mkdtemp(join(tmpdir(), `runwield-inspect-${basename(args.projectRoot)}-`));
     try {
         // Reachability uses Git objects only; an inspection never needs checked-out files.
         await runGit(args.projectRoot, [
@@ -316,7 +327,7 @@ export async function isCommitPublishedToTarget(
         ]);
         return result.code === 0;
     } finally {
-        await Deno.remove(inspectionRoot, { recursive: true }).catch(() => {});
+        await fsRm(inspectionRoot, { recursive: true }).catch(() => {});
     }
 }
 
@@ -351,10 +362,10 @@ export async function publishExecutionWorktreeIsolated(
     }
     const requestedPublicationRoot = args.repairedPublicationRoot || args.publicationRoot;
     const requestedRootExists = requestedPublicationRoot
-        ? await Deno.stat(requestedPublicationRoot).then((stat) => stat.isDirectory).catch(() => false)
+        ? await fsStat(requestedPublicationRoot).then((stat) => stat.isDirectory()).catch(() => false)
         : false;
     const publicationRoot = requestedPublicationRoot ||
-        await Deno.makeTempDir({ prefix: `runwield-publish-${basename(args.projectRoot)}-` });
+        await mkdtemp(join(tmpdir(), `runwield-publish-${basename(args.projectRoot)}-`));
     let preserveForRecovery = Boolean(requestedPublicationRoot);
     try {
         if (requestedRootExists) {
@@ -461,6 +472,7 @@ export async function publishExecutionWorktreeIsolated(
                 args.planName,
                 args.sealedExecutionCommit,
                 args.allowedPlanPaths,
+                upstream.branch,
             );
             await assertNoRuntimePathsInNewHistory(
                 publicationRoot,
@@ -512,7 +524,7 @@ export async function publishExecutionWorktreeIsolated(
                 upstreamBranch: upstream.branch,
             };
         }
-        await Deno.mkdir(dirname(publicationRoot), { recursive: true });
+        await fsMkdir(dirname(publicationRoot), { recursive: true });
         // Keep a usable checkout if the upstream fails before preparation finishes:
         // a saved publication directory can be resumed through the repair path.
         await runGit(args.projectRoot, [
@@ -623,6 +635,7 @@ export async function publishExecutionWorktreeIsolated(
             args.planName,
             args.sealedExecutionCommit,
             args.allowedPlanPaths,
+            upstream.branch,
         );
         await assertNoRuntimePathsInNewHistory(publicationRoot, publicationHistoryBase, publicationCommit);
         await args.onIntegrated?.({
@@ -665,7 +678,7 @@ export async function publishExecutionWorktreeIsolated(
             upstreamBranch: upstream.branch,
         };
     } finally {
-        if (!preserveForRecovery) await Deno.remove(publicationRoot, { recursive: true }).catch(() => {});
+        if (!preserveForRecovery) await fsRm(publicationRoot, { recursive: true }).catch(() => {});
     }
 }
 
@@ -681,45 +694,60 @@ async function publishToLocalTarget(
     }
     await recoverLocalPublicationLifecycle(args.projectRoot, args.targetBranch, args.sealedExecutionCommit);
     const targetHeadBeforeMerge = await runGit(args.projectRoot, ["rev-parse", `refs/heads/${args.targetBranch}`]);
+    const primaryBranch = await runGit(args.projectRoot, ["branch", "--show-current"]);
+    const updatedPrimaryCheckout = primaryBranch === args.targetBranch;
     const savedAuthoritativePlans = new Map<string, Uint8Array>();
     try {
-        await prepareProjectContextPublication(args.projectRoot, args.executionCwd, args.sealedExecutionCommit);
-        const trackedChanges = (await runGitRaw(args.projectRoot, ["diff", "--name-only", "-z", "HEAD", "--"]))
-            .split("\0")
-            .filter((path) => path.length > 0);
-        const allowedPrimaryChanges = new Set(args.allowedPlanPaths);
-        const blockingTrackedChanges = trackedChanges.filter((path) => !allowedPrimaryChanges.has(path));
-        if (blockingTrackedChanges.length > 0) {
-            throw new IsolatedPublicationError(
-                `The checked-out ${args.targetBranch} branch has unsaved tracked changes. ` +
-                    `Commit or discard them before retrying local publication: ${blockingTrackedChanges.join(", ")}.`,
-                { mergeFailureKind: "primary_checkout_dirty", blockingPaths: blockingTrackedChanges },
-            );
-        }
-        for (const relativePath of args.allowedPlanPaths) {
-            const staged = await runGitResult(args.projectRoot, ["diff", "--cached", "--quiet", "--", relativePath]);
-            if (staged.code !== 0) {
+        if (updatedPrimaryCheckout) {
+            await prepareProjectContextPublication(args.projectRoot, args.executionCwd, args.sealedExecutionCommit);
+            const trackedChanges = (await runGitRaw(args.projectRoot, ["diff", "--name-only", "-z", "HEAD", "--"]))
+                .split("\0")
+                .filter((path) => path.length > 0);
+            const allowedPrimaryChanges = new Set(args.allowedPlanPaths);
+            const blockingTrackedChanges = trackedChanges.filter((path) => !allowedPrimaryChanges.has(path));
+            if (blockingTrackedChanges.length > 0) {
                 throw new IsolatedPublicationError(
-                    `The project folder has a staged change to ${relativePath}. Commit or unstage it before retrying.`,
-                    { mergeFailureKind: "primary_checkout_dirty", blockingPaths: [relativePath] },
+                    `The checked-out ${args.targetBranch} branch has unsaved tracked changes. ` +
+                        `Commit or discard them before retrying local publication: ${
+                            blockingTrackedChanges.join(", ")
+                        }.`,
+                    { mergeFailureKind: "primary_checkout_dirty", blockingPaths: blockingTrackedChanges },
                 );
             }
-        }
-        for (const relativePath of args.allowedPlanPaths) {
-            const path = join(args.projectRoot, relativePath);
-            const bytes = await Deno.readFile(path).catch((error) => {
-                if (error instanceof Deno.errors.NotFound) return null;
-                throw error;
-            });
-            if (!bytes) continue;
-            const changed = await runGitResult(args.projectRoot, ["diff", "--quiet", "--", relativePath]);
-            const tracked = await runGitResult(args.projectRoot, ["ls-files", "--error-unmatch", relativePath]);
-            if (changed.code === 0 && tracked.code === 0) continue;
-            savedAuthoritativePlans.set(relativePath, bytes);
-            if (tracked.code === 0) {
-                await runGit(args.projectRoot, ["restore", "--worktree", "--source=HEAD", "--", relativePath]);
-            } else {
-                await Deno.remove(path);
+            for (const relativePath of args.allowedPlanPaths) {
+                const staged = await runGitResult(args.projectRoot, [
+                    "diff",
+                    "--cached",
+                    "--quiet",
+                    "--",
+                    relativePath,
+                ]);
+                if (staged.code !== 0) {
+                    throw new IsolatedPublicationError(
+                        `The project folder has a staged change to ${relativePath}. Commit or unstage it before retrying.`,
+                        { mergeFailureKind: "primary_checkout_dirty", blockingPaths: [relativePath] },
+                    );
+                }
+            }
+            for (const relativePath of args.allowedPlanPaths) {
+                const path = join(args.projectRoot, relativePath);
+                const bytes = await fsReadFile(path).catch((error) => {
+                    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+                    throw error;
+                });
+                if (!bytes) continue;
+                const changed = await runGitResult(args.projectRoot, ["diff", "--quiet", "--", relativePath]);
+                const tracked = await runGitResult(args.projectRoot, ["ls-files", "--error-unmatch", relativePath]);
+                if (changed.code === 0 && tracked.code === 0) continue;
+                savedAuthoritativePlans.set(relativePath, bytes);
+                if (tracked.code === 0) {
+                    // The staged-change guard above proves this index entry matches
+                    // HEAD. Restoring from the index also refreshes Git's stat cache;
+                    // an explicit HEAD checkout can leave CRLF files falsely dirty.
+                    await runGit(args.projectRoot, ["restore", "--worktree", "--", relativePath]);
+                } else {
+                    await fsRm(path);
+                }
             }
         }
         args.onProgress?.("combining_work");
@@ -744,7 +772,7 @@ async function publishToLocalTarget(
             args.allowedPlanPaths,
         );
         await assertNoRuntimePathsInNewHistory(args.projectRoot, targetHeadBeforeMerge, publicationCommit);
-        await settleProjectContextPublication(args.projectRoot);
+        if (updatedPrimaryCheckout) await settleProjectContextPublication(args.projectRoot);
         await args.onIntegrated?.({
             targetBaseCommit: targetHeadBeforeMerge,
             integrationCommit: publicationCommit,
@@ -771,7 +799,7 @@ async function publishToLocalTarget(
         await args.onVerified?.(publishedEvidence);
         return {
             publicationMode: "local",
-            updatedPrimaryCheckout: true,
+            updatedPrimaryCheckout,
             executionMetadataCommit,
             targetHeadBeforeMerge,
             deliveryCommit: publicationCommit,
@@ -779,7 +807,7 @@ async function publishToLocalTarget(
         };
     } catch (error) {
         const mergeHead = await runGitResult(args.projectRoot, ["rev-parse", "--verify", "MERGE_HEAD"]);
-        if (mergeHead.code === 0) await runGitResult(args.projectRoot, ["merge", "--abort"]);
+        if (updatedPrimaryCheckout && mergeHead.code === 0) await runGitResult(args.projectRoot, ["merge", "--abort"]);
         const currentTargetHead = await runGitResult(args.projectRoot, [
             "rev-parse",
             `refs/heads/${args.targetBranch}`,
@@ -790,15 +818,15 @@ async function publishToLocalTarget(
             for (const [relativePath, bytes] of savedAuthoritativePlans) {
                 const path = join(args.projectRoot, relativePath);
                 try {
-                    await Deno.mkdir(dirname(path), { recursive: true });
-                    await Deno.writeFile(path, bytes);
+                    await fsMkdir(dirname(path), { recursive: true });
+                    await fsWriteFile(path, bytes);
                 } catch (restoreError) {
                     restorationError = restoreError instanceof Error ? restoreError : new Error(String(restoreError));
                 }
             }
         }
         try {
-            await settleProjectContextPublication(args.projectRoot);
+            if (updatedPrimaryCheckout) await settleProjectContextPublication(args.projectRoot);
         } catch (restoreError) {
             restorationError = restoreError instanceof Error ? restoreError : new Error(String(restoreError));
         }

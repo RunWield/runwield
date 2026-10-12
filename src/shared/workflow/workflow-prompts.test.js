@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     buildAgentHandoffRequest,
     buildEngineerRequest,
@@ -7,7 +8,7 @@ import {
     buildTriageReport,
 } from "./workflow-prompts.ts";
 
-Deno.test("buildAgentHandoffRequest explicitly re-anchors the active specialist", () => {
+test("buildAgentHandoffRequest explicitly re-anchors the active specialist", () => {
     const request = buildAgentHandoffRequest("Planner", "Continue the requested refactor.", {
         routingIntent: "PLANNED_CHANGE",
         classification: "PLANNED_CHANGE",
@@ -22,7 +23,7 @@ Deno.test("buildAgentHandoffRequest explicitly re-anchors the active specialist"
     assertStringIncludes(request, "## Triage Report");
 });
 
-Deno.test("buildSlicerRequest includes existing child order and dependencies", () => {
+test("buildSlicerRequest includes existing child order and dependencies", () => {
     const request = buildSlicerRequest({
         planName: "epic-a",
         epicBody: "# Epic",
@@ -52,7 +53,7 @@ Deno.test("buildSlicerRequest includes existing child order and dependencies", (
     assertStringIncludes(request, "- Target branch: feature-base");
 });
 
-Deno.test("approval annotations are included in Engineer and Slicer handoffs", () => {
+test("approval annotations are included in Engineer and Slicer handoffs", () => {
     const feedback = "Keep the selected command and highlighted boundary.";
     const engineerRequest = buildEngineerRequest("feature-plan", "Plan body", feedback);
     const slicerRequest = buildSlicerRequest({
@@ -67,7 +68,7 @@ Deno.test("approval annotations are included in Engineer and Slicer handoffs", (
     assertStringIncludes(slicerRequest, feedback);
 });
 
-Deno.test("buildEngineerRequest emits only the approved Plan envelope when optional context is missing", () => {
+test("buildEngineerRequest emits only the approved Plan envelope when optional context is missing", () => {
     const request = buildEngineerRequest("feature-plan", "Plan body");
 
     assertEquals(request, "## Approved Plan: feature-plan\n\n## Approved Plan Body\n\nPlan body");
@@ -76,7 +77,7 @@ Deno.test("buildEngineerRequest emits only the approved Plan envelope when optio
     assertEquals(request.includes("Annotations Submitted With Approval"), false);
 });
 
-Deno.test("buildEngineerRequest removes protected Plan Front Matter and preserves the projected body exactly", () => {
+test("buildEngineerRequest removes protected Plan Front Matter and preserves the projected body exactly", () => {
     const projectedBody =
         "# Approved body\n\nUNIQUE BODY SENTINEL\n\n## Router Handoff Message\nThis is ordinary Plan Markdown.";
     const request = buildEngineerRequest(
@@ -89,7 +90,7 @@ Deno.test("buildEngineerRequest removes protected Plan Front Matter and preserve
     assertEquals(request.includes("worktreeId"), false);
 });
 
-Deno.test("buildEngineerRequest includes confirmed Plan Deviations after the body", () => {
+test("buildEngineerRequest includes confirmed Plan Deviations after the body", () => {
     const request = buildEngineerRequest(
         "feature-plan",
         `---
@@ -109,7 +110,7 @@ planDeviations:
     assertStringIncludes(request, "Replacement requirement: Keep nav.");
 });
 
-Deno.test("buildTriageReport preserves the Router's structured context", () => {
+test("buildTriageReport preserves the Router's structured context", () => {
     const report = buildTriageReport({
         routingIntent: "PLANNED_CHANGE",
         classification: "PLANNED_CHANGE",
@@ -129,7 +130,7 @@ Deno.test("buildTriageReport preserves the Router's structured context", () => {
     assertStringIncludes(report, "- Affected paths: src/constants.js, docs/prd/runwield-core-prd.md");
 });
 
-Deno.test("buildEngineerRequest orders Router handoff, pair runtime value, projected Plan, and annotations", () => {
+test("buildEngineerRequest orders Router handoff, pair runtime value, projected Plan, and annotations", () => {
     const feedback = "Approval note: keep the highlighted boundary.";
     const request = buildEngineerRequest(
         "documentation-work-kind",
@@ -158,7 +159,7 @@ Deno.test("buildEngineerRequest orders Router handoff, pair runtime value, proje
     );
 });
 
-Deno.test("buildEngineerRequest names autonomous runtime value without duplicated execution rules", () => {
+test("buildEngineerRequest names autonomous runtime value without duplicated execution rules", () => {
     const request = buildEngineerRequest("autonomous-plan", "Plan body", undefined, {
         collaborationStyle: "autonomous",
     });
@@ -174,7 +175,7 @@ Deno.test("buildEngineerRequest names autonomous runtime value without duplicate
     assertEquals(request.includes("Plan Classification"), false);
 });
 
-Deno.test("buildReAnchorMessage names the draft Plan and its sections for Planner", () => {
+test("buildReAnchorMessage names the draft Plan and its sections for Planner", () => {
     const message = buildReAnchorMessage({ agentName: "planner", planName: "some-plan" });
 
     assertStringIncludes(String(message), "Context was compacted.");
@@ -182,14 +183,14 @@ Deno.test("buildReAnchorMessage names the draft Plan and its sections for Planne
     assertStringIncludes(String(message), "Implementation Steps");
 });
 
-Deno.test("buildReAnchorMessage names the Epic for Architect", () => {
+test("buildReAnchorMessage names the Epic for Architect", () => {
     const message = buildReAnchorMessage({ agentName: "architect", planName: "some-epic" });
 
     assertStringIncludes(String(message), "Epic is `docs/plans/some-epic.md`");
     assertStringIncludes(String(message), "Vertical Slice Findings");
 });
 
-Deno.test("buildReAnchorMessage gives both Plan executors only the parsed Plan body", () => {
+test("buildReAnchorMessage gives both Plan executors only the parsed Plan body", () => {
     for (const agentName of ["plan-engineer", "frontend-engineer"]) {
         const message = String(buildReAnchorMessage({
             agentName,
@@ -205,7 +206,7 @@ Deno.test("buildReAnchorMessage gives both Plan executors only the parsed Plan b
     }
 });
 
-Deno.test("buildReAnchorMessage re-anchors no Plan for the Quick Fix Engineer", () => {
+test("buildReAnchorMessage re-anchors no Plan for the Quick Fix Engineer", () => {
     // Engineer executes no Plan, so a Plan body is not the artifact its
     // discarded context was about.
     assertEquals(
@@ -218,7 +219,7 @@ Deno.test("buildReAnchorMessage re-anchors no Plan for the Quick Fix Engineer", 
     );
 });
 
-Deno.test("buildReAnchorMessage carries open review issues for a repair turn", () => {
+test("buildReAnchorMessage carries open review issues for a repair turn", () => {
     const message = String(buildReAnchorMessage({
         agentName: "reviewer-feedback-engineer",
         planName: "some-plan",
@@ -231,7 +232,7 @@ Deno.test("buildReAnchorMessage carries open review issues for a repair turn", (
     assertStringIncludes(message, "R1-1 — Seam check never runs");
 });
 
-Deno.test("buildReAnchorMessage omits an empty Review Issue Ledger", () => {
+test("buildReAnchorMessage omits an empty Review Issue Ledger", () => {
     const message = String(buildReAnchorMessage({
         agentName: "reviewer-feedback-engineer",
         planName: "some-plan",
@@ -245,18 +246,18 @@ Deno.test("buildReAnchorMessage omits an empty Review Issue Ledger", () => {
     }
 });
 
-Deno.test("buildReAnchorMessage returns null for agents with no durable artifact", () => {
+test("buildReAnchorMessage returns null for agents with no durable artifact", () => {
     for (const agentName of ["delegated", "reviewer", "slicer", "router", "recorder", ""]) {
         assertEquals(buildReAnchorMessage({ agentName, planName: "some-plan" }), null);
     }
 });
 
-Deno.test("buildReAnchorMessage returns null when no Plan pointer survived", () => {
+test("buildReAnchorMessage returns null when no Plan pointer survived", () => {
     assertEquals(buildReAnchorMessage({ agentName: "engineer" }), null);
     assertEquals(buildReAnchorMessage({ agentName: "engineer", planName: "   " }), null);
     assertEquals(buildReAnchorMessage(), null);
 });
 
-Deno.test("buildReAnchorMessage refuses an execution re-anchor without a projected body", () => {
+test("buildReAnchorMessage refuses an execution re-anchor without a projected body", () => {
     assertEquals(buildReAnchorMessage({ agentName: "engineer", planName: "some-plan" }), null);
 });

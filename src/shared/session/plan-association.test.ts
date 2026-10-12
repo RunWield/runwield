@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { normalizePlanAssociation, PLAN_ASSOCIATION_CUSTOM_TYPE, readPlanAssociations } from "./plan-association.ts";
 
-Deno.test("normalizes valid Plan Association evidence", () => {
+test("normalizes valid Plan Association evidence", () => {
     assertEquals(
         normalizePlanAssociation({
             planId: " plan-1 ",
@@ -22,13 +23,13 @@ Deno.test("normalizes valid Plan Association evidence", () => {
     );
 });
 
-Deno.test("rejects malformed Plan Association evidence", () => {
+test("rejects malformed Plan Association evidence", () => {
     assertEquals(normalizePlanAssociation({ planName: "example", purpose: "planning", segmentId: "segment" }), null);
     assertEquals(normalizePlanAssociation({ planId: "plan", purpose: "unknown", segmentId: "segment" }), null);
     assertEquals(normalizePlanAssociation({ planId: "plan", purpose: "planning" }), null);
 });
 
-Deno.test("reads Plan Associations in transcript order without deduplication", () => {
+test("reads Plan Associations in transcript order without deduplication", () => {
     const first = {
         planId: "plan-1",
         planName: "example",

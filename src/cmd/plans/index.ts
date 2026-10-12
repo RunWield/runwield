@@ -3,7 +3,7 @@
  * List and manage saved Plans.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { getCwd } from "../../constants.js";
 import { countChildPlanProgress, groupPlanHierarchy, listPlans } from "../../plan-store.js";
 import { printCommandHelp } from "../help/index.js";

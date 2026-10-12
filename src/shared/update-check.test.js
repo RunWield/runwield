@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { readFile as fsReadFile, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import {
     fetchLatestRunWieldRcRelease,
     fetchLatestRunWieldRelease,
@@ -21,12 +25,12 @@ function fixedClock(value) {
     return { now: () => value };
 }
 
-/** @param {typeof globalThis.fetch} fetch */
+/** @param {import("./fetch-request.ts").FetchRequest} fetch */
 function updatePorts(fetch, now = 10) {
     return { network: { fetch }, clock: fixedClock(now) };
 }
 
-Deno.test("normalizes RunWield release versions", () => {
+test("normalizes RunWield release versions", () => {
     assertEquals(normalizeRunWieldVersion("1.2.3"), "v1.2.3");
     assertEquals(normalizeRunWieldVersion("v1.2.3-rc.4"), "v1.2.3-rc.4");
     assertEquals(parseRunWieldReleaseVersion("v1.2.3"), {
@@ -39,7 +43,7 @@ Deno.test("normalizes RunWield release versions", () => {
     });
 });
 
-Deno.test("compares stable and candidate release versions", () => {
+test("compares stable and candidate release versions", () => {
     assertEquals(isNewerRunWieldVersion("v1.2.4", "v1.2.3"), true);
     assertEquals(isNewerRunWieldVersion("v1.2.3", "v1.2.3"), false);
     assertEquals(isNewerRunWieldVersion("v1.2.3", "v1.2.4"), false);
@@ -48,13 +52,13 @@ Deno.test("compares stable and candidate release versions", () => {
     assertEquals(isNewerRunWieldVersion("v1.2.3-rc.1", "v1.2.3"), false);
 });
 
-Deno.test("non-release current versions are updateable when they differ from latest", () => {
+test("non-release current versions are updateable when they differ from latest", () => {
     assertEquals(isNewerRunWieldVersion("v1.2.3", "abc1234"), true);
     assertEquals(isNewerRunWieldVersion("v1.2.3", "1.2.3"), false);
 });
 
-Deno.test("cache reads fresh valid metadata and rejects stale or malformed data", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-update-cache-" });
+test("cache reads fresh valid metadata and rejects stale or malformed data", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-update-cache-"));
     try {
         const cachePath = `${dir}/update-check.json`;
         await writeUpdateCheckCache({ latestVersion: "1.2.3", checkedAt: 1000, cachePath });
@@ -64,18 +68,18 @@ Deno.test("cache reads fresh valid metadata and rejects stale or malformed data"
         });
         assertEquals(await readUpdateCheckCache(fixedClock(7000), { ttlMs: 5000, cachePath }), null);
 
-        await Deno.writeTextFile(cachePath, "not json");
+        await fsWriteFile(cachePath, "not json");
         assertEquals(await readUpdateCheckCache(fixedClock(2000), { ttlMs: 5000, cachePath }), null);
 
-        await Deno.writeTextFile(cachePath, JSON.stringify({ latestVersion: "bad", checkedAt: 1000 }));
+        await fsWriteFile(cachePath, JSON.stringify({ latestVersion: "bad", checkedAt: 1000 }));
         assertEquals(await readUpdateCheckCache(fixedClock(2000), { ttlMs: 5000, cachePath }), null);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("cached availability recomputes against current version", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-update-availability-" });
+test("cached availability recomputes against current version", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-update-availability-"));
     try {
         const cachePath = `${dir}/update-check.json`;
         await writeUpdateCheckCache({ latestVersion: "v2.0.0", checkedAt: 1000, cachePath });
@@ -90,11 +94,11 @@ Deno.test("cached availability recomputes against current version", async () => 
             checkedAt: 1000,
         });
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("refresh fetches GitHub latest and ignores cache write failures", async () => {
+test("refresh fetches GitHub latest and ignores cache write failures", async () => {
     /** @type {string[]} */
     const calls = [];
     /** @param {string | URL | Request} url */
@@ -102,30 +106,38 @@ Deno.test("refresh fetches GitHub latest and ignores cache write failures", asyn
         calls.push(String(url));
         return Promise.resolve(new Response(JSON.stringify({ tag_name: "v3.0.0" }), { status: 200 }));
     };
-    const result = await refreshUpdateCheckCache(
-        { currentVersion: "v2.0.0", cachePath: "/dev/null/update-check.json" },
-        updatePorts(/** @type {typeof globalThis.fetch} */ (fetchImpl)),
-    );
-    assertEquals(calls, [LATEST_RELEASE_API_URL]);
-    assertEquals(result.available, true);
-    assertEquals(result.latestVersion, "v3.0.0");
-    assertEquals(result.checkedAt, 10);
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-cache-write-failure-"));
+    try {
+        const regularFile = join(root, "not-a-directory");
+        await fsWriteFile(regularFile, "preserved");
+        const result = await refreshUpdateCheckCache(
+            { currentVersion: "v2.0.0", cachePath: join(regularFile, "update-check.json") },
+            updatePorts(/** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl)),
+        );
+        assertEquals(calls, [LATEST_RELEASE_API_URL]);
+        assertEquals(result.available, true);
+        assertEquals(result.latestVersion, "v3.0.0");
+        assertEquals(result.checkedAt, 10);
+        assertEquals(await fsReadFile(regularFile, "utf8"), "preserved");
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
 });
 
-Deno.test("latest API rejects malformed release data", async () => {
+test("latest API rejects malformed release data", async () => {
     const fetchImpl = () => Promise.resolve(new Response(JSON.stringify({ name: "RunWield" }), { status: 200 }));
     await assertRejects(
         () =>
             refreshUpdateCheckCache(
                 { currentVersion: "v1.0.0" },
-                updatePorts(/** @type {typeof globalThis.fetch} */ (fetchImpl)),
+                updatePorts(/** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl)),
             ),
         Error,
         "tag_name",
     );
 });
 
-Deno.test("latest release lookup falls back to GitHub web redirect after API 403", async () => {
+test("latest release lookup falls back to GitHub web redirect after API 403", async () => {
     /** @type {string[]} */
     const calls = [];
     const webResponse = new Response("", { status: 200 });
@@ -140,14 +152,19 @@ Deno.test("latest release lookup falls back to GitHub web redirect after API 403
         );
     };
 
-    assertEquals(await fetchLatestRunWieldRelease({ fetch: /** @type {typeof globalThis.fetch} */ (fetchImpl) }), {
-        tagName: "v4.5.6",
-        version: "v4.5.6",
-    });
+    assertEquals(
+        await fetchLatestRunWieldRelease({
+            fetch: /** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl),
+        }),
+        {
+            tagName: "v4.5.6",
+            version: "v4.5.6",
+        },
+    );
     assertEquals(calls, [LATEST_RELEASE_API_URL, LATEST_RELEASE_WEB_URL]);
 });
 
-Deno.test("latest RC lookup selects the highest published candidate", async () => {
+test("latest RC lookup selects the highest published candidate", async () => {
     /** @type {string[]} */
     const calls = [];
     /** @param {string | URL | Request} url */
@@ -166,14 +183,19 @@ Deno.test("latest RC lookup selects the highest published candidate", async () =
         );
     };
 
-    assertEquals(await fetchLatestRunWieldRcRelease({ fetch: /** @type {typeof globalThis.fetch} */ (fetchImpl) }), {
-        tagName: "v1.2.4-rc.2",
-        version: "v1.2.4-rc.2",
-    });
+    assertEquals(
+        await fetchLatestRunWieldRcRelease({
+            fetch: /** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl),
+        }),
+        {
+            tagName: "v1.2.4-rc.2",
+            version: "v1.2.4-rc.2",
+        },
+    );
     assertEquals(calls, [RELEASES_API_URL]);
 });
 
-Deno.test("latest RC lookup falls back to the releases page when the API rate limit is exhausted", async () => {
+test("latest RC lookup falls back to the releases page when the API rate limit is exhausted", async () => {
     /** @type {string[]} */
     const calls = [];
     /** @param {string | URL | Request} url */
@@ -190,23 +212,31 @@ Deno.test("latest RC lookup falls back to the releases page when the API rate li
         );
     };
 
-    assertEquals(await fetchLatestRunWieldRcRelease({ fetch: /** @type {typeof globalThis.fetch} */ (fetchImpl) }), {
-        tagName: "v1.2.4-rc.2",
-        version: "v1.2.4-rc.2",
-    });
+    assertEquals(
+        await fetchLatestRunWieldRcRelease({
+            fetch: /** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl),
+        }),
+        {
+            tagName: "v1.2.4-rc.2",
+            version: "v1.2.4-rc.2",
+        },
+    );
     assertEquals(calls, [RELEASES_API_URL, RELEASES_WEB_URL]);
 });
 
-Deno.test("latest RC lookup reports when no candidate is published", async () => {
+test("latest RC lookup reports when no candidate is published", async () => {
     const fetchImpl = () => Promise.resolve(new Response(JSON.stringify([{ tag_name: "v1.2.3", prerelease: false }])));
     await assertRejects(
-        () => fetchLatestRunWieldRcRelease({ fetch: /** @type {typeof globalThis.fetch} */ (fetchImpl) }),
+        () =>
+            fetchLatestRunWieldRcRelease({
+                fetch: /** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl),
+            }),
         Error,
         "No RunWield release candidate is published.",
     );
 });
 
-Deno.test("constructs tag-pinned installer URLs", () => {
+test("constructs tag-pinned installer URLs", () => {
     assertEquals(getTagPinnedInstallerUrls("1.2.3"), [
         "https://raw.githubusercontent.com/gandazgul/runwield/v1.2.3/install.sh",
         "https://github.com/gandazgul/runwield/raw/refs/tags/v1.2.3/install.sh",

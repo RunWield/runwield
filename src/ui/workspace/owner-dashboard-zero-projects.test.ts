@@ -1,9 +1,13 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { loadOwnerDashboard, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
 
-Deno.test("Dashboard with no registered Projects completes all four empty sections", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "rw-dashboard-empty-" });
+test("Dashboard with no registered Projects completes all four empty sections", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-empty-"));
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const continuation = {
         operations: new Map(),
@@ -21,6 +25,6 @@ Deno.test("Dashboard with no registered Projects completes all four empty sectio
         assertEquals(result.dashboard.sections.every((section) => section.items.length === 0), true);
     } finally {
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

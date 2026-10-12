@@ -1,8 +1,11 @@
+import { captureScriptProcess } from "./script-process.ts";
+import { copyFile as fsCopyFile, mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import process from "node:process";
 /**
  * Run local Homebrew checks for a rendered tap.
  */
 
-import { resolve } from "@std/path";
+import { resolve } from "node:path";
 
 const TAP_NAME = "gandazgul/tap";
 
@@ -31,20 +34,18 @@ function parseArgs(args) {
  */
 async function run(command, args, cwd, allowFailure = false, capture = false) {
     console.error(`$ ${command} ${args.join(" ")}`);
-    const child = new Deno.Command(command, {
+    const output = await captureScriptProcess(command, {
         args,
         cwd,
         stdout: capture ? "piped" : "inherit",
         stderr: capture ? "piped" : "inherit",
     });
     if (!capture) {
-        const status = await child.spawn().status;
-        if (!status.success && !allowFailure) {
-            throw new Error(`${command} ${args.join(" ")} failed with exit code ${status.code}`);
+        if (!output.success && !allowFailure) {
+            throw new Error(`${command} ${args.join(" ")} failed with exit code ${output.code}`);
         }
-        return { success: status.success, stdout: "", stderr: "" };
+        return { success: output.success, stdout: "", stderr: "" };
     }
-    const output = await child.output();
     const stdout = new TextDecoder().decode(output.stdout);
     const stderr = new TextDecoder().decode(output.stderr);
     if (!output.success && !allowFailure) {
@@ -55,7 +56,7 @@ async function run(command, args, cwd, allowFailure = false, capture = false) {
 
 /** @param {string} tap */
 async function ensureGitTap(tap) {
-    const gitDir = await Deno.stat(`${tap}/.git`).then((stat) => stat.isDirectory).catch(() => false);
+    const gitDir = await fsStat(`${tap}/.git`).then((stat) => stat.isDirectory()).catch(() => false);
     if (!gitDir) await run("git", ["init"], tap);
     await run("git", ["add", "."], tap);
     const status = await run("git", ["status", "--porcelain"], tap, false, true);
@@ -85,7 +86,7 @@ async function isCloneOfTap(existingPath, tap) {
 
 /** @param {string} path */
 async function fileSha256(path) {
-    const hash = await crypto.subtle.digest("SHA-256", await Deno.readFile(path));
+    const hash = await crypto.subtle.digest("SHA-256", await fsReadFile(path));
     return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -94,9 +95,9 @@ async function fileSha256(path) {
  * @param {string} toTap
  */
 async function copyRenderedTapFiles(fromTap, toTap) {
-    await Deno.mkdir(`${toTap}/Formula`, { recursive: true });
+    await fsMkdir(`${toTap}/Formula`, { recursive: true });
     for (const path of ["Formula/wld.rb", "Formula/mnemoteca.rb", "README.md", "runwield-homebrew-package.json"]) {
-        await Deno.copyFile(`${fromTap}/${path}`, `${toTap}/${path}`);
+        await fsCopyFile(`${fromTap}/${path}`, `${toTap}/${path}`);
     }
 }
 
@@ -105,8 +106,8 @@ async function registeredTapPath(tap) {
     const existing = await run("brew", ["--repo", TAP_NAME], tap, true, true);
     if (!existing.success) return "";
     const existingPath = resolve(existing.stdout.trim());
-    const exists = await Deno.stat(existingPath).then((stat) => stat.isDirectory).catch((error) => {
-        if (error instanceof Deno.errors.NotFound) return false;
+    const exists = await fsStat(existingPath).then((stat) => stat.isDirectory()).catch((error) => {
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
         throw error;
     });
     if (!exists) return "";
@@ -119,7 +120,7 @@ async function registeredTapPath(tap) {
 
 /** @param {string} tap */
 async function readManifest(tap) {
-    const text = await Deno.readTextFile(`${tap}/runwield-homebrew-package.json`);
+    const text = await fsReadFile(`${tap}/runwield-homebrew-package.json`, "utf8");
     return JSON.parse(text);
 }
 
@@ -129,7 +130,7 @@ async function readManifest(tap) {
  */
 async function assertInstalledRunWieldPackage(tap, wldTag) {
     const prefix = (await run("brew", ["--prefix", "gandazgul/tap/wld"], tap, false, true)).stdout.trim();
-    const metadata = JSON.parse(await Deno.readTextFile(`${prefix}/libexec/runwield-install.json`));
+    const metadata = JSON.parse(await fsReadFile(`${prefix}/libexec/runwield-install.json`, "utf8"));
     if (metadata.packageManager !== "homebrew" || metadata.packageIdentifier !== "gandazgul/tap/wld") {
         throw new Error("Installed RunWield artifact is missing Homebrew ownership metadata.");
     }
@@ -155,11 +156,11 @@ async function assertPackageUpdateAliases(tap, executable) {
     }
 }
 
-export async function main(args = Deno.args) {
+export async function main(args = process.argv.slice(2)) {
     const { tap } = parseArgs(args);
-    if (Deno.build.os !== "darwin") throw new Error("Homebrew package checks must run on macOS.");
-    await Deno.stat(`${tap}/Formula/wld.rb`);
-    await Deno.stat(`${tap}/Formula/mnemoteca.rb`);
+    if (process.platform !== "darwin") throw new Error("Homebrew package checks must run on macOS.");
+    await fsStat(`${tap}/Formula/wld.rb`);
+    await fsStat(`${tap}/Formula/mnemoteca.rb`);
     const manifest = await readManifest(tap);
     if (!manifest.wldTag || !manifest.mnemotecaTag) {
         throw new Error("Package manifest must name wldTag and mnemotecaTag.");
@@ -188,8 +189,8 @@ export async function main(args = Deno.args) {
         throw new Error("brew upgrade changed the installed package bytes.");
     }
     await run("brew", ["uninstall", "gandazgul/tap/wld"], tap);
-    const removed = await Deno.stat(upgradedExecutable).then(() => false).catch((error) => {
-        if (error instanceof Deno.errors.NotFound) return true;
+    const removed = await fsStat(upgradedExecutable).then(() => false).catch((error) => {
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return true;
         throw error;
     });
     if (!removed) throw new Error("brew uninstall left the verified wld executable installed.");

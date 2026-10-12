@@ -1,11 +1,22 @@
-import { assertEquals, assertMatch, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { _AGENT_ATTENTION_NUDGES, listAgentDefNames, loadAgentDef } from "./agents.js";
 
 const BUNDLED_AGENT_DEFS = join("src", "agent-definitions");
 const SHARED_PRACTICE_DIR = join(BUNDLED_AGENT_DEFS, "shared-practice");
 
-Deno.test("managed engineering assigns full validation to RunWield and keeps standalone verification", async () => {
+test("managed engineering assigns full validation to RunWield and keeps standalone verification", async () => {
     for (const name of ["engineer", "plan-engineer", "frontend-engineer"]) {
         const { systemPrompt } = await loadAgentDef(name);
         const normalizedPrompt = systemPrompt.replaceAll(/\s+/g, " ");
@@ -101,16 +112,16 @@ async function withProjectAgents<T>(
     files: readonly ProjectAgentFile[],
     run: (projectRoot: string) => Promise<T>,
 ): Promise<T> {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-shared-practice-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-shared-practice-"));
     try {
         for (const file of files) {
             const target = join(projectRoot, ".wld", "agents", file.path);
-            await Deno.mkdir(join(target, ".."), { recursive: true });
-            await Deno.writeTextFile(target, file.contents);
+            await fsMkdir(join(target, ".."), { recursive: true });
+            await fsWriteFile(target, file.contents);
         }
         return await run(projectRoot);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 }
 
@@ -122,7 +133,7 @@ function fragmentFile(name: string, body: string): ProjectAgentFile {
     return { path: join("shared-practice", `${name}.md`), contents: `---\nname: ${name}\n---\n\n${body}\n` };
 }
 
-Deno.test("shared practice fragments are appended after the agent's own prompt body", async () => {
+test("shared practice fragments are appended after the agent's own prompt body", async () => {
     const def = await withProjectAgents([
         agentFile("temp-agent", "sharedPractice:\n    - house-rules\n", "## Process\n\nDo the process."),
         fragmentFile("house-rules", "## House Rules\n\nNever skip the rules."),
@@ -134,7 +145,7 @@ Deno.test("shared practice fragments are appended after the agent's own prompt b
     assertEquals(rulesIndex > processIndex, true);
 });
 
-Deno.test("fragments compose in declaration order and dedupe repeats", async () => {
+test("fragments compose in declaration order and dedupe repeats", async () => {
     const def = await withProjectAgents([
         agentFile(
             "temp-agent",
@@ -149,7 +160,7 @@ Deno.test("fragments compose in declaration order and dedupe repeats", async () 
     assertEquals(def.systemPrompt.indexOf("SECOND_MARKER") > def.systemPrompt.indexOf("FIRST_MARKER"), true);
 });
 
-Deno.test("a project fragment overrides the bundled fragment of the same name", async () => {
+test("a project fragment overrides the bundled fragment of the same name", async () => {
     const def = await withProjectAgents([
         agentFile("temp-agent", "sharedPractice:\n    - engineering-practice\n", "## Process\n\nBody."),
         fragmentFile("engineering-practice", "PROJECT_OVERRIDE_MARKER"),
@@ -159,7 +170,7 @@ Deno.test("a project fragment overrides the bundled fragment of the same name", 
     assertEquals(def.systemPrompt.includes("The Zero-Trust Implementation Protocol"), false);
 });
 
-Deno.test("an agent that declares no shared practice composes nothing extra", async () => {
+test("an agent that declares no shared practice composes nothing extra", async () => {
     const def = await withProjectAgents([
         agentFile("temp-agent", "", "## Process\n\nBody."),
         fragmentFile("engineering-practice", "SHOULD_NOT_APPEAR"),
@@ -168,7 +179,7 @@ Deno.test("an agent that declares no shared practice composes nothing extra", as
     assertEquals(def.systemPrompt.includes("SHOULD_NOT_APPEAR"), false);
 });
 
-Deno.test("a missing fragment fails loudly and names the paths it checked", async () => {
+test("a missing fragment fails loudly and names the paths it checked", async () => {
     const error = await withProjectAgents(
         [agentFile("temp-agent", "sharedPractice:\n    - no-such-fragment\n", "## Process\n\nBody.")],
         (projectRoot) =>
@@ -182,7 +193,7 @@ Deno.test("a missing fragment fails loudly and names the paths it checked", asyn
     assertStringIncludes(error.message, join("shared-practice", "no-such-fragment.md"));
 });
 
-Deno.test("a non-list sharedPractice field is rejected rather than silently ignored", async () => {
+test("a non-list sharedPractice field is rejected rather than silently ignored", async () => {
     await withProjectAgents(
         [agentFile("temp-agent", "sharedPractice: engineering-practice\n", "## Process\n\nBody.")],
         (projectRoot) =>
@@ -194,7 +205,7 @@ Deno.test("a non-list sharedPractice field is rejected rather than silently igno
     );
 });
 
-Deno.test("shared practice fragments are never offered as agents", async () => {
+test("shared practice fragments are never offered as agents", async () => {
     const names = await listAgentDefNames();
     assertEquals(names.includes("engineering-practice"), false);
     assertEquals(names.includes("plan-execution"), false);
@@ -202,7 +213,7 @@ Deno.test("shared practice fragments are never offered as agents", async () => {
     assertEquals(names.includes("shared-practice"), false);
 });
 
-Deno.test("every bundled fragment is claimed by at least one agent", async () => {
+test("every bundled fragment is claimed by at least one agent", async () => {
     const claimed = new Set(
         [...SHARED_PRACTICE_CONSUMERS, ...PLANNING_PRACTICE_CONSUMERS].flatMap(([, fragments]) => fragments),
     );
@@ -215,7 +226,7 @@ Deno.test("every bundled fragment is claimed by at least one agent", async () =>
     // Discovery, verification, and integration Reviewers are workflow-only subagents.
     const { loadSubAgentDefinition } = await import("./subagent-definitions.ts");
     const { SUBAGENTS } = await import("../../constants.js");
-    const reviewPractice = (await Deno.readTextFile(join(SHARED_PRACTICE_DIR, "review-practice.md")))
+    const reviewPractice = (await fsReadFile(join(SHARED_PRACTICE_DIR, "review-practice.md"), "utf8"))
         .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim();
     for (const id of [SUBAGENTS.REVIEWER, SUBAGENTS.INTEGRATION_REVIEWER]) {
         const reviewer = await loadSubAgentDefinition(id);
@@ -225,14 +236,14 @@ Deno.test("every bundled fragment is claimed by at least one agent", async () =>
     assertStringIncludes(verifyReviewer.systemPrompt, reviewPractice);
     claimed.add("review-practice");
 
-    for await (const entry of Deno.readDir(SHARED_PRACTICE_DIR)) {
-        if (!entry.isFile || !entry.name.endsWith(".md")) continue;
+    for await (const entry of await fsReaddir(SHARED_PRACTICE_DIR, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
         const fragment = entry.name.replace(/\.md$/, "");
         assertEquals(claimed.has(fragment), true, `Unclaimed shared practice fragment: ${fragment}`);
     }
 });
 
-Deno.test("every coding persona composes the engineering practice it declares", async () => {
+test("every coding persona composes the engineering practice it declares", async () => {
     for (const [agentName] of SHARED_PRACTICE_CONSUMERS) {
         const def = await loadAgentDef(agentName);
         assertStringIncludes(def.systemPrompt, "The Zero-Trust Implementation Protocol");
@@ -241,7 +252,7 @@ Deno.test("every coding persona composes the engineering practice it declares", 
     }
 });
 
-Deno.test("only the Plan executors are told what to do with requests outside the Plan", async () => {
+test("only the Plan executors are told what to do with requests outside the Plan", async () => {
     // Engineer has no Plan to be outside of, so the boundary rule would be a
     // contradiction in its prompt rather than a missing rule.
     for (const agentName of PLAN_EXECUTION_PERSONAS) {
@@ -252,14 +263,14 @@ Deno.test("only the Plan executors are told what to do with requests outside the
     assertEquals(engineer.systemPrompt.includes("Requests that are not the Plan"), false);
 });
 
-Deno.test("every bundled top-level agent receives the user-authority policy", async () => {
+test("every bundled top-level agent receives the user-authority policy", async () => {
     for (const agentName of await listAgentDefNames()) {
         const def = await loadAgentDef(agentName);
         assertStringIncludes(def.systemPrompt, USER_AUTHORITY_MARKER, `${agentName} is missing user authority`);
     }
 });
 
-Deno.test("Plan executors keep a strict no-self-edit boundary while explicit user authority wins", async () => {
+test("Plan executors keep a strict no-self-edit boundary while explicit user authority wins", async () => {
     for (const agentName of PLAN_EXECUTION_PERSONAS) {
         const { systemPrompt } = await loadAgentDef(agentName);
         const normalizedPrompt = systemPrompt.replaceAll(/\s+/g, " ");
@@ -289,7 +300,7 @@ Deno.test("Plan executors keep a strict no-self-edit boundary while explicit use
     }
 });
 
-Deno.test("every persona that can run git is told not to destroy pending changes", async () => {
+test("every persona that can run git is told not to destroy pending changes", async () => {
     // Operator is not an engineering persona and does not compose engineering-practice,
     // but its prompt lists git operations — the rule has to reach it by its own claim.
     for (const agentName of WORKING_TREE_CONSUMERS) {
@@ -298,7 +309,7 @@ Deno.test("every persona that can run git is told not to destroy pending changes
     }
 });
 
-Deno.test("planning personas receive the show-the-work practice", async () => {
+test("planning personas receive the show-the-work practice", async () => {
     for (const [agentName] of PLANNING_PRACTICE_CONSUMERS) {
         const def = await loadAgentDef(agentName);
         assertStringIncludes(def.systemPrompt, SHOW_THE_WORK_MARKER, `${agentName} is missing show-the-work`);
@@ -308,7 +319,7 @@ Deno.test("planning personas receive the show-the-work practice", async () => {
 /** Plan Review recognizes an alert only when its marker is alone on the quoted line. */
 const MARKER_ONLY_CALLOUT = /^> \[!(WARNING|NOTE|TIP)\]$/m;
 
-Deno.test("the Planner writes point-first Plans with optional callouts and exact steps", async () => {
+test("the Planner writes point-first Plans with optional callouts and exact steps", async () => {
     const { systemPrompt } = await loadAgentDef("planner");
     const normalized = systemPrompt.replaceAll(/\s+/g, " ");
     assertStringIncludes(normalized, "Open with the main point");
@@ -318,8 +329,8 @@ Deno.test("the Planner writes point-first Plans with optional callouts and exact
     assertMatch(systemPrompt, MARKER_ONLY_CALLOUT);
 });
 
-Deno.test("the Plan format keeps its sections and shows callout syntax Plan Review renders", async () => {
-    const format = await Deno.readTextFile(join(BUNDLED_AGENT_DEFS, "document-formats", "planner-plan-format.md"));
+test("the Plan format keeps its sections and shows callout syntax Plan Review renders", async () => {
+    const format = await fsReadFile(join(BUNDLED_AGENT_DEFS, "document-formats", "planner-plan-format.md"), "utf8");
     for (
         const heading of [
             "Context",
@@ -338,7 +349,7 @@ Deno.test("the Plan format keeps its sections and shows callout syntax Plan Revi
     assertMatch(format, MARKER_ONLY_CALLOUT);
 });
 
-Deno.test("conversational planning personas end each turn with a question or finished work", async () => {
+test("conversational planning personas end each turn with a question or finished work", async () => {
     for (const [agentName] of PLANNING_PRACTICE_CONSUMERS) {
         const { systemPrompt } = await loadAgentDef(agentName);
         const normalized = systemPrompt.replaceAll(/\s+/g, " ");
@@ -346,7 +357,7 @@ Deno.test("conversational planning personas end each turn with a question or fin
     }
 });
 
-Deno.test("history-reading personas share one Work Record retrieval practice", async () => {
+test("history-reading personas share one Work Record retrieval practice", async () => {
     // These four carried byte-identical copies of this section before it was
     // extracted; the fragment is what keeps them from drifting apart again.
     for (const agentName of WORK_RECORD_CONSUMERS) {
@@ -361,8 +372,8 @@ Deno.test("history-reading personas share one Work Record retrieval practice", a
     assertStringIncludes(recorder.systemPrompt, "broad access for generation/maintenance context");
 });
 
-Deno.test("planning personas reference an available PRD format without embedding it", async () => {
-    const format = await Deno.readTextFile(join(BUNDLED_AGENT_DEFS, "document-formats", "PRD-FORMAT.md"));
+test("planning personas reference an available PRD format without embedding it", async () => {
+    const format = await fsReadFile(join(BUNDLED_AGENT_DEFS, "document-formats", "PRD-FORMAT.md"), "utf8");
     assertStringIncludes(format, "A PRD defines what users need, why it matters, and how success will be judged.");
     for (const agentName of ["ideator", "planner", "architect"]) {
         const { systemPrompt } = await loadAgentDef(agentName);
@@ -378,7 +389,7 @@ Deno.test("planning personas reference an available PRD format without embedding
     }
 });
 
-Deno.test("Plan and Epic authors share one architecture vocabulary", async () => {
+test("Plan and Epic authors share one architecture vocabulary", async () => {
     // Planner and Architect defined these terms separately until `Port` drifted
     // apart; one fragment is what keeps the two documents speaking the same language.
     for (const agentName of PLANNING_DOC_AUTHORS) {
@@ -402,7 +413,7 @@ Deno.test("Plan and Epic authors share one architecture vocabulary", async () =>
     }
 });
 
-Deno.test("the Slicer receives the show-the-work practice through the subagent registry", async () => {
+test("the Slicer receives the show-the-work practice through the subagent registry", async () => {
     // Slicer is a workflow-only subagent, so it never appears in the agent listing.
     // It shapes the child Plans a person reads, so the practice must reach it too.
     const { loadSubAgentDefinition } = await import("./subagent-definitions.ts");
@@ -412,7 +423,7 @@ Deno.test("the Slicer receives the show-the-work practice through the subagent r
     assertStringIncludes(slicer.systemPrompt, SHOW_THE_WORK_MARKER);
 });
 
-Deno.test("quick fix Engineer receives the bounded-request contract", async () => {
+test("quick fix Engineer receives the bounded-request contract", async () => {
     const { systemPrompt } = await loadAgentDef("engineer");
     const normalizedPrompt = systemPrompt.replaceAll(/\s+/g, " ");
     assertStringIncludes(systemPrompt, "Quick Fix Checklist");
@@ -426,7 +437,7 @@ Deno.test("quick fix Engineer receives the bounded-request contract", async () =
     );
 });
 
-Deno.test("plan execution personas receive validation continuation and pair ceremony", async () => {
+test("plan execution personas receive validation continuation and pair ceremony", async () => {
     for (const agentName of PLAN_EXECUTION_PERSONAS) {
         const { systemPrompt } = await loadAgentDef(agentName);
         assertStringIncludes(systemPrompt, "A Validation Continuation");
@@ -434,7 +445,7 @@ Deno.test("plan execution personas receive validation continuation and pair cere
     }
 });
 
-Deno.test("plan execution personas can run a Pair checkpoint", async () => {
+test("plan execution personas can run a Pair checkpoint", async () => {
     for (const agentName of PLAN_EXECUTION_PERSONAS) {
         const { systemPrompt } = await loadAgentDef(agentName);
         assertStringIncludes(systemPrompt, "Runtime Collaboration Style");
@@ -450,11 +461,11 @@ Deno.test("plan execution personas can run a Pair checkpoint", async () => {
     }
 });
 
-Deno.test("the shared pair ceremony stays medium-neutral", async () => {
+test("the shared pair ceremony stays medium-neutral", async () => {
     // The browser-specific half belongs to Frontend Engineer's own contract; if it
     // leaks into the shared fragment, Engineer is told to inspect a browser it has
     // no dev server for.
-    const shared = await Deno.readTextFile(join(SHARED_PRACTICE_DIR, "plan-execution.md"));
+    const shared = await fsReadFile(join(SHARED_PRACTICE_DIR, "plan-execution.md"), "utf8");
 
     for (const browserTerm of ["headed browser", "viewport", "dev server", "route", "screenshot"]) {
         assertEquals(
@@ -465,7 +476,7 @@ Deno.test("the shared pair ceremony stays medium-neutral", async () => {
     }
 });
 
-Deno.test("Planner and Architect use pending work as evidence without dirty-file warnings", async () => {
+test("Planner and Architect use pending work as evidence without dirty-file warnings", async () => {
     for (const name of ["planner", "architect"]) {
         const { systemPrompt } = await loadAgentDef(name);
         for (

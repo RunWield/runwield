@@ -31,9 +31,11 @@ export async function restorePublishedSessionProjectRoot(
     }
     const plan = await loadPlan(projectRoot, association.planName);
     if (
-        plan?.attrs.planId !== association.planId || plan.attrs.status !== "verified" ||
+        plan?.attrs.planId !== association.planId ||
+        plan.attrs.status !== "verified" ||
         !plan.attrs.publicationReceipt?.publishedCommit
-    ) return;
+    )
+        return;
     session.rebindProjectRoot(projectRoot);
 }
 
@@ -57,10 +59,7 @@ export function isRuntimeRootSessionManager(
         | undefined,
 ): manager is RuntimeRootSessionManager {
     return Boolean(
-        manager &&
-            "sessionId" in manager &&
-            "sessionFile" in manager &&
-            typeof manager.getEntries === "function",
+        manager && "sessionId" in manager && "sessionFile" in manager && typeof manager.getEntries === "function",
     );
 }
 
@@ -75,6 +74,7 @@ export interface RuntimeAgentSession {
     isCompacting?: boolean;
     getSteeringMessages?(): readonly string[];
     clearQueue?(): void | { steering?: readonly string[]; followUp?: readonly string[] };
+    removeSteeringMessage?(index: number): Promise<boolean>;
     followUp?(
         text: string,
     ): void | Promise<void> | ReturnType<import("@earendil-works/pi-coding-agent").AgentSession["followUp"]>;
@@ -157,9 +157,10 @@ export function resolvePersistedExecutionRootConfiguration(
     const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;
     const persistedAgent = readPersistedActiveAgentName(hostedSession.getRootSessionManager());
     // Semantic repair owns this root until its focused repair turn is complete.
-    const agentName = persistedAgent === AGENTS.REVIEWER_FEEDBACK_ENGINEER
-        ? persistedAgent
-        : resolveActiveWorkflowRuntimeAgent(workflow) || "";
+    const agentName =
+        persistedAgent === AGENTS.REVIEWER_FEEDBACK_ENGINEER
+            ? persistedAgent
+            : resolveActiveWorkflowRuntimeAgent(workflow) || "";
     if (!workflow || !agentName) return null;
     const existingProjectState = hostedSession.getProjectStateContext?.() || "";
     const checkpointContext = checkpoint ? formatPairCheckpointContext(checkpoint) : "";
@@ -217,8 +218,8 @@ function getStreamingAssistantContextTokens(session: RuntimeAgentSession) {
  * @returns {RuntimeContextCapacity}
  */
 export function getRuntimeContextCapacity(session: import(".././hosted-session.js").HostedSession) {
-    const sessions = [session.getRootAgentSession(), ...session.getSubAgentSessions()].filter((candidate) =>
-        candidate !== null
+    const sessions = [session.getRootAgentSession(), ...session.getSubAgentSessions()].filter(
+        (candidate) => candidate !== null,
     );
     const activeSession = sessions.at(-1);
     if (!activeSession) {
@@ -232,13 +233,14 @@ export function getRuntimeContextCapacity(session: import(".././hosted-session.j
         : null;
     const tokens = typeof streamingTokens === "number" ? streamingTokens : rawUsage?.tokens;
     const contextWindow = Number(rawUsage?.contextWindow ?? activeSession.model?.contextWindow ?? 0) || 0;
-    const contextUsage = contextWindow > 0
-        ? {
-            tokens: typeof tokens === "number" ? tokens : null,
-            contextWindow,
-            percent: typeof tokens === "number" ? (tokens / contextWindow) * 100 : null,
-        }
-        : null;
+    const contextUsage =
+        contextWindow > 0
+            ? {
+                  tokens: typeof tokens === "number" ? tokens : null,
+                  contextWindow,
+                  percent: typeof tokens === "number" ? (tokens / contextWindow) * 100 : null,
+              }
+            : null;
     const compactionSettings = activeSession.settingsManager?.getCompactionSettings?.();
 
     return {
@@ -312,9 +314,13 @@ export function isSameManagedSyncState(
     previous: NonNullable<import(".././hosted-session.js").ManagedSessionMetadata["syncState"]> | null | undefined,
     next: NonNullable<import(".././hosted-session.js").ManagedSessionMetadata["syncState"]>,
 ) {
-    return previous?.status === next.status && previous.localGeneration === next.localGeneration &&
-        previous.latestGeneration === next.latestGeneration && previous.owningSurfaceKind === next.owningSurfaceKind &&
-        previous.message === next.message;
+    return (
+        previous?.status === next.status &&
+        previous.localGeneration === next.localGeneration &&
+        previous.latestGeneration === next.latestGeneration &&
+        previous.owningSurfaceKind === next.owningSurfaceKind &&
+        previous.message === next.message
+    );
 }
 
 interface SemanticRepairSource {
@@ -358,9 +364,10 @@ export function buildSemanticRepairCiState(
     const state = {
         status: typeof triageMeta.status === "string" ? triageMeta.status : "",
         validationCiAttempts: typeof triageMeta.validationCiAttempts === "number" ? triageMeta.validationCiAttempts : 0,
-        validationSemanticRounds: typeof triageMeta.validationSemanticRounds === "number"
-            ? triageMeta.validationSemanticRounds
-            : handoff.semanticRound ?? 0,
+        validationSemanticRounds:
+            typeof triageMeta.validationSemanticRounds === "number"
+                ? triageMeta.validationSemanticRounds
+                : (handoff.semanticRound ?? 0),
         semanticRound: handoff.semanticRound ?? 0,
         lastCompletedPhase: "ci",
         currentPhase: "semantic_review",
@@ -397,9 +404,8 @@ export function workflowProgressFactsFromActiveMeta(
             updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : null,
         });
     }
-    const worktreeStatus = typeof activeWorkflowMeta.worktreeStatus === "string"
-        ? activeWorkflowMeta.worktreeStatus
-        : "";
+    const worktreeStatus =
+        typeof activeWorkflowMeta.worktreeStatus === "string" ? activeWorkflowMeta.worktreeStatus : "";
     if (worktreeStatus) facts.push({ kind: "registry", status: worktreeStatus });
     return facts;
 }

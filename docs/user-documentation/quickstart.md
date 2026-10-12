@@ -88,7 +88,9 @@ those files remain protected by the usual merge checks.
 
 The first time you start RunWield, it offers an optional Tutorial that walks you through one real, small change in your
 project: choosing it, reviewing the Plan, and following it through implementation, checks, review, and delivery. In an
-empty folder, it helps you start a small project instead.
+empty folder, it helps you start a small project instead. In a Git project, a standalone Plan normally finishes on
+`plan/<plan-name>`, ready for your onward merge or PR. See [Plan Delivery](settings.md#plan-delivery) for the default and
+auto-merge option.
 
 The Tutorial edits your real project and uses your configured model, and it says so before it starts. Nothing happens
 until you choose **Start tutorial**. Choosing **Skip** stops the automatic offer in every project.

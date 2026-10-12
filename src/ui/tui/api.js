@@ -96,6 +96,7 @@ export function createFooterOnlyUiApi(parentUiAPI) {
 /**
  * Creates a UiAPI object for RunWield TUI.
  *
+ * @param {import('../review/document-link-host.ts').DocumentLinkHost | null} documentLinks
  * @param {{ requestRender: () => void, setFocus: (component: any) => void }} tui
  * @param {{ addChild: (child: any) => void, removeChild: (child: any) => void, clear: () => void, children: any[], invalidateChild?: (child: any) => void }} messageList
  * @param {import('./blocks.js').SpinnerBlock} spinner
@@ -108,6 +109,7 @@ export function createFooterOnlyUiApi(parentUiAPI) {
  * @returns {import('./types.js').UiAPI}
  */
 export function createUiApi(
+    documentLinks,
     tui,
     messageList,
     spinner,
@@ -127,10 +129,10 @@ export function createUiApi(
     let keyboardHelp = null;
     /** @type {{ block: ManagedSyncStatusBlock, spacer: Spacer } | null} */
     let managedSyncStatus = null;
-    /** @type {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent | null} */
+    /** @type {import('./types.js').ManagedSyncStatus | null} */
     let visibleManagedSyncState = null;
 
-    /** @param {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent} state */
+    /** @param {import('./types.js').ManagedSyncStatus} state */
     const isSameVisibleManagedSyncState = (state) => {
         return visibleManagedSyncState?.status === state.status &&
             visibleManagedSyncState.localGeneration === state.localGeneration &&
@@ -454,7 +456,7 @@ export function createUiApi(
                 };
             }
             closeCurrentToolGroup();
-            const block = new AgentMessageBlock(agentName);
+            const block = new AgentMessageBlock(agentName, documentLinks);
             appendMessageListChild(block);
             appendMessageListChild(new Spacer(1));
             tui.requestRender();
@@ -514,9 +516,10 @@ export function createUiApi(
             }
         },
 
-        clearValidationPanel: () => {
+        /** @param {boolean} [preserveProgress=false] */
+        clearValidationPanel: (preserveProgress = false) => {
             validationProgress = null;
-            onValidationProgress?.(null);
+            if (!preserveProgress) onValidationProgress?.(null);
             latestEngineerReport = null;
             latestReviewerReport = null;
             validationReportOrder = 0;
@@ -610,7 +613,7 @@ export function createUiApi(
                 block.setExpanded(true);
                 appendMessageListChild(block);
                 appendMessageListChild(new Spacer(1));
-            } else if (WORKFLOW_TOOL_NAME_SET.has(toolName)) {
+            } else if ((WORKFLOW_TOOL_NAME_SET.has(toolName) || toolName === "code_review")) {
                 closeCurrentToolGroup();
                 appendMessageListChild(block);
                 appendMessageListChild(new Spacer(1));
@@ -673,7 +676,7 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent} state */
+        /** @param {import('./types.js').ManagedSyncStatus} state */
         setManagedSyncStatus: (state) => {
             if (!inputAccessoryContainer || outputSuppressed) return;
             if (state.status === "syncing" && !managedSyncStatus) return;

@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { isAbsolute, join } from "node:path";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { test } from "node:test";
+import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -17,10 +22,7 @@ interface PlanExecutorSessionFixture {
 
 type InteractionHandler = (request: RuntimeInteractionRequest) => RuntimeInteractionResponse;
 
-function createSessionFixture(
-    projectRoot: string,
-    interaction?: InteractionHandler,
-): PlanExecutorSessionFixture {
+function createSessionFixture(projectRoot: string, interaction?: InteractionHandler): PlanExecutorSessionFixture {
     const sessionManager = SessionManager.inMemory(projectRoot);
     const hostedSession = new HostedSession({
         id: `plan-executor-${crypto.randomUUID()}`,
@@ -40,7 +42,7 @@ async function initializeGitProject(projectRoot: string): Promise<void> {
     await git(projectRoot, ["init", "-b", "main"]);
     await git(projectRoot, ["config", "user.email", "test@example.com"]);
     await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-    await Deno.writeTextFile(`${projectRoot}/README.md`, "fixture\n");
+    await fsWriteFile(`${projectRoot}/README.md`, "fixture\n");
     await git(projectRoot, ["add", "."]);
     await git(projectRoot, ["commit", "-m", "fixture: initial project"]);
 }
@@ -62,7 +64,7 @@ async function saveExecutablePlan(
     });
 }
 
-Deno.test("executePlan rejects a persisted Epic before starting an Agent", async () => {
+test("executePlan rejects a persisted Epic before starting an Agent", async () => {
     await withRuntimeCommandFixture("plan-executor-epic-", async ({ projectRoot, setModelResponseFactory }) => {
         await initializeGitProject(projectRoot);
         await saveExecutablePlan(projectRoot, "epic", {
@@ -95,7 +97,7 @@ Deno.test("executePlan rejects a persisted Epic before starting an Agent", async
     });
 });
 
-Deno.test("executePlan recovers a genuinely missing Plan through the HostedSession interaction port", async () => {
+test("executePlan recovers a genuinely missing Plan through the HostedSession interaction port", async () => {
     await withRuntimeCommandFixture("plan-executor-missing-", async ({ projectRoot }) => {
         const requests: RuntimeInteractionRequest[] = [];
         const fixture = createSessionFixture(projectRoot, (request) => {
@@ -111,7 +113,10 @@ Deno.test("executePlan recovers a genuinely missing Plan through the HostedSessi
                 hostedSession: fixture.hostedSession,
             });
 
-            assertEquals(requests.map((request) => request.type), ["approval"]);
+            assertEquals(
+                requests.map((request) => request.type),
+                ["approval"],
+            );
             assertEquals(result.intentionalComplete, true);
             assertEquals(result.intentionalCompleteReason, "plan_not_found");
             assertEquals(await loadPlan(projectRoot, "missing"), null);
@@ -121,18 +126,22 @@ Deno.test("executePlan recovers a genuinely missing Plan through the HostedSessi
     });
 });
 
-Deno.test("executePlan runs preparation, Engineer, checkpoint, lifecycle, and registry machinery together", async () => {
+test("executePlan runs preparation, Engineer, checkpoint, lifecycle, and registry machinery together", async () => {
     await withRuntimeCommandFixture("plan-executor-complete-", async ({ projectRoot, setModelMessages }) => {
         await initializeGitProject(projectRoot);
         await saveExecutablePlan(projectRoot, "feature");
         setModelMessages([
-            fauxAssistantMessage(fauxToolCall("write", {
-                path: "implemented.txt",
-                content: "implemented in execution worktree\n",
-            })),
-            fauxAssistantMessage(fauxToolCall("task_completed", {
-                message: "- Implemented the fixture.\n- Verified the fixture.",
-            })),
+            fauxAssistantMessage(
+                fauxToolCall("write", {
+                    path: "implemented.txt",
+                    content: "implemented in execution worktree\n",
+                }),
+            ),
+            fauxAssistantMessage(
+                fauxToolCall("task_completed", {
+                    message: "- Implemented the fixture.\n- Verified the fixture.",
+                }),
+            ),
         ]);
         const fixture = createSessionFixture(projectRoot);
 
@@ -150,10 +159,15 @@ Deno.test("executePlan runs preparation, Engineer, checkpoint, lifecycle, and re
             assertEquals(result.executionContext?.executionMode, "worktree");
             assert(result.executionContext?.executionCwd);
             assertEquals(
-                await Deno.readTextFile(`${result.executionContext.executionCwd}/implemented.txt`),
+                await fsReadFile(`${result.executionContext.executionCwd}/implemented.txt`, "utf8"),
                 "implemented in execution worktree\n",
             );
-            assertEquals(await Deno.stat(`${projectRoot}/implemented.txt`).then(() => true).catch(() => false), false);
+            assertEquals(
+                await fsStat(`${projectRoot}/implemented.txt`)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
             const persisted = await loadPlan(result.executionContext.executionCwd, "feature");
             assertEquals(persisted?.attrs.status, "implemented");
             assertEquals(persisted?.attrs.executionReport, "- Implemented the fixture.\n- Verified the fixture.");
@@ -166,19 +180,23 @@ Deno.test("executePlan runs preparation, Engineer, checkpoint, lifecycle, and re
     });
 });
 
-Deno.test("executePlan carries project validation settings without hiding the versionable file", async () => {
+test("executePlan carries project validation settings without hiding the versionable file", async () => {
     await withRuntimeCommandFixture("plan-executor-ci-settings-", async ({ projectRoot, setModelMessages }) => {
         await initializeGitProject(projectRoot);
         await setCustomSetting("verification_command", "printf primary", "project", projectRoot);
         await saveExecutablePlan(projectRoot, "ci-settings");
         setModelMessages([
-            fauxAssistantMessage(fauxToolCall("write", {
-                path: "implemented.txt",
-                content: "implemented\n",
-            })),
-            fauxAssistantMessage(fauxToolCall("task_completed", {
-                message: "- Implemented the fixture.\n- Verified setup.",
-            })),
+            fauxAssistantMessage(
+                fauxToolCall("write", {
+                    path: "implemented.txt",
+                    content: "implemented\n",
+                }),
+            ),
+            fauxAssistantMessage(
+                fauxToolCall("task_completed", {
+                    message: "- Implemented the fixture.\n- Verified setup.",
+                }),
+            ),
         ]);
         const fixture = createSessionFixture(projectRoot);
 
@@ -192,19 +210,17 @@ Deno.test("executePlan carries project validation settings without hiding the ve
 
             const executionCwd = result.executionContext?.executionCwd;
             assert(executionCwd, JSON.stringify(result));
-            const primarySettings = await Deno.readTextFile(`${projectRoot}/.wld/settings.json`);
-            assertEquals(await Deno.readTextFile(`${executionCwd}/.wld/settings.json`), primarySettings);
+            const primarySettings = await fsReadFile(`${projectRoot}/.wld/settings.json`, "utf8");
+            assertEquals(await fsReadFile(`${executionCwd}/.wld/settings.json`, "utf8"), primarySettings);
             assertStringIncludes(await git(executionCwd, ["show", "HEAD:.wld/settings.json"]), "printf primary");
-            const exclude = await new Deno.Command("git", {
+            const exclude = await captureForegroundProcess("git", {
                 args: ["rev-parse", "--git-path", "info/exclude"],
                 cwd: executionCwd,
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+            });
             assertEquals(exclude.code, 0);
             const rawExcludePath = new TextDecoder().decode(exclude.stdout).trim();
-            const excludePath = rawExcludePath.startsWith("/") ? rawExcludePath : `${executionCwd}/${rawExcludePath}`;
-            const excludeText = await Deno.readTextFile(excludePath);
+            const excludePath = isAbsolute(rawExcludePath) ? rawExcludePath : join(executionCwd, rawExcludePath);
+            const excludeText = await fsReadFile(excludePath, "utf8");
             assertEquals(excludeText.split(/\r?\n/).includes(".wld/settings.json"), false);
         } finally {
             fixture.hostedSession.dispose();
@@ -212,7 +228,7 @@ Deno.test("executePlan carries project validation settings without hiding the ve
     });
 });
 
-Deno.test("executePlan leaves real execution state resumable when Engineer omits task_completed", async () => {
+test("executePlan leaves real execution state resumable when Engineer omits task_completed", async () => {
     await withRuntimeCommandFixture("plan-executor-paused-", async ({ projectRoot, setModelMessages }) => {
         await initializeGitProject(projectRoot);
         await saveExecutablePlan(projectRoot, "paused-feature");
@@ -243,7 +259,7 @@ Deno.test("executePlan leaves real execution state resumable when Engineer omits
     });
 });
 
-Deno.test("executePlan resolves Pair collaboration from the real Plan and host capability", async () => {
+test("executePlan resolves Pair collaboration from the real Plan and host capability", async () => {
     await withRuntimeCommandFixture("plan-executor-pair-", async ({ projectRoot, setModelMessages }) => {
         await initializeGitProject(projectRoot);
         await saveExecutablePlan(projectRoot, "visual-feature", {

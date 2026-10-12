@@ -93,7 +93,7 @@ export function useCodeReviewHighlighting(files: readonly CodeReviewHighlightFil
             canceled = true;
             globalThis.clearTimeout(timer);
         };
-    }, [preparationKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [preparationKey]);
 
     return ready;
 }

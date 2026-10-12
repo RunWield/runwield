@@ -1,0 +1,10 @@
+env = false
+[install]
+linker = "isolated"
+auto = "disable"
+exact = true
+ignoreScripts = true
+minimumReleaseAge = 86400
+[run]
+bun = true
+shell = "bun"

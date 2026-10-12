@@ -16,6 +16,114 @@
  * This is RunWield-owned process machinery, not a dependency-injection seam.
  */
 
+import { spawn } from "node:child_process";
+import { env as inheritedEnv, kill, platform, versions } from "node:process";
+
+interface NativeProcessStatus {
+    code: number;
+    success: boolean;
+}
+export interface NativeProcess {
+    pid: number;
+    stdout: ReadableStream<Uint8Array>;
+    stderr: ReadableStream<Uint8Array>;
+    stdin: WritableStream<Uint8Array>;
+    status: Promise<NativeProcessStatus>;
+    kill(signal?: "SIGKILL" | "SIGTERM" | "SIGINT"): void;
+}
+export interface NativeSpawnOptions {
+    args: string[];
+    cwd: string;
+    env?: Record<string, string>;
+    stdin: "null" | "piped" | "inherit";
+    stdout: "piped" | "null" | "inherit";
+    stderr: "piped" | "null" | "inherit";
+    detached?: boolean;
+    signal?: AbortSignal;
+    windowsRawArguments?: boolean;
+}
+interface BunInputSink {
+    write(chunk: Uint8Array): number;
+    flush(wait: true): Promise<number>;
+    end(): number | Promise<number>;
+}
+interface BunProcess {
+    pid: number;
+    stdout: ReadableStream<Uint8Array>;
+    stderr: ReadableStream<Uint8Array>;
+    stdin: BunInputSink;
+    exited: Promise<number>;
+    kill(signal?: "SIGKILL" | "SIGTERM" | "SIGINT"): void;
+}
+interface BunSpawnOptions {
+    cmd: string[];
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    stdin: "ignore" | "pipe" | "inherit";
+    stdout: "ignore" | "pipe" | "inherit";
+    stderr: "ignore" | "pipe" | "inherit";
+    detached: boolean;
+    windowsVerbatimArguments?: boolean;
+}
+interface BunProcessRuntime {
+    spawn(options: BunSpawnOptions): BunProcess;
+}
+
+export function spawnNativeProcess(command: string, options: NativeSpawnOptions): NativeProcess {
+    if (!versions.bun) throw new Error("Foreground processes require Bun");
+    options.signal?.throwIfAborted();
+    const bun = Reflect.get(globalThis, "Bun") as BunProcessRuntime;
+    const child = bun.spawn({
+        cmd: [command, ...options.args],
+        cwd: options.cwd,
+        env: { ...inheritedEnv, ...options.env },
+        stdin: options.stdin === "piped" ? "pipe" : options.stdin === "inherit" ? "inherit" : "ignore",
+        stdout: options.stdout === "piped" ? "pipe" : options.stdout === "inherit" ? "inherit" : "ignore",
+        stderr: options.stderr === "piped" ? "pipe" : options.stderr === "inherit" ? "inherit" : "ignore",
+        detached: options.detached === true,
+        windowsVerbatimArguments: options.windowsRawArguments,
+    });
+    const abort = () => {
+        try {
+            child.kill("SIGTERM");
+        } catch {
+            /* Exit raced with cancellation. */
+        }
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) abort();
+    const status = child.exited
+        .then((code) => ({ code, success: code === 0 }))
+        .finally(() => options.signal?.removeEventListener("abort", abort));
+    // FileSink owns buffering; waiting for flush preserves web-stream
+    // backpressure for interactive protocol writers and large stdin payloads.
+    const stdin = new WritableStream<Uint8Array>({
+        async write(chunk) {
+            child.stdin.write(chunk);
+            await child.stdin.flush(true);
+        },
+        async close() {
+            await child.stdin.end();
+        },
+        async abort() {
+            await child.stdin.end();
+        },
+    });
+    return {
+        pid: child.pid,
+        stdout: child.stdout,
+        stderr: child.stderr,
+        stdin,
+        status,
+        kill: (signal) => child.kill(signal),
+    };
+}
+
+/** Both runtimes report a missing executable synchronously during spawn. */
+export function isMissingExecutableError(error: Error): boolean {
+    return error.name === "NotFound" || ("code" in error && error.code === "ENOENT");
+}
+
 /** Inputs for one foreground direct command. */
 export interface SpawnForegroundProcessOptions {
     /** Executable path or PATH-resolved command name. */
@@ -82,68 +190,7 @@ export interface ForegroundProcess {
 /** A running (or already-settled) foreground shell command. */
 export type ForegroundShell = ForegroundProcess;
 
-/**
- * Stop a remote-owned Linux process group. Its leader must be a live process
- * spawned with `detached: true` by the caller. Never signal the group after
- * its leader exits: the group number could later belong to another owner.
- * Check actual group membership, not just the direct child's status.
- */
-export async function terminateOwnedLinuxGroup(child: Deno.ChildProcess, graceMs = 5_000): Promise<boolean> {
-    if (Deno.build.os !== "linux") throw new Error("Remote group termination requires Linux");
-    let leaderExited = false;
-    const status = child.status.then(() => {
-        leaderExited = true;
-    });
-    await Promise.race([status, Promise.resolve()]);
-    if (!leaderExited) {
-        try {
-            Deno.kill(-child.pid, "SIGTERM");
-        } catch { /* Process may have exited. */ }
-    }
-    const members = async (): Promise<number[]> => {
-        const result: number[] = [];
-        for await (const entry of Deno.readDir("/proc")) {
-            if (!/^\d+$/.test(entry.name)) continue;
-            try {
-                const stat = await Deno.readTextFile(`/proc/${entry.name}/stat`);
-                const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-                if (Number(fields[2]) === child.pid && fields[0] !== "Z" && fields[0] !== "X") {
-                    result.push(Number(entry.name));
-                }
-            } catch (error) {
-                if (error instanceof Deno.errors.PermissionDenied) {
-                    // A restricted /proc cannot prove the group is empty.
-                    return [child.pid];
-                }
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
-            }
-        }
-        return result;
-    };
-    const until = Date.now() + graceMs;
-    let remaining = await members();
-    while (remaining.length && Date.now() < until) {
-        await new Promise((resolve) => setTimeout(resolve, Math.min(50, until - Date.now())));
-        remaining = await members();
-    }
-    if (remaining.length && !leaderExited) {
-        // The leader still owns the group identity, so a forced group signal
-        // cannot target a reused number. A timeout alone never grants takeover.
-        try {
-            Deno.kill(-child.pid, "SIGKILL");
-        } catch { /* Exit raced with signal. */ }
-        const forcedUntil = Date.now() + 2_000;
-        while (remaining.length && Date.now() < forcedUntil) {
-            await new Promise((resolve) => setTimeout(resolve, 50));
-            remaining = await members();
-        }
-    }
-    // A process stuck in uninterruptible sleep can outlive either deadline.
-    // Return uncertainty and let the caller stop dependent work immediately.
-    if (remaining.length) return false;
-    await Promise.race([status, new Promise((resolve) => setTimeout(resolve, 1_000))]);
-    return leaderExited;
-}
+export { terminateOwnedLinuxGroup } from "./linux-process-group.ts";
 
 function emptyClosedStream(): ReadableStream<Uint8Array> {
     return new ReadableStream<Uint8Array>({
@@ -159,41 +206,26 @@ function emptyClosedStream(): ReadableStream<Uint8Array> {
  * RunWield's own. On Windows `taskkill /T` is the tree guarantee, so the
  * direct-child kill waits until taskkill has had a chance to find descendants.
  */
-function terminateProcessTree(child: Deno.ChildProcess): void {
-    if (Deno.build.os === "windows") {
-        try {
-            const killer = new Deno.Command("taskkill", {
-                args: ["/F", "/T", "/PID", String(child.pid)],
-                stdout: "null",
-                stderr: "null",
-            }).spawn();
-            killer.status.then(
-                () => {
-                    try {
-                        child.kill();
-                    } catch {
-                        // The process may have exited between termination and the kill.
-                    }
-                },
-                () => {
-                    try {
-                        child.kill();
-                    } catch {
-                        // The process may have exited between termination and the kill.
-                    }
-                },
-            );
-        } catch {
+function terminateProcessTree(child: NativeProcess): void {
+    if (platform === "win32") {
+        const finish = () => {
             try {
                 child.kill();
             } catch {
-                // The process may have exited between termination and the kill.
+                // The process may have exited while taskkill was running.
             }
+        };
+        try {
+            const killer = spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
+            killer.once("error", () => {});
+            killer.once("close", finish);
+        } catch {
+            finish();
         }
         return;
     }
     try {
-        Deno.kill(-child.pid, "SIGKILL");
+        kill(-child.pid, "SIGKILL");
     } catch {
         try {
             child.kill("SIGKILL");
@@ -203,7 +235,7 @@ function terminateProcessTree(child: Deno.ChildProcess): void {
     }
 }
 
-function spawnOwnedProcess(options: SpawnForegroundProcessOptions): ForegroundProcess {
+function spawnOwnedProcess(options: SpawnForegroundProcessOptions, windowsRawArguments = false): ForegroundProcess {
     const { command, args = [], cwd, env, stdinText, signal, timeoutMs } = options;
     if (options.stdin && stdinText !== undefined) throw new Error("Choose interactive stdin or stdinText, not both.");
 
@@ -217,7 +249,7 @@ function spawnOwnedProcess(options: SpawnForegroundProcessOptions): ForegroundPr
         };
     }
 
-    let child: Deno.ChildProcess | null = null;
+    let child: NativeProcess | null = null;
     let terminatedBy: ForegroundTermination | null = null;
     let killSent = false;
     const terminate = (reason: ForegroundTermination): void => {
@@ -230,19 +262,20 @@ function spawnOwnedProcess(options: SpawnForegroundProcessOptions): ForegroundPr
     signal?.addEventListener("abort", onAbort, { once: true });
     const timeoutId = timeoutMs === undefined ? undefined : setTimeout(() => terminate("timeout"), timeoutMs);
 
-    let spawned: Deno.ChildProcess;
+    let spawned: NativeProcess;
     try {
-        spawned = new Deno.Command(command, {
+        spawned = spawnNativeProcess(command, {
             args,
             cwd,
             env,
+            windowsRawArguments,
             stdin: options.stdin || (stdinText === undefined ? "null" : "piped"),
             stdout: "piped",
             stderr: "piped",
             // Group leadership is what makes the whole tree terminable on
             // Unix-like systems; Windows uses taskkill /T instead.
-            ...(Deno.build.os === "windows" ? {} : { detached: true }),
-        }).spawn();
+            ...(platform === "win32" ? {} : { detached: true }),
+        });
     } catch (error) {
         signal?.removeEventListener("abort", onAbort);
         if (timeoutId !== undefined) clearTimeout(timeoutId);
@@ -252,7 +285,10 @@ function spawnOwnedProcess(options: SpawnForegroundProcessOptions): ForegroundPr
     if (stdinText !== undefined) {
         const writer = spawned.stdin.getWriter();
         const stdin = new TextEncoder().encode(stdinText);
-        writer.write(stdin).then(() => writer.close()).catch(() => undefined);
+        writer
+            .write(stdin)
+            .then(() => writer.close())
+            .catch(() => undefined);
     }
     // Close the pre-spawn race: if the abort fired while `child` was still null,
     // `terminatedBy` is already set and this call sends the kill exactly once.
@@ -303,13 +339,17 @@ export function spawnForegroundProcess(options: SpawnForegroundProcessOptions): 
  */
 export function spawnForegroundShell(options: SpawnForegroundShellOptions): ForegroundShell {
     const { command, cwd, env, signal, timeoutMs } = options;
-    const isWindows = Deno.build.os === "windows";
-    return spawnOwnedProcess({
-        command: isWindows ? "cmd" : "sh",
-        args: [isWindows ? "/c" : "-c", command],
-        cwd,
-        env,
-        signal,
-        timeoutMs,
-    });
+    const isWindows = platform === "win32";
+    return spawnOwnedProcess(
+        {
+            command: isWindows ? "cmd" : "sh",
+            // cmd parses its own quoting; CRT escaping would turn quotes into literal backslashes.
+            args: isWindows ? ["/d", "/s", "/c", `"${command}"`] : ["-c", command],
+            cwd,
+            env,
+            signal,
+            timeoutMs,
+        },
+        isWindows,
+    );
 }

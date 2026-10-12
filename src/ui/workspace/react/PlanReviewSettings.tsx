@@ -30,10 +30,6 @@ const CODE_DIFF_STYLE_OPTIONS = [
     { value: "split", label: "Split" },
     { value: "unified", label: "Unified" },
 ];
-const CODE_OVERFLOW_OPTIONS = [
-    { value: "scroll", label: "Scroll" },
-    { value: "wrap", label: "Wrap" },
-];
 const CODE_INDICATOR_OPTIONS = [
     { value: "bars", label: "Bars" },
     { value: "classic", label: "Classic" },
@@ -57,7 +53,9 @@ const DEFAULT_CODE_LABELS = [
     { label: "chore", display: "chore", blocking: true },
 ];
 
-export function PlanReviewSettings({ mode = "plan", open, onClose, onUIPreferencesChange }) {
+export function PlanReviewSettings(
+    { mode = "plan", open, onClose, onUIPreferencesChange, codeDiffStyle, onCodeDiffStyleChange },
+) {
     const [activeTab, setActiveTab] = useState("general");
     const [identity, setIdentity] = useState("");
     const [autoCloseDelay, setAutoCloseDelayState] = useState("off");
@@ -70,7 +68,6 @@ export function PlanReviewSettings({ mode = "plan", open, onClose, onUIPreferenc
     const conventionalComments = useConfigValue("conventionalComments");
     const conventionalLabelsJson = useConfigValue("conventionalLabels");
     const diffStyle = useConfigValue("diffStyle");
-    const diffOverflow = useConfigValue("diffOverflow");
     const diffIndicators = useConfigValue("diffIndicators");
     const diffLineDiffType = useConfigValue("diffLineDiffType");
     const diffShowLineNumbers = useConfigValue("diffShowLineNumbers");
@@ -209,10 +206,11 @@ export function PlanReviewSettings({ mode = "plan", open, onClose, onUIPreferenc
                                             diffFontSize={diffFontSize}
                                             diffIndicators={diffIndicators}
                                             diffLineDiffType={diffLineDiffType}
-                                            diffOverflow={diffOverflow}
                                             diffShowBackground={diffShowBackground}
                                             diffShowLineNumbers={diffShowLineNumbers}
-                                            diffStyle={diffStyle}
+                                            diffStyle={codeDiffStyle || diffStyle}
+                                            onDiffStyleChange={onCodeDiffStyleChange ||
+                                                ((value) => configStore.set("diffStyle", value))}
                                         />
                                     )
                                     : (
@@ -435,10 +433,10 @@ function CodeDisplaySettings({
     diffFontSize,
     diffIndicators,
     diffLineDiffType,
-    diffOverflow,
     diffShowBackground,
     diffShowLineNumbers,
     diffStyle,
+    onDiffStyleChange,
 }) {
     return (
         <>
@@ -478,17 +476,9 @@ function CodeDisplaySettings({
             <CodeDisplayChoice
                 description="Side-by-side or inline diff view"
                 label="Diff Style"
-                onChange={(value) => configStore.set("diffStyle", value)}
+                onChange={onDiffStyleChange}
                 options={CODE_DIFF_STYLE_OPTIONS}
                 value={diffStyle}
-            />
-            <div className="border-t border-border" />
-            <CodeDisplayChoice
-                description="How long code lines are displayed"
-                label="Line Overflow"
-                onChange={(value) => configStore.set("diffOverflow", value)}
-                options={CODE_OVERFLOW_OPTIONS}
-                value={diffOverflow}
             />
             <div className="border-t border-border" />
             <CodeDisplayChoice

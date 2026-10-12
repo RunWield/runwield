@@ -1,5 +1,17 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { serveHttp } from "../../shared/http-server.ts";
+import { type NativeSpawnOptions, spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { type CapturedProcessOutput } from "../../shared/captured-process.ts";
+import { type NativeProcess } from "../../shared/foreground-process.ts";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { test } from "node:test";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { parseWorkspaceServeArgs } from "./serve.ts";
 
@@ -28,16 +40,16 @@ const denoConfigPath = fromFileUrl(new URL("../../../deno.json", import.meta.url
 async function withWorkspaceCommandFixture(
     run: (fixture: WorkspaceCommandFixture) => Promise<void>,
 ): Promise<void> {
-    const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-workspace-command-" });
+    const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-workspace-command-"));
     const homeDir = join(fixtureRoot, "home");
     const projectRoot = join(fixtureRoot, "project");
     await Promise.all([
-        Deno.mkdir(homeDir, { recursive: true }),
-        Deno.mkdir(projectRoot, { recursive: true }),
+        fsMkdir(homeDir, { recursive: true }),
+        fsMkdir(projectRoot, { recursive: true }),
     ]);
-    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
-    const port = (listener.addr as Deno.NetAddr).port;
-    listener.close();
+    const listener = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, () => new Response("reserved"));
+    const port = listener.addr.port;
+    await listener.shutdown();
     try {
         await run({
             databasePath: join(homeDir, ".wld", "owner-coordination.sqlite3"),
@@ -47,7 +59,7 @@ async function withWorkspaceCommandFixture(
             projectRoot,
         });
     } finally {
-        await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+        await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
     }
 }
 
@@ -56,14 +68,15 @@ function workspaceCommandSource(argv: string[]): string {
         `await runWorkspaceCommand(${JSON.stringify(argv)});\n`;
 }
 
-function workspaceCommandOptions(fixture: WorkspaceCommandFixture, argv: string[]): Deno.CommandOptions {
+function workspaceCommandOptions(fixture: WorkspaceCommandFixture, argv: string[]): NativeSpawnOptions {
     return {
-        args: ["eval", "--config", denoConfigPath, workspaceCommandSource(argv)],
+        args: runtimeSourceArgs(["eval", "--config", denoConfigPath, workspaceCommandSource(argv)]),
         cwd: fixture.projectRoot,
         env: {
             HOME: fixture.homeDir,
             WLD_TEST_SANDBOX_HOME: fixture.homeDir,
         },
+        stdin: "null",
         stdout: "piped",
         stderr: "piped",
     };
@@ -72,11 +85,12 @@ function workspaceCommandOptions(fixture: WorkspaceCommandFixture, argv: string[
 async function runWorkspaceChild(
     fixture: WorkspaceCommandFixture,
     argv: string[],
-): Promise<Deno.CommandOutput> {
-    return await new Deno.Command(Deno.execPath(), workspaceCommandOptions(fixture, argv)).output();
+): Promise<CapturedProcessOutput> {
+    const { args, cwd, env } = workspaceCommandOptions(fixture, argv);
+    return await captureForegroundProcess(process.execPath, { args, cwd, env });
 }
 
-async function waitForWorkspace(origin: string, serverChild: Deno.ChildProcess): Promise<Response> {
+async function waitForWorkspace(origin: string, serverChild: NativeProcess): Promise<Response> {
     let lastError: Error | undefined;
     const deadline = Date.now() + 120_000;
     while (Date.now() < deadline) {
@@ -98,16 +112,16 @@ async function waitForWorkspace(origin: string, serverChild: Deno.ChildProcess):
     throw lastError || new Error(`Owner Workspace did not start at ${origin}.`);
 }
 
-async function collectServerOutput(serverChild: Deno.ChildProcess): Promise<Deno.CommandOutput> {
+async function collectServerOutput(serverChild: NativeProcess): Promise<CapturedProcessOutput> {
     try {
         serverChild.kill("SIGINT");
     } catch {
         // The child already stopped; output below reports its result.
     }
-    const output = serverChild.output();
+    const output = collectProcessOutput(serverChild);
     return await Promise.race([
         output,
-        new Promise<Deno.CommandOutput>((resolve, reject) => {
+        new Promise<CapturedProcessOutput>((resolve, reject) => {
             setTimeout(async () => {
                 try {
                     serverChild.kill("SIGKILL");
@@ -124,7 +138,7 @@ async function collectServerOutput(serverChild: Deno.ChildProcess): Promise<Deno
     ]);
 }
 
-Deno.test("workspace serve parser defaults to loopback and rejects unsafe non-loopback", () => {
+test("workspace serve parser defaults to loopback and rejects unsafe non-loopback", () => {
     assertEquals(parseWorkspaceServeArgs([]), {
         host: "127.0.0.1",
         port: 8787,
@@ -152,7 +166,7 @@ Deno.test("workspace serve parser defaults to loopback and rejects unsafe non-lo
     assertStringIncludes(message, "Non-loopback owner Workspace bind requires");
 });
 
-Deno.test("workspace help and validation use isolated command processes without creating owner state", async () => {
+test("workspace help and validation use isolated command processes without creating owner state", async () => {
     await withWorkspaceCommandFixture(async (fixture) => {
         const help = await runWorkspaceChild(fixture, ["--help"]);
         assertEquals(help.code, 0);
@@ -172,11 +186,11 @@ Deno.test("workspace help and validation use isolated command processes without 
         const unsafeServe = await runWorkspaceChild(fixture, ["serve", "--bind", "0.0.0.0", "--no-open"]);
         assertEquals(unsafeServe.code, 0);
         assertStringIncludes(decoder.decode(unsafeServe.stderr), "Non-loopback owner Workspace bind requires");
-        assertEquals(await Deno.stat(fixture.databasePath).then(() => true).catch(() => false), false);
+        assertEquals(await fsStat(fixture.databasePath).then(() => true).catch(() => false), false);
     });
 });
 
-Deno.test("workspace serve and pair complete the real browser pairing lifecycle", async () => {
+test("workspace serve and pair complete the real browser pairing lifecycle", async () => {
     await withWorkspaceCommandFixture(async (fixture) => {
         const serveArgs = [
             "serve",
@@ -184,8 +198,8 @@ Deno.test("workspace serve and pair complete the real browser pairing lifecycle"
             String(fixture.port),
             "--no-open",
         ];
-        const serverChild = new Deno.Command(Deno.execPath(), workspaceCommandOptions(fixture, serveArgs)).spawn();
-        let serverOutput: Deno.CommandOutput | undefined;
+        const serverChild = spawnNativeProcess(process.execPath, workspaceCommandOptions(fixture, serveArgs));
+        let serverOutput: CapturedProcessOutput | undefined;
         try {
             const pairPage = await waitForWorkspace(fixture.origin, serverChild);
             const pairPageText = await pairPage.text();

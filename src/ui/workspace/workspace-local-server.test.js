@@ -1,4 +1,14 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -14,8 +24,8 @@ import { createWorkspaceApp } from "./server.js";
 import { createWorkRecordMnemotecaFixture } from "../../shared/work-records/test-fixtures/mnemoteca-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
-Deno.test("Workspace wrapper protects page routes and serves public assets without token", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace wrapper protects page routes and serves public assets without token", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "workspace-card", "# Workspace Card\n\n## Context\n\nSSR card", {
             planId: "workspace-card-id",
@@ -56,12 +66,12 @@ Deno.test("Workspace wrapper protects page routes and serves public assets witho
         assertEquals(themeCss.headers.get("cache-control"), "no-store");
         assertStringIncludes(await themeCss.text(), "--rw-theme-name:");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("PlanBoard SSR renders status column board cards", async () => {
-    const cwd = await Deno.makeTempDir();
+test("PlanBoard SSR renders status column board cards", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "workspace-card", "# Workspace Card\n\n## Context\n\nSSR card\n\nBody", {
             planId: "workspace-card-id",
@@ -107,12 +117,12 @@ Deno.test("PlanBoard SSR renders status column board cards", async () => {
         assertStringIncludes(html, "Drag this Plan Card to an allowed status column");
         assertEquals(html.includes("Move to Feedback"), false);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace page routes require Astro handler instead of static React fallback", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace page routes require Astro handler instead of static React fallback", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "one", "# One\n", {
             planId: "duplicate-id",
@@ -141,13 +151,13 @@ Deno.test("Workspace page routes require Astro handler instead of static React f
             assertStringIncludes(body, "Duplicate planId");
         }
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace API and detail route return readable editable Plan body metadata", async () =>
+test("Workspace API and detail route return readable editable Plan body metadata", async () =>
     await withProcessGlobalTestLock(async () => {
-        const cwd = await Deno.makeTempDir();
+        const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         try {
             await savePlan(
                 cwd,
@@ -264,11 +274,11 @@ Deno.test("Workspace API and detail route return readable editable Plan body met
             assertStringIncludes(html, "urgent");
             assertEquals(html.includes("/tmp/secret-worktree-path"), false);
         } finally {
-            await Deno.remove(cwd, { recursive: true });
+            await fsRm(cwd, { recursive: true });
         }
     }));
 
-Deno.test("PlanDetail derives Epic UI from classification rather than legacy subtype metadata", () => {
+test("PlanDetail derives Epic UI from classification rather than legacy subtype metadata", () => {
     const html = renderToStaticMarkup(
         React.createElement(PlanDetail, {
             plan: {
@@ -295,8 +305,8 @@ Deno.test("PlanDetail derives Epic UI from classification rather than legacy sub
     assertEquals(html.includes("Child plans"), false);
 });
 
-Deno.test("Workspace detail SSR fallback renders visible empty Plan body state", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace detail SSR fallback renders visible empty Plan body state", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "empty-detail", "", {
             planId: "empty-detail-id",
@@ -318,17 +328,17 @@ Deno.test("Workspace detail SSR fallback renders visible empty Plan body state",
         assertStringIncludes(html, 'class="markdown-view"');
         assertStringIncludes(html, "No Plan body content.");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace body-save API preserves front matter rejects stale writes and requires token", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace body-save API preserves front matter rejects stale writes and requires token", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await Deno.mkdir(`${cwd}/docs/plans`, { recursive: true });
+        await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
         const frontMatter =
             "---\nplanId: api-id\n# comment remains\nclassification: FEATURE\nstatus: draft\nunknown: kept\n---\n";
-        await Deno.writeTextFile(`${cwd}/docs/plans/api.md`, `${frontMatter}# Original\n`);
+        await fsWriteFile(`${cwd}/docs/plans/api.md`, `${frontMatter}# Original\n`);
         const loaded = await loadPlanBodyById(cwd, "api-id");
         const app = createWorkspaceApp({
             cwd,
@@ -362,7 +372,7 @@ Deno.test("Workspace body-save API preserves front matter rejects stale writes a
         assertEquals(saved.status, 200);
         const savedBody = await saved.json();
         assertEquals(typeof savedBody.bodyHash, "string");
-        assertEquals(await Deno.readTextFile(`${cwd}/docs/plans/api.md`), `${frontMatter}# Saved\n`);
+        assertEquals(await fsReadFile(`${cwd}/docs/plans/api.md`, "utf8"), `${frontMatter}# Saved\n`);
 
         const stale = await app(
             new Request("http://localhost/api/plans/api-id/body", {
@@ -398,12 +408,12 @@ Deno.test("Workspace body-save API preserves front matter rejects stale writes a
         assertEquals(epicRejected.status, 409);
         assertStringIncludes((await epicRejected.json()).error, "Epic Plan bodies are not editable");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace Epic detail SSR-renders child FEATURE Plans by status", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(
             cwd,
@@ -544,6 +554,6 @@ Deno.test("Workspace Epic detail SSR-renders child FEATURE Plans by status", asy
         assertStringIncludes(heldDetailHtml, "Epic on hold from in_progress at 2026-01-03T00:00:00.000Z");
         assertStringIncludes(heldDetailHtml, "reason: waiting for budget");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });

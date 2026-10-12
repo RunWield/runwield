@@ -32,7 +32,7 @@ Create `prototypes/<slug>/README.md` with:
 - the design question;
 - the existing route/surface being approximated;
 - the variant keys;
-- the run command (`deno task prototype <slug>` in RunWield).
+- the run command (`bun run prototype <slug>` in RunWield).
 
 Before writing executable files, confirm the path is ignored:
 
@@ -42,8 +42,8 @@ git check-ignore prototypes/<slug>/
 
 ### 2. Build the local host
 
-Use the project's existing browser stack where possible. In RunWield, create `prototypes/<slug>/deno.json` with a local
-`dev` task. The host may import RunWield tokens/components from `src/` when that is stable and read-only, or copy a
+Use the project's existing browser stack where possible. In RunWield, create `prototypes/<slug>/package.json` with a local
+`scripts.dev` command. The host may import RunWield tokens/components from `src/` when that is stable and read-only, or copy a
 small fixture when imports would couple the prototype too tightly.
 
 Keep all variant components, switcher code, fixture-only CSS, and route simulation inside the ignored prototype folder.

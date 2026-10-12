@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -7,7 +10,7 @@ import { openFileSessionStore } from "./file-session-store.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import { createReplayEvents } from "./session-transcript-projection.js";
 
-Deno.test("an idle managed Session receives a completed shell task without another user prompt", async () => {
+test("an idle managed Session receives a completed shell task without another user prompt", async () => {
     await withRuntimeCommandFixture("background-delivery-", async ({ projectRoot, setModelResponseFactories }) => {
         let generatedRequest = "";
         let taskId = "";
@@ -64,7 +67,7 @@ Deno.test("an idle managed Session receives a completed shell task without anoth
             assertEquals(snapshot?.managed?.generation, initialGeneration + 2);
             const session = store.getSessionById(snapshot?.managed?.runwieldSessionId || "");
             assert(session);
-            const transcript = await Deno.readTextFile(session.transcriptPath);
+            const transcript = await fsReadFile(session.transcriptPath, "utf8");
             assertStringIncludes(transcript, taskId);
             assertStringIncludes(transcript, '"dispatchKind":"background_task_result"');
             assertStringIncludes(transcript, "I received the background result.");

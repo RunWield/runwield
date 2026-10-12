@@ -1,5 +1,8 @@
+import { platform } from "node:process";
+import { chmod } from "node:fs/promises";
 /** Temporary access to the running agent from another surface on the same machine. */
 import { createHash } from "node:crypto";
+import { createServer as createSocketServer, type Socket } from "node:net";
 import { createServer, request as httpRequest, type ServerResponse } from "node:http";
 import { getHomeDir } from "../../constants.js";
 
@@ -67,7 +70,7 @@ type LiveSessionSnapshot = {
 
 function socketPath(sessionId: string, operationId: string) {
     const key = createHash("sha256").update(`${getHomeDir()}:${sessionId}:${operationId}`).digest("hex").slice(0, 40);
-    return Deno.build.os === "windows" ? `\\\\.\\pipe\\runwield-${key}` : `/tmp/runwield-${key}.sock`;
+    return platform === "win32" ? `\\\\.\\pipe\\runwield-${key}` : `/tmp/runwield-${key}.sock`;
 }
 
 export interface LiveSessionRuntime {
@@ -97,7 +100,20 @@ export async function openLiveSessionConnection(
     const path = socketPath(managed.runwieldSessionId, operationId);
     const steeringRequests = new Map<string, SteeringReceipt>();
     const streams = new Set<ServerResponse>();
+    const sockets = new Set<Socket>();
+    const activeResponses = new Map<Socket, number>();
+    let closing = false;
     const server = createServer(async (request, response) => {
+        const socket = request.socket;
+        activeResponses.set(socket, (activeResponses.get(socket) || 0) + 1);
+        response.once("finish", () => {
+            const remaining = (activeResponses.get(socket) || 1) - 1;
+            if (remaining) activeResponses.set(socket, remaining);
+            else {
+                activeResponses.delete(socket);
+                if (closing) socket.end();
+            }
+        });
         response.setHeader("content-type", "application/json");
         try {
             session.getManagedOperationCapability()?.assertLive();
@@ -173,19 +189,35 @@ export async function openLiveSessionConnection(
             response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
         }
     });
+    // Accept the OS pipe/socket through node:net. Bun's native HTTP listener treats
+    // Windows pipe names as Unix paths; the HTTP connection handler supports real
+    // net sockets and keeps the same request, response and streaming protocol.
+    const listener = createSocketServer((socket) => {
+        sockets.add(socket);
+        socket.once("close", () => {
+            sockets.delete(socket);
+            activeResponses.delete(socket);
+        });
+        server.emit("connection", socket);
+    });
     try {
         await new Promise<void>((resolve, reject) => {
-            server.once("error", reject);
-            server.listen(path, () => resolve(undefined));
+            listener.once("error", reject);
+            listener.listen(path, () => resolve(undefined));
         });
-        if (Deno.build.os !== "windows") await Deno.chmod(path, 0o600);
+        if (platform !== "win32") await chmod(path, 0o600);
     } catch (error) {
-        server.close();
+        listener.close();
         throw error;
     }
     return async () => {
+        closing = true;
+        const closed = new Promise<void>((resolve) => listener.close(() => resolve(undefined)));
         for (const stream of streams) stream.end();
-        await new Promise<void>((resolve) => server.close(() => resolve(undefined)));
+        for (const socket of sockets) {
+            if (!activeResponses.has(socket)) socket.end();
+        }
+        await closed;
         steeringRequests.clear();
     };
 }
