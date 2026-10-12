@@ -29,7 +29,8 @@ jobs:
                     console.log(JSON.stringify({runtime: process.versions, input: candidate, sync: fs.realpathSync(candidate), native: fs.realpathSync.native(candidate), async: await fs.promises.realpath(candidate)}));
                   }
                   '@
-                  $root = Join-Path $env:RUNNER_TEMP 'User Profile/path-project'
+                  $tempRoot = deno eval --no-config 'import * as fs from "node:fs"; import * as os from "node:os"; import * as path from "node:path"; console.log(await fs.promises.mkdtemp(path.join(os.tmpdir(), "wld-windows-package-")))'
+                  $root = Join-Path $tempRoot 'User Profile/workspace-artifact-project'
                   New-Item -ItemType Directory -Force $root | Out-Null
                   $file = Join-Path $env:RUNNER_TEMP 'path-probe.mjs'
                   Set-Content -LiteralPath $file -Value $probe
