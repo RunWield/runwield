@@ -1,3 +1,11 @@
+import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
+import { resolveSessionContinuation } from "../../shared/session/session-runtime.ts";
+import {
+    confirmMissingManagedProjectDirectory,
+    confirmProjectDirectory,
+    DirectoryStartupCanceled,
+} from "./directory-warning.ts";
+import { inspectMissingManagedProjectDirectory, inspectProjectDirectory } from "../../shared/project-directory.ts";
 /**
  * @module ui/tui/chat-session
  * High-level interactive loop for the TUI.
@@ -149,10 +157,29 @@ export async function startInteractiveSession(
     initialUserRequest: string | null,
     options: StartInteractiveSessionOptions,
 ): Promise<UiAPI> {
+    if (!await confirmProjectDirectory()) throw new DirectoryStartupCanceled("Project startup canceled");
+    let suppressAutomaticProjectOffers = inspectProjectDirectory(getCwd()).classified;
     const chatBuiltinSlashNames = new Set<string>();
     for (const command of getSlashCommandDefinitions()) chatBuiltinSlashNames.add(command.name);
     const sessionStartMode = options.sessionStartMode || "new";
     const shouldDeferManagedActivation = sessionStartMode === "new";
+    if (!await confirmProjectDirectory(resolvePrimaryCheckoutRoot(getCwd()))) {
+        throw new DirectoryStartupCanceled("Project startup canceled");
+    }
+    const continuation = sessionStartMode === "continue"
+        ? await resolveSessionContinuation(getCwd(), options.resumeSessionId)
+        : null;
+    if (continuation) {
+        for (const root of [continuation.cwd, resolvePrimaryCheckoutRoot(continuation.cwd)]) {
+            const confirmed = continuation.managed
+                ? await confirmMissingManagedProjectDirectory(root)
+                : await confirmProjectDirectory(root);
+            if (!confirmed) throw new DirectoryStartupCanceled("Project startup canceled");
+            suppressAutomaticProjectOffers ||=
+                (continuation.managed ? inspectMissingManagedProjectDirectory(root) : inspectProjectDirectory(root))
+                    .classified;
+        }
+    }
     const sessionStore = shouldDeferManagedActivation ? null : openFileSessionStore();
     const sessionRuntime = createSessionRuntime({ sessionStore, ownerProcessKind: "tui" });
     const disposables: Array<() => void | Promise<void>> = [];
@@ -204,7 +231,7 @@ export async function startInteractiveSession(
         const createdSession = await sessionRuntime.createInteractiveSession({
             cwd: sessionCwd,
             mode: sessionStartMode,
-            resumeSessionId: options.resumeSessionId,
+            resumeSessionId: continuation?.managed ? continuation.sessionId : options.resumeSessionId,
             deferManagedActivationUntilAgentReady: shouldDeferManagedActivation,
         });
         let sessionId = createdSession.sessionId;
@@ -216,7 +243,8 @@ export async function startInteractiveSession(
         const sessionStartedAt = createdSession.startedAt;
         let sessionStartedEmptyProjectDirectory = false;
         try {
-            sessionStartedEmptyProjectDirectory = await isEmptyProjectDirectory(getCwd());
+            sessionStartedEmptyProjectDirectory = !suppressAutomaticProjectOffers &&
+                await isEmptyProjectDirectory(getCwd());
         } catch {
             sessionStartedEmptyProjectDirectory = false;
         }
@@ -462,7 +490,8 @@ export async function startInteractiveSession(
             return true;
         };
         if (
-            !explicitOnboardingStartup && !sessionStartedEmptyProjectDirectory && !initDone &&
+            !suppressAutomaticProjectOffers && !explicitOnboardingStartup && !sessionStartedEmptyProjectDirectory &&
+            !initDone &&
             !modelWelcomeResult.noModel
         ) {
             const alreadyOffered = await isInitOfferedFn();
@@ -723,7 +752,8 @@ export async function startInteractiveSession(
                 tuiRuntimeAdapter.resumeTutorialPresentation({ discard: true });
             }
         }
-        const automaticOnboardingEligible = !explicitOnboardingStartup && sessionStartMode === "new" &&
+        const automaticOnboardingEligible = !suppressAutomaticProjectOffers && !explicitOnboardingStartup &&
+            sessionStartMode === "new" &&
             !initialUserRequest &&
             getCustomSetting(
                     ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,

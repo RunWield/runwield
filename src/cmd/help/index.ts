@@ -36,6 +36,7 @@ function formatGlobalHelp(slashSurface?: "tui" | "acp" | "workspace"): string {
     lines.push(
         "",
         "Global flags:",
+        "  --allow-system-directory   Acknowledge exact home/system folder use for this invocation (leading flag)",
         "  --continue, -c   Continue newest saved session (default startup route only)",
         "  --help, -h       Show global help or command help",
         "  --version, -v    Print version and target architecture",

@@ -21,10 +21,16 @@ devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-10-11"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/home-system-folder-warning"
+status: "reviewed"
+validatedCommit: "d19d13fbbbbc34cb4b70ae8642146c0fc6b77ffc"
+workRecord:
+    status: "generated"
+    recordId: "0f8a6806-e5c2-4ebf-a95c-b371a7ce5ddb"
+    path: "docs/work-records/2026-10-12-home-and-system-folder-consent-across-cli-and-workspace.md"
+    lastAttemptAt: "2026-10-12T14:22:13.205Z"
 ---
 
 # Warn Before Using Home or System Folders

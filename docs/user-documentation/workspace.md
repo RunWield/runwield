@@ -187,3 +187,12 @@ A container setup for running Workspace on a server is coming soon.
 | Bad Gateway / 502             | Tailscale is reachable, but Workspace is not. Start the Workspace server and check its terminal for errors.                       |
 | Pairing code expired          | Refresh the pairing page and run the new command on the computer running Workspace.                                               |
 | Repository or Session missing | Link the repository under **Projects**, check its absolute path, and send a first message if the Session is empty.                |
+
+### Confirm a home or system Project root
+
+Linking or relinking an exact server home, filesystem root, or listed system folder shows **System or home folder
+detected. Continue?** Choose **Continue** to retry the operation or **Quit** to keep the form without changing
+registration. Escape also cancels. Ordinary descendants do not warn. This is consent, not a sandbox. The server enforces
+acknowledgement before writes; API clients must handle HTTP 409 `directory_confirmation_required` and retry with its
+opaque `confirmation` as `directoryConfirmation`. A changed input or resolved target requires a new acknowledgement.
+Responses do not disclose server absolute paths.

@@ -461,6 +461,26 @@ unless a current unanswered interaction needs the owner.
 
 **Scope and maturity:** Personal Remote Workspace v1 target.
 
+**Requirement: Confirm home and system Project roots.**
+
+Add and relink inspect the submitted root on the server using Core's
+[exact directory policy](runwield-core-prd.md#project-context-and-initialization). A classified root requires explicit
+Continue/Quit consent before the registration transaction writes Project records or root evidence. The server returns
+HTTP 409 `directory_confirmation_required` with warning text and an opaque acknowledgement bound to the submitted and
+canonical root. Retry rechecks that binding. Responses do not disclose the server home or resolved absolute paths.
+
+Both forms use the same accessible modal, initially focused on Quit, with keyboard containment, Escape dismissal, and
+focus return. Quit keeps the entered form values and makes no registration change. Pending requests prevent duplicate
+submission. Ordinary roots retain their existing one-request success contract. Existing Projects are not revoked.
+
+**Acceptance scenarios:**
+
+- Given an exact server home or a symlink to a listed root, add or relink returns confirmation-required with no writes.
+  Continue registers or relinks once; Quit or Escape keeps the form and existing Project unchanged.
+- Given a changed submitted root or retargeted symlink, an earlier acknowledgement cannot authorize the new target.
+  Existing authentication, request-forgery protection, deduplication, and retarget conflicts still apply.
+- Given an ordinary descendant of a listed root, add and relink need no folder acknowledgement.
+
 **Requirement: Limit Workspace reach to registered Projects.**
 
 For each registered Project, Workspace shows:
