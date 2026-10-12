@@ -1,29 +1,36 @@
+export const GUIDED_REVIEW_USAGE_VERSION = 2;
 export const GUIDED_REVIEW_EVENT_PREFIX = "RUNWIELD_GUIDED_REVIEW_EVENT ";
 
 export interface GuidedReviewUsage {
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-    costUsd: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    cacheReadTokens: number | null;
+    cacheWriteTokens: number | null;
+    costUsd: number | null;
     contextWindow?: number;
 }
 
 export interface GuidedReviewUsageEvent {
-    version: 1;
+    version: 2;
     type: "usage";
     usage: GuidedReviewUsage;
 }
 
-function requireNumber(value: number | undefined, name: string): number {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
+function requireNumber(value: number | null | undefined, name: string): number {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
         throw new Error(`Malformed Guided Review usage frame: ${name} must be a finite number.`);
     }
     return value;
 }
 
+function requireMeasurement(value: number | null | undefined, name: string): number | null {
+    return value === null ? null : requireNumber(value, name);
+}
+
 export function encodeGuidedReviewUsageEvent(usage: GuidedReviewUsage): string {
-    return `${GUIDED_REVIEW_EVENT_PREFIX}${JSON.stringify({ version: 1, type: "usage", usage })}\n`;
+    return `${GUIDED_REVIEW_EVENT_PREFIX}${
+        JSON.stringify({ version: GUIDED_REVIEW_USAGE_VERSION, type: "usage", usage })
+    }\n`;
 }
 
 export function parseGuidedReviewUsageEventLine(line: string): GuidedReviewUsageEvent | null {
@@ -37,20 +44,20 @@ export function parseGuidedReviewUsageEventLine(line: string): GuidedReviewUsage
             `Malformed Guided Review usage frame: ${error instanceof Error ? error.message : String(error)}`,
         );
     }
-    if (parsed.version !== 1 || parsed.type !== "usage" || !parsed.usage) {
-        throw new Error("Malformed Guided Review usage frame: expected version 1 usage event.");
+    if (parsed.version !== GUIDED_REVIEW_USAGE_VERSION || parsed.type !== "usage" || !parsed.usage) {
+        throw new Error("Malformed Guided Review usage frame: expected version 2 usage event.");
     }
     const usage: GuidedReviewUsage = {
-        inputTokens: requireNumber(parsed.usage.inputTokens, "inputTokens"),
-        outputTokens: requireNumber(parsed.usage.outputTokens, "outputTokens"),
-        cacheReadTokens: requireNumber(parsed.usage.cacheReadTokens, "cacheReadTokens"),
-        cacheWriteTokens: requireNumber(parsed.usage.cacheWriteTokens, "cacheWriteTokens"),
-        costUsd: requireNumber(parsed.usage.costUsd, "costUsd"),
+        inputTokens: requireMeasurement(parsed.usage.inputTokens, "inputTokens"),
+        outputTokens: requireMeasurement(parsed.usage.outputTokens, "outputTokens"),
+        cacheReadTokens: requireMeasurement(parsed.usage.cacheReadTokens, "cacheReadTokens"),
+        cacheWriteTokens: requireMeasurement(parsed.usage.cacheWriteTokens, "cacheWriteTokens"),
+        costUsd: requireMeasurement(parsed.usage.costUsd, "costUsd"),
     };
     if (parsed.usage.contextWindow !== undefined) {
         usage.contextWindow = requireNumber(parsed.usage.contextWindow, "contextWindow");
     }
-    return { version: 1, type: "usage", usage };
+    return { version: GUIDED_REVIEW_USAGE_VERSION, type: "usage", usage };
 }
 
 export const GUIDED_REVIEW_METADATA_PREFIX = "RUNWIELD_GUIDED_REVIEW_METADATA ";

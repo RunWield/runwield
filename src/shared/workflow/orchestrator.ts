@@ -40,6 +40,7 @@ import {
 } from "../session/session-runtime-events.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
 import { decidePostExecution, decidePostPlanning, summarizeWorkflowDecision } from "./decisions.ts";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { buildAgentHandoffRequest } from "./workflow-prompts.ts";
 import {
@@ -343,8 +344,26 @@ export async function dispatchPostTriage({
         throw new Error("dispatchPostTriage: hostedSession is required");
     }
     const projectRoot = hostedSession.cwd;
-    const recordMetric = (metric: Parameters<typeof recordWorkflowMetric>[0]) =>
-        recordWorkflowMetric(metric, projectRoot);
+    const recordMetric = (metric: Parameters<typeof recordWorkflowMetric>[0]) => {
+        if (
+            metric.event === "feature_project_outcome" || metric.event === "operation_completed_observed" ||
+            metric.event === "quick_fix_completed_observed"
+        ) {
+            const details = metric.details;
+            const completed = details && typeof details === "object" && "taskCompletedObserved" in details &&
+                details.taskCompletedObserved === true;
+            return recordWorkflowOutcome(projectRoot, {
+                category: "execution",
+                event: metric.event,
+                operationId: crypto.randomUUID(),
+                planName: typeof metric.planName === "string" ? metric.planName : undefined,
+                attemptId: hostedSession.getActiveExecutionWorkflow()?.worktreeId,
+                session: hostedSession.getManagedMetadata(),
+                outcome: completed ? "succeeded" : "ongoing",
+            });
+        }
+        return recordWorkflowMetric(metric, projectRoot);
+    };
 
     const normalizedTriage = normalizeTriageOutcome(triage);
     if (!normalizedTriage) throw new Error("dispatchPostTriage: routingIntent is required");

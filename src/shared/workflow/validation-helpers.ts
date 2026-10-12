@@ -38,6 +38,7 @@ import {
     RuntimeInteractionTypes,
 } from "../session/session-runtime-interactions.js";
 
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 
 import { autoGenerateWorkRecordForCompletedPlan } from "../work-records/auto-generation.js";
@@ -459,7 +460,20 @@ export async function runMechanicalValidation({
     if (!projectRoot) throw new Error("runMechanicalValidation: hostedSession or cwd is required");
     const metricProjectRoot = projectRoot;
     const validationCwd = cwd || hostedSession?.getActiveExecutionCwd?.() || projectRoot;
+    const validationOperationId = crypto.randomUUID();
     function recordWorkflowMetricImpl(metric: Parameters<typeof recordWorkflowMetric>[0]) {
+        if (metric.event === "mechanical_validation_finished") {
+            const details = metric.details;
+            return recordWorkflowOutcome(metricProjectRoot, {
+                category: "validation",
+                event: "mechanical_validation_finished",
+                operationId: validationOperationId,
+                outcome: details && typeof details === "object" && "passed" in details && details.passed === true
+                    ? "succeeded"
+                    : "ongoing",
+                session: hostedSession?.getManagedMetadata(),
+            });
+        }
         return recordWorkflowMetric(metric, metricProjectRoot);
     }
     /** @param {string} agentName */
@@ -507,18 +521,22 @@ export async function runMechanicalValidation({
             "info",
             progress,
         );
+        const ciOperationId = crypto.randomUUID();
         const ciResult = await localCI.run({ hostedSession, cwd: validationCwd });
 
-        await recordWorkflowMetricImpl({
+        await recordWorkflowOutcome(metricProjectRoot, {
             category: "validation",
-            event: "mechanical_ci_attempt",
-            planName: "quick-fix",
-            details: {
-                attempt: repairAttempts + 1,
-                exitCode: ciResult.kind === "completed" ? ciResult.exitCode : 130,
-                passed: ciResult.kind === "completed" && ciResult.exitCode === 0,
-                canceled: ciResult.kind === "canceled",
-            },
+            event: "validation_attempt",
+            operationId: ciOperationId,
+            attempt: repairAttempts + 1,
+            phase: "mechanical",
+            outcome: ciResult.kind === "operational_failure"
+                ? "incomplete"
+                : ciResult.kind === "canceled"
+                ? "interrupted"
+                : ciResult.kind === "completed" && ciResult.exitCode === 0
+                ? "succeeded"
+                : "failed",
         });
         if (ciResult.kind === "operational_failure") {
             progress = updateValidationProgress(progress, {
@@ -650,6 +668,7 @@ export async function runMechanicalValidation({
             true,
             progress,
         );
+        const roundId = crypto.randomUUID();
         const completed = await runCompletionGatedRepair({
             agentName: AGENTS.ENGINEER,
             userRequest:
@@ -663,12 +682,14 @@ export async function runMechanicalValidation({
             cwd: validationCwd,
             hostedSession,
         });
-        await recordWorkflowMetricImpl({
-            category: "validation",
-            event: "mechanical_repair_completed",
-            agentName: AGENTS.ENGINEER,
-            planName: "quick-fix",
-            details: { repairAttempt: repairAttempts, taskCompletedObserved: Boolean(completed) },
+        await recordWorkflowOutcome(metricProjectRoot, {
+            category: "recovery",
+            event: "repair_round",
+            operationId: roundId,
+            roundId,
+            round: repairAttempts,
+            phase: "mechanical",
+            outcome: completed ? "succeeded" : "ongoing",
         });
         if (!completed) {
             const reason = `${

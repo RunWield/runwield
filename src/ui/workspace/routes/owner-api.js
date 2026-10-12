@@ -1,3 +1,4 @@
+import { loadOwnerUsage } from "../server/owner-usage.ts";
 import { loadPlanActionEvidence } from "../../../shared/workflow/plan-actions.ts";
 /** @module ui/workspace/routes/owner-api */
 
@@ -192,6 +193,20 @@ export async function ownerSidebarApi(ctx) {
         return ownerJson({ projects });
     } catch (error) {
         return ownerErrorJson(error);
+    }
+}
+
+/**
+ * @typedef {Object} OwnerUsageContext
+ * @property {{ store: Parameters<typeof loadOwnerUsage>[0] }} state
+ * @property {URL} url
+ */
+/** @param {OwnerUsageContext} ctx */
+export async function ownerUsageApi(ctx) {
+    try {
+        return ownerJson(await loadOwnerUsage(ctx.state.store, ctx.url.searchParams));
+    } catch (error) {
+        return ownerErrorJson(error, 400);
     }
 }
 

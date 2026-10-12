@@ -65,8 +65,9 @@ async function withOpenReview(run) {
                 const { operationId } = await opened.json();
                 let review;
                 for (let index = 0; index < 300; index++) {
-                    const live =
-                        await (await app.handler()(new Request(`${sessionBase}/live`, { headers: { cookie } }))).json();
+                    const live = await (
+                        await app.handler()(new Request(`${sessionBase}/live`, { headers: { cookie } }))
+                    ).json();
                     review = live.operation?.liveInteraction?.request;
                     if (review?.reviewUrl) break;
                     if (live.operation?.status === "failed") throw new Error(live.operation.error);
@@ -75,18 +76,15 @@ async function withOpenReview(run) {
                 assert(review?.reviewUrl, "Plan review did not open");
                 const answer = (requestId, response) =>
                     app.handler()(
-                        new Request(
-                            `${base}/session-operations/${operationId}/interactions/${review.id}/answer`,
-                            {
-                                method: "POST",
-                                headers,
-                                body: JSON.stringify({
-                                    runwieldSessionId: fixture.session.runwieldSessionId,
-                                    requestId,
-                                    response,
-                                }),
-                            },
-                        ),
+                        new Request(`${base}/session-operations/${operationId}/interactions/${review.id}/answer`, {
+                            method: "POST",
+                            headers,
+                            body: JSON.stringify({
+                                runwieldSessionId: fixture.session.runwieldSessionId,
+                                requestId,
+                                response,
+                            }),
+                        }),
                     );
                 await run({ fixture, review, operationId, app, answer });
                 let answeredRetry = false;
@@ -148,7 +146,10 @@ test("Workspace sends review feedback images to the resumed planning Agent", asy
     await withOpenReview(async ({ fixture, answer, app, operationId }) => {
         const imagePath = join(fixture.projectRoot, "review.png");
         const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-        await fsWriteFile(imagePath, Uint8Array.from(atob(png), (char) => char.charCodeAt(0)));
+        await fsWriteFile(
+            imagePath,
+            Uint8Array.from(atob(png), (char) => char.charCodeAt(0)),
+        );
         const response = await answer("image-feedback", {
             approved: false,
             feedback: "Please use this screenshot.",

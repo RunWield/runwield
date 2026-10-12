@@ -192,11 +192,11 @@ export const RuntimeEventTypes = Object.freeze({
 
 /**
  * @typedef {Object} RuntimeUsage
- * @property {number} inputTokens
- * @property {number} outputTokens
- * @property {number} cacheReadTokens
- * @property {number} cacheWriteTokens
- * @property {number} costUsd
+ * @property {number | null} inputTokens
+ * @property {number | null} outputTokens
+ * @property {number | null} cacheReadTokens
+ * @property {number | null} cacheWriteTokens
+ * @property {number | null} costUsd
  * @property {number} [contextWindow]
  */
 
@@ -676,9 +676,11 @@ export function assertSessionRuntimeEvent(event) {
             requireRuntimeEvent(value.usage && typeof value.usage === "object", event.type, "usage required");
             for (const field of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "costUsd"]) {
                 requireRuntimeEvent(
-                    typeof value.usage[field] === "number",
+                    value.usage[field] === null ||
+                        (typeof value.usage[field] === "number" && Number.isFinite(value.usage[field]) &&
+                            value.usage[field] >= 0),
                     event.type,
-                    `usage.${field} must be a number`,
+                    `usage.${field} must be a finite nonnegative number or null`,
                 );
             }
             break;
@@ -750,21 +752,52 @@ export function assertSessionRuntimeEvent(event) {
 }
 
 /**
- * Normalize provider-specific usage once at the Runtime boundary.
+ * @typedef {Object} ProviderUsageCost
+ * @property {number | null} [total]
+ */
+
+/**
+ * @typedef {Object} ProviderUsage
+ * @property {unknown} [input]
+ * @property {unknown} [inputTokens]
+ * @property {unknown} [output]
+ * @property {unknown} [outputTokens]
+ * @property {unknown} [cacheRead]
+ * @property {unknown} [cacheReadTokens]
+ * @property {unknown} [cacheWrite]
+ * @property {unknown} [cacheWriteTokens]
+ * @property {number | null | ProviderUsageCost} [cost]
+ * @property {unknown} [costUsd]
+ * @property {unknown} [contextWindow]
+ * @property {unknown} [context_window]
+ */
+
+/**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+function reportedUsageNumber(value) {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Normalize provider-specific usage once at the Runtime boundary. Absence is not zero.
  * @param {unknown} value
  * @returns {RuntimeUsage}
  */
 export function normalizeRuntimeUsage(value) {
-    const usage = /** @type {any} */ (value || {});
-    const contextWindow = Number(usage.contextWindow ?? usage.context_window ?? 0) || 0;
+    const usage = /** @type {ProviderUsage} */ (value && typeof value === "object" ? value : {});
+    const contextWindow = reportedUsageNumber(usage.contextWindow ?? usage.context_window);
     const normalized = {
-        inputTokens: Number(usage.input ?? usage.inputTokens ?? 0) || 0,
-        outputTokens: Number(usage.output ?? usage.outputTokens ?? 0) || 0,
-        cacheReadTokens: Number(usage.cacheRead ?? usage.cacheReadTokens ?? 0) || 0,
-        cacheWriteTokens: Number(usage.cacheWrite ?? usage.cacheWriteTokens ?? 0) || 0,
-        costUsd: Number(usage.cost?.total ?? usage.cost ?? 0) || 0,
+        inputTokens: reportedUsageNumber(usage.input ?? usage.inputTokens),
+        outputTokens: reportedUsageNumber(usage.output ?? usage.outputTokens),
+        cacheReadTokens: reportedUsageNumber(usage.cacheRead ?? usage.cacheReadTokens),
+        cacheWriteTokens: reportedUsageNumber(usage.cacheWrite ?? usage.cacheWriteTokens),
+        costUsd: reportedUsageNumber(
+            (typeof usage.cost === "object" ? usage.cost?.total : usage.cost) ?? usage.costUsd,
+        ),
     };
-    return contextWindow > 0 ? { ...normalized, contextWindow } : normalized;
+    return contextWindow !== null && contextWindow > 0 ? { ...normalized, contextWindow } : normalized;
 }
 
 /**

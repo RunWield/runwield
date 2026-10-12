@@ -1,3 +1,4 @@
+import { recordWorkflowOutcome } from "../../shared/workflow/outcome-observations.ts";
 import { AGENTS } from "../../constants.js";
 import { buildPlanEventUpdates } from "../../shared/workflow/plan-lifecycle.js";
 import { closeTransitionRecordByAttestation, runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
@@ -496,6 +497,7 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
         false,
         "RunWield",
     );
+    const abandonedAttemptId = context.worktreeContext?.id || context.loadedWorktreeId || undefined;
     let cleanupMessage = "The recorded attempt was abandoned.";
     try {
         if (hasWorktreeContext(context.worktreeContext)) {
@@ -576,6 +578,14 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
         await context.recordRecoveryResult("abandon", "blocked");
         return { kind: "menu" };
     }
+    await recordWorkflowOutcome(projectRoot, {
+        event: "workflow_abandoned",
+        category: "recovery",
+        operationId: transition.transitionId,
+        attemptId: abandonedAttemptId,
+        planId: plan.attrs.planId,
+        outcome: "succeeded",
+    });
     context.worktreeContext = null;
     context.loadedWorktreeId = null;
     await context.session.clearActiveExecutionWorkflow();

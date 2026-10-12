@@ -9,12 +9,7 @@ import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/work
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 export type WorkflowMetricFixtureValue =
-    | string
-    | number
-    | boolean
-    | null
-    | WorkflowMetricFixtureValue[]
-    | { [key: string]: WorkflowMetricFixtureValue };
+    string | number | boolean | null | WorkflowMetricFixtureValue[] | { [key: string]: WorkflowMetricFixtureValue };
 
 export interface WorkflowMetricFixtureRecord {
     v: 1 | 2;
@@ -54,10 +49,7 @@ export async function withWorkflowMetricsFixture(
         const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-tool-metrics-"));
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
-        await Promise.all([
-            fsMkdir(homeDir, { recursive: true }),
-            fsMkdir(projectRoot, { recursive: true }),
-        ]);
+        await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
 
         try {
             process.env["HOME"] = homeDir;
@@ -69,10 +61,16 @@ export async function withWorkflowMetricsFixture(
                     await drainWorkflowMetrics();
                     try {
                         const contents = await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8");
-                        return contents.trim().split("\n").map((line) => JSON.parse(line));
+                        return contents
+                            .trim()
+                            .split("\n")
+                            .filter(Boolean)
+                            .map((line) => JSON.parse(line))
+                            .filter((record) => !["collection_epoch", "measurement_gap"].includes(record.event));
                     } catch (error) {
                         if (
-                            error instanceof Error && "code" in error &&
+                            error instanceof Error &&
+                            "code" in error &&
                             (error.code === "ENOENT" || error.code === "ENOTDIR")
                         ) {
                             return [];

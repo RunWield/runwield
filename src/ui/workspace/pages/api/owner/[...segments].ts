@@ -48,11 +48,23 @@ function eventStream(body: string) {
     });
 }
 
-export const GET = ({ request, params }: { request: Request; params: { segments?: string } }) => {
+export const GET = async ({ request, params }: { request: Request; params: { segments?: string } }) => {
     if (!import.meta.env.DEV) return json({ error: "Not found." }, 404);
     const segments = routeSegments({ params });
     const url = new URL(request.url);
 
+    if (segments.join("/") === "usage") {
+        try {
+            // Native Deno import keeps Core's JSR modules out of Vite's Node evaluator.
+            const fixture: typeof import("../../../server/dev-usage-fixture.ts") = await Function(
+                "specifier",
+                "return import(specifier)",
+            )(new URL("../../../server/dev-usage-fixture.ts", import.meta.url).href);
+            return json(await fixture.devUsageReport(url.searchParams));
+        } catch (error) {
+            return json({ error: error instanceof Error ? error.message : "Usage could not be loaded." }, 400);
+        }
+    }
     if (segments.join("/") === "sidebar") return json(devOwnerSidebar());
     if (segments.join("/") === "search") {
         const query = url.searchParams.get("q") || "";

@@ -4,6 +4,7 @@ import process from "node:process";
  * The sole production owner for planned-change validation and resume.
  */
 
+import { type OutcomeSession, recordWorkflowOutcome } from "./outcome-observations.ts";
 import { loadPlan, resolvePlanExecutionPolicy, StalePlanWriteError, updatePlanFrontMatter } from "../../plan-store.js";
 import { StaleControllerWriteError } from "./controller-registry.ts";
 import { runPlansDoctor } from "../../cmd/plans/doctor.ts";
@@ -222,6 +223,7 @@ export async function recordValidationRepairCompletion(args: {
     planName: string;
     repairGeneration: string;
     report: string;
+    session?: OutcomeSession | null;
 }): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const plan = await loadPlan(args.projectRoot, args.planName);
@@ -258,6 +260,17 @@ export async function recordValidationRepairCompletion(args: {
                 plan.attrs,
                 { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
             );
+            await recordWorkflowOutcome(args.projectRoot, {
+                category: "recovery",
+                event: "repair_round_finished",
+                operationId: args.repairGeneration,
+                roundId: args.repairGeneration,
+                attemptId: plan.attrs.worktreeId || undefined,
+                planName: args.planName,
+                outcome: "succeeded",
+                session: args.session,
+                phase: checkpoint.repairKind === "semantic" ? "semantic" : "mechanical",
+            });
             return;
         } catch (error) {
             if (

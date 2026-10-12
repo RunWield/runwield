@@ -204,6 +204,10 @@ each surface document owns its detailed behavior. A reference adds context, not 
 | [Connect](runwield-connect-prd.md#capability-requirements)     | External-host opt-in, host model ownership, host compatibility, privacy, setup and recovery                                               |
 | [ACP](runwield-acp-protocol-prd.md#capability-requirements)    | External-client Sessions, negotiated interactions, Telegram reference journey, recovery and protocol conformance                          |
 
+Workspace owns [Personal usage and outcomes](runwield-workspace-prd.md#personal-usage-and-outcomes), including its
+owner-only browser report and Project access. Core owns the
+[measurement and reporting rules](runwield-core-prd.md#usage-measurement-and-export).
+
 When behavior changes, update the owning capability and its acceptance scenarios in the same implementation change.
 Other PRDs and Plans link to that owner. Proposed additions, changes, and removals stay labeled until reconciled with
 actual delivery; unmet intent is retained explicitly. Keep the five-document ownership rule in this project's

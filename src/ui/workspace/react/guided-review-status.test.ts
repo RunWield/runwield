@@ -63,3 +63,31 @@ test("Guided Review attribution uses actual metadata and omits missing fields", 
     assertEquals(formatGuidedReviewGenerator({ providerName: "wld", model: "wld" }), undefined);
     assertEquals(formatGuidedReviewGenerator(null), undefined);
 });
+
+Deno.test("Guided Review displays missing cache and cost separately from measured zero", () => {
+    assertEquals(
+        formatGuidedReviewUsageStatus({
+            usageState: "available",
+            tokens: { inputTokens: 12, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: null, costUsd: null },
+            cost: null,
+        }),
+        { tokens: "tokens 12 in / 0 out / — read / — write", cost: "cost unavailable" },
+    );
+});
+
+Deno.test("Guided Review displays all-null token categories as unavailable", () => {
+    assertEquals(
+        formatGuidedReviewUsageStatus({
+            usageState: "available",
+            tokens: { inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheWriteTokens: null },
+        }),
+        { tokens: "tokens unavailable", cost: "cost unavailable" },
+    );
+});
+
+Deno.test("Guided Review can show measured cost without inventing token counts", () => {
+    assertEquals(formatGuidedReviewUsageStatus({ usageState: "available", tokens: null, cost: { usd: 0 } }), {
+        tokens: "tokens unavailable",
+        cost: "cost $0.000",
+    });
+});

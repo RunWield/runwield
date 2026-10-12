@@ -377,7 +377,11 @@ export class RuntimeTurns {
             await this.sync.synchronizeManagedSession(sessionId);
             managed = hostedSession.getManagedMetadata() || managed;
         }
-        options = { ...options, inputSurface: options.inputSurface || this.services.ownerProcessKind };
+        options = {
+            ...options,
+            metricsUserInitiated: true,
+            inputSurface: options.inputSurface || this.services.ownerProcessKind,
+        };
         let cleanupTurnStart: (() => void) | undefined;
         // Keep surface subscriptions alive across a user-approved Session change.
         const onTurnStarted = (context: PromptTurnContext) => {
@@ -836,6 +840,7 @@ export class RuntimeTurns {
                     this.services.ownerProcessKind;
             }
             hostedSession.generatedTaskTurnId = options.generatedTaskId || null;
+            hostedSession.metricsHumanInputPending = !options.generatedTaskId && options.metricsUserInitiated === true;
             const cleanup = options.onTurnStarted?.({ turnId });
             if (typeof cleanup === "function") cleanupTurn = cleanup;
             images = await this.images.persistPendingPromptImages(hostedSession, images);
@@ -956,6 +961,7 @@ export class RuntimeTurns {
             });
             hostedSession.endTurn(turnId);
             hostedSession.generatedTaskTurnId = null;
+            hostedSession.metricsHumanInputPending = false;
             if (busyStarted) this.events.endBusyOperation(hostedSession.id, turnId);
             try {
                 cleanupTurn();

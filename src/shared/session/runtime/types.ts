@@ -71,6 +71,8 @@ export interface PromptSessionOptions {
     includeEditFallback?: boolean;
     turnId?: string;
     emitInitialEvents?: boolean;
+    /** Input accepted by promptUserTurn, independent of presentation event suppression. */
+    metricsUserInitiated?: boolean;
     suppressEpicContinuation?: boolean;
     modelRequest?: string;
     modelOverride?: string;

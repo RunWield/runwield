@@ -432,7 +432,7 @@ These are architectural boundaries, not an allowlist, implementation checklist o
 - Owner routes, safe Project serializers, `WorkspaceLayout.astro`, loaders and `RunWieldPrimitives.tsx`: existing
   browser access control and visual patterns.
 - [Complete Tool-Call Metrics](archived/complete-tool-call-metrics.md) and
-  [extension-consent work](protect-new-package-extension-consent.md): reconcile overlaps during later planning against
+  [extension-consent work](reliable-usage-dashboard-and-langfuse-export/06-package-executable-approval-and-metrics-exporter-kind.md): reconcile overlaps during later planning against
   current source. Tool advertisement/schema-token optimization is not added merely because the sibling draft names it.
 
 ## Verification Plan

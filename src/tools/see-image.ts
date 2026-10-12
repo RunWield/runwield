@@ -11,6 +11,8 @@ import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions } from 
 import { getModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../shared/models/model-registry.ts";
 import { remotePersonalResourcesActive } from "../shared/remote/personal-resources.ts";
 import { resolveImageRef, resolveVisionFallbackModel } from "../shared/session/image-attachments.ts";
+import { RuntimeUsageTotals } from "../shared/session/runtime-usage-totals.ts";
+import type { ModelUsageObservation } from "../shared/workflow/execution-metrics.ts";
 
 export const DEFAULT_SEE_IMAGE_PROMPT =
     "Describe this image in detail for a text-only coding agent. Include all visible UI/content, readable text and error messages, relevant layout, controls, highlighted regions, and visual state. If text or details are unclear, say so explicitly.";
@@ -48,6 +50,8 @@ interface SeeImageToolOptions {
     cwd: string;
     sessionManager?: SessionManager;
     completeSimpleFn?: CompleteSimpleFunction;
+    /** One request-basis observation for each successful vision completion, even without usage. */
+    onModelUsage?: (observation: ModelUsageObservation) => void | Promise<void>;
     /** Selected by the bounded remote Session, never by this tool's caller. */
     remoteModel?: VisionModel;
 }
@@ -122,9 +126,29 @@ export function createSeeImageTool(opts: SeeImageToolOptions) {
                     maxTokens: 2048,
                 });
 
-                if (response.stopReason === "error") {
+                if (response.stopReason === "error" || response.stopReason === "aborted") {
                     throw new Error(response.errorMessage || "visionFallback.model returned an error.");
                 }
+
+                const usage = response.usage;
+                const observation: ModelUsageObservation = {
+                    usageKind: "request",
+                    aggregationBasis: "request",
+                    provider: fallback.model.provider,
+                    model: fallback.model.id,
+                    inputTokens: usage?.input ?? null,
+                    outputTokens: usage?.output ?? null,
+                    cacheReadTokens: usage?.cacheRead ?? null,
+                    cacheWriteTokens: usage?.cacheWrite ?? null,
+                    costAmount: usage?.cost?.total ?? null,
+                    costSource: usage?.cost?.total != null ? "calculated" : "unavailable",
+                    inputCacheBasis: "excludes_cache",
+                    unavailableReason: usage ? null : "Vision completion did not report usage",
+                };
+                const totals = new RuntimeUsageTotals();
+                totals.add(observation);
+                observation.measurementAvailability = totals.measurementAvailability;
+                await opts.onModelUsage?.(observation);
 
                 const text = extractAssistantText(response.content) || "(visionFallback.model returned no text)";
                 return { content: [{ type: "text" as const, text }], details: { ok: true } };

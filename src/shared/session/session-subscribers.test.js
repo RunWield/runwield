@@ -116,9 +116,9 @@ test("session subscriber emits thinking, message, status, error, usage, and life
     assertEquals(events.find((event) => event.type === "usage")?.usage, {
         inputTokens: 12,
         outputTokens: 4,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        costUsd: 0,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        costUsd: null,
     });
     assertEquals(events.filter((event) => event.type === "terminal_error").length, 1);
     assertEquals(events.filter((event) => event.type === "system_status").length, 4);

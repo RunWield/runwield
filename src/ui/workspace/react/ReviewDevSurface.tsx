@@ -338,7 +338,7 @@ diff --git a/src/review/feedback.test.js b/src/review/feedback.test.js
 index 3333333..4444444 100644
 --- a/src/review/feedback.test.js
 +++ b/src/review/feedback.test.js
-@@ -1,8 +1,30 @@
+@@ -1,7 +1,28 @@
  import { assertEquals } from "@std/assert";
 -import { createFeedback } from "./feedback.js";
 +import { canApprove, collectImages, createFeedback } from "./feedback.js";
@@ -376,7 +376,7 @@ new file mode 100644
 index 0000000..5555555
 --- /dev/null
 +++ b/src/review/image-attachments.js
-@@ -0,0 +1,16 @@
+@@ -0,0 +1,15 @@
 +const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 +
 +export async function loadReviewImage(image) {
@@ -459,7 +459,7 @@ diff --git a/docs/code-review-fixture.md b/docs/code-review-fixture.md
 index bbbbbbb..ccccccc 100644
 --- a/docs/code-review-fixture.md
 +++ b/docs/code-review-fixture.md
-@@ -1,7 +1,15 @@
+@@ -1,7 +1,14 @@
  # Code review fixture
  <!-- Fixture purpose. -->
 -This fixture covers one modified JavaScript file.
@@ -481,7 +481,7 @@ new file mode 100644
 index 0000000..ddddddd
 --- /dev/null
 +++ b/src/review/fixture-config.js
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,10 @@
 +export const fixtureConfig = {
 +    title: "Fixture Code Review",
 +    annotations: ["inline", "global", "image"],
@@ -497,7 +497,7 @@ new file mode 100644
 index 0000000..eeeeeee
 --- /dev/null
 +++ b/src/ui/components/ReviewBadge.tsx
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,17 @@
 +import React from "react";
 +
 +type ReviewBadgeProps = {
@@ -520,7 +520,7 @@ new file mode 100644
 index 0000000..fffffff
 --- /dev/null
 +++ b/src/ui/components/ReviewAction.jsx
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,16 @@
 +import React from "react";
 +
 +export function ReviewAction({ children, disabled, onClick }) {
@@ -542,7 +542,7 @@ new file mode 100644
 index 0000000..123abcd
 --- /dev/null
 +++ b/src/review/ReviewSummary.java
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,12 @@
 +package review;
 +
 +import java.util.List;
@@ -560,7 +560,7 @@ new file mode 100644
 index 0000000..456abcd
 --- /dev/null
 +++ b/src/review/review_summary.cpp
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,14 @@
 +#include <string>
 +#include <vector>
 +
@@ -700,6 +700,7 @@ const GUIDE_DEV_VARIANTS = [
     { id: "ready", label: "Ready explainer + widget" },
     { id: "pending-usage", label: "Running + usage pending" },
     { id: "reported-usage", label: "Completed + reported usage" },
+    { id: "partial-usage", label: "Completed + partial usage" },
     { id: "no-provider", label: "No provider available" },
     { id: "failed", label: "Failed generation" },
     { id: "long-title", label: "Long title" },
@@ -784,7 +785,16 @@ function buildCodeReviewDevPayload(variant) {
             },
         };
     }
-    if (variant === "reported-usage") {
+    if (variant === "reported-usage" || variant === "partial-usage") {
+        const partial = variant === "partial-usage";
+        const tokens = {
+            inputTokens: 1240,
+            outputTokens: partial ? 0 : 250,
+            cacheReadTokens: partial ? null : 800,
+            cacheWriteTokens: partial ? null : 0,
+            costUsd: partial ? null : 0.125,
+        };
+        const cost = partial ? null : { usd: 0.125 };
         return {
             ...base,
             devGuideCapabilities: {
@@ -800,14 +810,8 @@ function buildCodeReviewDevPayload(variant) {
                 model: "wld",
                 elapsedMs: 9800,
                 usageState: "available",
-                tokens: {
-                    inputTokens: 1240,
-                    outputTokens: 250,
-                    cacheReadTokens: 800,
-                    cacheWriteTokens: 0,
-                    costUsd: 0.125,
-                },
-                cost: { usd: 0.125 },
+                tokens,
+                cost,
             },
             devGuideJobDone: {
                 id: "dev-guide-reported",
@@ -816,14 +820,8 @@ function buildCodeReviewDevPayload(variant) {
                 engine: "wld",
                 model: "wld",
                 usageState: "available",
-                tokens: {
-                    inputTokens: 1240,
-                    outputTokens: 250,
-                    cacheReadTokens: 800,
-                    cacheWriteTokens: 0,
-                    costUsd: 0.125,
-                },
-                cost: { usd: 0.125 },
+                tokens,
+                cost,
             },
         };
     }

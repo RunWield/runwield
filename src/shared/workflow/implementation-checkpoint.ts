@@ -5,7 +5,7 @@ import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../sessio
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.js";
 import { isInValidation, recordPlanEvent } from "./plan-lifecycle.js";
 import { restoreExecutionPlanFromBaseline } from "./execution-plan-file.js";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { runImplementationCheckpointTransition } from "./state-transition.ts";
 
 interface FinalizePlanImplementationOptions {
@@ -165,16 +165,16 @@ export async function finalizePlanImplementation({
     acknowledgeImplementationCompletion(hostedSession);
     const transitionValue = /** @type {{ value?: { implementationCommit?: string } }} */ (transition.value);
     const implementationCommit = transitionValue.value?.implementationCommit;
-    await recordWorkflowMetric({
+    await recordWorkflowOutcome(projectRoot, {
         category: "execution",
         event: "implementation_finished",
+        operationId: transition.transitionId,
+        transitionId: transition.transitionId,
+        attemptId: executionContext.worktreeId,
         planName,
-        details: {
-            classification: triageMeta.classification,
-            executionMode: executionContext.executionMode,
-            checkpointCommitted: Boolean(implementationCommit),
-        },
-    }, projectRoot);
+        outcome: "succeeded",
+        session: hostedSession?.getManagedMetadata(),
+    });
     return implementationCommit ? { implementationCommit } : {};
 }
 

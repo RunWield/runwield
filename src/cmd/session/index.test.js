@@ -53,6 +53,26 @@ test("runSessionCommand formats the Runtime session-info projection", async () =
                 outputTokens: 250,
                 cacheReadTokens: 500,
                 cacheWriteTokens: 25,
+                usageAvailability: {
+                    inputTokens: "complete",
+                    outputTokens: "complete",
+                    cacheReadTokens: "complete",
+                    cacheWriteTokens: "complete",
+                },
+                compactionUsage: {
+                    inputTokens: 90,
+                    outputTokens: 7,
+                    cacheReadTokens: 0,
+                    cacheWriteTokens: null,
+                    costUsd: null,
+                    availability: {
+                        inputTokens: "complete",
+                        outputTokens: "complete",
+                        cacheReadTokens: "complete",
+                        cacheWriteTokens: "unavailable",
+                        costUsd: "unavailable",
+                    },
+                },
                 compactionSettings: { enabled: true, reserveTokens: 16000, keepRecentTokens: 22000 },
                 contextUsage: { tokens: 96000, contextWindow: 128000, percent: 75 },
             }),
@@ -68,6 +88,8 @@ test("runSessionCommand formats the Runtime session-info projection", async () =
             "session-123",
             "96,000/128,000 (75.0%)",
             "1,775",
+            "Compaction Usage (separate from assistant tokens)",
+            "unavailable",
         ]
     ) {
         assertEquals(plain.includes(expected), true);

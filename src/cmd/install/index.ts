@@ -4,10 +4,12 @@ import process from "node:process";
  * RunWield install command wrapping Pi's PackageManager.
  */
 
-import { DefaultPackageManager, type PackageSource, type SettingsManager } from "@earendil-works/pi-coding-agent";
+import { DefaultPackageManager, type PackageSource, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { relative } from "@std/path";
 import { getCwd } from "../../constants.js";
+import { approveMetricsExporter, listInstalledMetricsExporters } from "../../shared/extensions/metrics-exporter.ts";
 import { filterWldCompatibleExtensionResources } from "../../shared/extensions/wld-extension-manifest.js";
-import { countPackageResourcesForSource } from "../../shared/package-resources.ts";
+import { countPackageResourcesForSource, resolveConfiguredUserPackageSource } from "../../shared/package-resources.ts";
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { discoverAndRegisterThemes } from "../../ui/theme/theme.js";
 
@@ -17,20 +19,18 @@ function packageEntrySource(entry: PackageSource): string {
     return typeof entry === "string" ? entry : entry.source;
 }
 
-export function disablePackageExtensions(settings: SettingsManager, source: string): boolean {
-    const packages = settings.getGlobalSettings().packages || [];
-    const index = packages.findIndex((entry) => packageEntrySource(entry) === source);
-    if (index === -1) return false;
+async function flushSettings(settings: SettingsManager): Promise<void> {
+    await settings.flush();
+    const errors = settings.drainErrors();
+    if (errors.length) throw new Error(errors.map((error) => error.error.message).join("; "));
+}
 
-    const current = packages[index];
-    const sourceValue = packageEntrySource(current);
-    const nextEntry: PackageSource = typeof current === "string"
-        ? { source: sourceValue, extensions: [] }
-        : { ...current, extensions: [] };
-    const nextPackages = [...packages];
-    nextPackages[index] = nextEntry;
-    settings.setPackages(nextPackages);
-    return true;
+function confirmCodeLoading(question: string): boolean {
+    try {
+        return /^(?:y|yes)$/i.test((globalThis.prompt(question) || "").trim());
+    } catch {
+        return false;
+    }
 }
 
 export function confirmWldExtensionInstall(
@@ -43,25 +43,17 @@ export function confirmWldExtensionInstall(
     log(
         "Extensions can register tools, alter prompts, intercept tool calls, read project/session data, and call external services.",
     );
-    log("RunWield has not vetted this extension package. It could leak data, run unwanted commands, or cause other issues.");
-    log("");
-    const answer = globalThis.prompt(`Enable extensions from ${source} for loading? [y/N] `) || "";
-    return /^(?:y|yes)$/i.test(answer.trim());
-}
-
-function resolveConfiguredSource(packageManager: DefaultPackageManager, requestedSource: string): string {
-    const requestedPath = packageManager.getInstalledPath(requestedSource, "user");
-    const configured = packageManager.listConfiguredPackages().find((entry) =>
-        entry.scope === "user" &&
-        (entry.source === requestedSource || Boolean(requestedPath && entry.installedPath === requestedPath))
+    log(
+        "RunWield has not vetted this extension package. It could leak data, run unwanted commands, or cause other issues.",
     );
-    return configured?.source || requestedSource;
+    log("");
+    return confirmCodeLoading(`Enable extensions from ${source} for loading? [y/N] `);
 }
 
 export async function runInstallCommand(argv: string[]): Promise<void> {
     if (argv.length === 0) {
         console.error("Usage: wld install <source>");
-        console.error("Sources: npm:<spec>, git:<url>, local:<path>");
+        console.error("Sources: npm:<spec>, git:<url>, <path>");
         process.exitCode = 1;
         return;
     }
@@ -75,33 +67,80 @@ export async function runInstallCommand(argv: string[]): Promise<void> {
             settingsManager: settings,
         });
 
-        await packageManager.installAndPersist(source);
+        const existingSource = resolveConfiguredUserPackageSource(source, { settingsManager: settings });
+        const packages = settings.getGlobalSettings().packages || [];
+        const savedSources = new Set(packages.map(packageEntrySource));
+        const existing = savedSources.has(existingSource);
+        await packageManager.install(source);
+        if (!existing) {
+            const normalizationSettings = SettingsManager.inMemory({ packages });
+            const normalizer = new DefaultPackageManager({
+                cwd: getCwd(),
+                agentDir: getSettingsDir("global"),
+                settingsManager: normalizationSettings,
+            });
+            normalizer.addSourceToSettings(source);
+            settings.setPackages(
+                (normalizationSettings.getGlobalSettings().packages || []).map((entry) =>
+                    savedSources.has(packageEntrySource(entry))
+                        ? entry
+                        : { ...(typeof entry === "string" ? { source: entry } : entry), extensions: [] },
+                ),
+            );
+        }
+        await flushSettings(settings);
 
-        const configuredSource = resolveConfiguredSource(packageManager, source);
-        const resolved = await packageManager.resolve();
-        const counts = countPackageResourcesForSource(resolved, configuredSource);
-        const sourceExtensions = resolved.extensions.filter((resource) =>
-            resource.metadata?.source === configuredSource
-        );
-        const compatibleExtensions = await filterWldCompatibleExtensionResources(sourceExtensions);
+        const configuredSource = resolveConfiguredUserPackageSource(source, { settingsManager: settings });
+        // Inspect the unfiltered source, without importing it or applying Project precedence.
+        const candidates = await packageManager.resolveExtensionSources([configuredSource]);
+        const counts = countPackageResourcesForSource(candidates, configuredSource);
+        const compatibleExtensions = await filterWldCompatibleExtensionResources(candidates.extensions);
         const ignoredExtensionCount = Math.max(0, counts.extensions - compatibleExtensions.length);
-        let enabledExtensionCount = compatibleExtensions.length;
         let skippedExtensionCount = 0;
 
-        if (compatibleExtensions.length > 0) {
-            const allowExtensions = confirmWldExtensionInstall(source, compatibleExtensions.length);
-            if (!allowExtensions) {
-                disablePackageExtensions(settings, configuredSource);
+        if (!existing && compatibleExtensions.length > 0) {
+            if (confirmWldExtensionInstall(source, compatibleExtensions.length)) {
+                const root = packageManager.getInstalledPath(configuredSource, "user");
+                if (!root) throw new Error("Installed package path is unavailable");
+                settings.setPackages(
+                    (settings.getGlobalSettings().packages || []).map((entry) =>
+                        packageEntrySource(entry) === configuredSource
+                            ? {
+                                  ...(typeof entry === "string" ? { source: entry } : entry),
+                                  extensions: compatibleExtensions.map((resource) => relative(root, resource.path)),
+                              }
+                            : entry,
+                    ),
+                );
+                await flushSettings(settings);
+            } else {
                 skippedExtensionCount = compatibleExtensions.length;
-                enabledExtensionCount = 0;
+            }
+        }
+        const exporter = (await listInstalledMetricsExporters()).find((entry) => entry.source === configuredSource);
+        if (exporter && !exporter.approved) {
+            console.log("Metrics exporters are trusted code. They can read host data and call external services.");
+            if (confirmCodeLoading(`Approve metrics exporter ${exporter.id} from ${source}? [y/N] `)) {
+                await approveMetricsExporter(exporter);
+                console.log(`  Metrics exporter approved: ${exporter.id}`);
             }
         }
 
         await discoverAndRegisterThemes();
+        const installed = await new DefaultPackageManager({
+            cwd: getCwd(),
+            agentDir: getSettingsDir("global"),
+            settingsManager: SettingsManager.inMemory(settings.getGlobalSettings()),
+        }).resolve(() => Promise.resolve("skip"));
+        const fromSource = (resource: (typeof installed.themes)[number]) =>
+            resource.enabled && resource.metadata.source === configuredSource;
+        const enabledExtensionCount = (
+            await filterWldCompatibleExtensionResources(installed.extensions.filter(fromSource))
+        ).length;
 
         console.log(`Installed ${source}`);
-        console.log(`  Themes registered: ${counts.themes}`);
-        console.log(`  Prompt templates available: ${counts.prompts}`);
+        console.log(`  Themes registered: ${installed.themes.filter(fromSource).length}`);
+        console.log(`  Prompt templates available: ${installed.prompts.filter(fromSource).length}`);
         if (enabledExtensionCount > 0) {
             console.log(`  WLD-compatible code extensions enabled: ${enabledExtensionCount}`);
         }

@@ -130,7 +130,7 @@ test("guided-review emits the exact runtime usage frame before completing and cl
             usageWriteReleased.resolve();
             const code = await command;
 
-            const expectedFrame = { version: 1, type: "usage" as const, usage: expectedUsage };
+            const expectedFrame = { version: 2 as const, type: "usage" as const, usage: expectedUsage };
             assertEquals(code, 0);
             assertEquals(outputEvents, ["stderr", "stderr", "stdout"]);
             const [usageLine, metadataLine] = stderr.trim().split("\n");

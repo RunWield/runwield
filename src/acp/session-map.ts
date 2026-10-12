@@ -109,7 +109,7 @@ export class AcpSessionMap {
      * emits the cost of a single assistant message, so the adapter keeps the sum.
      * The total belongs to the ACP Session, so it survives Runtime replacement.
      */
-    addUsageCost(acpSessionId: string, costUsd: number | undefined): number {
+    addUsageCost(acpSessionId: string, costUsd: number | null | undefined): number {
         const record = this.getRecord(acpSessionId);
         if (!record) return 0;
         if (typeof costUsd === "number" && Number.isFinite(costUsd)) record.usageCostUsd += costUsd;

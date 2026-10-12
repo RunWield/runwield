@@ -1,4 +1,5 @@
 import type { McpIntegration } from "../../../mcp/integration.ts";
+import type { Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { RunWieldModel } from "../../../models/model-registry.ts";
@@ -6,6 +7,7 @@ import type { HostedSession } from "../../hosted-session.js";
 import {
     emitHostedSessionRuntimeEvent,
     normalizeRuntimeToolResult,
+    normalizeRuntimeUsage,
     RuntimeEventTypes,
 } from "../../session-runtime-events.js";
 import { describeRuntimeTool } from "../../tool-event-title.js";
@@ -71,6 +73,7 @@ export interface AgyCliRunOptions {
     parentToolCallId?: string;
     taskId?: string;
     sourceSurface?: string;
+    userInitiated?: boolean;
 }
 
 interface ClassifiedFailure {
@@ -262,6 +265,7 @@ export class AgyCliExecutionSession {
             parentToolCallId: options.parentToolCallId,
             taskId: options.taskId,
             sourceSurface: options.sourceSurface || "cli",
+            userInitiated: options.userInitiated,
         });
         await recorder.recordExecutionStart();
         await recorder.recordToolExposure(bridgedTools, "partial");
@@ -424,7 +428,6 @@ export class AgyCliExecutionSession {
                     api: this.model.api,
                     provider: this.model.provider,
                     model: this.model.id,
-                    usage: toPiUsage(zeroUsage()),
                     stopReason: "toolUse",
                 } as SessionAppendMessage;
                 this.sessionManager.appendMessage(call);
@@ -561,10 +564,13 @@ export class AgyCliExecutionSession {
                     cacheWriteTokens: usage.cacheWriteTokens,
                     costUsd: null,
                     costSource: "unavailable",
-                    measurementAvailability: usage.inputTokens !== null &&
-                            usage.outputTokens !== null
-                        ? "partial"
-                        : "unavailable",
+                    measurementAvailability:
+                        [usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens].some((
+                                value,
+                            ) => value !== null
+                            )
+                            ? "partial"
+                            : "unavailable",
                     inputCacheBasis: "unknown",
                     model: this.model.id,
                     provider: this.model.provider,
@@ -593,11 +599,7 @@ export class AgyCliExecutionSession {
     }
 
     private readMessages(): AgentMessage[] {
-        return readExternalCliConversation(this.sessionManager).map((message) => {
-            return message.role === "user"
-                ? makeUserMessage(message.text) as AgentMessage
-                : makeAssistantMessage(message.text, this.model, zeroUsage()) as AgentMessage;
-        });
+        return this.sessionManager.getBranch().flatMap((entry) => entry.type === "message" ? [entry.message] : []);
     }
 }
 
@@ -867,6 +869,7 @@ function makeUserMessage(text: string): SessionAppendMessage {
     };
 }
 
+// Pi requires usage on assistant messages; CLI transcripts omit it when no measurement was reported.
 function makeAssistantMessage(text: string, model: RunWieldModel, usage: AgyCliUsage): SessionAppendMessage {
     return {
         role: "assistant",
@@ -875,34 +878,36 @@ function makeAssistantMessage(text: string, model: RunWieldModel, usage: AgyCliU
         api: model.api,
         provider: model.provider,
         model: model.id,
-        usage: toPiUsage(usage),
+        ...(Object.values(usage).some((value) => value !== null) ? { usage: toPiUsage(usage) } : {}),
         stopReason: "stop",
-    };
-}
-
-function zeroUsage(): AgyCliUsage {
-    return { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: null };
-}
-
-function toPiUsage(usage: AgyCliUsage) {
-    return {
-        input: usage.inputTokens ?? 0,
-        output: usage.outputTokens ?? 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    };
+    } as SessionAppendMessage;
 }
 
 function toRuntimeUsage(usage: AgyCliUsage) {
+    return normalizeRuntimeUsage({ ...usage, costUsd: null });
+}
+
+function toPiUsage(usage: AgyCliUsage): Usage {
+    const normalized = toRuntimeUsage(usage);
+    const tokens = [
+        normalized.inputTokens,
+        normalized.outputTokens,
+        normalized.cacheReadTokens,
+        normalized.cacheWriteTokens,
+    ];
+    // Pi requires numeric Usage fields. Persist the honest partial shape instead:
+    // absent measurements and unreported cost components must not become measured zeros.
+    // A total is available only when all token categories are known.
     return {
-        inputTokens: usage.inputTokens ?? 0,
-        outputTokens: usage.outputTokens ?? 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        costUsd: 0,
-    };
+        ...(normalized.inputTokens !== null ? { input: normalized.inputTokens } : {}),
+        ...(normalized.outputTokens !== null ? { output: normalized.outputTokens } : {}),
+        ...(normalized.cacheReadTokens !== null ? { cacheRead: normalized.cacheReadTokens } : {}),
+        ...(normalized.cacheWriteTokens !== null ? { cacheWrite: normalized.cacheWriteTokens } : {}),
+        ...(tokens.every((value) => value !== null)
+            ? { totalTokens: tokens.reduce<number>((total, value) => total + (value ?? 0), 0) }
+            : {}),
+        ...(normalized.costUsd !== null ? { cost: { total: normalized.costUsd } } : {}),
+    } as Usage;
 }
 
 function appendExecutionBackendEntry(

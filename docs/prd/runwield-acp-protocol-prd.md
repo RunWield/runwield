@@ -129,8 +129,8 @@ available alternative and continue the conversation.
 Shared requirements: [Core Session continuity](runwield-core-prd.md#session-continuity),
 [Plan review](runwield-core-prd.md#plan-review),
 [execution and recovery](runwield-core-prd.md#execution-validation-and-recovery), and
-[local workflow metrics](runwield-core-prd.md#local-workflow-metrics). ACP adapts these outcomes rather than defining
-another lifecycle.
+[local workflow metrics](runwield-core-prd.md#usage-measurement-and-export). ACP adapts these outcomes rather than
+defining another lifecycle.
 
 **Acceptance scenarios:**
 

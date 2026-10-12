@@ -78,6 +78,38 @@ export function readPlanAssociations(entries: unknown[]): PlanAssociation[] {
     return associations;
 }
 
+export interface AssociationTimeScope {
+    segmentId: string;
+    ts: string;
+    planName?: string;
+}
+
+/** An association lasts until the next association in its segment, or segment seal.
+ * Unassigned discussion never inherits every Plan previously touched by a Session.
+ */
+export function planAssociationAtTime(
+    associations: ManifestPlanAssociation[],
+    segments: SessionTranscriptSegment[],
+    scope: AssociationTimeScope,
+): ManifestPlanAssociation | undefined {
+    if (!scope.planName) return undefined;
+    const time = Date.parse(scope.ts);
+    const segment = segments.find((item) => item.segmentId === scope.segmentId);
+    if (!segment || !Number.isFinite(time)) return undefined;
+    if (segment.sealedAt && time >= Date.parse(segment.sealedAt)) return undefined;
+    const eligible = associations.filter((item) =>
+        item.committedGeneration !== null && item.segmentId === scope.segmentId &&
+        Date.parse(item.recordedAt) <= time
+    ).sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt));
+    const latest = eligible[0];
+    // Simultaneous ambiguous associations do not authorize spreading one observation.
+    if (!latest || latest.planName !== scope.planName) return undefined;
+    if (eligible.some((item) => item.recordedAt === latest.recordedAt && item.planId !== latest.planId)) {
+        return undefined;
+    }
+    return latest;
+}
+
 export function normalizeManifestPlanAssociation(value: unknown): ManifestPlanAssociation | null {
     const association = normalizePlanAssociation(value);
     if (!association || !value || typeof value !== "object") return null;

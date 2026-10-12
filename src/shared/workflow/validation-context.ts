@@ -10,6 +10,7 @@
 
 import { extractYaml } from "../front-matter.ts";
 import { AGENTS } from "../../constants.js";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
@@ -115,10 +116,22 @@ export function getProjectRoot(args: ValidationLoopArgs): string {
 }
 
 export async function recordMetric(
-    _args: ValidationLoopArgs,
+    args: ValidationLoopArgs,
     cwd: string,
     metric: Parameters<typeof recordWorkflowMetric>[0],
 ): Promise<void> {
+    if (metric.event === "operational_recovery") {
+        await recordWorkflowOutcome(cwd, {
+            category: "recovery",
+            event: "operational_recovery",
+            operationId: crypto.randomUUID(),
+            planName: args.planName,
+            attemptId: args.session.getActiveWorkflow()?.worktreeId,
+            session: args.session.metricsSession,
+            outcome: "ongoing",
+        });
+        return;
+    }
     await recordWorkflowMetric(metric, cwd);
 }
 

@@ -528,9 +528,9 @@ test("Plan front matter transition records its committed metric through the real
         assertEquals(
             metrics.some((metric) =>
                 metric.category === "recovery" &&
-                metric.event === "plan_transition_committed" &&
-                metric.planName === "metric-demo" &&
-                metric.details?.operation === "metric_test_status"
+                metric.v === 2 && metric.event === "workflow_transition_committed" &&
+                metric.transitionId === result.transitionId &&
+                metric.operationId === result.transitionId && metric.outcome === "succeeded"
             ),
             true,
         );

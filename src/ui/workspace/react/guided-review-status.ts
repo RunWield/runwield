@@ -1,17 +1,17 @@
 export type GuidedReviewUsageState = "pending" | "available" | "unavailable";
 
 export interface GuidedReviewTokenUsage {
-    inputTokens?: number;
-    outputTokens?: number;
-    cacheReadTokens?: number;
-    cacheWriteTokens?: number;
-    costUsd?: number;
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    cacheReadTokens?: number | null;
+    cacheWriteTokens?: number | null;
+    costUsd?: number | null;
 }
 
 export interface GuidedReviewCostUsage {
-    usd?: number;
-    costUsd?: number;
-    total?: number;
+    usd?: number | null;
+    costUsd?: number | null;
+    total?: number | null;
 }
 
 export interface GuidedReviewJobStatus {
@@ -33,26 +33,33 @@ function formatCompactTokens(count: number): string {
     return `${Math.round(count / 1000000)}M`;
 }
 
-function readNumber(value: number | undefined): number {
-    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function readNumber(value: number | null | undefined): number | null {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-function readCostUsd(job: GuidedReviewJobStatus): number {
+function readCostUsd(job: GuidedReviewJobStatus): number | null {
     return readNumber(job.cost?.usd ?? job.cost?.costUsd ?? job.cost?.total ?? job.tokens?.costUsd);
 }
 
 export function formatGuidedReviewUsageStatus(job: GuidedReviewJobStatus): GuidedReviewUsageStatusText {
     const state = job.usageState || (job.tokens ? "available" : "unavailable");
     if (state === "pending") return { tokens: "tokens pending", cost: "cost pending" };
-    if (state !== "available" || !job.tokens) return { tokens: "tokens unavailable", cost: "cost unavailable" };
-
-    const tokens = [
-        `${formatCompactTokens(readNumber(job.tokens.inputTokens))} in`,
-        `${formatCompactTokens(readNumber(job.tokens.outputTokens))} out`,
-        `${formatCompactTokens(readNumber(job.tokens.cacheReadTokens))} read`,
-        `${formatCompactTokens(readNumber(job.tokens.cacheWriteTokens))} write`,
-    ].join(" / ");
-    return { tokens: `tokens ${tokens}`, cost: `cost $${readCostUsd(job).toFixed(3)}` };
+    const costUsd = readCostUsd(job);
+    const values = [
+        job.tokens?.inputTokens,
+        job.tokens?.outputTokens,
+        job.tokens?.cacheReadTokens,
+        job.tokens?.cacheWriteTokens,
+    ].map(readNumber);
+    const labels = ["in", "out", "read", "write"];
+    const tokens = state === "available" && values.some((value) => value !== null)
+        ? `tokens ${
+            values.map((value, index) => `${value === null ? "—" : formatCompactTokens(value)} ${labels[index]}`).join(
+                " / ",
+            )
+        }`
+        : "tokens unavailable";
+    return { tokens, cost: costUsd === null ? "cost unavailable" : `cost $${costUsd.toFixed(3)}` };
 }
 
 export interface GuidedReviewGenerator {

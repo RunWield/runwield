@@ -1,4 +1,5 @@
 ---
+planId: "29ed7919-7f2c-4d2a-a629-eb8cab2bff5f"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -13,8 +14,8 @@ parentPlan: "reliable-usage-dashboard-and-langfuse-export"
 order: 8
 dependencies:
     - "07-core-export-coordination-and-delivery-states"
+userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-planId: "29ed7919-7f2c-4d2a-a629-eb8cab2bff5f"
 ---
 
 # Langfuse Exporter Package
@@ -120,6 +121,12 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
   fields, local paths, or arbitrary text.
 - Results distinguish accepted, proven non-acceptance, and uncertain acceptance; transient and permanent classification
   is asserted only where the Langfuse contract supports it.
+- The entry implements child 07's exporter contract 1: a required `deliver(observation, context)` that returns
+  `accepted`, `not_accepted` (`retryable`, `needs_correction`, or `permanent`), or `uncertain`, and an optional
+  `confirm(observation, context)` that returns `present`, `not_found_yet`, or `mismatch`. Input is child 07's
+  `MetricsExportObservation`; the package never reads journals or settings.
+- `confirm` reads back by `observationId` and the relevant usage and cost fields through a bounded Langfuse public API
+  query. Asynchronous absence returns `not_found_yet`, never a rejection.
 - The exporter performs no automatic retries of its own and installs no global instrumentation.
 - Target Langfuse Cloud or a pinned, tested self-hosted v4 release, with version compatibility and incomplete-value
   handling covered by explicit fixtures.

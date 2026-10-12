@@ -4,7 +4,7 @@ import { realpath as fsRealpath } from "node:fs/promises";
  * Helpers for consuming Pi package resources through RunWield policy.
  */
 
-import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
+import { DefaultPackageManager, SettingsManager as PiSettingsManager } from "@earendil-works/pi-coding-agent";
 import type { PackageSource, ResolvedPaths, ResolvedResource, SettingsManager } from "@earendil-works/pi-coding-agent";
 export type { PathMetadata, ResolvedPaths, ResolvedResource } from "@earendil-works/pi-coding-agent";
 
@@ -133,4 +133,34 @@ export function countPackageResourcesForSource(resolved: ResolvedPaths, source: 
         extensions: resolved.extensions.filter(fromSource).length,
         skills: resolved.skills.filter(fromSource).length,
     };
+}
+
+/** Match command input using Pi's normalization, without rewriting saved source/filter choices. */
+export function resolveConfiguredUserPackageSource(source: string, options: PackagePromptResourceOptions = {}): string {
+    const cwd = options.cwd || getCwd();
+    const agentDir = options.agentDir || getSettingsDir("global");
+    const settings = options.settingsManager || getSettingsManager(cwd);
+    const packages = settings.getGlobalSettings().packages || [];
+    const normalizationSettings = PiSettingsManager.inMemory({ packages });
+    const normalizer = new DefaultPackageManager({ cwd, agentDir, settingsManager: normalizationSettings });
+    // Pi owns source identity (npm versions, Git refs, and command-relative local paths).
+    // Remove only from the private snapshot to find its matched saved entry.
+    if (normalizer.removeSourceFromSettings(source)) {
+        const remaining = new Set(
+            (normalizationSettings.getGlobalSettings().packages || []).map((entry) =>
+                typeof entry === "string" ? entry : entry.source
+            ),
+        );
+        const matched = packages.find((entry) => !remaining.has(typeof entry === "string" ? entry : entry.source))!;
+        return typeof matched === "string" ? matched : matched.source;
+    }
+    normalizer.addSourceToSettings(source);
+    const entry = normalizationSettings.getGlobalSettings().packages!.at(-1)!;
+    const normalizedSource = typeof entry === "string" ? entry : entry.source;
+    const manager = new DefaultPackageManager({ cwd, agentDir, settingsManager: settings });
+    const requestedPath = manager.getInstalledPath(normalizedSource, "user");
+    return manager.listConfiguredPackages().find((pkg) =>
+        pkg.scope === "user" &&
+        (pkg.source === normalizedSource || Boolean(requestedPath && pkg.installedPath === requestedPath))
+    )?.source || normalizedSource;
 }

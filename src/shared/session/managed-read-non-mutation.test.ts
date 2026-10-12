@@ -208,6 +208,13 @@ test("managed read sweep drives read paths without writable Pi calls or transcri
             await run("getSessionContextReport", async () => {
                 const report = await runtime.getSessionContextReport(adopted.sessionId);
                 assertEquals(report === null, false);
+                if (!report || report.ok === false) throw new Error("Expected context report");
+                assertEquals(report.usageState, "estimated");
+                assertEquals(
+                    report.categories.find((category) => category.label === "Committed conversation")?.tokens,
+                    6,
+                );
+                assertEquals(report.usedTokens, 6);
             });
             await run("getSessionInfo", async () => {
                 assertEquals((await runtime.getSessionInfo(adopted.sessionId))?.assistantMessages, 1);

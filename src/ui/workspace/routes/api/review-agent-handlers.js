@@ -6,27 +6,23 @@ import process from "node:process";
 /** Review-surface Guided Review agent/job routes. */
 
 import {
+    GUIDED_REVIEW_EVENT_PREFIX,
+    GUIDED_REVIEW_USAGE_VERSION,
     parseGuidedReviewMetadataLine,
     parseGuidedReviewUsageEventLine,
 } from "../../../../cmd/guided-review/protocol.ts";
 import { buildGuidedReviewPrompt, validateGuidedReviewExplainer } from "../../../../shared/workflow/guided-review.js";
+import { RuntimeUsageTotals } from "../../../../shared/session/runtime-usage-totals.ts";
+import { ExecutionMetricsRecorder } from "../../../../shared/workflow/execution-metrics.ts";
 import { recordWorkflowMetric } from "../../../../shared/workflow/metrics.js";
 import { parseDiffFiles } from "../../../../shared/workflow/review-diff-tool.js";
 import { createReviewWidgetStore } from "./review-widget-handlers.js";
 
-/**
- * @typedef {Object} GuideUsageTotals
- * @property {number} inputTokens
- * @property {number} outputTokens
- * @property {number} cacheReadTokens
- * @property {number} cacheWriteTokens
- * @property {number} costUsd
- * @property {number} [contextWindow]
- */
+/** @typedef {import("../../../../cmd/guided-review/protocol.ts").GuidedReviewUsage} GuideUsageTotals */
 
 /**
  * @typedef {Object} GuideCostTotals
- * @property {number} usd
+ * @property {number | null} usd
  */
 
 /**
@@ -36,6 +32,7 @@ import { createReviewWidgetStore } from "./review-widget-handlers.js";
  * @property {boolean[]} reviewed
  * @property {AbortController} abortController
  * @property {Promise<void>} done
+ * @property {RuntimeUsageTotals} usageTotals
  */
 
 /**
@@ -200,55 +197,36 @@ function createGuideJob(state, provider) {
         costUnavailable: true,
     };
     /** @type {ReviewGuideJobEntry} */
-    const entry = { info, guide: null, reviewed: [], abortController, done: Promise.resolve() };
+    const entry = {
+        info,
+        guide: null,
+        reviewed: [],
+        abortController,
+        done: Promise.resolve(),
+        usageTotals: new RuntimeUsageTotals(),
+    };
     state.jobs.set(id, entry);
     broadcastJobs(state);
     entry.done = runGuideJob(state, entry, changedFiles);
     return entry;
 }
 
-/** @returns {GuideUsageTotals} */
-function emptyGuideUsageTotals() {
-    return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
-}
-
-/** @param {Record<string, unknown> | null} tokens */
-function readGuideUsageTotals(tokens) {
-    if (!tokens) return emptyGuideUsageTotals();
-    return {
-        inputTokens: Number(tokens.inputTokens || 0),
-        outputTokens: Number(tokens.outputTokens || 0),
-        cacheReadTokens: Number(tokens.cacheReadTokens || 0),
-        cacheWriteTokens: Number(tokens.cacheWriteTokens || 0),
-        costUsd: Number(tokens.costUsd || 0),
-        ...(typeof tokens.contextWindow === "number" ? { contextWindow: tokens.contextWindow } : {}),
-    };
-}
-
 /** @param {ReviewAgentState} state @param {ReviewGuideJobEntry} entry @param {GuideUsageTotals} usage */
 function addGuideJobUsage(state, entry, usage) {
-    const current = readGuideUsageTotals(
-        entry.info.tokens && typeof entry.info.tokens === "object"
-            ? /** @type {Record<string, unknown>} */ (entry.info.tokens)
-            : null,
-    );
-    const next = {
-        inputTokens: current.inputTokens + usage.inputTokens,
-        outputTokens: current.outputTokens + usage.outputTokens,
-        cacheReadTokens: current.cacheReadTokens + usage.cacheReadTokens,
-        cacheWriteTokens: current.cacheWriteTokens + usage.cacheWriteTokens,
-        costUsd: current.costUsd + usage.costUsd,
-        ...(typeof usage.contextWindow === "number" ? { contextWindow: usage.contextWindow } : {}),
-    };
-    setGuideJobUsage(state, entry, next);
+    entry.usageTotals.add(usage);
+    setGuideJobUsage(state, entry);
 }
 
-/** @param {ReviewAgentState} state @param {ReviewGuideJobEntry} entry @param {GuideUsageTotals} usage */
-function setGuideJobUsage(state, entry, usage) {
-    entry.info.usageState = "available";
+/** @param {ReviewAgentState} state @param {ReviewGuideJobEntry} entry */
+function setGuideJobUsage(state, entry) {
+    const usage = { ...entry.usageTotals.usage };
+    entry.info.usageState = Object.values(entry.usageTotals.availability).some((value) => value !== "unavailable")
+        ? "available"
+        : "unavailable";
     entry.info.tokens = usage;
-    entry.info.cost = { usd: usage.costUsd };
-    entry.info.costUnavailable = false;
+    entry.info.usageAvailability = { ...entry.usageTotals.availability };
+    entry.info.cost = usage.costUsd === null ? null : { usd: usage.costUsd };
+    entry.info.costUnavailable = usage.costUsd === null;
     broadcastJobs(state);
 }
 
@@ -293,7 +271,13 @@ async function runGuideJob(state, entry, changedFiles) {
                 model: result.model || String(entry.info.model),
                 thinkingLevel: result.thinkingLevel,
             };
-            if (result.usage && entry.info.usageState !== "available") setGuideJobUsage(state, entry, result.usage);
+            if (!entry.info.tokens && (result.usage || result.cost)) {
+                entry.usageTotals.add({ ...result.usage, costUsd: result.cost?.usd ?? result.usage?.costUsd });
+                setGuideJobUsage(state, entry);
+            }
+            entry.info.providerName = meta.provider;
+            entry.info.model = meta.model;
+            entry.info.thinkingLevel = meta.thinkingLevel;
         }
         finishGuideJobUsage(entry);
         const parsed = parseJsonFromModel(raw);
@@ -329,22 +313,44 @@ async function runGuideJob(state, entry, changedFiles) {
 /** @param {ReviewAgentState} state @param {ReviewGuideJobEntry} entry */
 async function recordGuideJobMetric(state, entry) {
     const info = /** @type {Record<string, unknown>} */ (withElapsed(entry.info));
+    // wld guided-review already journals each call through its Session runtime.
+    if (info.engine !== "wld" && !state.reviewPayload.guidedReviewFixture) {
+        const recorder = new ExecutionMetricsRecorder({
+            projectRoot: state.cwd,
+            executionId: `guide_${info.id}`,
+            requestId: `guide_${info.id}`,
+            agentName: "guide",
+            provider: String(info.providerName || info.engine),
+            model: String(info.model),
+            sourceSurface: "guided_review",
+        });
+        await recorder.recordModelUsage({
+            ...entry.usageTotals.usage,
+            sourceId: `guide_${info.id}`,
+            usageKind: "turn",
+            aggregationBasis: "turn",
+            measurementAvailability:
+                entry.usageTotals.availability.costUsd === "partial"
+                    ? "partial"
+                    : entry.usageTotals.measurementAvailability,
+            costSource: entry.usageTotals.usage.costUsd === null ? "unavailable" : "reported",
+        });
+    }
     await recordWorkflowMetric(
         {
+            v: 2,
             category: "validation",
             event: "guided_review_generation_result",
-            details: {
-                status: info.status,
-                provider: info.providerName || info.engine,
-                model: info.model,
-                elapsedMs: info.elapsedMs,
-                tokensAvailable: Boolean(info.tokens),
-                costAvailable: Boolean(info.cost),
-                costUnavailable: Boolean(info.costUnavailable),
-                sectionCount: entry.guide && Array.isArray(entry.guide.sections) ? entry.guide.sections.length : 0,
-                hasError: typeof info.error === "string" && info.error.length > 0,
-                errorKind: classifyGuideJobError(info.error),
-            },
+            recorderId: info.id,
+            seq: 0,
+            eventId: `guided_review_generation_result:${info.id}`,
+            operationId: info.id,
+            outcome: info.status === "done" ? "succeeded" : info.status === "killed" ? "interrupted" : "failed",
+            elapsedMs: info.elapsedMs,
+            provider: info.providerName || info.engine,
+            model: info.model,
+            sectionCount: entry.guide && Array.isArray(entry.guide.sections) ? entry.guide.sections.length : 0,
+            failureKind: classifyGuideJobError(info.error),
         },
         state.cwd,
     );
@@ -462,6 +468,7 @@ async function readGuideStderr(stream, parseInternalFrames, progress) {
     let stderr = "";
     /** @type {GuideUsageTotals | null} */
     let usage = null;
+    const totals = new RuntimeUsageTotals();
     /** @type {Error | null} */
     let protocolError = null;
     /** @type {import("../../../../cmd/guided-review/protocol.ts").GuidedReviewMetadata | null} */
@@ -469,8 +476,20 @@ async function readGuideStderr(stream, parseInternalFrames, progress) {
     /** @param {string} line */
     function handleLine(line) {
         if (!parseInternalFrames) {
-            stderr += `${line}\n`;
-            return;
+            // External commands opt into measurements with a current versioned usage frame.
+            // Other stderr, including legacy look-alike text, remains ordinary diagnostics.
+            let version;
+            try {
+                version = line.startsWith(GUIDED_REVIEW_EVENT_PREFIX)
+                    ? JSON.parse(line.slice(GUIDED_REVIEW_EVENT_PREFIX.length))?.version
+                    : null;
+            } catch {
+                version = null;
+            }
+            if (version !== GUIDED_REVIEW_USAGE_VERSION) {
+                stderr += `${line}\n`;
+                return;
+            }
         }
         let event;
         try {
@@ -488,13 +507,8 @@ async function readGuideStderr(stream, parseInternalFrames, progress) {
             stderr += `${line}\n`;
             return;
         }
-        usage = usage || emptyGuideUsageTotals();
-        usage.inputTokens += event.usage.inputTokens;
-        usage.outputTokens += event.usage.outputTokens;
-        usage.cacheReadTokens += event.usage.cacheReadTokens;
-        usage.cacheWriteTokens += event.usage.cacheWriteTokens;
-        usage.costUsd += event.usage.costUsd;
-        if (typeof event.usage.contextWindow === "number") usage.contextWindow = event.usage.contextWindow;
+        totals.add(event.usage);
+        usage = { ...totals.usage };
         progress.onUsage?.(event.usage);
     }
     try {

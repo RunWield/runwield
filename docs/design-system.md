@@ -61,6 +61,23 @@ correct choice obvious:
 - document when to use and not use a pattern;
 - keep Workflow and Plan vocabulary aligned with `docs/domain-language.md`.
 
+## Usage reports
+
+`src/ui/design-system/usage.css` owns the compact Usage report layout, scrollable tables, and semantic trend styles.
+`src/ui/design-system/components/react/UsageTrend.tsx` renders a daily token trend without a charting dependency. Its
+input uses `null` for a gap and `0` for a covered zero: gaps split line segments and have no numeric point; known zero
+has a baseline point. The SVG has a readable description and each point has a date/value title.
+
+Always pair a trend with a readable table. The Workspace daily table shows tokens, estimated USD cost, and **Data
+Complete** as **Complete** or **Partial**, with gap reasons. On partial days show known cost as a subtotal, or a dash
+when no cost is known. Do not turn missing cost into zero. Summary figures keep exclusion and partial-day counts beside
+the values. Coverage notices distinguish pending measurements from settled spend, identify excluded Projects, and keep
+the host time zone and recorded-through marker visible.
+
+Use `--rw-*` semantic colors, existing rectangular controls, and two summary columns on phone. Wide tables scroll inside
+a focusable, named region rather than widening the page. Project rows may show deduplicated, verified Session and Plan
+links with readable labels; do not add raw event-ID lists.
+
 ## Source of truth
 
 ### Printed documents

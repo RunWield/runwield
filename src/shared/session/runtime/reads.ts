@@ -509,8 +509,10 @@ export class RuntimeReads {
                 model: { provider: managed?.provider || "", model: managed?.model || "" },
                 projection: buildProjectedSessionContextProjection(projected.entries),
                 contextUsage: null,
-                activeMessageTokens: info.inputTokens + info.outputTokens + info.cacheReadTokens +
-                    info.cacheWriteTokens,
+                activeMessageTokens: info.inputTokens === null || info.outputTokens === null ||
+                        info.cacheReadTokens === null || info.cacheWriteTokens === null
+                    ? undefined
+                    : info.inputTokens + info.outputTokens + info.cacheReadTokens + info.cacheWriteTokens,
                 contextWindow: null,
             });
         }

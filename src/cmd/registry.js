@@ -798,7 +798,7 @@ export const commandRegistry = {
         usage: [
             `${bin("install npm:<spec>")}`,
             `${bin("install git:<url>")}`,
-            `${bin("install local:<path>")}`,
+            `${bin("install <path>")}`,
         ],
         notes: [
             "Theme (.json) resources and passive prompt templates are registered.",

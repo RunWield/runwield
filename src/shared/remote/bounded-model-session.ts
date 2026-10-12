@@ -21,6 +21,7 @@ import { parseProviderModel } from "../models/model-validation.ts";
 import { modelSupportsImageInput, resolveVisionFallbackModel } from "../session/image-attachments.ts";
 import { getResolvedVisionFallbackModelSetting, getSettingsManager } from "../settings.js";
 import { createSeeImageTool } from "../../tools/see-image.ts";
+import { ExecutionMetricsRecorder } from "../workflow/execution-metrics.ts";
 import {
     getPackagePromptTemplatePaths,
     mappedRemotePackageSettings,
@@ -136,6 +137,13 @@ export async function createBoundedRemoteModelSession(options: {
     const agentDef = options.agentDef ?? await loadAgentDef(agentName, options.cwd);
     const model = await resolveBoundedRemoteModelSelection(registry, { ...options, agentDef });
     const customTools = [...options.customTools ?? []];
+    const sessionManager = SessionManager.inMemory(options.cwd);
+    // The verification turn itself stays unrecorded. Only auxiliary vision requests use this recorder.
+    const visionMetrics = new ExecutionMetricsRecorder({
+        projectRoot: options.cwd,
+        sessionId: sessionManager.getSessionId(),
+        agentName,
+    });
     if (
         !modelSupportsImageInput(model) && getResolvedVisionFallbackModelSetting(options.cwd) &&
         !customTools.some((tool) => tool.name === "see_image")
@@ -147,6 +155,7 @@ export async function createBoundedRemoteModelSession(options: {
                 remoteModel: fallback.model,
                 completeSimpleFn: (model, context, streamOptions) =>
                     runtime.streamSimple(model, context, streamOptions).result(),
+                onModelUsage: (observation) => visionMetrics.recordModelUsage(observation),
             }));
         }
     }
@@ -195,7 +204,7 @@ export async function createBoundedRemoteModelSession(options: {
         model,
         settingsManager,
         resourceLoader: loader,
-        sessionManager: SessionManager.inMemory(options.cwd),
+        sessionManager,
         tools: customTools.map((tool) => tool.name),
         customTools,
         ...(customTools.length ? {} : { noTools: "all" }),

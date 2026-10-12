@@ -1,14 +1,14 @@
-import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/metrics
  * Local-only workflow metrics recording helpers.
  */
 
-import { dirname, isAbsolute, join } from "node:path";
-import { openNativeFileLock } from "../native-file-lock.ts";
+import { isAbsolute, join } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.js";
+import { appendWorkflowMetric, isWorkflowMetricsEnabled, resolveCollectionEpoch } from "./metrics-journal.ts";
+export { isWorkflowMetricsEnabled } from "./metrics-journal.ts";
 
 /**
  * @typedef {"routing"|"planning"|"execution"|"validation"|"recovery"|"model_selection"|"tool_usage"|"command"|"model_usage"|"context"} WorkflowMetricCategory
@@ -73,19 +73,6 @@ const BROWSER_PREFLIGHT_OUTCOMES = new Set(["succeeded", "failed", "externally_b
 const cwdHashCache = new Map();
 /** @type {Map<string, { subUsage: string, startedAt: number }>} */
 const activeToolCalls = new Map();
-
-/**
- * @param {unknown} setting
- * @returns {boolean}
- */
-export function isWorkflowMetricsEnabled(setting) {
-    if (setting === true) return true;
-    if (setting === false || setting == null) return false;
-    if (typeof setting === "object" && !Array.isArray(setting)) {
-        return /** @type {{ enabled?: unknown }} */ (setting).enabled === true;
-    }
-    return false;
-}
 
 /**
  * @param {string} cwd
@@ -267,7 +254,36 @@ function sanitizeDedicatedFrontendMetricDetails(event, details) {
 // Each event owns its fields. Nothing from an unrecognized event is persisted.
 /** @type {Record<string, string[]>} */
 const V2_EVENTS = {
-    execution_started: ["sourceSurface"],
+    mechanical_validation_finished: ["outcome"],
+    operation_completed_observed: ["outcome"],
+    quick_fix_completed_observed: ["outcome"],
+    operational_recovery: ["outcome"],
+    validation_attempt: [
+        "attempt",
+        "outcome",
+        "phase",
+        "findingCount",
+        "advisoryCount",
+        "initialFindingCount",
+        "missedOriginalCount",
+        "repairRegressionCount",
+        "unclassifiedNewCount",
+        "existingStillOpenCount",
+        "fixConfirmedCount",
+    ],
+    repair_round: ["round", "outcome", "phase"],
+    repair_round_finished: ["outcome", "phase"],
+    publication_confirmed: ["outcome", "planKind"],
+    workflow_abandoned: ["outcome"],
+    workflow_transition_committed: ["outcome"],
+    implementation_finished: ["outcome"],
+    plan_execution_result: ["outcome"],
+    implementation_checkpoint_failed: ["outcome"],
+    execution_context_resolution: ["outcome"],
+    feature_project_outcome: ["outcome", "phase"],
+    review_complete: ["outcome", "findingCount", "advisoryCount"],
+    guided_review_generation_result: ["outcome", "elapsedMs", "sectionCount", "failureKind"],
+    execution_started: ["sourceSurface", "userInitiated"],
     execution_finished: ["outcome", "reason", "elapsedMs", "callCount", "coverage"],
     retry_started: ["retrySource", "attempt", "maxAttempts", "delayMs"],
     retry_finished: ["retrySource", "attempt", "outcome", "reason"],
@@ -379,6 +395,23 @@ const V2_EVENTS = {
 };
 /** @type {Record<string, string>} */
 const V2_EVENT_CATEGORIES = {
+    mechanical_validation_finished: "validation",
+    operation_completed_observed: "execution",
+    quick_fix_completed_observed: "execution",
+    operational_recovery: "recovery",
+    validation_attempt: "validation",
+    repair_round: "recovery",
+    repair_round_finished: "recovery",
+    publication_confirmed: "recovery",
+    workflow_abandoned: "recovery",
+    workflow_transition_committed: "recovery",
+    implementation_finished: "execution",
+    plan_execution_result: "execution",
+    implementation_checkpoint_failed: "execution",
+    execution_context_resolution: "validation",
+    feature_project_outcome: "execution",
+    review_complete: "validation",
+    guided_review_generation_result: "validation",
     execution_started: "execution",
     execution_finished: "execution",
     retry_started: "execution",
@@ -400,7 +433,20 @@ const V2_EVENT_CATEGORIES = {
 };
 /** @type {Record<string, Set<string>>} */
 const V2_ENUMS = {
-    outcome: new Set(["succeeded", "failed", "canceled", "rejected", "interrupted", "success", "error", "incomplete"]),
+    planKind: new Set(["PLANNED_CHANGE", "PROJECT", "QUICK_FIX", "OPERATION"]),
+    outcome: new Set([
+        "succeeded",
+        "failed",
+        "canceled",
+        "rejected",
+        "interrupted",
+        "success",
+        "error",
+        "incomplete",
+        "ongoing",
+        "approved",
+        "feedback",
+    ]),
     reason: new Set([
         "completed",
         "returned_error",
@@ -425,6 +471,7 @@ const V2_ENUMS = {
         "unavailable",
         "not_found",
     ]),
+    failureKind: new Set(["invalid_json", "empty_output", "schema_invalid", "aborted", "provider_failed"]),
     errorReason: new Set(["failed", "canceled", "rejected", "unknown", "unavailable", "unknown_command"]),
     executionKind: new Set(["root", "isolated", "delegated"]),
     mode: new Set(["foreground", "background"]),
@@ -563,7 +610,17 @@ const V2_ENUMS = {
     basis: new Set(["backend_turn", "model_request"]),
     availability: new Set(["complete", "partial", "unavailable"]),
     kind: new Set(["builtin", "template", "skill"]),
-    phase: new Set(["start", "finish", "opened", "dispatched", "rejected"]),
+    phase: new Set([
+        "start",
+        "finish",
+        "opened",
+        "dispatched",
+        "rejected",
+        "mechanical",
+        "semantic",
+        "delivery",
+        "planning",
+    ]),
     sourceSurface: new Set(["tui", "workspace", "acp", "cli", "headless"]),
 };
 for (const manager of ["npm", "pnpm", "yarn", "bun"]) {
@@ -572,6 +629,10 @@ for (const manager of ["npm", "pnpm", "yarn", "bun"]) {
     }
 }
 const V2_LINKS = new Set([
+    "planId",
+    "transitionId",
+    "roundId",
+    "operationId",
     "sessionId",
     "managedSessionId",
     "segmentId",
@@ -590,6 +651,16 @@ const V2_LINKS = new Set([
     "sourceId",
 ]);
 const V2_NUMBERS = new Set([
+    "sectionCount",
+    "round",
+    "initialFindingCount",
+    "missedOriginalCount",
+    "repairRegressionCount",
+    "unclassifiedNewCount",
+    "existingStillOpenCount",
+    "fixConfirmedCount",
+    "findingCount",
+    "advisoryCount",
     "elapsedMs",
     "callCount",
     "toolCount",
@@ -665,8 +736,12 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
     /** @type {Record<string, unknown>} */
     const record = {
         v: 2,
-        ts: new Date().toISOString(),
-        eventId: crypto.randomUUID(),
+        ts: typeof metric.ts === "string" && Number.isFinite(Date.parse(metric.ts))
+            ? new Date(metric.ts).toISOString()
+            : new Date().toISOString(),
+        eventId: typeof metric.eventId === "string" && V2_IDENTIFIER.test(metric.eventId)
+            ? metric.eventId
+            : crypto.randomUUID(),
         recorderId: metric.recorderId,
         seq,
         event,
@@ -704,7 +779,7 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
         } else if (key === "costAmount") {
             if (value === null) record[key] = null;
             else if (typeof value === "number" && Number.isFinite(value) && value >= 0) record[key] = value;
-        } else if (key === "isError" || key === "truncated") {
+        } else if (key === "isError" || key === "truncated" || key === "userInitiated") {
             if (typeof value === "boolean" || value === null) record[key] = value;
         } else if (key === "coverage" && isPlainObject(value)) {
             record.coverage = Object.fromEntries(
@@ -733,9 +808,11 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
 }
 
 /**
+ * @typedef {import("./metrics-journal.ts").JournalResult & Pick<WorkflowMetricRecord, "details">} WorkflowMetricResult
+ *
  * @param {Record<string, unknown>} metric
  * @param {string} cwd
- * @returns {Promise<WorkflowMetricRecord | Record<string, unknown> | null>}
+ * @returns {Promise<WorkflowMetricResult>}
  */
 export async function recordWorkflowMetric(metric, cwd) {
     try {
@@ -745,15 +822,26 @@ export async function recordWorkflowMetric(metric, cwd) {
         // Actual metric writes still read the real settings and honor opt-out.
         const { getMergedCustomSetting } = await import("../settings.js");
         const resolvedSetting = getMergedCustomSetting("workflowMetrics", projectRoot);
-        if (!isWorkflowMetricsEnabled(resolvedSetting)) return null;
-
         const filePath = getWorkflowMetricsFilePath(projectRoot);
+        const epochState = resolveCollectionEpoch(filePath, isWorkflowMetricsEnabled(resolvedSetting));
+        const invocation = {
+            enabled: metric.persisted === false && typeof metric.collectionEnabledAtCall === "boolean"
+                ? metric.collectionEnabledAtCall
+                : isWorkflowMetricsEnabled(resolvedSetting),
+            epoch: metric.persisted === false && typeof metric.collectionEpoch === "string"
+                ? metric.collectionEpoch
+                : epochState.collectionEpoch.id,
+            historyEpoch: typeof metric.historyEpoch === "string" ? metric.historyEpoch : epochState.historyEpoch,
+            deadline: typeof metric.persistenceDeadline === "number"
+                ? Math.min(Date.now() + 1000, metric.persistenceDeadline)
+                : Date.now() + 1000,
+        };
         const cwdHash = await hashMetricCwd(projectRoot);
 
         let record;
         if (metric.v === 2) {
             record = sanitizeV2MetricRecord(metric, cwdHash);
-            if (!record) return null;
+            if (!record) return { persisted: false, reason: "invalid_record" };
         } else {
             const eventName = typeof metric.event === "string" ? metric.event : "";
             const categoryName = typeof metric.category === "string"
@@ -781,34 +869,11 @@ export async function recordWorkflowMetric(metric, cwd) {
             };
         }
 
-        const serialized = `${JSON.stringify(record)}\n`;
-        metricsWriteQueue = metricsWriteQueue.then(async () => {
-            try {
-                await fsMkdir(dirname(filePath), { recursive: true });
-                // The queue orders this producer only. Keep a persistent sidecar so
-                // every process appends under the same OS-backed lock identity.
-                const lock = openNativeFileLock(`${filePath}.lock`);
-                try {
-                    const deadline = performance.now() + 1000;
-                    while (!lock.tryLockSync(true)) {
-                        // Metrics remain optional even when another writer stalls.
-                        if (performance.now() >= deadline) return;
-                        await new Promise((resolve) => setTimeout(resolve, 10));
-                    }
-                    await fsWriteFile(filePath, serialized, { flag: "a" });
-                } finally {
-                    lock.close();
-                }
-            } catch {
-                // Fail-open: metric writes must never disrupt execution.
-            }
-        }).catch(() => {});
-
-        // v2 observations do not wait for a blocked disk write. Settlement uses the bounded drain.
-        if (metric.v !== 2) await waitForMetrics(metricsWriteQueue, 100);
-        return record;
+        const pending = metricsWriteQueue.then(() => appendWorkflowMetric(filePath, projectRoot, record, invocation));
+        metricsWriteQueue = pending.then(() => {}, () => {});
+        return await pending;
     } catch {
-        return null;
+        return { persisted: false, reason: "storage_failure" };
     }
 }
 
@@ -882,7 +947,7 @@ export function classifyToolSubUsage(toolName, args = undefined) {
  * @param {unknown} args
  * @param {string} cwd
  * @param {string} [agentName]
- * @returns {Promise<WorkflowMetricRecord | Record<string, unknown> | null>}
+ * @returns {Promise<import("./metrics-journal.ts").JournalResult>}
  */
 export function recordToolCallStarted(toolCallId, toolName, args, cwd, agentName) {
     const subUsage = classifyToolSubUsage(toolName, args);
@@ -901,7 +966,7 @@ export function recordToolCallStarted(toolCallId, toolName, args, cwd, agentName
  * @param {boolean} isError
  * @param {string} cwd
  * @param {string} [agentName]
- * @returns {Promise<WorkflowMetricRecord | Record<string, unknown> | null>}
+ * @returns {Promise<import("./metrics-journal.ts").JournalResult>}
  */
 export function recordToolCallFinished(toolCallId, toolName, isError, cwd, agentName) {
     const started = activeToolCalls.get(toolCallId);
@@ -918,4 +983,32 @@ export function recordToolCallFinished(toolCallId, toolName, isError, cwd, agent
             durationMs: started ? now - started.startedAt : undefined,
         },
     }, cwd);
+}
+
+/**
+ * @typedef {Object} LegacyWorkflowMetricInput
+ * @property {number} v
+ * @property {string} ts
+ * @property {string} event
+ *
+ * @typedef {Object} LegacyWorkflowMetricReport
+ * @property {string} timestamp
+ * @property {string} event
+ * @property {"legacy/partial"} availability
+ */
+
+/** Read only understood v1 fields. Generic details and mutable Plan names are never report joins.
+ * @param {LegacyWorkflowMetricInput} record
+ * @returns {LegacyWorkflowMetricReport | null}
+ */
+export function readLegacyWorkflowMetric(record) {
+    if (
+        record.v !== 1 || !Number.isFinite(Date.parse(record.ts)) ||
+        ["collection_epoch", "history_epoch", "measurement_gap"].includes(record.event)
+    ) return null;
+    return {
+        timestamp: record.ts,
+        event: /^[a-z][a-z0-9_]{0,80}$/.test(record.event) ? record.event : "legacy",
+        availability: "legacy/partial",
+    };
 }

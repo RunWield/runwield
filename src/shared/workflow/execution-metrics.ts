@@ -8,7 +8,14 @@
  */
 
 import { estimateContextTextTokens } from "../session/session-context-report.ts";
-import { classifyToolSubUsage, drainWorkflowMetrics, recordWorkflowMetric } from "./metrics.js";
+import {
+    classifyToolSubUsage,
+    drainWorkflowMetrics,
+    getWorkflowMetricsFilePath,
+    recordWorkflowMetric,
+} from "./metrics.js";
+
+import { resolveCollectionEpoch } from "./metrics-journal.ts";
 
 export type ExecutionKind = "root" | "isolated" | "delegated";
 export type ExecutionMode = "foreground" | "background";
@@ -119,6 +126,7 @@ export interface ExecutionRecorderOptions {
     executionKind?: ExecutionKind;
     mode?: ExecutionMode;
     sourceSurface?: string;
+    userInitiated?: boolean;
 }
 
 export interface ModelUsageObservation {
@@ -616,6 +624,8 @@ export class ExecutionMetricsRecorder {
     readonly executionKind: ExecutionKind;
     readonly mode: ExecutionMode;
     readonly sourceSurface: string;
+    readonly userInitiated: boolean;
+    private historyEpoch: string;
 
     private seq = 0;
     private startedAt: number;
@@ -660,6 +670,12 @@ export class ExecutionMetricsRecorder {
         this.executionKind = options.executionKind || "root";
         this.mode = options.mode || "foreground";
         this.sourceSurface = options.sourceSurface || "cli";
+        this.userInitiated = options.userInitiated === true;
+        try {
+            this.historyEpoch = resolveCollectionEpoch(getWorkflowMetricsFilePath(options.projectRoot)).historyEpoch;
+        } catch {
+            this.historyEpoch = "unavailable";
+        }
         this.startedAt = Date.now();
     }
 
@@ -671,6 +687,7 @@ export class ExecutionMetricsRecorder {
         return {
             v: 2,
             recorderId: this.recorderId,
+            historyEpoch: this.historyEpoch,
             executionId: this.executionId,
             sessionId: this.sessionId ?? null,
             managedSessionId: this.managedSessionId ?? null,
@@ -694,16 +711,18 @@ export class ExecutionMetricsRecorder {
 
     async recordExecutionStart(): Promise<void> {
         this.startedAt = Date.now();
-        await recordWorkflowMetric(
+        const result = await recordWorkflowMetric(
             {
                 ...this.baseLinks(),
                 category: "execution",
                 event: "execution_started",
                 seq: this.nextSeq(),
                 sourceSurface: this.sourceSurface,
+                userInitiated: this.userInitiated,
             },
             this.projectRoot,
         );
+        if (result.persisted && result.historyEpoch) this.historyEpoch = result.historyEpoch;
     }
 
     async recordToolExposure(

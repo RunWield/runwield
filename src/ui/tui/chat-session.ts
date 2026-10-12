@@ -44,6 +44,7 @@ import { isProjectInitComplete } from "../../cmd/init/init-completion.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { setActiveSessionModel } from "../../shared/session/model-selection.ts";
 import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
+import { startMetricsExportScheduler } from "../../shared/workflow/metrics-export-scheduler.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { renderBootBanner } from "./boot-banner.ts";
 import { getSelectedDefaultModelAvailability, maybeShowModelWelcome } from "./model-welcome.ts";
@@ -155,7 +156,7 @@ export async function startInteractiveSession(
     const shouldDeferManagedActivation = sessionStartMode === "new";
     const sessionStore = shouldDeferManagedActivation ? null : openFileSessionStore();
     const sessionRuntime = createSessionRuntime({ sessionStore, ownerProcessKind: "tui" });
-    const disposables: Array<() => void | Promise<void>> = [];
+    const disposables: Array<() => void | Promise<void>> = [startMetricsExportScheduler()];
     let uiAPIForDispose: UiAPI | null = null;
     let lifecycleDisposed = false;
     const historyReplay = new AbortController();
