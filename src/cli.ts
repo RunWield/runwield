@@ -184,10 +184,9 @@ async function main(): Promise<void> {
     }
 
     if (requiresProjectDirectoryConsent(firstPositional, normalizedArgs.slice(1))) {
-        const { confirmProjectDirectory, allowSystemDirectoriesForInvocation } = await import(
+        const { confirmProjectDirectory } = await import(
             "./ui/tui/directory-warning.ts"
         );
-        if (allowSystemDirectory) allowSystemDirectoriesForInvocation();
         const { getCwd } = await import("./constants.js");
         if (!await confirmProjectDirectory(getCwd(), allowSystemDirectory)) return;
         const { resolvePrimaryCheckoutRoot } = await import("./shared/primary-checkout.ts");

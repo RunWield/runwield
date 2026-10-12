@@ -24,7 +24,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/home-system-folder-warning"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Warn Before Using Home or System Folders

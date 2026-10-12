@@ -11,7 +11,7 @@ import {
     getMarkdownTheme as upstreamGetMarkdownTheme,
     getSelectListTheme as upstreamGetSelectListTheme,
 } from "@earendil-works/pi-coding-agent";
-import { CATPPUCCIN_MOCHA_THEME_PATH } from "../../constants.js";
+import defaultThemeJson from "./catppuccin-mocha.json" with { type: "json" };
 import { getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { loadExternalThemeJsons } from "./theme-discovery.ts";
 import { createThemeFromJson } from "./theme-json.ts";
@@ -78,9 +78,8 @@ export const imageTheme = {
 
 // ─── Theme JSON → Theme instance ─────────────────────────────────────────────
 
-export const DEFAULT_THEME_JSON = /** @type {ThemeJson} */ (JSON.parse(
-    Deno.readTextFileSync(CATPPUCCIN_MOCHA_THEME_PATH),
-));
+/** @type {ThemeJson} */
+export const DEFAULT_THEME_JSON = defaultThemeJson;
 
 // Construct the embedded theme once at module load. It's both the boot default
 // and the merge floor for partial external themes.

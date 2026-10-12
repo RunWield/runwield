@@ -1,3 +1,5 @@
+import { runLoadPlanCommand } from "../load-plan/index.ts";
+import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { fromFileUrl, join } from "@std/path";
@@ -10,75 +12,57 @@ const moduleUrl = (path: string) => new URL(path, import.meta.url).href;
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const fixture = defineCommittedGitFixture();
 
-for (const allow of [false, true]) {
-    Deno.test(`Load Plan ${allow ? "override covers" : "refuses"} a registered home document before retired-status repair`, async () => {
-        await withRuntimeCommandFixture("selected-plan-directory-", async ({ homeDir: home }) => {
-            const project = await fixture.checkout();
-            try {
-                Deno.mkdirSync(join(home, "docs/plans"), { recursive: true });
-                const path = join(home, "docs/plans/selected.md");
-                const text = "---\nplanId: selected-id\nstatus: ready_for_review\n---\n# Selected\n";
-                Deno.writeTextFileSync(path, text);
-                await addEntry(project, {
-                    id: "selected-tree",
-                    planId: "selected-id",
-                    planName: "selected",
-                    path: home,
-                    branch: "selected",
-                    baseBranch: "main",
-                    baseRef: "main",
-                    baseCommit: await git(project, ["rev-parse", "HEAD"]),
-                    status: "planning",
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                });
-                if (allow) {
-                    const child = new Deno.Command(Deno.execPath(), {
+for (const command of ["load-plan", "plans"]) {
+    for (const allow of [false, true]) {
+        Deno.test(`${command} ${allow ? "override does not authorize" : "refuses"} a registered home document before retired-status repair`, async () => {
+            await withRuntimeCommandFixture("selected-plan-directory-", async ({ homeDir: home }) => {
+                const project = await fixture.checkout();
+                try {
+                    Deno.mkdirSync(join(home, "docs/plans"), { recursive: true });
+                    const path = join(home, "docs/plans/selected.md");
+                    const text = "---\nplanId: selected-id\nstatus: ready_for_review\n---\n# Selected\n";
+                    Deno.writeTextFileSync(path, text);
+                    await addEntry(project, {
+                        id: "selected-tree",
+                        planId: "selected-id",
+                        planName: "selected",
+                        path: home,
+                        branch: "selected",
+                        baseBranch: "main",
+                        baseRef: "main",
+                        baseCommit: await git(project, ["rev-parse", "HEAD"]),
+                        status: "planning",
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    });
+                    const output = await new Deno.Command(Deno.execPath(), {
                         args: [
                             "run",
                             "-A",
                             "--config",
                             config,
                             cli,
-                            "--allow-system-directory",
-                            "load-plan",
-                            "selected",
+                            ...(allow ? ["--allow-system-directory"] : []),
+                            ...(command === "load-plan"
+                                ? ["load-plan", "selected"]
+                                : ["plans", "archive", "selected", "--force"]),
                         ],
                         cwd: project,
                         env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
                         stdin: "null",
                         stdout: "piped",
                         stderr: "piped",
-                    }).spawn();
-                    const output = child.output();
-                    const deadline = Date.now() + 20000;
-                    while (Deno.readTextFileSync(path) === text && Date.now() < deadline) {
-                        await new Promise((resolve) => setTimeout(resolve, 50));
-                    }
-                    try {
-                        child.kill("SIGTERM");
-                    } catch { /* It can fail later on nonterminal chat startup. */ }
-                    await output;
-                    assertStringIncludes(Deno.readTextFileSync(path), "implemented");
-                    return;
+                    }).output();
+                    assertEquals(output.code, 1);
+                    assertStringIncludes(decode(output.stderr), "--allow-system-directory");
+                    assertEquals(Deno.readTextFileSync(path), text);
+                    assertEquals([...Deno.readDirSync(home)].some((entry) => entry.name === "docs"), true);
+                } finally {
+                    Deno.removeSync(project, { recursive: true });
                 }
-                const output = await new Deno.Command(Deno.execPath(), {
-                    args: ["run", "-A", "--config", config, cli, "load-plan", "selected"],
-                    cwd: project,
-                    env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-                    stdin: "null",
-                    stdout: "piped",
-                    stderr: "piped",
-                }).output();
-                assertEquals(output.code, 1);
-                assertStringIncludes(decode(output.stderr), "--allow-system-directory");
-                assertEquals(Deno.readTextFileSync(path), text);
-                assertEquals([...Deno.readDirSync(home)].some((entry) => entry.name === "docs"), true);
-            } finally {
-                Deno.removeSync(project, { recursive: true });
-            }
+            });
         });
-    });
+    }
 }
 
 Deno.test("direct chat startup checks the primary checkout before runtime writers", async () => {
@@ -167,3 +151,135 @@ console.log("CANCELED");
         Deno.removeSync(scripts, { recursive: true });
     }
 });
+
+Deno.test("ACP Load Plan at a registered home root keeps protocol behavior without a terminal gate", async () => {
+    await withRuntimeCommandFixture("acp-selected-directory-", async ({ homeDir, projectRoot }) => {
+        const runtime = createSessionRuntime();
+        const messages: string[] = [];
+        try {
+            Deno.mkdirSync(join(homeDir, "docs/plans"), { recursive: true });
+            Deno.writeTextFileSync(
+                join(homeDir, "docs/plans/acp.md"),
+                "---\nplanId: acp-plan\nstatus: invalid-status\n---\n# ACP\n",
+            );
+            await addEntry(projectRoot, {
+                id: "acp-tree",
+                planId: "acp-plan",
+                planName: "acp",
+                path: homeDir,
+                branch: "acp",
+                baseBranch: "main",
+                baseRef: "main",
+                baseCommit: "fixture",
+                status: "planning",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            });
+            const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
+            await runLoadPlanCommand(["acp"], {
+                slashSurface: "acp",
+                sessionRuntime: runtime,
+                sessionId,
+                uiAPI: {
+                    abortActivePrompt: () => {},
+                    appendSystemMessage: (message) => messages.push(message),
+                    appendAgentMessageStart: () => ({ appendText: () => {} }),
+                    requestRender: () => {},
+                    promptSelect: () => Promise.resolve(null),
+                    promptText: () => Promise.resolve(null),
+                    showModelSelector: () => {},
+                },
+            });
+            assertStringIncludes(messages.join("\n"), "Plan has unknown status: invalid-status");
+            assertEquals(messages.join("\n").includes("System or home folder"), false);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+        }
+    });
+});
+
+Deno.test("explicit acknowledgement covers only its inspected root and canonical aliases", async () => {
+    const home = Deno.makeTempDirSync();
+    const scripts = Deno.makeTempDirSync();
+    try {
+        const alias = join(scripts, "home-alias");
+        Deno.symlinkSync(home, alias);
+        const script = join(scripts, "bound-consent.ts");
+        Deno.writeTextFileSync(
+            script,
+            `
+import { confirmProjectDirectory } from ${JSON.stringify(moduleUrl("../../ui/tui/directory-warning.ts"))};
+if (!await confirmProjectDirectory(${JSON.stringify(home)}, true)) throw new Error("Acknowledgement failed");
+if (!await confirmProjectDirectory(${JSON.stringify(alias)})) throw new Error("Alias asked twice");
+try {
+    await confirmProjectDirectory(${JSON.stringify(Deno.build.os === "windows" ? "C:\\" : "/")});
+    throw new Error("Different root was authorized");
+} catch (error) {
+    if (!error.message.includes("--allow-system-directory")) throw error;
+}
+`,
+        );
+        const output = await new Deno.Command(Deno.execPath(), {
+            args: ["run", "-A", "--config", config, script],
+            cwd: home,
+            env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
+            stdin: "null",
+            stdout: "piped",
+            stderr: "piped",
+        }).output();
+        assertEquals(output.code, 0, decode(output.stderr));
+    } finally {
+        Deno.removeSync(scripts, { recursive: true });
+        Deno.removeSync(home, { recursive: true });
+    }
+});
+
+for (const allow of [false, true]) {
+    Deno.test(`plans doctor refuses a registered home root before repair${allow ? " even with cwd acknowledgement" : ""}`, async () => {
+        await withRuntimeCommandFixture("doctor-selected-directory-", async ({ homeDir: home }) => {
+            const project = await fixture.checkout();
+            try {
+                Deno.mkdirSync(join(home, "docs/plans"), { recursive: true });
+                const path = join(home, "docs/plans/selected.md");
+                const text = "---\nstatus: draft\n---\n# Selected\n";
+                Deno.writeTextFileSync(path, text);
+                await addEntry(project, {
+                    id: "doctor-home-tree",
+                    planId: "doctor-home-plan",
+                    planName: "selected",
+                    path: home,
+                    branch: "selected",
+                    baseBranch: "main",
+                    baseRef: "main",
+                    baseCommit: await git(project, ["rev-parse", "HEAD"]),
+                    status: "planning",
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                });
+                const output = await new Deno.Command(Deno.execPath(), {
+                    args: [
+                        "run",
+                        "-A",
+                        "--config",
+                        config,
+                        cli,
+                        ...(allow ? ["--allow-system-directory"] : []),
+                        "plans",
+                        "doctor",
+                    ],
+                    cwd: project,
+                    env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                    stdin: "null",
+                    stdout: "piped",
+                    stderr: "piped",
+                }).output();
+                assertEquals(output.code, 1);
+                assertStringIncludes(decode(output.stderr), "--allow-system-directory");
+                assertEquals(Deno.readTextFileSync(path), text);
+                assertEquals([...Deno.readDirSync(home)].some((entry) => entry.name === ".gitignore"), false);
+            } finally {
+                Deno.removeSync(project, { recursive: true });
+            }
+        });
+    });
+}

@@ -98,12 +98,12 @@ for (const projectId of [undefined, "relink-project"]) {
                 });
                 const form = container.querySelector("form");
                 const submit = container.querySelector('button[type="submit"]');
-                async function send() {
+                const send = async () => {
                     submit.focus();
-                    await act(async () => {
+                    await act(() => {
                         form.dispatchEvent(new browser.Event("submit", { bubbles: true, cancelable: true }));
                     });
-                }
+                };
                 const button = (label) =>
                     [...container.querySelectorAll("button")].find((node) => node.textContent === label);
                 await send();
@@ -126,7 +126,7 @@ for (const projectId of [undefined, "relink-project"]) {
                 const count = requests.length;
                 await act(() => form.dispatchEvent(new browser.Event("submit", { bubbles: true, cancelable: true })));
                 assertEquals(requests.length, count);
-                await act(async () =>
+                await act(() =>
                     finish(new Response(JSON.stringify({ error: "Root changed; try again." }), { status: 409 }))
                 );
                 assertEquals(submit.disabled, false);
@@ -138,7 +138,7 @@ for (const projectId of [undefined, "relink-project"]) {
                 await send();
                 assertEquals(requests.at(-1).directoryConfirmation, undefined);
                 await act(() => button("Continue").click());
-                await act(async () =>
+                await act(() =>
                     finish(
                         new Response(JSON.stringify({ project: { projectId: "linked-project" } }), {
                             status: projectId ? 200 : 201,

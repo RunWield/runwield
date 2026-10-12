@@ -13,7 +13,60 @@ for (const platform of ["linux", "darwin", "windows"]) {
     Deno.test(`${platform} policy matches exact locations, not descendants or similar names`, () => {
         const home = platform === "windows" ? "C:\\Users\\Owner" : "/users/owner";
         const locations = systemDirectoryLocations({ platform, home });
-        for (const location of locations) {
+        const posix = [
+            "/bin",
+            "/sbin",
+            "/etc",
+            "/usr",
+            "/usr/bin",
+            "/usr/sbin",
+            "/usr/lib",
+            "/usr/lib64",
+            "/usr/local",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+            "/usr/local/lib",
+            "/var",
+            "/var/log",
+            "/var/lib",
+            "/var/cache",
+            "/var/run",
+            "/tmp",
+            "/opt",
+            "/home",
+            "/root",
+            "/lib",
+            "/lib64",
+            "/boot",
+            "/dev",
+            "/proc",
+            "/sys",
+            "/run",
+            "/srv",
+            "/mnt",
+            "/media",
+        ];
+        const expected = platform === "windows"
+            ? [home, "C:\\Windows", "C:\\Program Files", "C:\\Program Files (x86)", "C:\\ProgramData", "C:\\Users"]
+            : [
+                home,
+                ...posix,
+                ...(platform === "darwin"
+                    ? [
+                        "/Applications",
+                        "/Library",
+                        "/System",
+                        "/Users",
+                        "/Volumes",
+                        "/private",
+                        "/private/etc",
+                        "/private/tmp",
+                        "/private/var",
+                    ]
+                    : []),
+            ];
+        assertEquals(locations, expected);
+        for (const location of expected) {
             assertEquals(isExactSystemDirectory(location, locations, platform), true, location);
             assertEquals(isExactSystemDirectory(`${location}/app`, locations, platform), false, location);
             assertEquals(isExactSystemDirectory(`${location}/./`, locations, platform), true);

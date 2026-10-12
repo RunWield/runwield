@@ -11,13 +11,6 @@ import {
 import { PromptSelectBlock } from "./blocks.js";
 import { getTUI, initTUI, stopTUI } from "./tui.ts";
 
-let invocationAllowsSystemDirectory = false;
-
-/** Only the leading CLI acknowledgement enables this invocation policy. */
-export function allowSystemDirectoriesForInvocation(): void {
-    invocationAllowsSystemDirectory = true;
-}
-
 const acknowledgedRoots = new Set<string>();
 export class DirectoryStartupCanceled extends Error {}
 
@@ -35,7 +28,7 @@ async function confirmInspectedDirectory(directory: DirectoryInspection, allow: 
     const path = directory.enteredRoot;
     if (!directory.classified) return true;
     const key = directory.canonicalRoot;
-    if (allow || invocationAllowsSystemDirectory || acknowledgedRoots.has(key)) {
+    if (allow || acknowledgedRoots.has(key)) {
         acknowledgedRoots.add(key);
         return true;
     }

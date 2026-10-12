@@ -268,14 +268,15 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
     let unresolvedLifecycleRecords: TransitionRecoveryRecord[] = [];
 
     try {
-        const discovered = await discoverPlanDocumentRoot(projectRoot, planArg);
+        const discovered = options.slashSurface === "acp" ? null : await discoverPlanDocumentRoot(projectRoot, planArg);
         if (
+            discovered &&
             !await (discovered.missingManagedExecutionWorktree
                 ? confirmMissingManagedProjectDirectory(discovered.path)
                 : confirmProjectDirectory(discovered.path))
         ) return;
         const resolved = await resolvePlanWithPrimaryRecovery(projectRoot, planArg);
-        if (!await confirmProjectDirectory(discovered.path)) return;
+        if (discovered && !await confirmProjectDirectory(discovered.path)) return;
         const plan = resolved.plan;
         if (resolved.recoveredWorktree?.recovered) {
             uiAPI.appendSystemMessage(

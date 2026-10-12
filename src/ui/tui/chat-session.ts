@@ -1,7 +1,11 @@
 import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
-import { resolveTerminalContinuation } from "./terminal-continuation.ts";
-import { confirmProjectDirectory, DirectoryStartupCanceled } from "./directory-warning.ts";
-import { inspectProjectDirectory } from "../../shared/project-directory.ts";
+import { resolveSessionContinuation } from "../../shared/session/session-runtime.ts";
+import {
+    confirmMissingManagedProjectDirectory,
+    confirmProjectDirectory,
+    DirectoryStartupCanceled,
+} from "./directory-warning.ts";
+import { inspectMissingManagedProjectDirectory, inspectProjectDirectory } from "../../shared/project-directory.ts";
 /**
  * @module ui/tui/chat-session
  * High-level interactive loop for the TUI.
@@ -163,12 +167,17 @@ export async function startInteractiveSession(
         throw new DirectoryStartupCanceled("Project startup canceled");
     }
     const continuation = sessionStartMode === "continue"
-        ? await resolveTerminalContinuation(getCwd(), options.resumeSessionId)
+        ? await resolveSessionContinuation(getCwd(), options.resumeSessionId)
         : null;
     if (continuation) {
         for (const root of [continuation.cwd, resolvePrimaryCheckoutRoot(continuation.cwd)]) {
-            if (!await confirmProjectDirectory(root)) throw new DirectoryStartupCanceled("Project startup canceled");
-            suppressAutomaticProjectOffers ||= inspectProjectDirectory(root).classified;
+            const confirmed = continuation.managed
+                ? await confirmMissingManagedProjectDirectory(root)
+                : await confirmProjectDirectory(root);
+            if (!confirmed) throw new DirectoryStartupCanceled("Project startup canceled");
+            suppressAutomaticProjectOffers ||=
+                (continuation.managed ? inspectMissingManagedProjectDirectory(root) : inspectProjectDirectory(root))
+                    .classified;
         }
     }
     const sessionStore = shouldDeferManagedActivation ? null : openFileSessionStore();
@@ -222,7 +231,7 @@ export async function startInteractiveSession(
         const createdSession = await sessionRuntime.createInteractiveSession({
             cwd: sessionCwd,
             mode: sessionStartMode,
-            resumeSessionId: continuation?.sessionId || options.resumeSessionId,
+            resumeSessionId: continuation?.managed ? continuation.sessionId : options.resumeSessionId,
             deferManagedActivationUntilAgentReady: shouldDeferManagedActivation,
         });
         let sessionId = createdSession.sessionId;

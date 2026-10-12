@@ -590,16 +590,46 @@ Deno.test("explicit onboarding shows consent before model setup or Init", async 
     );
 });
 
+// Capture real storage and project artifacts, including transcript bytes and continuation metadata.
+function startupFiles(root: string): Record<string, number[]> {
+    const files: Record<string, number[]> = {};
+    function visit(path: string) {
+        for (const entry of Deno.readDirSync(path)) {
+            const child = `${path}/${entry.name}`;
+            if (entry.isDirectory) {
+                files[`${child}/`] = [];
+                visit(child);
+            } else if (entry.isFile) files[child] = [...Deno.readFileSync(child)];
+        }
+    }
+    visit(root);
+    return files;
+}
+
 for (const cancel of ["quit", "escape", "ctrl-c", "end-input"]) {
     Deno.test(`home startup ${cancel} stops before Session creation`, async () => {
         await withRuntimeCommandFixture("home-startup-cancel-", async ({ homeDir }) => {
             Deno.chdir(homeDir); // Runtime fixture holds the process-global lock.
             const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+            if (cancel === "quit") {
+                const runtime = createSessionRuntime();
+                try {
+                    const created = await runtime.createInteractiveSession({ cwd: homeDir, mode: "new" });
+                    await runtime.switchAgent(created.sessionId, { agentName: "operator" });
+                } finally {
+                    await runtime.closeAllSessionsWhenIdle();
+                }
+            }
+            const before = startupFiles(homeDir);
             let sessionReady = false;
+            let lifecycleReady = false;
             const pending = createInteractiveTuiComposition("do not submit", {
                 browser: NO_OPEN_BROWSER_PORT,
                 terminal,
                 sessionStartMode: cancel === "quit" ? "continue" : "new",
+                onLifecycleReady: () => {
+                    lifecycleReady = true;
+                },
                 onSessionReady: () => {
                     sessionReady = true;
                 },
@@ -610,11 +640,17 @@ for (const cancel of ["quit", "escape", "ctrl-c", "end-input"]) {
             await terminal.flush();
             assertStringIncludes(terminal.getScreenText(), "System or home folder detected. Continue?");
             assertEquals(sessionReady, false);
+            const pendingLifecycleReady = lifecycleReady;
+            const pendingFiles = startupFiles(homeDir);
             if (cancel === "escape") terminal.pressEscape();
             else if (cancel === "ctrl-c") terminal.pressCtrlC();
             else if (cancel === "end-input") terminal.input("\x04");
             else terminal.pressEnter();
             await rejected;
+            assertEquals(pendingLifecycleReady, false);
+            assertEquals(pendingFiles, before);
+            assertEquals(lifecycleReady, false);
+            assertEquals(startupFiles(homeDir), before);
             assertEquals(sessionReady, false);
             assertEquals(terminal.stopped, true);
         });
@@ -827,3 +863,32 @@ for (const explicit of [true, false]) {
         });
     });
 }
+
+Deno.test("implicit continuation catalogs and resumes an uncataloged transcript in an ordinary folder", async () => {
+    await withRuntimeCommandFixture("uncataloged-chat-continue-", async ({ projectRoot }) => {
+        Deno.chdir(projectRoot);
+        const { getRunWieldSessionDir } = await import("../../shared/session/root-session.js");
+        const dir = getRunWieldSessionDir(projectRoot);
+        Deno.mkdirSync(dir, { recursive: true });
+        const timestamp = new Date().toISOString();
+        const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+        const path = `${dir}/${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
+        Deno.writeTextFileSync(
+            path,
+            JSON.stringify({ type: "session", version: 3, id, cwd: projectRoot, timestamp }) + "\n",
+        );
+        const composition = await createInteractiveTuiComposition(null, {
+            browser: NO_OPEN_BROWSER_PORT,
+            terminal: new VirtualTerminal({ columns: 100, rows: 30 }),
+            sessionStartMode: "continue",
+        });
+        try {
+            await composition.waitForIdle(10_000);
+            const snapshot = composition.runtime.getSessionSnapshot(composition.sessionId);
+            assertEquals(snapshot?.sessionManagerId, id);
+            assertEquals(Boolean(snapshot?.managed?.runwieldSessionId), true);
+        } finally {
+            await composition.dispose();
+        }
+    });
+});

@@ -72,9 +72,9 @@ This Plan adds `wld review`. It opens the same code review page for three source
 
 ### PRD capabilities
 
-- [Execution, validation, and recovery](runwield-core-prd.md#execution-validation-and-recovery) owns the current Code
-  Review requirements: the live review URL in the TUI and the labels **AI Code Review** and **Code Review**. This Plan
-  must not change them.
+- [Execution, validation, and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery) owns the current
+  Code Review requirements: the live review URL in the TUI and the labels **AI Code Review** and **Code Review**. This
+  Plan must not change them.
 - No capability owns a review that runs without a Plan. This Plan **adds** a new Core capability, **Standalone code
   review**, with the requirements and scenarios in this Plan.
 
