@@ -362,7 +362,7 @@
     "src/shared/workflow/execution-progress.test.ts",
     "src/shared/workflow/execution-segment-handoff.test.ts",
     "src/shared/workflow/git-snapshot.test.js",
-    "src/shared/workflow/guided-review.test.js",
+    "src/shared/workflow/guided-review.test.ts",
     "src/shared/workflow/implementation-checkpoint-completion.test.ts",
     "src/shared/workflow/mechanical-validation.test.ts",
     "src/shared/workflow/metrics-process-boundary.test.ts",
