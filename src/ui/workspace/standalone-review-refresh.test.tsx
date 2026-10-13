@@ -5,15 +5,36 @@ import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts"
 import { Window } from "happy-dom";
 import { act } from "react";
 import { build, stop } from "esbuild";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { makeTempDirectory } from "../../testing/temp-file.ts";
+
+const requireBanner = `import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+const nodeRequire = createRequire(${JSON.stringify(import.meta.url)});
+const require = (id) => nodeRequire(id.startsWith("file:") ? fileURLToPath(id) : id);`;
+
+test("review bundle require resolves encoded file URLs and shares React", async () => {
+    const directory = await makeTempDirectory();
+    try {
+        const path = join(directory, "review fixture % #.cjs");
+        await writeFile(path, 'module.exports = "encoded fixture";');
+        const loaded = await importTestBundle(`${requireBanner}
+export const fixture = require(${JSON.stringify(pathToFileURL(path).href)});
+export const reactAct = require("react").act;`);
+        assertEquals(loaded.fixture, "encoded fixture");
+        assertEquals(loaded.reactAct, act);
+    } finally {
+        await rm(directory, { recursive: true });
+    }
+});
 
 async function withReviewSurface(standaloneReview, verify) {
     const bundle = await build({
         entryPoints: [fileURLToPath(new URL("./react/CodeReviewSurface.tsx", import.meta.url))],
         banner: {
-            js: `import { createRequire } from "node:module"; const nodeRequire = createRequire(${JSON.stringify(
-                import.meta.url,
-            )}); const require = (id) => nodeRequire(id.startsWith("file:") ? new URL(id).pathname : id);`,
+            js: requireBanner,
         },
         define: { "import.meta.env": "{}" },
         bundle: true,

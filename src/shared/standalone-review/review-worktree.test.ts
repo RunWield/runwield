@@ -1,7 +1,8 @@
 import { readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { makeTempDirectory } from "../../testing/temp-file.ts";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { normalize } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { resolveReviewTarget, resolveReviewTargetWithForge } from "./review-target.ts";
 import { ensureReviewWorktree, settleReviewWorktree } from "./review-worktree.ts";
@@ -27,13 +28,29 @@ for (const state of ["clean", "dirty", "unpushed"]) {
                 await git(path, ["add", "."]);
                 await git(path, ["commit", "-m", "work"]);
             }
+            const head = await git(path, ["rev-parse", "HEAD"]);
+            const canonicalPath = normalize(await realpath(path));
             const result = await settleReviewWorktree(worktree);
             assertEquals(result.removed, state === "clean");
             if (state !== "clean") {
                 assertStringIncludes(result.message, path);
                 assertStringIncludes(result.message, "topic");
+                assertEquals((await stat(path)).isDirectory(), true);
+                assertEquals(await readFile(`${path}/base.txt`, "utf8"), "base\n");
+                assertEquals(await readFile(`${path}/edit.txt`, "utf8"), "engineer work\n");
+                assertEquals(await git(path, ["rev-parse", "HEAD"]), head);
+                if (state === "unpushed") {
+                    assertEquals(await git(path, ["rev-list", "--count", "@{u}..HEAD"]), "1");
+                    assertEquals(await git(path, ["show", "HEAD:edit.txt"]), "engineer work");
+                }
+            } else {
+                await assertRejects(() => stat(path), Error, "ENOENT");
             }
-            assertEquals((await git(cwd, ["worktree", "list", "--porcelain"])).includes(path), state !== "clean");
+            const worktreePaths = (await git(cwd, ["worktree", "list", "--porcelain", "-z"]))
+                .split("\0")
+                .filter((field) => field.startsWith("worktree "))
+                .map((field) => normalize(field.slice("worktree ".length)));
+            assertEquals(worktreePaths.includes(canonicalPath), state !== "clean");
         } finally {
             if (path) await rm(path, { recursive: true }).catch(() => {});
             await rm(cwd, { recursive: true });
