@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
+import { ProgressNotificationSchema } from "@modelcontextprotocol/sdk/types";
 import { attachedValidationFixture } from "../../shared/attached/validation-test-fixture.ts";
 import { CLI_PATH, DENO_CONFIG_PATH } from "../../shared/attached/attached-test-fixture.ts";
 import type { AttachedOperationResult } from "../../shared/attached/operations.ts";
@@ -16,6 +17,11 @@ Deno.test("slow real CI sends MCP progress every 30 seconds and stops after the 
     });
     const client = new Client({ name: "claude-code", version: "progress-test" });
     const ticks: number[] = [];
+    // Observe notifications even after the SDK removes the request's progress callback.
+    client.setNotificationHandler(ProgressNotificationSchema, (notification) => {
+        assertEquals(notification.params.progressToken, "slow-validation-progress");
+        ticks.push(Date.now());
+    });
     try {
         await client.connect(transport);
         const workflow = await fixture.status();
@@ -23,6 +29,7 @@ Deno.test("slow real CI sends MCP progress every 30 seconds and stops after the 
         const response = await client.callTool(
             {
                 name: "start_validation",
+                _meta: { progressToken: "slow-validation-progress" },
                 arguments: {
                     operationId: "slow-validation",
                     workflowId: workflow.workflowId,
@@ -31,7 +38,7 @@ Deno.test("slow real CI sends MCP progress every 30 seconds and stops after the 
                 },
             },
             undefined,
-            { timeout: 90_000, onprogress: () => ticks.push(Date.now()) },
+            { timeout: 90_000 },
         );
         const result: AttachedOperationResult = JSON.parse(JSON.stringify(response.structuredContent));
         assert(result.ok && result.workflow.nextAction.kind === "validation");

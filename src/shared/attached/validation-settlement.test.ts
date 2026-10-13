@@ -111,7 +111,7 @@ for (const operation of ["review_complete", "task_completed"] as const) {
             let originalReceipt: AttachedWorkflowRecord["acceptedOperations"][string] | undefined;
             let expectedAction = started.workflow.nextAction;
             let lastToken = "";
-            async function recover(operationId: string) {
+            const recover = async (operationId: string) => {
                 const workflow = await fixture.status();
                 return await runAttachedOperation(
                     "start_validation",
@@ -124,7 +124,7 @@ for (const operation of ["review_complete", "task_completed"] as const) {
                         payload: {},
                     }),
                 );
-            }
+            };
             for (let loss = 0; loss < 2; loss++) {
                 const pending = loss === 0
                     ? fixture.call(operation, started.workflow, payload, "original-outcome")
