@@ -831,7 +831,8 @@ export async function taskCompleted(envelope: TaskCompletedEnvelope): Promise<At
     if ("result" in loaded) return loaded.result;
     if (
         loaded.record.state === "validating" ||
-        loaded.record.acceptedOperations[envelope.operationId]?.result.operation === "task_completed"
+        (Object.hasOwn(loaded.record.acceptedOperations, envelope.operationId) &&
+            loaded.record.acceptedOperations[envelope.operationId].result.operation === "task_completed")
     ) {
         return await runValidationOperation("task_completed", envelope);
     }
@@ -1211,7 +1212,9 @@ export async function runValidationOperation(
     const loaded = await loadForOperation(operation, location, envelope.workflowId);
     if ("result" in loaded) return loaded.result;
     const current = loaded.record;
-    const saved = current.acceptedOperations[envelope.operationId];
+    const saved = Object.hasOwn(current.acceptedOperations, envelope.operationId)
+        ? current.acceptedOperations[envelope.operationId]
+        : undefined;
     if (saved) return saved.result;
     if (current.revision !== envelope.expectedRevision) {
         return await rejected(
@@ -1445,9 +1448,9 @@ export async function runValidationOperation(
     } finally {
         const token = claimed.validation!.holder!.token!;
         await settleAttachedValidationHolder(location, token);
-        await transactAttachedWorkflowRecord(location, claimed.workflowId, async (record) => {
-            if (record?.validation?.holder?.token !== token) return { result: null };
-            return {
+        await transactAttachedWorkflowRecord(location, claimed.workflowId, (record) => {
+            if (record?.validation?.holder?.token !== token) return Promise.resolve({ result: null });
+            return Promise.resolve({
                 result: null,
                 next: {
                     ...record,
@@ -1455,7 +1458,7 @@ export async function runValidationOperation(
                     updatedAt: new Date().toISOString(),
                     validation: { ...record.validation, holder: undefined },
                 },
-            };
+            });
         });
     }
 }
