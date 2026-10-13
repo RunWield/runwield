@@ -1,11 +1,21 @@
-import { assertEquals, assertExists, assertMatch, assertStringIncludes } from "@std/assert";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { SESSION_COMPLETE_GUIDANCE } from "../../shared/workflow/plan-review-recovery.js";
 import { createPlanWrittenTool } from "../plan-written.ts";
 import { getStoredPlanPath, loadPlan } from "../../plan-store.js";
 import { addEntry as addRegistryEntry } from "../../shared/worktree-registry.js";
-import { join } from "@std/path";
+import { join } from "node:path";
 
 /**
  * @param {Object} options
@@ -22,8 +32,8 @@ async function makeHarness(options = {}) {
     const events = /** @type {any[]} */ ([]);
     const interactionRequests = /** @type {any[]} */ ([]);
     const reviewResponses = [...(options.reviewResponses || [])];
-    const cwd = await Deno.makeTempDir();
-    await Deno.mkdir(`${cwd}/docs/plans`, { recursive: true });
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
     if (options.exists !== false) {
         // `approved` because that is where a Plan actually is when this tool records
         // readiness: the review has already run. Starting at `draft` only worked while
@@ -33,7 +43,7 @@ async function makeHarness(options = {}) {
         // Both Plans exist because tests drive the tool at either name, and the real
         // lifecycle writes the Plan it is named for rather than a recorded call.
         for (const name of ["runtime-boundary", "runtime-epic"]) {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 `${cwd}/docs/plans/${name}.md`,
                 `---
 classification: ${options.classification || "FEATURE"}
@@ -114,18 +124,18 @@ function execute(tool, planName = "runtime-boundary", onUpdate = () => {}, param
     );
 }
 
-Deno.test("plan_written validates the declared plan before requesting review", async () => {
+test("plan_written validates the declared plan before requesting review", async () => {
     const { tool } = await makeHarness({ exists: false });
     const result = await execute(tool);
     assertMatch(result.content[0].text, /not found/);
     assertEquals(result.terminate, undefined);
 });
 
-Deno.test("plan_written ignores legacy plans/ files and requires docs/plans/", async () => {
-    const cwd = await Deno.makeTempDir();
+test("plan_written ignores legacy plans/ files and requires docs/plans/", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await Deno.mkdir(`${cwd}/plans`, { recursive: true });
-        await Deno.writeTextFile(`${cwd}/plans/runtime-boundary.md`, "# Legacy only\n");
+        await fsMkdir(`${cwd}/plans`, { recursive: true });
+        await fsWriteFile(`${cwd}/plans/runtime-boundary.md`, "# Legacy only\n");
         const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd });
         hostedSession.setInteractionAdapter({
             requestInteraction: () => {
@@ -140,8 +150,8 @@ Deno.test("plan_written ignores legacy plans/ files and requires docs/plans/", a
         const legacyResult = await execute(tool, "runtime-boundary");
         assertStringIncludes(legacyResult.content[0].text, "docs/plans/runtime-boundary.md not found");
 
-        await Deno.mkdir(`${cwd}/docs/plans`, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
+        await fsWriteFile(
             `${cwd}/docs/plans/runtime-boundary.md`,
             `---\nclassification: PLANNED_CHANGE\nstatus: approved\n---\n# Current\n`,
         );
@@ -158,11 +168,11 @@ Deno.test("plan_written ignores legacy plans/ files and requires docs/plans/", a
         const currentResult = await execute(tool, "docs/plans/runtime-boundary.md");
         assertEquals(currentResult.details.outcome, "approved_execute");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("plan_written streams declared plan details into the active tool block", async () => {
+test("plan_written streams declared plan details into the active tool block", async () => {
     const { tool, events } = await makeHarness();
     const updates = /** @type {any[]} */ ([]);
     await execute(tool, "runtime-boundary", (result) => updates.push(result));
@@ -192,7 +202,7 @@ Deno.test("plan_written streams declared plan details into the active tool block
     );
 });
 
-Deno.test("plan_written identifies Architect conversations and stops capture after final review", async () => {
+test("plan_written identifies Architect conversations and stops capture after final review", async () => {
     const { tool, hostedSession, interactionRequests } = await makeHarness({ classification: "PROJECT" });
     await execute(tool, "runtime-epic");
 
@@ -211,11 +221,11 @@ Deno.test("plan_written identifies Architect conversations and stops capture aft
     assertEquals(meta.reviewConversation.events, []);
 });
 
-Deno.test("plan_written rejects invalid loaded Plan policy before review or readiness", async () => {
-    const cwd = await Deno.makeTempDir();
+test("plan_written rejects invalid loaded Plan policy before review or readiness", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await Deno.mkdir(`${cwd}/docs/plans`, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
+        await fsWriteFile(
             `${cwd}/docs/plans/runtime-boundary.md`,
             `---
 classification: FEATURE
@@ -247,11 +257,11 @@ collaborationRecommendation: sometimes
         // Rejected before review, so nothing may have advanced the Plan.
         assertEquals((await loadPlan(cwd, "runtime-boundary"))?.attrs.status, "draft");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("plan_written persists declared execution policy to front matter before review", async () => {
+test("plan_written persists declared execution policy to front matter before review", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "PLANNED_CHANGE" });
     const result = await execute(tool, "runtime-boundary", () => {}, {
         executionAgent: "frontend-engineer",
@@ -264,7 +274,7 @@ Deno.test("plan_written persists declared execution policy to front matter befor
     assertEquals(attrs?.collaborationRecommendation, "pair");
 });
 
-Deno.test("plan_written omitted execution policy leaves front matter untouched", async () => {
+test("plan_written omitted execution policy leaves front matter untouched", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "PLANNED_CHANGE" });
     const result = await execute(tool);
 
@@ -274,7 +284,7 @@ Deno.test("plan_written omitted execution policy leaves front matter untouched",
     assertEquals(attrs?.collaborationRecommendation, undefined);
 });
 
-Deno.test("plan_written persists a pair recommendation declared for Engineer-owned execution", async () => {
+test("plan_written persists a pair recommendation declared for Engineer-owned execution", async () => {
     // Pair used to be rejected for Engineer on the theory that only visual work is
     // worth watching. Steering value is not a browser property: a risky refactor is
     // exactly where the user wants to read the diff between increments.
@@ -290,7 +300,7 @@ Deno.test("plan_written persists a pair recommendation declared for Engineer-own
     assertEquals(attrs?.collaborationRecommendation, "pair");
 });
 
-Deno.test("plan_written rejects execution policy arguments on PROJECT Epics", async () => {
+test("plan_written rejects execution policy arguments on PROJECT Epics", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "PROJECT" });
     const result = await execute(tool, "runtime-epic", () => {}, {
         executionAgent: "engineer",
@@ -303,7 +313,7 @@ Deno.test("plan_written rejects execution policy arguments on PROJECT Epics", as
     assertEquals(attrs?.status, "approved");
 });
 
-Deno.test("plan_written returns review feedback and images to the planning agent", async () => {
+test("plan_written returns review feedback and images to the planning agent", async () => {
     const { tool, readPlan } = await makeHarness({
         reviewResponse: {
             outcome: "selected",
@@ -328,7 +338,7 @@ Deno.test("plan_written returns review feedback and images to the planning agent
     assertEquals((await readPlan())?.attrs.status, "approved");
 });
 
-Deno.test("plan_written does not present a stale review decision as Planner feedback", async () => {
+test("plan_written does not present a stale review decision as Planner feedback", async () => {
     const { tool } = await makeHarness({
         reviewResponse: {
             outcome: "selected",
@@ -348,7 +358,7 @@ Deno.test("plan_written does not present a stale review decision as Planner feed
     assertStringIncludes(result.content[0].text, "Open the current Plan and review it again");
 });
 
-Deno.test("plan_written compares a revised Plan with the first reviewed Plan", async () => {
+test("plan_written compares a revised Plan with the first reviewed Plan", async () => {
     const { tool, cwd, interactionRequests } = await makeHarness({
         reviewResponses: [
             {
@@ -366,8 +376,8 @@ Deno.test("plan_written compares a revised Plan with the first reviewed Plan", a
     assertEquals(firstResult.details.outcome, "feedback");
 
     const planPath = `${cwd}/docs/plans/runtime-boundary.md`;
-    const firstPlan = await Deno.readTextFile(planPath);
-    await Deno.writeTextFile(planPath, firstPlan.replace("# runtime-boundary", "# Revised runtime boundary"));
+    const firstPlan = await fsReadFile(planPath, "utf8");
+    await fsWriteFile(planPath, firstPlan.replace("# runtime-boundary", "# Revised runtime boundary"));
 
     const secondResult = await execute(tool);
     assertEquals(secondResult.details.outcome, "saved");
@@ -387,7 +397,7 @@ Deno.test("plan_written compares a revised Plan with the first reviewed Plan", a
     assertEquals(reviewRequests[1]._meta.planVersions[0].plan, firstPlan);
 });
 
-Deno.test("plan_written cancellation asks whether to reopen review before completing", async () => {
+test("plan_written cancellation asks whether to reopen review before completing", async () => {
     const { tool, events } = await makeHarness({
         reviewResponse: { outcome: "canceled" },
         retryResponse: { outcome: "canceled", value: false },
@@ -399,7 +409,7 @@ Deno.test("plan_written cancellation asks whether to reopen review before comple
     assertEquals(events.some((event) => String(event.message || "").includes("This session is complete")), true);
 });
 
-Deno.test("plan_written reopens review when recovery confirmation is accepted", async () => {
+test("plan_written reopens review when recovery confirmation is accepted", async () => {
     const { tool } = await makeHarness({
         reviewResponses: [
             { outcome: "canceled" },
@@ -413,11 +423,11 @@ Deno.test("plan_written reopens review when recovery confirmation is accepted", 
     assertEquals(result.terminate, true);
 });
 
-Deno.test("plan_written opens the active workflow Plan instead of the stale primary copy", async () => {
+test("plan_written opens the active workflow Plan instead of the stale primary copy", async () => {
     const { tool, cwd, interactionRequests } = await makeHarness({ classification: "PLANNED_CHANGE" });
     const executionDir = join(cwd, "active-worktree");
-    await Deno.mkdir(join(executionDir, "docs", "plans"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(executionDir, "docs", "plans"), { recursive: true });
+    await fsWriteFile(
         getStoredPlanPath(cwd, "runtime-boundary"),
         `---
 classification: PLANNED_CHANGE
@@ -431,7 +441,7 @@ affectedPaths: []
 Primary stale copy.
 `,
     );
-    await Deno.writeTextFile(
+    await fsWriteFile(
         getStoredPlanPath(executionDir, "runtime-boundary"),
         `---
 classification: PLANNED_CHANGE
@@ -469,7 +479,7 @@ Live execution copy.
     assertEquals((await loadPlan(cwd, "runtime-boundary"))?.attrs.status, "approved");
 });
 
-Deno.test("plan_written feature approval returns execution outcome", async () => {
+test("plan_written feature approval returns execution outcome", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "FEATURE", approvalAction: "run" });
     const result = await execute(tool);
 
@@ -481,7 +491,7 @@ Deno.test("plan_written feature approval returns execution outcome", async () =>
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
-Deno.test("plan_written accepts planned changes without custom shell checks", async () => {
+test("plan_written accepts planned changes without custom shell checks", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "PLANNED_CHANGE" });
     const result = await execute(tool);
 
@@ -489,7 +499,7 @@ Deno.test("plan_written accepts planned changes without custom shell checks", as
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
-Deno.test("plan_written accepts PROJECT Epics", async () => {
+test("plan_written accepts PROJECT Epics", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "PROJECT", approvalAction: "decompose" });
     const result = await execute(tool);
 
@@ -497,11 +507,11 @@ Deno.test("plan_written accepts PROJECT Epics", async () => {
     assertEquals((await readPlan())?.attrs.status, "ready_for_decomposition");
 });
 
-Deno.test("plan_written preserves documentation triage workKind when Plan front matter omits it", async () => {
-    const cwd = await Deno.makeTempDir();
+test("plan_written preserves documentation triage workKind when Plan front matter omits it", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
-        await Deno.mkdir(`${cwd}/docs/plans`, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
+        await fsWriteFile(
             `${cwd}/docs/plans/runtime-boundary.md`,
             `---
 classification: PLANNED_CHANGE
@@ -536,11 +546,11 @@ status: approved
         // returned meta above a statement about a Plan that actually moved.
         assertEquals((await loadPlan(cwd, "runtime-boundary"))?.attrs.status, "ready_for_work");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("plan_written preserves triage workKind when approved review attrs omit it", async () => {
+test("plan_written preserves triage workKind when approved review attrs omit it", async () => {
     const { tool, readPlan } = await makeHarness({
         classification: "PLANNED_CHANGE",
         workKind: "BUG_FIX",
@@ -570,7 +580,7 @@ Deno.test("plan_written preserves triage workKind when approved review attrs omi
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
-Deno.test("plan_written feature approval uses post-review execution metadata for readiness", async () => {
+test("plan_written feature approval uses post-review execution metadata for readiness", async () => {
     const { tool, readPlan } = await makeHarness({
         classification: "FEATURE",
         reviewResponse: {
@@ -597,7 +607,7 @@ Deno.test("plan_written feature approval uses post-review execution metadata for
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
-Deno.test("plan_written saved feature approval keeps post-review execution metadata", async () => {
+test("plan_written saved feature approval keeps post-review execution metadata", async () => {
     const { tool, readPlan } = await makeHarness({
         classification: "FEATURE",
         reviewResponse: {
@@ -624,7 +634,7 @@ Deno.test("plan_written saved feature approval keeps post-review execution metad
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
-Deno.test("plan_written feature approval can save without execution", async () => {
+test("plan_written feature approval can save without execution", async () => {
     const { tool, events } = await makeHarness({ classification: "FEATURE", approvalAction: "later" });
     const result = await execute(tool);
 
@@ -635,7 +645,7 @@ Deno.test("plan_written feature approval can save without execution", async () =
     assertEquals(events.some((event) => String(event.message || "").includes(SESSION_COMPLETE_GUIDANCE)), true);
 });
 
-Deno.test("plan_written persists an Epic child relationship in Session workflow context", async () => {
+test("plan_written persists an Epic child relationship in Session workflow context", async () => {
     const { tool, hostedSession } = await makeHarness({
         classification: "FEATURE",
         approvalAction: "later",
@@ -653,7 +663,7 @@ Deno.test("plan_written persists an Epic child relationship in Session workflow 
     });
 });
 
-Deno.test("plan_written project approval can save for later with session-complete guidance", async () => {
+test("plan_written project approval can save for later with session-complete guidance", async () => {
     const { tool, events } = await makeHarness({ classification: "PROJECT", approvalAction: "later" });
     const result = await execute(tool, "runtime-epic");
 
@@ -664,7 +674,7 @@ Deno.test("plan_written project approval can save for later with session-complet
     assertEquals(events.some((event) => String(event.message || "").includes(SESSION_COMPLETE_GUIDANCE)), true);
 });
 
-Deno.test("plan_written project approval returns decomposition outcome", async () => {
+test("plan_written project approval returns decomposition outcome", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "PROJECT", approvalAction: "decompose" });
     const result = await execute(tool, "runtime-epic");
 
@@ -673,7 +683,7 @@ Deno.test("plan_written project approval returns decomposition outcome", async (
     assertEquals((await readPlan("runtime-epic"))?.attrs.status, "ready_for_decomposition");
 });
 
-Deno.test("plan_written missing approval action safely saves for later", async () => {
+test("plan_written missing approval action safely saves for later", async () => {
     const { tool, readPlan } = await makeHarness({
         classification: "FEATURE",
         reviewResponse: { outcome: "accepted", _meta: { approved: true } },
@@ -684,7 +694,7 @@ Deno.test("plan_written missing approval action safely saves for later", async (
     assertEquals((await readPlan())?.attrs.status, "ready_for_work");
 });
 
-Deno.test("plan_written mismatched project approval action safely saves for later", async () => {
+test("plan_written mismatched project approval action safely saves for later", async () => {
     const { tool, readPlan } = await makeHarness({ classification: "PROJECT", approvalAction: "run" });
     const result = await execute(tool, "runtime-epic");
 
@@ -692,7 +702,7 @@ Deno.test("plan_written mismatched project approval action safely saves for late
     assertEquals((await readPlan("runtime-epic"))?.attrs.status, "ready_for_decomposition");
 });
 
-Deno.test("plan_written remote review emits a semantic review link", async () => {
+test("plan_written remote review emits a semantic review link", async () => {
     const { tool, events } = await makeHarness({
         reviewResponse: {
             outcome: "accepted",

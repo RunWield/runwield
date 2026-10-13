@@ -1,5 +1,15 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { publishExecutionWorktreeIsolated } from "../isolated-publication.ts";
@@ -34,8 +44,8 @@ const repository = defineGitFixture(async (root) => {
         classification: "PLANNED_CHANGE",
         status: "reviewed",
     });
-    await Deno.mkdir(join(root, "docs/work-records"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(root, "docs/work-records"), { recursive: true });
+    await fsWriteFile(
         join(root, predecessorPath),
         formatWorkRecordMarkdown({
             ...recordAttrs,
@@ -48,9 +58,9 @@ const repository = defineGitFixture(async (root) => {
     await git(root, ["commit", "-m", "Reviewed Plan and prior Work Record"]);
 });
 
-Deno.test("remote delivery retains verification through index failure and recovers indexing from its recorded upstream", async () => {
+test("remote delivery retains verification through index failure and recovers indexing from its recorded upstream", async () => {
     const root = await repository.checkout();
-    const temporary = await Deno.makeTempDir({ prefix: "publication-index-recovery-" });
+    const temporary = await fsMkdtemp(join(tmpdir(), "publication-index-recovery-"));
     const remote = join(temporary, "remote.git");
     const decoy = join(temporary, "unrelated.git");
     try {
@@ -59,11 +69,11 @@ Deno.test("remote delivery retains verification through index failure and recove
         await git(root, ["remote", "add", "origin", remote]);
         await git(root, ["push", "-u", "origin", "main"]);
         const primaryHead = await git(root, ["rev-parse", "HEAD"]);
-        const primaryPlan = await Deno.readTextFile(join(root, planPath));
+        const primaryPlan = await fsReadFile(join(root, planPath), "utf8");
         const index = createWorkRecordMnemotecaFixture();
         await syncWorkRecordToIndex(
             root,
-            parseWorkRecordMarkdown(await Deno.readTextFile(join(root, predecessorPath))),
+            parseWorkRecordMarkdown(await fsReadFile(join(root, predecessorPath), "utf8")),
             {
                 mnemotecaPort: index,
             },
@@ -81,7 +91,7 @@ Deno.test("remote delivery retains verification through index failure and recove
             ...plan.attrs,
             workRecord: { status: "generated", recordId: successorId, path: successorPath },
         }, { expectedRevision: plan.revision });
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(entry.path, successorPath),
             formatWorkRecordMarkdown({
                 ...recordAttrs,
@@ -91,7 +101,7 @@ Deno.test("remote delivery retains verification through index failure and recove
                 provenance: { sourcePlans: [planId] },
             }, "# New behavior\n\n## Summary\n\nDelivered replacement behavior.\n"),
         );
-        await Deno.writeTextFile(join(entry.path, "feature.txt"), "Reviewed implementation\n");
+        await fsWriteFile(join(entry.path, "feature.txt"), "Reviewed implementation\n");
         await git(entry.path, ["add", "."]);
         await git(entry.path, ["commit", "-m", "Seal candidate and pending record"]);
         const artifactCommit = await git(entry.path, ["rev-parse", "HEAD"]);
@@ -139,11 +149,11 @@ Deno.test("remote delivery retains verification through index failure and recove
         const completedPlan = await loadPlan(root, "demo");
         assertEquals(completedPlan?.attrs.status, "verified");
         assertEquals(completedPlan?.attrs.publicationReceipt?.publishedCommit, delivered.publicationCommit);
-        assertEquals(await Deno.readTextFile(join(root, planPath)), primaryPlan);
+        assertEquals(await fsReadFile(join(root, planPath), "utf8"), primaryPlan);
         assertEquals(await git(root, ["rev-parse", "HEAD"]), primaryHead);
 
         // Recover with only persisted state and the recorded remote available.
-        await Deno.remove(attempt.publicationRoot, { recursive: true });
+        await fsRm(attempt.publicationRoot, { recursive: true });
         assertEquals(
             await git(root, ["rev-parse", `refs/runwield/deliveries/${encodeURIComponent(entry.id)}`]),
             delivered.publicationCommit,
@@ -175,7 +185,7 @@ Deno.test("remote delivery retains verification through index failure and recove
             ),
         );
         assertEquals((await loadPlan(root, "demo"))?.attrs.status, "verified");
-        assertEquals(await Deno.readTextFile(join(root, planPath)), primaryPlan);
+        assertEquals(await fsReadFile(join(root, planPath), "utf8"), primaryPlan);
         assertEquals(await git(root, ["rev-parse", "HEAD"]), primaryHead);
         // A repeated cleanup retries the derived index without duplicating records.
         const repeated = await cleanupStoredPublication(root, recovered.attempt, index);
@@ -183,15 +193,15 @@ Deno.test("remote delivery retains verification through index failure and recove
         assertEquals(index.snapshot().length, 2);
         assertEquals(await readPublishedRecordMarkdown(root, repeated.attempt, successorPath), attached);
     } finally {
-        await Deno.remove(root, { recursive: true });
-        await Deno.remove(temporary, { recursive: true });
+        await fsRm(root, { recursive: true });
+        await fsRm(temporary, { recursive: true });
     }
 });
 
 for (const mode of ["local", "remote"] as const) {
-    Deno.test(`${mode} delayed publication indexing preserves a later supersession after the original Plan is removed`, async () => {
+    test(`${mode} delayed publication indexing preserves a later supersession after the original Plan is removed`, async () => {
         const root = await repository.checkout();
-        const temporary = await Deno.makeTempDir({ prefix: "publication-index-order-" });
+        const temporary = await fsMkdtemp(join(tmpdir(), "publication-index-order-"));
         const index = createWorkRecordMnemotecaFixture();
         const laterId = "55555555-5555-4555-8555-555555555555";
         try {
@@ -224,7 +234,7 @@ for (const mode of ["local", "remote"] as const) {
                     status: "reviewed",
                     workRecord: { status: "generated", recordId, path },
                 }, { expectedRevision: existing?.revision });
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     join(entry.path, path),
                     formatWorkRecordMarkdown({
                         ...recordAttrs,
@@ -234,8 +244,8 @@ for (const mode of ["local", "remote"] as const) {
                         provenance: { sourcePlans: [entry.planId!] },
                     }, `# ${name}\n\n## Summary\n\n${name} behavior.\n`),
                 );
-                if (removeOriginalPlan) await Deno.remove(join(entry.path, planPath));
-                await Deno.writeTextFile(join(entry.path, `${name}.txt`), `${name} implementation\n`);
+                if (removeOriginalPlan) await fsRm(join(entry.path, planPath));
+                await fsWriteFile(join(entry.path, `${name}.txt`), `${name} implementation\n`);
                 await git(entry.path, ["add", "."]);
                 await git(entry.path, ["commit", "-m", `Prepare ${name}`]);
                 const commit = await git(entry.path, ["rev-parse", "HEAD"]);
@@ -303,8 +313,8 @@ for (const mode of ["local", "remote"] as const) {
                 ),
             );
         } finally {
-            await Deno.remove(root, { recursive: true });
-            await Deno.remove(temporary, { recursive: true });
+            await fsRm(root, { recursive: true });
+            await fsRm(temporary, { recursive: true });
         }
     });
 }

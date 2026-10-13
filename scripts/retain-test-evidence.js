@@ -1,14 +1,20 @@
+import { mkdir as fsMkdir, readdir as fsReaddir, rename as fsRename } from "node:fs/promises";
 /** Keep Golden diagnostics outside the disposable test sandbox, not its cache or HOME. */
-import { join } from "@std/path";
+import { join } from "node:path";
 
 /** @param {string} sandbox @param {string} destination */
 export async function retainTestEvidence(sandbox, destination) {
-    for await (const slot of Deno.readDir(sandbox)) {
-        if (!slot.isDirectory || !slot.name.startsWith("tmp-")) continue;
-        for await (const entry of Deno.readDir(join(sandbox, slot.name))) {
-            if (!entry.isDirectory || !/^runwield-golden-tui-(timeout|child-failure)-/.test(entry.name)) continue;
-            await Deno.mkdir(destination, { recursive: true });
-            await Deno.rename(join(sandbox, slot.name, entry.name), join(destination, entry.name));
+    for await (const slot of await fsReaddir(sandbox, { withFileTypes: true })) {
+        if (!slot.isDirectory()) continue;
+        const temp = slot.name.startsWith("tmp-") ? join(sandbox, slot.name) : join(sandbox, slot.name, "tmp");
+        const entries = await fsReaddir(temp, { withFileTypes: true }).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+            throw error;
+        });
+        for (const entry of entries) {
+            if (!entry.isDirectory() || !/^runwield-golden-tui-(timeout|child-failure)-/.test(entry.name)) continue;
+            await fsMkdir(destination, { recursive: true });
+            await fsRename(join(temp, entry.name), join(destination, entry.name));
         }
     }
 }

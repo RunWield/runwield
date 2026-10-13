@@ -1,8 +1,9 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
 import { buildJudgementCsv, buildJudgementCsvRow, parseJsonlRows } from "./write-router-judgement-csv.js";
 import { parseCsv } from "./router-eval-utils.js";
 
-Deno.test("buildJudgementCsvRow adds human columns and Router disagreement metrics", () => {
+test("buildJudgementCsvRow adds human columns and Router disagreement metrics", () => {
     const row = buildJudgementCsvRow({
         decisionId: "d1",
         timestamp: "now",
@@ -22,7 +23,7 @@ Deno.test("buildJudgementCsvRow adds human columns and Router disagreement metri
     assertEquals(row.routerAffectedPaths, "src/cmd/version/index.js");
 });
 
-Deno.test("buildJudgementCsv preserves existing human judgement cells", () => {
+test("buildJudgementCsv preserves existing human judgement cells", () => {
     const csv = buildJudgementCsv([
         {
             decisionId: "d1",
@@ -39,7 +40,7 @@ Deno.test("buildJudgementCsv preserves existing human judgement cells", () => {
     assertEquals(rows[0].routerAgreesWithHuman, "TRUE");
 });
 
-Deno.test("buildJudgementCsv preserves existing repository context pins", () => {
+test("buildJudgementCsv preserves existing repository context pins", () => {
     const contextCommit = "a".repeat(40);
     const csv = buildJudgementCsv([
         { decisionId: "d1", requestText: "check the code", routingIntent: "INQUIRY" },
@@ -47,12 +48,12 @@ Deno.test("buildJudgementCsv preserves existing repository context pins", () => 
     assertEquals(parseCsv(csv)[0].contextCommit, contextCommit);
 });
 
-Deno.test("parseJsonlRows reads reviewed rows", () => {
+test("parseJsonlRows reads reviewed rows", () => {
     const rows = parseJsonlRows('{"decisionId":"d1"}\n{"decisionId":"d2"}\n');
     assertEquals(rows.map((row) => row.decisionId), ["d1", "d2"]);
 });
 
-Deno.test("buildJudgementCsv includes expected headers", () => {
+test("buildJudgementCsv includes expected headers", () => {
     const csv = buildJudgementCsv([]);
     assertStringIncludes(csv, "humanJudgement");
     assertStringIncludes(csv, "routerDistanceFromHuman");

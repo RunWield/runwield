@@ -1,5 +1,18 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { open as fsOpen } from "node:fs/promises";
+import {
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import process from "node:process";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { listPlans, savePlan } from "../plan-store.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
@@ -30,7 +43,7 @@ function delay(ms) {
 
 const gitFixture = defineCommittedGitFixture({ "README.md": "# registry fixture\n" });
 
-Deno.test("only unstarted planning worktrees can advance their baseline", async () => {
+test("only unstarted planning worktrees can advance their baseline", async () => {
     const repo = await gitFixture.checkout();
     const initial = entry({ status: "planning" });
     await addEntry(repo, initial);
@@ -67,16 +80,13 @@ function entry(overrides = {}) {
     };
 }
 
-Deno.test("exact-path worktree registry inspection is strict and read-only", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("exact-path worktree registry inspection is strict and read-only", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const path = join(projectRoot, ".wld", "worktrees.json");
-        await Deno.mkdir(join(projectRoot, ".wld"), { recursive: true });
-        await Deno.writeTextFile(
-            path,
-            JSON.stringify({ version: 1, entries: [entry({ planId: undefined })] }, null, 2),
-        );
-        const before = await Deno.readTextFile(path);
+        await fsMkdir(join(projectRoot, ".wld"), { recursive: true });
+        await fsWriteFile(path, JSON.stringify({ version: 1, entries: [entry({ planId: undefined })] }, null, 2));
+        const before = await fsReadFile(path, "utf8");
 
         const inspected = await inspectWorktreeRegistryAtPath(path);
 
@@ -84,24 +94,24 @@ Deno.test("exact-path worktree registry inspection is strict and read-only", asy
         assertEquals(inspected.version, 1);
         assertEquals(inspected.entries.length, 1);
         assertEquals(inspected.integrityIssues, []);
-        assertEquals(await Deno.readTextFile(path), before);
+        assertEquals(await fsReadFile(path, "utf8"), before);
         try {
-            await Deno.lstat(join(projectRoot, ".wld", "worktree-registry-migration-issues.json"));
+            await fsLstat(join(projectRoot, ".wld", "worktree-registry-migration-issues.json"));
             throw new Error("Exact-path inspection wrote a migration issue file.");
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("exact-path worktree registry inspection reports malformed roots", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("exact-path worktree registry inspection reports malformed roots", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const path = join(projectRoot, ".wld", "worktrees.json");
-        await Deno.mkdir(join(projectRoot, ".wld"), { recursive: true });
-        await Deno.writeTextFile(path, JSON.stringify({ version: 2, entries: "not an array" }));
+        await fsMkdir(join(projectRoot, ".wld"), { recursive: true });
+        await fsWriteFile(path, JSON.stringify({ version: 2, entries: "not an array" }));
 
         const inspected = await inspectWorktreeRegistryAtPath(path);
 
@@ -109,12 +119,12 @@ Deno.test("exact-path worktree registry inspection reports malformed roots", asy
         assertEquals(inspected.integrityIssues[0].kind, "malformed_registry");
         assertStringIncludes(inspected.integrityIssues[0].message, "entries field must be an array");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("exact-path worktree registry locking serializes on the requested lock file", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("exact-path worktree registry locking serializes on the requested lock file", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     let releaseFirst = () => {};
     let firstReady = () => {};
     /** @type {Promise<void>} */
@@ -131,7 +141,7 @@ Deno.test("exact-path worktree registry locking serializes on the requested lock
         const events = [];
         const first = withWorktreeRegistryLockAtPath(lockPath, async () => {
             events.push("first-start");
-            await Deno.lstat(lockPath);
+            await fsLstat(lockPath);
             firstReady();
             await releaseFirstPromise;
             events.push("first-end");
@@ -147,22 +157,22 @@ Deno.test("exact-path worktree registry locking serializes on the requested lock
         await Promise.all([first, second]);
         assertEquals(events, ["first-start", "first-end", "second-start"]);
         try {
-            await Deno.lstat(lockPath);
+            await fsLstat(lockPath);
             throw new Error("Exact-path lock was not released.");
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("exact-path worktree registry locking does not steal a fresh incomplete lock", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("exact-path worktree registry locking does not steal a fresh incomplete lock", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const lockPath = join(projectRoot, ".wld", "initializing-worktrees.lock");
-        await Deno.mkdir(dirname(lockPath), { recursive: true });
-        (await Deno.open(lockPath, { createNew: true, write: true })).close();
+        await fsMkdir(dirname(lockPath), { recursive: true });
+        (await fsOpen(lockPath, "wx")).close();
         let entered = false;
         const waiting = withWorktreeRegistryLockAtPath(lockPath, () => {
             entered = true;
@@ -170,40 +180,40 @@ Deno.test("exact-path worktree registry locking does not steal a fresh incomplet
         });
         await delay(120);
         assertEquals(entered, false);
-        await Deno.remove(lockPath);
+        await fsRm(lockPath);
         await waiting;
         assertEquals(entered, true);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry list reads do not overwrite malformed top-level registries", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry list reads do not overwrite malformed top-level registries", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await enterProjectRuntime(projectRoot);
         const path = getWorktreeRegistryPath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
-        await Deno.writeTextFile(path, "null\n");
+        await fsMkdir(dirname(path), { recursive: true });
+        await fsWriteFile(path, "null\n");
 
         await assertRejects(() => listEntries(projectRoot), Error, "registry root must be an object");
-        assertEquals(await Deno.readTextFile(path), "null\n");
+        assertEquals(await fsReadFile(path, "utf8"), "null\n");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("linked checkout registry operations share the primary internal store, lock, and migration report", async () => {
+test("linked checkout registry operations share the primary internal store, lock, and migration report", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
+        const originalSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
         const root = await gitFixture.checkout({ prefix: "runwield-registry-primary-" });
-        const linkedParent = await Deno.makeTempDir({ prefix: "runwield-registry-linked-parent-" });
+        const linkedParent = await fsMkdtemp(join(tmpdir(), "runwield-registry-linked-parent-"));
         const linked = join(linkedParent, "linked");
         try {
-            Deno.env.delete("WLD_TEST_SANDBOX_HOME");
+            delete process.env["WLD_TEST_SANDBOX_HOME"];
             await git(root, ["worktree", "add", "-b", "linked-registry", linked]);
             await addEntry(root, entry({ id: "shared", planId: "plan-shared" }));
-            const primaryRoot = await Deno.realPath(root);
+            const primaryRoot = await fsRealpath(root);
 
             assertEquals(getWorktreeRegistryPath(linked), getWorktreeRegistryPath(root));
             assertEquals(getWorktreeRegistryLockPath(linked), getWorktreeRegistryLockPath(root));
@@ -214,19 +224,10 @@ Deno.test("linked checkout registry operations share the primary internal store,
             const updated = await updateEntry(linked, "shared", { status: "completed" });
             assertEquals(updated?.status, "completed");
             assertEquals((await findById(root, "shared", { migrate: false }))?.status, "completed");
-            await Deno.lstat(join(primaryRoot, ".wld", "internal", "worktrees.json"));
-            await assertRejects(
-                () => Deno.lstat(join(root, ".wld", "worktrees.json")),
-                Deno.errors.NotFound,
-            );
-            await assertRejects(
-                () => Deno.lstat(join(linked, ".wld", "internal", "worktrees.json")),
-                Deno.errors.NotFound,
-            );
-            await assertRejects(
-                () => Deno.lstat(join(linked, ".wld", "worktrees.json")),
-                Deno.errors.NotFound,
-            );
+            await fsLstat(join(primaryRoot, ".wld", "internal", "worktrees.json"));
+            await assertRejects(() => fsLstat(join(root, ".wld", "worktrees.json")), Error, "ENOENT");
+            await assertRejects(() => fsLstat(join(linked, ".wld", "internal", "worktrees.json")), Error, "ENOENT");
+            await assertRejects(() => fsLstat(join(linked, ".wld", "worktrees.json")), Error, "ENOENT");
 
             let releaseFirst = () => {};
             let firstReady = () => {};
@@ -242,7 +243,7 @@ Deno.test("linked checkout registry operations share the primary internal store,
             const events = [];
             const first = withWorktreeRegistryLock(root, async () => {
                 events.push("first-start");
-                await Deno.lstat(join(primaryRoot, ".wld", "internal", "worktrees.lock"));
+                await fsLstat(join(primaryRoot, ".wld", "internal", "worktrees.lock"));
                 firstReady();
                 await releaseFirstPromise;
                 events.push("first-end");
@@ -259,7 +260,7 @@ Deno.test("linked checkout registry operations share the primary internal store,
             assertEquals((await findById(root, "shared", { migrate: false }))?.status, "validated");
 
             const currentRegistryPath = getWorktreeRegistryPath(root);
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 currentRegistryPath,
                 JSON.stringify({
                     version: 1,
@@ -268,23 +269,24 @@ Deno.test("linked checkout registry operations share the primary internal store,
             );
             await listEntries(linked);
             const issuesPath = join(primaryRoot, ".wld", "internal", "worktree-registry-migration-issues.json");
-            const issues = JSON.parse(await Deno.readTextFile(issuesPath));
+            const issues = JSON.parse(await fsReadFile(issuesPath, "utf8"));
             assertEquals(issues.issues[0].id, "legacy");
             await assertRejects(
-                () => Deno.lstat(join(linked, ".wld", "internal", "worktree-registry-migration-issues.json")),
-                Deno.errors.NotFound,
+                () => fsLstat(join(linked, ".wld", "internal", "worktree-registry-migration-issues.json")),
+                Error,
+                "ENOENT",
             );
         } finally {
-            if (originalSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", originalSandboxHome);
-            await Deno.remove(linkedParent, { recursive: true }).catch(() => {});
-            await Deno.remove(root, { recursive: true }).catch(() => {});
+            if (originalSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = originalSandboxHome;
+            await fsRm(linkedParent, { recursive: true }).catch(() => {});
+            await fsRm(root, { recursive: true }).catch(() => {});
         }
     });
 });
 
-Deno.test("worktree registry supports add/update/find/list/remove", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry supports add/update/find/list/remove", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await addEntry(projectRoot, entry());
         assertEquals((await listEntries(projectRoot)).length, 1);
@@ -300,12 +302,12 @@ Deno.test("worktree registry supports add/update/find/list/remove", async () => 
         assertEquals(retained[0].id, "wt-1");
         assertEquals(retained[0].status, "abandoned");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry rejects immutable identity updates", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry rejects immutable identity updates", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await addEntry(projectRoot, entry({ baseTree: "tree-1" }));
         for (
@@ -325,12 +327,12 @@ Deno.test("worktree registry rejects immutable identity updates", async () => {
         }
         assertEquals(await findById(projectRoot, "wt-1"), entry({ baseTree: "tree-1" }));
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry rejects duplicate nonterminal attempts", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry rejects duplicate nonterminal attempts", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await addEntry(projectRoot, entry({ id: "first", planId: "plan-1" }));
         const refusal = await assertRejects(
@@ -353,20 +355,20 @@ Deno.test("worktree registry rejects duplicate nonterminal attempts", async () =
             "a refusal must carry a copy-ready command",
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("a damaged attempt for one Plan does not disable every other Plan", async () => {
+test("a damaged attempt for one Plan does not disable every other Plan", async () => {
     // One hand-edited or badly-merged registry used to make *every* worktree command
     // in the project fail with a bare invariant message — including the commands that
     // diagnose and repair it. Reads are permissive now, so the damage stays scoped to
     // the question that genuinely cannot be answered.
-    const projectRoot = await Deno.makeTempDir();
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await enterProjectRuntime(projectRoot);
-        await Deno.mkdir(dirname(getWorktreeRegistryPath(projectRoot)), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(getWorktreeRegistryPath(projectRoot)), { recursive: true });
+        await fsWriteFile(
             getWorktreeRegistryPath(projectRoot),
             JSON.stringify({
                 version: 2,
@@ -411,26 +413,26 @@ Deno.test("a damaged attempt for one Plan does not disable every other Plan", as
             "the Plan-scoped recovery route must be offered by name",
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry throws on missing-id update", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry throws on missing-id update", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await assertRejects(() => updateEntry(projectRoot, "missing", { status: "completed" }), Error, "not found");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry rejects duplicate durable ids on read", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry rejects duplicate durable ids on read", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await enterProjectRuntime(projectRoot);
         const path = getWorktreeRegistryPath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(path), { recursive: true });
+        await fsWriteFile(
             path,
             JSON.stringify({
                 version: 2,
@@ -446,12 +448,12 @@ Deno.test("worktree registry rejects duplicate durable ids on read", async () =>
             true,
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry rejects duplicate live legacy plan-name attempts", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry rejects duplicate live legacy plan-name attempts", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await assertRejects(
             () => addEntry(projectRoot, entry({ id: "legacy-1", planId: undefined })),
@@ -459,15 +461,15 @@ Deno.test("worktree registry rejects duplicate live legacy plan-name attempts", 
             "requires a stable planId",
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry prunes entries whose paths are missing", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry prunes entries whose paths are missing", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const existingPath = join(projectRoot, "existing-worktree");
-        await Deno.mkdir(existingPath);
+        await fsMkdir(existingPath);
         await addEntry(projectRoot, entry({ id: "existing", path: existingPath }));
         await addEntry(
             projectRoot,
@@ -481,18 +483,24 @@ Deno.test("worktree registry prunes entries whose paths are missing", async () =
         );
 
         const stale = await pruneStaleEntries(projectRoot);
-        assertEquals(stale.map((item) => item.id), ["missing"]);
-        assertEquals((await listEntries(projectRoot)).map((item) => [item.id, item.status]), [
-            ["existing", "active"],
-            ["missing", "active"],
-        ]);
+        assertEquals(
+            stale.map((item) => item.id),
+            ["missing"],
+        );
+        assertEquals(
+            (await listEntries(projectRoot)).map((item) => [item.id, item.status]),
+            [
+                ["existing", "active"],
+                ["missing", "active"],
+            ],
+        );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry migration resolves unambiguous legacy plan names", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry migration resolves unambiguous legacy plan names", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await savePlan(projectRoot, "demo-plan", "# Demo", {
             planId: "plan-1",
@@ -500,8 +508,8 @@ Deno.test("worktree registry migration resolves unambiguous legacy plan names", 
             classification: "FEATURE",
         });
         const path = getWorktreeRegistryPath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(path), { recursive: true });
+        await fsWriteFile(
             path,
             JSON.stringify({
                 version: 1,
@@ -509,27 +517,27 @@ Deno.test("worktree registry migration resolves unambiguous legacy plan names", 
             }),
         );
         const primaryPath = join(projectRoot, "docs/plans/demo-plan.md");
-        const beforePlan = await Deno.readTextFile(primaryPath);
-        await assertRejects(() => listPlans(projectRoot), Error, "execution Plan is missing");
+        const beforePlan = await fsReadFile(primaryPath, "utf8");
+        assertEquals(await listPlans(projectRoot), []);
 
         const entries = await listEntries(projectRoot);
         assertEquals(entries[0].planId, "plan-1");
-        const stored = JSON.parse(await Deno.readTextFile(path));
+        const stored = JSON.parse(await fsReadFile(path, "utf8"));
         assertEquals(stored.version, 2);
-        assertEquals(await Deno.readTextFile(primaryPath), beforePlan);
-        await assertRejects(() => listPlans(projectRoot), Error, "execution Plan is missing");
+        assertEquals(await fsReadFile(primaryPath, "utf8"), beforePlan);
+        assertEquals(await listPlans(projectRoot), []);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry migration classifies duplicate live legacy attempts for recovery", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry migration classifies duplicate live legacy attempts for recovery", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await enterProjectRuntime(projectRoot);
         const path = getWorktreeRegistryPath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(path), { recursive: true });
+        await fsWriteFile(
             path,
             JSON.stringify({
                 version: 1,
@@ -546,28 +554,34 @@ Deno.test("worktree registry migration classifies duplicate live legacy attempts
         );
 
         const entries = await listEntries(projectRoot);
-        assertEquals(entries.map((item) => item.id), ["legacy-1", "legacy-2"]);
-        const stored = JSON.parse(await Deno.readTextFile(path));
+        assertEquals(
+            entries.map((item) => item.id),
+            ["legacy-1", "legacy-2"],
+        );
+        const stored = JSON.parse(await fsReadFile(path, "utf8"));
         assertEquals(stored.version, 1);
         const issues = JSON.parse(
-            await Deno.readTextFile(
-                resolveProjectRuntimeLayout(await Deno.realPath(projectRoot)).primary
-                    .worktreeRegistryMigrationIssuesPath,
+            await fsReadFile(
+                resolveProjectRuntimeLayout(await fsRealpath(projectRoot)).primary.worktreeRegistryMigrationIssuesPath,
+                "utf8",
             ),
         );
-        assertEquals(issues.issues.map((/** @type {{ id: string }} */ issue) => issue.id), ["legacy-1", "legacy-2"]);
+        assertEquals(
+            issues.issues.map((/** @type {{ id: string }} */ issue) => issue.id),
+            ["legacy-1", "legacy-2"],
+        );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("registry migration keeps distinct execution documents ambiguous", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-registry-evidence-" });
+test("registry migration keeps distinct execution documents ambiguous", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-registry-evidence-"));
     try {
         const firstPath = join(projectRoot, "first");
         const secondPath = join(projectRoot, "second");
-        await Deno.mkdir(firstPath, { recursive: true });
-        await Deno.mkdir(secondPath, { recursive: true });
+        await fsMkdir(firstPath, { recursive: true });
+        await fsMkdir(secondPath, { recursive: true });
         for (const root of [projectRoot, firstPath, secondPath]) {
             await savePlan(root, "demo-plan", "# Same Plan identity\n", {
                 planId: "plan-1",
@@ -576,8 +590,8 @@ Deno.test("registry migration keeps distinct execution documents ambiguous", asy
             });
         }
         const path = getWorktreeRegistryPath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(path), { recursive: true });
+        await fsWriteFile(
             path,
             JSON.stringify({
                 version: 1,
@@ -588,54 +602,80 @@ Deno.test("registry migration keeps distinct execution documents ambiguous", asy
             }),
         );
         const entries = await listEntries(projectRoot);
-        assertEquals(entries.map((attempt) => attempt.planId), [undefined, undefined]);
+        assertEquals(
+            entries.map((attempt) => attempt.planId),
+            [undefined, undefined],
+        );
         const issues = JSON.parse(
-            await Deno.readTextFile(
-                resolveProjectRuntimeLayout(await Deno.realPath(projectRoot)).primary
-                    .worktreeRegistryMigrationIssuesPath,
+            await fsReadFile(
+                resolveProjectRuntimeLayout(await fsRealpath(projectRoot)).primary.worktreeRegistryMigrationIssuesPath,
+                "utf8",
             ),
         );
-        assertEquals(issues.issues.map((/** @type {{ reason: string }} */ issue) => issue.reason), [
-            "ambiguous_plan_name",
-            "ambiguous_plan_name",
-        ]);
+        assertEquals(
+            issues.issues.map((/** @type {{ reason: string }} */ issue) => issue.reason),
+            ["ambiguous_plan_name", "ambiguous_plan_name"],
+        );
         for (const root of [firstPath, secondPath]) {
             const document = join(root, "docs/plans/demo-plan.md");
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 document,
-                (await Deno.readTextFile(document)).replace("---\n", "---\nworktreeId: first\n"),
+                (await fsReadFile(document, "utf8")).replace("---\n", "---\nworktreeId: first\n"),
             );
         }
         const conflictingPointers = await listEntries(projectRoot);
-        assertEquals(conflictingPointers.map((attempt) => attempt.planId), [undefined, undefined]);
+        assertEquals(
+            conflictingPointers.map((attempt) => attempt.planId),
+            [undefined, undefined],
+        );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("worktree registry migration preserves unresolved legacy schema and records evidence", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("worktree registry migration preserves unresolved legacy schema and records evidence", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await enterProjectRuntime(projectRoot);
         const path = getWorktreeRegistryPath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(path), { recursive: true });
+        await fsWriteFile(
             path,
             JSON.stringify({ version: 1, entries: [entry({ planName: "missing-plan", planId: undefined })] }),
         );
 
         const entries = await listEntries(projectRoot);
         assertEquals(entries[0].planId, undefined);
-        const stored = JSON.parse(await Deno.readTextFile(path));
+        const stored = JSON.parse(await fsReadFile(path, "utf8"));
         assertEquals(stored.version, 1);
         const issues = JSON.parse(
-            await Deno.readTextFile(
-                resolveProjectRuntimeLayout(await Deno.realPath(projectRoot)).primary
-                    .worktreeRegistryMigrationIssuesPath,
+            await fsReadFile(
+                resolveProjectRuntimeLayout(await fsRealpath(projectRoot)).primary.worktreeRegistryMigrationIssuesPath,
+                "utf8",
             ),
         );
         assertEquals(issues.issues[0].reason, "plan_not_found_or_missing_plan_id");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+    }
+});
+
+test("registry replacement preserves an open reader while publishing updated entries", async () => {
+    const root = await gitFixture.checkout();
+    try {
+        const initial = entry();
+        await addEntry(root, initial);
+        const path = getWorktreeRegistryPath(root);
+        const before = await fsReadFile(path, "utf8");
+        const reader = await fsOpen(path, "r");
+        try {
+            await updateEntry(root, initial.id, { status: "completed" });
+            assertEquals(await reader.readFile("utf8"), before);
+            assertEquals((await findById(root, initial.id))?.status, "completed");
+        } finally {
+            await reader.close();
+        }
+    } finally {
+        await fsRm(root, { recursive: true });
     }
 });

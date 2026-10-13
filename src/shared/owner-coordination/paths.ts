@@ -3,7 +3,8 @@
  * Path helpers for the owner-only coordination database.
  */
 
-import { dirname, join } from "@std/path";
+import { chmodSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 
 export const OWNER_COORDINATION_DB_FILENAME = "owner-coordination.sqlite3";
@@ -29,9 +30,9 @@ export function getOwnerCoordinationDatabasePath(options: OwnerCoordinationPathO
  */
 export function ensureOwnerDatabaseDirectory(dbPath: string) {
     if (!dbPath || dbPath === ":memory:") return;
-    Deno.mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
+    mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
     try {
-        Deno.chmodSync(dirname(dbPath), 0o700);
+        chmodSync(dirname(dbPath), 0o700);
     } catch {
         // Some filesystems do not support chmod; creation mode remains best effort.
     }

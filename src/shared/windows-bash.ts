@@ -1,8 +1,10 @@
-import { join } from "@std/path";
+import { statSync as fsStatSync } from "node:fs";
+import process from "node:process";
+import { join } from "node:path";
 
 function isFile(path: string): boolean {
     try {
-        return Deno.statSync(path).isFile;
+        return fsStatSync(path).isFile();
     } catch {
         return false;
     }
@@ -10,12 +12,12 @@ function isFile(path: string): boolean {
 
 /** Find Git Bash even when Windows exposes only Git's cmd directory on PATH. */
 export function findWindowsBashPath(): string | undefined {
-    const roots = [Deno.env.get("ProgramFiles"), Deno.env.get("ProgramFiles(x86)")]
+    const roots = [process.env["ProgramFiles"], process.env["ProgramFiles(x86)"]]
         .filter((root): root is string => Boolean(root))
         .map((root) => join(root, "Git"));
-    const localAppData = Deno.env.get("LOCALAPPDATA");
+    const localAppData = process.env["LOCALAPPDATA"];
     if (localAppData) roots.push(join(localAppData, "Programs", "Git"));
-    const pathDirs = (Deno.env.get("PATH") || "").split(";")
+    const pathDirs = (process.env["PATH"] || "").split(";")
         .map((entry) => entry.trim().replace(/^"(.*)"$/, "$1")).filter(Boolean);
     for (const dir of pathDirs) {
         if (isFile(join(dir, "git.exe"))) roots.push(join(dir, ".."));

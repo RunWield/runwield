@@ -3,7 +3,7 @@
  * Push the current local shared Plan body as a new encrypted remote Revision.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
 import { hashPlanBody, listPlanResources, updatePlanCollaborationMetadata } from "../../plan-store.js";
 import { redactSecrets, REVIEWER_SCOPE } from "../../shared/collaboration/capabilities.ts";

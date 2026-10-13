@@ -1,5 +1,9 @@
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { savePlan } from "../../plan-store.js";
 
@@ -20,7 +24,7 @@ import { draftRecoveryState, planBodyDraftKey, restoredDraftExpectedBodyHash } f
 
 import { matchingPlanIds, normalizePlanSearchQuery, PLAN_SEARCH_QUERY_PARAM } from "./islands/PlanBoardSearch.tsx";
 
-Deno.test("serializePlanSummary omits absolute paths and surfaces hierarchy/dependency metadata", () => {
+test("serializePlanSummary omits absolute paths and surfaces hierarchy/dependency metadata", () => {
     const summary = serializePlanSummary({
         planId: "p1",
         planName: "epic/child",
@@ -60,7 +64,7 @@ Deno.test("serializePlanSummary omits absolute paths and surfaces hierarchy/depe
     assertEquals(summary.dependencies, ["sibling-id"]);
 });
 
-Deno.test("buildBoardGroups separates active closed and on-hold Plans", () => {
+test("buildBoardGroups separates active closed and on-hold Plans", () => {
     const plans = [
         { name: "active", planName: "active", planId: "a", status: "draft", attrs: {}, classification: "FEATURE" },
         {
@@ -79,7 +83,7 @@ Deno.test("buildBoardGroups separates active closed and on-hold Plans", () => {
     assertEquals(groups.onHold.standalone.map(/** @param {any} plan */ (plan) => plan.planName), ["hold"]);
 });
 
-Deno.test("buildWorkspaceBoard groups top-level cards into status columns and hides resolved children", () => {
+test("buildWorkspaceBoard groups top-level cards into status columns and hides resolved children", () => {
     const plans = [
         {
             name: "epic",
@@ -125,7 +129,7 @@ Deno.test("buildWorkspaceBoard groups top-level cards into status columns and hi
     assertEquals(readyCards.map((/** @type {any} */ plan) => plan.planName), ["standalone"]);
 });
 
-Deno.test("buildWorkspaceBoard keeps closed children with their active Epic instead of closed tab cards", () => {
+test("buildWorkspaceBoard keeps closed children with their active Epic instead of closed tab cards", () => {
     const board = /** @type {any} */ (buildWorkspaceBoard(
         /** @type {any} */ ([
             {
@@ -160,7 +164,7 @@ Deno.test("buildWorkspaceBoard keeps closed children with their active Epic inst
     assertEquals(verifiedColumn.cards.length, 0);
 });
 
-Deno.test("buildWorkspaceBoard keeps orphan children visible for repair outside main status cards", () => {
+test("buildWorkspaceBoard keeps orphan children visible for repair outside main status cards", () => {
     const board = /** @type {any} */ (buildWorkspaceBoard(
         /** @type {any} */ ([{
             name: "missing/child",
@@ -181,7 +185,7 @@ Deno.test("buildWorkspaceBoard keeps orphan children visible for repair outside 
     assertEquals(board.active.orphanChildren.map((/** @type {any} */ plan) => plan.planId), ["orphan-id"]);
 });
 
-Deno.test("Plan Board search helpers normalize query and match title name and summary", () => {
+test("Plan Board search helpers normalize query and match title name and summary", () => {
     const searchIndex = [
         {
             planId: "fuzzy-id",
@@ -203,7 +207,7 @@ Deno.test("Plan Board search helpers normalize query and match title name and su
     assertEquals(matchingPlanIds(searchIndex, "fuzzy").has("fuzzy-id"), true);
 });
 
-Deno.test("buildPlanBoardSearchIndex includes top-level cards and orphan repair cards once", () => {
+test("buildPlanBoardSearchIndex includes top-level cards and orphan repair cards once", () => {
     const searchIndex = buildPlanBoardSearchIndex({
         columns: [
             {
@@ -222,21 +226,21 @@ Deno.test("buildPlanBoardSearchIndex includes top-level cards and orphan repair 
     assertEquals(searchIndex[1].title, "missing/child");
 });
 
-Deno.test("workspaceHref preserves token and board search query", () => {
+test("workspaceHref preserves token and board search query", () => {
     const url = new URL("http://localhost/plans/plan-id?token=secret&q=fuzzy%20plan&edit=body");
     assertEquals(workspaceHref("/closed", url), "/closed?token=secret&q=fuzzy+plan");
     assertEquals(detailHref({ planId: "plan id" }, url), "/plans/plan%20id?token=secret&q=fuzzy+plan");
     assertEquals(PLAN_SEARCH_QUERY_PARAM, "q");
 });
 
-Deno.test("workspaceHref omits ephemeral token on owner Project Plan routes", () => {
+test("workspaceHref omits ephemeral token on owner Project Plan routes", () => {
     const url = new URL("http://localhost/projects/project-id/plans?token=secret&q=fuzzy%20plan");
     assertEquals(workspaceHref("/closed", url), "/projects/project-id/plans/closed?q=fuzzy+plan");
     assertEquals(detailHref({ planId: "plan id" }, url), "/projects/project-id/plans/plan%20id?q=fuzzy+plan");
 });
 
-Deno.test("loadPlanSummaries marks top-level, Epic, child, and orphan-child hierarchy roles", async () => {
-    const cwd = await Deno.makeTempDir();
+test("loadPlanSummaries marks top-level, Epic, child, and orphan-child hierarchy roles", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "top", "# Top", { planId: "top-id", classification: "FEATURE" });
         await savePlan(cwd, "epic", "# Epic", {
@@ -259,12 +263,12 @@ Deno.test("loadPlanSummaries marks top-level, Epic, child, and orphan-child hier
         assertEquals(byId.get("child-id"), "child");
         assertEquals(byId.get("orphan-id"), "orphan-child");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("loadPlanSummaries preserves the core plan-list order", async () => {
-    const cwd = await Deno.makeTempDir();
+test("loadPlanSummaries preserves the core plan-list order", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const plans = [
             ["held", "held-id", "FEATURE", "on_hold"],
@@ -291,12 +295,12 @@ Deno.test("loadPlanSummaries preserves the core plan-list order", async () => {
             "held",
         ]);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("loadWorkspaceDetail returns Epic detail with children grouped by status", async () => {
-    const cwd = await Deno.makeTempDir();
+test("loadWorkspaceDetail returns Epic detail with children grouped by status", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(
             cwd,
@@ -325,12 +329,12 @@ Deno.test("loadWorkspaceDetail returns Epic detail with children grouped by stat
         const failedColumn = detail.childColumns.find((/** @type {any} */ column) => column.status === "failed");
         assertEquals(failedColumn.cards.map((/** @type {any} */ plan) => plan.planId), ["child-id"]);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("workspace adapter exposes Epic dependency health done-enough held and orphan repair metadata", async () => {
-    const cwd = await Deno.makeTempDir();
+test("workspace adapter exposes Epic dependency health done-enough held and orphan repair metadata", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "epic", "# Epic", {
             planId: "epic-id",
@@ -391,17 +395,17 @@ Deno.test("workspace adapter exposes Epic dependency health done-enough held and
         assertStringIncludes(orphan.orphanReason, "missing");
         assertEquals(orphan.dependencyStates, [{ dependency: "other", state: "missing" }]);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("workspace metadata advertises real board drag/drop capability", () => {
+test("workspace metadata advertises real board drag/drop capability", () => {
     const metadata = _workspaceMetadata("/tmp/example-project");
     assertEquals(metadata.capabilities.lifecycleActions, true);
     assertEquals(metadata.capabilities.dragDrop, true);
 });
 
-Deno.test("draft helpers scope recovery to workspace plan and hash", () => {
+test("draft helpers scope recovery to workspace plan and hash", () => {
     assertEquals(planBodyDraftKey("workspace", "plan"), "runwield:workspace:workspace:plan:plan:bodyDraft");
     assertEquals(draftRecoveryState(null, "hash"), "none");
     assertEquals(draftRecoveryState({ baseBodyHash: "hash" }, "hash"), "same-base");
@@ -409,7 +413,7 @@ Deno.test("draft helpers scope recovery to workspace plan and hash", () => {
     assertEquals(restoredDraftExpectedBodyHash({ baseBodyHash: "old" }), "old");
 });
 
-Deno.test("renderMarkdown renders links and escapes unsafe markdown input", () => {
+test("renderMarkdown renders links and escapes unsafe markdown input", () => {
     const html = renderMarkdown(
         "# Title\n\nParagraph <script>alert(1)</script> with [RunWield](https://runwield.dev) and [bad](javascript:alert(1))\n\n- one\n- two\n\n```\ncode\n```",
     );
@@ -420,9 +424,9 @@ Deno.test("renderMarkdown renders links and escapes unsafe markdown input", () =
     assertStringIncludes(html, "<pre");
 });
 
-Deno.test("workspace detail header CSS lets lifecycle actions wrap without squeezing summary", async () => {
+test("workspace detail header CSS lets lifecycle actions wrap without squeezing summary", async () => {
     const workspaceCss = await readWorkspaceStyles(new URL("./static/workspace.css", import.meta.url));
-    const componentsCss = await Deno.readTextFile(new URL("../design-system/components.css", import.meta.url));
+    const componentsCss = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
     assertStringIncludes(workspaceCss, ".detail-title-row {\n    align-items: center;\n    display: grid;");
     assertStringIncludes(workspaceCss, "grid-template-columns: auto minmax(0, 1fr) auto;");
     assertStringIncludes(workspaceCss, ".split-header {\n    align-items: flex-start;\n    display: grid;");

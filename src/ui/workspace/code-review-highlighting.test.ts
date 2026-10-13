@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
 import {
     getCustomExtensionsMap,
     getCustomExtensionsVersion,
@@ -11,7 +12,7 @@ import {
 
 import { codeReviewLanguagesFor, prepareCodeReviewHighlighting } from "./react/code-review-highlighting.ts";
 
-Deno.test("code review detects JSX and TSX grammars through Pierre", () => {
+test("code review detects JSX and TSX grammars through Pierre", () => {
     assertEquals(
         codeReviewLanguagesFor([
             "src/ui/components/ReviewBadge.tsx",
@@ -22,7 +23,7 @@ Deno.test("code review detects JSX and TSX grammars through Pierre", () => {
     );
 });
 
-Deno.test("code review preparation resolves grammars into Pierre's cache", async () => {
+test("code review preparation resolves grammars into Pierre's cache", async () => {
     const paths = [
         "src/ui/components/ReviewBadge.tsx",
         "src/ui/components/ReviewAction.jsx",
@@ -34,7 +35,7 @@ Deno.test("code review preparation resolves grammars into Pierre's cache", async
     assertEquals(hasResolvedLanguages(codeReviewLanguagesFor(paths)), true);
 });
 
-Deno.test("code review preparation falls back unresolvable grammars to text", async () => {
+test("code review preparation falls back unresolvable grammars to text", async () => {
     const originalVersion = getCustomExtensionsVersion();
     const originalExtensions = getCustomExtensionsMap();
     try {

@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { archivePlan, loadArchivedPlan, savePlan } from "../../plan-store.js";
 import { setCustomSetting } from "../../shared/settings.js";
 import { writeWorkRecord } from "../../shared/work-records/store.js";
@@ -22,7 +23,7 @@ async function captureLogs(run: () => Promise<void>): Promise<string> {
 }
 
 function pruneTest(name: string, run: (fixture: PlanCommandFixture) => Promise<void>): void {
-    Deno.test(name, () => withPlanCommandFixture("runwield-plans-prune-command-", run));
+    test(name, () => withPlanCommandFixture("runwield-plans-prune-command-", run));
 }
 
 function recordAttrs(recordId: string, sourcePlan: string): WorkRecordFrontMatter {

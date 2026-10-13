@@ -1,8 +1,13 @@
+import { serveHttp } from "../../shared/http-server.ts";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * Internal package smoke checks that must execute inside the packaged CLI.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
+import process from "node:process";
 import { WORK_RECORDS_DIR_NAME } from "../../constants.js";
 import { publishExecutionWorktreeIsolated } from "../../shared/isolated-publication.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../../shared/runwield-owned-paths.ts";
@@ -11,48 +16,24 @@ import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
 
 /** @param {string} name */
 function requiredEnv(name: string): string {
-    const value = Deno.env.get(name) || "";
+    const value = process.env[name] || "";
     if (!value) throw new Error(`Package smoke requires ${name}.`);
     return value;
 }
 
 async function run(command: string, args: string[], options: { cwd?: string; env?: Record<string, string> } = {}) {
     console.log(`[RunWield package smoke] ${command} ${args.join(" ")}`);
-    const child = new Deno.Command(command, {
+    const result = await captureForegroundProcess(command, {
         args,
-        cwd: options.cwd,
+        cwd: options.cwd ?? getCwd(),
         env: options.env,
-        stdout: "piped",
-        stderr: "piped",
-    }).spawn();
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-        timedOut = true;
-        if (Deno.build.os === "windows") {
-            new Deno.Command("taskkill", {
-                args: ["/PID", String(child.pid), "/T", "/F"],
-                stdout: "null",
-                stderr: "null",
-            }).output().catch(() => {});
-            return;
-        }
-        try {
-            child.kill();
-        } catch {
-            // Process already exited.
-        }
-    }, 300_000);
-    try {
-        const result = await child.output();
-        const decoder = new TextDecoder();
-        const stdout = decoder.decode(result.stdout);
-        const stderr = decoder.decode(result.stderr);
-        if (timedOut) throw new Error(`${command} ${args.join(" ")} timed out\n${stdout}${stderr}`);
-        if (!result.success) throw new Error(`${command} ${args.join(" ")} failed\n${stdout}${stderr}`);
-        return { stdout, stderr };
-    } finally {
-        clearTimeout(timeout);
-    }
+        timeoutMs: 300_000,
+    });
+    const decoder = new TextDecoder();
+    const stdout = decoder.decode(result.stdout);
+    const stderr = decoder.decode(result.stderr);
+    if (!result.success) throw new Error(`${command} ${args.join(" ")} failed\n${stdout}${stderr}`);
+    return { stdout, stderr };
 }
 
 async function checkCoreHelperFlows(env: Record<string, string>): Promise<void> {
@@ -67,8 +48,8 @@ async function checkCoreHelperFlows(env: Record<string, string>): Promise<void> 
     }
 
     const project = join(localAppData, "core-flow-project");
-    await Deno.mkdir(join(project, "src"), { recursive: true });
-    await Deno.mkdir(join(project, WORK_RECORDS_DIR_NAME), { recursive: true });
+    await fsMkdir(join(project, "src"), { recursive: true });
+    await fsMkdir(join(project, WORK_RECORDS_DIR_NAME), { recursive: true });
     await run("git", ["init", "-b", "main"], { cwd: project, env });
     const bash = createRunWieldBashToolDefinition(project);
     // Pi supports standalone execution without a Session context, as in createBashTool.
@@ -85,7 +66,7 @@ async function checkCoreHelperFlows(env: Record<string, string>): Promise<void> 
     }
     const branch = await run("git", ["branch", "--show-current"], { cwd: project, env });
     if (branch.stdout.trim() !== "runwield/bash-smoke") throw new Error("Packaged Bash did not switch Git branches.");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(project, "src", "smoke.ts"),
         "export function runwieldWindowsPackageSmoke() { return 1; }\n",
     );
@@ -98,7 +79,7 @@ async function checkCoreHelperFlows(env: Record<string, string>): Promise<void> 
         throw new Error("Packaged Cymbal index/search did not find the smoke symbol.");
     }
 
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(project, WORK_RECORDS_DIR_NAME, "package-smoke.md"),
         [
             "---",
@@ -121,11 +102,11 @@ async function checkCoreHelperFlows(env: Record<string, string>): Promise<void> 
             "Bundled helper path smoke.",
         ].join("\n"),
     );
-    const indexResult = await run(Deno.execPath(), ["wr", "index", "rebuild"], { cwd: project, env });
+    const indexResult = await run(process.execPath, ["wr", "index", "rebuild"], { cwd: project, env });
     if (!indexResult.stdout.includes("canonical records: 1") || !indexResult.stdout.includes("indexed: 1")) {
         throw new Error(`Packaged Work Record indexing did not index the fixture:\n${indexResult.stdout}`);
     }
-    const wrSearch = await run(Deno.execPath(), ["wr", "search", "Bundled helper path smoke"], { cwd: project, env });
+    const wrSearch = await run(process.execPath, ["wr", "search", "Bundled helper path smoke"], { cwd: project, env });
     if (
         !wrSearch.stdout.includes("11111111-1111-4111-8111-111111111111") ||
         !wrSearch.stdout.includes("Windows package smoke")
@@ -133,7 +114,7 @@ async function checkCoreHelperFlows(env: Record<string, string>): Promise<void> 
         throw new Error(`Packaged Work Record search did not retrieve the fixture:\n${wrSearch.stdout}`);
     }
 
-    const server = Deno.serve(
+    const server = serveHttp(
         { port: 0, hostname: "127.0.0.1", onListen() {} },
         () => new Response("package smoke page"),
     );
@@ -157,19 +138,19 @@ async function checkPublicationFlow(env: Record<string, string>): Promise<void> 
     const project = join(localAppData, "publication-project");
     const remote = join(localAppData, "publication-remote.git");
     const publicationRoot = join(localAppData, "publication-worktree-root");
-    await Deno.mkdir(project, { recursive: true });
+    await fsMkdir(project, { recursive: true });
     await run("git", ["init", "-b", "main"], { cwd: project, env });
     await run("git", ["config", "user.email", "runwield-package-check@example.invalid"], { cwd: project, env });
     await run("git", ["config", "user.name", "RunWield Package Check"], { cwd: project, env });
-    await Deno.writeTextFile(join(project, ".gitignore"), RUNWIELD_GITIGNORE_BLOCK);
-    await Deno.writeTextFile(join(project, "published.txt"), "base package check\n");
+    await fsWriteFile(join(project, ".gitignore"), RUNWIELD_GITIGNORE_BLOCK);
+    await fsWriteFile(join(project, "published.txt"), "base package check\n");
     await run("git", ["add", ".gitignore", "published.txt"], { cwd: project, env });
     await run("git", ["commit", "-m", "Initialize package publication fixture"], { cwd: project, env });
     await run("git", ["init", "--bare", remote], { env });
     await run("git", ["remote", "add", "origin", remote], { cwd: project, env });
     await run("git", ["push", "-u", "origin", "main"], { cwd: project, env });
     await run("git", ["checkout", "-b", "runwield/package-publication-smoke"], { cwd: project, env });
-    await Deno.writeTextFile(join(project, "published.txt"), "published by package check\n");
+    await fsWriteFile(join(project, "published.txt"), "published by package check\n");
     await run("git", ["commit", "-am", "Apply package publication fixture"], { cwd: project, env });
     const sealedExecutionCommit = (await run("git", ["rev-parse", "HEAD"], { cwd: project, env })).stdout.trim();
     const result = await publishExecutionWorktreeIsolated({
@@ -190,7 +171,9 @@ async function checkPublicationFlow(env: Record<string, string>): Promise<void> 
 }
 
 export async function runPackageSmokeCommand(argv: string[]): Promise<void> {
-    const env = Deno.env.toObject();
+    const env = Object.fromEntries(
+        Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
     const [subcommand] = argv;
     if (subcommand === "image-resize") {
         await checkPackagedImageResize();

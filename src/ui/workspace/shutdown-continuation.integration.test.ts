@@ -1,9 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 
-Deno.test("Workspace shutdown settles an accepted continuation before closing its store", async () => {
+test("Workspace shutdown settles an accepted continuation before closing its store", async () => {
     await withRuntimeCommandFixture(
         "workspace-shutdown-continuation-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {

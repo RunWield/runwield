@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
 import {
     appendPlanDeviation,
     mergeRecorderDeviationText,
@@ -7,7 +8,7 @@ import {
     renderPlanDeviationsForWorkRecord,
 } from "./plan-deviations.ts";
 
-Deno.test("Plan Deviation normalization is strict and preserves order", () => {
+test("Plan Deviation normalization is strict and preserves order", () => {
     const entries = normalizePlanDeviations([
         {
             id: "call-1",
@@ -41,7 +42,7 @@ Deno.test("Plan Deviation normalization is strict and preserves order", () => {
     ]);
 });
 
-Deno.test("Plan Deviation normalization rejects malformed entries", () => {
+test("Plan Deviation normalization rejects malformed entries", () => {
     assertThrows(
         () => normalizePlanDeviations([{ id: "call-1", replacementRequirement: "Keep it.", approvedAt: "now" }]),
         Error,
@@ -76,7 +77,7 @@ Deno.test("Plan Deviation normalization rejects malformed entries", () => {
     );
 });
 
-Deno.test("appendPlanDeviation is idempotent by entry id", () => {
+test("appendPlanDeviation is idempotent by entry id", () => {
     const first = appendPlanDeviation([], {
         id: "call-1",
         supersededRequirement: "Old.",
@@ -95,7 +96,7 @@ Deno.test("appendPlanDeviation is idempotent by entry id", () => {
     assertEquals(second.entries, first.entries);
 });
 
-Deno.test("Plan Deviation renderers state precedence and Work Record facts", () => {
+test("Plan Deviation renderers state precedence and Work Record facts", () => {
     const entries = [{
         id: "call-1",
         supersededRequirement: "Replace nav.",
@@ -114,7 +115,7 @@ Deno.test("Plan Deviation renderers state precedence and Work Record facts", () 
     assertEquals(record.includes("Approved at"), false);
 });
 
-Deno.test("Recorder deviation notes do not duplicate confirmed text", () => {
+test("Recorder deviation notes do not duplicate confirmed text", () => {
     const confirmed = [
         "1. Superseded requirement: Replace nav.",
         "   Replacement requirement: Keep nav.",
@@ -129,7 +130,7 @@ Deno.test("Recorder deviation notes do not duplicate confirmed text", () => {
     assertStringIncludes(merged, "Use green.");
 });
 
-Deno.test("Recorder deviation notes do not duplicate one confirmed entry mixed with new notes", () => {
+test("Recorder deviation notes do not duplicate one confirmed entry mixed with new notes", () => {
     const confirmed = [
         "1. Superseded requirement: Replace nav.",
         "   Replacement requirement: Keep nav.",

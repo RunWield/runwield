@@ -3,7 +3,7 @@
  * Destructively delete a remote Shared Space and intentionally clear local collaboration state.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
 import { clearPlanCollaborationMetadata, listPlanResources } from "../../plan-store.js";
 import { redactSecrets } from "../../shared/collaboration/capabilities.ts";

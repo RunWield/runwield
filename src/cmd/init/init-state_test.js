@@ -1,3 +1,8 @@
+import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
+import { tmpdir } from "node:os";
 /**
  * @module cmd/init/init-state_test
  * Tests for the global init-state module.
@@ -6,8 +11,9 @@
  * to avoid polluting the user's real ~/.wld/init-state.json.
  */
 
-import { assertEquals, assertExists, assertObjectMatch } from "@std/assert";
-import { join } from "@std/path";
+import { partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { _setTestStatePath } from "./init-state.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
@@ -23,7 +29,7 @@ import {
 
 // Isolate all state operations to a temp directory so we never touch
 // the user's real ~/.wld/init-state.json.
-const testDir = Deno.makeTempDirSync();
+const testDir = fsMkdtempSync(join(tmpdir(), "runwield-fixture-"));
 const testStatePath = join(testDir, "init-state.json");
 _setTestStatePath(testStatePath);
 
@@ -32,7 +38,7 @@ _setTestStatePath(testStatePath);
  * @param {() => Promise<void> | void} fn
  */
 function initStateTest(name, fn) {
-    Deno.test(name, () => withProcessGlobalTestLock(async () => await fn()));
+    test(name, () => withProcessGlobalTestLock(async () => await fn()));
 }
 
 // ── init-state unit tests ──────────────────────────────────────────
@@ -67,7 +73,7 @@ initStateTest("recordInitDone creates state file with correct structure", async 
     assertExists(state[cwdHash]);
     assertEquals(state[cwdHash].initOffered, true);
     assertEquals(state[cwdHash].initDone, true);
-    assertEquals(state[cwdHash].path, Deno.cwd());
+    assertEquals(state[cwdHash].path, getCwd());
     assertEquals(typeof state[cwdHash].offeredAt, "string");
     assertEquals(typeof state[cwdHash].doneAt, "string");
 
@@ -77,7 +83,7 @@ initStateTest("recordInitDone creates state file with correct structure", async 
     assertExists(raw[cwdHash]);
     assertEquals(raw[cwdHash].initOffered, true);
     assertEquals(raw[cwdHash].initDone, true);
-    assertEquals(raw[cwdHash].path, Deno.cwd());
+    assertEquals(raw[cwdHash].path, getCwd());
     assertEquals(typeof raw[cwdHash].offeredAt, "string");
     assertEquals(typeof raw[cwdHash].doneAt, "string");
     assertEquals(raw[cwdHash].snipMissingWarningCount, 0);
@@ -96,7 +102,7 @@ initStateTest("recordInitOffered marks only initOffered without initDone", async
     assertExists(state[cwdHash]);
     assertEquals(state[cwdHash].initOffered, true);
     assertEquals(state[cwdHash].initDone, false);
-    assertEquals(state[cwdHash].path, Deno.cwd());
+    assertEquals(state[cwdHash].path, getCwd());
     assertEquals(typeof state[cwdHash].offeredAt, "string");
     assertEquals(state[cwdHash].doneAt, null);
 
@@ -160,7 +166,7 @@ initStateTest("state file is isolated per CWD hash", async () => {
         offeredAt: null,
         doneAt: new Date().toISOString(),
     };
-    await Deno.writeTextFile(testStatePath, JSON.stringify(state, null, 2));
+    await fsWriteFile(testStatePath, JSON.stringify(state, null, 2));
 
     // Reading the full state should contain both entries
     const updated = await getInitState();
@@ -188,7 +194,7 @@ initStateTest("recordInitDone preserves other CWD entries (no overwrite)", async
         offeredAt: new Date().toISOString(),
         doneAt: null,
     };
-    await Deno.writeTextFile(testStatePath, JSON.stringify(state, null, 2));
+    await fsWriteFile(testStatePath, JSON.stringify(state, null, 2));
 
     // Call recordInitOffered (for the same CWD) — should not clobber the other entry
     await recordInitOffered();
@@ -222,7 +228,7 @@ initStateTest("Snip missing warning counter is capped by limit", async () => {
 
 async function readRawState() {
     try {
-        const raw = await Deno.readTextFile(testStatePath);
+        const raw = await fsReadFile(testStatePath, "utf8");
         return JSON.parse(raw);
     } catch {
         return null;
@@ -231,7 +237,7 @@ async function readRawState() {
 
 async function cleanupState() {
     try {
-        await Deno.remove(testStatePath);
+        await fsRm(testStatePath);
     } catch {
         // ignore
     }
@@ -240,7 +246,7 @@ async function cleanupState() {
 // Cleanup temp directory after all tests
 globalThis.addEventListener("unload", () => {
     try {
-        Deno.removeSync(testDir, { recursive: true });
+        fsRmSync(testDir, { recursive: true });
     } catch {
         // ignore
     }

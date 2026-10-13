@@ -81,8 +81,9 @@ follows the existing PROJECT order, dependency, hold and recovery rules.
 `ready_for_decomposition`: An Epic PROJECT Plan has been approved and can be opened by the Slicer. This is not an
 executable status.
 
-`ready_for_work`: The executable status for FEATURE Plans. For a PROJECT Epic, it means decomposition has been finalized
-and child FEATURE Plans can be selected; the Epic itself is still a container, not executable implementation work.
+`ready_for_work`: The executable status for PLANNED_CHANGE Plans (including legacy FEATURE). For a PROJECT Epic, it
+means decomposition has been finalized and child Planned Changes can be selected; the Epic itself is still a container,
+not executable implementation work.
 
 `in_progress`: Execution has started. For executable plans, implementation work runs in the recorded execution worktree.
 
@@ -101,7 +102,8 @@ passes; `validationPhase: semantic` ensures a fresh process resumes review witho
 Plan remains reviewed while artifacts are prepared or publication is pending. The sealed execution candidate never
 claims delivery.
 
-`verified`: The reviewed work reached its configured target branch and publication was confirmed. The target commit
+`verified`: The reviewed work reached its recorded landing branch, including a default Plan branch, and publication
+was confirmed. This does not prove an onward merge to the intended target. The delivery commit
 contains the verified Plan and any successfully prepared Work Record in approved state; the checked candidate and
 published commit remain separate identities. Non-Git projects reach verified after their in-place checks and review.
 Runtime receipts preserve this outcome when a remote delivery leaves the primary checkout behind.
@@ -329,13 +331,14 @@ mechanical. It preserves identity/context fields such as `classification`, `comp
 
 The Readiness Gate is classification-aware.
 
-For FEATURE Plans, the gate does not call an LLM. It promotes `approved` to `ready_for_work`.
+For PLANNED_CHANGE Plans (including legacy FEATURE), the gate does not call an LLM. It promotes `approved` to
+`ready_for_work`.
 
 For PROJECT Epics, the gate records `epic_readiness_passed` and promotes `approved` to `ready_for_decomposition`. The
 Slicer then runs as an interactive decomposition agent. When the user explicitly finalizes the decomposition seams, the
-Slicer materializes child FEATURE Plans as `draft`, records `decomposition_finalized`, and the Epic becomes
-`ready_for_work` for child selection. That status does not mean the Epic itself can be executed, and draft child FEATURE
-Plans still go through Planner/Plannotator review before execution.
+Slicer materializes child PLANNED_CHANGE Plans as `draft`, records `decomposition_finalized`, and the Epic becomes
+`ready_for_work` for child selection. That status does not mean the Epic itself can be executed, and draft child Planned
+Changes still go through Planner/Plannotator review before execution.
 
 ## Execution Worktrees
 
@@ -506,7 +509,7 @@ There is no stored `summary`: lists and prompts derive it from the first paragra
 
 `status`: Current Plan Status.
 
-`parentPlan`: Child FEATURE pointer to the parent Epic plan name.
+`parentPlan`: Child Planned Change pointer to the parent Epic plan name.
 
 `dependencies`: Optional sibling FEATURE Plan identifiers that should be complete first. Loading a child FEATURE warns
 when dependencies are missing or neither RunWield Verified nor User Verified, but the user may choose to proceed. User

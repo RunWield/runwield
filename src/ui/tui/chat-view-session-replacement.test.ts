@@ -1,10 +1,11 @@
-import { assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertStringIncludes } from "../../testing/assertions.ts";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView } from "./chat-view.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 
-Deno.test("chat view refreshes warmed sidebar state for events from a replacement Session", async () => {
+test("chat view refreshes warmed sidebar state for events from a replacement Session", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, projectRoot, host }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 35 });
         const tui = new TuiAltScreen(terminal);

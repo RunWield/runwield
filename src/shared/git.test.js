@@ -1,4 +1,8 @@
-import { assertEquals, assertInstanceOf, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertInstanceOf, assertStringIncludes } from "../testing/assertions.ts";
 import {
     assertGitRepository,
     GitRepositoryRequiredError,
@@ -7,20 +11,20 @@ import {
     probeGitRepository,
 } from "./git.ts";
 
-Deno.test("probeGitRepository reports non-Git directories without throwing", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-non-git-probe-" });
+test("probeGitRepository reports non-Git directories without throwing", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-non-git-probe-"));
     try {
         const probe = await probeGitRepository(dir);
         assertEquals(probe.ok, false);
         assertEquals(probe.state, "not_git");
         assertEquals(await isGitRepository(dir), false);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("assertGitRepository throws a typed friendly error outside Git", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-non-git-assert-" });
+test("assertGitRepository throws a typed friendly error outside Git", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-non-git-assert-"));
     try {
         let caught;
         try {
@@ -35,6 +39,6 @@ Deno.test("assertGitRepository throws a typed friendly error outside Git", async
             "Testing Git-required behavior requires a Git repository",
         );
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

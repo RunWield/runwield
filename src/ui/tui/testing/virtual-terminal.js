@@ -73,14 +73,9 @@ export class VirtualTerminal {
         this.writes += data;
         this._pendingWrites.push(
             new Promise((resolve) => {
-                let settled = false;
-                const finish = () => {
-                    if (settled) return;
-                    settled = true;
-                    resolve();
-                };
-                this._xterm.write(data, finish);
-                setTimeout(finish, 10);
+                // Only xterm's callback proves the viewport consumed this write.
+                // A timer can expire while parsing is still queued on a busy runner.
+                this._xterm.write(data, resolve);
             }),
         );
     }

@@ -1,5 +1,10 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { encodeCwdForSessionDir } from "./root-session.js";
 import {
@@ -16,10 +21,10 @@ async function removeTempDir(path) {
     let lastError;
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            await Deno.remove(path, { recursive: true });
+            await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return;
+            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
             lastError = error;
             await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
         }
@@ -30,20 +35,20 @@ async function removeTempDir(path) {
 /** @param {(home: string) => Promise<void>} callback */
 async function withHome(callback) {
     return await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir({ prefix: "runwield-projection-home-" });
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-projection-home-"));
+        process.env["HOME"] = home;
         try {
             return await callback(home);
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
 }
 
-Deno.test("Session projection reads the last persisted Session rename", () => {
+test("Session projection reads the last persisted Session rename", () => {
     assertEquals(
         summarizeProjectedEntries([
             { type: "session", name: "Original" },
@@ -55,12 +60,12 @@ Deno.test("Session projection reads the last persisted Session rename", () => {
     );
 });
 
-Deno.test("committed projection verifies exact prefix and ignores later tail", async () => {
+test("committed projection verifies exact prefix and ignores later tail", async () => {
     await withHome(async (home) => {
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
-        await Deno.mkdir(sessionDir, { recursive: true });
+        await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_pi-1.jsonl");
         const committed = [
             { type: "session", id: "pi-1", cwd, timestamp: "2026-01-01T00:00:00.000Z" },
@@ -77,7 +82,7 @@ Deno.test("committed projection verifies exact prefix and ignores later tail", a
                 message: { role: "assistant", content: "hi" },
             },
         ].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
-        await Deno.writeTextFile(
+        await fsWriteFile(
             sessionPath,
             committed +
                 JSON.stringify({ type: "message", id: "tail", message: { role: "assistant", content: "hidden" } }) +
@@ -105,7 +110,7 @@ Deno.test("committed projection verifies exact prefix and ignores later tail", a
     });
 });
 
-Deno.test("committed projection replays Agy backend status as display-only system status", () => {
+test("committed projection replays Agy backend status as display-only system status", () => {
     const events = createReplayEvents("projection", [
         {
             type: "custom",
@@ -139,7 +144,7 @@ Deno.test("committed projection replays Agy backend status as display-only syste
                 message: "Claude Code turn canceled.",
             },
         },
-    ], { projectRoot: Deno.cwd() });
+    ], { projectRoot: getCwd() });
 
     assertEquals(events.map((event) => event.type), ["system_status", "system_status", "system_status"]);
     assertEquals(events.map((event) => event.level), ["error", "warning", "warning"]);
@@ -148,12 +153,12 @@ Deno.test("committed projection replays Agy backend status as display-only syste
     assertEquals(JSON.stringify(events).includes("workflow_tool_event"), false);
 });
 
-Deno.test("committed projection replays CLI backend final messages as ordinary transcript text", async () => {
+test("committed projection replays CLI backend final messages as ordinary transcript text", async () => {
     await withHome(async (home) => {
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
-        await Deno.mkdir(sessionDir, { recursive: true });
+        await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_claude.jsonl");
         const committed = [
             { type: "session", id: "claude", cwd, timestamp: "2026-01-01T00:00:00.000Z" },
@@ -194,7 +199,7 @@ Deno.test("committed projection replays CLI backend final messages as ordinary t
                 message: { role: "assistant", content: [{ type: "text", text: "agy complete" }] },
             },
         ].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
-        await Deno.writeTextFile(sessionPath, committed);
+        await fsWriteFile(sessionPath, committed);
         const evidence = await captureTranscriptEvidence({
             transcriptPath: sessionPath,
             transcriptCwd: cwd,
@@ -220,12 +225,12 @@ Deno.test("committed projection replays CLI backend final messages as ordinary t
     });
 });
 
-Deno.test("committed projection rejects mismatched evidence", async () => {
+test("committed projection rejects mismatched evidence", async () => {
     await withHome(async (home) => {
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const sessionDir = join(home, ".wld", "sessions", encodeCwdForSessionDir(cwd));
-        await Deno.mkdir(sessionDir, { recursive: true });
+        await fsMkdir(sessionDir, { recursive: true });
         const sessionPath = join(sessionDir, "2026-01-01T00-00-00-000Z_pi-1.jsonl");
         const content = JSON.stringify({
             type: "session",
@@ -233,7 +238,7 @@ Deno.test("committed projection rejects mismatched evidence", async () => {
             cwd,
             timestamp: "2026-01-01T00:00:00.000Z",
         }) + "\n";
-        await Deno.writeTextFile(sessionPath, content);
+        await fsWriteFile(sessionPath, content);
         await assertRejects(
             () =>
                 projectCommittedTranscript({
@@ -251,7 +256,7 @@ Deno.test("committed projection rejects mismatched evidence", async () => {
     });
 });
 
-Deno.test("projection resolves active agent machine names to display names", () => {
+test("projection resolves active agent machine names to display names", () => {
     const events = createReplayEvents("projection", [
         { type: "custom", id: "agent", customType: "runwield.active_agent", data: { agentName: "frontend-engineer" } },
         {
@@ -259,11 +264,11 @@ Deno.test("projection resolves active agent machine names to display names", () 
             id: "reply",
             message: { role: "assistant", content: [{ type: "text", text: "Done." }] },
         },
-    ], { projectRoot: Deno.cwd() });
+    ], { projectRoot: getCwd() });
     assertEquals(events.find((event) => event.type === "assistant_text_delta")?.agentName, "Frontend Engineer");
 });
 
-Deno.test("projection emits RunWield notices only for later different active Agents", () => {
+test("projection emits RunWield notices only for later different active Agents", () => {
     const events = createReplayEvents("projection", [
         {
             type: "custom",
@@ -293,7 +298,7 @@ Deno.test("projection emits RunWield notices only for later different active Age
             id: "operator-reply",
             message: { role: "assistant", content: [{ type: "text", text: "Operate." }] },
         },
-    ], { projectRoot: Deno.cwd() });
+    ], { projectRoot: getCwd() });
 
     assertEquals(
         events.map((
@@ -313,7 +318,7 @@ Deno.test("projection emits RunWield notices only for later different active Age
     );
 });
 
-Deno.test("projection cursor selection returns only later events and advances summary-only generations", () => {
+test("projection cursor selection returns only later events and advances summary-only generations", () => {
     const events = [
         { type: "user_message", eventId: "one" },
         { type: "assistant_text_delta", eventId: "two" },
@@ -327,7 +332,7 @@ Deno.test("projection cursor selection returns only later events and advances su
     assertEquals(summaryOnly.nextCursor, null);
 });
 
-Deno.test("projection ignores old notification records", () => {
+test("projection ignores old notification records", () => {
     const summary = summarizeProjectedEntries([
         { type: "custom", id: "agent-entry", customType: "runwield.active_agent", data: { agentName: "Ideator" } },
         { type: "custom", id: "old-alert", customType: "runwield.attention", data: { reason: "agentStopped" } },
@@ -336,7 +341,7 @@ Deno.test("projection ignores old notification records", () => {
     assertEquals(summary.activeAgent, "ideator");
 });
 
-Deno.test("projection summary keeps the latest valid Agy execution backend fact", () => {
+test("projection summary keeps the latest valid Agy execution backend fact", () => {
     const summary = summarizeProjectedEntries([
         {
             type: "custom",
@@ -405,7 +410,7 @@ Deno.test("projection summary keeps the latest valid Agy execution backend fact"
     });
 });
 
-Deno.test("committed transcript authority facts are explicit projection extracts", () => {
+test("committed transcript authority facts are explicit projection extracts", () => {
     const facts = getCommittedTranscriptAuthorityFacts({
         snapshot: {
             activeAgent: "Ideator",
@@ -436,7 +441,7 @@ Deno.test("committed transcript authority facts are explicit projection extracts
     });
 });
 
-Deno.test("projection cursor selection fails closed when the prior cursor is absent", () => {
+test("projection cursor selection fails closed when the prior cursor is absent", () => {
     const events = [{ type: "user_message", eventId: "one" }];
     assertThrows(
         () => selectProjectedEventsAfterCursor({ events, cursorEventId: "missing" }),
@@ -445,7 +450,7 @@ Deno.test("projection cursor selection fails closed when the prior cursor is abs
     );
 });
 
-Deno.test("projection cursor selection validates prefix ordinal continuity", () => {
+test("projection cursor selection validates prefix ordinal continuity", () => {
     const events = [
         { type: "user_message", eventId: "one" },
         { type: "assistant_text_delta", eventId: "inserted" },
@@ -461,7 +466,7 @@ Deno.test("projection cursor selection validates prefix ordinal continuity", () 
     assertEquals(selected.nextCursorOrdinal, 2);
 });
 
-Deno.test("^projection replays Claude backend failure entries as display-only status$", () => {
+test("^projection replays Claude backend failure entries as display-only status$", () => {
     const entries = [
         { type: "custom", id: "active", customType: "runwield.active_agent", data: { agentName: "Engineer" } },
         {
@@ -506,7 +511,7 @@ Deno.test("^projection replays Claude backend failure entries as display-only st
     });
 });
 
-Deno.test("summarizeProjectedEntries exposes Plan Associations and ignores legacy planName-only context", () => {
+test("summarizeProjectedEntries exposes Plan Associations and ignores legacy planName-only context", () => {
     const association = {
         planId: "plan-1",
         planName: "example-plan",
@@ -530,7 +535,7 @@ Deno.test("summarizeProjectedEntries exposes Plan Associations and ignores legac
     );
 });
 
-Deno.test("projection summary and authority expose only the latest valid tutorial context", () => {
+test("projection summary and authority expose only the latest valid tutorial context", () => {
     const first = {
         version: 1,
         guidanceEnabled: true,
@@ -554,7 +559,7 @@ Deno.test("projection summary and authority expose only the latest valid tutoria
     );
 });
 
-Deno.test("accepted workflow transitions replay their result even when the tool stopped its own turn", () => {
+test("accepted workflow transitions replay their result even when the tool stopped its own turn", () => {
     const entries = [
         {
             type: "message",
@@ -622,7 +627,7 @@ Deno.test("accepted workflow transitions replay their result even when the tool 
     assertEquals(triage[0].details.summary, "Fix the broken image send.");
 });
 
-Deno.test("Session replay preserves images and every text block as one user message", () => {
+test("Session replay preserves images and every text block as one user message", () => {
     const events = createReplayEvents("session", [
         {
             type: "message",

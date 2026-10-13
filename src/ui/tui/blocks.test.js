@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertNotEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import chalk from "chalk";
 
 // Force chalk to produce ANSI codes in non-TTY test environment
@@ -80,14 +82,14 @@ function assertBlockBackground(lines, w, blockName) {
 
 // ─── StyledBlock ─────────────────────────────────────────────────────────────
 
-Deno.test("StyledBlock renders full-width bg lines", () => {
+test("StyledBlock renders full-width bg lines", () => {
     const w = 80;
     const block = new StyledBlock("userMessageBg", 2, 1, new Text("hello", 0, 0));
     const lines = block.render(w);
     assertBlockBackground(lines, w, "StyledBlock");
 });
 
-Deno.test("StyledBlock handles embedded \\x1b[0m in child content", () => {
+test("StyledBlock handles embedded \\x1b[0m in child content", () => {
     const w = 80;
     // Simulate a child that produces content with \x1b[0m (like truncateToWidth)
     const child = {
@@ -101,7 +103,7 @@ Deno.test("StyledBlock handles embedded \\x1b[0m in child content", () => {
 
 // ─── UserPromptBlock ─────────────────────────────────────────────────────────
 
-Deno.test("UserPromptBlock renders with consistent background", () => {
+test("UserPromptBlock renders with consistent background", () => {
     const w = 100;
     const block = new UserPromptBlock("Hello world");
     const lines = block.render(w);
@@ -110,7 +112,7 @@ Deno.test("UserPromptBlock renders with consistent background", () => {
 
 // ─── AgentMessageBlock ───────────────────────────────────────────────────────
 
-Deno.test("AgentMessageBlock renders without background (like Pi)", () => {
+test("AgentMessageBlock renders without background (like Pi)", () => {
     const w = 100;
     const block = new AgentMessageBlock("TestAgent", null);
     block.appendText("Some markdown **content** here.");
@@ -124,7 +126,7 @@ Deno.test("AgentMessageBlock renders without background (like Pi)", () => {
     assertEquals(plain.includes("TestAgent:"), true, "Should contain agent name");
 });
 
-Deno.test("AgentMessageBlock renders Markdown URLs with BEL-delimited terminal hyperlinks", () => {
+test("AgentMessageBlock renders Markdown URLs with BEL-delimited terminal hyperlinks", () => {
     const capabilities = getCapabilities();
     setCapabilities({ ...capabilities, hyperlinks: true });
     try {
@@ -142,7 +144,7 @@ Deno.test("AgentMessageBlock renders Markdown URLs with BEL-delimited terminal h
     }
 });
 
-Deno.test("AgentMessageBlock renders completed Mermaid fences as Unicode diagrams", () => {
+test("AgentMessageBlock renders completed Mermaid fences as Unicode diagrams", () => {
     const block = new AgentMessageBlock("Planner", null);
     block.appendText("```mermaid\ngraph TD\n  A --> B\n```");
 
@@ -155,7 +157,7 @@ Deno.test("AgentMessageBlock renders completed Mermaid fences as Unicode diagram
 
 // ─── ThinkingBlock ───────────────────────────────────────────────────────────
 
-Deno.test("ThinkingBlock renders reasoning with muted styling", () => {
+test("ThinkingBlock renders reasoning with muted styling", () => {
     const block = new ThinkingBlock();
     block.appendText("\nThe user is greeting me.\nI should respond naturally.");
 
@@ -167,7 +169,7 @@ Deno.test("ThinkingBlock renders reasoning with muted styling", () => {
     assertNotEquals(lines.join("\n"), plain, "ThinkingBlock should include ANSI styling");
 });
 
-Deno.test("ThinkingBlock removes the thinking label after completion", () => {
+test("ThinkingBlock removes the thinking label after completion", () => {
     const block = new ThinkingBlock();
     block.appendText("Finished reasoning.");
     block.end();
@@ -179,7 +181,7 @@ Deno.test("ThinkingBlock removes the thinking label after completion", () => {
     assertEquals(plain.includes("Finished reasoning."), true);
 });
 
-Deno.test("ThinkingBlock wraps long reasoning lines to the viewport width", () => {
+test("ThinkingBlock wraps long reasoning lines to the viewport width", () => {
     const block = new ThinkingBlock();
     block.appendText("This is a long reasoning line that should wrap instead of truncating at the viewport edge.");
 
@@ -190,7 +192,7 @@ Deno.test("ThinkingBlock wraps long reasoning lines to the viewport width", () =
     assert(lines.every((line) => visibleLength(line) <= 32));
 });
 
-Deno.test("ThinkingBlock can hide reasoning text", () => {
+test("ThinkingBlock can hide reasoning text", () => {
     const block = new ThinkingBlock({ hidden: true });
     block.appendText("private reasoning");
 
@@ -203,21 +205,21 @@ Deno.test("ThinkingBlock can hide reasoning text", () => {
 
 // ─── SystemMessageBlock ──────────────────────────────────────────────────────
 
-Deno.test("SystemMessageBlock renders with consistent background", () => {
+test("SystemMessageBlock renders with consistent background", () => {
     const w = 100;
     const block = new SystemMessageBlock("[RunWield] System message");
     const lines = block.render(w);
     assertBlockBackground(lines, w, "SystemMessageBlock");
 });
 
-Deno.test("SystemMessageBlock error renders with consistent background", () => {
+test("SystemMessageBlock error renders with consistent background", () => {
     const w = 100;
     const block = new SystemMessageBlock("[Error] Something failed", true);
     const lines = block.render(w);
     assertBlockBackground(lines, w, "SystemMessageBlock(error)");
 });
 
-Deno.test("SystemMessageBlock renders with mdHeading heading style", () => {
+test("SystemMessageBlock renders with mdHeading heading style", () => {
     const w = 100;
     const text = "skill1, skill2";
     const header = "Loaded skills (2):";
@@ -249,7 +251,7 @@ Deno.test("SystemMessageBlock renders with mdHeading heading style", () => {
     );
 });
 
-Deno.test("SystemMessageBlock appendText uses header and style", () => {
+test("SystemMessageBlock appendText uses header and style", () => {
     const w = 100;
     const block = new SystemMessageBlock("First line");
     block.appendText("s1", "Loaded skills (1):", { headingColor: "mdHeading" });
@@ -262,7 +264,7 @@ Deno.test("SystemMessageBlock appendText uses header and style", () => {
     assertEquals(plain.includes("Loaded skills (1): s1"), true);
 });
 
-Deno.test("SystemMessageBlock preserves OSC 8 hyperlinks on wrapped URL lines", () => {
+test("SystemMessageBlock preserves OSC 8 hyperlinks on wrapped URL lines", () => {
     const w = 50;
     const url =
         "https://auth.example/oauth/authorize?client_id=runwield&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fcallback&scope=openid%20profile%20email&state=long-state-token";
@@ -279,7 +281,7 @@ Deno.test("SystemMessageBlock preserves OSC 8 hyperlinks on wrapped URL lines", 
 
 // ─── ReviewResultBlock ───────────────────────────────────────────────────────
 
-Deno.test("ReviewResultBlock renders approved markdown with success background", () => {
+test("ReviewResultBlock renders approved markdown with success background", () => {
     const w = 100;
     const block = new ReviewResultBlock("Reviewer", "Semantic review **approved**.", true);
     const lines = block.render(w);
@@ -290,7 +292,7 @@ Deno.test("ReviewResultBlock renders approved markdown with success background",
     assertEquals(plain.includes("Semantic review approved."), true);
 });
 
-Deno.test("ReviewResultBlock renders feedback markdown with error background", () => {
+test("ReviewResultBlock renders feedback markdown with error background", () => {
     const w = 100;
     const block = new ReviewResultBlock("Reviewer", "Semantic review rejected:\n- Missing `thing`", false);
     const lines = block.render(w);
@@ -302,7 +304,7 @@ Deno.test("ReviewResultBlock renders feedback markdown with error background", (
     assertEquals(plain.includes("Missing thing"), true);
 });
 
-Deno.test("ValidationHandoffBlock renders owner validation labels and latest handoff reports", () => {
+test("ValidationHandoffBlock renders owner validation labels and latest handoff reports", () => {
     const w = 180;
     const block = new ValidationHandoffBlock({
         progress: {
@@ -338,7 +340,7 @@ Deno.test("ValidationHandoffBlock renders owner validation labels and latest han
     assertEquals(plain.includes("Reviewer latest AI review — rejected (feedback addressed; rechecking)"), true);
 });
 
-Deno.test("ValidationHandoffBlock shows each workflow check once as verification advances", () => {
+test("ValidationHandoffBlock shows each workflow check once as verification advances", () => {
     const states = /** @type {const} */ (["running", "failed", "passed"]);
     for (const state of states) {
         const block = new ValidationHandoffBlock({
@@ -358,7 +360,7 @@ Deno.test("ValidationHandoffBlock shows each workflow check once as verification
     }
 });
 
-Deno.test("ValidationHandoffBlock renders verification command wording for QUICK_FIX progress", () => {
+test("ValidationHandoffBlock renders verification command wording for QUICK_FIX progress", () => {
     const runningBlock = new ValidationHandoffBlock({
         progress: {
             kind: "mechanical",
@@ -396,7 +398,7 @@ Deno.test("ValidationHandoffBlock renders verification command wording for QUICK
     assertEquals(verifiedPlain.includes("Mechanical Validation"), false);
 });
 
-Deno.test("KeyboardHelpBlock renders ordered shortcuts with responsive wrapping", () => {
+test("KeyboardHelpBlock renders ordered shortcuts with responsive wrapping", () => {
     const block = new KeyboardHelpBlock({
         title: "Keyboard shortcuts",
         items: [
@@ -426,7 +428,7 @@ Deno.test("KeyboardHelpBlock renders ordered shortcuts with responsive wrapping"
 
 // ─── ToolExecutionBlock ──────────────────────────────────────────────────────
 
-Deno.test("ToolExecutionBlock renders with consistent background (no output)", () => {
+test("ToolExecutionBlock renders with consistent background (no output)", () => {
     const w = 100;
     const block = new ToolExecutionBlock("bash", "$ ls -la");
     block.endExecution(false, 150);
@@ -434,7 +436,7 @@ Deno.test("ToolExecutionBlock renders with consistent background (no output)", (
     assertBlockBackground(lines, w, "ToolExecutionBlock(empty)");
 });
 
-Deno.test("ToolExecutionBlock renders with consistent background (with output)", () => {
+test("ToolExecutionBlock renders with consistent background (with output)", () => {
     const w = 100;
     const block = new ToolExecutionBlock("bash", "$ ls -la");
     block.appendOutput("file1.txt\nfile2.txt\nfolder/\n");
@@ -443,7 +445,7 @@ Deno.test("ToolExecutionBlock renders with consistent background (with output)",
     assertBlockBackground(lines, w, "ToolExecutionBlock(output)");
 });
 
-Deno.test("ToolExecutionBlock shows live elapsed time from execution start after it is enabled", () => {
+test("ToolExecutionBlock shows live elapsed time from execution start after it is enabled", () => {
     const originalNow = Date.now;
     let now = 1000;
     Date.now = () => now;
@@ -471,7 +473,7 @@ Deno.test("ToolExecutionBlock shows live elapsed time from execution start after
     }
 });
 
-Deno.test("ToolExecutionBlock keeps elapsed footer with expand hint inside the block", () => {
+test("ToolExecutionBlock keeps elapsed footer with expand hint inside the block", () => {
     const originalNow = Date.now;
     let now = 2000;
     Date.now = () => now;
@@ -495,7 +497,7 @@ Deno.test("ToolExecutionBlock keeps elapsed footer with expand hint inside the b
     }
 });
 
-Deno.test("ToolExecutionBlock keeps multi-line command headers inside the block", () => {
+test("ToolExecutionBlock keeps multi-line command headers inside the block", () => {
     const w = 120;
     const block = new ToolExecutionBlock(
         "bash",
@@ -516,7 +518,7 @@ Deno.test("ToolExecutionBlock keeps multi-line command headers inside the block"
     assertEquals(plain.includes("Consolidate formats - Move plan formats"), true);
 });
 
-Deno.test("ToolExecutionBlock error renders with consistent background", () => {
+test("ToolExecutionBlock error renders with consistent background", () => {
     const w = 100;
     const block = new ToolExecutionBlock("bash", "$ bad-command");
     block.appendOutput("command not found: bad-command\n");
@@ -525,7 +527,7 @@ Deno.test("ToolExecutionBlock error renders with consistent background", () => {
     assertBlockBackground(lines, w, "ToolExecutionBlock(error)");
 });
 
-Deno.test("ToolExecutionBlock strips ANSI from tool output", () => {
+test("ToolExecutionBlock strips ANSI from tool output", () => {
     const w = 100;
     const block = new ToolExecutionBlock("bash", "$ ls --color");
     // Simulate colored ls output with full resets
@@ -537,7 +539,7 @@ Deno.test("ToolExecutionBlock strips ANSI from tool output", () => {
     assertBlockBackground(lines, w, "ToolExecutionBlock(colored output)");
 });
 
-Deno.test("ToolExecutionBlock highlights the clickable plan review URL instruction", () => {
+test("ToolExecutionBlock highlights the clickable plan review URL instruction", () => {
     const w = 120;
     const url = "http://127.0.0.1:4567/review/plan?token=test";
     const block = new ToolExecutionBlock("plan_written", "plan_written runtime-boundary");
@@ -555,7 +557,7 @@ Deno.test("ToolExecutionBlock highlights the clickable plan review URL instructi
     assertEquals(rendered.includes("\x1b[2mReview Plan:"), false);
 });
 
-Deno.test("ToolExecutionBlock expansion and truncation logic", () => {
+test("ToolExecutionBlock expansion and truncation logic", () => {
     const w = 100;
     const block = new ToolExecutionBlock("bash", "$ echo lines");
 
@@ -576,7 +578,7 @@ Deno.test("ToolExecutionBlock expansion and truncation logic", () => {
     assertEquals(expandedLines.length > collapsedLines.length, true);
 });
 
-Deno.test("ToolExecutionBlock limits expanded output while preserving its start and end", () => {
+test("ToolExecutionBlock limits expanded output while preserving its start and end", () => {
     const block = new ToolExecutionBlock("bash", "$ print many lines");
     block.setOutput(Array.from({ length: 1_000 }, (_, index) => `line ${index}`).join("\n"));
     block.setExpanded(true);
@@ -589,7 +591,7 @@ Deno.test("ToolExecutionBlock limits expanded output while preserving its start 
     assertEquals(plain.includes("501 lines omitted"), true);
 });
 
-Deno.test("ToolExecutionGroupBlock bolds only the tool name in compact rows", () => {
+test("ToolExecutionGroupBlock bolds only the tool name in compact rows", () => {
     const block = new ToolExecutionBlock("set_session_name", "set_session_name Name Here");
     block.endExecution(false, 10);
     const group = new ToolExecutionGroupBlock();
@@ -603,7 +605,7 @@ Deno.test("ToolExecutionGroupBlock bolds only the tool name in compact rows", ()
     assertEquals(rendered.includes(chalk.bold("set_session_name Name Here")), false);
 });
 
-Deno.test("ToolExecutionGroupBlock renders compact rows inside padded block lines", () => {
+test("ToolExecutionGroupBlock renders compact rows inside padded block lines", () => {
     const w = 80;
     const group = new ToolExecutionGroupBlock();
     const pending = new ToolExecutionBlock("bash", "$ sleep 1");
@@ -636,7 +638,7 @@ Deno.test("ToolExecutionGroupBlock renders compact rows inside padded block line
     assertEquals(bgCodes[3], errorBg.slice(0, errorBg.indexOf("m") + 1));
 });
 
-Deno.test("ToolExecutionGroupBlock uses error padding only when all compact children fail", () => {
+test("ToolExecutionGroupBlock uses error padding only when all compact children fail", () => {
     const w = 80;
     const successGroup = new ToolExecutionGroupBlock();
     const success = new ToolExecutionBlock("read", "read README.md");
@@ -664,7 +666,7 @@ Deno.test("ToolExecutionGroupBlock uses error padding only when all compact chil
     );
 });
 
-Deno.test("ToolExecutionGroupBlock keeps long multiline compact titles on one physical row", () => {
+test("ToolExecutionGroupBlock keeps long multiline compact titles on one physical row", () => {
     const w = 30;
     const group = new ToolExecutionGroupBlock();
     const block = new ToolExecutionBlock("bash", "first line\nsecond line with enough text to overflow");
@@ -678,7 +680,7 @@ Deno.test("ToolExecutionGroupBlock keeps long multiline compact titles on one ph
     assertEquals(stripAnsi(lines[1]).includes("second"), true);
 });
 
-Deno.test("ToolExecutionGroupBlock keeps duration visible when a long title can be truncated", () => {
+test("ToolExecutionGroupBlock keeps duration visible when a long title can be truncated", () => {
     const w = 40;
     const group = new ToolExecutionGroupBlock();
     const block = new ToolExecutionBlock(
@@ -695,7 +697,7 @@ Deno.test("ToolExecutionGroupBlock keeps duration visible when a long title can 
     assertEquals(row.includes("Took 12.3s"), true);
 });
 
-Deno.test("ToolExecutionGroupBlock keeps compact rows within tiny widths", () => {
+test("ToolExecutionGroupBlock keeps compact rows within tiny widths", () => {
     const group = new ToolExecutionGroupBlock();
     group.addBlock(new ToolExecutionBlock("bash", "$ echo hi"));
 
@@ -705,7 +707,7 @@ Deno.test("ToolExecutionGroupBlock keeps compact rows within tiny widths", () =>
     }
 });
 
-Deno.test("ToolExecutionGroupBlock expands complete output and images, then collapses them", () => {
+test("ToolExecutionGroupBlock expands complete output and images, then collapses them", () => {
     const capabilities = getCapabilities();
     setCapabilities({ ...capabilities, images: "kitty" });
     try {
@@ -741,7 +743,7 @@ Deno.test("ToolExecutionGroupBlock expands complete output and images, then coll
 
 // ─── PromptSelectBlock ───────────────────────────────────────────────────────
 
-Deno.test("PromptSelectBlock renders with uniform background", () => {
+test("PromptSelectBlock renders with uniform background", () => {
     const w = 100;
     const items = [
         { value: "option1", label: "Option 1", description: "First option" },
@@ -762,7 +764,7 @@ Deno.test("PromptSelectBlock renders with uniform background", () => {
     assertEquals(uniqueBgs.length, 1, `PromptSelectBlock should have uniform bg, got: ${uniqueBgs.join(", ")}`);
 });
 
-Deno.test("PromptSelectBlock keeps a compact active layout", () => {
+test("PromptSelectBlock keeps a compact active layout", () => {
     const block = new PromptSelectBlock("Choose:", [
         { value: "option1", label: "Option 1" },
         { value: "option2", label: "Option 2" },
@@ -772,7 +774,7 @@ Deno.test("PromptSelectBlock keeps a compact active layout", () => {
     assertEquals(lines.length, 9);
 });
 
-Deno.test("PromptSelectBlock handles long items that trigger truncation", () => {
+test("PromptSelectBlock handles long items that trigger truncation", () => {
     const w = 80;
     const items = [
         {
@@ -788,7 +790,7 @@ Deno.test("PromptSelectBlock handles long items that trigger truncation", () => 
     assertBlockBackground(lines, w, "PromptSelectBlock(truncated)");
 });
 
-Deno.test("PromptSelectBlock handles filtering and settling", () => {
+test("PromptSelectBlock handles filtering and settling", () => {
     const items = [
         { value: "apple", label: "Apple", description: "Red fruit" },
         { value: "banana", label: "Banana", description: "Yellow fruit" },
@@ -822,7 +824,7 @@ Deno.test("PromptSelectBlock handles filtering and settling", () => {
 
 // ─── PromptTextBlock ─────────────────────────────────────────────────────────
 
-Deno.test("PromptTextBlock renders with uniform background", () => {
+test("PromptTextBlock renders with uniform background", () => {
     const w = 100;
     const block = new PromptTextBlock("Enter value:");
     block.focus();
@@ -839,7 +841,7 @@ Deno.test("PromptTextBlock renders with uniform background", () => {
     assertEquals(uniqueBgs.length, 1, `PromptTextBlock should have uniform bg, got: ${uniqueBgs.join(", ")}`);
 });
 
-Deno.test("PromptTextBlock handles input and settling", () => {
+test("PromptTextBlock handles input and settling", () => {
     const block = new PromptTextBlock("Enter value:");
     block.focus();
 
@@ -862,7 +864,7 @@ Deno.test("PromptTextBlock handles input and settling", () => {
 
 // ─── SpinnerBlock ────────────────────────────────────────────────────────────
 
-Deno.test("SpinnerBlock renders full-width lines when busy", () => {
+test("SpinnerBlock renders full-width lines when busy", () => {
     const w = 80;
     const spinner = new SpinnerBlock();
     spinner.setBusy(true);
@@ -873,7 +875,7 @@ Deno.test("SpinnerBlock renders full-width lines when busy", () => {
     }
 });
 
-Deno.test("Spinner cycles animation frames", () => {
+test("Spinner cycles animation frames", () => {
     const spinner = new SpinnerBlock();
     spinner.setBusy(true);
 
@@ -884,7 +886,7 @@ Deno.test("Spinner cycles animation frames", () => {
     assertNotEquals(frame1, frame2);
 });
 
-Deno.test("SpinnerBlock renders tasks when provided", () => {
+test("SpinnerBlock renders tasks when provided", () => {
     const spinner = new SpinnerBlock();
     spinner.setBusy(true, [{ task: 1, assignee: "agent", description: "doing work" }]);
 
@@ -894,14 +896,14 @@ Deno.test("SpinnerBlock renders tasks when provided", () => {
     assertEquals(plainText.includes("Task 1"), true);
 });
 
-Deno.test("SpinnerBlock shows Working... fallback when no busyLines set", () => {
+test("SpinnerBlock shows Working... fallback when no busyLines set", () => {
     const spinner = new SpinnerBlock();
     spinner.setBusy(true);
     const plainText = stripAnsi(spinner.render(80)[0]);
     assertEquals(plainText.includes("Working..."), true);
 });
 
-Deno.test("SpinnerBlock shows agent busy line when busyLines are set", () => {
+test("SpinnerBlock shows agent busy line when busyLines are set", () => {
     const spinner = new SpinnerBlock();
     spinner.setBusy(true);
     spinner.setBusyLines(["Planning...", "Drafting the plan...", "Thinking through the steps..."]);
@@ -913,7 +915,7 @@ Deno.test("SpinnerBlock shows agent busy line when busyLines are set", () => {
     );
 });
 
-Deno.test("SpinnerBlock keeps the busy line stable throughout a turn", () => {
+test("SpinnerBlock keeps the busy line stable throughout a turn", () => {
     const spinner = new SpinnerBlock();
     const labels = ["Line A", "Line B", "Line C"];
     spinner.setBusy(true);
@@ -927,7 +929,7 @@ Deno.test("SpinnerBlock keeps the busy line stable throughout a turn", () => {
     }
 });
 
-Deno.test("SpinnerBlock selects a new busy line when the Agent switches", () => {
+test("SpinnerBlock selects a new busy line when the Agent switches", () => {
     const spinner = new SpinnerBlock();
     spinner.setBusy(true);
     spinner.setBusyLines(["Ideating..."]);
@@ -942,7 +944,7 @@ Deno.test("SpinnerBlock selects a new busy line when the Agent switches", () => 
     assertEquals(stripAnsi(spinner.render(80)[0]).includes("Coding..."), true);
 });
 
-Deno.test("SpinnerBlock uses Working... when switching to an Agent without busy lines", () => {
+test("SpinnerBlock uses Working... when switching to an Agent without busy lines", () => {
     const spinner = new SpinnerBlock();
     spinner.setBusy(true);
     spinner.setBusyLines(["Ideating..."]);
@@ -963,7 +965,7 @@ const verifiedReportProgress = {
     message: "done",
 };
 
-Deno.test("ValidationHandoffBlock caches panel lines until state changes", () => {
+test("ValidationHandoffBlock caches panel lines until state changes", () => {
     const state = {
         progress: verifiedReportProgress,
         engineer: { agentName: "Engineer", markdown: "# report one", completedOrder: 1 },
@@ -985,7 +987,7 @@ Deno.test("ValidationHandoffBlock caches panel lines until state changes", () =>
     assertEquals(stripAnsi(third.join("\n")).includes("report two"), true);
 });
 
-Deno.test("ValidationHandoffBlock rebuilds report lines after invalidate", () => {
+test("ValidationHandoffBlock rebuilds report lines after invalidate", () => {
     const block = new ValidationHandoffBlock({
         progress: verifiedReportProgress,
         engineer: { agentName: "Engineer", markdown: "# keep me", completedOrder: 1 },
@@ -1001,7 +1003,7 @@ Deno.test("ValidationHandoffBlock rebuilds report lines after invalidate", () =>
 
 // ─── Settled-block line caches (typing must not re-render history) ───────────
 
-Deno.test("ToolExecutionBlock reuses cached lines across idle frames", () => {
+test("ToolExecutionBlock reuses cached lines across idle frames", () => {
     const block = new ToolExecutionBlock("bash", "run tests");
     block.setOutput("ok line one\nok line two");
     block.endExecution(false, 120);
@@ -1013,7 +1015,7 @@ Deno.test("ToolExecutionBlock reuses cached lines across idle frames", () => {
     assert(block.render(80) !== first, "new output must rebuild lines");
 });
 
-Deno.test("ToolExecutionBlock rebuilds lines after invalidate", () => {
+test("ToolExecutionBlock rebuilds lines after invalidate", () => {
     const block = new ToolExecutionBlock("bash", "run tests");
     block.setOutput("ok");
     block.endExecution(false, 10);
@@ -1025,7 +1027,7 @@ Deno.test("ToolExecutionBlock rebuilds lines after invalidate", () => {
     assertEquals(after, before);
 });
 
-Deno.test("ToolExecutionBlock clock keeps rebuilding while running", () => {
+test("ToolExecutionBlock clock keeps rebuilding while running", () => {
     const originalNow = Date.now;
     let now = 1000;
     Date.now = () => now;
@@ -1043,7 +1045,7 @@ Deno.test("ToolExecutionBlock clock keeps rebuilding while running", () => {
     }
 });
 
-Deno.test("ThinkingBlock caches idle frames and clears on new deltas", () => {
+test("ThinkingBlock caches idle frames and clears on new deltas", () => {
     const block = new ThinkingBlock({});
     block.appendText("considering the plan");
     block.end();
@@ -1061,7 +1063,7 @@ Deno.test("ThinkingBlock caches idle frames and clears on new deltas", () => {
     assertEquals(third, second);
 });
 
-Deno.test("ToolExecutionGroupBlock forwards invalidate to child tool blocks", () => {
+test("ToolExecutionGroupBlock forwards invalidate to child tool blocks", () => {
     const group = new ToolExecutionGroupBlock();
     const child = new ToolExecutionBlock("bash", "run tests");
     child.setOutput("ok");

@@ -1,9 +1,14 @@
+import type { FetchRequest } from "../../shared/fetch-request.ts";
 /**
  * @module cmd/update
  * Install the latest Stable RunWield release through the public installer.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { constants, tmpdir } from "node:os";
+import { env as processEnv, execPath as runtimeExecutable, exit, platform } from "node:process";
+import { spawn } from "node:child_process";
 import { VERSION } from "../../shared/version.js";
 import { readRunWieldPackageInstallSync, type RunWieldPackageInstall } from "../../shared/package-install.ts";
 import {
@@ -18,7 +23,7 @@ import {
 } from "../../shared/update-check.js";
 
 export interface UpdateNetworkPort {
-    fetch: typeof globalThis.fetch;
+    fetch: FetchRequest;
 }
 
 export interface InstallerProcessPort {
@@ -38,17 +43,17 @@ export type UpdateCommandOptions = import("../registry.js").CommandContext & {
 export const SYSTEM_UPDATE_NETWORK_PORT: UpdateNetworkPort = { fetch: globalThis.fetch };
 export const SYSTEM_INSTALLER_PROCESS_PORT: InstallerProcessPort = {
     async run(scriptPath, releaseTag, env) {
-        const result = await new Deno.Command("bash", {
-            args: [scriptPath, releaseTag],
-            stdin: "inherit",
-            stdout: "inherit",
-            stderr: "inherit",
-            env,
-        }).output();
-        return result.code;
+        return await new Promise<number>((resolve, reject) => {
+            const child = spawn("bash", [scriptPath, releaseTag], { stdio: "inherit", env: { ...processEnv, ...env } });
+            child.once("error", reject);
+            child.once("close", (code, signal) => {
+                const number = signal ? Reflect.get(constants.signals, signal) : undefined;
+                resolve(code ?? (typeof number === "number" ? 128 + number : 1));
+            });
+        });
     },
 };
-export const SYSTEM_PROCESS_EXIT_PORT: ProcessExitPort = { exit: Deno.exit };
+export const SYSTEM_PROCESS_EXIT_PORT: ProcessExitPort = { exit };
 
 function usage(): string {
     return "Usage: wld update [--rc | --to <tag>] [--downgrade] [--yes]\n       wld upgrade [--rc | --to <tag>] [--downgrade] [--yes]";
@@ -105,7 +110,7 @@ function packageManagedUpdateMessage(install: RunWieldPackageInstall, parsedArgs
 }
 
 /** */
-async function downloadInstaller(urls: string[], fetchImpl: typeof globalThis.fetch): Promise<string> {
+async function downloadInstaller(urls: string[], fetchImpl: FetchRequest): Promise<string> {
     let firstFailure = "";
     for (const url of urls) {
         const response = await fetchImpl(url);
@@ -144,7 +149,7 @@ export async function runUpdateCommand(argv: string[], options: UpdateCommandOpt
     /** @type {number | null} */
     let exitCode = null;
     try {
-        if (Deno.build.os === "windows") {
+        if (platform === "win32") {
             throw new Error(
                 "Native Windows updates are not installed by the Unix shell installer. Reinstall RunWield with your package manager or from the latest GitHub release.",
             );
@@ -182,12 +187,14 @@ export async function runUpdateCommand(argv: string[], options: UpdateCommandOpt
 
         const installerUrls = getTagPinnedInstallerUrls(release.tagName);
         const installer = await downloadInstaller(installerUrls, network.fetch);
-        tempDir = await Deno.makeTempDir({ prefix: "runwield-update-" });
+        tempDir = await mkdtemp(join(tmpdir(), "runwield-update-"));
         const scriptPath = join(tempDir, "install.sh");
-        await Deno.writeTextFile(scriptPath, installer);
+        await writeFile(scriptPath, installer);
 
-        const env = Deno.env.toObject();
-        const execPath = Deno.execPath();
+        const env = Object.fromEntries(
+            Object.entries(processEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
+        );
+        const execPath = runtimeExecutable;
         const installDir = getInstalledWldDirectoryFromExecPath(execPath);
         if (!installDir && !env.WLD_INSTALL_DIR) {
             console.log(
@@ -206,7 +213,7 @@ export async function runUpdateCommand(argv: string[], options: UpdateCommandOpt
     } finally {
         if (tempDir) {
             try {
-                await Deno.remove(tempDir, { recursive: true });
+                await rm(tempDir, { recursive: true });
             } catch (_error) {
                 // Best-effort cleanup only.
             }

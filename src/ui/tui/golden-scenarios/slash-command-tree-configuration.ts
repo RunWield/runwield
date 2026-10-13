@@ -1,4 +1,5 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { assertEventIncludes } from "../testing/scenario-runner.js";
 
 const GOLDEN_PROVIDER = "golden";

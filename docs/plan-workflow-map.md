@@ -151,7 +151,11 @@ E1. startActiveExecutionWorkflow
 │  └─ consent → transactional execution_started → in_progress, non_git_in_place
 └─ G Git available
    ├─ locate reusable attempt; verify target, identity, checkout and saved evidence
-   ├─ otherwise resolve/prepare target and create worktree + registry entry
+   ├─ otherwise resolve intended targetBranch (standalone: repository default when absent)
+   │  ├─ standalone Planned Change, auto-merge off → create/reuse plan/<plan-name> landing
+   │  └─ auto-merge on or Epic/Sequence child → retain existing target behavior
+   ├─ standalone: record targetBranch and deliveryBranch
+   ├─ create worktree + registry entry against resolved landing
    ├─ materialize authoritative Plan and needed Epic family; capture baseline
    ├─ preparation/indexing/checkpoint failure → rollback or recovery-required pause
    └─ execution_started + preparation checkpoint → in_progress

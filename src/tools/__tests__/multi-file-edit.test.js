@@ -1,5 +1,9 @@
-import { assertEquals, assertMatch, assertStrictEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { match as assertMatch, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { join } from "node:path";
 import { createMultiFileEditTool } from "../multi_file_edit.ts";
 
 /**
@@ -14,7 +18,7 @@ async function executeMultiFileEdit(tool, params) {
     return await execute("multi-file-edit-call-1", params, new AbortController().signal, () => {}, {});
 }
 
-Deno.test("multi_file_edit exposes distinct multi-file schema", () => {
+test("multi_file_edit exposes distinct multi-file schema", () => {
     const tool = createMultiFileEditTool("/tmp");
 
     assertEquals(tool.name, "multi_file_edit");
@@ -29,12 +33,12 @@ Deno.test("multi_file_edit exposes distinct multi-file schema", () => {
     assertEquals(Object.keys(editProperties), ["path", "oldText", "newText"]);
 });
 
-Deno.test("multi_file_edit applies replacements across multiple files", async () => {
-    const dir = await Deno.makeTempDir();
+test("multi_file_edit applies replacements across multiple files", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     const firstPath = join(dir, "first.txt");
     const secondPath = join(dir, "second.txt");
-    await Deno.writeTextFile(firstPath, "alpha\nbeta\ngamma\n");
-    await Deno.writeTextFile(secondPath, "one\ntwo\nthree\n");
+    await fsWriteFile(firstPath, "alpha\nbeta\ngamma\n");
+    await fsWriteFile(secondPath, "one\ntwo\nthree\n");
 
     const tool = createMultiFileEditTool(dir);
     const result = await executeMultiFileEdit(tool, {
@@ -47,16 +51,16 @@ Deno.test("multi_file_edit applies replacements across multiple files", async ()
     const text = result.content.map((c) => c.text || "").join("");
     assertMatch(text, /2 replacements across 2 files/i);
     assertEquals(result.isError, undefined);
-    assertEquals(await Deno.readTextFile(firstPath), "alpha\nBETA\ngamma\n");
-    assertEquals(await Deno.readTextFile(secondPath), "one\nTWO\nthree\n");
+    assertEquals(await fsReadFile(firstPath, "utf8"), "alpha\nBETA\ngamma\n");
+    assertEquals(await fsReadFile(secondPath, "utf8"), "one\nTWO\nthree\n");
 
-    await Deno.remove(dir, { recursive: true });
+    await fsRm(dir, { recursive: true });
 });
 
-Deno.test("multi_file_edit applies same-file replacements against original content", async () => {
-    const dir = await Deno.makeTempDir();
+test("multi_file_edit applies same-file replacements against original content", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "portable-tool-"));
     const filePath = join(dir, "same-file.txt");
-    await Deno.writeTextFile(filePath, "first\nsecond\nthird\n");
+    await fsWriteFile(filePath, "first\nsecond\nthird\n");
 
     const tool = createMultiFileEditTool(dir);
     const result = await executeMultiFileEdit(tool, {
@@ -68,12 +72,12 @@ Deno.test("multi_file_edit applies same-file replacements against original conte
 
     const text = result.content.map((c) => c.text || "").join("");
     assertMatch(text, /2 replacements across 1 file/i);
-    assertEquals(await Deno.readTextFile(filePath), "FIRST\nsecond\nTHIRD\n");
+    assertEquals(await fsReadFile(filePath, "utf8"), "FIRST\nsecond\nTHIRD\n");
 
-    await Deno.remove(dir, { recursive: true });
+    await fsRm(dir, { recursive: true });
 });
 
-Deno.test("multi_file_edit accepts legacy single-file multi-replace shape", () => {
+test("multi_file_edit accepts legacy single-file multi-replace shape", () => {
     const tool = createMultiFileEditTool("/tmp");
     const prepared = tool.prepareArguments?.({
         path: "legacy.txt",
@@ -91,7 +95,7 @@ Deno.test("multi_file_edit accepts legacy single-file multi-replace shape", () =
     });
 });
 
-Deno.test("multi_file_edit prepareArguments leaves malformed calls for schema validation", () => {
+test("multi_file_edit prepareArguments leaves malformed calls for schema validation", () => {
     const tool = createMultiFileEditTool("/tmp");
 
     const nonRecordInput = "not an edit request";

@@ -3,7 +3,11 @@
  * or Deno.cwd while Deno test modules run concurrently.
  */
 
-import { join } from "@std/path";
+import { rmSync } from "node:fs";
+import { mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
+import { join } from "node:path";
+import { env, pid, platform } from "node:process";
+import { clearInterval, setInterval } from "node:timers";
 
 // The state this guards (cwd, env) is per-process, but Deno gives each test
 // module its own realm, so an in-memory mutex would not be shared and the lock
@@ -17,12 +21,11 @@ import { join } from "@std/path";
 // different path and the lock excluded nobody.
 // The lock path must be identical for every realm in this process, and nothing
 // in the repo mutates these temporary-directory variables.
-// deno-lint-ignore runwield/no-module-scope-process-state
-const LOCK_ROOT = Deno.env.get("TMPDIR") || Deno.env.get("TEMP") || Deno.env.get("TMP") ||
-    (Deno.build.os === "windows" ? "C:\\Windows\\Temp" : "/tmp");
+const LOCK_ROOT = env.TMPDIR || env.TEMP || env.TMP ||
+    (platform === "win32" ? "C:\\Windows\\Temp" : "/tmp");
 const LOCK_PREFIX = "runwield-process-global-test-pid-";
 const LOCK_SUFFIX = ".lock";
-export const LOCK_DIR = join(LOCK_ROOT, `${LOCK_PREFIX}${Deno.pid}${LOCK_SUFFIX}`);
+export const LOCK_DIR = join(LOCK_ROOT, `${LOCK_PREFIX}${pid}${LOCK_SUFFIX}`);
 // The holder refreshes the lock's mtime while it works, so a lock that stops
 // advancing was abandoned by a process that died holding it — most often a
 // previous run that was killed, whose pid this process later reused. That makes
@@ -38,10 +41,10 @@ function delay(ms: number): Promise<void> {
 function startLockHeartbeat() {
     const timer = setInterval(() => {
         const now = new Date();
-        Deno.utime(LOCK_DIR, now, now).catch(() => {});
+        utimes(LOCK_DIR, now, now).catch(() => {});
     }, HEARTBEAT_MS);
     // Never let the heartbeat hold the test runner's event loop open.
-    Deno.unrefTimer(timer);
+    timer.unref();
     return timer;
 }
 
@@ -62,15 +65,15 @@ async function reapAbandonedLocks() {
     if (reapedAbandonedLocks) return;
     reapedAbandonedLocks = true;
     try {
-        for await (const entry of Deno.readDir(LOCK_ROOT)) {
-            if (!entry.isDirectory) continue;
+        for (const entry of await readdir(LOCK_ROOT, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
             if (!entry.name.startsWith(LOCK_PREFIX) || !entry.name.endsWith(LOCK_SUFFIX)) continue;
             const path = join(LOCK_ROOT, entry.name);
             if (path === LOCK_DIR) continue;
             try {
-                const stat = await Deno.stat(path);
-                if (stat.mtime && Date.now() - stat.mtime.getTime() > STALE_LOCK_MS) {
-                    await Deno.remove(path, { recursive: true });
+                const info = await stat(path);
+                if (info.mtime && Date.now() - info.mtime.getTime() > STALE_LOCK_MS) {
+                    await rm(path, { recursive: true });
                 }
             } catch {
                 // Raced with the owner or another reaper; either way it is handled.
@@ -85,18 +88,20 @@ async function acquireProcessGlobalTestLock() {
     await reapAbandonedLocks();
     while (true) {
         try {
-            await Deno.mkdir(LOCK_DIR);
+            await mkdir(LOCK_DIR);
             return startLockHeartbeat();
         } catch (error) {
-            if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
             try {
-                const stat = await Deno.stat(LOCK_DIR);
-                if (stat.mtime && Date.now() - stat.mtime.getTime() > STALE_LOCK_MS) {
-                    await Deno.remove(LOCK_DIR, { recursive: true });
+                const info = await stat(LOCK_DIR);
+                if (info.mtime && Date.now() - info.mtime.getTime() > STALE_LOCK_MS) {
+                    await rm(LOCK_DIR, { recursive: true });
                     continue;
                 }
             } catch (statError) {
-                if (!(statError instanceof Deno.errors.NotFound)) throw statError;
+                if (!(statError instanceof Error && "code" in statError && statError.code === "ENOENT")) {
+                    throw statError;
+                }
             }
             await delay(20);
         }
@@ -113,7 +118,7 @@ async function acquireProcessGlobalTestLock() {
  */
 export function releaseProcessGlobalTestLockSync() {
     try {
-        Deno.removeSync(LOCK_DIR, { recursive: true });
+        rmSync(LOCK_DIR, { recursive: true });
     } catch {
         // Not held, or already released.
     }
@@ -125,6 +130,6 @@ export async function withProcessGlobalTestLock<T>(fn: () => Promise<T>): Promis
         return await fn();
     } finally {
         clearInterval(heartbeat);
-        await Deno.remove(LOCK_DIR, { recursive: true }).catch(() => {});
+        await rm(LOCK_DIR, { recursive: true }).catch(() => {});
     }
 }

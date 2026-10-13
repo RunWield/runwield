@@ -1,8 +1,21 @@
+import { getCwd } from "../src/constants.js";
+import { spawnNativeProcess } from "../src/shared/foreground-process.ts";
+import { collectProcessOutput } from "../src/testing/subprocess-output.ts";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /**
  * Native Windows package smoke checks for a built RunWield ZIP.
  */
 
-import { basename, join } from "@std/path";
+import { basename, join } from "node:path";
 import { makeManagedSessionFixture } from "../src/testing/managed-session-fixture.ts";
 
 function usage() {
@@ -23,20 +36,20 @@ function parseArgs(args) {
 
 /** @param {string} command @param {string[]} args @param {{ cwd?: string, env?: Record<string, string>, stdin?: string }} [options] */
 async function run(command, args, options = {}) {
-    const child = new Deno.Command(command, {
+    const child = spawnNativeProcess(command, {
         args,
-        cwd: options.cwd,
+        cwd: options.cwd ?? getCwd(),
         env: options.env,
         stdin: options.stdin === undefined ? "null" : "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     if (options.stdin !== undefined) {
         const writer = child.stdin.getWriter();
         await writer.write(new TextEncoder().encode(options.stdin));
         await writer.close();
     }
-    const result = await child.output();
+    const result = await collectProcessOutput(child);
     const decoder = new TextDecoder();
     const stdout = decoder.decode(result.stdout);
     const stderr = decoder.decode(result.stderr);
@@ -46,8 +59,8 @@ async function run(command, args, options = {}) {
 
 /** @param {string} path */
 async function assertFile(path) {
-    const stat = await Deno.stat(path).catch(() => null);
-    if (!stat?.isFile) throw new Error(`Package check missing file: ${path}`);
+    const stat = await fsStat(path).catch(() => null);
+    if (!stat?.isFile()) throw new Error(`Package check missing file: ${path}`);
 }
 
 /**
@@ -119,13 +132,14 @@ async function waitForAcpResponse(messages, id) {
  * @returns {Promise<AcpMessage[]>}
  */
 async function runAcpExchange(exe, env, requests) {
-    const child = new Deno.Command(exe, {
+    const child = spawnNativeProcess(exe, {
         args: ["--mode", "acp"],
+        cwd: getCwd(),
         env,
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const writer = child.stdin.getWriter();
     const encoder = new TextEncoder();
     /** @type {AcpMessage[]} */
@@ -213,13 +227,14 @@ async function checkCoreHelperFlows(exe, env) {
 
 /** @param {string} exe @param {Record<string, string>} env */
 async function checkProviderSetupLaunch(exe, env) {
-    const child = new Deno.Command(exe, {
+    const child = spawnNativeProcess(exe, {
         args: ["login", "api-key", "openai"],
+        cwd: getCwd(),
         env,
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const writer = child.stdin.getWriter();
     const encoder = new TextEncoder();
     await new Promise((resolve) => setTimeout(resolve, 2_000));
@@ -235,13 +250,13 @@ async function checkProviderSetupLaunch(exe, env) {
         }
     }, 5_000);
     try {
-        const output = await child.output();
+        const output = await collectProcessOutput(child);
         const text = `${new TextDecoder().decode(output.stdout)}${new TextDecoder().decode(output.stderr)}`;
-        const authText = await Deno.readTextFile(join(env.USERPROFILE, ".wld", "auth.json")).catch(() => "");
+        const authText = await fsReadFile(join(env.USERPROFILE, ".wld", "auth.json"), "utf8").catch(() => "");
         if (!authText.includes("openai")) {
             throw new Error(`Provider setup did not persist the package-check credential:\n${text}`);
         }
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(env.USERPROFILE, ".wld", "settings.json"),
             JSON.stringify({ defaultProvider: "openai", defaultModel: "gpt-4.1", notifications: { enabled: false } }),
         );
@@ -270,26 +285,28 @@ async function checkWorkspacePairingAndArtifacts(exe, env) {
     const projectRoot = join(home, "workspace-artifact-project");
     const fixture = await makeManagedSessionFixture({ home, projectRoot });
     try {
-        await Deno.mkdir(join(projectRoot, "docs", "plans"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
+        await fsWriteFile(
             join(projectRoot, "docs", "plans", "dashboard-smoke.md"),
             `---\nplanId: windows-dashboard-smoke\nclassification: FEATURE\nstatus: user_verified\nuserVerifiedAt: "${
                 new Date().toISOString()
             }"\n---\n# Windows Dashboard smoke\n`,
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(projectRoot, "artifact.md"),
             "# Windows package artifact\n\nWorkspace artifact smoke.\n",
         );
         const artifact = fixture.registerArtifact("artifact.md", "Windows package artifact");
 
         const port = 48_787;
-        const server = new Deno.Command(exe, {
+        const server = spawnNativeProcess(exe, {
             args: ["workspace", "serve", "--port", String(port), "--no-open"],
+            cwd: getCwd(),
+            stdin: "null",
             env,
             stdout: "piped",
             stderr: "piped",
-        }).spawn();
+        });
         try {
             const origin = `http://127.0.0.1:${port}`;
             for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -356,7 +373,7 @@ async function checkWorkspacePairingAndArtifacts(exe, env) {
             }
         } finally {
             server.kill("SIGTERM");
-            await server.output().catch(() => null);
+            await collectProcessOutput(server).catch(() => null);
         }
     } finally {
         await fixture.cleanup();
@@ -368,13 +385,13 @@ async function checkPublicationFlow(exe, env) {
     await run(exe, ["package-smoke", "publication"], { env: { ...env, WLD_INTERNAL_PACKAGE_CHECK: "1" } });
 }
 
-async function main(args = Deno.args) {
+async function main(args = process.argv.slice(2)) {
     const options = parseArgs(args);
-    if (Deno.build.os !== "windows") throw new Error("package:windows:check must run on native Windows.");
-    const root = await Deno.makeTempDir({ prefix: "runwield-windows-check-" });
+    if (process.platform !== "win32") throw new Error("package:windows:check must run on native Windows.");
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-windows-check-"));
     try {
         const extract = join(root, "Run Wield Package");
-        await Deno.mkdir(extract, { recursive: true });
+        await fsMkdir(extract, { recursive: true });
         await run("powershell", [
             "-NoProfile",
             "-Command",
@@ -396,14 +413,14 @@ async function main(args = Deno.args) {
                 "licenses/agent-browser-LICENSE.txt",
             ]
         ) await assertFile(join(extract, path));
-        const metadata = JSON.parse(await Deno.readTextFile(join(extract, "runwield-install.json")));
+        const metadata = JSON.parse(await fsReadFile(join(extract, "runwield-install.json"), "utf8"));
         if (metadata.packageManager !== "winget" || metadata.packageIdentifier !== "Gandazgul.RunWield") {
             throw new Error("Package metadata does not identify Gandazgul.RunWield WinGet ownership.");
         }
         const home = join(root, "User Profile");
-        await Deno.mkdir(home, { recursive: true });
-        const systemPath = Deno.env.get("SystemRoot") ? `${Deno.env.get("SystemRoot")}\\System32` : "";
-        const hostPath = Deno.env.get("PATH") || "";
+        await fsMkdir(home, { recursive: true });
+        const systemPath = process.env["SystemRoot"] ? `${process.env["SystemRoot"]}\\System32` : "";
+        const hostPath = process.env["PATH"] || "";
         const cleanEnv = {
             HOME: "",
             USERPROFILE: home,
@@ -430,7 +447,7 @@ async function main(args = Deno.args) {
         await run("cmd", ["/c", exe, "--version"], { env: cleanEnv });
         console.log(`${basename(options.packagePath)} passed native Windows package smoke checks.`);
     } finally {
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 }
 

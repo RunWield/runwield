@@ -1,5 +1,18 @@
+import { rmdir as fsRmdir } from "node:fs/promises";
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
-import { assertEquals, assertFalse, assertRejects, assertStringIncludes } from "@std/assert";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rename as fsRename,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { assertEquals, assertFalse, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
 
@@ -14,13 +27,13 @@ const CODE_REVIEW_SURFACE_PATH = new URL("./react/CodeReviewSurface.tsx", import
 const SERVER_PATH = new URL("./server.js", import.meta.url);
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
-    const result = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureForegroundProcess("git", { cwd, args });
     if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
     return new TextDecoder().decode(result.stdout).trim();
 }
 
-Deno.test("live Session Code Review replaces the Workspace shell with the shared review surface", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
+test("live Session Code Review replaces the Workspace shell with the shared review surface", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
 
     assertStringIncludes(route, "ReviewLayout");
     assertStringIncludes(route, "CodeReviewSurface");
@@ -30,11 +43,11 @@ Deno.test("live Session Code Review replaces the Workspace shell with the shared
     assertFalse(route.includes("WorkspaceLayout"));
 });
 
-Deno.test("Workspace Session projects code-review interactions to one stable in-situ URL", async () => {
-    const continuation = await Deno.readTextFile(SESSION_CONTINUATION_PATH);
-    const sessionSurface = await Deno.readTextFile(SESSION_SURFACE_PATH);
-    const timeline = await Deno.readTextFile(TIMELINE_PATH);
-    const server = await Deno.readTextFile(SERVER_PATH);
+test("Workspace Session projects code-review interactions to one stable in-situ URL", async () => {
+    const continuation = await fsReadFile(SESSION_CONTINUATION_PATH, "utf8");
+    const sessionSurface = await fsReadFile(SESSION_SURFACE_PATH, "utf8");
+    const timeline = await fsReadFile(TIMELINE_PATH, "utf8");
+    const server = await fsReadFile(SERVER_PATH, "utf8");
 
     assertStringIncludes(continuation, 'request.type === "code_review"');
     assertStringIncludes(continuation, 'const planTitle = typeof meta.planTitle === "string" && meta.planTitle.trim()');
@@ -46,7 +59,7 @@ Deno.test("Workspace Session projects code-review interactions to one stable in-
     assertStringIncludes(server, '"/projects/:projectId/sessions/:runwieldSessionId/review/code"');
 });
 
-Deno.test("Workspace Code Review keeps an empty patch reviewable with the repair conversation", async () => {
+test("Workspace Code Review keeps an empty patch reviewable with the repair conversation", async () => {
     const service = new WorkspaceSessionContinuationService({ store: {} });
     try {
         service.operations.set("operation-empty", {
@@ -92,7 +105,7 @@ Deno.test("Workspace Code Review keeps an empty patch reviewable with the repair
     }
 });
 
-Deno.test("Workspace Code Review live interaction keeps planTitle in its payload", async () => {
+test("Workspace Code Review live interaction keeps planTitle in its payload", async () => {
     const service = new WorkspaceSessionContinuationService({ store: {} });
     try {
         service.operations.set("operation-1", {
@@ -127,19 +140,19 @@ Deno.test("Workspace Code Review live interaction keeps planTitle in its payload
     }
 });
 
-Deno.test("Workspace Code Review reload reads the latest proposed branch patch", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-workspace-code-reload-" });
+test("Workspace Code Review reload reads the latest proposed branch patch", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-workspace-code-reload-"));
     const service = new WorkspaceSessionContinuationService({ store: {} });
     try {
         await runGit(projectRoot, ["init", "-b", "main"]);
         await runGit(projectRoot, ["config", "user.email", "runwield@example.com"]);
         await runGit(projectRoot, ["config", "user.name", "RunWield Test"]);
-        await Deno.writeTextFile(`${projectRoot}/review.ts`, "export const label = 'base';\n");
+        await fsWriteFile(`${projectRoot}/review.ts`, "export const label = 'base';\n");
         await runGit(projectRoot, ["add", "review.ts"]);
         await runGit(projectRoot, ["commit", "-m", "fixture base"]);
         await runGit(projectRoot, ["branch", "target"]);
         await runGit(projectRoot, ["switch", "-c", "execution"]);
-        await Deno.writeTextFile(`${projectRoot}/review.ts`, "export const label = 'first';\n");
+        await fsWriteFile(`${projectRoot}/review.ts`, "export const label = 'first';\n");
         service.operations.set("operation-reload", {
             status: "running",
             projectId: "project-1",
@@ -161,7 +174,7 @@ Deno.test("Workspace Code Review reload reads the latest proposed branch patch",
         await runGit(projectRoot, ["add", "review.ts"]);
         await runGit(projectRoot, ["commit", "-m", "advance target"]);
         await runGit(projectRoot, ["update-ref", "refs/heads/target", "HEAD"]);
-        await Deno.writeTextFile(`${projectRoot}/review.ts`, "export const label = 'second';\n");
+        await fsWriteFile(`${projectRoot}/review.ts`, "export const label = 'second';\n");
         const expectedPatch = await getWorktreeReviewDiff(projectRoot, "target");
         const liveReview = await service.getLiveCodeReview({
             projectId: "project-1",
@@ -178,8 +191,8 @@ Deno.test("Workspace Code Review reload reads the latest proposed branch patch",
 
         const indexPath = `${projectRoot}/.git/index`;
         const savedIndexPath = `${projectRoot}/.git/index.saved`;
-        await Deno.rename(indexPath, savedIndexPath);
-        await Deno.mkdir(indexPath);
+        await fsRename(indexPath, savedIndexPath);
+        await fsMkdir(indexPath);
         try {
             const fallbackReview = await service.getLiveCodeReview({
                 projectId: "project-1",
@@ -189,16 +202,16 @@ Deno.test("Workspace Code Review reload reads the latest proposed branch patch",
             });
             assertEquals(fallbackReview?.request?.codeReview?.rawPatch, "stale patch");
         } finally {
-            await Deno.remove(indexPath);
-            await Deno.rename(savedIndexPath, indexPath);
+            await fsRmdir(indexPath);
+            await fsRename(savedIndexPath, indexPath);
         }
 
-        const unrelatedRoot = await Deno.makeTempDir({ prefix: "runwield-unrelated-review-target-" });
+        const unrelatedRoot = await fsMkdtemp(join(tmpdir(), "runwield-unrelated-review-target-"));
         try {
             await runGit(unrelatedRoot, ["init", "-b", "target"]);
             await runGit(unrelatedRoot, ["config", "user.email", "runwield@example.com"]);
             await runGit(unrelatedRoot, ["config", "user.name", "RunWield Test"]);
-            await Deno.writeTextFile(`${unrelatedRoot}/unrelated.ts`, "export const unrelated = true;\n");
+            await fsWriteFile(`${unrelatedRoot}/unrelated.ts`, "export const unrelated = true;\n");
             await runGit(unrelatedRoot, ["add", "unrelated.ts"]);
             await runGit(unrelatedRoot, ["commit", "-m", "unrelated target"]);
             await runGit(projectRoot, ["fetch", unrelatedRoot, "+target:refs/heads/target"]);
@@ -214,7 +227,7 @@ Deno.test("Workspace Code Review reload reads the latest proposed branch patch",
                 "no common ancestor",
             );
         } finally {
-            await Deno.remove(unrelatedRoot, { recursive: true });
+            await fsRm(unrelatedRoot, { recursive: true });
         }
 
         await runGit(projectRoot, ["update-ref", "-d", "refs/heads/target"]);
@@ -233,14 +246,14 @@ Deno.test("Workspace Code Review reload reads the latest proposed branch patch",
         await interaction;
     } finally {
         service.close();
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("Workspace Code Review returns decisions to its live Session interaction", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
-    const surface = await Deno.readTextFile(CODE_REVIEW_SURFACE_PATH);
-    const continuation = await Deno.readTextFile(SESSION_CONTINUATION_PATH);
+test("Workspace Code Review returns decisions to its live Session interaction", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
+    const surface = await fsReadFile(CODE_REVIEW_SURFACE_PATH, "utf8");
+    const continuation = await fsReadFile(SESSION_CONTINUATION_PATH, "utf8");
 
     assertStringIncludes(route, "interactionAnswerUrl");
     assertStringIncludes(surface, "initialPayload.interactionAnswerUrl");
@@ -248,9 +261,9 @@ Deno.test("Workspace Code Review returns decisions to its live Session interacti
     assertStringIncludes(continuation, "operation.answer.resolve(runtimeResponse)");
 });
 
-Deno.test("TUI review routes keep the same shared bodies in the standalone shell", async () => {
-    const planRoute = await Deno.readTextFile(new URL("./pages/review/plan.astro", import.meta.url));
-    const codeRoute = await Deno.readTextFile(new URL("./pages/review/code.astro", import.meta.url));
+test("TUI review routes keep the same shared bodies in the standalone shell", async () => {
+    const planRoute = await fsReadFile(new URL("./pages/review/plan.astro", import.meta.url), "utf8");
+    const codeRoute = await fsReadFile(new URL("./pages/review/code.astro", import.meta.url), "utf8");
 
     assertStringIncludes(planRoute, "ReviewLayout");
     assertStringIncludes(planRoute, "PlanReviewSurface");

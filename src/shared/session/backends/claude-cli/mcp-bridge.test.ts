@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../../../testing/assertions.ts";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
@@ -108,7 +112,7 @@ async function withBridgeWithSignal(
     signal: AbortSignal | undefined,
     callback: (context: BridgeTestContext) => Promise<void>,
 ): Promise<void> {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-mcp-bridge-" });
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-mcp-bridge-"));
     const manager = SessionManager.inMemory(cwd);
     const mirrored: unknown[] = [];
     const runtimeEvents: Array<Record<string, unknown>> = [];
@@ -148,7 +152,7 @@ async function withBridgeWithSignal(
             // best effort
         }
         await bridge.close();
-        await Deno.remove(cwd, { recursive: true }).catch(() => undefined);
+        await fsRm(cwd, { recursive: true }).catch(() => undefined);
     }
 }
 
@@ -162,7 +166,7 @@ function recordedMessages(context: BridgeTestContext): unknown[] {
         .map((entry) => (entry as { message?: unknown }).message);
 }
 
-Deno.test("workflow MCP bridge lists only the eligible prefixed aliases with preserved schemas", async () => {
+test("workflow MCP bridge lists only the eligible prefixed aliases with preserved schemas", async () => {
     await withBridge(makeTestTools().tools, async (context) => {
         const listed = await context.client.listTools();
         const names = listed.tools.map((tool) => tool.name);
@@ -177,7 +181,7 @@ Deno.test("workflow MCP bridge lists only the eligible prefixed aliases with pre
     });
 });
 
-Deno.test("workflow MCP bridge rejects requests without the Bearer token before protocol dispatch", async () => {
+test("workflow MCP bridge rejects requests without the Bearer token before protocol dispatch", async () => {
     await withBridge(makeTestTools().tools, async (context) => {
         const noAuth = await fetch(context.bridge.url, { method: "POST", body: "{}" });
         assertEquals(noAuth.status, 401);
@@ -191,7 +195,7 @@ Deno.test("workflow MCP bridge rejects requests without the Bearer token before 
     });
 });
 
-Deno.test("workflow MCP bridge records canonical messages, provenance, and a rejected call without advancement", async () => {
+test("workflow MCP bridge records canonical messages, provenance, and a rejected call without advancement", async () => {
     const tools = makeTestTools();
     await withBridge(tools.tools, async (context) => {
         const rejected = await context.client.callTool({
@@ -220,7 +224,7 @@ Deno.test("workflow MCP bridge records canonical messages, provenance, and a rej
     });
 });
 
-Deno.test("workflow MCP bridge emits live Runtime tool events for delegated plan_written updates", async () => {
+test("workflow MCP bridge emits live Runtime tool events for delegated plan_written updates", async () => {
     await withBridge(makeTestTools().tools, async (context) => {
         const result = await context.client.callTool({
             name: "runwield_plan_written",
@@ -249,7 +253,7 @@ Deno.test("workflow MCP bridge emits live Runtime tool events for delegated plan
     });
 });
 
-Deno.test("workflow MCP bridge accepts a delegated result, stamps provenance, and atomically closes the gate", async () => {
+test("workflow MCP bridge accepts a delegated result, stamps provenance, and atomically closes the gate", async () => {
     const tools = makeTestTools();
     tools.releaseAccepted();
     await withBridge(tools.tools, async (context) => {
@@ -290,7 +294,7 @@ Deno.test("workflow MCP bridge accepts a delegated result, stamps provenance, an
     });
 });
 
-Deno.test("workflow MCP bridge serializes concurrent calls so only the first terminal result wins", async () => {
+test("workflow MCP bridge serializes concurrent calls so only the first terminal result wins", async () => {
     const tools = makeTestTools();
     await withBridge(tools.tools, async (context) => {
         const first = context.client.callTool({
@@ -315,7 +319,7 @@ Deno.test("workflow MCP bridge serializes concurrent calls so only the first ter
     });
 });
 
-Deno.test("workflow MCP bridge rejects an unknown tool and closes the listener deterministically", async () => {
+test("workflow MCP bridge rejects an unknown tool and closes the listener deterministically", async () => {
     await withBridge(makeTestTools().tools, async (context) => {
         const error = await assertRejects(
             () =>
@@ -340,12 +344,12 @@ Deno.test("workflow MCP bridge rejects an unknown tool and closes the listener d
     });
 });
 
-Deno.test("mcpAliasFor keeps lifecycle aliases and leaves capability names unchanged", () => {
+test("mcpAliasFor keeps lifecycle aliases and leaves capability names unchanged", () => {
     assertEquals(mcpAliasFor("task_completed"), "runwield_task_completed");
     assertEquals(mcpAliasFor("review_diff"), "review_diff");
 });
 
-Deno.test("RunWield MCP bridge lists capability aliases and exposes timeout config", async () => {
+test("RunWield MCP bridge lists capability aliases and exposes timeout config", async () => {
     const capability = defineTool({
         name: "memory_recall",
         label: "Memory Recall",
@@ -369,7 +373,7 @@ Deno.test("RunWield MCP bridge lists capability aliases and exposes timeout conf
     });
 });
 
-Deno.test("RunWield MCP bridge rejects duplicate aliases", async () => {
+test("RunWield MCP bridge rejects duplicate aliases", async () => {
     const toolA = defineTool({
         name: "memory_recall",
         label: "Memory Recall A",
@@ -388,7 +392,7 @@ Deno.test("RunWield MCP bridge rejects duplicate aliases", async () => {
             return Promise.resolve({ content: [], details: {} });
         },
     });
-    const cwd = await Deno.makeTempDir();
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await assertRejects(
             () =>
@@ -403,11 +407,11 @@ Deno.test("RunWield MCP bridge rejects duplicate aliases", async () => {
             "duplicate MCP alias",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => undefined);
+        await fsRm(cwd, { recursive: true }).catch(() => undefined);
     }
 });
 
-Deno.test("RunWield MCP bridge treats Pair reports as terminal lifecycle calls without changing their name", async () => {
+test("RunWield MCP bridge treats Pair reports as terminal lifecycle calls without changing their name", async () => {
     const checkpoint = defineTool({
         name: "pair_checkpoint",
         label: "Pair Checkpoint",
@@ -440,7 +444,7 @@ Deno.test("RunWield MCP bridge treats Pair reports as terminal lifecycle calls w
     });
 });
 
-Deno.test("RunWield MCP bridge lets capabilities run after a terminal lifecycle result", async () => {
+test("RunWield MCP bridge lets capabilities run after a terminal lifecycle result", async () => {
     const lifecycle = defineTool({
         name: "task_completed",
         label: "Task Completed",
@@ -483,7 +487,7 @@ Deno.test("RunWield MCP bridge lets capabilities run after a terminal lifecycle 
     });
 });
 
-Deno.test("RunWield MCP bridge passes MCP request cancellation to a running bridged tool", async () => {
+test("RunWield MCP bridge passes MCP request cancellation to a running bridged tool", async () => {
     let started: (() => void) | null = null;
     let observedAbort: (() => void) | null = null;
     const startedPromise = new Promise<void>((resolve) => {
@@ -519,7 +523,7 @@ Deno.test("RunWield MCP bridge passes MCP request cancellation to a running brid
     });
 });
 
-Deno.test("RunWield MCP bridge passes abort signal to a running bridged tool", async () => {
+test("RunWield MCP bridge passes abort signal to a running bridged tool", async () => {
     const controller = new AbortController();
     const started = Promise.withResolvers<void>();
     let observedSignal: AbortSignal | null = null;
@@ -552,7 +556,7 @@ Deno.test("RunWield MCP bridge passes abort signal to a running bridged tool", a
     });
 });
 
-Deno.test("RunWield MCP bridge preserves structured results and output schemas", async () => {
+test("RunWield MCP bridge preserves structured results and output schemas", async () => {
     const schema = Type.Object({ count: Type.Number() });
     const tool = defineTool({
         name: "structured",
@@ -575,7 +579,7 @@ Deno.test("RunWield MCP bridge preserves structured results and output schemas",
     });
 });
 
-Deno.test("RunWield MCP bridge rejects foreign and opaque Origins on every HTTP method", async () => {
+test("RunWield MCP bridge rejects foreign and opaque Origins on every HTTP method", async () => {
     await withBridge(makeTestTools().tools, async (context) => {
         const headers = {
             Authorization: `Bearer ${context.bridge.token}`,
@@ -605,8 +609,8 @@ Deno.test("RunWield MCP bridge rejects foreign and opaque Origins on every HTTP 
     });
 });
 
-Deno.test("RunWield MCP bridge never starts a file edit cancelled while queued", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-cancelled-edit-" });
+test("RunWield MCP bridge never starts a file edit cancelled while queued", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-cancelled-edit-"));
     const path = `${cwd}/file.txt`;
     const started = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
@@ -622,7 +626,7 @@ Deno.test("RunWield MCP bridge never starts a file edit cancelled while queued",
         },
     });
     try {
-        await Deno.writeTextFile(path, "original");
+        await fsWriteFile(path, "original");
         await withBridge([blocker, createMultiFileEditTool(cwd)], async (context) => {
             const first = context.client.callTool({ name: "wait", arguments: {} });
             await started.promise;
@@ -660,7 +664,7 @@ Deno.test("RunWield MCP bridge never starts a file edit cancelled while queued",
                 release.resolve();
                 await first;
                 await context.client.callTool({ name: "wait", arguments: {} }); // Drain the queue.
-                assertEquals(await Deno.readTextFile(path), "original");
+                assertEquals(await fsReadFile(path, "utf8"), "original");
                 assertEquals(recordedMessages(context).length, 4); // Only the two accepted wait calls.
             } finally {
                 release.resolve();
@@ -670,6 +674,6 @@ Deno.test("RunWield MCP bridge never starts a file edit cancelled while queued",
         });
     } finally {
         release.resolve();
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });

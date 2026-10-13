@@ -5,7 +5,8 @@
  * source" means, rather than each carrying its own glob that can drift.
  */
 
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
@@ -15,7 +16,7 @@ const SOURCE_ROOTS = ["src", "scripts"];
  * Directories that are not ours to check: vendored code, build output, and caches.
  *
  * `src/ui/workspace` is excluded because it is an Astro project with its own
- * `deno task workspace:check`, which understands `.astro` files and its own tsconfig.
+ * `bun run workspace:check`, which understands `.astro` files and its own tsconfig.
  */
 const SKIP_DIRS = new Set([
     ".astro",

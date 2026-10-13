@@ -1,4 +1,6 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import {
     createSessionRuntimeEvent,
@@ -8,7 +10,7 @@ import {
     RuntimeEventTypes,
 } from "./session-runtime-events.js";
 
-Deno.test("Runtime normalizes one complete structured tool result for every consumer", () => {
+test("Runtime normalizes one complete structured tool result for every consumer", () => {
     assertEquals(
         normalizeRuntimeToolResult({
             content: [
@@ -35,7 +37,7 @@ Deno.test("Runtime normalizes one complete structured tool result for every cons
     });
 });
 
-Deno.test("Runtime suppresses binary read output for display without dropping content", () => {
+test("Runtime suppresses binary read output for display without dropping content", () => {
     const normalized = normalizeRuntimeToolResult({
         content: [{ type: "text", text: "DIRC\u0000\u0007binary" }],
         details: { runwieldDisplay: "binary_display_suppressed" },
@@ -46,7 +48,7 @@ Deno.test("Runtime suppresses binary read output for display without dropping co
     assertEquals(normalized.details, { runwieldDisplay: "binary_display_suppressed" });
 });
 
-Deno.test("Runtime hides model-only image omission notes when TUI display image exists", () => {
+test("Runtime hides model-only image omission notes when TUI display image exists", () => {
     const text = [
         "Read image file [image/png]",
         "[Image omitted: could not be resized below the inline image size limit.]",
@@ -62,7 +64,7 @@ Deno.test("Runtime hides model-only image omission notes when TUI display image 
     assertEquals(normalized.details, { runwieldDisplayImages: [{ base64: "abc", mimeType: "image/png" }] });
 });
 
-Deno.test("Runtime normalizes provider usage once", () => {
+test("Runtime normalizes provider usage once", () => {
     assertEquals(
         normalizeRuntimeUsage({
             input: 12,
@@ -83,7 +85,7 @@ Deno.test("Runtime normalizes provider usage once", () => {
     );
 });
 
-Deno.test("Runtime event factory supplies shared identity defaults and rejects partial semantic events", () => {
+test("Runtime event factory supplies shared identity defaults and rejects partial semantic events", () => {
     const userEvent = createSessionRuntimeEvent("session-1", {
         type: RuntimeEventTypes.USER_MESSAGE,
         text: "hello",
@@ -173,7 +175,7 @@ Deno.test("Runtime event factory supplies shared identity defaults and rejects p
     );
 });
 
-Deno.test("Runtime accepts complete validation progress snapshots on system status", () => {
+test("Runtime accepts complete validation progress snapshots on system status", () => {
     const event = createSessionRuntimeEvent("session-1", {
         type: RuntimeEventTypes.SYSTEM_STATUS,
         message: "Starting Validation Cycle 1/3",
@@ -196,7 +198,7 @@ Deno.test("Runtime accepts complete validation progress snapshots on system stat
     assertEquals(/** @type {any} */ (event).validationProgress?.kind, "workflow");
 });
 
-Deno.test("Runtime rejects malformed validation progress snapshots", () => {
+test("Runtime rejects malformed validation progress snapshots", () => {
     const base = /** @type {any} */ ({
         type: RuntimeEventTypes.SYSTEM_STATUS,
         message: "bad",
@@ -323,8 +325,8 @@ Deno.test("Runtime rejects malformed validation progress snapshots", () => {
     );
 });
 
-Deno.test("internal event sink contract failures are not swallowed as consumer failures", () => {
-    const session = new HostedSession({ id: "sink-errors", cwd: Deno.cwd() });
+test("internal event sink contract failures are not swallowed as consumer failures", () => {
+    const session = new HostedSession({ id: "sink-errors", cwd: getCwd() });
     session.setEventSink(() => {
         throw new TypeError("invalid producer event");
     });
@@ -335,7 +337,7 @@ Deno.test("internal event sink contract failures are not swallowed as consumer f
     );
 });
 
-Deno.test("Runtime event factory validates session replacement events", () => {
+test("Runtime event factory validates session replacement events", () => {
     const event = createSessionRuntimeEvent("old-session", {
         type: RuntimeEventTypes.SESSION_REPLACED,
         oldSessionId: "old-session",
@@ -381,7 +383,7 @@ Deno.test("Runtime event factory validates session replacement events", () => {
     );
 });
 
-Deno.test("Runtime attention reasons use shared notification vocabulary without TUI-only compaction", () => {
+test("Runtime attention reasons use shared notification vocabulary without TUI-only compaction", () => {
     for (const reason of /** @type {const} */ (["agentStopped", "planWritten", "userInterview"])) {
         const event = createSessionRuntimeEvent("session-1", {
             type: RuntimeEventTypes.ATTENTION_REQUESTED,
@@ -404,7 +406,7 @@ Deno.test("Runtime attention reasons use shared notification vocabulary without 
     );
 });
 
-Deno.test("Runtime sync state event is sanitized and validated", () => {
+test("Runtime sync state event is sanitized and validated", () => {
     const event = createSessionRuntimeEvent("session-1", {
         type: RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED,
         status: "active_elsewhere",

@@ -1,5 +1,16 @@
-import { assert, assertEquals, assertNotStrictEquals, assertRejects, assertStrictEquals } from "@std/assert";
-import { join } from "@std/path";
+import { makeTempFile } from "../testing/temp-file.ts";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
+import { ok as assert, notStrictEqual as assertNotStrictEquals, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../constants.js";
 import { listPlans, loadPlan, savePlan } from "../plan-store.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
@@ -14,7 +25,7 @@ import { listEntries } from "./worktree-registry.js";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# Runtime read scope\n" });
 
-Deno.test("runtime read scope shares checkout verification but rechecks changed evidence on the next read", async () => {
+test("runtime read scope shares checkout verification but rechecks changed evidence on the next read", async () => {
     const root = await fixture.checkout({ prefix: "runwield-runtime-read-scope-" });
     try {
         const layout = await withProjectRuntimeReadScope(async () => {
@@ -24,34 +35,34 @@ Deno.test("runtime read scope shares checkout verification but rechecks changed 
             assertStrictEquals(await enterProjectRuntime(root), verified);
             return await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
         });
-        const marker = await Deno.readTextFile(layout.primary.layoutMarkerPath);
-        await Deno.writeTextFile(layout.primary.layoutMarkerPath, "{invalid");
+        const marker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+        await fsWriteFile(layout.primary.layoutMarkerPath, "{invalid");
         await assertRejects(
             () => withProjectRuntimeReadScope(() => enterProjectRuntime(root)),
             ProjectRuntimeEntryRefusedError,
         );
-        await Deno.writeTextFile(layout.primary.layoutMarkerPath, marker);
+        await fsWriteFile(layout.primary.layoutMarkerPath, marker);
         const refreshed = await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
         assertNotStrictEquals(refreshed, layout);
         assertEquals(refreshed.primary.checkoutRoot, layout.primary.checkoutRoot);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("runtime read scope verifies different checkouts independently", async () => {
+test("runtime read scope verifies different checkouts independently", async () => {
     const first = await fixture.checkout({ prefix: "runwield-runtime-read-first-" });
     const second = await fixture.checkout({ prefix: "runwield-runtime-read-second-" });
     try {
         await withProjectRuntimeReadScope(async () => {
             const layouts = await Promise.all([enterProjectRuntime(first), enterProjectRuntime(second)]);
             assertNotStrictEquals(layouts[0], layouts[1]);
-            assertEquals(layouts[0].primary.checkoutRoot, await Deno.realPath(first));
-            assertEquals(layouts[1].primary.checkoutRoot, await Deno.realPath(second));
+            assertEquals(layouts[0].primary.checkoutRoot, await fsRealpath(first));
+            assertEquals(layouts[1].primary.checkoutRoot, await fsRealpath(second));
         });
     } finally {
-        await Deno.remove(first, { recursive: true });
-        await Deno.remove(second, { recursive: true });
+        await fsRm(first, { recursive: true });
+        await fsRm(second, { recursive: true });
     }
 });
 
@@ -68,15 +79,15 @@ interface TracedProject {
 async function withTracedProject(run: (project: TracedProject) => Promise<void>) {
     await withProcessGlobalTestLock(async () => {
         const root = await fixture.checkout();
-        const trace = await Deno.makeTempFile({ prefix: "runwield-runtime-git-trace-" });
-        const previous = Deno.env.get("GIT_TRACE2_EVENT");
+        const trace = await makeTempFile({ prefix: "runwield-runtime-git-trace-" });
+        const previous = process.env["GIT_TRACE2_EVENT"];
         try {
             await enterProjectRuntime(root);
-            Deno.env.set("GIT_TRACE2_EVENT", trace);
+            process.env["GIT_TRACE2_EVENT"] = trace;
             await run({
                 root,
                 listings: async () => {
-                    const lines = (await Deno.readTextFile(trace)).trim().split("\n").filter(Boolean);
+                    const lines = (await fsReadFile(trace, "utf8")).trim().split("\n").filter(Boolean);
                     const events: GitTraceEvent[] = lines.map((line) => JSON.parse(line));
                     return events.filter((event) =>
                         event.event === "start" && event.argv?.slice(-3).join(" ") === "worktree list --porcelain"
@@ -84,10 +95,10 @@ async function withTracedProject(run: (project: TracedProject) => Promise<void>)
                 },
             });
         } finally {
-            if (previous === undefined) Deno.env.delete("GIT_TRACE2_EVENT");
-            else Deno.env.set("GIT_TRACE2_EVENT", previous);
-            await Deno.remove(trace);
-            await Deno.remove(root, { recursive: true });
+            if (previous === undefined) delete process.env["GIT_TRACE2_EVENT"];
+            else process.env["GIT_TRACE2_EVENT"] = previous;
+            await fsRm(trace);
+            await fsRm(root, { recursive: true });
         }
     });
 }
@@ -99,11 +110,11 @@ async function settleGitEvidence(): Promise<void> {
 
 async function recreateLegacyDebug(root: string, name: string) {
     const directory = join(getRunWieldRuntimeDir(root), "debug");
-    await Deno.mkdir(directory, { recursive: true });
-    await Deno.writeTextFile(join(directory, name), name);
+    await fsMkdir(directory, { recursive: true });
+    await fsWriteFile(join(directory, name), name);
 }
 
-Deno.test("bounded runtime reads share real Git inspection and ask Git again only for changed evidence", async () => {
+test("bounded runtime reads share real Git inspection and ask Git again only for changed evidence", async () => {
     await withTracedProject(async ({ root, listings }) => {
         await withProjectRuntimeReadScope(async () => {
             await Promise.all([enterProjectRuntime(root), enterProjectRuntime(root)]);
@@ -121,7 +132,7 @@ Deno.test("bounded runtime reads share real Git inspection and ask Git again onl
     });
 });
 
-Deno.test("Plan lists share validation without caching Plan or controller contents", async () => {
+test("Plan lists share validation without caching Plan or controller contents", async () => {
     await withTracedProject(async ({ root, listings }) => {
         for (const name of ["first", "second", "third"]) {
             await savePlan(root, name, `# ${name}\n`, { planId: name, status: "draft" });
@@ -135,22 +146,22 @@ Deno.test("Plan lists share validation without caching Plan or controller conten
         });
         assertEquals((await loadPlan(root, "first"))?.attrs.validationCiAttempts, 2);
         const runtimeFile = join(root, ".wld", "debug", "tracked.txt");
-        await Deno.mkdir(join(root, ".wld", "debug"), { recursive: true });
-        await Deno.writeTextFile(runtimeFile, "must be detected after the previous read\n");
+        await fsMkdir(join(root, ".wld", "debug"), { recursive: true });
+        await fsWriteFile(runtimeFile, "must be detected after the previous read\n");
         await git(root, ["add", "-f", ".wld/debug/tracked.txt"]);
         await assertRejects(() => listPlans(root), ProjectRuntimeEntryRefusedError);
     });
 });
 
-Deno.test("registry lists share inspection within a read and reject newly staged runtime on the next read", async () => {
+test("registry lists share inspection within a read and reject newly staged runtime on the next read", async () => {
     await withTracedProject(async ({ root, listings }) => {
         assertEquals(await listEntries(root), []);
         assert(await listings() <= 1);
         assertEquals(await listEntries(root), []);
         assert(await listings() <= 2);
         const runtimeFile = join(root, ".wld", "debug", "tracked.txt");
-        await Deno.mkdir(join(root, ".wld", "debug"), { recursive: true });
-        await Deno.writeTextFile(runtimeFile, "newly staged runtime must be detected\n");
+        await fsMkdir(join(root, ".wld", "debug"), { recursive: true });
+        await fsWriteFile(runtimeFile, "newly staged runtime must be detected\n");
         await git(root, ["add", "-f", ".wld/debug/tracked.txt"]);
         await assertRejects(() => listEntries(root), ProjectRuntimeEntryRefusedError);
         await git(root, ["reset", "--", ".wld/debug/tracked.txt"]);
@@ -158,24 +169,27 @@ Deno.test("registry lists share inspection within a read and reject newly staged
     });
 });
 
-Deno.test("controller writes revalidate and invalidate surrounding runtime reads", async () => {
+test("controller writes revalidate and invalidate surrounding runtime reads", async () => {
     await withTracedProject(async ({ root }) => {
         await withProjectRuntimeReadScope(async () => {
             const layout = await enterProjectRuntime(root);
             await recreateLegacyDebug(root, "before-write.txt");
             await writeControllerState(root, { planId: "test", planName: "test" }, { validationCiAttempts: 1 });
             assertEquals(
-                await Deno.readTextFile(join(layout.primary.debugRoot, "before-write.txt")),
+                await fsReadFile(join(layout.primary.debugRoot, "before-write.txt"), "utf8"),
                 "before-write.txt",
             );
             await recreateLegacyDebug(root, "after-write.txt");
             await enterProjectRuntime(root);
-            assertEquals(await Deno.readTextFile(join(layout.primary.debugRoot, "after-write.txt")), "after-write.txt");
+            assertEquals(
+                await fsReadFile(join(layout.primary.debugRoot, "after-write.txt"), "utf8"),
+                "after-write.txt",
+            );
         });
     });
 });
 
-Deno.test("detached async reads cannot retain a completed runtime validation scope", async () => {
+test("detached async reads cannot retain a completed runtime validation scope", async () => {
     await withTracedProject(async ({ root }) => {
         const resume = Promise.withResolvers<void>();
         const continuation = { result: Promise.resolve() };
@@ -184,7 +198,7 @@ Deno.test("detached async reads cannot retain a completed runtime validation sco
             continuation.result = (async () => {
                 await resume.promise;
                 const layout = await withProjectRuntimeReadScope(() => enterProjectRuntime(root));
-                assertEquals(await Deno.readTextFile(join(layout.primary.debugRoot, "later.txt")), "later.txt");
+                assertEquals(await fsReadFile(join(layout.primary.debugRoot, "later.txt"), "utf8"), "later.txt");
             })();
         });
         await recreateLegacyDebug(root, "later.txt");
@@ -193,7 +207,7 @@ Deno.test("detached async reads cannot retain a completed runtime validation sco
     });
 });
 
-Deno.test("failed runtime read scopes expire before an inherited continuation resumes", async () => {
+test("failed runtime read scopes expire before an inherited continuation resumes", async () => {
     await withTracedProject(async ({ root }) => {
         const resume = Promise.withResolvers<void>();
         const continuation = { result: Promise.resolve() };
@@ -204,7 +218,10 @@ Deno.test("failed runtime read scopes expire before an inherited continuation re
                     continuation.result = (async () => {
                         await resume.promise;
                         const layout = await enterProjectRuntime(root);
-                        assertEquals(await Deno.readTextFile(join(layout.primary.debugRoot, "retry.txt")), "retry.txt");
+                        assertEquals(
+                            await fsReadFile(join(layout.primary.debugRoot, "retry.txt"), "utf8"),
+                            "retry.txt",
+                        );
                     })();
                     throw new Error("read failed");
                 }),
@@ -217,14 +234,14 @@ Deno.test("failed runtime read scopes expire before an inherited continuation re
     });
 });
 
-Deno.test("runtime read scope retries failed validation after the evidence is repaired", async () => {
+test("runtime read scope retries failed validation after the evidence is repaired", async () => {
     await withTracedProject(async ({ root }) => {
         const layout = await enterProjectRuntime(root);
-        const marker = await Deno.readTextFile(layout.primary.layoutMarkerPath);
+        const marker = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
         await withProjectRuntimeReadScope(async () => {
-            await Deno.writeTextFile(layout.primary.layoutMarkerPath, "{invalid");
+            await fsWriteFile(layout.primary.layoutMarkerPath, "{invalid");
             await assertRejects(() => enterProjectRuntime(root), ProjectRuntimeEntryRefusedError);
-            await Deno.writeTextFile(layout.primary.layoutMarkerPath, marker);
+            await fsWriteFile(layout.primary.layoutMarkerPath, marker);
             assertEquals((await enterProjectRuntime(root)).primary.checkoutRoot, layout.primary.checkoutRoot);
         });
     });

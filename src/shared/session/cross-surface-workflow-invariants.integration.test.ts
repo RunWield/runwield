@@ -1,5 +1,7 @@
-import { assertEquals, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     appendTranscriptEntry,
     makeManagedSessionFixture,
@@ -16,11 +18,11 @@ async function writeSuccessorTranscript(
     const timestamp = "2026-01-01T00:02:00.000Z";
     const path = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
     const header = { type: "session", id: piSessionId, timestamp, cwd: projectRoot, name: "Successor" };
-    await Deno.writeTextFile(path, `${JSON.stringify(header)}\n`);
+    await fsWriteFile(path, `${JSON.stringify(header)}\n`);
     return path;
 }
 
-Deno.test("writable restart hydrates the committed current segment instead of the predecessor", async () => {
+test("writable restart hydrates the committed current segment instead of the predecessor", async () => {
     const fixture = await makeManagedSessionFixture();
     const workspace = fixture.openStore();
     const laterWriter = fixture.openStore();
@@ -110,13 +112,13 @@ Deno.test("writable restart hydrates the committed current segment instead of th
     }
 });
 
-Deno.test("aggregate readers fail closed with sanitized damaged-evidence diagnostics", async () => {
+test("aggregate readers fail closed with sanitized damaged-evidence diagnostics", async () => {
     const fixture = await makeManagedSessionFixture();
     try {
         const generation = fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId).generation;
         if (!generation) throw new Error("fixture generation missing");
-        const originalText = await Deno.readTextFile(fixture.transcriptPath);
-        await Deno.writeTextFile(fixture.transcriptPath, originalText.replace("Committed hello.", "Damaged hello..."));
+        const originalText = await fsReadFile(fixture.transcriptPath, "utf8");
+        await fsWriteFile(fixture.transcriptPath, originalText.replace("Committed hello.", "Damaged hello..."));
         const projection = await projectAggregateTranscript({
             cwd: fixture.projectRoot,
             sessionDir: fixture.sessionDir,
@@ -135,7 +137,7 @@ Deno.test("aggregate readers fail closed with sanitized damaged-evidence diagnos
     }
 });
 
-Deno.test("committed projection ignores transcript tail after the published byte length", async () => {
+test("committed projection ignores transcript tail after the published byte length", async () => {
     const fixture = await makeManagedSessionFixture();
     try {
         const generation = fixture.store.inspectSessionActivation(fixture.session.runwieldSessionId).generation;

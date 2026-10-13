@@ -1,3 +1,4 @@
+import { stat as fsStat } from "node:fs/promises";
 /**
  * @module tools/grep
  *
@@ -8,7 +9,7 @@
 
 import { createGrepToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import { basename, dirname, isAbsolute, join, normalize, relative } from "@std/path";
+import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { getHomeDir } from "../constants.js";
 
 const grepSchema = Type.Object({
@@ -67,10 +68,10 @@ function resolveToCwd(targetPath, cwd) {
  */
 async function pathExists(targetPath, cwd) {
     try {
-        await Deno.stat(resolveToCwd(targetPath, cwd));
+        await fsStat(resolveToCwd(targetPath, cwd));
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
@@ -81,7 +82,7 @@ async function pathExists(targetPath, cwd) {
  * @returns {Promise<boolean>}
  */
 async function isDirectory(targetPath, cwd) {
-    return (await Deno.stat(resolveToCwd(targetPath, cwd))).isDirectory;
+    return (await fsStat(resolveToCwd(targetPath, cwd))).isDirectory();
 }
 
 /**

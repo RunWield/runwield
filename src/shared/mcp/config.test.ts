@@ -1,37 +1,49 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    rm as fsRm,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { resolveMcpConfig } from "./config.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 async function git(cwd: string, args: string[]): Promise<void> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "null", stderr: "null" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     if (output.code !== 0) throw new Error(`git ${args.join(" ")} failed`);
 }
 
 async function writeMode(path: string, text: string, mode = 0o600): Promise<void> {
-    await Deno.mkdir(dirname(path), { recursive: true }).catch(() => {});
-    await Deno.writeTextFile(path, text, { mode });
-    await Deno.chmod(path, mode).catch(() => {});
+    await fsMkdir(dirname(path), { recursive: true }).catch(() => {});
+    await fsWriteFile(path, text, { mode });
+    await fsChmod(path, mode).catch(() => {});
 }
 
 async function makeGitProject(): Promise<string> {
-    const root = await Deno.makeTempDir({ prefix: "runwield-mcp-config-" });
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-mcp-config-"));
     await git(root, ["init"]);
-    await Deno.writeTextFile(join(root, ".gitignore"), ".wld/mcp.json\n");
+    await fsWriteFile(join(root, ".gitignore"), ".wld/mcp.json\n");
     await git(root, ["add", ".gitignore"]);
     await git(root, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"]);
     return root;
 }
 
-Deno.test("MCP config resolves global, project replacement, disable entries, and request additions", async () => {
+test("MCP config resolves global, project replacement, disable entries, and request additions", async () => {
     await withProcessGlobalTestLock(async () => {
-        const oldHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir({ prefix: "runwield-mcp-home-" });
+        const oldHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-mcp-home-"));
         const project = await makeGitProject();
         try {
-            Deno.env.set("HOME", home);
-            await Deno.mkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
-            await Deno.chmod(join(home, ".wld"), 0o700).catch(() => {});
+            process.env["HOME"] = home;
+            await fsMkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
+            await fsChmod(join(home, ".wld"), 0o700).catch(() => {});
             await writeMode(
                 join(home, ".wld", "mcp.json"),
                 JSON.stringify({
@@ -42,7 +54,7 @@ Deno.test("MCP config resolves global, project replacement, disable entries, and
                     },
                 }),
             );
-            await Deno.mkdir(join(project, ".wld"), { recursive: true });
+            await fsMkdir(join(project, ".wld"), { recursive: true });
             await writeMode(
                 join(project, ".wld", "mcp.json"),
                 JSON.stringify({
@@ -59,31 +71,34 @@ Deno.test("MCP config resolves global, project replacement, disable entries, and
             });
 
             assertEquals(result.warnings, []);
-            assertEquals(result.servers.map((server) => [server.name, server.command, server.source]), [
-                ["shared", "project-shared", "project"],
-                ["globalOnly", "global-only", "global"],
-                ["requestOnly", "/bin/echo", "request"],
-            ]);
+            assertEquals(
+                result.servers.map((server) => [server.name, server.command, server.source]),
+                [
+                    ["shared", "project-shared", "project"],
+                    ["globalOnly", "global-only", "global"],
+                    ["requestOnly", "/bin/echo", "request"],
+                ],
+            );
         } finally {
-            if (oldHome) Deno.env.set("HOME", oldHome);
-            else Deno.env.delete("HOME");
-            await Deno.remove(home, { recursive: true });
-            await Deno.remove(project, { recursive: true });
+            if (oldHome) process.env["HOME"] = oldHome;
+            else delete process.env["HOME"];
+            await fsRm(home, { recursive: true });
+            await fsRm(project, { recursive: true });
         }
     });
 });
 
-Deno.test("MCP config skips project file that Git can publish", async () => {
+test("MCP config skips project file that Git can publish", async () => {
     await withProcessGlobalTestLock(async () => {
-        const oldHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir({ prefix: "runwield-mcp-home-" });
-        const project = await Deno.makeTempDir({ prefix: "runwield-mcp-unsafe-" });
+        const oldHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-mcp-home-"));
+        const project = await fsMkdtemp(join(tmpdir(), "runwield-mcp-unsafe-"));
         try {
-            Deno.env.set("HOME", home);
+            process.env["HOME"] = home;
             await git(project, ["init"]);
-            await Deno.mkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
+            await fsMkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
             await writeMode(join(home, ".wld", "mcp.json"), JSON.stringify({ mcpServers: {} }));
-            await Deno.mkdir(join(project, ".wld"), { recursive: true });
+            await fsMkdir(join(project, ".wld"), { recursive: true });
             await writeMode(
                 join(project, ".wld", "mcp.json"),
                 JSON.stringify({
@@ -96,27 +111,27 @@ Deno.test("MCP config skips project file that Git can publish", async () => {
             assertEquals(result.warnings.length, 1);
             assertStringIncludes(result.warnings[0].message, "ignored by Git");
         } finally {
-            if (oldHome) Deno.env.set("HOME", oldHome);
-            else Deno.env.delete("HOME");
-            await Deno.remove(home, { recursive: true });
-            await Deno.remove(project, { recursive: true });
+            if (oldHome) process.env["HOME"] = oldHome;
+            else delete process.env["HOME"];
+            await fsRm(home, { recursive: true });
+            await fsRm(project, { recursive: true });
         }
     });
 });
 
-Deno.test("MCP config redacts parse and schema errors", async () => {
+test("MCP config redacts parse and schema errors", async () => {
     await withProcessGlobalTestLock(async () => {
-        const oldHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir({ prefix: "runwield-mcp-home-" });
+        const oldHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-mcp-home-"));
         const project = await makeGitProject();
         try {
-            Deno.env.set("HOME", home);
-            await Deno.mkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
+            process.env["HOME"] = home;
+            await fsMkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
             await writeMode(
                 join(home, ".wld", "mcp.json"),
                 '{"mcpServers":{"bad":{"command":"raw-global-secret","args":[}',
             );
-            await Deno.mkdir(join(project, ".wld"), { recursive: true });
+            await fsMkdir(join(project, ".wld"), { recursive: true });
             await writeMode(
                 join(project, ".wld", "mcp.json"),
                 JSON.stringify({
@@ -132,27 +147,30 @@ Deno.test("MCP config redacts parse and schema errors", async () => {
 
             const result = await resolveMcpConfig({ cwd: project });
             assertEquals(result.servers, []);
-            assertEquals(result.warnings.map((item) => item.stage), ["parse", "parse"]);
+            assertEquals(
+                result.warnings.map((item) => item.stage),
+                ["parse", "parse"],
+            );
             const warningText = result.warnings.map((item) => item.message).join("\n");
             assertEquals(warningText.includes("raw-global-secret"), false);
             assertEquals(warningText.includes("raw-project-secret"), false);
             assertEquals(warningText.includes("raw-token-secret"), false);
         } finally {
-            if (oldHome) Deno.env.set("HOME", oldHome);
-            else Deno.env.delete("HOME");
-            await Deno.remove(home, { recursive: true });
-            await Deno.remove(project, { recursive: true });
+            if (oldHome) process.env["HOME"] = oldHome;
+            else delete process.env["HOME"];
+            await fsRm(home, { recursive: true });
+            await fsRm(project, { recursive: true });
         }
     });
 });
 
-Deno.test("MCP config rejects committed, staged, intent-to-add, symlink, and broad-mode project files", async () => {
+test("MCP config rejects committed, staged, intent-to-add, symlink, and broad-mode project files", async () => {
     await withProcessGlobalTestLock(async () => {
-        const oldHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir({ prefix: "runwield-mcp-home-" });
+        const oldHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-mcp-home-"));
         try {
-            Deno.env.set("HOME", home);
-            await Deno.mkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
+            process.env["HOME"] = home;
+            await fsMkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
             await writeMode(join(home, ".wld", "mcp.json"), JSON.stringify({ mcpServers: {} }));
 
             const committedProject = await makeGitProject();
@@ -189,50 +207,52 @@ Deno.test("MCP config rejects committed, staged, intent-to-add, symlink, and bro
                 assertEquals(intent.servers, []);
                 assertStringIncludes(intent.warnings[0].message, "tracked or staged");
 
-                await Deno.mkdir(join(symlinkProject, ".wld"), { recursive: true });
+                await fsMkdir(join(symlinkProject, ".wld"), { recursive: true });
                 const symlinkTarget = join(symlinkProject, "outside-mcp.json");
-                await Deno.writeTextFile(symlinkTarget, configText);
-                await Deno.symlink(symlinkTarget, join(symlinkProject, ".wld", "mcp.json"));
+                await fsWriteFile(symlinkTarget, configText);
+                await fsSymlink(symlinkTarget, join(symlinkProject, ".wld", "mcp.json"));
                 const symlink = await resolveMcpConfig({ cwd: symlinkProject });
                 assertEquals(symlink.servers, []);
                 assertStringIncludes(symlink.warnings[0].message, "regular file");
 
-                await writeMode(join(modeProject, ".wld", "mcp.json"), configText, 0o644);
-                const broadMode = await resolveMcpConfig({ cwd: modeProject });
-                assertEquals(broadMode.servers, []);
-                assertStringIncludes(broadMode.warnings[0].message, "mode 0600");
+                if (process.platform !== "win32") {
+                    await writeMode(join(modeProject, ".wld", "mcp.json"), configText, 0o644);
+                    const broadMode = await resolveMcpConfig({ cwd: modeProject });
+                    assertEquals(broadMode.servers, []);
+                    assertStringIncludes(broadMode.warnings[0].message, "mode 0600");
+                }
             } finally {
-                await Deno.remove(committedProject, { recursive: true });
-                await Deno.remove(stagedProject, { recursive: true });
-                await Deno.remove(intentProject, { recursive: true });
-                await Deno.remove(symlinkProject, { recursive: true });
-                await Deno.remove(modeProject, { recursive: true });
+                await fsRm(committedProject, { recursive: true });
+                await fsRm(stagedProject, { recursive: true });
+                await fsRm(intentProject, { recursive: true });
+                await fsRm(symlinkProject, { recursive: true });
+                await fsRm(modeProject, { recursive: true });
             }
         } finally {
-            if (oldHome) Deno.env.set("HOME", oldHome);
-            else Deno.env.delete("HOME");
-            await Deno.remove(home, { recursive: true });
+            if (oldHome) process.env["HOME"] = oldHome;
+            else delete process.env["HOME"];
+            await fsRm(home, { recursive: true });
         }
     });
 });
 
-Deno.test("MCP config resolves project file from the primary checkout for execution worktrees", async () => {
+test("MCP config resolves project file from the primary checkout for execution worktrees", async () => {
     await withProcessGlobalTestLock(async () => {
-        const oldHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir({ prefix: "runwield-mcp-home-" });
+        const oldHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-mcp-home-"));
         const primary = await makeGitProject();
         const worktree = join(dirname(primary), "runwield-mcp-execution-worktree");
         try {
-            Deno.env.set("HOME", home);
-            await Deno.mkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
+            process.env["HOME"] = home;
+            await fsMkdir(join(home, ".wld"), { recursive: true, mode: 0o700 });
             await writeMode(join(home, ".wld", "mcp.json"), JSON.stringify({ mcpServers: {} }));
-            await Deno.mkdir(join(primary, ".wld"), { recursive: true });
+            await fsMkdir(join(primary, ".wld"), { recursive: true });
             await writeMode(
                 join(primary, ".wld", "mcp.json"),
                 JSON.stringify({ mcpServers: { primaryOnly: { command: "primary", args: [], env: {} } } }),
             );
             await git(primary, ["worktree", "add", "-b", "fixture-worktree", worktree]);
-            await Deno.mkdir(join(worktree, ".wld"), { recursive: true });
+            await fsMkdir(join(worktree, ".wld"), { recursive: true });
             await writeMode(
                 join(worktree, ".wld", "mcp.json"),
                 JSON.stringify({ mcpServers: { localOnly: { command: "local", args: [], env: {} } } }),
@@ -241,15 +261,16 @@ Deno.test("MCP config resolves project file from the primary checkout for execut
             const result = await resolveMcpConfig({ cwd: worktree });
 
             assertEquals(result.warnings, []);
-            assertEquals(result.servers.map((server) => [server.name, server.command, server.source]), [
-                ["primaryOnly", "primary", "project"],
-            ]);
+            assertEquals(
+                result.servers.map((server) => [server.name, server.command, server.source]),
+                [["primaryOnly", "primary", "project"]],
+            );
         } finally {
-            if (oldHome) Deno.env.set("HOME", oldHome);
-            else Deno.env.delete("HOME");
-            await Deno.remove(home, { recursive: true });
-            await Deno.remove(worktree, { recursive: true }).catch(() => {});
-            await Deno.remove(primary, { recursive: true });
+            if (oldHome) process.env["HOME"] = oldHome;
+            else delete process.env["HOME"];
+            await fsRm(home, { recursive: true });
+            await fsRm(worktree, { recursive: true }).catch(() => {});
+            await fsRm(primary, { recursive: true });
         }
     });
 });

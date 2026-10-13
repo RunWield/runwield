@@ -1,6 +1,8 @@
+import { opendir as fsOpendir } from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 /** Local immutable check receipts. Reporting failures never change delivery authority. */
 import type { PublicationAttempt } from "./publication-attempt.ts";
-import { join, relative } from "@std/path";
+import { join, relative } from "node:path";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import type { DeliveryReportArtifact } from "./delivery-report.ts";
 
@@ -33,7 +35,7 @@ export async function recordDeliveryEvidence(
 ): Promise<void> {
     try {
         const dir = directory(root, plan, attempt);
-        await Deno.mkdir(dir, { recursive: true });
+        await fsMkdir(dir, { recursive: true });
         const entry: DeliveryEvidenceEntry = {
             version: 1,
             kind,
@@ -41,7 +43,7 @@ export async function recordDeliveryEvidence(
             recordedAt: new Date().toISOString(),
             detail,
         };
-        await Deno.writeTextFile(join(dir, `${crypto.randomUUID()}.json`), JSON.stringify(entry), { createNew: true });
+        await fsWriteFile(join(dir, `${crypto.randomUUID()}.json`), JSON.stringify(entry), { flag: "wx" });
     } catch {
         // Missing receipts remain explicitly unavailable rather than blocking publication.
     }
@@ -55,10 +57,10 @@ export async function readDeliveryEvidence(
     const artifacts: DeliveryReportArtifact[] = [];
     const dir = directory(root, plan, attempt);
     try {
-        for await (const file of Deno.readDir(dir)) {
-            if (!file.isFile || !file.name.endsWith(".json")) continue;
+        for await (const file of await fsOpendir(dir)) {
+            if (!file.isFile() || !file.name.endsWith(".json")) continue;
             try {
-                const entry: DeliveryEvidenceEntry = JSON.parse(await Deno.readTextFile(join(dir, file.name)));
+                const entry: DeliveryEvidenceEntry = JSON.parse(await fsReadFile(join(dir, file.name), "utf8"));
                 if (
                     entry.version === 1 && typeof entry.kind === "string" && typeof entry.detail === "string" &&
                     typeof entry.outcome === "string" && typeof entry.recordedAt === "string"
@@ -83,7 +85,7 @@ export async function readDeliveryEvidence(
                     i,
                 ) => [`## ${i + 1}. ${entry.outcome}`, "", `Recorded: ${entry.recordedAt}`, "", entry.detail, ""]),
             ].join("\n");
-            await Deno.writeTextFile(join(root, path), markdown);
+            await fsWriteFile(join(root, path), markdown);
             artifacts.push({ title, kind: "report", path });
         }
     } catch { /* Readable receipts still survive a missing report export. */ }
@@ -99,8 +101,8 @@ export async function savePublicationEvidence(
     const path = relative(root, join(directory(root, publication.planName, publication.attemptId), "publication.md"))
         .replaceAll("\\", "/");
     try {
-        await Deno.mkdir(directory(root, publication.planName, publication.attemptId), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(directory(root, publication.planName, publication.attemptId), { recursive: true });
+        await fsWriteFile(
             join(root, path),
             [
                 "# Merge confirmation",
@@ -138,9 +140,9 @@ export async function saveDeliveredPlanEvidence(
 ): Promise<DeliveryReportArtifact | null> {
     const dir = directory(root, publication.planName, publication.attemptId);
     try {
-        await Deno.mkdir(dir, { recursive: true });
+        await fsMkdir(dir, { recursive: true });
         const path = join(dir, "plan.md");
-        await Deno.writeTextFile(path, markdown);
+        await fsWriteFile(path, markdown);
         return { title: "Approved Plan", kind: "plan", path: relative(root, path).replaceAll("\\", "/") };
     } catch {
         return null;
@@ -154,9 +156,9 @@ export async function saveDeliveredWorkRecordEvidence(
 ): Promise<DeliveryReportArtifact | null> {
     const dir = directory(root, publication.planName, publication.attemptId);
     try {
-        await Deno.mkdir(dir, { recursive: true });
+        await fsMkdir(dir, { recursive: true });
         const path = join(dir, "work-record.md");
-        await Deno.writeTextFile(path, markdown);
+        await fsWriteFile(path, markdown);
         return { title: "Work Record", kind: "work-record", path: relative(root, path).replaceAll("\\", "/") };
     } catch {
         return null;

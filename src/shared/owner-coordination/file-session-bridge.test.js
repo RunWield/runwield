@@ -1,6 +1,15 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
-import { DatabaseSync } from "node:sqlite";
+import { assertEquals } from "../../testing/assertions.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "../sqlite.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.js";
 import { openOwnerCoordinationStore } from "./index.js";
@@ -11,19 +20,19 @@ function countRows(database, table) {
     return Number(row?.count ?? -1);
 }
 
-Deno.test("Workspace stores receipts but leaves Session authority in files", async () => {
-    const rootDir = await Deno.makeTempDir({ prefix: "runwield-workspace-file-session-" });
+test("Workspace stores receipts but leaves Session authority in files", async () => {
+    const rootDir = await fsMkdtemp(join(tmpdir(), "runwield-workspace-file-session-"));
     const projectRoot = join(rootDir, "project");
     const sessionBaseDir = join(rootDir, "sessions");
     const databasePath = join(rootDir, "workspace.sqlite3");
-    await Deno.mkdir(projectRoot);
-    const canonicalProjectRoot = await Deno.realPath(projectRoot);
+    await fsMkdir(projectRoot);
+    const canonicalProjectRoot = await fsRealpath(projectRoot);
     const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     const timestamp = "2026-01-01T00:00:00.000Z";
     const piSessionId = "workspace-file-session";
     const transcriptPath = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
-    await Deno.writeTextFile(
+    await fsWriteFile(
         transcriptPath,
         `${JSON.stringify({ type: "session", version: 3, id: piSessionId, timestamp, cwd: projectRoot })}\n`,
     );
@@ -63,12 +72,12 @@ Deno.test("Workspace stores receipts but leaves Session authority in files", asy
         store.close();
     }
 
-    await Deno.remove(databasePath);
+    await fsRm(databasePath);
     const coreStore = openFileSessionStore({ baseDir: sessionBaseDir });
     try {
         assertEquals(coreStore.getSessionById(runwieldSessionId)?.piSessionId, piSessionId);
     } finally {
         coreStore.close();
-        await Deno.remove(rootDir, { recursive: true });
+        await fsRm(rootDir, { recursive: true });
     }
 });

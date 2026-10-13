@@ -1,5 +1,16 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname } from "node:path";
 import { listPlanResources, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import { addEntry, findById, getWorktreeRegistryPath } from "../worktree-registry.js";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
@@ -9,20 +20,20 @@ import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 // more than every Git query these tests run against it.
 const baseRepo = defineCommittedGitFixture({ "file.txt": "base\n" });
 
-Deno.test("resolveValidationExecutionContext blocks FEATURE validation without durable mode or worktree identity", async () => {
-    const cwd = await Deno.makeTempDir();
+test("resolveValidationExecutionContext blocks FEATURE validation without durable mode or worktree identity", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "p", "# Plan", { classification: "FEATURE", status: "implemented" });
         const result = await resolveValidationExecutionContext({ projectRoot: cwd, planName: "p", triageMeta: {} });
         assertEquals(result.kind, "blocked");
         if (result.kind === "blocked") assertEquals(result.reason, "unknown_execution_mode");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("resolveValidationExecutionContext accepts explicit non-Git mode", async () => {
-    const cwd = await Deno.makeTempDir();
+test("resolveValidationExecutionContext accepts explicit non-Git mode", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "p", "# Plan", {
             classification: "FEATURE",
@@ -33,12 +44,12 @@ Deno.test("resolveValidationExecutionContext accepts explicit non-Git mode", asy
         assertEquals(result.kind, "ok");
         if (result.kind === "ok") assertEquals(result.context.executionMode, "non_git_in_place");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("resolveValidationExecutionContext preserves active QUICK_FIX non-Git execution", async () => {
-    const cwd = await Deno.makeTempDir();
+test("resolveValidationExecutionContext preserves active QUICK_FIX non-Git execution", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "p", "# Plan", { classification: "QUICK_FIX", status: "implemented" });
         const result = await resolveValidationExecutionContext({
@@ -58,12 +69,12 @@ Deno.test("resolveValidationExecutionContext preserves active QUICK_FIX non-Git 
             assertEquals(result.context.executionCwd, cwd);
         }
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("resolveValidationExecutionContext preserves an explicit QUICK_FIX worktree", async () => {
-    const cwd = await Deno.makeTempDir();
+test("resolveValidationExecutionContext preserves an explicit QUICK_FIX worktree", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "p", "# Plan", { classification: "QUICK_FIX", status: "validated_ci" });
         const result = await resolveValidationExecutionContext({
@@ -88,18 +99,18 @@ Deno.test("resolveValidationExecutionContext preserves an explicit QUICK_FIX wor
             assertEquals(result.context.worktreeId, "wt-p");
         }
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("resolveValidationExecutionContext allows a legacy creation tree to differ from a retry baseline", async () => {
+test("resolveValidationExecutionContext allows a legacy creation tree to differ from a retry baseline", async () => {
     const projectRoot = await baseRepo.checkout();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const creationTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
         const worktreePath = `${parent}/wt`;
         await git(projectRoot, ["worktree", "add", "-b", "runwield/worktree/p-wt", worktreePath, "HEAD"]);
-        await Deno.writeTextFile(`${worktreePath}/dependency.txt`, "integrated dependency\n");
+        await fsWriteFile(`${worktreePath}/dependency.txt`, "integrated dependency\n");
         await git(worktreePath, ["add", "dependency.txt"]);
         await git(worktreePath, ["commit", "-m", "integrate dependency before retry"]);
         const baselineTree = await git(worktreePath, ["rev-parse", "HEAD^{tree}"]);
@@ -136,14 +147,14 @@ Deno.test("resolveValidationExecutionContext allows a legacy creation tree to di
             assertEquals(result.persistedLegacyExecutionMode, false);
         }
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(parent, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(parent, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("resolveValidationExecutionContext fixes a stale registry path from Git", async () => {
+test("resolveValidationExecutionContext fixes a stale registry path from Git", async () => {
     const projectRoot = await baseRepo.checkout();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
         const actualPath = `${parent}/actual`;
@@ -177,23 +188,23 @@ Deno.test("resolveValidationExecutionContext fixes a stale registry path from Gi
         const result = await resolveValidationExecutionContext({ projectRoot, planName: "p" });
 
         assertEquals(result.kind, "ok");
-        if (result.kind === "ok") assertEquals(result.context.executionCwd, await Deno.realPath(actualPath));
+        if (result.kind === "ok") assertEquals(result.context.executionCwd, await fsRealpath(actualPath));
         const fixedPath = (await findById(projectRoot, "wt-stale"))?.path;
-        assertEquals(fixedPath ? await Deno.realPath(fixedPath) : null, await Deno.realPath(actualPath));
+        assertEquals(fixedPath ? await fsRealpath(fixedPath) : null, await fsRealpath(actualPath));
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(parent, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(parent, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("resolveValidationExecutionContext recovers missing worktree metadata from registry by plan name", async () => {
+test("resolveValidationExecutionContext recovers missing worktree metadata from registry by plan name", async () => {
     const projectRoot = await baseRepo.checkout();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
         const worktreePath = `${parent}/wt`;
         await git(projectRoot, ["worktree", "add", "-b", "runwield/worktree/p-wt", worktreePath, "HEAD"]);
-        await Deno.writeTextFile(`${worktreePath}/file.txt`, "base\nimplemented\n");
+        await fsWriteFile(`${worktreePath}/file.txt`, "base\nimplemented\n");
         await git(worktreePath, ["add", "file.txt"]);
         await git(worktreePath, ["commit", "-m", "implement p"]);
         await savePlan(projectRoot, "p", "# Plan", {
@@ -223,7 +234,7 @@ Deno.test("resolveValidationExecutionContext recovers missing worktree metadata 
         assertEquals(result.kind, "ok");
         if (result.kind === "ok") {
             assertEquals(result.context.executionMode, "worktree");
-            assertEquals(result.context.executionCwd, await Deno.realPath(worktreePath));
+            assertEquals(result.context.executionCwd, await fsRealpath(worktreePath));
             if (result.context.executionMode === "worktree") {
                 assertEquals(result.context.baselineTree, baselineTree);
                 assertEquals(result.context.worktreeId, "wt-1");
@@ -242,19 +253,19 @@ Deno.test("resolveValidationExecutionContext recovers missing worktree metadata 
         assertEquals(document.worktreeBranch, undefined);
         assertEquals(document.worktreeBaseBranch, undefined);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(parent, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(parent, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("resolveValidationExecutionContext repairs a saved baseline that hides completed code", async () => {
+test("resolveValidationExecutionContext repairs a saved baseline that hides completed code", async () => {
     const projectRoot = await baseRepo.checkout();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const creationTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
         const worktreePath = `${parent}/wt`;
         await git(projectRoot, ["worktree", "add", "-b", "runwield/worktree/p-wt", worktreePath, "HEAD"]);
-        await Deno.writeTextFile(`${worktreePath}/dependency.txt`, "integrated dependency\n");
+        await fsWriteFile(`${worktreePath}/dependency.txt`, "integrated dependency\n");
         await git(worktreePath, ["add", "dependency.txt"]);
         await git(worktreePath, ["commit", "-m", "establish execution baseline"]);
         const registryBaselineTree = await git(worktreePath, ["rev-parse", "HEAD^{tree}"]);
@@ -296,13 +307,13 @@ Deno.test("resolveValidationExecutionContext repairs a saved baseline that hides
         }
         assertEquals((await findById(projectRoot, "wt-1"))?.executionBaselineTree, creationTree);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(parent, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(parent, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("resolveValidationExecutionContext ignores stale caller and session context", async () => {
-    const cwd = await Deno.makeTempDir();
+test("resolveValidationExecutionContext ignores stale caller and session context", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "p", "# Plan", { classification: "FEATURE", status: "implemented" });
         const result = await resolveValidationExecutionContext({
@@ -314,12 +325,12 @@ Deno.test("resolveValidationExecutionContext ignores stale caller and session co
         assertEquals(result.kind, "blocked");
         if (result.kind === "blocked") assertEquals(result.reason, "incomplete_worktree_identity");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("resolveValidationExecutionContext uses imported controller mode instead of stale caller mode", async () => {
-    const cwd = await Deno.makeTempDir();
+test("resolveValidationExecutionContext uses imported controller mode instead of stale caller mode", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await savePlan(cwd, "p", "# Plan", {
             classification: "FEATURE",
@@ -339,18 +350,18 @@ Deno.test("resolveValidationExecutionContext uses imported controller mode inste
         assertEquals(result.kind, "blocked");
         if (result.kind === "blocked") assertEquals(result.reason, "worktree_inspection_failed");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("resolveValidationExecutionContext recovers committed worktree baseline without a copied Plan file", async () => {
+test("resolveValidationExecutionContext recovers committed worktree baseline without a copied Plan file", async () => {
     const projectRoot = await baseRepo.checkout();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
         const worktreePath = `${parent}/wt`;
         await git(projectRoot, ["worktree", "add", "-b", "runwield/worktree/p-wt", worktreePath, "HEAD"]);
-        await Deno.writeTextFile(`${worktreePath}/file.txt`, "base\nimplemented\n");
+        await fsWriteFile(`${worktreePath}/file.txt`, "base\nimplemented\n");
         await git(worktreePath, ["add", "file.txt"]);
         await git(worktreePath, ["commit", "-m", "implement p"]);
         await savePlan(projectRoot, "p", "# Plan", {
@@ -390,26 +401,26 @@ Deno.test("resolveValidationExecutionContext recovers committed worktree baselin
         if (result.kind === "ok") {
             assertEquals(result.context.executionMode, "worktree");
             if (result.context.executionMode === "worktree") {
-                assertEquals(result.context.executionCwd, await Deno.realPath(worktreePath));
+                assertEquals(result.context.executionCwd, await fsRealpath(worktreePath));
                 assertEquals(result.context.baselineTree, baselineTree);
             }
             assertEquals(result.persistedLegacyExecutionMode, false);
             assertEquals(result.restoredPlanFile, { relativePath: "docs/plans/p.md" });
         }
-        assertEquals(await Deno.readTextFile(`${worktreePath}/docs/plans/p.md`), canonicalMarkdownBeforeResolution);
+        assertEquals(await fsReadFile(`${worktreePath}/docs/plans/p.md`, "utf8"), canonicalMarkdownBeforeResolution);
         const persistedPlan = await loadPlan(projectRoot, "p");
         assertEquals(persistedPlan?.attrs.executionMode, "worktree");
         assertEquals(persistedPlan?.attrs.executionBaselineTree, baselineTree);
         assertEquals(parsePlanFrontMatter(persistedPlan?.markdown || "").attrs.executionMode, undefined);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(parent, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(parent, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("resolveValidationExecutionContext makes registry identity authoritative over stale Plan copies", async () => {
+test("resolveValidationExecutionContext makes registry identity authoritative over stale Plan copies", async () => {
     const projectRoot = await baseRepo.checkout();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
         const worktreePath = `${parent}/wt`;
@@ -469,12 +480,12 @@ Deno.test("resolveValidationExecutionContext makes registry identity authoritati
             "the canonical Plan is never rewritten from a copy",
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(parent, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(parent, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a damaged worktree registry blocks with commands instead of a stack trace", async () => {
+test("a damaged worktree registry blocks with commands instead of a stack trace", async () => {
     const projectRoot = await baseRepo.checkout();
     try {
         await savePlan(projectRoot, "p", "# Plan", {
@@ -501,8 +512,8 @@ Deno.test("a damaged worktree registry blocks with commands instead of a stack t
             updatedAt: "2026-01-01T00:00:00.000Z",
         });
         const registryPath = getWorktreeRegistryPath(projectRoot);
-        await Deno.mkdir(dirname(registryPath), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(registryPath), { recursive: true });
+        await fsWriteFile(
             registryPath,
             JSON.stringify({ version: 2, entries: [attempt("wt-x", "active"), attempt("wt-y", "completed")] }),
         );
@@ -517,20 +528,20 @@ Deno.test("a damaged worktree registry blocks with commands instead of a stack t
         assertStringIncludes(result.message, "plans doctor");
         assertStringIncludes(result.message, "load-plan p");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("resolveValidationExecutionContext replaces a stale caller path with the saved worktree path", async () => {
+test("resolveValidationExecutionContext replaces a stale caller path with the saved worktree path", async () => {
     const projectRoot = await baseRepo.checkout();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
         const worktreePath = `${parent}/wt`;
         const otherPath = `${parent}/other`;
         await git(projectRoot, ["worktree", "add", "-b", "runwield/worktree/p-wt", worktreePath, "HEAD"]);
         await savePlan(worktreePath, "p", "# Plan", { classification: "FEATURE", status: "implemented" });
-        await Deno.mkdir(otherPath);
+        await fsMkdir(otherPath);
         await savePlan(projectRoot, "p", "# Plan", {
             classification: "FEATURE",
             status: "implemented",
@@ -570,15 +581,15 @@ Deno.test("resolveValidationExecutionContext replaces a stale caller path with t
             },
         });
         assertEquals(result.kind, "ok");
-        if (result.kind === "ok") assertEquals(result.context.executionCwd, await Deno.realPath(worktreePath));
+        if (result.kind === "ok") assertEquals(result.context.executionCwd, await fsRealpath(worktreePath));
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(parent, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(parent, { recursive: true }).catch(() => {});
     }
 });
 
 for (const primaryBranch of [false, true]) {
-    Deno.test(`validation rejects primary checkout before repair (branch in primary: ${primaryBranch})`, async () => {
+    test(`validation rejects primary checkout before repair (branch in primary: ${primaryBranch})`, async () => {
         const projectRoot = await baseRepo.checkout();
         try {
             const branch = "worktree/primary-guard";
@@ -607,8 +618,8 @@ for (const primaryBranch of [false, true]) {
                 createdAt: "2026-09-08T00:00:00Z",
                 updatedAt: "2026-09-08T00:00:00Z",
             });
-            await Deno.writeTextFile(`${projectRoot}/file.txt`, "unsaved developer work\n");
-            await Deno.writeTextFile(`${projectRoot}/untracked.txt`, "keep me\n");
+            await fsWriteFile(`${projectRoot}/file.txt`, "unsaved developer work\n");
+            await fsWriteFile(`${projectRoot}/untracked.txt`, "keep me\n");
             const before = await findById(projectRoot, "primary-guard");
             const status = await git(projectRoot, ["status", "--porcelain"]);
             const head = await git(projectRoot, ["rev-parse", "HEAD"]);
@@ -618,12 +629,12 @@ for (const primaryBranch of [false, true]) {
             assertEquals(await git(projectRoot, ["branch", "--show-current"]), primaryBranch ? branch : "main");
             assertEquals(await git(projectRoot, ["rev-parse", "HEAD"]), head);
             assertEquals(await git(projectRoot, ["status", "--porcelain"]), status);
-            assertEquals(await Deno.readTextFile(`${projectRoot}/file.txt`), "unsaved developer work\n");
-            assertEquals(await Deno.readTextFile(`${projectRoot}/untracked.txt`), "keep me\n");
+            assertEquals(await fsReadFile(`${projectRoot}/file.txt`, "utf8"), "unsaved developer work\n");
+            assertEquals(await fsReadFile(`${projectRoot}/untracked.txt`, "utf8"), "keep me\n");
             assertEquals(await findById(projectRoot, "primary-guard"), before);
             if (!primaryBranch) assertEquals(await git(projectRoot, ["branch", "--list", branch]), "");
         } finally {
-            await Deno.remove(projectRoot, { recursive: true });
+            await fsRm(projectRoot, { recursive: true });
         }
     });
 }

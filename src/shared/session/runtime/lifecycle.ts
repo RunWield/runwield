@@ -1,3 +1,4 @@
+import { stat as fsStat } from "node:fs/promises";
 import { AGENTS } from "../../../constants.js";
 import {
     classifyRootSessionLocator,
@@ -9,7 +10,7 @@ import {
 import { RuntimeEventTypes } from ".././session-runtime-events.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
-import { isAbsolute } from "@std/path";
+import { isAbsolute } from "node:path";
 import type { PromptReadySessionOptions } from "./types.ts";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";
@@ -248,10 +249,10 @@ export class RuntimeLifecycle {
         transcriptPath: string,
     ) {
         try {
-            const stat = await Deno.stat(transcriptPath);
-            if (stat.isFile) return;
+            const stat = await fsStat(transcriptPath);
+            if (stat.isFile()) return;
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
         const rewriteFile = Reflect.get(sessionManager, "_rewriteFile");
         if (typeof rewriteFile !== "function") {
@@ -259,8 +260,8 @@ export class RuntimeLifecycle {
         }
         rewriteFile.call(sessionManager);
         if ("flushed" in sessionManager) Reflect.set(sessionManager, "flushed", true);
-        const stat = await Deno.stat(transcriptPath);
-        if (!stat.isFile) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
+        const stat = await fsStat(transcriptPath);
+        if (!stat.isFile()) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
     }
 
     async resolveCreatedSessionPath(

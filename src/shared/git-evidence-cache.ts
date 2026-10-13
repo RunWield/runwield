@@ -1,3 +1,6 @@
+import { type Stats } from "node:fs";
+import { lstat as fsLstat, readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
+import { env } from "node:process";
 /**
  * Reuse a Git read while the files Git answers it from are unchanged.
  *
@@ -13,7 +16,7 @@
  * timestamp-resolution window. RunWield-owned runtime files are not evidence
  * here; callers keep checking them on every entry.
  */
-import { join, resolve } from "@std/path";
+import { join, resolve } from "node:path";
 
 /** Files changed this recently may change again without a visible timestamp difference. */
 const RACY_WINDOW_MS = 100;
@@ -41,18 +44,18 @@ interface RememberedGitRead {
 const remembered = new Map<string, RememberedGitRead>();
 
 function hasGitLocationOverride(): boolean {
-    return GIT_LOCATION_OVERRIDES.some((name) => Deno.env.get(name) !== undefined);
+    return GIT_LOCATION_OVERRIDES.some((name) => env[name] !== undefined);
 }
 
 async function resolveGitDirectories(checkoutRoot: string): Promise<GitDirectories | null> {
     const dotGit = join(checkoutRoot, ".git");
     let gitDir: string;
     try {
-        const info = await Deno.lstat(dotGit);
-        if (info.isDirectory) {
+        const info = await fsLstat(dotGit);
+        if (info.isDirectory()) {
             gitDir = dotGit;
-        } else if (info.isFile) {
-            const pointer = /^gitdir: (.+)$/m.exec(await Deno.readTextFile(dotGit));
+        } else if (info.isFile()) {
+            const pointer = /^gitdir: (.+)$/m.exec(await fsReadFile(dotGit, "utf8"));
             if (!pointer) return null;
             gitDir = resolve(checkoutRoot, pointer[1].trim());
         } else {
@@ -63,9 +66,9 @@ async function resolveGitDirectories(checkoutRoot: string): Promise<GitDirectori
     }
     let commonDir = gitDir;
     try {
-        commonDir = resolve(gitDir, (await Deno.readTextFile(join(gitDir, "commondir"))).trim());
+        commonDir = resolve(gitDir, (await fsReadFile(join(gitDir, "commondir"), "utf8")).trim());
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) return null;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) return null;
     }
     return { dotGit, gitDir, commonDir };
 }
@@ -78,12 +81,12 @@ export async function gitWorktreeListEvidence(checkoutRoot: string): Promise<str
     const paths = [dirs.dotGit, join(dirs.commonDir, "HEAD"), join(dirs.commonDir, "config"), worktreesDir];
     try {
         const ids: string[] = [];
-        for await (const entry of Deno.readDir(worktreesDir)) ids.push(entry.name);
+        for await (const entry of await fsReaddir(worktreesDir, { withFileTypes: true })) ids.push(entry.name);
         for (const id of ids.sort()) {
             for (const file of ["gitdir", "HEAD", "locked", "commondir"]) paths.push(join(worktreesDir, id, file));
         }
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) return null;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) return null;
     }
     return paths;
 }
@@ -104,15 +107,15 @@ async function fingerprint(paths: string[]): Promise<string | null> {
     const now = Date.now();
     const parts: string[] = [];
     for (const path of paths) {
-        let info: Deno.FileInfo;
+        let info: Stats;
         try {
-            info = await Deno.lstat(path);
+            info = await fsLstat(path);
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) return null;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) return null;
             parts.push(`${path}\0absent`);
             continue;
         }
-        if (info.isDirectory) {
+        if (info.isDirectory()) {
             // Lock files churn directory timestamps on every Git write. Entries
             // that matter are evidence paths themselves, so a directory only
             // contributes its identity.
@@ -121,7 +124,7 @@ async function fingerprint(paths: string[]): Promise<string | null> {
         }
         // lstat describes a symlink, not the target Git reads. Unknown file kinds
         // cannot supply evidence that a Git answer is still current.
-        if (!info.isFile) return null;
+        if (!info.isFile()) return null;
         const mtime = info.mtime?.getTime();
         const ctime = info.ctime?.getTime();
         if (mtime === undefined || now - mtime < RACY_WINDOW_MS) return null;

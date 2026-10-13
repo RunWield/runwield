@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     engineerQuickFixMechanicalValidationScenario,
     guideInquiryRoleJourneyScenario,
@@ -15,7 +16,7 @@ const scenarioExportNames = new Map([
 ]);
 
 for (const scenario of roleJourneyScenarios) {
-    Deno.test(`golden role journey: ${scenario.name}`, async () => {
+    test(`golden role journey: ${scenario.name}`, async () => {
         const { runGoldenScenarioChildProcess } = await import("../testing/child-protocol.js");
         const result = await runGoldenScenarioChildProcess({
             scenarioModule: "src/ui/tui/golden-scenarios/role-journeys.js",

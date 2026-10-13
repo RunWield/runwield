@@ -1,5 +1,6 @@
-import { parse as parseJsonc } from "@std/jsonc";
-import { join } from "@std/path";
+import { readFileSync } from "node:fs";
+import { parse as parseJsonc } from "../jsonc.ts";
+import { join } from "node:path";
 import { personalGlobalRoot } from "./personal-resources.ts";
 
 export interface RemoteSettingsConnection {
@@ -31,9 +32,9 @@ export function remoteSettingsSnapshot(mounted: string | undefined): string | un
 
 function mountedSettings(): string | undefined {
     try {
-        return JSON.stringify(parseJsonc(Deno.readTextFileSync(join(personalGlobalRoot(), "settings.json"))));
+        return JSON.stringify(parseJsonc(readFileSync(join(personalGlobalRoot(), "settings.json"), "utf8")));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return undefined;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
         throw error;
     }
 }

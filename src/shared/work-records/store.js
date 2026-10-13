@@ -1,9 +1,13 @@
+import { recoverWindowsRename } from "../native-file-replace-windows.ts";
+import fs from "node:fs/promises";
+import { link, open, opendir } from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 /**
  * @module shared/work-records/store
  * Canonical Work Record filesystem store.
  */
 
-import { basename, dirname, join, relative, resolve } from "@std/path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { WORK_RECORDS_DIR_NAME } from "../../constants.js";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.js";
 import { requestWorkspaceSearchRefresh } from "../workspace-search-refresh.ts";
@@ -26,16 +30,18 @@ export function getWorkRecordsDir(cwd) {
 /** @param {string} cwd */
 export async function ensureWorkRecordsDir(cwd) {
     const dir = getWorkRecordsDir(cwd);
-    await Deno.mkdir(dir, { recursive: true });
+    await fsMkdir(dir, { recursive: true });
     return dir;
 }
 
 /** @param {string} title */
 export function slugifyWorkRecordTitle(title) {
-    return String(title || "work-record")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "") || "work-record";
+    return (
+        String(title || "work-record")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "work-record"
+    );
 }
 
 /**
@@ -72,7 +78,7 @@ function relativeWorkRecordPath(cwd, filePath) {
  */
 export async function readWorkRecord(cwd, fileName) {
     const filePath = resolveWorkRecordPath(cwd, fileName);
-    const markdown = await Deno.readTextFile(filePath);
+    const markdown = await fsReadFile(filePath, "utf8");
     try {
         return parseWorkRecordMarkdown(markdown, {
             path: filePath,
@@ -95,16 +101,16 @@ export async function listWorkRecords(cwd, options = {}) {
     const dir = options.createDir === false ? getWorkRecordsDir(cwd) : await ensureWorkRecordsDir(cwd);
     if (options.createDir === false) {
         try {
-            const stat = await Deno.stat(dir);
-            if (!stat.isDirectory) return [];
+            const stat = await fsStat(dir);
+            if (!stat.isDirectory()) return [];
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return [];
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
             throw error;
         }
     }
     const records = [];
-    for await (const entry of Deno.readDir(dir)) {
-        if (!entry.isFile || !entry.name.endsWith(".md")) continue;
+    for await (const entry of await opendir(dir)) {
+        if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
         records.push(await readWorkRecord(cwd, entry.name));
     }
     return records.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
@@ -130,16 +136,16 @@ async function createCanonicalFile(directory, filePath, markdown) {
     const tempPath = join(directory, `.${basename(filePath)}.${crypto.randomUUID()}.tmp`);
     let file;
     try {
-        file = await Deno.open(tempPath, { createNew: true, write: true });
-        await file.write(new TextEncoder().encode(markdown));
+        file = await open(tempPath, "wx");
+        await file.writeFile(markdown);
         await file.sync();
-        file.close();
+        await file.close();
         file = undefined;
-        await Deno.link(tempPath, filePath);
+        await link(tempPath, filePath);
         await syncDirectory(directory);
     } finally {
-        if (file) file.close();
-        await Deno.remove(tempPath).catch(() => {});
+        if (file) await file.close();
+        await fsRm(tempPath).catch(() => {});
     }
 }
 
@@ -170,13 +176,13 @@ export async function writeWorkRecord(cwd, attrs, body, options = {}) {
     try {
         await createCanonicalFile(directory, filePath, markdown);
     } catch (error) {
-        if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
         const alternateName = collisionFileName(requestedFileName, validated.attrs.recordId);
         filePath = resolveWorkRecordPath(cwd, alternateName);
         try {
             await createCanonicalFile(directory, filePath, markdown);
         } catch (alternateError) {
-            if (alternateError instanceof Deno.errors.AlreadyExists) {
+            if (alternateError instanceof Error && "code" in alternateError && alternateError.code === "EEXIST") {
                 throw new Error(
                     `Work Record canonical paths already exist: ${requestedFileName} and ${alternateName}. No file was overwritten.`,
                     { cause: alternateError },
@@ -196,11 +202,11 @@ export async function writeWorkRecord(cwd, attrs, body, options = {}) {
 /** @param {string} directory */
 async function syncDirectory(directory) {
     try {
-        const handle = await Deno.open(directory, { read: true });
+        const handle = await open(directory, "r");
         try {
             await handle.sync();
         } finally {
-            handle.close();
+            await handle.close();
         }
     } catch {
         // Some filesystems do not support directory sync. Rename is still atomic.
@@ -229,7 +235,7 @@ export async function deleteWorkRecord(cwd, currentRecord) {
     if (onDisk.attrs.recordId.toLowerCase() !== currentRecord.attrs.recordId.toLowerCase()) {
         throw new Error("Current Work Record identity does not match the file at its canonical path.");
     }
-    await Deno.remove(currentPath);
+    await fsRm(currentPath);
     await syncDirectory(expectedDir);
     await requestWorkspaceSearchRefresh(cwd);
 }
@@ -265,16 +271,20 @@ export async function replaceWorkRecord(cwd, currentRecord, markdown) {
     const tempPath = join(expectedDir, `.${basename(currentPath)}.${crypto.randomUUID()}.tmp`);
     let file;
     try {
-        file = await Deno.open(tempPath, { createNew: true, write: true });
-        await file.write(new TextEncoder().encode(markdown));
+        file = await open(tempPath, "wx");
+        await file.writeFile(markdown);
         await file.sync();
-        file.close();
+        await file.close();
         file = undefined;
-        await Deno.rename(tempPath, currentPath);
+        try {
+            await fs.rename(tempPath, currentPath);
+        } catch (error) {
+            if (!(error instanceof Error && recoverWindowsRename(error, tempPath, currentPath))) throw error;
+        }
         await syncDirectory(expectedDir);
     } catch (error) {
-        if (file) file.close();
-        await Deno.remove(tempPath).catch(() => {});
+        if (file) await file.close();
+        await fsRm(tempPath).catch(() => {});
         throw error;
     }
     await requestWorkspaceSearchRefresh(cwd);

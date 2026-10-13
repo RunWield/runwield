@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { SessionRuntime } from "./session-runtime.ts";
 import { SESSION_RUNTIME_METHOD_POLICY } from "./session-runtime-method-policy.ts";
 
@@ -35,7 +36,7 @@ function assertCompleteMethodPolicy(methodNames: string[], policy: RuntimeMethod
     }
 }
 
-Deno.test("SessionRuntime public methods all have one explicit activation policy", () => {
+test("SessionRuntime public methods all have one explicit activation policy", () => {
     assertCompleteMethodPolicy(publicMethodNames(SessionRuntime.prototype), SESSION_RUNTIME_METHOD_POLICY);
     assertEquals(
         new Set(Object.keys(SESSION_RUNTIME_METHOD_POLICY)).size,
@@ -43,7 +44,7 @@ Deno.test("SessionRuntime public methods all have one explicit activation policy
     );
 });
 
-Deno.test("SessionRuntime method policy completeness assertion detects drift", () => {
+test("SessionRuntime method policy completeness assertion detects drift", () => {
     const copiedMethodNames = [...publicMethodNames(SessionRuntime.prototype), "newPublicRuntimeMethod"].sort();
 
     assertThrows(

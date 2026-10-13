@@ -1,10 +1,14 @@
+/** @typedef {import("../front-matter.ts").FrontMatterRecord & { bashAllowedCommands?: import("../bash-command-policy.ts").BashAllowedCommands | null }} AgentDefinitionFrontMatter */
+import { readFileSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 /**
  * @module shared/session/agents
  * Agent discovery — scans agent definitions (bundled + overrides) and returns merged metadata.
  */
 
-import { basename, dirname, fromFileUrl, join } from "@std/path";
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { AGENT_DEFS_DIR, AGENTS, SYSTEM_PROMPT_TEMPLATE_PATH } from "../../constants.js";
 import { directoryExists, fileExists } from "../helpers.ts";
 import {
@@ -13,7 +17,7 @@ import {
     personalGlobalRoot,
     PersonalResourcePathError,
 } from "../remote/personal-resources.ts";
-import { PROTECTED_TOOL_NAMES, UNIVERSAL_AGENT_TOOL_NAMES } from "../../tools/registry.ts";
+import { AGENT_TOOL_SETS, PROTECTED_TOOL_NAMES, UNIVERSAL_AGENT_TOOL_NAMES } from "../../tools/registry.ts";
 import { normalizeBashAllowedCommands } from "../bash-command-policy.ts";
 
 /** @returns {string | null} */
@@ -168,7 +172,7 @@ function readDisplayNameFromFrontMatterSync(internalName, projectRoot) {
         let raw;
         try {
             assertPersonalResourcePathSync(filePath, "Agent display name");
-            raw = Deno.readTextFileSync(filePath);
+            raw = readFileSync(filePath, "utf8");
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
             continue;
@@ -225,9 +229,9 @@ export function getAgentDisplayName(internalName, projectRoot) {
 
     throw new Error(
         `getAgentDisplayName: no agent definition with a frontmatter "name:" field was found for "${canonicalName}". ` +
-            `Searched: ${
-                getAgentDefDirsByPriority(projectRoot).map((dir) => join(dir, `${canonicalName}.md`)).join(", ")
-            }.`,
+            `Searched: ${getAgentDefDirsByPriority(projectRoot)
+                .map((dir) => join(dir, `${canonicalName}.md`))
+                .join(", ")}.`,
     );
 }
 
@@ -247,7 +251,7 @@ function readBusyLinesFromFrontMatterSync(internalName, projectRoot) {
         let raw;
         try {
             assertPersonalResourcePathSync(filePath, "Agent busy lines");
-            raw = Deno.readTextFileSync(filePath);
+            raw = readFileSync(filePath, "utf8");
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
             continue;
@@ -297,8 +301,8 @@ export async function listAgentDefNames(projectRoot) {
     for (const dir of getAgentDefLayerDirs(projectRoot)) {
         await assertPersonalResourcePath(dir, "Agent definitions directory");
         if (!(await directoryExists(dir))) continue;
-        for await (const entry of Deno.readDir(dir)) {
-            if ((!entry.isFile && !entry.isSymlink) || !entry.name.endsWith(".md")) continue;
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+            if ((!entry.isFile() && !entry.isSymbolicLink()) || !entry.name.endsWith(".md")) continue;
             await assertPersonalResourcePath(join(dir, entry.name), "Agent definition");
             const fileName = entry.name.replace(/\.md$/, "");
             const canonicalName = normalizeAgentInternalName(fileName);
@@ -333,6 +337,30 @@ function normalizeToolNames(tools) {
     }
 
     return normalized;
+}
+
+/**
+ * Expand `toolSets` front matter into the tool names of each named set.
+ * Unknown names fail so a typo can't silently drop an Agent's tools.
+ *
+ * @param {unknown} value
+ * @param {string} source
+ * @returns {string[]}
+ */
+function expandToolSets(value, source) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || !value.every((name) => typeof name === "string")) {
+        throw new Error(`${source}: toolSets must be a list of set names.`);
+    }
+    return value.flatMap((name) => {
+        const setName = name.trim();
+        if (!Object.hasOwn(AGENT_TOOL_SETS, setName)) {
+            throw new Error(
+                `${source}: unknown toolSets entry "${name}". Expected one of: ${Object.keys(AGENT_TOOL_SETS).join(", ")}.`,
+            );
+        }
+        return AGENT_TOOL_SETS[setName];
+    });
 }
 
 /**
@@ -396,7 +424,7 @@ export function resolveSessionToolNames(agentTools, toolNames, customToolNames) 
     const normalizedCustomToolNames = normalizeToolNames(customToolNames);
     const allowedToolNames = new Set(normalizedAgentTools);
     const universalAgentToolNames = normalizedAgentTools.filter((toolName) =>
-        UNIVERSAL_AGENT_TOOL_NAMES.includes(toolName)
+        UNIVERSAL_AGENT_TOOL_NAMES.includes(toolName),
     );
 
     /** @type {string[]} */
@@ -434,9 +462,7 @@ export async function listAllAgentDefinitions(projectRoot) {
         } catch (err) {
             if (err instanceof PersonalResourcePathError) throw err;
             // Surface malformed agent definitions instead of silently dropping them.
-            console.error(
-                `[RunWield] Skipping agent "${name}": ${err instanceof Error ? err.message : String(err)}`,
-            );
+            console.error(`[RunWield] Skipping agent "${name}": ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 
@@ -491,8 +517,10 @@ export async function isWorkflowOnlyAgent(agentName, projectRoot) {
  */
 export function buildWorkflowOnlyAgentMessage(agentName, projectRoot) {
     const displayName = getAgentDisplayName(agentName, projectRoot);
-    return `${displayName} is activated by RunWield as part of a workflow, not by hand. ` +
-        `Staying with the current agent.`;
+    return (
+        `${displayName} is activated by RunWield as part of a workflow, not by hand. ` +
+        `Staying with the current agent.`
+    );
 }
 
 /**
@@ -532,13 +560,14 @@ function normalizeSharedPracticeNames(value, agentName) {
  * @returns {Promise<string>}
  */
 async function readSharedPracticeBody(name, projectRoot) {
-    const candidatePaths = getAgentDefDirsByPriority(projectRoot)
-        .map((dir) => join(dir, SHARED_PRACTICE_DIR, `${name}.md`));
+    const candidatePaths = getAgentDefDirsByPriority(projectRoot).map((dir) =>
+        join(dir, SHARED_PRACTICE_DIR, `${name}.md`),
+    );
 
     for (const filePath of candidatePaths) {
         await assertPersonalResourcePath(filePath, `shared practice "${name}"`);
         if (!(await fileExists(filePath))) continue;
-        const raw = await Deno.readTextFile(filePath);
+        const raw = await readFile(filePath, "utf8");
         if (!hasFrontMatter(raw)) {
             throw new Error(`Shared practice fragment ${filePath} has no frontmatter`);
         }
@@ -576,7 +605,8 @@ export async function composeSharedPracticePrompt(value, agentName, projectRoot)
  * layer sets `promptOverride: true`, lower-layer prompt content is discarded.
  * Fragments named by the merged `sharedPractice:` list are appended last, so an
  * agent prompt reads persona → process → universal practice.
- * Tool lists are replaced when a higher layer defines `tools`. Tools declared
+ * Tool lists are replaced when a higher layer defines `tools` or `toolSets`;
+ * that layer's list is its expanded sets followed by its `tools`. Tools declared
  * in the lowest existing layer are treated as "bundled" for protected-tool
  * enforcement (always re-added even if a higher layer narrows the list).
  *
@@ -601,19 +631,28 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         await assertPersonalResourcePath(filePath, `Agent definition "${agentName}"`);
         if (!(await fileExists(filePath))) continue;
 
-        const raw = await Deno.readTextFile(filePath);
+        const raw = await readFile(filePath, "utf8");
         if (!hasFrontMatter(raw)) {
             throw new Error(`Agent def ${filePath} has no frontmatter`);
         }
 
-        const { attrs, body } = extractYaml(raw);
+        const { attrs, body } = /** @type {import("../front-matter.ts").FrontMatter<AgentDefinitionFrontMatter>} */ (
+            extractYaml(raw)
+        );
         if (Object.hasOwn(attrs, "bashAllowedCommands")) {
-            attrs.bashAllowedCommands = normalizeBashAllowedCommands(attrs.bashAllowedCommands, filePath);
+            const commands = normalizeBashAllowedCommands(attrs.bashAllowedCommands, filePath);
+            const inherited = mergedAttrs.bashAllowedCommands;
+            attrs.bashAllowedCommands = commands?.length
+                ? [...new Set([...(Array.isArray(inherited) ? inherited : []), ...commands])]
+                : commands;
         }
         found = true;
 
-        if (Object.prototype.hasOwnProperty.call(attrs, "tools")) {
-            const normalized = normalizeToolNames(attrs.tools);
+        if (Object.hasOwn(attrs, "tools") || Object.hasOwn(attrs, "toolSets")) {
+            const normalized = normalizeToolNames([
+                ...expandToolSets(attrs.toolSets, filePath),
+                ...normalizeToolNames(attrs.tools),
+            ]);
             if (!bundledToolsSet) {
                 bundledTools = normalized;
                 bundledToolsSet = true;
@@ -632,20 +671,18 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
     }
 
     if (!found) {
-        throw new Error(
-            `Could not find agent def for "${agentName}". Checked: ${filePaths.join(", ")}`,
-        );
+        throw new Error(`Could not find agent def for "${agentName}". Checked: ${filePaths.join(", ")}`);
     }
 
-    const displayName = typeof mergedAttrs.name === "string" && mergedAttrs.name.trim()
-        ? mergedAttrs.name.trim()
-        : agentName;
+    const displayName =
+        typeof mergedAttrs.name === "string" && mergedAttrs.name.trim() ? mergedAttrs.name.trim() : agentName;
     const model = typeof mergedAttrs.model === "string" && mergedAttrs.model.trim() ? mergedAttrs.model.trim() : "";
     const description = typeof mergedAttrs.description === "string" ? mergedAttrs.description.trim() : "";
-    const thinkingLevel = typeof mergedAttrs.thinkingLevel === "string" &&
-            ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(mergedAttrs.thinkingLevel)
-        ? mergedAttrs.thinkingLevel
-        : undefined;
+    const thinkingLevel =
+        typeof mergedAttrs.thinkingLevel === "string" &&
+        ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(mergedAttrs.thinkingLevel)
+            ? mergedAttrs.thinkingLevel
+            : undefined;
     const temperature = normalizeTemperature(mergedAttrs.temperature);
     const contextContract = normalizeContextContract(mergedAttrs.contextContract, agentName);
     // Merged, so a project or home layer can mark its own Agent workflow-only —
@@ -662,7 +699,7 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
     if (sharedPracticePrompt) promptSegments.push(sharedPracticePrompt);
 
     const mergedPromptBody = promptSegments.join("\n\n").trim();
-    const CORE_SYSTEM_PROMPT = await Deno.readTextFile(SYSTEM_PROMPT_TEMPLATE_PATH);
+    const CORE_SYSTEM_PROMPT = await readFile(SYSTEM_PROMPT_TEMPLATE_PATH, "utf8");
     const systemPrompt = CORE_SYSTEM_PROMPT.replace("{{AGENT_PROMPT}}", mergedPromptBody);
 
     const protectedToolsForAgent = bundledTools.filter((toolName) => PROTECTED_TOOL_NAMES.includes(toolName));

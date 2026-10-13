@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.js";
@@ -196,10 +197,11 @@ export function renderFooterWorkflowLabelParts(parts: FooterWorkflowPart[], them
 
 function readGitBranchSync(cwd: string): string | undefined {
     try {
-        const cmd = new Deno.Command("git", { args: ["branch", "--show-current"], cwd });
-        const { success, stdout } = cmd.outputSync();
-        if (!success) return undefined;
-        return new TextDecoder().decode(stdout).trim() || undefined;
+        return execFileSync("git", ["branch", "--show-current"], {
+            cwd,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "ignore"],
+        }).trim() || undefined;
     } catch {
         return undefined;
     }

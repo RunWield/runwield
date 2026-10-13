@@ -1,19 +1,21 @@
 #!/bin/sh
-# Pre-commit hook: format staged files with deno fmt, then re-stage them.
+# Pre-commit hook: format staged files with Bun/Prettier, then re-stage them.
 # Install: git config core.hooksPath .githooks
 
 set -e
+tool_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+bun "$tool_root/scripts/check-bun-runtime.ts"
 
 staged=$(git diff --cached --name-only --diff-filter=ACM -- \
     '*.js' '*.jsx' '*.ts' '*.tsx' '*.json' '*.md' '*.css' '*.html' '*.yml' '*.yaml' | head -c 20000)
 
 if [ -z "$staged" ]; then
-    echo "  (no formattable files staged, skipping deno fmt)"
+    echo "  (no formattable files staged, skipping Bun/Prettier)"
     exit 0
 fi
 
-echo "→ Running deno fmt on staged files..."
-echo "$staged" | tr '\n' '\0' | xargs -0 deno fmt --quiet 2>&1
+echo "→ Running Bun/Prettier on staged files..."
+echo "$staged" | tr '\n' '\0' | xargs -0 bun "$tool_root/node_modules/prettier/bin/prettier.cjs" --tab-width 4 --print-width 120 --ignore-path "$tool_root/.githooks/format-ignore" --write 2>&1
 # These paths were already staged intentionally. `-f` matters for tracked files
 # that live below an ignore rule (for example generated Astro declarations):
 # formatting may replace the file, after which a plain `git add` rejects it.

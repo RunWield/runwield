@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module cmd/install
  * RunWield install command wrapping Pi's PackageManager.
@@ -61,7 +62,7 @@ export async function runInstallCommand(argv: string[]): Promise<void> {
     if (argv.length === 0) {
         console.error("Usage: wld install <source>");
         console.error("Sources: npm:<spec>, git:<url>, local:<path>");
-        Deno.exitCode = 1;
+        process.exitCode = 1;
         return;
     }
 
@@ -118,6 +119,6 @@ export async function runInstallCommand(argv: string[]): Promise<void> {
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`Installation failed: ${message}`);
-        Deno.exitCode = 1;
+        process.exitCode = 1;
     }
 }

@@ -1,5 +1,15 @@
-import { assert, assertEquals, assertMatch, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
@@ -37,7 +47,7 @@ function createMnemotecaFixture(
                 const outputPath = args.at(-1) || "";
                 fixture.exports.push({ args: [...args], outputPath });
                 if (!options.omitOutput && !options.exitCode) {
-                    await Deno.writeTextFile(outputPath, '{"type":"mnemoteca-export"}\n');
+                    await fsWriteFile(outputPath, '{"type":"mnemoteca-export"}\n');
                 }
                 const exitCode = options.exitCode || 0;
                 return {
@@ -72,7 +82,7 @@ async function captureConsole(run: () => void | Promise<void>): Promise<{ logs: 
     return { logs, errors };
 }
 
-Deno.test("sleep help uses the real command registry", async () => {
+test("sleep help uses the real command registry", async () => {
     const output = await captureConsole(() =>
         runSleepCommand(["--help"], {
             mnemotecaPort: createMnemotecaFixture().port,
@@ -83,7 +93,7 @@ Deno.test("sleep help uses the real command registry", async () => {
     assertStringIncludes(output.logs.join("\n"), "memory");
 });
 
-Deno.test("standalone sleep delegates only interactive session startup", async () => {
+test("standalone sleep delegates only interactive session startup", async () => {
     let request: string | null = null;
     let agentName = "";
     await runSleepCommand([], {
@@ -101,8 +111,8 @@ Deno.test("standalone sleep delegates only interactive session startup", async (
     assertEquals(agentName, "engineer");
 });
 
-Deno.test("Mnemoteca export creates its real fixture directory and verifies the subprocess output", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-sleep-export-" });
+test("Mnemoteca export creates its real fixture directory and verifies the subprocess output", async () => {
+    const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-sleep-export-"));
     const outputPath = join(tempDir, "nested", "backup.jsonl");
     const fixture = createMnemotecaFixture();
     try {
@@ -112,14 +122,14 @@ Deno.test("Mnemoteca export creates its real fixture directory and verifies the 
             args: ["export", "--name", "project", "--no-embeddings", "--output", outputPath],
             outputPath,
         }]);
-        assert((await Deno.stat(outputPath)).isFile);
+        assert((await fsStat(outputPath)).isFile());
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("Mnemoteca export rejects subprocess failure and false success", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-sleep-export-failure-" });
+test("Mnemoteca export rejects subprocess failure and false success", async () => {
+    const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-sleep-export-failure-"));
     try {
         await assertRejects(
             () =>
@@ -142,11 +152,11 @@ Deno.test("Mnemoteca export rejects subprocess failure and false success", async
             "did not create the backup",
         );
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("sleep backs up fixture memory before a real Runtime switches and runs Engineer", async () => {
+test("sleep backs up fixture memory before a real Runtime switches and runs Engineer", async () => {
     await withRuntimeCommandFixture("sleep-command-", async ({ homeDir, projectRoot, setModelResponse }) => {
         setModelResponse("Memory maintenance complete.");
         const runtime = createSessionRuntime();
@@ -175,11 +185,11 @@ Deno.test("sleep backs up fixture memory before a real Runtime switches and runs
             const backupPath = mnemoteca.exports[0].outputPath;
             assert(backupPath.startsWith(join(homeDir, ".wld")));
             assertMatch(backupPath, /project\.sleep-backup-.*\.jsonl$/);
-            assertEquals(await Deno.readTextFile(backupPath), '{"type":"mnemoteca-export"}\n');
+            assertEquals(await fsReadFile(backupPath, "utf8"), '{"type":"mnemoteca-export"}\n');
             assertEquals(messages, [`[RunWield] Memory backup created before sleep mode: ${backupPath}`]);
             assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, "engineer");
             assertEquals(requests.length, 1);
-            assertStringIncludes(requests[0], await Deno.readTextFile(new URL("./prompt.md", import.meta.url)));
+            assertStringIncludes(requests[0], await fsReadFile(new URL("./prompt.md", import.meta.url), "utf8"));
             assertStringIncludes(requests[0], `Immutable pre-maintenance backup: ${backupPath}`);
             assertStringIncludes(requests[0], "Session artifact directory:");
         } finally {
@@ -188,7 +198,7 @@ Deno.test("sleep backs up fixture memory before a real Runtime switches and runs
     });
 });
 
-Deno.test("sleep can be the first prompt in a new deferred-persistence Session", async () => {
+test("sleep can be the first prompt in a new deferred-persistence Session", async () => {
     await withRuntimeCommandFixture(
         "sleep-command-first-prompt-",
         async ({ homeDir, projectRoot, setModelResponse }) => {
@@ -222,7 +232,7 @@ Deno.test("sleep can be the first prompt in a new deferred-persistence Session",
     );
 });
 
-Deno.test("sleep leaves a real Runtime on its current Agent when external backup fails", async () => {
+test("sleep leaves a real Runtime on its current Agent when external backup fails", async () => {
     await withRuntimeCommandFixture("sleep-command-failure-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
@@ -249,7 +259,7 @@ Deno.test("sleep leaves a real Runtime on its current Agent when external backup
     });
 });
 
-Deno.test("sleep rejects missing Runtime state before touching Mnemoteca", async () => {
+test("sleep rejects missing Runtime state before touching Mnemoteca", async () => {
     const mnemoteca = createMnemotecaFixture();
     await assertRejects(
         () =>

@@ -4,7 +4,7 @@
  */
 
 import { agent, methods, ndJsonStream, PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk";
-import { isAbsolute } from "@std/path";
+import { isAbsolute } from "node:path";
 import { VERSION } from "../shared/version.js";
 import { openFileSessionStore } from "../shared/session/file-session-store.ts";
 import {

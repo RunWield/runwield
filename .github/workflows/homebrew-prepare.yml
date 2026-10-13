@@ -28,10 +28,13 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v5
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Render Homebrew tap artifact
               env:
@@ -42,7 +45,7 @@ jobs:
                   args=(--mnemoteca-tag "$MNEMOTECA_TAG" --output homebrew-tap)
                   if [[ -n "$WLD_TAG" ]]; then args+=(--wld-tag "$WLD_TAG"); fi
                   if [[ "$TEST_ONLY" == "true" ]]; then args+=(--test-only); fi
-                  deno task package:homebrew "${args[@]}"
+                  bun run package:homebrew "${args[@]}"
                   tar -czf "runwield-homebrew-tap-${MNEMOTECA_TAG}.tar.gz" -C homebrew-tap .
                   shasum -a 256 "runwield-homebrew-tap-${MNEMOTECA_TAG}.tar.gz" > "runwield-homebrew-tap-${MNEMOTECA_TAG}.tar.gz.sha256"
 

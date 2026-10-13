@@ -1,3 +1,4 @@
+import process from "node:process";
 import { runAgyCliMcpSetupPrompt } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
 import { runRunWieldMcpStdioTransport } from "../../shared/session/bridged-tools/stdio-transport.ts";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -12,7 +13,7 @@ interface McpCommandContext {
 function usageError(message: string): never {
     console.error(`[RunWield] ${message}`);
     console.error("Usage: wld mcp agy-cli [--setup]");
-    Deno.exit(1);
+    process.exit(1);
 }
 
 function printMcpHelp(): void {
@@ -48,7 +49,7 @@ export async function runMcpCommand(argv: string[], context: McpCommandContext =
     const options = argv.slice(1);
     if (options.length === 1 && options[0] === "--setup") {
         const code = await runAgyCliMcpSetupPrompt();
-        if (code !== 0) Deno.exit(code);
+        if (code !== 0) process.exit(code);
         return;
     }
     if (options.length > 0) usageError(`Unknown MCP option: ${options[0]}`);

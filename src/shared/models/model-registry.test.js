@@ -1,5 +1,10 @@
-import { assert, assertEquals, assertObjectMatch, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     discoverProviderModel,
     migratePiModelConfigOnce,
@@ -7,77 +12,77 @@ import {
     RunWieldModelRegistry,
 } from "./model-registry.ts";
 
-Deno.test("RunWield model runtime registers statically bundled OAuth loaders before creation", async () => {
-    const source = await Deno.readTextFile(new URL("./model-registry.ts", import.meta.url));
+test("RunWield model runtime registers statically bundled OAuth loaders before creation", async () => {
+    const source = await fsReadFile(new URL("./model-registry.ts", import.meta.url), "utf8");
 
     assertStringIncludes(source, 'import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth"');
     assertStringIncludes(source, "registerBundledOAuthFlowsOnce();\n    const agentDir = getRunWieldModelConfigDir();");
 });
 
-Deno.test("migratePiModelConfigOnce copies Pi files into RunWield when missing", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-config-" });
+test("migratePiModelConfigOnce copies Pi files into RunWield when missing", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-config-"));
     try {
         const piDir = join(tempDir, ".pi", "agent");
         const runwieldDir = join(tempDir, ".wld");
-        await Deno.mkdir(piDir, { recursive: true });
-        await Deno.writeTextFile(join(piDir, "models.json"), '{"providers":{}}');
-        await Deno.writeTextFile(join(piDir, "auth.json"), '{"openai":{"type":"api_key","key":"abc"}}');
+        await fsMkdir(piDir, { recursive: true });
+        await fsWriteFile(join(piDir, "models.json"), '{"providers":{}}');
+        await fsWriteFile(join(piDir, "auth.json"), '{"openai":{"type":"api_key","key":"abc"}}');
 
         const result = migratePiModelConfigOnce({ homeDir: tempDir, runwieldDir });
 
         assertEquals(result.copied.sort(), ["auth.json", "models.json"]);
         assertEquals(result.failed, []);
-        assertEquals(await Deno.readTextFile(join(runwieldDir, "models.json")), '{"providers":{}}');
+        assertEquals(await fsReadFile(join(runwieldDir, "models.json"), "utf8"), '{"providers":{}}');
         assertEquals(
-            await Deno.readTextFile(join(runwieldDir, "auth.json")),
+            await fsReadFile(join(runwieldDir, "auth.json"), "utf8"),
             '{"openai":{"type":"api_key","key":"abc"}}',
         );
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("migratePiModelConfigOnce leaves existing RunWield files untouched", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-config-" });
+test("migratePiModelConfigOnce leaves existing RunWield files untouched", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-config-"));
     try {
         const piDir = join(tempDir, ".pi", "agent");
         const runwieldDir = join(tempDir, ".wld");
-        await Deno.mkdir(piDir, { recursive: true });
-        await Deno.mkdir(runwieldDir, { recursive: true });
-        await Deno.writeTextFile(join(piDir, "models.json"), '{"providers":{"pi":{}}}');
-        await Deno.writeTextFile(join(runwieldDir, "models.json"), '{"providers":{"runwield":{}}}');
+        await fsMkdir(piDir, { recursive: true });
+        await fsMkdir(runwieldDir, { recursive: true });
+        await fsWriteFile(join(piDir, "models.json"), '{"providers":{"pi":{}}}');
+        await fsWriteFile(join(runwieldDir, "models.json"), '{"providers":{"runwield":{}}}');
 
         const result = migratePiModelConfigOnce({ homeDir: tempDir, runwieldDir });
 
         assertEquals(result.copied, []);
-        assertEquals(await Deno.readTextFile(join(runwieldDir, "models.json")), '{"providers":{"runwield":{}}}');
+        assertEquals(await fsReadFile(join(runwieldDir, "models.json"), "utf8"), '{"providers":{"runwield":{}}}');
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("migratePiModelConfigOnce supports legacy ~/.pi file location", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-config-" });
+test("migratePiModelConfigOnce supports legacy ~/.pi file location", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-config-"));
     try {
         const piDir = join(tempDir, ".pi");
         const runwieldDir = join(tempDir, ".wld");
-        await Deno.mkdir(piDir, { recursive: true });
-        await Deno.writeTextFile(join(piDir, "auth.json"), '{"openai-codex":{"type":"oauth"}}');
+        await fsMkdir(piDir, { recursive: true });
+        await fsWriteFile(join(piDir, "auth.json"), '{"openai-codex":{"type":"oauth"}}');
 
         const result = migratePiModelConfigOnce({ homeDir: tempDir, runwieldDir });
 
         assertEquals(result.copied, ["auth.json"]);
-        assertEquals(await Deno.readTextFile(join(runwieldDir, "auth.json")), '{"openai-codex":{"type":"oauth"}}');
+        assertEquals(await fsReadFile(join(runwieldDir, "auth.json"), "utf8"), '{"openai-codex":{"type":"oauth"}}');
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("RunWieldCredentialStore preserves Codex OAuth token fields", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-credentials-oauth-" });
+test("RunWieldCredentialStore preserves Codex OAuth token fields", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-credentials-oauth-"));
     try {
         const authPath = join(tempDir, "auth.json");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             authPath,
             JSON.stringify({
                 "openai-codex": {
@@ -97,14 +102,14 @@ Deno.test("RunWieldCredentialStore preserves Codex OAuth token fields", async ()
             expires: 123456789,
         });
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("RunWieldModelRegistry availability delegates to runtime snapshot when hydrated", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-registry-runtime-" });
+test("RunWieldModelRegistry availability delegates to runtime snapshot when hydrated", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-registry-runtime-"));
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "models.json"),
             JSON.stringify({
                 providers: {
@@ -127,14 +132,14 @@ Deno.test("RunWieldModelRegistry availability delegates to runtime snapshot when
 
         assertEquals(registry.getAvailable(), [availableModel]);
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("RunWieldModelRegistry sync availability filters local models by configured auth", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-registry-sync-" });
+test("RunWieldModelRegistry sync availability filters local models by configured auth", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-registry-sync-"));
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "models.json"),
             JSON.stringify({
                 providers: {
@@ -156,14 +161,14 @@ Deno.test("RunWieldModelRegistry sync availability filters local models by confi
 
         assertEquals(registry.getAvailable().map((model) => `${model.provider}/${model.id}`), ["authed/available"]);
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("RunWieldModelRegistry cold sync availability includes built-in models with stored credentials", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-registry-cold-builtin-" });
+test("RunWieldModelRegistry cold sync availability includes built-in models with stored credentials", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-registry-cold-builtin-"));
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "auth.json"),
             JSON.stringify({ openai: { type: "api_key", key: "test-key" } }),
         );
@@ -173,14 +178,14 @@ Deno.test("RunWieldModelRegistry cold sync availability includes built-in models
 
         assertEquals(availableRefs.some((ref) => ref.startsWith("openai/")), true);
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("discoverProviderModel registers a model returned by OpenAI-compatible /models", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-discovery-" });
+test("discoverProviderModel registers a model returned by OpenAI-compatible /models", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-discovery-"));
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "models.json"),
             JSON.stringify({
                 providers: {
@@ -233,14 +238,14 @@ Deno.test("discoverProviderModel registers a model returned by OpenAI-compatible
         assert(result);
         assertObjectMatch(result, { provider: "crofai", id: "deepseek-v4-pro" });
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("discoverProviderModel defaults discovered models to text-only input", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-discovery-input-" });
+test("discoverProviderModel defaults discovered models to text-only input", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-discovery-input-"));
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "models.json"),
             JSON.stringify({
                 providers: {
@@ -294,14 +299,14 @@ Deno.test("discoverProviderModel defaults discovered models to text-only input",
         );
         assertEquals(registeredConfig.models[0].input, ["text", "image"]);
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("discoverProviderModel honors provider imageInputModels allowlist", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-discovery-allowlist-" });
+test("discoverProviderModel honors provider imageInputModels allowlist", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "runwield-model-discovery-allowlist-"));
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "models.json"),
             JSON.stringify({
                 providers: {
@@ -345,6 +350,6 @@ Deno.test("discoverProviderModel honors provider imageInputModels allowlist", as
         });
         assertEquals(registeredConfig.models[0].input, ["text"]);
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });

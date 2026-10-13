@@ -1,4 +1,9 @@
-import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -25,8 +30,8 @@ function setInteraction(hostedSession, requestInteraction) {
     hostedSession.setInteractionAdapter({ requestInteraction });
 }
 
-Deno.test("human Code Review metadata uses the Plan heading as the review title", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-human-review-title-" });
+test("human Code Review metadata uses the Plan heading as the review title", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-human-review-title-"));
     await savePlan(projectRoot, "filename-fallback", "# Readable Plan Title\n\nBody.", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -59,8 +64,8 @@ Deno.test("human Code Review metadata uses the Plan heading as the review title"
     assertEquals(planTitle, "Readable Plan Title");
 });
 
-Deno.test("human Code Review metadata falls back to the Plan filename when no title heading exists", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-human-review-title-" });
+test("human Code Review metadata falls back to the Plan filename when no title heading exists", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-human-review-title-"));
     await savePlan(projectRoot, "filename-fallback", "## Ignored Section\n\n#\n", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -93,7 +98,7 @@ Deno.test("human Code Review metadata falls back to the Plan filename when no ti
     assertEquals(planTitle, "filename-fallback");
 });
 
-Deno.test("runValidationLoop runs always human review after semantic approval and before merge", async () => {
+test("runValidationLoop runs always human review after semantic approval and before merge", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -131,7 +136,7 @@ Deno.test("runValidationLoop runs always human review after semantic approval an
     assertEquals(plan?.attrs.humanReviewDecision, "approved");
 });
 
-Deno.test("runValidationLoop ask mode can skip human review and merge", async () => {
+test("runValidationLoop ask mode can skip human review and merge", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -168,7 +173,7 @@ Deno.test("runValidationLoop ask mode can skip human review and merge", async ()
     assertEquals(uiAPI.messages.some((/** @type {string} */ message) => message.includes("You approved")), false);
 });
 
-Deno.test("runValidationLoop ask mode opens code review before merge when approved", async () => {
+test("runValidationLoop ask mode opens code review before merge when approved", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -206,7 +211,7 @@ Deno.test("runValidationLoop ask mode opens code review before merge when approv
     assertEquals(plan?.attrs.humanReviewDecision, "approved");
 });
 
-Deno.test("runValidationLoop resumes at reviewed and records durable human-review metadata before publication", async () => {
+test("runValidationLoop resumes at reviewed and records durable human-review metadata before publication", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -292,7 +297,7 @@ async function completedRepairMessages(options) {
     return [];
 }
 
-Deno.test("a code review closed with no answer asks instead of throwing the work back to the start", async () => {
+test("a code review closed with no answer asks instead of throwing the work back to the start", async () => {
     const { projectRoot, hostedSession, uiAPI } = await makeAwaitingReview();
     setInteraction(hostedSession, (request) => {
         if (request.type === "select") {
@@ -319,7 +324,7 @@ Deno.test("a code review closed with no answer asks instead of throwing the work
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });
 
-Deno.test("Retry reopens the code review that was closed without an answer", async () => {
+test("Retry reopens the code review that was closed without an answer", async () => {
     const { projectRoot, hostedSession, uiAPI } = await makeAwaitingReview();
     let opened = 0;
     setInteraction(hostedSession, (request) => {
@@ -347,14 +352,14 @@ Deno.test("Retry reopens the code review that was closed without an answer", asy
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.humanReviewDecision, "approved");
 });
 
-Deno.test("Code Review chat repairs rerun CI before reopening the fresh diff", async () => {
+test("Code Review chat repairs rerun CI before reopening the fresh diff", async () => {
     const { projectRoot, hostedSession } = await makeAwaitingReview();
     const sourcePath = `${projectRoot}/review-chat.ts`;
-    await Deno.writeTextFile(sourcePath, "export const label = 'base';\n");
+    await fsWriteFile(sourcePath, "export const label = 'base';\n");
     await git(projectRoot, ["add", "review-chat.ts"]);
     await git(projectRoot, ["commit", "-m", "review chat fixture"]);
     const baselineTree = await git(projectRoot, ["rev-parse", "HEAD"]);
-    await Deno.writeTextFile(sourcePath, "export const label = 'first';\n");
+    await fsWriteFile(sourcePath, "export const label = 'first';\n");
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
         triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
@@ -409,7 +414,7 @@ Deno.test("Code Review chat repairs rerun CI before reopening the fresh diff", a
         triageMeta: { classification: "QUICK_FIX", status: "reviewed", humanReviewMode: "always" },
         semanticReviewPort: {
             runIsolatedAgentSession: async (options) => {
-                await Deno.writeTextFile(sourcePath, "export const label = 'second';\n");
+                await fsWriteFile(sourcePath, "export const label = 'second';\n");
                 return await completedRepairMessages(options);
             },
         },
@@ -432,7 +437,7 @@ Deno.test("Code Review chat repairs rerun CI before reopening the fresh diff", a
     assertEquals(evidence.entries.filter((entry) => entry.kind === "human-revision").length, 1);
 });
 
-Deno.test("human code-review annotations are not duplicated in the engineer repair request", async () => {
+test("human code-review annotations are not duplicated in the engineer repair request", async () => {
     const { hostedSession } = await makeAwaitingReview();
     let capturedRequest = "";
     setInteraction(hostedSession, (request) => {
@@ -463,7 +468,7 @@ Deno.test("human code-review annotations are not duplicated in the engineer repa
     assertEquals(capturedRequest.match(/Use the existing keybinding machinery\./g)?.length, 1);
 });
 
-Deno.test("your feedback goes to the engineer, then the tests, then straight back to you", async () => {
+test("your feedback goes to the engineer, then the tests, then straight back to you", async () => {
     const { projectRoot, hostedSession } = await makeAwaitingReview();
     /** @type {string[]} */
     const opened = [];
@@ -509,7 +514,7 @@ Deno.test("your feedback goes to the engineer, then the tests, then straight bac
     assertEquals(plan?.attrs.humanReviewDecision, "approved");
 });
 
-Deno.test("asking for changes makes you the reviewer, so the reviewer agent stands down", async () => {
+test("asking for changes makes you the reviewer, so the reviewer agent stands down", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "validated_ci",
@@ -551,7 +556,7 @@ Deno.test("asking for changes makes you the reviewer, so the reviewer agent stan
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });
 
-Deno.test("an unconfigured Plan offers human review and cancellation pauses before delivery", async () => {
+test("an unconfigured Plan offers human review and cancellation pauses before delivery", async () => {
     const projectRoot = await makeValidationProjectRoot("default-review", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -586,7 +591,7 @@ Deno.test("an unconfigured Plan offers human review and cancellation pauses befo
 });
 
 for (const answer of [{ outcome: "canceled" }, { outcome: "selected", value: "close" }]) {
-    Deno.test(`Code Review offer ${answer.value || answer.outcome} stays pending without a skipped or approved outcome`, async () => {
+    test(`Code Review offer ${answer.value || answer.outcome} stays pending without a skipped or approved outcome`, async () => {
         const projectRoot = await makeValidationProjectRoot("p", {
             classification: "QUICK_FIX",
             status: "validated_reviewer",

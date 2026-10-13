@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs";
 import { AGENTS } from "../../../constants.js";
 import { recordManualModelSelection } from ".././active-agent-session.js";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
@@ -628,9 +629,9 @@ export class RuntimeAgentSettings {
     ensureSessionProjectForCwd(cwd: string) {
         if (!this.services.sessionStore) return null;
         try {
-            Deno.mkdirSync(cwd, { recursive: true });
+            mkdirSync(cwd, { recursive: true });
         } catch (error) {
-            if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
         }
         return this.services.sessionStore.ensureRuntimeProject({ root: cwd });
     }

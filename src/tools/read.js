@@ -1,3 +1,4 @@
+import { open as fsOpen, readFile as fsReadFile } from "node:fs/promises";
 /**
  * @module tools/read
  *
@@ -112,13 +113,13 @@ function bytesLookBinaryForDisplay(bytes) {
  * @returns {Promise<Uint8Array>}
  */
 async function readDisplaySampleBytes(absolutePath) {
-    const file = await Deno.open(absolutePath, { read: true });
+    const file = await fsOpen(absolutePath, "r");
     try {
         const buffer = new Uint8Array(BINARY_DISPLAY_SAMPLE_BYTES);
-        const bytesRead = await file.read(buffer);
+        const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
         return buffer.slice(0, bytesRead ?? 0);
     } finally {
-        file.close();
+        await file.close();
     }
 }
 
@@ -177,7 +178,7 @@ async function readDisplayImage(cwd, args) {
 
     try {
         const mimeType = mimeTypeForImagePath(path);
-        const bytes = await Deno.readFile(resolveReadToolPath(cwd, path));
+        const bytes = await fsReadFile(resolveReadToolPath(cwd, path));
         return { base64: Buffer.from(bytes).toString("base64"), mimeType };
     } catch {
         return null;

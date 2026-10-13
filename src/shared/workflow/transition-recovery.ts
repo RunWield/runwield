@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "../captured-process.ts";
+import { stat as fsStat } from "node:fs/promises";
 /**
  * @module shared/workflow/transition-recovery
  * Prove what an interrupted lifecycle transition actually did, and close what is settled.
@@ -147,7 +149,7 @@ export function buildEffectProver(
         if (WORKTREE_CREATION_EFFECTS.has(effect.effect)) {
             const path = typeof proof.path === "string" ? proof.path : undefined;
             if (!path) return { settled: false, reason: "the record names no worktree path to inspect" };
-            const exists = await Deno.stat(path).then((stat) => stat.isDirectory).catch(() => false);
+            const exists = await fsStat(path).then((stat) => stat.isDirectory()).catch(() => false);
             if (!exists) {
                 return { settled: true, reason: `worktree ${path} does not exist, so nothing was left behind` };
             }
@@ -182,20 +184,18 @@ export function buildEffectProver(
 }
 
 export async function runGitLines(projectRoot: string, args: string[]) {
-    const command = new Deno.Command("git", { args, cwd: projectRoot, stdout: "piped", stderr: "null" });
-    const { code, stdout } = await command.output();
+    const command = captureForegroundProcess("git", { args, cwd: projectRoot });
+    const { code, stdout } = await command;
     if (code !== 0) return [];
     return new TextDecoder().decode(stdout).split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
 export async function isGitAncestor(projectRoot: string, ancestor: string, ref: string) {
-    const command = new Deno.Command("git", {
+    const command = captureForegroundProcess("git", {
         args: ["merge-base", "--is-ancestor", ancestor, ref],
         cwd: projectRoot,
-        stdout: "null",
-        stderr: "null",
     });
-    const { code } = await command.output();
+    const { code } = await command;
     return code === 0;
 }
 

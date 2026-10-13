@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../src/testing/assertions.ts";
+import { test } from "node:test";
 import {
     assertPlanServerImageFileList,
     isProhibitedImageFile,
@@ -6,7 +7,7 @@ import {
     REQUIRED_IMAGE_FILES,
 } from "./assert-plan-server-image.js";
 
-Deno.test("assertPlanServerImageFileList accepts minimal generated runtime image files and required directories", () => {
+test("assertPlanServerImageFileList accepts minimal generated runtime image files and required directories", () => {
     const result = assertPlanServerImageFileList([
         ...REQUIRED_IMAGE_FILES,
         "/app/dist/workspace-runtime/client/styles.css",
@@ -16,7 +17,7 @@ Deno.test("assertPlanServerImageFileList accepts minimal generated runtime image
     assertEquals(result, { missingRequired: [], missingRequiredDirectories: [], prohibited: [] });
 });
 
-Deno.test("assertPlanServerImageFileList rejects repository source state and secret artifacts", () => {
+test("assertPlanServerImageFileList rejects repository source state and secret artifacts", () => {
     const result = assertPlanServerImageFileList([
         ...REQUIRED_IMAGE_FILES.filter((file) => file !== "/app/brand/logo.svg"),
         "/app/src/ui/workspace/server.js",
@@ -43,7 +44,7 @@ Deno.test("assertPlanServerImageFileList rejects repository source state and sec
     ]);
 });
 
-Deno.test("isProhibitedImageFile allows only passive assets below /app/src", () => {
+test("isProhibitedImageFile allows only passive assets below /app/src", () => {
     assertEquals(isProhibitedImageFile("/app/src/agent-definitions/router.md"), false);
     assertEquals(isProhibitedImageFile("/app/src/agent-definitions/subagent-definitions/reviewer-prompt.md"), true);
     assertEquals(isProhibitedImageFile("/app/src/ui/design-system/tokens.css"), false);

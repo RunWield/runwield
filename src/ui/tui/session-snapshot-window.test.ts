@@ -1,5 +1,7 @@
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { assert, assertEquals, assertNotStrictEquals, assertStrictEquals } from "@std/assert";
+import { ok as assert, notStrictEqual as assertNotStrictEquals, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";
@@ -26,7 +28,7 @@ async function withSessions(run: (runtime: SessionRuntime, first: string, second
     });
 }
 
-Deno.test("snapshot window reuses one snapshot inside the TTL", async () => {
+test("snapshot window reuses one snapshot inside the TTL", async () => {
     await withSessions((runtime, first) => {
         const window = createSessionSnapshotWindow(runtime, () => first, 60_000);
         const snapshot = window.read();
@@ -35,7 +37,7 @@ Deno.test("snapshot window reuses one snapshot inside the TTL", async () => {
     });
 });
 
-Deno.test("snapshot window refreshes after invalidate", async () => {
+test("snapshot window refreshes after invalidate", async () => {
     await withSessions((runtime, first) => {
         const window = createSessionSnapshotWindow(runtime, () => first, 60_000);
         const snapshot = window.read();
@@ -45,7 +47,7 @@ Deno.test("snapshot window refreshes after invalidate", async () => {
     });
 });
 
-Deno.test("snapshot window tracks session switches through the id reader", async () => {
+test("snapshot window tracks session switches through the id reader", async () => {
     await withSessions((runtime, first, second) => {
         let id = first;
         const window = createSessionSnapshotWindow(runtime, () => id, 60_000);
@@ -55,7 +57,7 @@ Deno.test("snapshot window tracks session switches through the id reader", async
     });
 });
 
-Deno.test("replacement Session events invalidate a warmed snapshot", async () => {
+test("replacement Session events invalidate a warmed snapshot", async () => {
     await withSessions((runtime, first, second) => {
         let id = first;
         const window = createSessionSnapshotWindow(runtime, () => id, 60_000);
@@ -69,7 +71,7 @@ Deno.test("replacement Session events invalidate a warmed snapshot", async () =>
     });
 });
 
-Deno.test("snapshot window expires exactly at the TTL boundary", async () => {
+test("snapshot window expires exactly at the TTL boundary", async () => {
     await withSessions((runtime, first) => {
         const realNow = Date.now;
         let now = realNow();
@@ -88,7 +90,7 @@ Deno.test("snapshot window expires exactly at the TTL boundary", async () => {
     });
 });
 
-Deno.test("snapshot window removes the old Session subscription on rebind", async () => {
+test("snapshot window removes the old Session subscription on rebind", async () => {
     await withSessions((runtime, first, second) => {
         let id = first;
         const window = createSessionSnapshotWindow(runtime, () => id, 60_000);
@@ -105,7 +107,7 @@ Deno.test("snapshot window removes the old Session subscription on rebind", asyn
     });
 });
 
-Deno.test("snapshot window disposal removes its subscription and does not reattach on read", async () => {
+test("snapshot window disposal removes its subscription and does not reattach on read", async () => {
     await withSessions((runtime, first, second) => {
         let id = first;
         const window = createSessionSnapshotWindow(runtime, () => id, 60_000);
@@ -122,7 +124,7 @@ Deno.test("snapshot window disposal removes its subscription and does not reatta
     });
 });
 
-Deno.test("snapshot window caches null until invalidation", async () => {
+test("snapshot window caches null until invalidation", async () => {
     await withSessionViewFixture(({ runtime, host, projectRoot }) => {
         const id = crypto.randomUUID();
         const window = createSessionSnapshotWindow(runtime, () => id, 60_000);
@@ -138,7 +140,7 @@ Deno.test("snapshot window caches null until invalidation", async () => {
     });
 });
 
-Deno.test("sidebar snapshots follow question lifecycle events before their cache expires", async () => {
+test("sidebar snapshots follow question lifecycle events before their cache expires", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
         session.replaceWorkflowContext({ routingIntent: "PLANNED_CHANGE", complexity: "LOW", planName: "example" });
         const window = createSessionSnapshotWindow(runtime, () => sessionId, 60_000);
@@ -209,7 +211,7 @@ Deno.test("sidebar snapshots follow question lifecycle events before their cache
     });
 });
 
-Deno.test("running shell commands do not become sidebar questions", async () => {
+test("running shell commands do not become sidebar questions", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
         session.replaceWorkflowContext({ routingIntent: "QUICK_FIX", complexity: "LOW" });
         const states: boolean[] = [];

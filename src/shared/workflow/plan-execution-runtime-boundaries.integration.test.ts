@@ -1,3 +1,5 @@
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
 /**
  * The split put a resolver between the Plan's execution owner and the Agent the
  * user actually talks to. These tests enter through the real dispatch paths —
@@ -9,7 +11,8 @@
  * model was handed, the `agent_changed` identity, the durable workflow owner,
  * and whether the Plan reached `implemented`.
  */
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     fauxAssistantMessage,
     fauxText,
@@ -90,7 +93,7 @@ async function initializeGitProject(projectRoot: string): Promise<void> {
     await git(projectRoot, ["init", "-b", "main"]);
     await git(projectRoot, ["config", "user.email", "test@example.com"]);
     await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-    await Deno.writeTextFile(`${projectRoot}/README.md`, "fixture\n");
+    await fsWriteFile(`${projectRoot}/README.md`, "fixture\n");
     await git(projectRoot, ["add", "."]);
     await git(projectRoot, ["commit", "-m", "fixture: initial project"]);
 }
@@ -117,7 +120,7 @@ const IMPLEMENT_AND_COMPLETE = [
     fauxAssistantMessage(fauxToolCall("task_completed", { message: "- Implemented the Plan.\n- Verified the Plan." })),
 ];
 
-Deno.test("an engineer-owned Plan runs under Plan Engineer while the Plan keeps saying engineer", async () => {
+test("an engineer-owned Plan runs under Plan Engineer while the Plan keeps saying engineer", async () => {
     await withRuntimeCommandFixture("plan-boundaries-engineer-", async ({ projectRoot, setModelResponseFactories }) => {
         await initializeGitProject(projectRoot);
         await saveExecutablePlan(projectRoot, "backend-feature");
@@ -164,7 +167,7 @@ Deno.test("an engineer-owned Plan runs under Plan Engineer while the Plan keeps 
     });
 });
 
-Deno.test("a legacy segment handoff announces Plan Engineer before resuming", async () => {
+test("a legacy segment handoff announces Plan Engineer before resuming", async () => {
     await withRuntimeCommandFixture(
         "plan-boundaries-legacy-handoff-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -231,7 +234,7 @@ Deno.test("a legacy segment handoff announces Plan Engineer before resuming", as
     );
 });
 
-Deno.test("a frontend-owned Plan runs under Frontend Engineer", async () => {
+test("a frontend-owned Plan runs under Frontend Engineer", async () => {
     await withRuntimeCommandFixture("plan-boundaries-frontend-", async ({ projectRoot, setModelResponseFactories }) => {
         await initializeGitProject(projectRoot);
         await saveExecutablePlan(projectRoot, "visual-feature", { executionAgent: "frontend-engineer" });
@@ -263,7 +266,7 @@ Deno.test("a frontend-owned Plan runs under Frontend Engineer", async () => {
     });
 });
 
-Deno.test("Plan Engineer reaches a real Pair checkpoint through production dispatch", async () => {
+test("Plan Engineer reaches a real Pair checkpoint through production dispatch", async () => {
     await withRuntimeCommandFixture("plan-boundaries-pair-", async ({ projectRoot, setModelResponseFactories }) => {
         await initializeGitProject(projectRoot);
         await saveExecutablePlan(projectRoot, "paired-feature", { collaborationRecommendation: "pair" });
@@ -309,7 +312,7 @@ Deno.test("Plan Engineer reaches a real Pair checkpoint through production dispa
     });
 });
 
-Deno.test("managed Pair discussion restores the owner, tool, cwd, and checkpoint context", async () => {
+test("managed Pair discussion restores the owner, tool, cwd, and checkpoint context", async () => {
     await withRuntimeCommandFixture(
         "plan-boundaries-managed-pair-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -457,7 +460,7 @@ function makeRuntime(sessionHost: SessionHost): SessionRuntime {
     });
 }
 
-Deno.test("resuming a session whose persisted workflow owner is engineer activates Plan Engineer", async () => {
+test("resuming a session whose persisted workflow owner is engineer activates Plan Engineer", async () => {
     await withRuntimeCommandFixture("plan-boundaries-resume-", async ({ projectRoot, setModelResponseFactory }) => {
         // A Session persisted before the split records `engineer`; no migration
         // runs, so the resolver is the only thing that can put the user back
@@ -502,7 +505,7 @@ Deno.test("resuming a session whose persisted workflow owner is engineer activat
     });
 });
 
-Deno.test("a QUICK_FIX workflow resumes under the selectable Engineer, not Plan Engineer", async () => {
+test("a QUICK_FIX workflow resumes under the selectable Engineer, not Plan Engineer", async () => {
     await withRuntimeCommandFixture("plan-boundaries-quickfix-", async ({ projectRoot, setModelResponseFactory }) => {
         // QUICK_FIX also records `executionAgent: engineer`, so only the absence
         // of a Plan tells the two apart.
@@ -536,7 +539,7 @@ Deno.test("a QUICK_FIX workflow resumes under the selectable Engineer, not Plan 
     });
 });
 
-Deno.test("restored autonomous Plan execution retains Plan Deviation availability", async () => {
+test("restored autonomous Plan execution retains Plan Deviation availability", async () => {
     await withRuntimeCommandFixture(
         "plan-boundaries-autonomous-restore-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -588,7 +591,7 @@ Deno.test("restored autonomous Plan execution retains Plan Deviation availabilit
     );
 });
 
-Deno.test("autonomous validation repair receives a real Plan Deviation tool", async () => {
+test("autonomous validation repair receives a real Plan Deviation tool", async () => {
     await withRuntimeCommandFixture(
         "plan-boundaries-autonomous-repair-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -657,7 +660,7 @@ async function copyLegacyTranscript(source: string, projectRoot: string): Promis
     if (!header) throw new Error("Expected Session header.");
     const removedParents = new Map<string, string | null>();
     const copied: LegacyCopyEntry[] = [];
-    for (const line of (await Deno.readTextFile(source)).trim().split("\n")) {
+    for (const line of (await fsReadFile(source, "utf8")).trim().split("\n")) {
         const entry = JSON.parse(line) as LegacyCopyEntry;
         if (entry.type === "session") continue;
         while (entry.parentId && removedParents.has(entry.parentId)) {
@@ -667,12 +670,12 @@ async function copyLegacyTranscript(source: string, projectRoot: string): Promis
             removedParents.set(entry.id, entry.parentId || null);
         } else copied.push(entry);
     }
-    await Deno.writeTextFile(file, [header, ...copied].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    await fsWriteFile(file, [header, ...copied].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     return { persistedId: header.id, file };
 }
 
 for (const legacy of [false, true]) {
-    Deno.test(`${legacy ? "legacy" : "restored"} Plan execution records a confirmed deviation before its first checkpoint`, async () => {
+    test(`${legacy ? "legacy" : "restored"} Plan execution records a confirmed deviation before its first checkpoint`, async () => {
         await withRuntimeCommandFixture(
             "plan-boundaries-deviation-restore-",
             async ({ projectRoot, setModelResponseFactories }) => {
@@ -742,7 +745,7 @@ for (const legacy of [false, true]) {
                     assertEquals(restored.getSessionSnapshot(loaded.sessionId)?.activeAgent, "plan-engineer");
                     assertEquals(toolLists.length, 2);
                     for (const tools of toolLists) assertEquals(tools.includes("record_plan_deviation"), true);
-                    const transcript = await Deno.readTextFile(info.file);
+                    const transcript = await fsReadFile(info.file, "utf8");
                     assert(
                         /"decision"\s*:\s*"recorded"/.test(transcript),
                         "Restored Plan Deviation call must record approval, not return plan_execution_inactive.",

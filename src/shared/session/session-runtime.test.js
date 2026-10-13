@@ -1,11 +1,25 @@
+import { delimiter } from "node:path";
 import {
-    assert,
-    assertEquals,
-    assertExists,
-    assertRejects,
-    assertStrictEquals,
-    assertStringIncludes,
-} from "@std/assert";
+    writeWorkflowBinaryFixtures,
+    assertWorkflowBinaryCallsSupported,
+} from "../../testing/workflow-binary-fixtures.ts";
+import { serveHttp } from "../http-server.ts";
+import { makeTempFile } from "../../testing/temp-file.ts";
+import { tmpdir } from "node:os";
+import { after, before, test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { mkdirSync as fsMkdirSync, statSync as fsStatSync, writeFileSync as fsWriteFileSync } from "node:fs";
+import process from "node:process";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     fauxAssistantMessage,
     fauxText,
@@ -15,7 +29,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../settings.js";
 import { SessionHost } from "./session-host.ts";
@@ -39,6 +53,27 @@ import { WORKFLOW_TOOL_EVENT_CUSTOM_TYPE } from "../workflow/workflow-tool-event
 import { getHomeDir, SUBAGENTS } from "../../constants.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 
+let helperRoot = "";
+let priorHelperPath = "";
+before(() =>
+    withProcessGlobalTestLock(async () => {
+        priorHelperPath = process.env.PATH || "";
+        helperRoot = await fsMkdtemp(join(tmpdir(), "session-runtime-helpers-"));
+        const bin = await writeWorkflowBinaryFixtures(helperRoot);
+        process.env.PATH = `${bin}${delimiter}${priorHelperPath}`;
+    }),
+);
+after(() =>
+    withProcessGlobalTestLock(async () => {
+        process.env.PATH = priorHelperPath;
+        try {
+            await assertWorkflowBinaryCallsSupported(helperRoot);
+        } finally {
+            await fsRm(helperRoot, { recursive: true });
+        }
+    }),
+);
+
 const RUNTIME_TEST_PROVIDER = "session-runtime-test";
 const RUNTIME_TEST_MODEL = "fixture-model";
 const RUNTIME_TEST_API = "session-runtime-faux";
@@ -50,32 +85,32 @@ const RUNTIME_REPAIR_GIT_FIXTURE = defineCommittedGitFixture({ "README.md": "# R
 let runtimeFauxProvider = null;
 
 function runtimeProjectRoot() {
-    const sandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
+    const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
     const home = getHomeDir();
     if (!sandboxHome) {
         throw new Error("SessionRuntime tests must run through scripts/run-tests.js with an isolated HOME");
     }
     const projectRoot = join(home, "runtime-project");
-    Deno.mkdirSync(projectRoot, { recursive: true });
+    fsMkdirSync(projectRoot, { recursive: true });
     return projectRoot;
 }
 
 function ensureRuntimeModelFixture() {
-    const sandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
+    const sandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
     const home = getHomeDir();
     if (!sandboxHome) {
         throw new Error("SessionRuntime tests must run through scripts/run-tests.js with an isolated HOME");
     }
     const runwieldDir = join(home, ".wld");
-    Deno.mkdirSync(runwieldDir, { recursive: true });
+    fsMkdirSync(runwieldDir, { recursive: true });
     const settingsPath = join(runwieldDir, "settings.json");
     try {
-        Deno.statSync(settingsPath);
+        fsStatSync(settingsPath);
         return;
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    Deno.writeTextFileSync(
+    fsWriteFileSync(
         join(runwieldDir, "models.json"),
         JSON.stringify({
             providers: {
@@ -84,23 +119,25 @@ function ensureRuntimeModelFixture() {
                     baseUrl: "http://127.0.0.1:0",
                     apiKey: "fixture-key",
                     api: RUNTIME_TEST_API,
-                    models: [{
-                        id: RUNTIME_TEST_MODEL,
-                        name: "SessionRuntime Fixture Model",
-                        api: RUNTIME_TEST_API,
-                        input: ["text", "image"],
-                        contextWindow: 128000,
-                        maxTokens: 4096,
-                    }],
+                    models: [
+                        {
+                            id: RUNTIME_TEST_MODEL,
+                            name: "SessionRuntime Fixture Model",
+                            api: RUNTIME_TEST_API,
+                            input: ["text", "image"],
+                            contextWindow: 128000,
+                            maxTokens: 4096,
+                        },
+                    ],
                 },
             },
         }),
     );
-    Deno.writeTextFileSync(
+    fsWriteFileSync(
         join(runwieldDir, "auth.json"),
         JSON.stringify({ [RUNTIME_TEST_PROVIDER]: { type: "api_key", key: "fixture-key" } }),
     );
-    Deno.writeTextFileSync(
+    fsWriteFileSync(
         settingsPath,
         JSON.stringify({
             defaultProvider: RUNTIME_TEST_PROVIDER,
@@ -116,10 +153,7 @@ function ensureRuntimeModelFixture() {
         models: [{ id: RUNTIME_TEST_MODEL, name: "SessionRuntime Fixture Model", input: ["text", "image"] }],
     });
     runtimeFauxProvider.setResponses(
-        Array.from(
-            { length: 100 },
-            () => () => fauxAssistantMessage(fauxText("SessionRuntime fixture response.")),
-        ),
+        Array.from({ length: 100 }, () => () => fauxAssistantMessage(fauxText("SessionRuntime fixture response."))),
     );
     __resetSettingsForTests();
 }
@@ -129,10 +163,7 @@ function setRuntimeModelMessages(messages) {
     ensureRuntimeModelFixture();
     runtimeFauxProvider?.setResponses([
         ...messages.map((message) => () => message),
-        ...Array.from(
-            { length: 100 },
-            () => () => fauxAssistantMessage(fauxText("SessionRuntime fixture response.")),
-        ),
+        ...Array.from({ length: 100 }, () => () => fauxAssistantMessage(fauxText("SessionRuntime fixture response."))),
     ]);
 }
 
@@ -141,10 +172,7 @@ function setRuntimeModelResponseFactories(factories) {
     ensureRuntimeModelFixture();
     runtimeFauxProvider?.setResponses([
         ...factories,
-        ...Array.from(
-            { length: 100 },
-            () => () => fauxAssistantMessage(fauxText("SessionRuntime fixture response.")),
-        ),
+        ...Array.from({ length: 100 }, () => () => fauxAssistantMessage(fauxText("SessionRuntime fixture response."))),
     ]);
 }
 
@@ -159,7 +187,7 @@ function delay(ms) {
  */
 function processAlive(pid) {
     try {
-        Deno.kill(pid, "SIGCONT");
+        process.kill(pid, "SIGCONT");
         return true;
     } catch {
         return false;
@@ -194,11 +222,12 @@ async function waitForProcessDeath(pid, timeoutMs = 5000) {
 async function removeTempDir(path) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            await Deno.remove(path, { recursive: true });
+            await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return;
-            const isRetryable = error instanceof Error &&
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+            const isRetryable =
+                error instanceof Error &&
                 /Directory not empty|resource busy|os error 66|os error 16/i.test(error.message);
             if (!isRetryable || attempt === 4) throw error;
             await delay(25 * (attempt + 1));
@@ -274,7 +303,7 @@ function attachExternalAgentSession(
     return Promise.resolve(hostedSession.id);
 }
 
-Deno.test("SessionRuntime commits a Claude CLI model reconfiguration only after root rebuild succeeds", async () => {
+test("SessionRuntime commits a Claude CLI model reconfiguration only after root rebuild succeeds", async () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({ id: "claude-model-commit", cwd: runtimeProjectRoot() });
     const previousHandler = () => Promise.resolve({ kind: "complete" });
@@ -298,7 +327,7 @@ Deno.test("SessionRuntime commits a Claude CLI model reconfiguration only after 
     rebuiltRoot?.session?.dispose?.();
 });
 
-Deno.test("SessionRuntime restores the previous user model override when active root rebuild fails", async () => {
+test("SessionRuntime restores the previous user model override when active root rebuild fails", async () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({ id: "model-rollback", cwd: runtimeProjectRoot() });
     const previousHandler = () => Promise.resolve({ kind: "complete" });
@@ -323,7 +352,10 @@ Deno.test("SessionRuntime restores the previous user model override when active 
     assertEquals(session.getActiveModelState(), { model: "sonnet", provider: "anthropic" });
     assertStrictEquals(session.getRootAgentSession(), previousAgentSession);
     assertStrictEquals(session.getActiveOnMessage(), previousHandler);
-    assertEquals(events.filter((event) => event.type === RuntimeEventTypes.MODEL_CHANGED), []);
+    assertEquals(
+        events.filter((event) => event.type === RuntimeEventTypes.MODEL_CHANGED),
+        [],
+    );
 });
 
 function makeSteeringAgentSession() {
@@ -378,12 +410,12 @@ function makeSteeringAgentSession() {
     return session;
 }
 
-Deno.test("SessionRuntime exposes opaque ids and snapshots, never HostedSession objects", async () => {
+test("SessionRuntime exposes opaque ids and snapshots, never HostedSession objects", async () => {
     const runtime = makeRuntime();
     const created = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
 
     assertEquals(typeof created.sessionId, "string");
-    assertEquals(await Deno.realPath(created.cwd), await Deno.realPath(runtimeProjectRoot()));
+    assertEquals(await fsRealpath(created.cwd), await fsRealpath(runtimeProjectRoot()));
     assertEquals("hostedSession" in created, false);
     assertEquals("sessionManager" in created, false);
     assertEquals(Object.hasOwn(runtime, "sessionHost"), false);
@@ -392,7 +424,7 @@ Deno.test("SessionRuntime exposes opaque ids and snapshots, never HostedSession 
     assertEquals("getActiveOnMessage" in /** @type {any} */ (runtime.listSessions()[0]), false);
 });
 
-Deno.test("SessionRuntime snapshots keep Session names current with transcript changes", () => {
+test("SessionRuntime snapshots keep Session names current with transcript changes", () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const cwd = runtimeProjectRoot();
@@ -422,7 +454,7 @@ Deno.test("SessionRuntime snapshots keep Session names current with transcript c
     assertEquals(runtime.getSessionSnapshot(session.id)?.name, "Renamed Session");
 });
 
-Deno.test("SessionRuntime snapshot exposes active context capacity without exposing AgentSession", () => {
+test("SessionRuntime snapshot exposes active context capacity without exposing AgentSession", () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     agentSession.getContextUsage = () => ({ tokens: 48_000, contextWindow: 128_000, percent: 37.5 });
@@ -462,7 +494,7 @@ Deno.test("SessionRuntime snapshot exposes active context capacity without expos
     assertEquals("agentSession" in /** @type {Record<string, unknown>} */ (snapshot || {}), false);
 });
 
-Deno.test("SessionRuntime snapshots tolerate a streaming assistant message without usage", () => {
+test("SessionRuntime snapshots tolerate a streaming assistant message without usage", () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     agentSession.agent = { state: { messages: [{ role: "assistant" }] } };
@@ -482,7 +514,7 @@ Deno.test("SessionRuntime snapshots tolerate a streaming assistant message witho
     });
 });
 
-Deno.test("SessionRuntime rejects non-absolute session roots", async () => {
+test("SessionRuntime rejects non-absolute session roots", async () => {
     const runtime = makeRuntime();
     await assertRejects(
         () => runtime.createInteractiveSession({ cwd: "relative/project" }),
@@ -496,7 +528,7 @@ Deno.test("SessionRuntime rejects non-absolute session roots", async () => {
     );
 });
 
-Deno.test("SessionRuntime blocks Pi-backed create and load when owner coordination is absent", async () => {
+test("SessionRuntime blocks Pi-backed create and load when owner coordination is absent", async () => {
     ensureRuntimeModelFixture();
     const runtime = new SessionRuntime({
         sessionHost: new SessionHost(),
@@ -516,15 +548,22 @@ Deno.test("SessionRuntime blocks Pi-backed create and load when owner coordinati
     );
 });
 
-Deno.test("SessionRuntime keeps dormant managed image persistence read-only but allows live manager paste", async () => {
+test("SessionRuntime keeps dormant managed image persistence read-only but allows live manager paste", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
-        const home = await Deno.makeTempDir({ prefix: "runwield-runtime-managed-image-" });
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-managed-image-"));
+        process.env["HOME"] = home;
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         ensureRuntimeModelFixture();
         const sessionHost = new SessionHost();
+        const store = openOwnerCoordinationStore();
+        const runtime = new SessionRuntime({
+            sessionHost,
+            sessionStore: store,
+            ownerProcessKind: "test",
+            ownerInstanceId: crypto.randomUUID(),
+        });
         try {
             const session = sessionHost.createSession({
                 id: "managed-image-runtime",
@@ -544,7 +583,6 @@ Deno.test("SessionRuntime keeps dormant managed image persistence read-only but 
                 },
             });
             assertEquals(session.getRootSessionManager(), null);
-            const runtime = makeRuntime({ sessionHost });
 
             const dormantResult = await runtime.persistSessionImage(session.id, {
                 base64: btoa("img"),
@@ -553,7 +591,7 @@ Deno.test("SessionRuntime keeps dormant managed image persistence read-only but 
             assertEquals(dormantResult.error, "refresh_required");
 
             const sessionDir = getRunWieldSessionDir(cwd);
-            await Deno.mkdir(sessionDir, { recursive: true });
+            await fsMkdir(sessionDir, { recursive: true });
             const sessionManager = SessionManager.create(cwd, sessionDir, { id: "pi-managed-image" });
             /** @type {import('./managed-operation.ts').ManagedOperationCapability} */
             const capability = {
@@ -594,17 +632,25 @@ Deno.test("SessionRuntime keeps dormant managed image persistence read-only but 
 
             const persistedPath = persisted.path || "";
             assertEquals(persisted.ref?.startsWith("attachment:"), true);
-            assertEquals(persistedPath.startsWith(`${getRunWieldSessionDir(cwd)}/pi-managed-image_images/`), true);
-            assertEquals(new TextDecoder().decode(await Deno.readFile(persistedPath)), "img");
+            assertEquals(
+                persistedPath.startsWith(
+                    join(getRunWieldSessionDir(cwd), "pi-managed-image_images") +
+                        (process.platform === "win32" ? "\\" : "/"),
+                ),
+                true,
+            );
+            assertEquals(new TextDecoder().decode(await fsReadFile(persistedPath)), "img");
             assertEquals(await runtime.preflightSessionImages(session.id, [persisted]), { ok: true, mode: "direct" });
         } finally {
-            Deno.env.set("HOME", previousHome);
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
 });
 
-Deno.test("SessionRuntime uses the model selected by image preflight for submission", async () => {
+test("SessionRuntime uses the model selected by image preflight for submission", async () => {
     await withRuntimeCommandFixture(
         "runtime-image-model-agreement-",
         async ({ projectRoot, settingsPath, setModelResponseFactory }) => {
@@ -627,11 +673,10 @@ Deno.test("SessionRuntime uses the model selected by image preflight for submiss
                     initialImages: [image],
                 });
                 assertEquals(preflight.ok, true);
-                const preparedModelOverride = "preparedModelOverride" in preflight
-                    ? preflight.preparedModelOverride
-                    : undefined;
+                const preparedModelOverride =
+                    "preparedModelOverride" in preflight ? preflight.preparedModelOverride : undefined;
                 assertEquals(preparedModelOverride, "runtime-command-fixture/fixture-model");
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     settingsPath,
                     JSON.stringify({
                         defaultProvider: "runtime-command-fixture",
@@ -661,13 +706,13 @@ Deno.test("SessionRuntime uses the model selected by image preflight for submiss
     );
 });
 
-Deno.test("SessionRuntime keeps a prepared image model through Prompt Template preflight and provider submission", async () => {
+test("SessionRuntime keeps a prepared image model through Prompt Template preflight and provider submission", async () => {
     await withRuntimeCommandFixture(
         "runtime-template-image-model-agreement-",
         async ({ homeDir, projectRoot, settingsPath, setModelResponseFactory }) => {
             const promptDir = join(projectRoot, ".wld", "prompts");
-            await Deno.mkdir(promptDir, { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(promptDir, { recursive: true });
+            await fsWriteFile(
                 join(promptDir, "vision-note.md"),
                 ["---", "agent: operator", "---", "Describe this image: {{input}}"].join("\n"),
             );
@@ -690,11 +735,10 @@ Deno.test("SessionRuntime keeps a prepared image model through Prompt Template p
                     initialImages: [image],
                 });
                 assertEquals(preflight.ok, true);
-                const preparedModelOverride = "preparedModelOverride" in preflight
-                    ? preflight.preparedModelOverride
-                    : undefined;
+                const preparedModelOverride =
+                    "preparedModelOverride" in preflight ? preflight.preparedModelOverride : undefined;
                 assertEquals(preparedModelOverride, "runtime-command-fixture/fixture-model");
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     join(homeDir, ".wld", "models.json"),
                     JSON.stringify({
                         providers: {
@@ -703,26 +747,29 @@ Deno.test("SessionRuntime keeps a prepared image model through Prompt Template p
                                 baseUrl: "http://127.0.0.1:0",
                                 apiKey: "fixture-key",
                                 api: "runtime-command-faux",
-                                models: [{
-                                    id: "fixture-model",
-                                    name: "Runtime Command Fixture Model",
-                                    api: "runtime-command-faux",
-                                    input: ["text", "image"],
-                                    contextWindow: 128000,
-                                    maxTokens: 4096,
-                                }, {
-                                    id: "text-only-model",
-                                    name: "Text Only",
-                                    api: "runtime-command-faux",
-                                    input: ["text"],
-                                    contextWindow: 128000,
-                                    maxTokens: 4096,
-                                }],
+                                models: [
+                                    {
+                                        id: "fixture-model",
+                                        name: "Runtime Command Fixture Model",
+                                        api: "runtime-command-faux",
+                                        input: ["text", "image"],
+                                        contextWindow: 128000,
+                                        maxTokens: 4096,
+                                    },
+                                    {
+                                        id: "text-only-model",
+                                        name: "Text Only",
+                                        api: "runtime-command-faux",
+                                        input: ["text"],
+                                        contextWindow: 128000,
+                                        maxTokens: 4096,
+                                    },
+                                ],
                             },
                         },
                     }),
                 );
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     settingsPath,
                     JSON.stringify({
                         defaultProvider: "runtime-command-fixture",
@@ -748,15 +795,15 @@ Deno.test("SessionRuntime keeps a prepared image model through Prompt Template p
     );
 });
 
-Deno.test("SessionRuntime rejects a persisted image before hydrating a deferred Session", async () => {
+test("SessionRuntime rejects a persisted image before hydrating a deferred Session", async () => {
     await withRuntimeCommandFixture(
         "runtime-persisted-image-preflight-",
         async ({ homeDir, projectRoot, settingsPath }) => {
             const modelsPath = `${homeDir}/.wld/models.json`;
-            const modelConfiguration = JSON.parse(await Deno.readTextFile(modelsPath));
+            const modelConfiguration = JSON.parse(await fsReadFile(modelsPath, "utf8"));
             modelConfiguration.providers["runtime-command-fixture"].models[0].input = ["text"];
-            await Deno.writeTextFile(modelsPath, JSON.stringify(modelConfiguration));
-            await Deno.writeTextFile(
+            await fsWriteFile(modelsPath, JSON.stringify(modelConfiguration));
+            await fsWriteFile(
                 settingsPath,
                 JSON.stringify({
                     defaultProvider: "runtime-command-fixture",
@@ -772,7 +819,7 @@ Deno.test("SessionRuntime rejects a persisted image before hydrating a deferred 
                 deferManagedActivationUntilAgentReady: true,
             });
             const imagePath = join(projectRoot, "image.png");
-            await Deno.writeFile(imagePath, new TextEncoder().encode("img"));
+            await fsWriteFile(imagePath, new TextEncoder().encode("img"));
             try {
                 const result = await runtime.preflightUserTurnImages(created.sessionId, {
                     initialRequest: "describe this",
@@ -790,13 +837,13 @@ Deno.test("SessionRuntime rejects a persisted image before hydrating a deferred 
     );
 });
 
-Deno.test("SessionRuntime persists a newly managed Pi transcript before cataloging it", async () => {
+test("SessionRuntime persists a newly managed Pi transcript before cataloging it", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
-        const home = await Deno.makeTempDir({ prefix: "runwield-runtime-managed-lazy-transcript-" });
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-managed-lazy-transcript-"));
+        process.env["HOME"] = home;
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
         try {
             ensureRuntimeModelFixture();
@@ -815,12 +862,18 @@ Deno.test("SessionRuntime persists a newly managed Pi transcript before catalogi
                 const managed = runtime.getSessionSnapshot(created.sessionId)?.managed;
                 const segment = store.getCurrentSessionSegment(managed?.runwieldSessionId || "");
                 assertExists(segment?.transcriptPath);
-                assertEquals((await Deno.stat(segment.transcriptPath)).isFile, true);
+                assertEquals((await fsStat(segment.transcriptPath)).isFile(), true);
                 const resumable = await runtime.listResumableSessions(cwd);
-                assertEquals(resumable.some((session) => session.id === created.sessionManagerId), false);
+                assertEquals(
+                    resumable.some((session) => session.id === created.sessionManagerId),
+                    false,
+                );
                 await runtime.renameSession(created.sessionId, "Named empty Session");
                 const named = await runtime.listResumableSessions(cwd);
-                assertEquals(named.some((session) => session.id === created.sessionManagerId), true);
+                assertEquals(
+                    named.some((session) => session.id === created.sessionManagerId),
+                    true,
+                );
 
                 await runtime.switchAgent(created.sessionId, { agentName: "Ideator" });
                 const snapshot = runtime.getSessionSnapshot(created.sessionId);
@@ -830,7 +883,7 @@ Deno.test("SessionRuntime persists a newly managed Pi transcript before catalogi
             }
         } finally {
             store.close();
-            Deno.env.set("HOME", previousHome);
+            process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
@@ -840,8 +893,8 @@ Deno.test("SessionRuntime persists a newly managed Pi transcript before catalogi
 async function exerciseRepairCompactionFollowUp(disconnect) {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
-        const home = await Deno.makeTempDir({ prefix: "runwield-runtime-worktree-header-" });
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-worktree-header-"));
+        process.env["HOME"] = home;
         const projectRoot = await RUNTIME_REPAIR_GIT_FIXTURE.checkout({ prefix: "runwield-runtime-project-" });
         const worktreeRoot = `${home}/worktree`;
         await git(projectRoot, ["worktree", "add", "-b", "repair-worktree", worktreeRoot]);
@@ -965,9 +1018,9 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
                         repairPromptText = JSON.stringify(context.messages.at(-1));
                         return disconnect
                             ? fauxAssistantMessage(fauxText(blockerText.repeat(3)), {
-                                stopReason: "error",
-                                errorMessage: "Unexpected EOF",
-                            })
+                                  stopReason: "error",
+                                  errorMessage: "Unexpected EOF",
+                              })
                             : fauxAssistantMessage(fauxText(blockerText));
                     },
                     () => fauxAssistantMessage(fauxText(`Compacted repair context keeps: ${blockerNeedle}`)),
@@ -992,7 +1045,7 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
                 assertEquals(repairPromptText.includes("file.js"), false);
                 const blockedSegment = store.getCurrentSessionSegment(acquired.session.runwieldSessionId);
                 if (!blockedSegment) throw new Error("Expected a blocked repair segment");
-                assertStringIncludes(await Deno.readTextFile(blockedSegment.transcriptPath), blockerNeedle);
+                assertStringIncludes(await fsReadFile(blockedSegment.transcriptPath, "utf8"), blockerNeedle);
                 assertEquals(
                     runtime.getRuntimeActiveExecutionWorkflow(adopted.sessionId)?.planName,
                     "repair-follow-up",
@@ -1011,11 +1064,13 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
                     const compaction = await runtime.compactSession(adopted.sessionId);
                     assertEquals(compaction.error, undefined);
                 }
-                setRuntimeModelResponseFactories([(context) => {
-                    deliveries += 1;
-                    promptText = JSON.stringify(context);
-                    return fauxAssistantMessage(fauxText("Follow-up reached the repair Agent."));
-                }]);
+                setRuntimeModelResponseFactories([
+                    (context) => {
+                        deliveries += 1;
+                        promptText = JSON.stringify(context);
+                        return fauxAssistantMessage(fauxText("Follow-up reached the repair Agent."));
+                    },
+                ]);
                 const result = await runtime.promptUserTurn(adopted.sessionId, {
                     initialRequest: "Summarize remaining repair work.",
                 });
@@ -1038,11 +1093,13 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
                 ownerProcessKind: "test",
                 ownerInstanceId: "runtime-test-owner-reloaded",
             });
-            setRuntimeModelResponseFactories([(context) => {
-                deliveries += 1;
-                promptText = JSON.stringify(context);
-                return fauxAssistantMessage(fauxText("Reloaded follow-up reached the repair Agent."));
-            }]);
+            setRuntimeModelResponseFactories([
+                (context) => {
+                    deliveries += 1;
+                    promptText = JSON.stringify(context);
+                    return fauxAssistantMessage(fauxText("Reloaded follow-up reached the repair Agent."));
+                },
+            ]);
             try {
                 const loaded = reloadedRuntime.adoptManagedSession({
                     session: acquired.session,
@@ -1061,38 +1118,35 @@ async function exerciseRepairCompactionFollowUp(disconnect) {
                 );
                 assertStringIncludes(promptText, "Continue after disposal.");
                 assertStringIncludes(promptText, blockerNeedle);
-                assertEquals(
-                    reloadedRuntime.getSessionSnapshot(loaded.sessionId)?.cwd,
-                    await Deno.realPath(worktreeRoot),
-                );
+                assertEquals(reloadedRuntime.getSessionSnapshot(loaded.sessionId)?.cwd, await fsRealpath(worktreeRoot));
             } finally {
                 await reloadedRuntime.closeAllSessionsWhenIdle?.();
             }
         } finally {
-            await Promise.resolve((/** @type {any} */ (manager))?.dispose?.());
+            await Promise.resolve(/** @type {any} */ (manager)?.dispose?.());
             store.close();
-            Deno.env.set("HOME", previousHome);
+            process.env["HOME"] = previousHome;
             await removeTempDir(home);
             await removeTempDir(projectRoot);
         }
     });
 }
 
-Deno.test("SessionRuntime preserves a blocked semantic repair through compaction and follow-up", async () => {
+test("SessionRuntime preserves a blocked semantic repair through compaction and follow-up", async () => {
     await exerciseRepairCompactionFollowUp(false);
 });
 
-Deno.test("SessionRuntime preserves repair follow-up after provider EOF and automatic compaction", async () => {
+test("SessionRuntime preserves repair follow-up after provider EOF and automatic compaction", async () => {
     await exerciseRepairCompactionFollowUp(true);
 });
 
-Deno.test("SessionRuntime automatically segments new Sessions in unregistered local projects", async () => {
+test("SessionRuntime automatically segments new Sessions in unregistered local projects", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
-        const home = await Deno.makeTempDir({ prefix: "runwield-runtime-unmanaged-registered-project-" });
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-unmanaged-registered-project-"));
+        process.env["HOME"] = home;
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
         try {
             ensureRuntimeModelFixture();
@@ -1112,19 +1166,19 @@ Deno.test("SessionRuntime automatically segments new Sessions in unregistered lo
             }
         } finally {
             store.close();
-            Deno.env.set("HOME", previousHome);
+            process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
 });
 
-Deno.test("SessionRuntime publishes generation zero before dehydrating newly managed Sessions", async () => {
+test("SessionRuntime publishes generation zero before dehydrating newly managed Sessions", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
-        const home = await Deno.makeTempDir({ prefix: "runwield-runtime-managed-create-" });
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-managed-create-"));
+        process.env["HOME"] = home;
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
         try {
             ensureRuntimeModelFixture();
@@ -1162,20 +1216,20 @@ Deno.test("SessionRuntime publishes generation zero before dehydrating newly man
             }
         } finally {
             store.close();
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
 });
 
-Deno.test("SessionRuntime automatically recovers append-only output written before generation zero", async () => {
+test("SessionRuntime automatically recovers append-only output written before generation zero", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
-        const home = await Deno.makeTempDir({ prefix: "runwield-runtime-initial-recovery-" });
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-initial-recovery-"));
+        process.env["HOME"] = home;
         const cwd = join(home, "project");
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const interruptedStore = openFileSessionStore();
         try {
             const project = interruptedStore.ensureRuntimeProject({ root: cwd });
@@ -1204,9 +1258,7 @@ Deno.test("SessionRuntime automatically recovers append-only output written befo
                 timestamp: Date.now(),
                 content: [{ type: "text", text: "preserved output" }],
             });
-            await Promise.resolve(
-                (/** @type {{ dispose?: () => void | Promise<void> }} */ (manager)).dispose?.(),
-            );
+            await Promise.resolve(/** @type {{ dispose?: () => void | Promise<void> }} */ (manager).dispose?.());
             interruptedStore.close();
 
             const resumedStore = openFileSessionStore();
@@ -1227,132 +1279,124 @@ Deno.test("SessionRuntime automatically recovers append-only output written befo
             }
         } finally {
             interruptedStore.close();
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
 });
 
-Deno.test("SessionRuntime synchronization recovers safe append-only output after a later interrupted turn", async () => {
-    await withRuntimeCommandFixture(
-        "runtime-managed-later-recovery-",
-        async ({ homeDir: home, projectRoot: cwd }) => {
-            const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
-            const runtime = createSessionRuntime({
+test("SessionRuntime synchronization recovers safe append-only output after a later interrupted turn", async () => {
+    await withRuntimeCommandFixture("runtime-managed-later-recovery-", async ({ homeDir: home, projectRoot: cwd }) => {
+        const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
+        const runtime = createSessionRuntime({
+            sessionStore: store,
+            ownerProcessKind: "test",
+            ownerInstanceId: "runtime-recovery-owner",
+        });
+        try {
+            const sessionId = await runtime.createPromptReadySession({ cwd, agentName: "guide" });
+            const managed = runtime.getSessionSnapshot(sessionId)?.managed;
+            if (!managed) throw new Error("Fixture Session was not managed");
+            const segment = store.getCurrentSessionSegment(managed.runwieldSessionId);
+            if (!segment) throw new Error("Fixture Session segment was unavailable");
+            const state = store.inspectSessionActivation(managed.runwieldSessionId);
+            const proof = store.acquireSessionActivation({
+                runwieldSessionId: managed.runwieldSessionId,
+                projectId: managed.projectId,
+                ownerInstanceId: "interrupted-claude-turn",
+                ownerProcessKind: "test",
+                expectedGeneration: state.generation?.generation ?? null,
+                expectedCurrentSegmentId: managed.currentSegmentId,
+                phase: "turning",
+            });
+            await fsWriteFile(
+                segment.transcriptPath,
+                `${JSON.stringify({
+                    type: "custom",
+                    id: crypto.randomUUID(),
+                    customType: "runwield.backend_status",
+                    data: {
+                        version: 1,
+                        backend: "claude-cli",
+                        kind: "non_zero_exit",
+                        exitCode: 1,
+                        message: "Claude Code exited before completing the turn.",
+                    },
+                })}\n`,
+                { flag: "a" },
+            );
+            store.markSessionUncertain(proof, { reason: "Claude Code exited before completing the turn." });
+
+            const synchronized = await runtime.synchronizeManagedSession(sessionId);
+
+            assertEquals(synchronized.ok, true);
+            assertEquals(
+                store.inspectSessionActivation(managed.runwieldSessionId).generation?.generation,
+                (state.generation?.generation ?? 0) + 1,
+            );
+            assertEquals(store.inspectSessionActivation(managed.runwieldSessionId).activation?.state, "idle");
+            assertEquals(runtime.getSessionSnapshot(sessionId)?.managed?.syncState?.status, "current");
+            assertEquals(runtime.getUserTurnSubmissionBlockMessage(sessionId), null);
+        } finally {
+            await runtime.closeAllSessionsWhenIdle?.();
+            store.close();
+        }
+    });
+});
+
+test("SessionRuntime does not emit unchanged current managed sync state on idle polls", async () => {
+    await withRuntimeCommandFixture("runtime-managed-idle-sync-", async ({ homeDir, projectRoot }) => {
+        const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
+        try {
+            const writerRuntime = createSessionRuntime({
                 sessionStore: store,
                 ownerProcessKind: "test",
-                ownerInstanceId: "runtime-recovery-owner",
+                ownerInstanceId: "runtime-idle-sync-writer",
+            });
+            let runwieldSessionId = "";
+            try {
+                const created = await writerRuntime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                await writerRuntime.switchAgent(created.sessionId, { agentName: "Ideator" });
+                runwieldSessionId =
+                    writerRuntime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
+                assert(runwieldSessionId);
+            } finally {
+                await writerRuntime.closeAllSessionsWhenIdle?.();
+            }
+
+            const observerRuntime = createSessionRuntime({
+                sessionStore: store,
+                ownerProcessKind: "test",
+                ownerInstanceId: "runtime-idle-sync-observer",
             });
             try {
-                const sessionId = await runtime.createPromptReadySession({ cwd, agentName: "guide" });
-                const managed = runtime.getSessionSnapshot(sessionId)?.managed;
-                if (!managed) throw new Error("Fixture Session was not managed");
-                const segment = store.getCurrentSessionSegment(managed.runwieldSessionId);
-                if (!segment) throw new Error("Fixture Session segment was unavailable");
-                const state = store.inspectSessionActivation(managed.runwieldSessionId);
-                const proof = store.acquireSessionActivation({
-                    runwieldSessionId: managed.runwieldSessionId,
-                    projectId: managed.projectId,
-                    ownerInstanceId: "interrupted-claude-turn",
-                    ownerProcessKind: "test",
-                    expectedGeneration: state.generation?.generation ?? null,
-                    expectedCurrentSegmentId: managed.currentSegmentId,
-                    phase: "turning",
+                const resumed = await observerRuntime.createInteractiveSession({
+                    cwd: projectRoot,
+                    mode: "continue",
+                    resumeSessionId: runwieldSessionId,
                 });
-                await Deno.writeTextFile(
-                    segment.transcriptPath,
-                    `${
-                        JSON.stringify({
-                            type: "custom",
-                            id: crypto.randomUUID(),
-                            customType: "runwield.backend_status",
-                            data: {
-                                version: 1,
-                                backend: "claude-cli",
-                                kind: "non_zero_exit",
-                                exitCode: 1,
-                                message: "Claude Code exited before completing the turn.",
-                            },
-                        })
-                    }\n`,
-                    { append: true },
-                );
-                store.markSessionUncertain(proof, { reason: "Claude Code exited before completing the turn." });
+                await observerRuntime.synchronizeManagedSession(resumed.sessionId);
+                /** @type {string[]} */
+                const events = [];
+                observerRuntime.subscribeSessionEvents(resumed.sessionId, (event) => {
+                    if (event.type === RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED) events.push(event.status);
+                });
 
-                const synchronized = await runtime.synchronizeManagedSession(sessionId);
+                await observerRuntime.synchronizeManagedSession(resumed.sessionId);
+                await observerRuntime.synchronizeManagedSession(resumed.sessionId);
 
-                assertEquals(synchronized.ok, true);
-                assertEquals(
-                    store.inspectSessionActivation(managed.runwieldSessionId).generation?.generation,
-                    (state.generation?.generation ?? 0) + 1,
-                );
-                assertEquals(store.inspectSessionActivation(managed.runwieldSessionId).activation?.state, "idle");
-                assertEquals(runtime.getSessionSnapshot(sessionId)?.managed?.syncState?.status, "current");
-                assertEquals(runtime.getUserTurnSubmissionBlockMessage(sessionId), null);
+                assertEquals(events, []);
             } finally {
-                await runtime.closeAllSessionsWhenIdle?.();
-                store.close();
+                await observerRuntime.closeAllSessionsWhenIdle?.();
             }
-        },
-    );
+        } finally {
+            store.close();
+        }
+    });
 });
 
-Deno.test("SessionRuntime does not emit unchanged current managed sync state on idle polls", async () => {
-    await withRuntimeCommandFixture(
-        "runtime-managed-idle-sync-",
-        async ({ homeDir, projectRoot }) => {
-            const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
-            try {
-                const writerRuntime = createSessionRuntime({
-                    sessionStore: store,
-                    ownerProcessKind: "test",
-                    ownerInstanceId: "runtime-idle-sync-writer",
-                });
-                let runwieldSessionId = "";
-                try {
-                    const created = await writerRuntime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-                    await writerRuntime.switchAgent(created.sessionId, { agentName: "Ideator" });
-                    runwieldSessionId = writerRuntime.getSessionSnapshot(created.sessionId)?.managed
-                        ?.runwieldSessionId || "";
-                    assert(runwieldSessionId);
-                } finally {
-                    await writerRuntime.closeAllSessionsWhenIdle?.();
-                }
-
-                const observerRuntime = createSessionRuntime({
-                    sessionStore: store,
-                    ownerProcessKind: "test",
-                    ownerInstanceId: "runtime-idle-sync-observer",
-                });
-                try {
-                    const resumed = await observerRuntime.createInteractiveSession({
-                        cwd: projectRoot,
-                        mode: "continue",
-                        resumeSessionId: runwieldSessionId,
-                    });
-                    await observerRuntime.synchronizeManagedSession(resumed.sessionId);
-                    /** @type {string[]} */
-                    const events = [];
-                    observerRuntime.subscribeSessionEvents(resumed.sessionId, (event) => {
-                        if (event.type === RuntimeEventTypes.MANAGED_SYNC_STATE_CHANGED) events.push(event.status);
-                    });
-
-                    await observerRuntime.synchronizeManagedSession(resumed.sessionId);
-                    await observerRuntime.synchronizeManagedSession(resumed.sessionId);
-
-                    assertEquals(events, []);
-                } finally {
-                    await observerRuntime.closeAllSessionsWhenIdle?.();
-                }
-            } finally {
-                store.close();
-            }
-        },
-    );
-});
-
-Deno.test("SessionRuntime hydrates dormant managed Sessions for direct Plan workflow operations", async () => {
+test("SessionRuntime hydrates dormant managed Sessions for direct Plan workflow operations", async () => {
     await withRuntimeCommandFixture(
         "runtime-managed-plan-workflow-",
         async ({ homeDir: home, projectRoot: cwd, setModelMessages }) => {
@@ -1393,7 +1437,7 @@ Deno.test("SessionRuntime hydrates dormant managed Sessions for direct Plan work
     );
 });
 
-Deno.test("SessionRuntime lazy materialization creates missing Project roots", async () => {
+test("SessionRuntime lazy materialization creates missing Project roots", async () => {
     ensureRuntimeModelFixture();
     const cwd = join(runtimeProjectRoot(), `lazy-missing-root-${crypto.randomUUID()}`);
     const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
@@ -1406,17 +1450,17 @@ Deno.test("SessionRuntime lazy materialization creates missing Project roots", a
         runtime.markPromptReadyAgent(created.sessionId, { agentName: "router" });
         const result = await runtime.promptUserTurn(created.sessionId, { initialRequest: "hello" });
         assertEquals(result.ok, true);
-        assertEquals((await Deno.stat(cwd)).isDirectory, true);
+        assertEquals((await fsStat(cwd)).isDirectory(), true);
         assertEquals(typeof runtime.getSessionSnapshot(created.sessionId)?.sessionManagerId, "string");
     } finally {
         await runtime.closeAllSessionsWhenIdle?.();
     }
 });
 
-Deno.test("SessionRuntime keeps first-turn materialization failures retryable", async () => {
+test("SessionRuntime keeps first-turn materialization failures retryable", async () => {
     ensureRuntimeModelFixture();
     const cwd = join(runtimeProjectRoot(), `lazy-file-root-${crypto.randomUUID()}`);
-    await Deno.writeTextFile(cwd, "not a directory");
+    await fsWriteFile(cwd, "not a directory");
     const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
     const created = await runtime.createInteractiveSession({
         cwd,
@@ -1432,8 +1476,8 @@ Deno.test("SessionRuntime keeps first-turn materialization failures retryable", 
         );
         assertEquals(runtime.getSessionSnapshot(created.sessionId)?.busy, false);
         assertEquals(runtime.getSessionSnapshot(created.sessionId)?.managed, null);
-        await Deno.remove(cwd);
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsRm(cwd);
+        await fsMkdir(cwd, { recursive: true });
         const result = await runtime.promptUserTurn(created.sessionId, { initialRequest: "retry" });
         assertEquals(result.ok, true);
         assertEquals(typeof runtime.getSessionSnapshot(created.sessionId)?.sessionManagerId, "string");
@@ -1442,22 +1486,22 @@ Deno.test("SessionRuntime keeps first-turn materialization failures retryable", 
     }
 });
 
-Deno.test("SessionRuntime creates persisted Sessions outside Git without project runtime state", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-non-git-session-" });
+test("SessionRuntime creates persisted Sessions outside Git without project runtime state", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-non-git-session-"));
     const runtime = createSessionRuntime({ ownerProcessKind: "test" });
     try {
         const created = await runtime.createInteractiveSession({ cwd, mode: "new" });
         assert(typeof created.sessionManagerId === "string");
-        await assertRejects(() => Deno.stat(join(cwd, ".wld", "internal")), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(join(cwd, ".wld", "internal")), Error, "ENOENT");
     } finally {
         await runtime.closeAllSessionsWhenIdle();
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("SessionRuntime can defer managed creation cataloging until Agent readiness", async () => {
+test("SessionRuntime can defer managed creation cataloging until Agent readiness", async () => {
     const cwd = join(runtimeProjectRoot(), `deferred-${crypto.randomUUID()}`);
-    await Deno.mkdir(cwd, { recursive: true });
+    await fsMkdir(cwd, { recursive: true });
     const home = getHomeDir();
     const store = openOwnerCoordinationStore({ dbPath: join(home, "owner-defer.sqlite3") });
     try {
@@ -1486,10 +1530,10 @@ Deno.test("SessionRuntime can defer managed creation cataloging until Agent read
     }
 });
 
-Deno.test("SessionRuntime continue opens the explicitly requested saved Session", async () => {
+test("SessionRuntime continue opens the explicitly requested saved Session", async () => {
     ensureRuntimeModelFixture();
     const cwd = join(runtimeProjectRoot(), `explicit-resume-${crypto.randomUUID()}`);
-    await Deno.mkdir(cwd, { recursive: true });
+    await fsMkdir(cwd, { recursive: true });
     const runtime = createSessionRuntime({ ownerProcessKind: "test" });
     let firstPersistedId = "";
     let firstRunWieldId = "";
@@ -1539,7 +1583,7 @@ Deno.test("SessionRuntime continue opens the explicitly requested saved Session"
     }
 });
 
-Deno.test("SessionRuntime does not apply dormant local mutations when Session evidence is absent", async () => {
+test("SessionRuntime does not apply dormant local mutations when Session evidence is absent", async () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({
         id: "managed-pending-agent",
@@ -1590,7 +1634,7 @@ Deno.test("SessionRuntime does not apply dormant local mutations when Session ev
     store.close();
 });
 
-Deno.test("SessionRuntime keeps dormant managed projection separate from runtime authority", () => {
+test("SessionRuntime keeps dormant managed projection separate from runtime authority", () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({
         id: "managed-authority-separation",
@@ -1639,7 +1683,7 @@ Deno.test("SessionRuntime keeps dormant managed projection separate from runtime
     assertEquals(runtime.getSessionSnapshot(session.id)?.activeAgent, "router");
 });
 
-Deno.test("SessionRuntime blocks dormant reload and compaction when Session evidence is absent", async () => {
+test("SessionRuntime blocks dormant reload and compaction when Session evidence is absent", async () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({
         id: "managed-reload-compact",
@@ -1671,7 +1715,7 @@ Deno.test("SessionRuntime blocks dormant reload and compaction when Session evid
     store.close();
 });
 
-Deno.test("SessionRuntime reload preserves the canonical hidden-agent selection", async () => {
+test("SessionRuntime reload preserves the canonical hidden-agent selection", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const cwd = runtimeProjectRoot();
@@ -1708,10 +1752,10 @@ Deno.test("SessionRuntime reload preserves the canonical hidden-agent selection"
     assertEquals(session.getRootAgentName(), "slicer");
 });
 
-Deno.test("SessionRuntime emits the first user message before busy and persistence", async () => {
+test("SessionRuntime emits the first user message before busy and persistence", async () => {
     ensureRuntimeModelFixture();
     const cwd = join(runtimeProjectRoot(), `first-message-order-${crypto.randomUUID()}`);
-    await Deno.mkdir(cwd, { recursive: true });
+    await fsMkdir(cwd, { recursive: true });
     const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
     const created = await runtime.createInteractiveSession({
         cwd,
@@ -1759,11 +1803,11 @@ Deno.test("SessionRuntime emits the first user message before busy and persisten
     }
 });
 
-Deno.test("SessionRuntime clean agent starts and switches resolve each agent preset model", async () => {
+test("SessionRuntime clean agent starts and switches resolve each agent preset model", async () => {
     await withRuntimeCommandFixture(
         "runtime-router-engineer-preset-",
         async ({ homeDir, projectRoot, settingsPath }) => {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 settingsPath,
                 JSON.stringify({
                     activeModelPreset: "split-agents",
@@ -1779,7 +1823,7 @@ Deno.test("SessionRuntime clean agent starts and switches resolve each agent pre
                     notifications: { enabled: false },
                 }),
             );
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 `${homeDir}/.wld/models.json`,
                 JSON.stringify({
                     providers: {
@@ -1857,10 +1901,10 @@ Deno.test("SessionRuntime clean agent starts and switches resolve each agent pre
     );
 });
 
-Deno.test("SessionRuntime prompt-ready metadata is limited to unpersisted new-session shells", async () => {
+test("SessionRuntime prompt-ready metadata is limited to unpersisted new-session shells", async () => {
     ensureRuntimeModelFixture();
     const cwd = join(runtimeProjectRoot(), `prompt-ready-shell-${crypto.randomUUID()}`);
-    await Deno.mkdir(cwd, { recursive: true });
+    await fsMkdir(cwd, { recursive: true });
     const runtime = createSessionRuntime({ sessionStore: null, ownerProcessKind: "test" });
     const created = await runtime.createInteractiveSession({
         cwd,
@@ -1889,7 +1933,7 @@ Deno.test("SessionRuntime prompt-ready metadata is limited to unpersisted new-se
  * @property {string} model
  */
 
-Deno.test("SessionRuntime releases managed activation after a completed TUI turn", async () => {
+test("SessionRuntime releases managed activation after a completed TUI turn", async () => {
     await withRuntimeCommandFixture(
         "runtime-managed-turn-release-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -1923,7 +1967,7 @@ Deno.test("SessionRuntime releases managed activation after a completed TUI turn
     );
 });
 
-Deno.test("SessionRuntime managed operation prefers persisted active agent over stale catalog summary", async () => {
+test("SessionRuntime managed operation prefers persisted active agent over stale catalog summary", async () => {
     await withRuntimeCommandFixture(
         "runtime-stale-agent-summary-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -1966,8 +2010,8 @@ Deno.test("SessionRuntime managed operation prefers persisted active agent over 
     );
 });
 
-Deno.test("SessionRuntime managed prompt acquires activation before writable hydration and publication", async () => {
-    const source = await Deno.readTextFile(new URL("./runtime/managed-operations.ts", import.meta.url));
+test("SessionRuntime managed prompt acquires activation before writable hydration and publication", async () => {
+    const source = await fsReadFile(new URL("./runtime/managed-operations.ts", import.meta.url), "utf8");
     const promptManagedIndex = source.indexOf("async runManagedOperation<T>(");
     const promptManagedBody = source.slice(promptManagedIndex);
     const inspectIndex = promptManagedBody.indexOf("inspectSessionActivation(managed.runwieldSessionId)");
@@ -2015,7 +2059,7 @@ Deno.test("SessionRuntime managed prompt acquires activation before writable hyd
  * @property {boolean} writable
  */
 
-Deno.test("SessionRuntime managed workflow operations hold activation during model execution and publish afterward", async () => {
+test("SessionRuntime managed workflow operations hold activation during model execution and publish afterward", async () => {
     await withRuntimeCommandFixture(
         "runtime-operation-publication-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -2047,7 +2091,7 @@ Deno.test("SessionRuntime managed workflow operations hold activation during mod
                 const published = store.inspectSessionActivation(managed.runwieldSessionId);
                 assertEquals(published.activation?.state, "idle");
                 assertEquals(published.generation?.generation, (managed.generation ?? 0) + 1);
-                assertEquals(published.generation?.byteLength, (await Deno.stat(managed.transcriptPath)).size);
+                assertEquals(published.generation?.byteLength, (await fsStat(managed.transcriptPath)).size);
                 assertEquals(sessionHost.getSession(sessionId)?.getRootSessionManager(), null);
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
@@ -2057,16 +2101,18 @@ Deno.test("SessionRuntime managed workflow operations hold activation during mod
     );
 });
 
-Deno.test("SessionRuntime persists tutorial context before the first model turn and restores it dormant", async () => {
+test("SessionRuntime persists tutorial context before the first model turn and restores it dormant", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const cwd = runtimeProjectRoot();
     let contextSeenByModel = null;
-    setRuntimeModelResponseFactories([() => {
-        const active = runtime.listSessions()[0];
-        contextSeenByModel = active?.tutorialContext || null;
-        return fauxAssistantMessage(fauxText("Tutorial context observed."));
-    }]);
+    setRuntimeModelResponseFactories([
+        () => {
+            const active = runtime.listSessions()[0];
+            contextSeenByModel = active?.tutorialContext || null;
+            return fauxAssistantMessage(fauxText("Tutorial context observed."));
+        },
+    ]);
     const sessionId = await runtime.createPromptReadySession({ cwd, agentName: "guide" });
     const initialTutorialContext = {
         version: 1,
@@ -2131,7 +2177,7 @@ Deno.test("SessionRuntime persists tutorial context before the first model turn 
     }
 });
 
-Deno.test("SessionRuntime uses one segmented user-turn submission path", async () => {
+test("SessionRuntime uses one segmented user-turn submission path", async () => {
     setRuntimeModelMessages([fauxAssistantMessage(fauxText("Normalized request received."))]);
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
@@ -2157,7 +2203,7 @@ Deno.test("SessionRuntime uses one segmented user-turn submission path", async (
     });
 });
 
-Deno.test("SessionRuntime routes execution continuation input to the resolved Plan owner", async () => {
+test("SessionRuntime routes execution continuation input to the resolved Plan owner", async () => {
     setRuntimeModelMessages([fauxAssistantMessage(fauxText("Engineer continuation received."))]);
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
@@ -2187,9 +2233,9 @@ Deno.test("SessionRuntime routes execution continuation input to the resolved Pl
     assertEquals(changedAgents, ["plan-engineer"]);
 });
 
-Deno.test("SessionRuntime keeps the next Epic decomposition reply with Slicer", async () => {
+test("SessionRuntime keeps the next Epic decomposition reply with Slicer", async () => {
     const projectRoot = join(runtimeProjectRoot(), `slicer-resume-${crypto.randomUUID()}`);
-    await Deno.mkdir(projectRoot, { recursive: true });
+    await fsMkdir(projectRoot, { recursive: true });
     await savePlan(projectRoot, "epic-a", "# Epic A", {
         classification: "PROJECT",
         complexity: "HIGH",
@@ -2230,7 +2276,7 @@ Deno.test("SessionRuntime keeps the next Epic decomposition reply with Slicer", 
     }
 });
 
-Deno.test("SessionRuntime owns managed submission blocking messages", () => {
+test("SessionRuntime owns managed submission blocking messages", () => {
     const sessionHost = new SessionHost();
     const session = sessionHost.createSession({
         id: "managed-submission-block",
@@ -2276,13 +2322,13 @@ Deno.test("SessionRuntime owns managed submission blocking messages", () => {
     assertEquals(runtime.getUserTurnSubmissionBlockMessage(session.id), "Refresh failed.");
 });
 
-Deno.test("SessionRuntime projects an empty context report before an Agent is selected", async () => {
+test("SessionRuntime projects an empty context report before an Agent is selected", async () => {
     const runtime = makeRuntime();
     const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
     assertEquals((await runtime.getSessionContextReport(sessionId))?.usedTokens, 0);
 });
 
-Deno.test("SessionRuntime projects active Agent Session context without exposing internals", async () => {
+test("SessionRuntime projects active Agent Session context without exposing internals", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "engineer" });
@@ -2297,7 +2343,7 @@ Deno.test("SessionRuntime projects active Agent Session context without exposing
     assertEquals(JSON.stringify(report).includes("systemPrompt"), false);
 });
 
-Deno.test("SessionRuntime uses one activation transaction for initial readiness and later switches", async () => {
+test("SessionRuntime uses one activation transaction for initial readiness and later switches", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
@@ -2319,7 +2365,7 @@ Deno.test("SessionRuntime uses one activation transaction for initial readiness 
     assertEquals(changedAgents, ["operator"]);
 });
 
-Deno.test("SessionRuntime snapshots and events keep workflow footer context separate from execution state", async () => {
+test("SessionRuntime snapshots and events keep workflow footer context separate from execution state", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const hostedSession = sessionHost.createSession({
@@ -2369,7 +2415,8 @@ Deno.test("SessionRuntime snapshots and events keep workflow footer context sepa
     assertEquals(snapshot?.activeExecutionWorkflow === hostedSession.getActiveExecutionWorkflow(), false);
     assertEquals("workflow" in /** @type {Record<string, unknown>} */ (snapshot || {}), false);
     assertEquals(
-        events.filter((event) => event.type === RuntimeEventTypes.WORKFLOW_CONTEXT_CHANGED)
+        events
+            .filter((event) => event.type === RuntimeEventTypes.WORKFLOW_CONTEXT_CHANGED)
             .map((event) => event.workflowContext),
         [
             { routingIntent: "PLANNED_CHANGE", complexity: "MEDIUM" },
@@ -2382,7 +2429,7 @@ Deno.test("SessionRuntime snapshots and events keep workflow footer context sepa
     );
 });
 
-Deno.test("SessionRuntime emits one keyboard-help event for the requested session", async () => {
+test("SessionRuntime emits one keyboard-help event for the requested session", async () => {
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
     /** @type {any[]} */
@@ -2404,7 +2451,7 @@ Deno.test("SessionRuntime emits one keyboard-help event for the requested sessio
     assertEquals(events[0].items[0], { key: "esc", description: "to interrupt" });
 });
 
-Deno.test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {
+test("SessionRuntime emits one ordered lifecycle for one prompt", async () => {
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
     /** @type {any[]} */
@@ -2430,17 +2477,27 @@ Deno.test("SessionRuntime emits one ordered lifecycle for one prompt", async () 
     assertEquals(eventTypes.filter((type) => type === RuntimeEventTypes.ATTENTION_REQUESTED).length, 1);
     assertEquals(eventTypes.filter((type) => type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA).length > 0, true);
     assertEquals(events.filter((event) => event.type === RuntimeEventTypes.USER_MESSAGE).length, 1);
-    assertEquals(events.every((event) => event.sessionId === sessionId), true);
+    assertEquals(
+        events.every((event) => event.sessionId === sessionId),
+        true,
+    );
 });
 
-Deno.test("SessionRuntime persists pending prompt images once a live manager exists", async () => {
+test("SessionRuntime persists pending prompt images once a live manager exists", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
-        const home = await Deno.makeTempDir({ prefix: "runwield-runtime-pending-image-" });
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-pending-image-"));
+        process.env["HOME"] = home;
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
-        const runtime = makeRuntime();
+        await fsMkdir(cwd, { recursive: true });
+        ensureRuntimeModelFixture();
+        const store = openOwnerCoordinationStore();
+        const runtime = new SessionRuntime({
+            sessionHost: new SessionHost(),
+            sessionStore: store,
+            ownerProcessKind: "test",
+            ownerInstanceId: crypto.randomUUID(),
+        });
         try {
             const sessionId = await runtime.createPromptReadySession({ cwd });
             /** @type {any[]} */
@@ -2458,107 +2515,112 @@ Deno.test("SessionRuntime persists pending prompt images once a live manager exi
             const userEvent = events.find((event) => event.type === RuntimeEventTypes.USER_MESSAGE);
             const eventImage = userEvent?.images?.[0];
             assertEquals(eventImage?.ref?.startsWith("attachment:"), true);
-            assertEquals(new TextDecoder().decode(await Deno.readFile(eventImage.path)), "img");
+            assertEquals(new TextDecoder().decode(await fsReadFile(eventImage.path)), "img");
         } finally {
-            Deno.env.set("HOME", previousHome);
+            await runtime.closeAllSessionsWhenIdle();
+            store.close();
+            process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
 });
 
-Deno.test("SessionRuntime keeps executePlan workflow operations busy while preparation runs", async () => {
-    await withRuntimeCommandFixture(
-        "runtime-execute-busy-",
-        async ({ projectRoot: cwd, setModelResponseFactory }) => {
-            const runtime = createSessionRuntime();
-            /** @type {() => void} */
-            let releaseEngineerTurn = () => {};
-            const engineerTurnReleased = new Promise((resolve) => {
-                releaseEngineerTurn = /** @type {() => void} */ (resolve);
-            });
-            setModelResponseFactory(async () => {
-                await engineerTurnReleased;
-                return fauxAssistantMessage(fauxText("Execution remains paused in the fixture."));
-            });
-            const planName = "execute-busy-plan";
-            await savePlan(cwd, planName, `# ${planName}`, {
-                classification: "PLANNED_CHANGE",
-                status: "ready_for_work",
-                summary: planName,
-                affectedPaths: [],
-                planId: "execute-busy-plan-id",
-            });
-            // Exercise the real persisted-consent path against the fixture HOME. This keeps
-            // the test on the non-Git execution branch without replacing workflow machinery
-            // or opening an interactive prompt.
-            await rememberNonGitExecutionConsent("featurePlan", cwd);
-            const approvalEvidence = await loadPlanActionEvidence(cwd, "execute-busy-plan-id");
-            if (approvalEvidence.kind !== "success") throw new Error(approvalEvidence.message);
-            const sessionId = await runtime.createPromptReadySession({ cwd });
-            /** @type {boolean[]} */
-            const busyStates = [];
-            /** @type {RuntimePreparationBusySample[]} */
-            const preparationMessages = [];
-            /** @type {() => void} */
-            let resolveLaunchSeen = () => {};
-            const launchSeen = new Promise((resolve) => {
-                resolveLaunchSeen = /** @type {() => void} */ (resolve);
-            });
-            runtime.subscribeSessionEvents(sessionId, (event) => {
-                if (event.type === RuntimeEventTypes.BUSY_CHANGED) busyStates.push(event.busy);
-                if ("message" in event && typeof event.message === "string") {
-                    if (
-                        event.message.includes("Preparing the implementation target") ||
-                        event.message.includes("Preparing in-place work because Git is unavailable") ||
-                        event.message.includes("Marking the Plan as in progress") ||
-                        event.message.includes("Starting Plan Engineer")
-                    ) {
-                        preparationMessages.push({
-                            message: event.message,
-                            busy: runtime.getSessionSnapshot(sessionId)?.busy,
-                        });
-                    }
-                    if (event.message.includes("Starting Plan Engineer")) resolveLaunchSeen();
+test("SessionRuntime keeps executePlan workflow operations busy while preparation runs", async () => {
+    await withRuntimeCommandFixture("runtime-execute-busy-", async ({ projectRoot: cwd, setModelResponseFactory }) => {
+        const runtime = createSessionRuntime();
+        /** @type {() => void} */
+        let releaseEngineerTurn = () => {};
+        const engineerTurnReleased = new Promise((resolve) => {
+            releaseEngineerTurn = /** @type {() => void} */ (resolve);
+        });
+        setModelResponseFactory(async () => {
+            await engineerTurnReleased;
+            return fauxAssistantMessage(fauxText("Execution remains paused in the fixture."));
+        });
+        const planName = "execute-busy-plan";
+        await savePlan(cwd, planName, `# ${planName}`, {
+            classification: "PLANNED_CHANGE",
+            status: "ready_for_work",
+            summary: planName,
+            affectedPaths: [],
+            planId: "execute-busy-plan-id",
+        });
+        // Exercise the real persisted-consent path against the fixture HOME. This keeps
+        // the test on the non-Git execution branch without replacing workflow machinery
+        // or opening an interactive prompt.
+        await rememberNonGitExecutionConsent("featurePlan", cwd);
+        const approvalEvidence = await loadPlanActionEvidence(cwd, "execute-busy-plan-id");
+        if (approvalEvidence.kind !== "success") throw new Error(approvalEvidence.message);
+        const sessionId = await runtime.createPromptReadySession({ cwd });
+        /** @type {boolean[]} */
+        const busyStates = [];
+        /** @type {RuntimePreparationBusySample[]} */
+        const preparationMessages = [];
+        /** @type {() => void} */
+        let resolveLaunchSeen = () => {};
+        const launchSeen = new Promise((resolve) => {
+            resolveLaunchSeen = /** @type {() => void} */ (resolve);
+        });
+        runtime.subscribeSessionEvents(sessionId, (event) => {
+            if (event.type === RuntimeEventTypes.BUSY_CHANGED) busyStates.push(event.busy);
+            if ("message" in event && typeof event.message === "string") {
+                if (
+                    event.message.includes("Preparing the implementation target") ||
+                    event.message.includes("Preparing in-place work because Git is unavailable") ||
+                    event.message.includes("Marking the Plan as in progress") ||
+                    event.message.includes("Starting Plan Engineer")
+                ) {
+                    preparationMessages.push({
+                        message: event.message,
+                        busy: runtime.getSessionSnapshot(sessionId)?.busy,
+                    });
                 }
-            });
-
-            const execution = runtime.executePlan(sessionId, {
-                planName,
-                triageMeta: {
-                    planId: "execute-busy-plan-id",
-                    classification: "PLANNED_CHANGE",
-                    revision: approvalEvidence.evidence.revision,
-                    status: approvalEvidence.evidence.status,
-                    worktree: approvalEvidence.evidence.worktree,
-                },
-            });
-
-            const preparation = await Promise.race([
-                launchSeen.then(() => ({ kind: "launched" })),
-                execution.then((result) => ({ kind: "completed", result })),
-            ]);
-            if (preparation.kind === "completed" && "result" in preparation) {
-                throw new Error(`Execution completed before Engineer launch: ${JSON.stringify(preparation.result)}`);
+                if (event.message.includes("Starting Plan Engineer")) resolveLaunchSeen();
             }
-            assertEquals(runtime.getSessionSnapshot(sessionId)?.busy, true);
-            releaseEngineerTurn();
-            await execution;
+        });
 
-            assertEquals(busyStates, [true, false]);
-            assertEquals(preparationMessages.map((entry) => entry.message), [
+        const execution = runtime.executePlan(sessionId, {
+            planName,
+            triageMeta: {
+                planId: "execute-busy-plan-id",
+                classification: "PLANNED_CHANGE",
+                revision: approvalEvidence.evidence.revision,
+                status: approvalEvidence.evidence.status,
+                worktree: approvalEvidence.evidence.worktree,
+            },
+        });
+
+        const preparation = await Promise.race([
+            launchSeen.then(() => ({ kind: "launched" })),
+            execution.then((result) => ({ kind: "completed", result })),
+        ]);
+        if (preparation.kind === "completed" && "result" in preparation) {
+            throw new Error(`Execution completed before Engineer launch: ${JSON.stringify(preparation.result)}`);
+        }
+        assertEquals(runtime.getSessionSnapshot(sessionId)?.busy, true);
+        releaseEngineerTurn();
+        await execution;
+
+        assertEquals(busyStates, [true, false]);
+        assertEquals(
+            preparationMessages.map((entry) => entry.message),
+            [
                 "Preparing the implementation target...",
                 "Preparing in-place work because Git is unavailable...",
                 "Marking the Plan as in progress...",
                 "Starting Plan Engineer...",
-            ]);
-            assertEquals(preparationMessages.map((entry) => entry.busy), [true, true, true, true]);
-            assertEquals(runtime.getSessionSnapshot(sessionId)?.busy, false);
-            runtime.closeAllSessions();
-        },
-    );
+            ],
+        );
+        assertEquals(
+            preparationMessages.map((entry) => entry.busy),
+            [true, true, true, true],
+        );
+        assertEquals(runtime.getSessionSnapshot(sessionId)?.busy, false);
+        runtime.closeAllSessions();
+    });
 });
 
-Deno.test("SessionRuntime keeps direct model operations busy until the outermost operation settles", async () => {
+test("SessionRuntime keeps direct model operations busy until the outermost operation settles", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     /** @type {Array<() => void>} */
@@ -2592,7 +2654,7 @@ Deno.test("SessionRuntime keeps direct model operations busy until the outermost
     assertEquals(runtime.getSessionSnapshot(sessionId)?.busy, false);
 });
 
-Deno.test("SessionRuntime cycles through max thinking level", async () => {
+test("SessionRuntime cycles through max thinking level", async () => {
     const runtime = makeRuntime();
     const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
     await runtime.setSessionThinkingLevel(sessionId, "xhigh");
@@ -2603,7 +2665,7 @@ Deno.test("SessionRuntime cycles through max thinking level", async () => {
     assertEquals(runtime.getSessionSnapshot(sessionId)?.thinkingLevel, "max");
 });
 
-Deno.test("SessionRuntime event subscriptions unsubscribe deterministically", async () => {
+test("SessionRuntime event subscriptions unsubscribe deterministically", async () => {
     const runtime = makeRuntime();
     const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
     /** @type {any[]} */
@@ -2617,13 +2679,14 @@ Deno.test("SessionRuntime event subscriptions unsubscribe deterministically", as
     await runtime.setSessionThinkingLevel(sessionId, "medium");
 
     assertEquals(
-        events.filter((event) => event.type === RuntimeEventTypes.THINKING_LEVEL_CHANGED)
+        events
+            .filter((event) => event.type === RuntimeEventTypes.THINKING_LEVEL_CHANGED)
             .map((event) => event.thinkingLevel),
         ["low"],
     );
 });
 
-Deno.test("SessionRuntime owns the complete local shell tool lifecycle", async () => {
+test("SessionRuntime owns the complete local shell tool lifecycle", async () => {
     const runtime = makeRuntime();
     const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
     /** @type {any[]} */
@@ -2647,7 +2710,7 @@ Deno.test("SessionRuntime owns the complete local shell tool lifecycle", async (
     assertEquals(events.find((event) => event.type === RuntimeEventTypes.TOOL_END)?.output, "runtime-shell");
 });
 
-Deno.test("SessionRuntime persists local shell commands as bash execution messages visible to LLM context", async () => {
+test("SessionRuntime persists local shell commands as bash execution messages visible to LLM context", async () => {
     setRuntimeModelMessages([fauxAssistantMessage(fauxText("Initial fixture turn."))]);
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
@@ -2659,16 +2722,18 @@ Deno.test("SessionRuntime persists local shell commands as bash execution messag
         persist: true,
     });
     let nextTurnContext = "";
-    setRuntimeModelResponseFactories([(context) => {
-        nextTurnContext = JSON.stringify(context.messages);
-        return fauxAssistantMessage(fauxText("Observed the shell result."));
-    }]);
+    setRuntimeModelResponseFactories([
+        (context) => {
+            nextTurnContext = JSON.stringify(context.messages);
+            return fauxAssistantMessage(fauxText("Observed the shell result."));
+        },
+    ]);
     await runtime.promptSession(sessionId, { initialRequest: "what happened?", initialImages: [] });
 
     assertEquals(nextTurnContext.includes("visible-shell"), true);
 });
 
-Deno.test("SessionRuntime cancellation terminates an active local shell command", async () => {
+test("SessionRuntime cancellation terminates an active local shell command", async () => {
     const runtime = makeRuntime();
     const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
     let resolveStarted = () => {};
@@ -2688,13 +2753,15 @@ Deno.test("SessionRuntime cancellation terminates an active local shell command"
     assertEquals(result.exitCode, 130);
 });
 
-Deno.test({
-    name: "SessionRuntime cancellation kills the local shell command's descendant processes",
-    ignore: Deno.build.os === "windows",
-    fn: async () => {
+test(
+    "SessionRuntime cancellation kills the local shell command's descendant processes",
+    {
+        skip: process.platform === "win32",
+    },
+    async () => {
         const runtime = makeRuntime();
         const { sessionId } = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
-        const pidFile = await Deno.makeTempFile({ prefix: "runwield-local-shell-descendant-" });
+        const pidFile = await makeTempFile({ prefix: "runwield-local-shell-descendant-" });
         let resolveStarted = () => {};
         const started = new Promise((resolve) => {
             resolveStarted = () => resolve(undefined);
@@ -2711,14 +2778,14 @@ Deno.test({
         let descendantPid = 0;
         while (!descendantPid) {
             await new Promise((resolve) => setTimeout(resolve, 10));
-            descendantPid = Number((await Deno.readTextFile(pidFile)).trim()) || 0;
+            descendantPid = Number((await fsReadFile(pidFile, "utf8")).trim()) || 0;
         }
         runtime.cancelSession(sessionId);
         const result = await command;
 
         const descendantDead = await waitForProcessDeath(descendantPid);
-        if (!descendantDead) Deno.kill(descendantPid, "SIGKILL");
-        await Deno.remove(pidFile).catch(() => {});
+        if (!descendantDead) process.kill(descendantPid, "SIGKILL");
+        await fsRm(pidFile).catch(() => {});
 
         assertEquals(result.canceled, true);
         assertEquals(result.exitCode, 130);
@@ -2728,12 +2795,14 @@ Deno.test({
             "cancellation must kill the wrapper shell's descendants, not only the wrapper",
         );
     },
-});
+);
 
-Deno.test("SessionRuntime publishes handler errors and releases the turn", async () => {
-    setRuntimeModelResponseFactories([() => {
-        throw new Error("boom");
-    }]);
+test("SessionRuntime publishes handler errors and releases the turn", async () => {
+    setRuntimeModelResponseFactories([
+        () => {
+            throw new Error("boom");
+        },
+    ]);
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
     /** @type {string[]} */
@@ -2750,7 +2819,7 @@ Deno.test("SessionRuntime publishes handler errors and releases the turn", async
     assertEquals(runtime.getSessionSnapshot(sessionId)?.busy, false);
 });
 
-Deno.test("SessionRuntime rejects overlapping turns for one id", async () => {
+test("SessionRuntime rejects overlapping turns for one id", async () => {
     /** @type {() => void} */
     let release = () => {};
     const released = new Promise((resolve) => {
@@ -2761,11 +2830,13 @@ Deno.test("SessionRuntime rejects overlapping turns for one id", async () => {
     const started = new Promise((resolve) => {
         markStarted = () => resolve(undefined);
     });
-    setRuntimeModelResponseFactories([async () => {
-        markStarted();
-        await released;
-        return fauxAssistantMessage(fauxText("Released."));
-    }]);
+    setRuntimeModelResponseFactories([
+        async () => {
+            markStarted();
+            await released;
+            return fauxAssistantMessage(fauxText("Released."));
+        },
+    ]);
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
 
@@ -2794,7 +2865,7 @@ Deno.test("SessionRuntime rejects overlapping turns for one id", async () => {
     }
 });
 
-Deno.test("SessionRuntime allows independent session ids to run concurrently", async () => {
+test("SessionRuntime allows independent session ids to run concurrently", async () => {
     /** @type {() => void} */
     let releaseResponses = () => {};
     const released = new Promise((resolve) => {
@@ -2806,12 +2877,14 @@ Deno.test("SessionRuntime allows independent session ids to run concurrently", a
         markBothStarted = () => resolve(undefined);
     });
     let startedCount = 0;
-    setRuntimeModelResponseFactories(["Alpha.", "Beta."].map((text) => async () => {
-        startedCount++;
-        if (startedCount === 2) markBothStarted();
-        await released;
-        return fauxAssistantMessage(fauxText(text));
-    }));
+    setRuntimeModelResponseFactories(
+        ["Alpha.", "Beta."].map((text) => async () => {
+            startedCount++;
+            if (startedCount === 2) markBothStarted();
+            await released;
+            return fauxAssistantMessage(fauxText(text));
+        }),
+    );
     const runtime = makeRuntime();
     const alpha = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
     const beta = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
@@ -2838,27 +2911,30 @@ Deno.test("SessionRuntime allows independent session ids to run concurrently", a
         await Promise.all(prompts);
         await runtime.closeAllSessionsWhenIdle();
     }
-    assertEquals((await Promise.all(prompts)).map((result) => result.ok), [true, true]);
+    assertEquals(
+        (await Promise.all(prompts)).map((result) => result.ok),
+        [true, true],
+    );
 });
 
-Deno.test("SessionRuntime /reload publishes replacement Prompt Template and Skill catalogs", async () => {
+test("SessionRuntime /reload publishes replacement Prompt Template and Skill catalogs", async () => {
     await withRuntimeCommandFixture("runtime-reload-catalogs-", async ({ projectRoot, setModelResponseFactory }) => {
         const promptDir = join(projectRoot, ".wld", "prompts");
         const skillRoot = join(projectRoot, ".wld", "skills");
         const changedSkillDir = join(skillRoot, "reload-fixture");
         const removedSkillDir = join(skillRoot, "removed-fixture");
-        await Deno.mkdir(promptDir, { recursive: true });
-        await Deno.mkdir(changedSkillDir, { recursive: true });
-        await Deno.mkdir(removedSkillDir, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(promptDir, { recursive: true });
+        await fsMkdir(changedSkillDir, { recursive: true });
+        await fsMkdir(removedSkillDir, { recursive: true });
+        await fsWriteFile(
             join(promptDir, "reload-prompt.md"),
             ["---", 'description: "before reload"', "---", "before body"].join("\n"),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(changedSkillDir, "SKILL.md"),
             ["---", 'name: "reload-fixture"', 'description: "before skill"', "---", "before skill body"].join("\n"),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(removedSkillDir, "SKILL.md"),
             ["---", 'name: "removed-fixture"', 'description: "remove me"', "---", "removed skill body"].join("\n"),
         );
@@ -2876,31 +2952,38 @@ Deno.test("SessionRuntime /reload publishes replacement Prompt Template and Skil
             if (event.type === RuntimeEventTypes.COMMAND_CATALOG_CHANGED) catalogEvents.push(event);
         });
 
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(promptDir, "reload-prompt.md"),
             ["---", 'description: "after reload"', "---", "after body"].join("\n"),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(promptDir, "added-prompt.md"),
             ["---", 'description: "added prompt"', "---", "added body"].join("\n"),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(changedSkillDir, "SKILL.md"),
             ["---", 'name: "reload-fixture"', 'description: "after skill"', "---", "after skill body"].join("\n"),
         );
-        await Deno.remove(removedSkillDir, { recursive: true });
+        await fsRm(removedSkillDir, { recursive: true });
 
         assertEquals(await runtime.reloadSession(created.sessionId), { ok: true });
         assertEquals(catalogEvents.length, 1);
-        const catalogEvent =
-            /** @type {import('./session-runtime-events.js').RuntimeCommandCatalogChangedEvent} */ (catalogEvents[0]);
+        const catalogEvent = /** @type {import('./session-runtime-events.js').RuntimeCommandCatalogChangedEvent} */ (
+            catalogEvents[0]
+        );
         assertEquals(
             catalogEvent.promptTemplates.find((template) => template.name === "reload-prompt")?.description,
             "after reload",
         );
-        assertEquals(catalogEvent.promptTemplates.some((template) => template.name === "added-prompt"), true);
+        assertEquals(
+            catalogEvent.promptTemplates.some((template) => template.name === "added-prompt"),
+            true,
+        );
         assertEquals(catalogEvent.skills.find((skill) => skill.name === "reload-fixture")?.description, "after skill");
-        assertEquals(catalogEvent.skills.some((skill) => skill.name === "removed-fixture"), false);
+        assertEquals(
+            catalogEvent.skills.some((skill) => skill.name === "removed-fixture"),
+            false,
+        );
         assertEquals(await runtime.expandSessionPromptTemplate(join(promptDir, "reload-prompt.md")), "after body");
         await assertRejects(
             () => runtime.expandSessionSkillCommand(created.sessionId, "removed-fixture"),
@@ -2918,7 +3001,7 @@ Deno.test("SessionRuntime /reload publishes replacement Prompt Template and Skil
     });
 });
 
-Deno.test("SessionRuntime ignores synthetic switch-requesting tool results", async () => {
+test("SessionRuntime ignores synthetic switch-requesting tool results", async () => {
     setRuntimeModelMessages([
         fauxAssistantMessage(fauxToolCall("synthetic_switch_request", {})),
         fauxAssistantMessage(fauxText("Still working as Engineer.")),
@@ -2956,11 +3039,14 @@ Deno.test("SessionRuntime ignores synthetic switch-requesting tool results", asy
     assertEquals(result.ok, true);
     assertEquals(result.turns, 1);
     assertEquals(submittedMessages, ["fix this"]);
-    assertEquals(changedAgents.filter((agentName) => agentName !== "engineer"), []);
+    assertEquals(
+        changedAgents.filter((agentName) => agentName !== "engineer"),
+        [],
+    );
     assertEquals(runtime.getSessionSnapshot(sessionId)?.activeAgent, activeAgentBefore);
 });
 
-Deno.test("SessionRuntime delivers steering submitted from the Triage report to Planner once", async () => {
+test("SessionRuntime delivers steering submitted from the Triage report to Planner once", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     /** @type {HandoffProviderRequest[]} */
@@ -2978,17 +3064,19 @@ Deno.test("SessionRuntime delivers steering submitted from the Triage report to 
         const agentName = tools.includes("triage_report")
             ? "router"
             : tools.includes("plan_written")
-            ? "planner"
-            : "other";
+              ? "planner"
+              : "other";
         providerRequests.push({ agentName, messages, imageCount });
         if (agentName === "router") {
-            return fauxAssistantMessage(fauxToolCall("triage_report", {
-                routingIntent: "PLANNED_CHANGE",
-                workKind: "BUG_FIX",
-                complexity: "MEDIUM",
-                summary: "Fix the steering handoff race.",
-                sessionName: "Fix steering handoff",
-            }));
+            return fauxAssistantMessage(
+                fauxToolCall("triage_report", {
+                    routingIntent: "PLANNED_CHANGE",
+                    workKind: "BUG_FIX",
+                    complexity: "MEDIUM",
+                    summary: "Fix the steering handoff race.",
+                    sessionName: "Fix steering handoff",
+                }),
+            );
         }
         return fauxAssistantMessage(fauxText("Planner received the handoff."));
     };
@@ -3002,10 +3090,7 @@ Deno.test("SessionRuntime delivers steering submitted from the Triage report to 
     let plannerSteeringSubmission = null;
     runtime.subscribeSessionEvents(sessionId, (event) => {
         runtimeEvents.push(event);
-        if (
-            !steeringSubmission && event.type === RuntimeEventTypes.SYSTEM_STATUS &&
-            event.header === "Triage"
-        ) {
+        if (!steeringSubmission && event.type === RuntimeEventTypes.SYSTEM_STATUS && event.header === "Triage") {
             steeringSubmission = runtime.steerSession(
                 sessionId,
                 "Keep the reproduction deterministic.",
@@ -3014,7 +3099,8 @@ Deno.test("SessionRuntime delivers steering submitted from the Triage report to 
             );
         }
         if (
-            !plannerSteeringSubmission && event.type === RuntimeEventTypes.AGENT_CHANGED &&
+            !plannerSteeringSubmission &&
+            event.type === RuntimeEventTypes.AGENT_CHANGED &&
             event.agentName === "planner"
         ) {
             plannerSteeringSubmission = runtime.steerSession(
@@ -3062,20 +3148,25 @@ Deno.test("SessionRuntime delivers steering submitted from the Triage report to 
     const hostedSession = sessionHost.requireSession(sessionId);
     const transcriptPath = hostedSession.getManagedMetadata()?.transcriptPath;
     assertExists(transcriptPath);
-    const transcriptEntries = (await Deno.readTextFile(transcriptPath)).trim().split("\n").map((line) =>
-        JSON.parse(line)
-    );
+    const transcriptEntries = (await fsReadFile(transcriptPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
     assertEquals(
-        transcriptEntries.filter((entry) =>
-            entry.type === "custom" && entry.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE &&
-            entry.data?.state === "accepted" && entry.data?.kind === "triage_report"
+        transcriptEntries.filter(
+            (entry) =>
+                entry.type === "custom" &&
+                entry.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE &&
+                entry.data?.state === "accepted" &&
+                entry.data?.kind === "triage_report",
         ).length,
         1,
     );
     const deliveredSteering = /** @type {import('./session-runtime-events.js').RuntimeUserMessageEvent[]} */ (
-        runtimeEvents.filter((event) =>
-            event.type === RuntimeEventTypes.USER_MESSAGE &&
-            [steered.message?.id, plannerSteered.message?.id].includes(event.messageId)
+        runtimeEvents.filter(
+            (event) =>
+                event.type === RuntimeEventTypes.USER_MESSAGE &&
+                [steered.message?.id, plannerSteered.message?.id].includes(event.messageId),
         )
     );
     assertEquals(deliveredSteering.length, 2);
@@ -3089,7 +3180,7 @@ Deno.test("SessionRuntime delivers steering submitted from the Triage report to 
     await runtime.closeAllSessionsWhenIdle();
 });
 
-Deno.test("SessionRuntime transfers pending Router steering to Planner in submission order", async () => {
+test("SessionRuntime transfers pending Router steering to Planner in submission order", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const routerResponseStarted = deferredVoid();
@@ -3111,13 +3202,15 @@ Deno.test("SessionRuntime transfers pending Router steering to Planner in submis
         if (agentName === "router") {
             routerResponseStarted.resolve();
             await releaseRouterResponse.promise;
-            return fauxAssistantMessage(fauxToolCall("triage_report", {
-                routingIntent: "PLANNED_CHANGE",
-                workKind: "BUG_FIX",
-                complexity: "MEDIUM",
-                summary: "Transfer pending steering in order.",
-                sessionName: "Ordered handoff steering",
-            }));
+            return fauxAssistantMessage(
+                fauxToolCall("triage_report", {
+                    routingIntent: "PLANNED_CHANGE",
+                    workKind: "BUG_FIX",
+                    complexity: "MEDIUM",
+                    summary: "Transfer pending steering in order.",
+                    sessionName: "Ordered handoff steering",
+                }),
+            );
         }
         return fauxAssistantMessage(fauxText("Planner received the pending steering."));
     };
@@ -3130,11 +3223,9 @@ Deno.test("SessionRuntime transfers pending Router steering to Planner in submis
 
     await routerResponseStarted.promise;
     const firstSteering = await runtime.steerSession(sessionId, "First pending instruction.", []);
-    const secondSteering = await runtime.steerSession(
-        sessionId,
-        "Second pending instruction with image.",
-        [{ base64: RUNTIME_TEST_PNG, mimeType: "image/png" }],
-    );
+    const secondSteering = await runtime.steerSession(sessionId, "Second pending instruction with image.", [
+        { base64: RUNTIME_TEST_PNG, mimeType: "image/png" },
+    ]);
     releaseRouterResponse.resolve();
 
     const result = await prompt;
@@ -3153,7 +3244,7 @@ Deno.test("SessionRuntime transfers pending Router steering to Planner in submis
     await runtime.closeAllSessionsWhenIdle();
 });
 
-Deno.test("SessionRuntime waits for steering submitted during replacement prompt preparation", async () => {
+test("SessionRuntime waits for steering submitted during replacement prompt preparation", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const plannerActivated = deferredVoid();
@@ -3169,13 +3260,15 @@ Deno.test("SessionRuntime waits for steering submitted during replacement prompt
             imageCount: 0,
         });
         if (agentName === "router") {
-            return fauxAssistantMessage(fauxToolCall("triage_report", {
-                routingIntent: "PLANNED_CHANGE",
-                workKind: "BUG_FIX",
-                complexity: "MEDIUM",
-                summary: "Hold replacement prompt preparation.",
-                sessionName: "Prepared replacement steering",
-            }));
+            return fauxAssistantMessage(
+                fauxToolCall("triage_report", {
+                    routingIntent: "PLANNED_CHANGE",
+                    workKind: "BUG_FIX",
+                    complexity: "MEDIUM",
+                    summary: "Hold replacement prompt preparation.",
+                    sessionName: "Prepared replacement steering",
+                }),
+            );
         }
         return fauxAssistantMessage(fauxText("Planner received preparation-time steering."));
     };
@@ -3197,7 +3290,10 @@ Deno.test("SessionRuntime waits for steering submitted during replacement prompt
 
     await plannerActivated.promise;
     await Promise.resolve();
-    assertEquals(providerRequests.map((request) => request.agentName), ["router"]);
+    assertEquals(
+        providerRequests.map((request) => request.agentName),
+        ["router"],
+    );
     assertExists(steeringSubmission);
     const steered = await /** @type {Promise<SteeringResult>} */ (steeringSubmission);
     assertEquals(steered.queued, true);
@@ -3211,7 +3307,7 @@ Deno.test("SessionRuntime waits for steering submitted during replacement prompt
     await runtime.closeAllSessionsWhenIdle();
 });
 
-Deno.test("SessionRuntime does not replay handoff steering after a replacement provider error", async () => {
+test("SessionRuntime does not replay handoff steering after a replacement provider error", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     /** @type {string[]} */
@@ -3221,13 +3317,15 @@ Deno.test("SessionRuntime does not replay handoff steering after a replacement p
     const response = (context) => {
         const tools = getCurrentTools(context.messages).map((tool) => tool.name);
         if (tools.includes("triage_report")) {
-            return fauxAssistantMessage(fauxToolCall("triage_report", {
-                routingIntent: "PLANNED_CHANGE",
-                workKind: "BUG_FIX",
-                complexity: "MEDIUM",
-                summary: "Do not replay handoff steering after an error.",
-                sessionName: "No steering replay",
-            }));
+            return fauxAssistantMessage(
+                fauxToolCall("triage_report", {
+                    routingIntent: "PLANNED_CHANGE",
+                    workKind: "BUG_FIX",
+                    complexity: "MEDIUM",
+                    summary: "Do not replay handoff steering after an error.",
+                    sessionName: "No steering replay",
+                }),
+            );
         }
         plannerRequests.push(JSON.stringify(context.messages));
         plannerAttempts += 1;
@@ -3241,10 +3339,7 @@ Deno.test("SessionRuntime does not replay handoff steering after a replacement p
     /** @type {string[]} */
     const statuses = [];
     runtime.subscribeSessionEvents(sessionId, (event) => {
-        if (
-            !steeringSubmission && event.type === RuntimeEventTypes.SYSTEM_STATUS &&
-            event.header === "Triage"
-        ) {
+        if (!steeringSubmission && event.type === RuntimeEventTypes.SYSTEM_STATUS && event.header === "Triage") {
             steeringSubmission = runtime.steerSession(sessionId, "Keep this steering exactly once.", [], "tui");
         }
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) statuses.push(event.status);
@@ -3275,7 +3370,7 @@ Deno.test("SessionRuntime does not replay handoff steering after a replacement p
     await runtime.closeAllSessionsWhenIdle();
 });
 
-Deno.test("SessionRuntime cancellation after Triage acceptance does not start the replacement Agent", async () => {
+test("SessionRuntime cancellation after Triage acceptance does not start the replacement Agent", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     /** @type {string[]} */
@@ -3286,13 +3381,15 @@ Deno.test("SessionRuntime cancellation after Triage acceptance does not start th
         const agentName = tools.includes("triage_report") ? "router" : "replacement";
         providerAgents.push(agentName);
         if (agentName === "router") {
-            return fauxAssistantMessage(fauxToolCall("triage_report", {
-                routingIntent: "PLANNED_CHANGE",
-                workKind: "BUG_FIX",
-                complexity: "MEDIUM",
-                summary: "Cancel this handoff.",
-                sessionName: "Cancel handoff",
-            }));
+            return fauxAssistantMessage(
+                fauxToolCall("triage_report", {
+                    routingIntent: "PLANNED_CHANGE",
+                    workKind: "BUG_FIX",
+                    complexity: "MEDIUM",
+                    summary: "Cancel this handoff.",
+                    sessionName: "Cancel handoff",
+                }),
+            );
         }
         return fauxAssistantMessage(fauxText("Replacement must not run."));
     };
@@ -3306,10 +3403,12 @@ Deno.test("SessionRuntime cancellation after Triage acceptance does not start th
         }
     });
 
-    await runtime.promptUserTurn(sessionId, {
-        initialRequest: "Cancel after triage.",
-        initialImages: [],
-    }).catch(() => undefined);
+    await runtime
+        .promptUserTurn(sessionId, {
+            initialRequest: "Cancel after triage.",
+            initialImages: [],
+        })
+        .catch(() => undefined);
 
     assertEquals(cancellation, { ok: true, aborted: true });
     assertEquals(providerAgents, ["router"]);
@@ -3317,7 +3416,7 @@ Deno.test("SessionRuntime cancellation after Triage acceptance does not start th
     await runtime.closeAllSessionsWhenIdle();
 });
 
-Deno.test("SessionRuntime cancellation during Planner activation prevents replacement provider work", async () => {
+test("SessionRuntime cancellation during Planner activation prevents replacement provider work", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     /** @type {string[]} */
@@ -3328,13 +3427,15 @@ Deno.test("SessionRuntime cancellation during Planner activation prevents replac
         const agentName = tools.includes("triage_report") ? "router" : "planner";
         providerAgents.push(agentName);
         if (agentName === "router") {
-            return fauxAssistantMessage(fauxToolCall("triage_report", {
-                routingIntent: "PLANNED_CHANGE",
-                workKind: "BUG_FIX",
-                complexity: "MEDIUM",
-                summary: "Cancel during Planner activation.",
-                sessionName: "Cancel Planner activation",
-            }));
+            return fauxAssistantMessage(
+                fauxToolCall("triage_report", {
+                    routingIntent: "PLANNED_CHANGE",
+                    workKind: "BUG_FIX",
+                    complexity: "MEDIUM",
+                    summary: "Cancel during Planner activation.",
+                    sessionName: "Cancel Planner activation",
+                }),
+            );
         }
         return fauxAssistantMessage(fauxText("Planner must not run."));
     };
@@ -3348,10 +3449,12 @@ Deno.test("SessionRuntime cancellation during Planner activation prevents replac
         }
     });
 
-    await runtime.promptUserTurn(sessionId, {
-        initialRequest: "Cancel when Planner activates.",
-        initialImages: [],
-    }).catch(() => undefined);
+    await runtime
+        .promptUserTurn(sessionId, {
+            initialRequest: "Cancel when Planner activates.",
+            initialImages: [],
+        })
+        .catch(() => undefined);
 
     assertEquals(cancellation, { ok: true, aborted: true });
     assertEquals(providerAgents, ["router"]);
@@ -3359,7 +3462,7 @@ Deno.test("SessionRuntime cancellation during Planner activation prevents replac
     await runtime.closeAllSessionsWhenIdle();
 });
 
-Deno.test("SessionRuntime owns steering and deferred queue transitions", async () => {
+test("SessionRuntime owns steering and deferred queue transitions", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3442,7 +3545,7 @@ function createScriptedManagedTurn(sessionHost) {
     return { hostedSession, agentSession, capability };
 }
 
-Deno.test("SessionRuntime reconciles consumed steering at turn end when the backend emits no queue update", async () => {
+test("SessionRuntime reconciles consumed steering at turn end when the backend emits no queue update", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const { hostedSession, agentSession, capability } = createScriptedManagedTurn(sessionHost);
@@ -3477,7 +3580,7 @@ Deno.test("SessionRuntime reconciles consumed steering at turn end when the back
     assertEquals(runtime.getQueuedMessages(hostedSession.id), []);
 });
 
-Deno.test("SessionRuntime lets dormant managed sessions consume deferred user follow-up messages", async () => {
+test("SessionRuntime lets dormant managed sessions consume deferred user follow-up messages", async () => {
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot(), agentName: "router" });
     await runtime.promptUserTurn(sessionId, { initialRequest: "finish this session" });
@@ -3492,7 +3595,7 @@ Deno.test("SessionRuntime lets dormant managed sessions consume deferred user fo
     assertEquals(runtime.getQueuedMessages(sessionId), []);
 });
 
-Deno.test("SessionRuntime steers active foreground sub-agent before streaming root and reconciles source queue", async () => {
+test("SessionRuntime steers active foreground sub-agent before streaming root and reconciles source queue", async () => {
     const sessionHost = new SessionHost();
     const rootSession = makeSteeringAgentSession();
     const foregroundSession = makeSteeringAgentSession();
@@ -3525,7 +3628,7 @@ Deno.test("SessionRuntime steers active foreground sub-agent before streaming ro
     hostedSession.removeSubAgentSession(foregroundSession);
 });
 
-Deno.test("SessionRuntime accepts text steering for Antigravity CLI but rejects image steering", async () => {
+test("SessionRuntime accepts text steering for Antigravity CLI but rejects image steering", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     agentSession.model = { provider: "agy-cli", executionBackend: "agy-cli", input: ["text"] };
@@ -3542,7 +3645,7 @@ Deno.test("SessionRuntime accepts text steering for Antigravity CLI but rejects 
     );
 });
 
-Deno.test("SessionRuntime buffers identifiable steering for the replacement Agent and supports recall", async () => {
+test("SessionRuntime buffers identifiable steering for the replacement Agent and supports recall", async () => {
     const sessionHost = new SessionHost();
     const rootSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3555,35 +3658,40 @@ Deno.test("SessionRuntime buffers identifiable steering for the replacement Agen
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) events.push(event);
     });
 
-    const steered = await runtime.steerSession(
-        sessionId,
-        "send this to the new Agent",
-        [{ base64: btoa("transition-image"), mimeType: "image/png" }],
-    );
+    const steered = await runtime.steerSession(sessionId, "send this to the new Agent", [
+        { base64: btoa("transition-image"), mimeType: "image/png" },
+    ]);
 
     assertEquals(steered.ok, true);
     assertEquals(steered.queued, true);
     assertExists(steered.message);
     assertEquals(rootSession.getSteeringMessages(), []);
     assertEquals(runtime.getQueuedMessages(sessionId), [steered.message]);
-    assertEquals(hostedSession.consumeAgentTransitionSteering(), [{
-        text: "send this to the new Agent",
-        images: [{ base64: btoa("transition-image"), mimeType: "image/png" }],
-        message: steered.message,
-    }]);
-    hostedSession.restoreAgentTransitionSteering([{
-        text: steered.message.text,
-        images: steered.message.images,
-        message: steered.message,
-    }]);
+    assertEquals(hostedSession.consumeAgentTransitionSteering(), [
+        {
+            text: "send this to the new Agent",
+            images: [{ base64: btoa("transition-image"), mimeType: "image/png" }],
+            message: steered.message,
+        },
+    ]);
+    hostedSession.restoreAgentTransitionSteering([
+        {
+            text: steered.message.text,
+            images: steered.message.images,
+            message: steered.message,
+        },
+    ]);
     const recalled = await runtime.dequeueLastQueuedMessage(sessionId);
     assertEquals(recalled.message?.id, steered.message.id);
-    assertEquals(events.map((event) => event.status), ["queued", "dequeued"]);
+    assertEquals(
+        events.map((event) => event.status),
+        ["queued", "dequeued"],
+    );
     assertEquals(runtime.getQueuedMessages(sessionId), []);
     hostedSession.completeAgentTransition(transitionId);
 });
 
-Deno.test("SessionRuntime transfers old Agent steering without claiming consumption", async () => {
+test("SessionRuntime transfers old Agent steering without claiming consumption", async () => {
     const sessionHost = new SessionHost();
     const rootSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3595,23 +3703,24 @@ Deno.test("SessionRuntime transfers old Agent steering without claiming consumpt
         if (event.type === RuntimeEventTypes.QUEUED_MESSAGE_CHANGED) statuses.push(event.status);
     });
     const first = await runtime.steerSession(sessionId, "first pending", []);
-    const second = await runtime.steerSession(
-        sessionId,
-        "second pending",
-        [{ base64: btoa("pending-image"), mimeType: "image/png" }],
-    );
+    const second = await runtime.steerSession(sessionId, "second pending", [
+        { base64: btoa("pending-image"), mimeType: "image/png" },
+    ]);
 
     const transitionId = hostedSession.beginAgentTransition();
     rootSession.clearQueue();
 
     assertEquals(rootSession.getSteeringMessages(), []);
     assertEquals(statuses, ["queued", "queued"]);
-    assertEquals(runtime.getQueuedMessages(sessionId).map((message) => message.id), [
-        first.message?.id,
-        second.message?.id,
-    ]);
+    assertEquals(
+        runtime.getQueuedMessages(sessionId).map((message) => message.id),
+        [first.message?.id, second.message?.id],
+    );
     const transferred = hostedSession.consumeAgentTransitionSteering();
-    assertEquals(transferred.map((entry) => entry.message?.id), [first.message?.id, second.message?.id]);
+    assertEquals(
+        transferred.map((entry) => entry.message?.id),
+        [first.message?.id, second.message?.id],
+    );
     assertEquals(transferred[1].images, [{ base64: btoa("pending-image"), mimeType: "image/png" }]);
     hostedSession.restoreAgentTransitionSteering(transferred);
     hostedSession.completeAgentTransition(transitionId);
@@ -3621,7 +3730,7 @@ Deno.test("SessionRuntime transfers old Agent steering without claiming consumpt
     assertEquals(statuses, ["queued", "queued", "dequeued", "dequeued"]);
 });
 
-Deno.test("SessionRuntime keeps queue subscriptions for multiple steering source sessions", async () => {
+test("SessionRuntime keeps queue subscriptions for multiple steering source sessions", async () => {
     const sessionHost = new SessionHost();
     const rootSession = makeSteeringAgentSession();
     const foregroundSession = makeSteeringAgentSession();
@@ -3648,7 +3757,7 @@ Deno.test("SessionRuntime keeps queue subscriptions for multiple steering source
     hostedSession.popSteeringTargetSession(targetId);
 });
 
-Deno.test("SessionRuntime dequeue restores remaining steering onto original source when foreground changes", async () => {
+test("SessionRuntime dequeue restores remaining steering onto original source when foreground changes", async () => {
     const sessionHost = new SessionHost();
     const rootSession = makeSteeringAgentSession();
     const foregroundSession = makeSteeringAgentSession();
@@ -3667,11 +3776,14 @@ Deno.test("SessionRuntime dequeue restores remaining steering onto original sour
     assertEquals(dequeued.message?.text, "recall from child");
     assertEquals(foregroundSession.getSteeringMessages(), ["keep on child"]);
     assertEquals(otherForegroundSession.getSteeringMessages(), []);
-    assertEquals(runtime.getQueuedMessages(sessionId).map((message) => message.text), ["keep on child"]);
+    assertEquals(
+        runtime.getQueuedMessages(sessionId).map((message) => message.text),
+        ["keep on child"],
+    );
     hostedSession.popSteeringTargetSession(otherTargetId);
 });
 
-Deno.test("SessionRuntime tracks steering before preparation and preserves submission order", async () => {
+test("SessionRuntime tracks steering before preparation and preserves submission order", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3680,16 +3792,16 @@ Deno.test("SessionRuntime tracks steering before preparation and preserves submi
     const first = runtime.steerSession(sessionId, "first steering", []);
     const second = runtime.steerSession(sessionId, "second steering", []);
 
-    assertEquals(runtime.getQueuedMessages(sessionId).map((message) => message.text), [
-        "first steering",
-        "second steering",
-    ]);
+    assertEquals(
+        runtime.getQueuedMessages(sessionId).map((message) => message.text),
+        ["first steering", "second steering"],
+    );
     assertEquals((await first).queued, true);
     assertEquals((await second).queued, true);
     assertEquals(agentSession.getSteeringMessages(), ["first steering", "second steering"]);
 });
 
-Deno.test("SessionRuntime keeps pending steering ahead of newer transition steering", async () => {
+test("SessionRuntime keeps pending steering ahead of newer transition steering", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3697,11 +3809,9 @@ Deno.test("SessionRuntime keeps pending steering ahead of newer transition steer
     const hostedSession = sessionHost.requireSession(sessionId);
 
     await runtime.steerSession(sessionId, "first pending before handoff", []);
-    await runtime.steerSession(
-        sessionId,
-        "second pending before handoff",
-        [{ base64: btoa("pending-image"), mimeType: "image/png" }],
-    );
+    await runtime.steerSession(sessionId, "second pending before handoff", [
+        { base64: btoa("pending-image"), mimeType: "image/png" },
+    ]);
     hostedSession.beginAgentTransition();
     const duringHandoff = runtime.steerSession(sessionId, "newer transition steering", []);
     await Promise.resolve();
@@ -3715,7 +3825,7 @@ Deno.test("SessionRuntime keeps pending steering ahead of newer transition steer
     assertEquals(hostedSession.listAgentTransitionSteering()[1].images.length, 1);
 });
 
-Deno.test("SessionRuntime recalls steering while asynchronous preparation is pending", async () => {
+test("SessionRuntime recalls steering while asynchronous preparation is pending", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3736,7 +3846,7 @@ Deno.test("SessionRuntime recalls steering while asynchronous preparation is pen
     assertEquals(statuses, ["queued", "dequeued"]);
 });
 
-Deno.test("SessionRuntime cancellation removes steering still preparing", async () => {
+test("SessionRuntime cancellation removes steering still preparing", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3750,7 +3860,7 @@ Deno.test("SessionRuntime cancellation removes steering still preparing", async 
     assertEquals(runtime.getQueuedMessages(sessionId), []);
 });
 
-Deno.test("SessionRuntime moves image steering into the handoff after asynchronous preparation", async () => {
+test("SessionRuntime moves image steering into the handoff after asynchronous preparation", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     agentSession.model = { input: ["text"] };
@@ -3761,7 +3871,7 @@ Deno.test("SessionRuntime moves image steering into the handoff after asynchrono
     const discoveryRequestStarted = deferredVoid();
     const releaseDiscoveryRequest = deferredVoid();
     let discoveryRequests = 0;
-    const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
         assertEquals(new URL(request.url).pathname, "/v1/models");
         discoveryRequests += 1;
         discoveryRequestStarted.resolve();
@@ -3777,9 +3887,9 @@ Deno.test("SessionRuntime moves image steering into the handoff after asynchrono
     }
     const modelsPath = join(getHomeDir(), ".wld", "models.json");
     const projectSettingsPath = join(projectRoot, ".wld", "settings.json");
-    const originalModels = await Deno.readTextFile(modelsPath);
-    const originalProjectSettings = await Deno.readTextFile(projectSettingsPath).catch((error) => {
-        if (error instanceof Deno.errors.NotFound) return null;
+    const originalModels = await fsReadFile(modelsPath, "utf8");
+    const originalProjectSettings = await fsReadFile(projectSettingsPath, "utf8").catch((error) => {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     });
     const modelConfiguration = JSON.parse(originalModels);
@@ -3790,7 +3900,7 @@ Deno.test("SessionRuntime moves image steering into the handoff after asynchrono
     };
 
     try {
-        await Deno.writeTextFile(modelsPath, JSON.stringify(modelConfiguration));
+        await fsWriteFile(modelsPath, JSON.stringify(modelConfiguration));
         await setCustomSetting(
             "visionFallback",
             {
@@ -3801,11 +3911,9 @@ Deno.test("SessionRuntime moves image steering into the handoff after asynchrono
         );
         const sessionId = await attachExternalAgentSession(runtime, sessionHost, agentSession);
         const hostedSession = sessionHost.requireSession(sessionId);
-        const steering = runtime.steerSession(
-            sessionId,
-            "Image instruction prepared while handoff starts.",
-            [{ base64: btoa("async-image"), mimeType: "image/png" }],
-        );
+        const steering = runtime.steerSession(sessionId, "Image instruction prepared while handoff starts.", [
+            { base64: btoa("async-image"), mimeType: "image/png" },
+        ]);
         void steering.catch(() => undefined);
 
         await Promise.race([
@@ -3833,19 +3941,19 @@ Deno.test("SessionRuntime moves image steering into the handoff after asynchrono
     } finally {
         releaseDiscoveryRequest.resolve();
         await server.shutdown();
-        await Deno.writeTextFile(modelsPath, originalModels);
+        await fsWriteFile(modelsPath, originalModels);
         if (originalProjectSettings === null) {
-            await Deno.remove(projectSettingsPath).catch((error) => {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+            await fsRm(projectSettingsPath).catch((error) => {
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             });
         } else {
-            await Deno.writeTextFile(projectSettingsPath, originalProjectSettings);
+            await fsWriteFile(projectSettingsPath, originalProjectSettings);
         }
         __resetSettingsForTests();
     }
 });
 
-Deno.test("SessionRuntime rechecks the foreground target after asynchronous steering preparation", async () => {
+test("SessionRuntime rechecks the foreground target after asynchronous steering preparation", async () => {
     const sessionHost = new SessionHost();
     const rootSession = makeSteeringAgentSession();
     const firstForegroundSession = makeSteeringAgentSession();
@@ -3865,7 +3973,7 @@ Deno.test("SessionRuntime rechecks the foreground target after asynchronous stee
     hostedSession.popSteeringTargetSession(replacementTargetId);
 });
 
-Deno.test("SessionRuntime falls back to root when foreground steering target stopped streaming", async () => {
+test("SessionRuntime falls back to root when foreground steering target stopped streaming", async () => {
     const sessionHost = new SessionHost();
     const rootSession = makeSteeringAgentSession();
     const foregroundSession = makeSteeringAgentSession();
@@ -3883,7 +3991,7 @@ Deno.test("SessionRuntime falls back to root when foreground steering target sto
     hostedSession.popSteeringTargetSession(targetId);
 });
 
-Deno.test("SessionRuntime cancellation emits cancellation and dequeues pending messages", async () => {
+test("SessionRuntime cancellation emits cancellation and dequeues pending messages", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3908,7 +4016,7 @@ Deno.test("SessionRuntime cancellation emits cancellation and dequeues pending m
     assertEquals(hostedSession.consumeAgentTransitionSteering(), []);
 });
 
-Deno.test("SessionRuntime marks aborted agent turns to suppress agent-stopped attention", async () => {
+test("SessionRuntime marks aborted agent turns to suppress agent-stopped attention", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await attachExternalAgentSession(runtime, sessionHost, makeSteeringAgentSession());
@@ -3919,7 +4027,7 @@ Deno.test("SessionRuntime marks aborted agent turns to suppress agent-stopped at
     assertEquals(canceledSession?.consumeSuppressedAgentStoppedAttention(), false);
 });
 
-Deno.test("SessionRuntime Escape cancels active Plan review without aborting the recovery turn", async () => {
+test("SessionRuntime Escape cancels active Plan review without aborting the recovery turn", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -3943,7 +4051,7 @@ Deno.test("SessionRuntime Escape cancels active Plan review without aborting the
     assertEquals((await review).outcome, "canceled");
 });
 
-Deno.test("SessionRuntime suppresses attention when Esc races with turn completion", async () => {
+test("SessionRuntime suppresses attention when Esc races with turn completion", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     agentSession.isStreaming = false;
@@ -3956,7 +4064,7 @@ Deno.test("SessionRuntime suppresses attention when Esc races with turn completi
     assertEquals(hostedSession.consumeSuppressedAgentStoppedAttention(), true);
 });
 
-Deno.test("SessionRuntime cancellation owns active compaction and publishes one operation event", async () => {
+test("SessionRuntime cancellation owns active compaction and publishes one operation event", async () => {
     const agentSession = makeSteeringAgentSession();
     agentSession.isStreaming = false;
     agentSession.isCompacting = true;
@@ -3990,7 +4098,7 @@ Deno.test("SessionRuntime cancellation owns active compaction and publishes one 
     });
 });
 
-Deno.test("SessionRuntime interaction adapter resolves through semantic lifecycle events", async () => {
+test("SessionRuntime interaction adapter resolves through semantic lifecycle events", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const session = sessionHost.createSession({
@@ -4022,7 +4130,7 @@ Deno.test("SessionRuntime interaction adapter resolves through semantic lifecycl
     assertEquals(types, [RuntimeEventTypes.INTERACTION_REQUESTED, RuntimeEventTypes.INTERACTION_RESOLVED]);
 });
 
-Deno.test("SessionRuntime emits canceled lifecycle for an already-aborted interaction", async () => {
+test("SessionRuntime emits canceled lifecycle for an already-aborted interaction", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const session = sessionHost.createSession({
@@ -4042,29 +4150,25 @@ Deno.test("SessionRuntime emits canceled lifecycle for an already-aborted intera
     const controller = new AbortController();
     controller.abort();
 
-    const response = await runtime.requestInteraction(
-        sessionId,
-        { type: "text", prompt: "Name?" },
-        controller.signal,
-    );
+    const response = await runtime.requestInteraction(sessionId, { type: "text", prompt: "Name?" }, controller.signal);
 
     assertEquals(response.outcome, "canceled");
     assertEquals(types, [RuntimeEventTypes.INTERACTION_REQUESTED, RuntimeEventTypes.INTERACTION_CANCELED]);
 });
 
-Deno.test("SessionRuntime automatically catalogs and segments legacy transcripts when loaded", async () => {
+test("SessionRuntime automatically catalogs and segments legacy transcripts when loaded", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousHome = getHomeDir();
-        const home = await Deno.makeTempDir({ prefix: "runwield-runtime-load-cataloged-unmanaged-" });
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-runtime-load-cataloged-unmanaged-"));
+        process.env["HOME"] = home;
         const cwd = `${home}/project`;
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const store = openOwnerCoordinationStore({ dbPath: `${home}/owner.sqlite3` });
         const piSessionId = "cataloged-normal-resume";
         try {
             ensureRuntimeModelFixture();
             const sessionDir = getRunWieldSessionDir(cwd);
-            await Deno.mkdir(sessionDir, { recursive: true });
+            await fsMkdir(sessionDir, { recursive: true });
             const manager = SessionManager.create(cwd, sessionDir, { id: piSessionId });
             manager.appendCustomEntry("runwield.active_agent", { agentName: "planner" });
             manager.appendMessage(
@@ -4108,13 +4212,13 @@ Deno.test("SessionRuntime automatically catalogs and segments legacy transcripts
             }
         } finally {
             store.close();
-            Deno.env.set("HOME", previousHome);
+            process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
 });
 
-Deno.test("SessionRuntime loadSession returns opaque metadata and redacted replay events", async () => {
+test("SessionRuntime loadSession returns opaque metadata and redacted replay events", async () => {
     ensureRuntimeModelFixture();
     const branch = [
         {
@@ -4205,32 +4309,35 @@ Deno.test("SessionRuntime loadSession returns opaque metadata and redacted repla
     assertEquals("hostedSession" in result, false);
     assertEquals("sessionManager" in result, false);
     assertEquals(result.sessionManagerId, "persisted-1");
-    assertEquals(result.replayEvents.map((event) => event.type), [
-        RuntimeEventTypes.USER_MESSAGE,
-        RuntimeEventTypes.ASSISTANT_THINKING_DELTA,
-        RuntimeEventTypes.ASSISTANT_THINKING_END,
-        RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
-        RuntimeEventTypes.TOOL_START,
-        RuntimeEventTypes.TOOL_END,
-        RuntimeEventTypes.TOOL_START,
-        RuntimeEventTypes.TOOL_END,
-        RuntimeEventTypes.SYSTEM_STATUS,
-        RuntimeEventTypes.SYSTEM_STATUS,
-    ]);
     assertEquals(
-        result.replayEvents.filter((event) => event.type === RuntimeEventTypes.SYSTEM_STATUS).map((event) =>
-            event.message
-        ),
+        result.replayEvents.map((event) => event.type),
+        [
+            RuntimeEventTypes.USER_MESSAGE,
+            RuntimeEventTypes.ASSISTANT_THINKING_DELTA,
+            RuntimeEventTypes.ASSISTANT_THINKING_END,
+            RuntimeEventTypes.ASSISTANT_TEXT_DELTA,
+            RuntimeEventTypes.TOOL_START,
+            RuntimeEventTypes.TOOL_END,
+            RuntimeEventTypes.TOOL_START,
+            RuntimeEventTypes.TOOL_END,
+            RuntimeEventTypes.SYSTEM_STATUS,
+            RuntimeEventTypes.SYSTEM_STATUS,
+        ],
+    );
+    assertEquals(
+        result.replayEvents
+            .filter((event) => event.type === RuntimeEventTypes.SYSTEM_STATUS)
+            .map((event) => event.message),
         ["Model changed: test/later", "Thinking level changed: medium"],
     );
-    const modernToolEnd =
-        /** @type {any} */ (result.replayEvents.find((event) =>
-            event.type === RuntimeEventTypes.TOOL_END && event.toolCallId === "tool-2"
-        ));
-    const modernToolStart =
-        /** @type {any} */ (result.replayEvents.find((event) =>
-            event.type === RuntimeEventTypes.TOOL_START && event.toolCallId === "tool-2"
-        ));
+    const modernToolEnd = /** @type {any} */ (
+        result.replayEvents.find((event) => event.type === RuntimeEventTypes.TOOL_END && event.toolCallId === "tool-2")
+    );
+    const modernToolStart = /** @type {any} */ (
+        result.replayEvents.find(
+            (event) => event.type === RuntimeEventTypes.TOOL_START && event.toolCallId === "tool-2",
+        )
+    );
     assertEquals(modernToolStart?.title, "read README.md");
     assertEquals(modernToolStart?.kind, "read");
     assertEquals(modernToolEnd?.output, "actual tool output");
@@ -4242,17 +4349,21 @@ Deno.test("SessionRuntime loadSession returns opaque metadata and redacted repla
         result.replayEvents.find((event) => event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA)
     );
     assertEquals(assistantMessage?.agentName, "Planner");
-    const replayThinkingEvents = result.replayEvents.filter((event) =>
-        event.type === RuntimeEventTypes.ASSISTANT_THINKING_DELTA ||
-        event.type === RuntimeEventTypes.ASSISTANT_THINKING_END
+    const replayThinkingEvents = result.replayEvents.filter(
+        (event) =>
+            event.type === RuntimeEventTypes.ASSISTANT_THINKING_DELTA ||
+            event.type === RuntimeEventTypes.ASSISTANT_THINKING_END,
     );
-    assertEquals(replayThinkingEvents.map((event) => /** @type {any} */ (event).agentName), ["Planner", "Planner"]);
+    assertEquals(
+        replayThinkingEvents.map((event) => /** @type {any} */ (event).agentName),
+        ["Planner", "Planner"],
+    );
     assertEquals(JSON.stringify(result.replayEvents).includes("secret"), false);
     assertEquals(JSON.stringify(result.replayEvents).includes("[object Object]"), false);
     assertEquals(JSON.stringify(result.replayEvents).includes("runwield.active_agent"), false);
 });
 
-Deno.test("SessionRuntime replays persisted task_completed summaries and manual QA checklists", async () => {
+test("SessionRuntime replays persisted task_completed summaries and manual QA checklists", async () => {
     ensureRuntimeModelFixture();
     const branch = [
         {
@@ -4302,23 +4413,21 @@ Deno.test("SessionRuntime replays persisted task_completed summaries and manual 
         sessionId: "persisted-workflow",
         sessionPath,
     });
-    const workflowMessages = result.replayEvents.filter((event) =>
-        event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA &&
-        /** @type {any} */ (event).messageKind === "workflow"
+    const workflowMessages = result.replayEvents.filter(
+        (event) =>
+            event.type === RuntimeEventTypes.ASSISTANT_TEXT_DELTA &&
+            /** @type {any} */ (event).messageKind === "workflow",
     );
 
-    assertEquals(workflowMessages.map((event) => /** @type {any} */ (event).workflowMessage), [
-        "task_completed",
-        "manual_qa_checklist",
-    ]);
-    assertEquals(/** @type {any} */ (workflowMessages[0]).delta, "**Task completed.**\n\n- Implemented the fix.");
     assertEquals(
-        /** @type {any} */ (workflowMessages[1]).delta,
-        "Manual verification steps for fix\n- Check resume.",
+        workflowMessages.map((event) => /** @type {any} */ (event).workflowMessage),
+        ["task_completed", "manual_qa_checklist"],
     );
+    assertEquals(/** @type {any} */ (workflowMessages[0]).delta, "**Task completed.**\n\n- Implemented the fix.");
+    assertEquals(/** @type {any} */ (workflowMessages[1]).delta, "Manual verification steps for fix\n- Check resume.");
 });
 
-Deno.test("SessionRuntime close operations dispose sessions by id", async () => {
+test("SessionRuntime close operations dispose sessions by id", async () => {
     const runtime = makeRuntime();
     const first = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
     const second = await runtime.createInteractiveSession({ cwd: runtimeProjectRoot() });
@@ -4330,7 +4439,7 @@ Deno.test("SessionRuntime close operations dispose sessions by id", async () => 
     assertEquals(runtime.listSessions(), []);
 });
 
-Deno.test("SessionRuntime close settles cleanup when MCP pool close fails", async () => {
+test("SessionRuntime close settles cleanup when MCP pool close fails", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
@@ -4351,7 +4460,7 @@ Deno.test("SessionRuntime close settles cleanup when MCP pool close fails", asyn
     assertEquals(events.includes(RuntimeEventTypes.SESSION_CLOSED), true);
 });
 
-Deno.test("SessionRuntime snapshot derives workflow context from active execution workflow fallback", async () => {
+test("SessionRuntime snapshot derives workflow context from active execution workflow fallback", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
@@ -4374,7 +4483,7 @@ Deno.test("SessionRuntime snapshot derives workflow context from active executio
     });
 });
 
-Deno.test("SessionRuntime snapshot prefers explicit workflow context over active execution fallback", async () => {
+test("SessionRuntime snapshot prefers explicit workflow context over active execution fallback", async () => {
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
@@ -4401,7 +4510,7 @@ Deno.test("SessionRuntime snapshot prefers explicit workflow context over active
     });
 });
 
-Deno.test("user-authorized agent switch releases active workflows", async () => {
+test("user-authorized agent switch releases active workflows", async () => {
     ensureRuntimeModelFixture();
     const sessionHost = new SessionHost();
     const runtime = makeRuntime({ sessionHost });
@@ -4429,10 +4538,13 @@ Deno.test("user-authorized agent switch releases active workflows", async () => 
     assertEquals(snapshot?.activeAgent, "planner");
     assertEquals(snapshot?.activeExecutionWorkflow, null);
     assertEquals(snapshot?.workflowContext?.planName, "release-plan");
-    assertEquals(notices.some((message) => message.includes("/load-plan")), true);
+    assertEquals(
+        notices.some((message) => message.includes("/load-plan")),
+        true,
+    );
 });
 
-Deno.test("SessionRuntime rejects image user turns before submission events", async () => {
+test("SessionRuntime rejects image user turns before submission events", async () => {
     const runtime = makeRuntime();
     const sessionId = await runtime.createPromptReadySession({ cwd: runtimeProjectRoot() });
     /** @type {string[]} */
@@ -4456,7 +4568,7 @@ Deno.test("SessionRuntime rejects image user turns before submission events", as
     assertEquals(events.includes(RuntimeEventTypes.TURN_START), false);
 });
 
-Deno.test("notification routing follows accepted input, not the observing surface", async () => {
+test("notification routing follows accepted input, not the observing surface", async () => {
     const sessionHost = new SessionHost();
     const agentSession = makeSteeringAgentSession();
     const runtime = makeRuntime({ sessionHost });
@@ -4477,7 +4589,7 @@ Deno.test("notification routing follows accepted input, not the observing surfac
     assertEquals(runtime.takeNextTurnMessage(sessionId).message?.inputSurface, "acp");
 });
 
-Deno.test("Workspace gets a stop alert even when the handler suppresses its normal attention event", async () => {
+test("Workspace gets a stop alert even when the handler suppresses its normal attention event", async () => {
     await withRuntimeCommandFixture("runtime-stop-alert-", async ({ projectRoot, setModelResponseFactory }) => {
         const sessionHost = new SessionHost();
         const runtime = makeRuntime({ sessionHost });
@@ -4503,7 +4615,7 @@ Deno.test("Workspace gets a stop alert even when the handler suppresses its norm
     });
 });
 
-Deno.test("managed Plan review requests persist the container before the adapter starts", async () => {
+test("managed Plan review requests persist the container before the adapter starts", async () => {
     await withRuntimeCommandFixture("runtime-review-bookmark-", async ({ homeDir, projectRoot }) => {
         const ownerStore = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
         const fileStore = openFileSessionStore();
@@ -4543,11 +4655,13 @@ Deno.test("managed Plan review requests persist the container before the adapter
             assertEquals((await request("first-id", "first")).outcome, "canceled");
             assertEquals(seenAtLaunch[0]?.planId, "first-id");
             assertEquals(
-                (await request("child-id", "child", {
-                    reviewContainerPlanId: "sequence-id",
-                    reviewContainerPlanName: "sequence",
-                    planningAgentName: "architect",
-                })).outcome,
+                (
+                    await request("child-id", "child", {
+                        reviewContainerPlanId: "sequence-id",
+                        reviewContainerPlanName: "sequence",
+                        planningAgentName: "architect",
+                    })
+                ).outcome,
                 "canceled",
             );
             assertEquals(seenAtLaunch[1]?.planId, "sequence-id");

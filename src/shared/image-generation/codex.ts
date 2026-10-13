@@ -1,5 +1,9 @@
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import nodeProcess from "node:process";
+import { readFile as fsReadFile, realpath as fsRealpath, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { Buffer } from "node:buffer";
-import { isAbsolute, join, relative } from "@std/path";
+import { isAbsolute, join, relative } from "node:path";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { getHomeDir } from "../../constants.js";
 import { spawnForegroundProcess } from "../foreground-process.ts";
@@ -69,7 +73,7 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
     request.signal?.throwIfAborted();
     const executable = await resolveCodexExecutable();
     request.signal?.throwIfAborted();
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-codex-image-" });
+    const cwd = await mkdtemp(join(tmpdir(), "runwield-codex-image-"));
     const startedAt = Date.now();
     const pending = new Map<number, PendingRequest>();
     const completed = Promise.withResolvers<CodexTurn>();
@@ -82,6 +86,8 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
     let nextId = 0;
     let threadId = "";
     let turnId = "";
+    let turnStartRequestId: number | undefined;
+    const turnAcknowledged = Promise.withResolvers<string>();
     const events: RpcMessage[] = [];
     let protocolError: Error | undefined;
     const fail = (error: Error) => {
@@ -96,11 +102,17 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
         request.signal?.throwIfAborted();
         if (protocolError) throw protocolError;
         const id = ++nextId;
+        if (method === "turn/start") turnStartRequestId = id;
         const response = Promise.withResolvers<CodexResult>();
         pending.set(id, response);
         response.promise.catch(() => undefined);
         try {
-            await send({ id, method, params });
+            try {
+                await send({ id, method, params });
+            } catch (error) {
+                if (id === turnStartRequestId) turnAcknowledged.resolve("");
+                throw error;
+            }
             return await response.promise;
         } finally {
             pending.delete(id);
@@ -117,7 +129,9 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
         writer = process.stdin!.getWriter();
         request.signal?.addEventListener("abort", onAbort, { once: true });
         stderr = (async () => {
-            for await (const _chunk of process!.stderr) { /* drain private host diagnostics */ }
+            for await (const _chunk of process!.stderr) {
+                /* drain private host diagnostics */
+            }
         })();
         pump = (async () => {
             let buffer = "";
@@ -142,6 +156,11 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
                                 "Codex requested additional permissions or a client tool. No image was saved.",
                             );
                         } else if (typeof message.id === "number") {
+                            // Cancellation rejects RPC callers, but a late start reply still
+                            // identifies the owned turn that cleanup must interrupt.
+                            if (message.id === turnStartRequestId) {
+                                turnAcknowledged.resolve(message.result?.turn?.id || "");
+                            }
                             const waiter = pending.get(message.id);
                             if (message.error) waiter?.reject(new Error(`Codex ${message.error.message}`));
                             else waiter?.resolve(message.result || {});
@@ -165,6 +184,8 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
                 );
             } catch (error) {
                 fail(error instanceof Error ? error : new Error("Invalid Codex image protocol."));
+            } finally {
+                turnAcknowledged.resolve("");
             }
         })();
         request.signal?.throwIfAborted();
@@ -213,9 +234,9 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
         const prompt = [
             "Use the native image generation tool exactly once to create one image.",
             request.referencePaths.length
-                ? `Use referenced_image_paths=${
-                    JSON.stringify(request.referencePaths)
-                }; omit num_last_images_to_include.`
+                ? `Use referenced_image_paths=${JSON.stringify(
+                      request.referencePaths,
+                  )}; omit num_last_images_to_include.`
                 : "For a new image omit both referenced_image_paths and num_last_images_to_include; do not pass zero.",
             `Image description: ${JSON.stringify(request.prompt)}`,
         ].join("\n");
@@ -235,7 +256,8 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
         const images = new Map<string, CodexItem>();
         for (const event of events) {
             if (
-                event.method === "item/completed" && event.params?.turnId === turnId &&
+                event.method === "item/completed" &&
+                event.params?.turnId === turnId &&
                 event.params.item?.type === "imageGeneration"
             ) {
                 images.set(event.params.item.id, event.params.item);
@@ -244,31 +266,50 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
         for (const item of finished.items || []) if (item.type === "imageGeneration") images.set(item.id, item);
         const image = [...images.values()][0];
         if (
-            images.size !== 1 || image.status !== "completed" || image.failure || !image.savedPath ||
+            images.size !== 1 ||
+            image.status !== "completed" ||
+            image.failure ||
+            !image.savedPath ||
             !isAbsolute(image.savedPath)
         ) {
             throw new Error("Codex did not complete exactly one native image with a savedPath. No output was saved.");
         }
-        const source = await Deno.realPath(image.savedPath);
-        const generatedRoot = join(Deno.env.get("CODEX_HOME") || join(getHomeDir(), ".codex"), "generated_images");
-        const hostRoot = await Deno.realPath(generatedRoot).catch(() => "");
-        if (!inside(await Deno.realPath(cwd), source) && (!hostRoot || !inside(hostRoot, source))) {
+        const source = await fsRealpath(image.savedPath);
+        const generatedRoot = join(nodeProcess.env["CODEX_HOME"] || join(getHomeDir(), ".codex"), "generated_images");
+        const hostRoot = await fsRealpath(generatedRoot).catch(() => "");
+        if (!inside(await fsRealpath(cwd), source) && (!hostRoot || !inside(hostRoot, source))) {
             throw new Error("Codex image path is outside its generated-image storage.");
         }
-        const stat = await Deno.stat(source);
+        const stat = await fsStat(source);
         if (
-            !stat.isFile || !stat.mtime || stat.mtime.getTime() < startedAt - 1000 || stat.size === 0 ||
+            !stat.isFile() ||
+            !stat.mtime ||
+            stat.mtime.getTime() < startedAt - 1000 ||
+            stat.size === 0 ||
             stat.size > 32 * 1024 * 1024
         ) {
             throw new Error("Codex returned a stale, empty or oversized image file.");
         }
         return {
             type: "image",
-            data: Buffer.from(await Deno.readFile(source)).toString("base64"),
+            data: Buffer.from(await fsReadFile(source)).toString("base64"),
             mimeType: mimeTypeForImagePath(source),
         };
     } finally {
         request.signal?.removeEventListener("abort", onAbort);
+        if (request.signal?.aborted && threadId && !turnId && turnStartRequestId !== undefined) {
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            try {
+                turnId = await Promise.race([
+                    turnAcknowledged.promise,
+                    new Promise<string>((resolve) => {
+                        timeout = setTimeout(() => resolve(""), 1000);
+                    }),
+                ]);
+            } finally {
+                if (timeout !== undefined) clearTimeout(timeout);
+            }
+        }
         if (writer && request.signal?.aborted && threadId && turnId) {
             let timeout: ReturnType<typeof setTimeout> | undefined;
             const id = ++nextId;
@@ -290,6 +331,6 @@ export async function generateCodexImage(request: CodexImageRequest): Promise<Im
         await Promise.allSettled([process?.done, pump, stderr]);
         await writer?.close().catch(() => undefined);
         writer?.releaseLock();
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 }

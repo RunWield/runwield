@@ -1,32 +1,44 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { captureForegroundProcess } from "../../../shared/captured-process.ts";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import {
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../../testing/assertions.ts";
+import { join } from "node:path";
 import { git } from "../../../shared/git-test-fixture.ts";
 import { createGoldenIsolatedEnvironment, prepareGoldenRepositoryTemplates } from "./isolated-environment.js";
 
-Deno.test("createGoldenIsolatedEnvironment creates isolated HOME and Project then cleans them", async () => {
+test("createGoldenIsolatedEnvironment creates isolated HOME and Project then cleans them", async () => {
     const env = await createGoldenIsolatedEnvironment();
     const root = env.root;
     try {
-        assert((await Deno.stat(env.home)).isDirectory);
-        assert((await Deno.stat(env.projectRoot)).isDirectory);
+        assert((await fsStat(env.home)).isDirectory());
+        assert((await fsStat(env.projectRoot)).isDirectory());
         assert(env.env.PATH.startsWith(join(root, "bin")));
         assertEquals(env.env.TERM, "screen");
-        assert((await Deno.readTextFile(join(env.projectRoot, "README.md"))).includes("Golden TUI Fixture"));
-        const help = await new Deno.Command("mnemoteca", {
+        assert((await fsReadFile(join(env.projectRoot, "README.md"), "utf8")).includes("Golden TUI Fixture"));
+        const help = await captureForegroundProcess("mnemoteca", {
             args: ["update", "--help"],
+            cwd: env.projectRoot,
             env: env.env,
-            stdout: "piped",
-        }).output();
+        });
         assertEquals(help.success, true);
         assertStringIncludes(new TextDecoder().decode(help.stdout), "update <id> --replace-tags");
     } finally {
         await env.cleanup();
     }
-    await assertRejects(() => Deno.stat(root), Deno.errors.NotFound);
+    const removed = await assertRejects(() => fsStat(root), Error);
+    assert("code" in removed && removed.code === "ENOENT");
 });
 
-Deno.test("Golden fixture copies isolate commits, remotes, and onboarding variants", async () => {
-    const templates = await Deno.makeTempDir({ prefix: "golden-template-test-" });
+test("Golden fixture copies isolate commits, remotes, and onboarding variants", async () => {
+    const templates = await fsMkdtemp(join(tmpdir(), "golden-template-test-"));
     await prepareGoldenRepositoryTemplates(templates);
     const first = await createGoldenIsolatedEnvironment({ repositoryTemplateRoot: templates });
     const second = await createGoldenIsolatedEnvironment({ repositoryTemplateRoot: templates });
@@ -35,7 +47,7 @@ Deno.test("Golden fixture copies isolate commits, remotes, and onboarding varian
         const original = await git(second.projectRoot, ["rev-parse", "HEAD"]);
         assertEquals(await git(first.projectRoot, ["remote", "get-url", "origin"]), first.remoteRoot);
         assertEquals(await git(second.projectRoot, ["remote", "get-url", "origin"]), second.remoteRoot);
-        await Deno.writeTextFile(join(first.projectRoot, "README.md"), "Only the first fixture changed.\n");
+        await fsWriteFile(join(first.projectRoot, "README.md"), "Only the first fixture changed.\n");
         await git(first.projectRoot, ["add", "."]);
         await git(first.projectRoot, ["commit", "-m", "Independent fixture"]);
         await git(first.projectRoot, ["push", "origin", "main"]);
@@ -43,13 +55,14 @@ Deno.test("Golden fixture copies isolate commits, remotes, and onboarding varian
         assertEquals(await git(second.projectRoot, ["status", "--porcelain"]), "");
         assertEquals(await git(second.remoteRoot, ["rev-parse", "main"]), original);
         assertEquals(await git(join(templates, "initialized", "remote.git"), ["rev-parse", "main"]), original);
-        await assertRejects(
-            () => Deno.stat(join(uninitialized.projectRoot, "docs", "domain-language.md")),
-            Deno.errors.NotFound,
+        const absent = await assertRejects(
+            () => fsStat(join(uninitialized.projectRoot, "docs", "domain-language.md")),
+            Error,
         );
-        assert((await Deno.stat(join(second.projectRoot, "docs", "domain-language.md"))).isFile);
+        assert("code" in absent && absent.code === "ENOENT");
+        assert((await fsStat(join(second.projectRoot, "docs", "domain-language.md"))).isFile());
     } finally {
         await Promise.all([first.cleanup(), second.cleanup(), uninitialized.cleanup()]);
-        await Deno.remove(templates, { recursive: true });
+        await fsRm(templates, { recursive: true });
     }
 });

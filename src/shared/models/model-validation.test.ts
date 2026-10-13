@@ -1,20 +1,23 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { RunWieldModelRegistry } from "./model-registry.ts";
 import { formatProviderModelReference, parseProviderModel, resolveTemplateModel } from "./model-validation.ts";
 
-Deno.test("parseProviderModel accepts strict provider/id", () => {
+test("parseProviderModel accepts strict provider/id", () => {
     const parsed = parseProviderModel("openai/gpt-4.1");
     assertEquals(parsed, { ok: true, provider: "openai", id: "gpt-4.1" });
 });
 
-Deno.test("parseProviderModel rejects non provider/id formats", () => {
+test("parseProviderModel rejects non provider/id formats", () => {
     assertEquals(parseProviderModel("gpt-4.1"), { ok: false });
     assertEquals(parseProviderModel("openai/"), { ok: false });
     assertEquals(parseProviderModel("/gpt-4.1"), { ok: false });
 });
 
-Deno.test("formatProviderModelReference qualifies active model state exactly once", () => {
+test("formatProviderModelReference qualifies active model state exactly once", () => {
     assertEquals(formatProviderModelReference({ model: "gpt-5", provider: "openai" }), "openai/gpt-5");
     assertEquals(
         formatProviderModelReference({ model: "openai/gpt-5", provider: "openai" }),
@@ -23,7 +26,7 @@ Deno.test("formatProviderModelReference qualifies active model state exactly onc
     assertEquals(formatProviderModelReference({ model: "local-model" }), "local-model");
 });
 
-Deno.test("resolveTemplateModel returns ok for valid configured model", () => {
+test("resolveTemplateModel returns ok for valid configured model", () => {
     const result = resolveTemplateModel("openai/gpt-4.1", {
         find: (provider, model) => ({ provider, id: model }),
         hasConfiguredAuth: () => true,
@@ -32,7 +35,7 @@ Deno.test("resolveTemplateModel returns ok for valid configured model", () => {
     assertEquals(result, { ok: true, provider: "openai", id: "gpt-4.1" });
 });
 
-Deno.test("resolveTemplateModel fails for unknown model", () => {
+test("resolveTemplateModel fails for unknown model", () => {
     const result = resolveTemplateModel("openai/gpt-4.1", {
         find: () => null,
         hasConfiguredAuth: () => true,
@@ -41,7 +44,7 @@ Deno.test("resolveTemplateModel fails for unknown model", () => {
     assertEquals(result, { ok: false });
 });
 
-Deno.test("resolveTemplateModel fails when auth is missing", () => {
+test("resolveTemplateModel fails when auth is missing", () => {
     const result = resolveTemplateModel("openai/gpt-4.1", {
         find: (provider, model) => ({ provider, id: model }),
         hasConfiguredAuth: () => false,
@@ -50,10 +53,10 @@ Deno.test("resolveTemplateModel fails when auth is missing", () => {
     assertEquals(result, { ok: false });
 });
 
-Deno.test("resolveTemplateModel uses the sync facade configured-auth contract", async () => {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-model-validation-facade-" });
+test("resolveTemplateModel uses the sync facade configured-auth contract", async () => {
+    const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-model-validation-facade-"));
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "models.json"),
             JSON.stringify({
                 providers: {
@@ -76,6 +79,6 @@ Deno.test("resolveTemplateModel uses the sync facade configured-auth contract", 
         assertEquals(resolveTemplateModel("authed/usable", registry), { ok: true, provider: "authed", id: "usable" });
         assertEquals(resolveTemplateModel("unauthed/blocked", registry), { ok: false });
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });

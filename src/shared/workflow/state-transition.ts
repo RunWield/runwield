@@ -1,9 +1,10 @@
+import { mkdir as fsMkdir, readdir as fsReaddir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 /**
  * @module shared/workflow/state-transition
  * Transaction boundary helpers for Plan Lifecycle mutations.
  */
 
-import { dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { CLI_BIN } from "../../constants.js";
 import { pickControllerState, type WorkflowControllerState, WORKTREE_CONTEXT_FIELDS } from "./controller-state.ts";
@@ -190,13 +191,13 @@ async function enteredTransitionJournalPath(projectRoot: string, transitionId: s
 
 async function writeJournal(projectRoot: string, transitionId: string, record: Record<string, unknown>) {
     const path = await enteredTransitionJournalPath(projectRoot, transitionId);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     await atomicWriteTextFile(path, `${JSON.stringify(record, null, 2)}\n`);
 }
 
 async function removeJournal(projectRoot: string, transitionId: string) {
-    await Deno.remove(await enteredTransitionJournalPath(projectRoot, transitionId)).catch((error) => {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+    await fsRm(await enteredTransitionJournalPath(projectRoot, transitionId)).catch((error) => {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     });
 }
 
@@ -1307,16 +1308,16 @@ export async function listTransitionRecoveryRecords(
     /** @type {Array<Record<string, unknown>>} */
     const records = [];
     try {
-        for await (const entry of Deno.readDir(dir)) {
-            if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+        for await (const entry of await fsReaddir(dir, { withFileTypes: true })) {
+            if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
             try {
-                records.push(JSON.parse(await Deno.readTextFile(join(dir, entry.name))));
+                records.push(JSON.parse(await fsReadFile(join(dir, entry.name), "utf8")));
             } catch (error) {
                 records.push({ state: "needs_recovery", path: join(dir, entry.name), error: compactError(error) });
             }
         }
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     return records;
 }
@@ -1342,9 +1343,9 @@ export async function closeTransitionRecordByAttestation(
     const activePath = await enteredTransitionJournalPath(projectRoot, transitionId);
     let record: Record<string, unknown>;
     try {
-        record = JSON.parse(await Deno.readTextFile(activePath));
+        record = JSON.parse(await fsReadFile(activePath, "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) {
             return { closed: false, reason: `No lifecycle record ${transitionId} to close.` };
         }
         // Unreadable bytes are exactly when the user most needs the escape, so keep
@@ -1353,7 +1354,7 @@ export async function closeTransitionRecordByAttestation(
     }
     const archiveDir = join(await enteredTransitionJournalDir(projectRoot), "attested");
     const archivedPath = join(archiveDir, `${transitionId}.json`);
-    await Deno.mkdir(archiveDir, { recursive: true });
+    await fsMkdir(archiveDir, { recursive: true });
     await atomicWriteTextFile(
         archivedPath,
         `${

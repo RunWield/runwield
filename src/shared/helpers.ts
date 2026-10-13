@@ -1,7 +1,9 @@
+import { stat } from "node:fs/promises";
+
 export async function directoryExists(path: string): Promise<boolean> {
     try {
-        const stat = await Deno.stat(path);
-        return stat.isDirectory;
+        const info = await stat(path);
+        return info.isDirectory();
     } catch {
         return false;
     }
@@ -9,8 +11,8 @@ export async function directoryExists(path: string): Promise<boolean> {
 
 export async function fileExists(path: string): Promise<boolean> {
     try {
-        const stat = await Deno.stat(path);
-        return stat.isFile;
+        const info = await stat(path);
+        return info.isFile();
     } catch {
         return false;
     }

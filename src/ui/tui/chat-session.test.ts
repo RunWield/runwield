@@ -1,4 +1,7 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import process from "node:process";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { runResumeCommand } from "../../cmd/resume/index.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
@@ -26,20 +29,20 @@ import {
     shouldReplaySessionHistory,
 } from "./chat-session.ts";
 
-Deno.test("recordUserInputHistory stores trimmed submitted input", () => {
+test("recordUserInputHistory stores trimmed submitted input", () => {
     const history: string[] = [];
     recordUserInputHistory({ addToHistory: (text) => history.push(text) }, "  /skill:review branch  ");
     recordUserInputHistory({ addToHistory: (text) => history.push(text) }, "   ");
     assertEquals(history, ["/skill:review branch"]);
 });
 
-Deno.test("startup replays history only when continuing a persisted session", () => {
+test("startup replays history only when continuing a persisted session", () => {
     assertEquals(shouldReplaySessionHistory("new"), false);
     assertEquals(shouldReplaySessionHistory(undefined), false);
     assertEquals(shouldReplaySessionHistory("continue"), true);
 });
 
-Deno.test("resolveTemplateModel validates provider/id lookup and auth", () => {
+test("resolveTemplateModel validates provider/id lookup and auth", () => {
     const registry = {
         find: (provider: string, id: string) => provider === "test" && id === "model" ? { provider, id } : null,
         hasConfiguredAuth: (model: { provider: string; id: string } | null) => Boolean(model),
@@ -49,7 +52,7 @@ Deno.test("resolveTemplateModel validates provider/id lookup and auth", () => {
     assertEquals(resolveTemplateModel("test/model", registry), { ok: true, provider: "test", id: "model" });
 });
 
-Deno.test("setActiveModel delegates reconfiguration to SessionRuntime without persisting defaults", async () => {
+test("setActiveModel delegates reconfiguration to SessionRuntime without persisting defaults", async () => {
     await withRuntimeCommandFixture("chat-session-model-persistence-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         try {
@@ -68,7 +71,7 @@ Deno.test("setActiveModel delegates reconfiguration to SessionRuntime without pe
     });
 });
 
-Deno.test("setActiveModel rejects a missing real Runtime session", async () => {
+test("setActiveModel rejects a missing real Runtime session", async () => {
     await withRuntimeCommandFixture("chat-session-missing-model-session-", async () => {
         const runtime = createSessionRuntime();
         await assertRejects(
@@ -79,7 +82,7 @@ Deno.test("setActiveModel rejects a missing real Runtime session", async () => {
     });
 });
 
-Deno.test("getActiveModel reads the real Runtime snapshot", async () => {
+test("getActiveModel reads the real Runtime snapshot", async () => {
     await withRuntimeCommandFixture("chat-session-active-model-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         try {
@@ -92,16 +95,16 @@ Deno.test("getActiveModel reads the real Runtime snapshot", async () => {
     });
 });
 
-Deno.test("persistThinkingLevel stores the selected level", async () => {
+test("persistThinkingLevel stores the selected level", async () => {
     await withRuntimeCommandFixture("chat-session-thinking-persistence-", async ({ projectRoot }) => {
         await persistThinkingLevel("high", projectRoot);
         assertEquals(getSettingsManager(projectRoot).getDefaultThinkingLevel(), "high");
     });
 });
 
-Deno.test("TUI resume preserves the Session thinking choice over the global default", async () => {
+test("TUI resume preserves the Session thinking choice over the global default", async () => {
     await withRuntimeCommandFixture("chat-session-resume-thinking-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await persistThinkingLevel("high", projectRoot);
         const runtime = createSessionRuntime();
         let resumeSessionId = "";
@@ -129,11 +132,11 @@ Deno.test("TUI resume preserves the Session thinking choice over the global defa
     });
 });
 
-Deno.test("TUI resume asks before restoring saved tutorial guidance", async () => {
+test("TUI resume asks before restoring saved tutorial guidance", async () => {
     await withRuntimeCommandFixture(
         "chat-session-resume-tutorial-",
         async ({ projectRoot, setModelResponse }) => {
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             setModelResponse("Choose a small change.");
             const runtime = createSessionRuntime();
             let resumeSessionId = "";
@@ -184,7 +187,7 @@ Deno.test("TUI resume asks before restoring saved tutorial guidance", async () =
     );
 });
 
-Deno.test("chat session starts a real composed TUI through the public composition interface", async () => {
+test("chat session starts a real composed TUI through the public composition interface", async () => {
     await withRuntimeCommandFixture("chat-session-composed-startup-", async () => {
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
         const readySessions: string[] = [];
@@ -207,14 +210,14 @@ Deno.test("chat session starts a real composed TUI through the public compositio
     });
 });
 
-Deno.test("chat session starts in a Project registered by Workspace", async () => {
+test("chat session starts in a Project registered by Workspace", async () => {
     await withRuntimeCommandFixture("chat-session-managed-project-startup-", async ({ projectRoot }) => {
         const store = openOwnerCoordinationStore();
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
         const readySessions: string[] = [];
         try {
             store.registerProject({ root: projectRoot, now: () => "2026-01-01T00:00:01.000Z" });
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             const composition = await createInteractiveTuiComposition(null, {
                 browser: NO_OPEN_BROWSER_PORT,
                 terminal,
@@ -242,14 +245,14 @@ Deno.test("chat session starts in a Project registered by Workspace", async () =
     });
 });
 
-Deno.test("chat session startup does not show busy or thinking output before a turn", async () => {
+test("chat session startup does not show busy or thinking output before a turn", async () => {
     await withRuntimeCommandFixture("chat-session-no-phantom-startup-output-", async ({ projectRoot }) => {
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
         const transientEvents: string[] = [];
         const busyStates: boolean[] = [];
         let thinkingBlocks = 0;
         let clearMessages = 0;
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await setCustomSetting(
             ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
             true,
@@ -310,16 +313,16 @@ Deno.test("chat session startup does not show busy or thinking output before a t
             assertEquals(snapshot?.activeAgent, "router");
             assertEquals(snapshot?.sessionManagerId, null);
             assertEquals(snapshot?.managed, null);
-            await assertRejects(() => Deno.stat(getRunWieldSessionsBaseDir()), Deno.errors.NotFound);
+            await assertRejects(() => fsStat(getRunWieldSessionsBaseDir()), Error, "ENOENT");
         } finally {
             await composition.dispose();
         }
     });
 });
 
-Deno.test("slash resume can list from an unpersisted new-session shell", async () => {
+test("slash resume can list from an unpersisted new-session shell", async () => {
     await withRuntimeCommandFixture("chat-session-lazy-resume-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
         const composition = await createInteractiveTuiComposition(null, {
             browser: NO_OPEN_BROWSER_PORT,
@@ -350,7 +353,7 @@ Deno.test("slash resume can list from an unpersisted new-session shell", async (
     });
 });
 
-Deno.test("submit handoff loop invokes one Runtime prompt by opaque id", async () => {
+test("submit handoff loop invokes one Runtime prompt by opaque id", async () => {
     await withRuntimeCommandFixture("chat-session-handoff-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         try {
@@ -383,14 +386,14 @@ Deno.test("submit handoff loop invokes one Runtime prompt by opaque id", async (
     });
 });
 
-Deno.test("automatic onboarding Skip persists globally and creates no managed Session", async () => {
+test("automatic onboarding Skip persists globally and creates no managed Session", async () => {
     await withRuntimeCommandFixture(
         "chat-session-onboarding-skip-",
         async ({ projectRoot, alternateRoot }) => {
-            await Deno.writeTextFile(`${projectRoot}/README.md`, "project\n");
-            await Deno.writeTextFile(`${alternateRoot}/README.md`, "alternate\n");
+            await fsWriteFile(`${projectRoot}/README.md`, "project\n");
+            await fsWriteFile(`${alternateRoot}/README.md`, "alternate\n");
             await recordInitOffered(projectRoot);
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             const prompts: string[] = [];
             const first = await createInteractiveTuiComposition(null, {
                 browser: NO_OPEN_BROWSER_PORT,
@@ -415,7 +418,7 @@ Deno.test("automatic onboarding Skip persists globally and creates no managed Se
             }
 
             await recordInitOffered(alternateRoot);
-            Deno.chdir(alternateRoot);
+            process.chdir(alternateRoot);
             let offeredAgain = false;
             const second = await createInteractiveTuiComposition(null, {
                 browser: NO_OPEN_BROWSER_PORT,
@@ -438,13 +441,13 @@ Deno.test("automatic onboarding Skip persists globally and creates no managed Se
     );
 });
 
-Deno.test("automatic onboarding Start submits one real Planner turn after consent", async () => {
+test("automatic onboarding Start submits one real Planner turn after consent", async () => {
     await withRuntimeCommandFixture(
         "chat-session-onboarding-start-",
         async ({ projectRoot, setModelResponse }) => {
-            await Deno.writeTextFile(`${projectRoot}/README.md`, "project\n");
+            await fsWriteFile(`${projectRoot}/README.md`, "project\n");
             await recordInitOffered(projectRoot);
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             setModelResponse("Choose one of these small changes.");
             const submitted: string[] = [];
             const prompts: string[] = [];
@@ -482,12 +485,12 @@ Deno.test("automatic onboarding Start submits one real Planner turn after consen
     );
 });
 
-Deno.test("automatic onboarding Start in an Empty Project Directory submits one real Planner turn", async () => {
+test("automatic onboarding Start in an Empty Project Directory submits one real Planner turn", async () => {
     await withRuntimeCommandFixture(
         "chat-session-onboarding-empty-start-",
         async ({ projectRoot, setModelResponse }) => {
             await recordInitOffered(projectRoot);
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             setModelResponse("Choose one of these small starter projects.");
             const submitted: string[] = [];
             const composition = await createInteractiveTuiComposition(null, {
@@ -521,12 +524,12 @@ Deno.test("automatic onboarding Start in an Empty Project Directory submits one 
     );
 });
 
-Deno.test("cancelled tutorial Init choice returns to input without discovery", async () => {
+test("cancelled tutorial Init choice returns to input without discovery", async () => {
     await withRuntimeCommandFixture(
         "chat-session-onboarding-init-cancel-",
         async ({ projectRoot, setModelResponse }) => {
-            await Deno.writeTextFile(`${projectRoot}/README.md`, "project\n");
-            Deno.chdir(projectRoot);
+            await fsWriteFile(`${projectRoot}/README.md`, "project\n");
+            process.chdir(projectRoot);
             setModelResponse("This Planner turn must not run.");
             const submitted: string[] = [];
             const composition = await createInteractiveTuiComposition(null, {
@@ -557,12 +560,12 @@ Deno.test("cancelled tutorial Init choice returns to input without discovery", a
     );
 });
 
-Deno.test("explicit onboarding shows consent before model setup or Init", async () => {
+test("explicit onboarding shows consent before model setup or Init", async () => {
     await withRuntimeCommandFixture(
         "chat-session-explicit-onboarding-consent-",
         async ({ projectRoot }) => {
-            await Deno.writeTextFile(`${projectRoot}/README.md`, "project\n");
-            Deno.chdir(projectRoot);
+            await fsWriteFile(`${projectRoot}/README.md`, "project\n");
+            process.chdir(projectRoot);
             const prompts: string[] = [];
             const composition = await createInteractiveTuiComposition(null, {
                 browser: NO_OPEN_BROWSER_PORT,

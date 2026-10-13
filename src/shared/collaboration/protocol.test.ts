@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import {
     normalizeApiErrorPayload,
     normalizeAppendCommentPayload,
@@ -15,7 +16,7 @@ import {
     normalizeSharedSpaceMetadata,
 } from "./protocol.js";
 
-Deno.test("protocol helpers normalize shared space metadata", () => {
+test("protocol helpers normalize shared space metadata", () => {
     assertEquals(
         normalizeSharedSpaceMetadata({
             spaceId: "space-1",
@@ -66,7 +67,7 @@ Deno.test("protocol helpers normalize shared space metadata", () => {
     );
 });
 
-Deno.test("protocol helpers normalize revision metadata and reject invalid revisions", () => {
+test("protocol helpers normalize revision metadata and reject invalid revisions", () => {
     assertEquals(
         normalizeRevisionMetadata({
             spaceId: "space-1",
@@ -81,7 +82,7 @@ Deno.test("protocol helpers normalize revision metadata and reject invalid revis
     );
 });
 
-Deno.test("protocol helpers normalize capability, encrypted plan, encrypted comment, and local secret records", () => {
+test("protocol helpers normalize capability, encrypted plan, encrypted comment, and local secret records", () => {
     assertEquals(normalizeCapabilityRecord({ scope: "maintainer", capabilityHash: "sha256:abc" }), {
         scope: "maintainer",
         capabilityHash: "sha256:abc",
@@ -123,7 +124,7 @@ Deno.test("protocol helpers normalize capability, encrypted plan, encrypted comm
     });
 });
 
-Deno.test("protocol helpers normalize decrypted browser review comment payloads", () => {
+test("protocol helpers normalize decrypted browser review comment payloads", () => {
     assertEquals(
         normalizeDecryptedReviewCommentPayload({
             schemaVersion: 1,
@@ -167,7 +168,7 @@ Deno.test("protocol helpers normalize decrypted browser review comment payloads"
     );
 });
 
-Deno.test("protocol helpers normalize comment, lifecycle, and API error payloads", () => {
+test("protocol helpers normalize comment, lifecycle, and API error payloads", () => {
     assertEquals(normalizeCommentStateChangePayload({ commentId: "comment-1", action: "resolve" }), {
         commentId: "comment-1",
         action: "resolve",
@@ -183,7 +184,7 @@ Deno.test("protocol helpers normalize comment, lifecycle, and API error payloads
     });
 });
 
-Deno.test("protocol helpers reject invalid records", () => {
+test("protocol helpers reject invalid records", () => {
     assertThrows(() => normalizeSharedSpaceMetadata(null));
     assertThrows(() => normalizeCapabilityRecord({ scope: "owner", capabilityHash: "x" }));
     assertThrows(() => normalizeEncryptedPlanPayload({ planId: "plan", title: "Draft", body: "" }));
@@ -193,7 +194,7 @@ Deno.test("protocol helpers reject invalid records", () => {
     assertThrows(() => normalizeLocalSecretRecord({ planId: "plan" }));
 });
 
-Deno.test("protocol helpers normalize remote API payloads and reject plaintext fields", () => {
+test("protocol helpers normalize remote API payloads and reject plaintext fields", () => {
     assertEquals(
         normalizeCreateSharedSpacePayload({
             planId: "plan-1",

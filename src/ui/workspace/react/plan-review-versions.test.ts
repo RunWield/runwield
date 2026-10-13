@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { test } from "node:test";
 import { normalizePlanReviewVersions } from "./plan-review-versions.ts";
 
-Deno.test("Plan review versions preserve every distinct review round", () => {
+test("Plan review versions preserve every distinct review round", () => {
     const versions = normalizePlanReviewVersions("round three", null, [
         { plan: "round one", timestamp: "2026-08-23T01:00:00.000Z" },
         { plan: "round two", timestamp: "2026-08-23T02:00:00.000Z" },
@@ -15,14 +16,14 @@ Deno.test("Plan review versions preserve every distinct review round", () => {
     ]);
 });
 
-Deno.test("legacy initial/current payloads become a two-version history", () => {
+test("legacy initial/current payloads become a two-version history", () => {
     assertEquals(normalizePlanReviewVersions("revised", "initial", null), [
         { version: 1, plan: "initial", timestamp: "" },
         { version: 2, plan: "revised", timestamp: "" },
     ]);
 });
 
-Deno.test("duplicate supplied snapshots are collapsed", () => {
+test("duplicate supplied snapshots are collapsed", () => {
     assertEquals(
         normalizePlanReviewVersions("revised", null, [
             { plan: "initial" },

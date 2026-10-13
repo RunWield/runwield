@@ -1,5 +1,9 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { loadPlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { defaultEpicBranchName, ensureEpicBranch } from "./epic-branch.ts";
@@ -9,7 +13,7 @@ type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
 
 async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes, body: string) {
     const path = join(cwd, "docs", "plans", `${name}.md`);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const lines = ["---"];
     for (const [key, value] of Object.entries(attrs)) {
         if (Array.isArray(value)) {
@@ -20,7 +24,7 @@ async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes
         }
     }
     lines.push("---", "", body);
-    await Deno.writeTextFile(path, lines.join("\n"));
+    await fsWriteFile(path, lines.join("\n"));
 }
 
 function epicAttrs(extra: PlanFixtureAttributes = {}): PlanFixtureAttributes {
@@ -50,7 +54,7 @@ function childAttrs(order: number, extra: PlanFixtureAttributes = {}): PlanFixtu
 }
 
 const repoFixture = defineGitFixture(async (repo) => {
-    await Deno.writeTextFile(join(repo, "README.md"), "# Fixture\n");
+    await fsWriteFile(join(repo, "README.md"), "# Fixture\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "primary"]);
 });
@@ -59,7 +63,7 @@ async function filesOnRef(repo: string, ref: string): Promise<string[]> {
     return (await git(repo, ["ls-tree", "-r", "--name-only", ref])).split("\n").filter(Boolean);
 }
 
-Deno.test("defaultEpicBranchName names the branch after the Epic", () => {
+test("defaultEpicBranchName names the branch after the Epic", () => {
     assertEquals(
         defaultEpicBranchName("plan-packages-and-independent-validation"),
         "epic/plan-packages-and-independent-validation",
@@ -67,9 +71,9 @@ Deno.test("defaultEpicBranchName names the branch after the Epic", () => {
     assertEquals(defaultEpicBranchName("docs/plans/My Epic.md"), "epic/my-epic");
 });
 
-Deno.test("existing Epic branches refresh publication before seeding another child", async () => {
+test("existing Epic branches refresh publication before seeding another child", async () => {
     const repo = await repoFixture.checkout();
-    const remote = await Deno.makeTempDir();
+    const remote = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     await git(remote, ["init", "--bare", "--initial-branch=main"]);
     await git(repo, ["remote", "add", "origin", remote]);
     await git(repo, ["push", "origin", "main", "main:epic/epic"]);
@@ -79,7 +83,7 @@ Deno.test("existing Epic branches refresh publication before seeding another chi
     const publisher = await repoFixture.checkout();
     await git(publisher, ["remote", "add", "origin", remote]);
     await git(publisher, ["switch", "-c", "epic/epic"]);
-    await Deno.writeTextFile(join(publisher, "published.js"), "previous child\n");
+    await fsWriteFile(join(publisher, "published.js"), "previous child\n");
     await git(publisher, ["add", "."]);
     await git(publisher, ["commit", "-m", "previous child publication"]);
     await git(publisher, ["push", "origin", "epic/epic"]);
@@ -92,7 +96,7 @@ Deno.test("existing Epic branches refresh publication before seeding another chi
     assertStringIncludes(await git(repo, ["show", "origin/epic/epic:published.js"]), "previous child");
 });
 
-Deno.test("an unstarted Epic gets its own branch from the latest primary branch with its drafts on it", async () => {
+test("an unstarted Epic gets its own branch from the latest primary branch with its drafts on it", async () => {
     const repo = await repoFixture.checkout();
     const primaryHead = await git(repo, ["rev-parse", "main"]);
     await writePlan(repo, "epic", epicAttrs(), "# Epic\n");
@@ -123,7 +127,7 @@ Deno.test("an unstarted Epic gets its own branch from the latest primary branch 
     assertStringIncludes(statusBefore, "docs/");
 });
 
-Deno.test("preparing the Epic branch again changes nothing", async () => {
+test("preparing the Epic branch again changes nothing", async () => {
     const repo = await repoFixture.checkout();
     await writePlan(repo, "epic", epicAttrs({ targetBranch: "epic/epic" }), "# Epic\n");
     await writePlan(repo, "epic/01-first", childAttrs(1, { targetBranch: "epic/epic" }), "# First\n");
@@ -137,7 +141,7 @@ Deno.test("preparing the Epic branch again changes nothing", async () => {
     assertEquals(await git(repo, ["rev-parse", "epic/epic"]), head);
 });
 
-Deno.test("an existing Epic branch is used as it is and only missing drafts are added", async () => {
+test("an existing Epic branch is used as it is and only missing drafts are added", async () => {
     const repo = await repoFixture.checkout();
     await git(repo, ["switch", "-c", "epic/epic"]);
     await writePlan(
@@ -146,7 +150,7 @@ Deno.test("an existing Epic branch is used as it is and only missing drafts are 
         childAttrs(1, { targetBranch: "epic/epic", status: "validated" }),
         "# Done\n",
     );
-    await Deno.writeTextFile(join(repo, "feature.js"), "export const done = true;\n");
+    await fsWriteFile(join(repo, "feature.js"), "export const done = true;\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "first child delivered"]);
     const branchHead = await git(repo, ["rev-parse", "HEAD"]);
@@ -165,7 +169,7 @@ Deno.test("an existing Epic branch is used as it is and only missing drafts are 
     assertEquals((await loadPlan(repo, "epic"))?.attrs.epicBaseCommit, undefined);
 });
 
-Deno.test("a checked-out Epic branch is never moved under that checkout", async () => {
+test("a checked-out Epic branch is never moved under that checkout", async () => {
     const repo = await repoFixture.checkout();
     await git(repo, ["branch", "epic/epic"]);
     const linked = `${repo}-linked`;
@@ -180,7 +184,7 @@ Deno.test("a checked-out Epic branch is never moved under that checkout", async 
     assertEquals(await git(repo, ["rev-parse", "epic/epic"]), head);
 });
 
-Deno.test("an Epic whose children already started without a branch keeps legacy delivery", async () => {
+test("an Epic whose children already started without a branch keeps legacy delivery", async () => {
     const repo = await repoFixture.checkout();
     await writePlan(repo, "epic", epicAttrs(), "# Epic\n");
     await writePlan(repo, "epic/01-first", childAttrs(1, { status: "validated" }), "# Done\n");
@@ -193,7 +197,7 @@ Deno.test("an Epic whose children already started without a branch keeps legacy 
     assertEquals(await git(repo, ["branch", "--list", "epic/epic"]), "");
 });
 
-Deno.test("an Epic whose default branch cannot be created records nothing and keeps legacy delivery", async () => {
+test("an Epic whose default branch cannot be created records nothing and keeps legacy delivery", async () => {
     const repo = await repoFixture.checkout();
     // No `main` anywhere and an origin with no default branch: there is no primary branch to start from.
     await git(repo, ["branch", "-m", "main", "trunk"]);
@@ -211,7 +215,7 @@ Deno.test("an Epic whose default branch cannot be created records nothing and ke
     assertEquals((await loadPlan(repo, "epic/01-first"))?.attrs.targetBranch, undefined);
 });
 
-Deno.test("a draft committed before it had an identity is replaced on the Epic branch by its identified copy", async () => {
+test("a draft committed before it had an identity is replaced on the Epic branch by its identified copy", async () => {
     const repo = await repoFixture.checkout();
     await writePlan(repo, "epic", epicAttrs(), "# Epic\n");
     const { planId: _planId, ...unidentified } = childAttrs(1);
@@ -228,7 +232,7 @@ Deno.test("a draft committed before it had an identity is replaced on the Epic b
     assertStringIncludes(onBranch, String(local?.attrs.planId));
 });
 
-Deno.test("a Sequence gets no branch unless the user named one", async () => {
+test("a Sequence gets no branch unless the user named one", async () => {
     const repo = await repoFixture.checkout();
     await writePlan(repo, "epic", epicAttrs({ type: "sequence" }), "# Sequence\n");
     await writePlan(repo, "epic/01-first", childAttrs(1, { status: "ready_for_work" }), "# First\n");

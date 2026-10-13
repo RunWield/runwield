@@ -1,10 +1,22 @@
+import { spawn } from "node:child_process";
+import { captureScriptProcess, waitForScriptExit } from "./script-process.ts";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /**
  * Run the local release preflight: build the standalone binary with the same
  * script used by the release workflow, then smoke-test the native executable.
  */
 
-import { join } from "@std/path";
-import { buildCompileArgs } from "./compile.js";
+import { join } from "node:path";
+import { PASSIVE_PATHS } from "./compile-bun.ts";
 
 const BUNDLED_AGENT_DEFS_SOURCE_DIR = join("src", "agent-definitions");
 const BUNDLED_SKILLS_SOURCE_DIR = join("src", "skills");
@@ -41,18 +53,17 @@ const REQUIRED_BUNDLED_BINARY_ASSET_INCLUDES = Object.freeze([
 /**
  * @param {string} command
  * @param {string[]} args
- * @param {Deno.CommandOptions} [options]
+ * @param {import("./script-process.ts").ScriptProcessOptions} [options]
  * @returns {Promise<RunResult>}
  */
 async function run(command, args, options = {}) {
-    const child = new Deno.Command(command, {
+    const output = await captureScriptProcess(command, {
         ...options,
         args,
         stdin: options.stdin || "inherit",
         stdout: options.stdout || "inherit",
         stderr: options.stderr || "inherit",
     });
-    const output = await child.output();
     const decoder = new TextDecoder();
     return {
         success: output.success,
@@ -66,7 +77,7 @@ async function run(command, args, options = {}) {
  * @param {string} label
  * @param {string} command
  * @param {string[]} args
- * @param {Deno.CommandOptions} [options]
+ * @param {import("./script-process.ts").ScriptProcessOptions} [options]
  * @param {typeof run} [runner]
  * @returns {Promise<RunResult>}
  */
@@ -79,18 +90,11 @@ async function mustRun(label, command, args, options = {}, runner = run) {
     return result;
 }
 
-/** @param {ReadableStream<Uint8Array> | null} stream @param {(text: string) => void} onText */
+/** @param {import("node:stream").Readable | null} stream @param {(text: string) => void} onText */
 async function collectStream(stream, onText) {
     if (!stream) return;
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        onText(decoder.decode(value, { stream: true }));
-    }
-    const tail = decoder.decode();
-    if (tail) onText(tail);
+    stream.setEncoding("utf8");
+    for await (const text of stream) onText(text);
 }
 
 /** @param {string} output */
@@ -221,23 +225,19 @@ async function collectMarkdownFiles(rootDir, relativeDir = "") {
     /** @type {string[]} */
     const files = [];
     const currentDir = relativeDir ? join(rootDir, ...relativeDir.split("/")) : rootDir;
-    for await (const entry of Deno.readDir(currentDir)) {
+    for await (const entry of await fsReaddir(currentDir, { withFileTypes: true })) {
         const relativePath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
-        if (entry.isDirectory) files.push(...await collectMarkdownFiles(rootDir, relativePath));
-        else if (entry.isFile && entry.name.endsWith(".md")) files.push(relativePath);
+        if (entry.isDirectory()) files.push(...(await collectMarkdownFiles(rootDir, relativePath)));
+        else if (entry.isFile() && entry.name.endsWith(".md")) files.push(relativePath);
     }
     return files.sort();
 }
 
 export function assertRequiredBundledAssetsConfigured() {
-    const compileArgs = buildCompileArgs();
-    const includePaths = new Set();
-    for (let index = 0; index < compileArgs.length; index += 1) {
-        if (compileArgs[index] === "--include") includePaths.add(compileArgs[index + 1]);
-    }
+    const includePaths = new Set(PASSIVE_PATHS);
 
     for (const includePath of REQUIRED_BUNDLED_BINARY_ASSET_INCLUDES) {
-        if (!includePaths.has(includePath)) {
+        if (!includePaths.has(includePath.replace(/\/$/, ""))) {
             throw new Error(`Release compile is missing bundled asset include: ${includePath}`);
         }
     }
@@ -273,18 +273,16 @@ export async function assertExtractedBundledAgentReferenceFiles(homeDir) {
         let source;
         let extracted;
         try {
-            source = await Deno.readTextFile(sourcePath);
+            source = await fsReadFile(sourcePath, "utf8");
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             throw new Error(`Bundled ${label} source file is missing: ${sourcePath}. ${message}`);
         }
         try {
-            extracted = await Deno.readTextFile(extractedPath);
+            extracted = await fsReadFile(extractedPath, "utf8");
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            throw new Error(
-                `Release binary did not extract ${label} markdown file: ${extractedPath}. ${message}`,
-            );
+            throw new Error(`Release binary did not extract ${label} markdown file: ${extractedPath}. ${message}`);
         }
         if (extracted !== source) {
             throw new Error(`Release binary extracted stale ${label} markdown file: ${extractedPath}`);
@@ -313,18 +311,16 @@ export async function smokeTestBundledAgentReferenceExtraction(binaryPath, root)
     console.log("\n==> Smoke test bundled agent reference extraction");
     const homeDir = join(root, "reference-home");
     const projectDir = join(root, "reference-project");
-    await Deno.mkdir(projectDir, { recursive: true });
-    await Deno.mkdir(homeDir, { recursive: true });
-    await Deno.writeTextFile(join(projectDir, "README.md"), "# Release reference extraction smoke\n");
+    await fsMkdir(projectDir, { recursive: true });
+    await fsMkdir(homeDir, { recursive: true });
+    await fsWriteFile(join(projectDir, "README.md"), "# Release reference extraction smoke\n");
 
-    const child = new Deno.Command(binaryPath, {
-        args: ["init"],
+    const child = spawn(binaryPath, ["init"], {
         cwd: projectDir,
-        env: { HOME: homeDir },
-        stdin: "null",
-        stdout: "piped",
-        stderr: "piped",
-    }).spawn();
+        env: { ...process.env, HOME: homeDir },
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    const childStatus = waitForScriptExit(child);
 
     let output = "";
     /** @param {string} text */
@@ -340,7 +336,7 @@ export async function smokeTestBundledAgentReferenceExtraction(binaryPath, root)
             if (await hasExtractedBundledAgentReferenceFiles(homeDir)) return;
 
             const status = await Promise.race([
-                child.status,
+                childStatus,
                 new Promise((resolve) => setTimeout(() => resolve(null), 100)),
             ]);
             if (status) break;
@@ -356,7 +352,7 @@ export async function smokeTestBundledAgentReferenceExtraction(binaryPath, root)
         } catch {
             // Process may have exited after initializing or failing before model invocation.
         }
-        await Promise.allSettled([child.status, stdoutDone, stderrDone]);
+        await Promise.allSettled([childStatus, stdoutDone, stderrDone]);
     }
 }
 
@@ -367,19 +363,17 @@ export async function smokeTestBundledAgentReferenceExtraction(binaryPath, root)
 export async function smokeTestBinaryPlansUiSurface(binaryPath, root) {
     console.log("\n==> Smoke test standalone Plans UI surface");
     const projectDir = join(root, "plans-ui-project");
-    await Deno.mkdir(join(projectDir, "docs", "plans"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(projectDir, "docs", "plans"), { recursive: true });
+    await fsWriteFile(
         join(projectDir, "docs", "plans", "release-plans-ui-smoke.md"),
         `---\nplanId: release-plans-ui-smoke\nclassification: FEATURE\nstatus: draft\n---\n# Release binary Plans UI smoke\n`,
     );
 
-    const child = new Deno.Command(binaryPath, {
-        args: ["plans", "ui", "--no-open"],
+    const child = spawn(binaryPath, ["plans", "ui", "--no-open"], {
         cwd: projectDir,
-        stdin: "null",
-        stdout: "piped",
-        stderr: "piped",
-    }).spawn();
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    const childStatus = waitForScriptExit(child);
 
     let output = "";
     /** @param {string} text */
@@ -402,7 +396,7 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath, root) {
         } catch {
             // Process may have exited before printing a URL.
         }
-        await Promise.allSettled([child.status, stdoutDone, stderrDone]);
+        await Promise.allSettled([childStatus, stdoutDone, stderrDone]);
         throw new Error(`Standalone binary did not print a Workspace URL. Output:\n${output}`);
     }
 
@@ -420,7 +414,7 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath, root) {
         } catch {
             // Process is expected to stay alive until terminated by release-check.
         }
-        await Promise.allSettled([child.status, stdoutDone, stderrDone]);
+        await Promise.allSettled([childStatus, stdoutDone, stderrDone]);
     }
 }
 
@@ -431,19 +425,17 @@ export async function smokeTestBinaryPlansUiSurface(binaryPath, root) {
 export async function smokeTestBinaryReviewSurface(binaryPath, root) {
     console.log("\n==> Smoke test standalone Plan review surface");
     const projectDir = join(root, "plan-review-project");
-    await Deno.mkdir(join(projectDir, "docs", "plans"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(projectDir, "docs", "plans"), { recursive: true });
+    await fsWriteFile(
         join(projectDir, "docs", "plans", "release-review-smoke.md"),
         `---\nplanId: release-review-smoke\nclassification: FEATURE\nstatus: draft\n---\n# Release binary review smoke\n`,
     );
 
-    const child = new Deno.Command(binaryPath, {
-        args: ["plans", "read", "release-review-smoke", "--no-open"],
+    const child = spawn(binaryPath, ["plans", "read", "release-review-smoke", "--no-open"], {
         cwd: projectDir,
-        stdin: "null",
-        stdout: "piped",
-        stderr: "piped",
-    }).spawn();
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    const childStatus = waitForScriptExit(child);
 
     let output = "";
     /** @param {string} text */
@@ -466,7 +458,7 @@ export async function smokeTestBinaryReviewSurface(binaryPath, root) {
         } catch {
             // Process may have exited before printing a URL.
         }
-        await Promise.allSettled([child.status, stdoutDone, stderrDone]);
+        await Promise.allSettled([childStatus, stdoutDone, stderrDone]);
         throw new Error(`Standalone binary did not print a review URL. Output:\n${output}`);
     }
 
@@ -491,7 +483,7 @@ export async function smokeTestBinaryReviewSurface(binaryPath, root) {
         /** @type {ReturnType<typeof setTimeout> | undefined} */
         let timeoutId;
         const status = await Promise.race([
-            child.status,
+            childStatus,
             new Promise((_, reject) => {
                 timeoutId = setTimeout(
                     () => reject(new Error("Standalone review command did not exit within 10 seconds.")),
@@ -506,22 +498,26 @@ export async function smokeTestBinaryReviewSurface(binaryPath, root) {
         } catch {
             // Process already exited after the review close request.
         }
-        await Promise.allSettled([child.status, stdoutDone, stderrDone]);
+        await Promise.allSettled([childStatus, stdoutDone, stderrDone]);
     }
 }
 
 /**
  * @param {string[]} args
- * @returns {{ buildVersion: string | undefined, includeGolden: boolean }}
+ * @returns {{ buildVersion: string | undefined, includeGolden: boolean, runtime?: "bun" }}
  */
 export function parseReleaseCheckOptions(args = []) {
-    /** @type {{ buildVersion: string | undefined, includeGolden: boolean }} */
+    /** @type {{ buildVersion: string | undefined, includeGolden: boolean, runtime?: "bun" }} */
     const options = { buildVersion: undefined, includeGolden: true };
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
         if (arg === "--build-version") options.buildVersion = args[++index];
         else if (arg === "--binary-only") options.includeGolden = false;
-        else throw new Error(`Unknown release check argument: ${arg}`);
+        else if (arg === "--runtime") {
+            const runtime = args[++index];
+            if (runtime !== "bun") throw new Error("--runtime requires bun.");
+            options.runtime = runtime;
+        } else throw new Error(`Unknown release check argument: ${arg}`);
     }
     if (options.buildVersion !== undefined && !options.buildVersion) {
         throw new Error("--build-version requires a value.");
@@ -542,14 +538,27 @@ export function assertBinaryVersionOutput(output, expectedVersion) {
 }
 
 /**
+ * @param {string} output
+ * @param {string} expectedVersion
+ */
+export function assertBunRuntimeIdentity(output, expectedVersion) {
+    const identity = JSON.parse(output);
+    if (identity.runtime !== "bun" || identity.runtimeVersion !== expectedVersion) {
+        throw new Error(`Release binary must execute Bun ${expectedVersion}.`);
+    }
+}
+
+/**
  * @param {string} path
  * @returns {Promise<{ exists: boolean, content: string }>}
  */
 async function snapshotFile(path) {
     try {
-        return { exists: true, content: await Deno.readTextFile(path) };
+        return { exists: true, content: await fsReadFile(path, "utf8") };
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return { exists: false, content: "" };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+            return { exists: false, content: "" };
+        }
         throw error;
     }
 }
@@ -560,11 +569,11 @@ async function snapshotFile(path) {
  */
 async function restoreFile(path, snapshot) {
     if (snapshot.exists) {
-        await Deno.writeTextFile(path, snapshot.content);
+        await fsWriteFile(path, snapshot.content);
         return;
     }
-    await Deno.remove(path).catch((error) => {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+    await fsRm(path).catch((error) => {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     });
 }
 
@@ -573,6 +582,7 @@ async function restoreFile(path, snapshot) {
  * @property {string} [buildVersion]
  * @property {string} [rootDir]
  * @property {boolean} [includeGolden]
+ * @property {"bun"} [runtime]
  */
 
 /**
@@ -588,8 +598,8 @@ async function restoreFile(path, snapshot) {
 /** @type {ReleaseCheckExecutionPort} */
 const SYSTEM_RELEASE_CHECK_EXECUTION_PORT = Object.freeze({
     run,
-    makeTempDir: Deno.makeTempDir,
-    remove: Deno.remove,
+    makeTempDir: (options = {}) => mkdtemp(join(tmpdir(), options.prefix ?? "wld-release-")),
+    remove: fsRm,
     smokeTestBundledAgentReferenceExtraction,
     smokeTestBinaryPlansUiSurface,
     smokeTestBinaryReviewSurface,
@@ -604,33 +614,57 @@ export async function runReleaseCheck(options, port) {
     const rootDir = options.rootDir || ".";
     const versionPath = join(rootDir, "src", "shared", "version.js");
     const versionSnapshot = await snapshotFile(versionPath);
-    const binaryName = Deno.build.os === "windows" ? "wld.exe" : "wld";
+    const binaryName = process.platform === "win32" ? "wld.exe" : "wld";
     const output = join(tempDir, binaryName);
     const runner = port.run;
 
     try {
         assertRequiredBundledAssetsConfigured();
         const compileEnv = options.buildVersion ? { WLD_BUILD_VERSION: options.buildVersion } : undefined;
-        await mustRun("Compile release binary", "deno", ["run", "-A", "scripts/compile.js", "--output", output], {
-            cwd: rootDir,
-            env: compileEnv,
-        }, runner);
+        await mustRun(
+            "Compile release binary",
+            "bun",
+            ["run", "compile", "--output", output],
+            {
+                cwd: rootDir,
+                env: compileEnv,
+            },
+            runner,
+        );
         await mustRun(
             "Smoke test Workspace code and Plan review routes",
-            "deno",
-            [
-                "run",
-                "-A",
-                "scripts/assert-workspace-review-runtime.js",
-            ],
+            "bun",
+            ["run", "scripts/assert-workspace-review-runtime.js", "--bun"],
             { cwd: rootDir },
             runner,
         );
-        const smoke = await mustRun("Smoke test release binary", output, ["--version"], {
-            stdout: "piped",
-            stderr: "piped",
-        }, runner);
+        const smoke = await mustRun(
+            "Smoke test release binary",
+            output,
+            ["--version"],
+            {
+                stdout: "piped",
+                stderr: "piped",
+            },
+            runner,
+        );
         if (options.buildVersion) assertBinaryVersionOutput(`${smoke.stdout}${smoke.stderr}`, options.buildVersion);
+        {
+            const identity = await mustRun(
+                "Verify Bun runtime identity",
+                output,
+                ["--remote-preflight"],
+                {
+                    cwd: tempDir,
+                    stdout: "piped",
+                    stderr: "piped",
+                    env: { HOME: tempDir, USERPROFILE: tempDir },
+                },
+                runner,
+            );
+            const expectedRuntime = (await fsReadFile(join(rootDir, ".bun-version"), "utf8")).trim();
+            assertBunRuntimeIdentity(identity.stdout, expectedRuntime);
+        }
         const imageSmoke = await mustRun(
             "Smoke test packaged image resize",
             output,
@@ -652,8 +686,8 @@ export async function runReleaseCheck(options, port) {
         if (options.includeGolden !== false) {
             await mustRun(
                 "Run Golden TUI release gate",
-                "deno",
-                ["task", "test:golden-tui:extensive"],
+                "bun",
+                ["run", "test:golden-tui:extensive"],
                 { cwd: rootDir },
                 runner,
             );
@@ -661,12 +695,12 @@ export async function runReleaseCheck(options, port) {
     } finally {
         await restoreFile(versionPath, versionSnapshot);
         await port.remove(tempDir, { recursive: true }).catch((error) => {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         });
     }
 }
 
-export async function main(args = Deno.args) {
+export async function main(args = process.argv.slice(2)) {
     await runReleaseCheck(parseReleaseCheckOptions(args), SYSTEM_RELEASE_CHECK_EXECUTION_PORT);
 }
 

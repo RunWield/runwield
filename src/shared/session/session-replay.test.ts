@@ -1,8 +1,9 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeLongReplayFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 
-Deno.test("managed replay includes every page exactly once in saved order without changing the transcript", async () => {
+test("managed replay includes every page exactly once in saved order without changing the transcript", async () => {
     await withRuntimeCommandFixture("complete-replay-", async ({ homeDir, projectRoot }) => {
         const fixture = await makeLongReplayFixture(homeDir, projectRoot);
         const handle = fixture.openRuntime("tui", "replay-reader");
@@ -26,7 +27,7 @@ Deno.test("managed replay includes every page exactly once in saved order withou
     });
 });
 
-Deno.test("canceling a replay stops delivery without affecting a later replay", async () => {
+test("canceling a replay stops delivery without affecting a later replay", async () => {
     await withRuntimeCommandFixture("cancel-replay-", async ({ homeDir, projectRoot }) => {
         const fixture = await makeLongReplayFixture(homeDir, projectRoot);
         const handle = fixture.openRuntime("tui", "cancel-reader");
@@ -61,7 +62,7 @@ Deno.test("canceling a replay stops delivery without affecting a later replay", 
     });
 });
 
-Deno.test("closing a Session during replay does not emit its history into a replacement Project", async () => {
+test("closing a Session during replay does not emit its history into a replacement Project", async () => {
     await withRuntimeCommandFixture("close-replay-", async ({ homeDir, projectRoot, alternateRoot }) => {
         const first = await makeLongReplayFixture(homeDir, projectRoot);
         first.store.registerProject({ root: alternateRoot });

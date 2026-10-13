@@ -1,9 +1,19 @@
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { captureForegroundProcess } from "./captured-process.ts";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 /**
  * Assemble Direct Delivery in a temporary clone and push it when an upstream
  * exists. Local-only projects publish through their checked-out target branch.
  */
 
-import { basename, dirname, join } from "@std/path";
+import { basename, dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { assertPreMergeCandidateUnchanged, mergeExecutionWorktree } from "./worktree.js";
 import { prepareProjectContextPublication, settleProjectContextPublication } from "./project-context-publication.ts";
@@ -120,7 +130,7 @@ export class IsolatedPublicationError extends Error {
 }
 
 async function runGitResult(cwd: string, args: string[]): Promise<CommandResult> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     return {
         code: output.code,
         stdout: new TextDecoder().decode(output.stdout).trim(),
@@ -135,7 +145,7 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
 }
 
 async function runGitRaw(cwd: string, args: string[]): Promise<string> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     const decoder = new TextDecoder();
     const stdout = decoder.decode(output.stdout);
     const stderr = decoder.decode(output.stderr);
@@ -289,7 +299,7 @@ export async function isCommitPublishedToTarget(
         ]);
         return localResult.code === 0;
     }
-    const inspectionRoot = await Deno.makeTempDir({ prefix: `runwield-inspect-${basename(args.projectRoot)}-` });
+    const inspectionRoot = await mkdtemp(join(tmpdir(), `runwield-inspect-${basename(args.projectRoot)}-`));
     try {
         // Reachability uses Git objects only; an inspection never needs checked-out files.
         await runGit(args.projectRoot, [
@@ -317,7 +327,7 @@ export async function isCommitPublishedToTarget(
         ]);
         return result.code === 0;
     } finally {
-        await Deno.remove(inspectionRoot, { recursive: true }).catch(() => {});
+        await fsRm(inspectionRoot, { recursive: true }).catch(() => {});
     }
 }
 
@@ -352,10 +362,10 @@ export async function publishExecutionWorktreeIsolated(
     }
     const requestedPublicationRoot = args.repairedPublicationRoot || args.publicationRoot;
     const requestedRootExists = requestedPublicationRoot
-        ? await Deno.stat(requestedPublicationRoot).then((stat) => stat.isDirectory).catch(() => false)
+        ? await fsStat(requestedPublicationRoot).then((stat) => stat.isDirectory()).catch(() => false)
         : false;
     const publicationRoot = requestedPublicationRoot ||
-        await Deno.makeTempDir({ prefix: `runwield-publish-${basename(args.projectRoot)}-` });
+        await mkdtemp(join(tmpdir(), `runwield-publish-${basename(args.projectRoot)}-`));
     let preserveForRecovery = Boolean(requestedPublicationRoot);
     try {
         if (requestedRootExists) {
@@ -514,7 +524,7 @@ export async function publishExecutionWorktreeIsolated(
                 upstreamBranch: upstream.branch,
             };
         }
-        await Deno.mkdir(dirname(publicationRoot), { recursive: true });
+        await fsMkdir(dirname(publicationRoot), { recursive: true });
         // Keep a usable checkout if the upstream fails before preparation finishes:
         // a saved publication directory can be resumed through the repair path.
         await runGit(args.projectRoot, [
@@ -668,7 +678,7 @@ export async function publishExecutionWorktreeIsolated(
             upstreamBranch: upstream.branch,
         };
     } finally {
-        if (!preserveForRecovery) await Deno.remove(publicationRoot, { recursive: true }).catch(() => {});
+        if (!preserveForRecovery) await fsRm(publicationRoot, { recursive: true }).catch(() => {});
     }
 }
 
@@ -721,8 +731,8 @@ async function publishToLocalTarget(
             }
             for (const relativePath of args.allowedPlanPaths) {
                 const path = join(args.projectRoot, relativePath);
-                const bytes = await Deno.readFile(path).catch((error) => {
-                    if (error instanceof Deno.errors.NotFound) return null;
+                const bytes = await fsReadFile(path).catch((error) => {
+                    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
                     throw error;
                 });
                 if (!bytes) continue;
@@ -731,9 +741,12 @@ async function publishToLocalTarget(
                 if (changed.code === 0 && tracked.code === 0) continue;
                 savedAuthoritativePlans.set(relativePath, bytes);
                 if (tracked.code === 0) {
-                    await runGit(args.projectRoot, ["restore", "--worktree", "--source=HEAD", "--", relativePath]);
+                    // The staged-change guard above proves this index entry matches
+                    // HEAD. Restoring from the index also refreshes Git's stat cache;
+                    // an explicit HEAD checkout can leave CRLF files falsely dirty.
+                    await runGit(args.projectRoot, ["restore", "--worktree", "--", relativePath]);
                 } else {
-                    await Deno.remove(path);
+                    await fsRm(path);
                 }
             }
         }
@@ -805,8 +818,8 @@ async function publishToLocalTarget(
             for (const [relativePath, bytes] of savedAuthoritativePlans) {
                 const path = join(args.projectRoot, relativePath);
                 try {
-                    await Deno.mkdir(dirname(path), { recursive: true });
-                    await Deno.writeFile(path, bytes);
+                    await fsMkdir(dirname(path), { recursive: true });
+                    await fsWriteFile(path, bytes);
                 } catch (restoreError) {
                     restorationError = restoreError instanceof Error ? restoreError : new Error(String(restoreError));
                 }

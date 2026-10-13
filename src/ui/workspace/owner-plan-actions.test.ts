@@ -1,5 +1,9 @@
+import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
-import { assertEquals } from "@std/assert";
+import { mkdtemp as fsMkdtemp } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import {
     loadPlanActionEvidence,
@@ -106,8 +110,8 @@ async function makeAction(
     };
 }
 
-Deno.test("returns the stored result for an exact duplicate request", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-owner-plan-action-" });
+test("returns the stored result for an exact duplicate request", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-owner-plan-action-"));
     await savePlan(root, "demo", "# Demo\n", { planId: "plan-demo", status: "draft", classification: "FEATURE" });
     const store = makeStore(root);
     const action = await makeAction(root);
@@ -138,8 +142,8 @@ Deno.test("returns the stored result for an exact duplicate request", async () =
     assertEquals(current?.attrs.status, "on_hold");
 });
 
-Deno.test("returns recovery guidance for an accepted duplicate without replaying", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-owner-plan-action-" });
+test("returns recovery guidance for an accepted duplicate without replaying", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-owner-plan-action-"));
     await savePlan(root, "demo", "# Demo\n", { planId: "plan-demo", status: "draft", classification: "FEATURE" });
     const store = makeStore(root);
     const action = await makeAction(root);
@@ -169,8 +173,8 @@ Deno.test("returns recovery guidance for an accepted duplicate without replaying
     assertEquals(current?.attrs.status, "draft");
 });
 
-Deno.test("revalidates canonical evidence for a new request id", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-owner-plan-action-" });
+test("revalidates canonical evidence for a new request id", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-owner-plan-action-"));
     await savePlan(root, "demo", "# Demo\n", { planId: "plan-demo", status: "draft", classification: "FEATURE" });
     const store = makeStore(root);
     const action = await makeAction(root);
@@ -199,7 +203,7 @@ Deno.test("revalidates canonical evidence for a new request id", async () => {
     assertEquals(current?.attrs.status, "draft");
 });
 
-Deno.test("Workspace Plan action rejects changed status and worktree evidence with a real owner store", async () => {
+test("Workspace Plan action rejects changed status and worktree evidence with a real owner store", async () => {
     const fixture = await makeManagedSessionFixture();
     try {
         await savePlan(fixture.projectRoot, "demo", "# Demo\n", {
@@ -238,8 +242,8 @@ Deno.test("Workspace Plan action rejects changed status and worktree evidence wi
     }
 });
 
-Deno.test("conflicts when a request id is reused with different input", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-owner-plan-action-" });
+test("conflicts when a request id is reused with different input", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-owner-plan-action-"));
     await savePlan(root, "demo", "# Demo\n", { planId: "plan-demo", status: "draft", classification: "FEATURE" });
     const store = makeStore(root);
     const action = await makeAction(root);

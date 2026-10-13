@@ -1,7 +1,22 @@
+import { serveHttp } from "../../../shared/http-server.ts";
 // @ts-nocheck: focused service tests use the repository's JavaScript-style owner store.
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
-import { DatabaseSync } from "node:sqlite";
+import { readdirSync as fsReaddirSync } from "node:fs";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rename as fsRename,
+    rm as fsRm,
+    stat as fsStat,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
+import { join } from "node:path";
+import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { savePlan, writePlanMarkdownWithRevision } from "../../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../../shared/owner-coordination/index.js";
 import { addEntry, withWorktreeRegistryLockAtPath } from "../../../shared/worktree-registry.js";
@@ -28,9 +43,9 @@ async function waitFor(condition: () => Promise<boolean>, timeoutMs = 60_000) {
 }
 
 async function searchFixture(name: string, searchOptions: { scanIntervalMs?: number } = {}) {
-    const dir = await Deno.makeTempDir({ prefix: `runwield-search-${name}-` });
+    const dir = await fsMkdtemp(join(tmpdir(), `runwield-search-${name}-`));
     const root = join(dir, "project");
-    await Deno.mkdir(root, { recursive: true });
+    await fsMkdir(root, { recursive: true });
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
     const project = store.registerProject({ root, displayName: "Search Project" });
     const search = createWorkspaceSearchService({ store, dbPath: join(dir, "search.sqlite3"), ...searchOptions });
@@ -44,22 +59,22 @@ async function searchFixture(name: string, searchOptions: { scanIntervalMs?: num
         async close() {
             await search.close();
             store.close();
-            await Deno.remove(dir, { recursive: true });
+            await fsRm(dir, { recursive: true });
         },
     };
 }
 
-Deno.test("Workspace search ranks every valid candidate before paging", async () => {
+test("Workspace search ranks every valid candidate before paging", async () => {
     const fixture = await searchFixture("pagination");
     try {
-        await Deno.mkdir(join(fixture.root, "docs", "prd"), { recursive: true });
+        await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
         for (let index = 0; index < 505; index += 1) {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(fixture.root, "docs", "prd", `${String(index).padStart(3, "0")}.md`),
                 `# Candidate ${index}\n\nNeedle ranking body.\n`,
             );
         }
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(fixture.root, "docs", "prd", "exact.md"),
             "# Needle ranking\n\nExact title after a large candidate set.\n",
         );
@@ -76,34 +91,34 @@ Deno.test("Workspace search ranks every valid candidate before paging", async ()
     }
 });
 
-Deno.test("Workspace search keeps deterministic order across Projects and applies the Project filter", async () => {
+test("Workspace search keeps deterministic order across Projects and applies the Project filter", async () => {
     const fixture = await searchFixture("project-filter");
     const secondRoot = join(fixture.dir, "second-project");
     try {
-        await Deno.mkdir(join(fixture.root, "docs", "prd"), { recursive: true });
-        await Deno.mkdir(join(secondRoot, "docs", "prd"), { recursive: true });
-        await Deno.writeTextFile(
-            join(fixture.root, "docs", "prd", "one.md"),
-            "# Shared exact\n\nMulti Project needle.\n",
-        );
-        await Deno.writeTextFile(
-            join(secondRoot, "docs", "prd", "two.md"),
-            "# Shared exact\n\nMulti Project needle.\n",
-        );
+        await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
+        await fsMkdir(join(secondRoot, "docs", "prd"), { recursive: true });
+        await fsWriteFile(join(fixture.root, "docs", "prd", "one.md"), "# Shared exact\n\nMulti Project needle.\n");
+        await fsWriteFile(join(secondRoot, "docs", "prd", "two.md"), "# Shared exact\n\nMulti Project needle.\n");
         const second = fixture.store.registerProject({ root: secondRoot, displayName: "Second Project" });
         await fixture.search.refresh();
         const all = await fixture.search.search({ query: "Shared exact" });
         const repeated = await fixture.search.search({ query: "Shared exact" });
-        assertEquals(all.results.map((result) => result.id), repeated.results.map((result) => result.id));
+        assertEquals(
+            all.results.map((result) => result.id),
+            repeated.results.map((result) => result.id),
+        );
         assertEquals(all.total, 2);
         const filtered = await fixture.search.search({ query: "Shared exact", projectId: second.projectId });
-        assertEquals(filtered.results.map((result) => result.projectName), ["Second Project"]);
+        assertEquals(
+            filtered.results.map((result) => result.projectName),
+            ["Second Project"],
+        );
     } finally {
         await fixture.close();
     }
 });
 
-Deno.test("Workspace search hydrates current Work Record confidence, summary, links, and notices", async () => {
+test("Workspace search hydrates current Work Record confidence, summary, links, and notices", async () => {
     const fixture = await searchFixture("work-record");
     try {
         const attrs = {
@@ -141,21 +156,21 @@ Deno.test("Workspace search hydrates current Work Record confidence, summary, li
     }
 });
 
-Deno.test("Workspace search revokes removed Domain Language map entries at query and open time", async () => {
+test("Workspace search revokes removed Domain Language map entries at query and open time", async () => {
     const fixture = await searchFixture("domain-map");
     try {
-        await Deno.mkdir(join(fixture.root, "docs", "context"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(fixture.root, "docs", "context"), { recursive: true });
+        await fsWriteFile(
             join(fixture.root, "docs", "domain-language-map.md"),
             "# Map\n\n[Context](context/domain-language.md)\n",
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(fixture.root, "docs", "context", "domain-language.md"),
             "# Context Language\n\nRevocable glossary token.\n",
         );
         await fixture.search.refresh();
         assertEquals((await fixture.search.search({ query: "Revocable glossary" })).total, 1);
-        await Deno.writeTextFile(join(fixture.root, "docs", "domain-language-map.md"), "# Map\n\nNo contexts.\n");
+        await fsWriteFile(join(fixture.root, "docs", "domain-language-map.md"), "# Map\n\nNo contexts.\n");
         assertEquals((await fixture.search.search({ query: "Revocable glossary" })).total, 0);
         let message = "";
         try {
@@ -169,14 +184,14 @@ Deno.test("Workspace search revokes removed Domain Language map entries at query
     }
 });
 
-Deno.test("Workspace search rejects Project reader symlink escapes and names the failed reader", async () => {
+test("Workspace search rejects Project reader symlink escapes and names the failed reader", async () => {
     const fixture = await searchFixture("escape");
     const outside = join(fixture.dir, "outside");
     try {
-        await Deno.mkdir(outside);
-        await Deno.writeTextFile(join(outside, "outside.md"), "# Outside Secret\n\nEscaped token.\n");
-        await Deno.mkdir(join(fixture.root, "docs"), { recursive: true });
-        await Deno.symlink(outside, join(fixture.root, "docs", "prd"));
+        await fsMkdir(outside);
+        await fsWriteFile(join(outside, "outside.md"), "# Outside Secret\n\nEscaped token.\n");
+        await fsMkdir(join(fixture.root, "docs"), { recursive: true });
+        await fsSymlink(outside, join(fixture.root, "docs", "prd"));
         await fixture.search.refresh();
         const payload = await fixture.search.search({ query: "Escaped token" });
         assertEquals(payload.total, 0);
@@ -188,20 +203,20 @@ Deno.test("Workspace search rejects Project reader symlink escapes and names the
     }
 });
 
-Deno.test("Workspace search discards rejected candidates before pagination", async () => {
+test("Workspace search discards rejected candidates before pagination", async () => {
     const fixture = await searchFixture("rejected-pagination");
     try {
         await fixture.search.refresh();
-        await Deno.mkdir(join(fixture.root, "docs", "prd"), { recursive: true });
+        await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
         for (let index = 0; index < 25; index += 1) {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(fixture.root, "docs", "prd", `${index}.md`),
                 `# Paging ${index}\n\nRejected candidate needle.\n`,
             );
         }
         await fixture.search.refresh();
         for (let index = 0; index < 10; index += 1) {
-            await Deno.remove(join(fixture.root, "docs", "prd", `${index}.md`));
+            await fsRm(join(fixture.root, "docs", "prd", `${index}.md`));
         }
         const first = await fixture.search.search({ query: "Rejected candidate", page: 1, pageSize: 10 });
         const second = await fixture.search.search({ query: "Rejected candidate", page: 2, pageSize: 10 });
@@ -213,12 +228,12 @@ Deno.test("Workspace search discards rejected candidates before pagination", asy
     }
 });
 
-Deno.test("Workspace search quarantines a newer database and rebuilds recoverable results across restart", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-search-corrupt-" });
+test("Workspace search quarantines a newer database and rebuilds recoverable results across restart", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-search-corrupt-"));
     const root = join(dir, "project");
     const dbPath = join(dir, "search.sqlite3");
-    await Deno.mkdir(join(root, "docs", "prd"), { recursive: true });
-    await Deno.writeTextFile(join(root, "docs", "prd", "recovered.md"), "# Recovered\n\nRecovery needle.\n");
+    await fsMkdir(join(root, "docs", "prd"), { recursive: true });
+    await fsWriteFile(join(root, "docs", "prd", "recovered.md"), "# Recovered\n\nRecovery needle.\n");
     const newer = new DatabaseSync(dbPath);
     newer.exec("PRAGMA user_version = 99");
     newer.close();
@@ -229,8 +244,11 @@ Deno.test("Workspace search quarantines a newer database and rebuilds recoverabl
     try {
         await search.refresh();
         assertEquals((await search.search({ query: "Recovery needle" })).total, 1);
-        const names = [...Deno.readDirSync(dir)].map((entry) => entry.name);
-        assertEquals(names.some((name) => name.startsWith("search.sqlite3.quarantine-")), true);
+        const names = [...fsReaddirSync(dir, { withFileTypes: true })].map((entry) => entry.name);
+        assertEquals(
+            names.some((name) => name.startsWith("search.sqlite3.quarantine-")),
+            true,
+        );
         await search.close();
         store.close();
         const restartedStore = openOwnerCoordinationStore({ dbPath: ownerDbPath });
@@ -247,38 +265,41 @@ Deno.test("Workspace search quarantines a newer database and rebuilds recoverabl
         } catch {
             // The restart path already closed this handle.
         }
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Workspace search quarantines a corrupt database and rebuilds recoverable results", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-search-corrupt-" });
+test("Workspace search quarantines a corrupt database and rebuilds recoverable results", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-search-corrupt-"));
     const root = join(dir, "project");
     const dbPath = join(dir, "search.sqlite3");
-    await Deno.mkdir(join(root, "docs", "prd"), { recursive: true });
-    await Deno.writeTextFile(join(root, "docs", "prd", "recovered.md"), "# Recovered\n\nCorrupt recovery needle.\n");
-    await Deno.writeTextFile(dbPath, "not a sqlite database");
+    await fsMkdir(join(root, "docs", "prd"), { recursive: true });
+    await fsWriteFile(join(root, "docs", "prd", "recovered.md"), "# Recovered\n\nCorrupt recovery needle.\n");
+    await fsWriteFile(dbPath, "not a sqlite database");
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
     store.registerProject({ root });
     const search = createWorkspaceSearchService({ store, dbPath });
     try {
         await search.refresh();
         assertEquals((await search.search({ query: "Corrupt recovery needle" })).total, 1);
-        const names = [...Deno.readDirSync(dir)].map((entry) => entry.name);
-        assertEquals(names.some((name) => name.startsWith("search.sqlite3.quarantine-")), true);
+        const names = [...fsReaddirSync(dir, { withFileTypes: true })].map((entry) => entry.name);
+        assertEquals(
+            names.some((name) => name.startsWith("search.sqlite3.quarantine-")),
+            true,
+        );
     } finally {
         await search.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("owner Workspace app closes and reopens durable Search state", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-search-app-restart-" });
+test("owner Workspace app closes and reopens durable Search state", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-search-app-restart-"));
     const root = join(dir, "project");
     const ownerDbPath = join(dir, "owner.sqlite3");
-    await Deno.mkdir(join(root, "docs", "prd"), { recursive: true });
-    await Deno.writeTextFile(join(root, "docs", "prd", "restart.md"), "# App Restart\n\nApp restart needle.\n");
+    await fsMkdir(join(root, "docs", "prd"), { recursive: true });
+    await fsWriteFile(join(root, "docs", "prd", "restart.md"), "# App Restart\n\nApp restart needle.\n");
     let store = openOwnerCoordinationStore({ dbPath: ownerDbPath });
     store.registerProject({ root });
     let app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
@@ -294,19 +315,19 @@ Deno.test("owner Workspace app closes and reopens durable Search state", async (
     } finally {
         await app.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("production Workspace HTTP server closes and restarts Search", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-search-http-restart-" });
+test("production Workspace HTTP server closes and restarts Search", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-search-http-restart-"));
     const root = join(dir, "project");
     const ownerDbPath = join(dir, "owner.sqlite3");
-    await Deno.mkdir(join(root, "docs", "prd"), { recursive: true });
-    await Deno.writeTextFile(join(root, "docs", "prd", "restart.md"), "# HTTP Restart\n\nHTTP restart needle.\n");
-    const reservation = Deno.listen({ hostname: "127.0.0.1", port: 0 });
-    const port = (reservation.addr as Deno.NetAddr).port;
-    reservation.close();
+    await fsMkdir(join(root, "docs", "prd"), { recursive: true });
+    await fsWriteFile(join(root, "docs", "prd", "restart.md"), "# HTTP Restart\n\nHTTP restart needle.\n");
+    const reservation = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, () => new Response("reserved"));
+    const port = reservation.addr.port;
+    await reservation.shutdown();
     const origin = `http://127.0.0.1:${port}`;
     let store = openOwnerCoordinationStore({ dbPath: ownerDbPath });
     store.registerProject({ root });
@@ -333,12 +354,12 @@ Deno.test("production Workspace HTTP server closes and restarts Search", async (
     } finally {
         await server.shutdown();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("nested and execution-worktree Plan writes request refresh for the primary Project", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-search-plan-refresh-" });
+test("nested and execution-worktree Plan writes request refresh for the primary Project", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-search-plan-refresh-"));
     try {
         await savePlan(dir, "new-plan", "# New Plan\n\nCreation refresh.\n", {
             planId: "new-plan-id",
@@ -346,63 +367,60 @@ Deno.test("nested and execution-worktree Plan writes request refresh for the pri
             status: "draft",
         });
         const marker = await getWorkspaceSearchRefreshMarker(dir);
-        assertEquals((await Deno.stat(marker)).isFile, true);
-        await Deno.remove(marker);
+        assertEquals((await fsStat(marker)).isFile(), true);
+        await fsRm(marker);
 
-        await Deno.mkdir(join(dir, "docs", "plans", "epic"), { recursive: true });
+        await fsMkdir(join(dir, "docs", "plans", "epic"), { recursive: true });
         const planPath = join(dir, "docs", "plans", "epic", "child.md");
         const markdown = "# Child Plan\n\nRefresh nested Plan search.\n";
-        await Deno.writeTextFile(planPath, markdown);
+        await fsWriteFile(planPath, markdown);
         await writePlanMarkdownWithRevision(planPath, `${markdown}\nUpdated.\n`);
-        assertEquals((await Deno.stat(marker)).isFile, true);
-        await Deno.remove(marker);
+        assertEquals((await fsStat(marker)).isFile(), true);
+        await fsRm(marker);
 
         const executionRoot = join(dir, "execution-worktree");
-        await Deno.mkdir(join(dir, ".git", "worktrees", "execution"), { recursive: true });
-        await Deno.mkdir(join(executionRoot, "docs", "plans", "sequence"), { recursive: true });
-        await Deno.writeTextFile(
-            join(executionRoot, ".git"),
-            `gitdir: ${join(dir, ".git", "worktrees", "execution")}\n`,
-        );
+        await fsMkdir(join(dir, ".git", "worktrees", "execution"), { recursive: true });
+        await fsMkdir(join(executionRoot, "docs", "plans", "sequence"), { recursive: true });
+        await fsWriteFile(join(executionRoot, ".git"), `gitdir: ${join(dir, ".git", "worktrees", "execution")}\n`);
         const executionPlan = join(executionRoot, "docs", "plans", "sequence", "child.md");
-        await Deno.writeTextFile(executionPlan, markdown);
+        await fsWriteFile(executionPlan, markdown);
         await writePlanMarkdownWithRevision(executionPlan, `${markdown}\nExecution update.\n`);
-        assertEquals((await Deno.stat(marker)).isFile, true);
+        assertEquals((await fsStat(marker)).isFile(), true);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Workspace search rescans external edits without manual refresh", async () => {
+test("Workspace search rescans external edits without manual refresh", async () => {
     const fixture = await searchFixture("auto-scan", { scanIntervalMs: 100 });
     try {
         assertEquals(WORKSPACE_SEARCH_SCAN_INTERVAL_MS <= 30_000, true);
         const indexed = async () => (await fixture.search.search({ query: "Automatic needle" })).total;
         const ready = async () =>
-            (await fixture.search.search({ query: "Automatic needle" })).states.some((state) =>
-                state.state === "ready"
+            (await fixture.search.search({ query: "Automatic needle" })).states.some(
+                (state) => state.state === "ready",
             );
         assertEquals(await waitFor(ready), true);
-        await Deno.mkdir(join(fixture.root, "docs", "prd"), { recursive: true });
+        await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
         const documentPath = join(fixture.root, "docs", "prd", "auto.md");
-        await Deno.writeTextFile(documentPath, "# Auto Doc\n\nAutomatic needle body.\n");
+        await fsWriteFile(documentPath, "# Auto Doc\n\nAutomatic needle body.\n");
         assertEquals(await waitFor(async () => (await indexed()) === 1), true);
-        await Deno.remove(documentPath);
+        await fsRm(documentPath);
         assertEquals(await waitFor(async () => (await indexed()) === 0), true);
     } finally {
         await fixture.close();
     }
 });
 
-Deno.test("a refresh request triggers an earlier scan than the interval", async () => {
+test("a refresh request triggers an earlier scan than the interval", async () => {
     const fixture = await searchFixture("marker-refresh", { scanIntervalMs: WORKSPACE_SEARCH_SCAN_INTERVAL_MS });
     try {
         const found = async () => (await fixture.search.search({ query: "Marker needle" })).total === 1;
         const ready = async () =>
             (await fixture.search.search({ query: "Marker needle" })).states.some((state) => state.state === "ready");
         assertEquals(await waitFor(ready), true);
-        await Deno.mkdir(join(fixture.root, "docs", "prd"), { recursive: true });
-        await Deno.writeTextFile(join(fixture.root, "docs", "prd", "marker.md"), "# Marker Doc\n\nMarker needle.\n");
+        await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
+        await fsWriteFile(join(fixture.root, "docs", "prd", "marker.md"), "# Marker Doc\n\nMarker needle.\n");
         assertEquals(await found(), false);
         await requestWorkspaceSearchRefresh(fixture.root);
         assertEquals(await waitFor(found), true);
@@ -411,7 +429,7 @@ Deno.test("a refresh request triggers an earlier scan than the interval", async 
     }
 });
 
-Deno.test("Workspace search verifies committed Session evidence and reads every catalog page", async () => {
+test("Workspace search verifies committed Session evidence and reads every catalog page", async () => {
     const fixture = await makeManagedSessionFixture();
     const search = createWorkspaceSearchService({
         store: fixture.store,
@@ -422,16 +440,14 @@ Deno.test("Workspace search verifies committed Session evidence and reads every 
             const piSessionId = `catalog-page-${index}`;
             const timestamp = new Date(Date.UTC(2026, 0, 2, 0, 0, index)).toISOString();
             const transcriptPath = join(fixture.sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
-            const transcript = `${
-                JSON.stringify({
-                    type: "session",
-                    id: piSessionId,
-                    timestamp,
-                    cwd: fixture.projectRoot,
-                    name: `Catalog page Session ${index}`,
-                })
-            }\n`;
-            await Deno.writeTextFile(transcriptPath, transcript);
+            const transcript = `${JSON.stringify({
+                type: "session",
+                id: piSessionId,
+                timestamp,
+                cwd: fixture.projectRoot,
+                name: `Catalog page Session ${index}`,
+            })}\n`;
+            await fsWriteFile(transcriptPath, transcript);
             let id = 0;
             const session = await fixture.store.ensureSessionCatalogRecord({
                 projectId: fixture.project.projectId,
@@ -453,11 +469,16 @@ Deno.test("Workspace search verifies committed Session evidence and reads every 
                 now: () => timestamp,
             });
             proof = fixture.store.changeSessionActivationPhase(proof, "checkpointing", { now: () => timestamp });
-            fixture.store.publishGenerationAndRelease(proof, {
-                generation: 0,
-                currentSegmentId: fixture.store.getCurrentSessionSegment(session.runwieldSessionId)?.segmentId ?? null,
-                ...await readTranscriptEvidence(transcriptPath),
-            }, { now: () => timestamp });
+            fixture.store.publishGenerationAndRelease(
+                proof,
+                {
+                    generation: 0,
+                    currentSegmentId:
+                        fixture.store.getCurrentSessionSegment(session.runwieldSessionId)?.segmentId ?? null,
+                    ...(await readTranscriptEvidence(transcriptPath)),
+                },
+                { now: () => timestamp },
+            );
         }
 
         await search.refresh();
@@ -468,15 +489,12 @@ Deno.test("Workspace search verifies committed Session evidence and reads every 
         const lastCatalogPage = await search.search({ query: "Catalog page Session 0", contentType: "session" });
         assertEquals(lastCatalogPage.total, 1);
 
-        await Deno.writeTextFile(fixture.transcriptPath, '{"changed":true}\n', { append: true });
+        await fsWriteFile(fixture.transcriptPath, '{"changed":true}\n', { flag: "a" });
         const appended = await search.search({ query: "Managed fixture", contentType: "session" });
         assertEquals(appended.total, 1);
         assertEquals(appended.results[0].snippet, "Hello");
-        const committedBytes = await Deno.readTextFile(fixture.transcriptPath);
-        await Deno.writeTextFile(
-            fixture.transcriptPath,
-            committedBytes.replace('"content":"Hello"', '"content":"Hallo"'),
-        );
+        const committedBytes = await fsReadFile(fixture.transcriptPath, "utf8");
+        await fsWriteFile(fixture.transcriptPath, committedBytes.replace('"content":"Hello"', '"content":"Hallo"'));
         const changed = await search.search({ query: "Managed fixture", contentType: "session" });
         assertEquals(changed.total, 0);
     } finally {
@@ -485,7 +503,7 @@ Deno.test("Workspace search verifies committed Session evidence and reads every 
     }
 });
 
-Deno.test("Workspace search and Plan opens reject a linked Plan directory after indexing", async () => {
+test("Workspace search and Plan opens reject a linked Plan directory after indexing", async () => {
     const fixture = await searchFixture("plan-open-containment");
     const outside = join(fixture.dir, "outside-plans");
     try {
@@ -496,8 +514,8 @@ Deno.test("Workspace search and Plan opens reject a linked Plan directory after 
         });
         await fixture.search.refresh();
         assertEquals((await fixture.search.search({ query: "Issued destination" })).total, 1);
-        await Deno.rename(join(fixture.root, "docs", "plans"), outside);
-        await Deno.symlink(outside, join(fixture.root, "docs", "plans"));
+        await fsRename(join(fixture.root, "docs", "plans"), outside);
+        await fsSymlink(outside, join(fixture.root, "docs", "plans"));
         assertEquals((await fixture.search.search({ query: "Issued destination" })).total, 0);
         let message = "";
         try {
@@ -511,7 +529,7 @@ Deno.test("Workspace search and Plan opens reject a linked Plan directory after 
     }
 });
 
-Deno.test("Workspace search and Plan opens accept registered execution-worktree authority", async () => {
+test("Workspace search and Plan opens accept registered execution-worktree authority", async () => {
     const fixture = await searchFixture("execution-authority");
     const executionRoot = join(fixture.dir, "execution");
     try {
@@ -521,14 +539,13 @@ Deno.test("Workspace search and Plan opens accept registered execution-worktree 
             classification: "PLANNED_CHANGE",
             status: "in_progress",
         });
-        await Deno.mkdir(join(executionRoot, "docs", "plans"), { recursive: true });
-        const primary = await Deno.readTextFile(join(fixture.root, "docs", "plans", "authority.md"));
-        await Deno.writeTextFile(
+        await fsMkdir(join(executionRoot, "docs", "plans"), { recursive: true });
+        const primary = await fsReadFile(join(fixture.root, "docs", "plans", "authority.md"), "utf8");
+        await fsWriteFile(
             join(executionRoot, "docs", "plans", "authority.md"),
-            primary.replaceAll("Primary authority", "Execution authority").replace(
-                "Old primary body",
-                "Execution needle",
-            ),
+            primary
+                .replaceAll("Primary authority", "Execution authority")
+                .replace("Old primary body", "Execution needle"),
         );
         const now = "2026-09-01T00:00:00.000Z";
         await addEntry(fixture.root, {
@@ -550,8 +567,8 @@ Deno.test("Workspace search and Plan opens accept registered execution-worktree 
         assertEquals((await loadWorkspaceDetail(fixture.root, "execution-authority-id")).title, "Execution authority");
 
         const outsidePlans = join(fixture.dir, "outside-execution-plans");
-        await Deno.rename(join(executionRoot, "docs", "plans"), outsidePlans);
-        await Deno.symlink(outsidePlans, join(executionRoot, "docs", "plans"));
+        await fsRename(join(executionRoot, "docs", "plans"), outsidePlans);
+        await fsSymlink(outsidePlans, join(executionRoot, "docs", "plans"));
         assertEquals((await fixture.search.search({ query: "Execution needle", contentType: "plan" })).total, 0);
         let message = "";
         try {
@@ -565,13 +582,13 @@ Deno.test("Workspace search and Plan opens accept registered execution-worktree 
     }
 });
 
-Deno.test("Workspace refresh requested during a scan includes files added after that scan began", async () => {
+test("Workspace refresh requested during a scan includes files added after that scan began", async () => {
     const fixture = await searchFixture("refresh-during-scan");
     const secondPath = join(fixture.dir, "blocked-project");
-    await Deno.mkdir(secondPath);
-    const secondRoot = await Deno.realPath(secondPath);
+    await fsMkdir(secondPath);
+    const secondRoot = await fsRealpath(secondPath);
     const second = fixture.store.registerProject({ root: secondRoot, displayName: "ZZ Blocked Project" });
-    await Deno.mkdir(join(fixture.root, "docs", "prd"), { recursive: true });
+    await fsMkdir(join(fixture.root, "docs", "prd"), { recursive: true });
     const locked = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     // Hold a real migration lock in the second Project so the scan has already read the first.
@@ -588,13 +605,13 @@ Deno.test("Workspace refresh requested during a scan includes files added after 
         assertEquals(
             await waitFor(async () => {
                 const progress = await fixture.search.search({ query: "" });
-                return progress.states.some((state) =>
-                    state.projectId === second.projectId && state.state === "indexing"
+                return progress.states.some(
+                    (state) => state.projectId === second.projectId && state.state === "indexing",
                 );
             }),
             true,
         );
-        await Deno.writeTextFile(join(fixture.root, "docs", "prd", "new.md"), "# Fresh refresh needle\n");
+        await fsWriteFile(join(fixture.root, "docs", "prd", "new.md"), "# Fresh refresh needle\n");
         const refreshed = fixture.search.refresh();
         release.resolve();
         await Promise.all([scanning, refreshed, holding]);
@@ -606,7 +623,7 @@ Deno.test("Workspace refresh requested during a scan includes files added after 
     }
 });
 
-Deno.test("Workspace search returns a large Plan result set", async () => {
+test("Workspace search returns a large Plan result set", async () => {
     const fixture = await searchFixture("plan-volume");
     try {
         await savePlan(fixture.root, "template", "# Matching Plan\n\nShared volume needle.\n", {
@@ -614,9 +631,9 @@ Deno.test("Workspace search returns a large Plan result set", async () => {
             classification: "PLANNED_CHANGE",
             status: "draft",
         });
-        const template = await Deno.readTextFile(join(fixture.root, "docs", "plans", "template.md"));
+        const template = await fsReadFile(join(fixture.root, "docs", "plans", "template.md"), "utf8");
         for (let index = 1; index < 80; index++) {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(fixture.root, "docs", "plans", `volume-${index}.md`),
                 template.replace("volume-0", `volume-${index}`),
             );
@@ -637,24 +654,24 @@ Deno.test("Workspace search returns a large Plan result set", async () => {
     }
 });
 
-Deno.test("Workspace search leaves a lone Plan without an ID unchanged", async () => {
+test("Workspace search leaves a lone Plan without an ID unchanged", async () => {
     const fixture = await searchFixture("plan-identity-diagnostics");
     try {
-        await Deno.mkdir(join(fixture.root, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(fixture.root, "docs", "plans"), { recursive: true });
         const path = join(fixture.root, "docs", "plans", "missing-id.md");
         const markdown = "---\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Missing ID\n";
-        await Deno.writeTextFile(path, markdown);
+        await fsWriteFile(path, markdown);
         await fixture.search.refresh();
         const payload = await fixture.search.search({ query: "Missing ID" });
         assertEquals(payload.results, []);
         assertEquals(payload.states[0].state, "ready");
-        assertEquals(await Deno.readTextFile(path), markdown);
+        assertEquals(await fsReadFile(path, "utf8"), markdown);
     } finally {
         await fixture.close();
     }
 });
 
-Deno.test("Workspace search skips a Plan without an ID and keeps other results", async () => {
+test("Workspace search skips a Plan without an ID and keeps other results", async () => {
     const fixture = await searchFixture("plan-identity-diagnostics");
     try {
         await savePlan(fixture.root, "valid", "# Searchable Plan\n\nShared needle.\n", {
@@ -664,18 +681,31 @@ Deno.test("Workspace search skips a Plan without an ID and keeps other results",
         });
         const path = join(fixture.root, "docs", "plans", "missing-id.md");
         const markdown = "---\nclassification: PLANNED_CHANGE\nstatus: draft\n---\n# Missing ID\n\nShared needle.\n";
-        await Deno.writeTextFile(path, markdown);
+        await fsWriteFile(path, markdown);
         await fixture.search.refresh();
-        const payload = await fixture.search.search({ query: "Shared needle" });
-        assertEquals(payload.results.map((result) => result.sourceId), ["valid-id"]);
+        let payload = await fixture.search.search({ query: "Shared needle" });
+        // savePlan's refresh marker can start another scan while search hydrates
+        // candidates. Assert the settled response, not a valid interim indexing state.
+        assertEquals(
+            await waitFor(async () => {
+                payload = await fixture.search.search({ query: "Shared needle" });
+                return payload.states[0]?.state === "ready";
+            }),
+            true,
+            `Search did not settle: ${JSON.stringify(payload.states)}`,
+        );
+        assertEquals(
+            payload.results.map((result) => result.sourceId),
+            ["valid-id"],
+        );
         assertEquals(payload.states[0].state, "ready");
-        assertEquals(await Deno.readTextFile(path), markdown);
+        assertEquals(await fsReadFile(path, "utf8"), markdown);
     } finally {
         await fixture.close();
     }
 });
 
-Deno.test("Workspace search reports duplicate Plan identity diagnostics", async () => {
+test("Workspace search reports duplicate Plan identity diagnostics", async () => {
     const fixture = await searchFixture("duplicate-plan-identities");
     try {
         await savePlan(fixture.root, "first", "# First duplicate Plan\n", {
@@ -683,8 +713,8 @@ Deno.test("Workspace search reports duplicate Plan identity diagnostics", async 
             classification: "PLANNED_CHANGE",
             status: "draft",
         });
-        const first = await Deno.readTextFile(join(fixture.root, "docs", "plans", "first.md"));
-        await Deno.writeTextFile(
+        const first = await fsReadFile(join(fixture.root, "docs", "plans", "first.md"), "utf8");
+        await fsWriteFile(
             join(fixture.root, "docs", "plans", "second.md"),
             first.replace("First duplicate Plan", "Second duplicate Plan"),
         );
@@ -696,7 +726,7 @@ Deno.test("Workspace search reports duplicate Plan identity diagnostics", async 
     }
 });
 
-Deno.test("Workspace search reports duplicate Work Record identity diagnostics and excludes historical records", async () => {
+test("Workspace search reports duplicate Work Record identity diagnostics and excludes historical records", async () => {
     const fixture = await searchFixture("record-identities");
     try {
         const base = {
@@ -770,7 +800,7 @@ Deno.test("Workspace search reports duplicate Work Record identity diagnostics a
     }
 });
 
-Deno.test("Workspace search uses current authoritative Plan evidence", async () => {
+test("Workspace search uses current authoritative Plan evidence", async () => {
     const fixture = await searchFixture("plan-evidence");
     try {
         await savePlan(fixture.root, "authority", "# Old authority\n\nCanonical needle.\n", {
@@ -781,7 +811,7 @@ Deno.test("Workspace search uses current authoritative Plan evidence", async () 
         });
         await fixture.search.refresh();
         const planPath = join(fixture.root, "docs", "plans", "authority.md");
-        const current = await Deno.readTextFile(planPath);
+        const current = await fsReadFile(planPath, "utf8");
         await writePlanMarkdownWithRevision(planPath, current.replaceAll("Old authority", "Current authority"));
         const payload = await fixture.search.search({ query: "authority" });
         assertEquals(payload.results[0].title, "Current authority");

@@ -1,4 +1,8 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "../owner-coordination/database.js";
 import {
     acquireSessionActivation,
@@ -42,8 +46,8 @@ function publishGenerationZero(database: ReturnType<typeof openOwnerCoordination
     }, { now: () => "2026-01-01T00:00:02.000Z" });
 }
 
-Deno.test("expired control recovery trusts valid transcript evidence and fences the old owner", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-expired-control-" });
+test("expired control recovery trusts valid transcript evidence and fences the old owner", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-expired-control-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -108,6 +112,6 @@ Deno.test("expired control recovery trusts valid transcript evidence and fences 
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

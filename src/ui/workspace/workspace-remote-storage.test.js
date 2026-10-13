@@ -1,5 +1,9 @@
-import { assertEquals } from "@std/assert";
-import { DatabaseSync } from "node:sqlite";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import { DatabaseSync } from "../../shared/sqlite.ts";
 
 import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
 
@@ -12,7 +16,7 @@ import { REMOTE_SCHEMA_V1_SQL } from "./server/remote-schema.ts";
 
 import { jsonRequest, readJsonResponse } from "./workspace-test-helpers.js";
 
-Deno.test("remote Workspace mode isolates local Plan Board and local APIs", async () => {
+test("remote Workspace mode isolates local Plan Board and local APIs", async () => {
     const app = createWorkspaceApp({ mode: "remote" }).handler();
     for (
         const path of ["/", "/api/plans", "/api/board", "/api/plans/plan-1/body", "/api/plans/plan-1/lifecycle-action"]
@@ -23,7 +27,7 @@ Deno.test("remote Workspace mode isolates local Plan Board and local APIs", asyn
     }
 });
 
-Deno.test("remote Shared Space API enforces capabilities, ciphertext storage, lifecycle, and delete", async () => {
+test("remote Shared Space API enforces capabilities, ciphertext storage, lifecycle, and delete", async () => {
     const reviewerCapability = "reviewer-secret-capability";
     const maintainerCapability = "maintainer-secret-capability";
     const workspaceApp = createWorkspaceApp({ mode: "remote" });
@@ -183,7 +187,7 @@ Deno.test("remote Shared Space API enforces capabilities, ciphertext storage, li
     }
 });
 
-Deno.test("remote requests over configured JSON body limit are rejected before writes", async () => {
+test("remote requests over configured JSON body limit are rejected before writes", async () => {
     const workspaceApp = createWorkspaceApp({ mode: "remote", maxRequestBytes: 64 });
     const adapter = workspaceApp.adapter;
     const database = adapter.database;
@@ -215,7 +219,7 @@ Deno.test("remote requests over configured JSON body limit are rejected before w
     }
 });
 
-Deno.test("remote retention refreshes on writes and cleanup hard-deletes expired Shared Spaces", async () => {
+test("remote retention refreshes on writes and cleanup hard-deletes expired Shared Spaces", async () => {
     let now = new Date("2026-01-01T00:00:00.000Z");
     const database = openRemoteDatabase();
     const adapter = createRemoteWorkspaceAdapter({ database, retention: { days: 7 }, clock: { now: () => now } });
@@ -275,7 +279,7 @@ Deno.test("remote retention refreshes on writes and cleanup hard-deletes expired
     }
 });
 
-Deno.test("remote retention cleanup removes expired Shared Spaces across bounded batches", () => {
+test("remote retention cleanup removes expired Shared Spaces across bounded batches", () => {
     const now = new Date("2026-01-10T00:00:00.000Z");
     const database = openRemoteDatabase();
     const adapter = createRemoteWorkspaceAdapter({ database, retention: { days: 7 }, clock: { now: () => now } });
@@ -317,7 +321,7 @@ Deno.test("remote retention cleanup removes expired Shared Spaces across bounded
     }
 });
 
-Deno.test("remote retention reconciliation grants grace and disabling clears expiry", async () => {
+test("remote retention reconciliation grants grace and disabling clears expiry", async () => {
     const now = new Date("2026-02-01T00:00:00.000Z");
     const database = openRemoteDatabase();
     const noRetention = createRemoteWorkspaceAdapter({ database, clock: { now: () => now } });
@@ -341,8 +345,8 @@ Deno.test("remote retention reconciliation grants grace and disabling clears exp
     disabled.close();
 });
 
-Deno.test("remote schema migration preserves v1 rows and rejects newer schemas", () => {
-    const cwd = Deno.makeTempDirSync();
+test("remote schema migration preserves v1 rows and rejects newer schemas", () => {
+    const cwd = fsMkdtempSync(join(tmpdir(), "runwield-fixture-"));
     try {
         const dbPath = `${cwd}/remote.sqlite`;
         const fixture = new DatabaseSync(dbPath);
@@ -442,6 +446,6 @@ Deno.test("remote schema migration preserves v1 rows and rejects newer schemas",
         }
         assertEquals(failed, true);
     } finally {
-        Deno.removeSync(cwd, { recursive: true });
+        fsRmSync(cwd, { recursive: true });
     }
 });

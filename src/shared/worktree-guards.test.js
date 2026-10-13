@@ -1,4 +1,15 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 
 import { loadPlan, savePlan } from "../plan-store.js";
 
@@ -30,8 +41,8 @@ import {
 
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 
-Deno.test("worktree helpers report Git requirement outside Git", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-non-git-worktree-" });
+test("worktree helpers report Git requirement outside Git", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-non-git-worktree-"));
     try {
         await assertRejects(
             () =>
@@ -62,13 +73,13 @@ Deno.test("worktree helpers report Git requirement outside Git", async () => {
             "Removing an execution worktree requires a Git repository",
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("mergeExecutionWorktree rejects post-seal implementation edits outside finalized Plan paths", async () => {
+test("mergeExecutionWorktree rejects post-seal implementation edits outside finalized Plan paths", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
     let worktree;
     try {
@@ -81,14 +92,14 @@ Deno.test("mergeExecutionWorktree rejects post-seal implementation edits outside
             worktreeRoot,
         });
         const activeWorktree = worktree;
-        await Deno.writeTextFile(`${activeWorktree.path}/feature.txt`, "validated\n");
+        await fsWriteFile(`${activeWorktree.path}/feature.txt`, "validated\n");
         const sealed = await checkpointExecutionWorktree({
             worktreePath: activeWorktree.path,
             branch: activeWorktree.branch,
             planName: "feature",
         });
         await savePlanForTest(activeWorktree.path, "feature", "# Feature", { status: "verified" });
-        await Deno.writeTextFile(`${activeWorktree.path}/post-seal.txt`, "late edit\n");
+        await fsWriteFile(`${activeWorktree.path}/post-seal.txt`, "late edit\n");
 
         await assertRejects(
             () =>
@@ -112,14 +123,14 @@ Deno.test("mergeExecutionWorktree rejects post-seal implementation edits outside
                 force: true,
             }).catch(() => {});
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("execution preparation retry still rejects branches containing implementation commits", async () => {
+test("execution preparation retry still rejects branches containing implementation commits", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
     let worktree;
     try {
@@ -132,7 +143,7 @@ Deno.test("execution preparation retry still rejects branches containing impleme
         await savePlanForTest(activeWorktree.path, "prepared-retry", "# Prepared retry", {
             status: "ready_for_work",
         });
-        await Deno.writeTextFile(`${activeWorktree.path}/unexpected.txt`, "Preserve unrelated work\n");
+        await fsWriteFile(`${activeWorktree.path}/unexpected.txt`, "Preserve unrelated work\n");
         await assertRejects(
             () =>
                 checkpointExecutionPreparation({
@@ -145,9 +156,9 @@ Deno.test("execution preparation retry still rejects branches containing impleme
             Error,
             "Execution worktree contains changes outside preparation Plan paths:\n  - unexpected.txt",
         );
-        assertEquals(await Deno.readTextFile(`${activeWorktree.path}/unexpected.txt`), "Preserve unrelated work\n");
+        assertEquals(await fsReadFile(`${activeWorktree.path}/unexpected.txt`, "utf8"), "Preserve unrelated work\n");
         assertEquals(await git(activeWorktree.path, ["rev-parse", "HEAD"]), activeWorktree.baseCommit);
-        await Deno.remove(`${activeWorktree.path}/unexpected.txt`);
+        await fsRm(`${activeWorktree.path}/unexpected.txt`);
         await checkpointExecutionPreparation({
             worktreePath: activeWorktree.path,
             branch: activeWorktree.branch,
@@ -155,7 +166,7 @@ Deno.test("execution preparation retry still rejects branches containing impleme
             planName: "prepared-retry",
             planRelativePath: "docs/plans/prepared-retry.md",
         });
-        await Deno.writeTextFile(`${activeWorktree.path}/implementation.txt`, "Agent work\n");
+        await fsWriteFile(`${activeWorktree.path}/implementation.txt`, "Agent work\n");
         await git(activeWorktree.path, ["add", "implementation.txt"]);
         await git(activeWorktree.path, ["commit", "-m", "Implement feature"]);
 
@@ -179,27 +190,27 @@ Deno.test("execution preparation retry still rejects branches containing impleme
                 force: true,
             }).catch(() => {});
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("deleteMergedWorktreeBranch deletes a merged branch and keeps an unmerged one", async () => {
+test("deleteMergedWorktreeBranch deletes a merged branch and keeps an unmerged one", async () => {
     // Real Git on purpose. This is the most destructive operation in the system and it
     // has no injection seam by design, so the only honest proof is running it. A fake
     // here would assert our assumption about `branch --merged`, not Git's answer.
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-branch-delete-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-branch-delete-"));
     try {
         await git(projectRoot, ["init", "-b", "main"]);
         await git(projectRoot, ["config", "user.email", "tests@example.com"]);
         await git(projectRoot, ["config", "user.name", "RunWield Tests"]);
-        await Deno.writeTextFile(`${projectRoot}/file.txt`, "base\n");
+        await fsWriteFile(`${projectRoot}/file.txt`, "base\n");
         await git(projectRoot, ["add", "."]);
         await git(projectRoot, ["commit", "-m", "base"]);
 
         // Merged: branched and merged back, so nothing is lost by deleting it.
         await git(projectRoot, ["checkout", "-b", "runwield/worktree/merged"]);
-        await Deno.writeTextFile(`${projectRoot}/file.txt`, "merged work\n");
+        await fsWriteFile(`${projectRoot}/file.txt`, "merged work\n");
         await git(projectRoot, ["commit", "-am", "merged work"]);
         await git(projectRoot, ["checkout", "main"]);
         await git(projectRoot, ["merge", "--no-ff", "--no-edit", "runwield/worktree/merged"]);
@@ -215,7 +226,7 @@ Deno.test("deleteMergedWorktreeBranch deletes a merged branch and keeps an unmer
 
         // Unmerged: holds a commit main has never seen. Deleting it would destroy work.
         await git(projectRoot, ["checkout", "-b", "runwield/worktree/unmerged"]);
-        await Deno.writeTextFile(`${projectRoot}/file.txt`, "unmerged work\n");
+        await fsWriteFile(`${projectRoot}/file.txt`, "unmerged work\n");
         await git(projectRoot, ["commit", "-am", "unmerged work"]);
         await git(projectRoot, ["checkout", "main"]);
 
@@ -232,7 +243,7 @@ Deno.test("deleteMergedWorktreeBranch deletes a merged branch and keeps an unmer
         assertStringIncludes(untouched.reason, "carried no work");
 
         await git(projectRoot, ["checkout", "-b", "runwield/worktree/prepared", baseCommit]);
-        await Deno.writeTextFile(`${projectRoot}/prepared-plan.md`, "RunWield preparation\n");
+        await fsWriteFile(`${projectRoot}/prepared-plan.md`, "RunWield preparation\n");
         await git(projectRoot, ["add", "prepared-plan.md"]);
         await git(projectRoot, ["commit", "-m", "Prepare execution"]);
         const ownedPreparationCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
@@ -279,20 +290,20 @@ Deno.test("deleteMergedWorktreeBranch deletes a merged branch and keeps an unmer
         });
         assertEquals(targetKept.deleted, false, "cleanup never deletes the publication target itself");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("remote publication cleanup deletes only empty source-branch commits after the published artifact", async () => {
+test("remote publication cleanup deletes only empty source-branch commits after the published artifact", async () => {
     const projectRoot = await makeRepo();
-    const remoteRoot = await Deno.makeTempDir({ prefix: "runwield-branch-cleanup-remote-" });
+    const remoteRoot = await fsMkdtemp(join(tmpdir(), "runwield-branch-cleanup-remote-"));
     try {
         await git(remoteRoot, ["init", "--bare"]);
         await git(projectRoot, ["remote", "add", "origin", remoteRoot]);
         await git(projectRoot, ["push", "-u", "origin", "main"]);
 
         await git(projectRoot, ["checkout", "-b", "worktree/published-with-empty-checkpoint"]);
-        await Deno.writeTextFile(`${projectRoot}/published.txt`, "published\n");
+        await fsWriteFile(`${projectRoot}/published.txt`, "published\n");
         await git(projectRoot, ["add", "published.txt"]);
         await git(projectRoot, ["commit", "-m", "Seal publication artifact"]);
         const artifactCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
@@ -318,7 +329,7 @@ Deno.test("remote publication cleanup deletes only empty source-branch commits a
 
         await git(projectRoot, ["branch", "worktree/published-with-new-work", artifactCommit]);
         await git(projectRoot, ["checkout", "worktree/published-with-new-work"]);
-        await Deno.writeTextFile(`${projectRoot}/not-published.txt`, "keep me\n");
+        await fsWriteFile(`${projectRoot}/not-published.txt`, "keep me\n");
         await git(projectRoot, ["add", "not-published.txt"]);
         await git(projectRoot, ["commit", "-m", "New work after publication"]);
         await git(projectRoot, ["checkout", "main"]);
@@ -338,14 +349,14 @@ Deno.test("remote publication cleanup deletes only empty source-branch commits a
             "worktree/published-with-new-work",
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(remoteRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(remoteRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("discard blocks primary and reports branch checkout races after directory removal", async () => {
+test("discard blocks primary and reports branch checkout races after directory removal", async () => {
     const projectRoot = await makeRepo();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await assertRejects(
             () => validateWorktreeDiscard({ projectRoot, path: projectRoot, branch: "missing" }),
@@ -363,59 +374,59 @@ Deno.test("discard blocks primary and reports branch checkout races after direct
         assertEquals(removed.value?.status, "path_removed");
         const rescuePath = `${parent}/rescue`;
         await git(projectRoot, ["worktree", "add", rescuePath, attempt.branch]);
-        await Deno.writeTextFile(`${rescuePath}/keep.txt`, "keep the new checkout\n");
+        await fsWriteFile(`${rescuePath}/keep.txt`, "keep the new checkout\n");
         const blocked = await cleanup.next();
         assertEquals(blocked.value?.status, "blocked");
         assertEquals(blocked.value?.branchDeleted, false);
-        assertEquals(await Deno.readTextFile(`${rescuePath}/keep.txt`), "keep the new checkout\n");
+        assertEquals(await fsReadFile(`${rescuePath}/keep.txt`, "utf8"), "keep the new checkout\n");
         assertEquals(await git(projectRoot, ["branch", "--show-current"]), "main");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(parent, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(parent, { recursive: true });
     }
 });
 
-Deno.test("discard removes a missing linked checkout through its saved symlinked parent", async () => {
+test("discard removes a missing linked checkout through its saved symlinked parent", async () => {
     const projectRoot = await makeRepo();
-    const parent = await Deno.makeTempDir();
+    const parent = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const realParent = `${parent}/real`;
         const aliasParent = `${parent}/alias`;
-        await Deno.mkdir(realParent);
-        await Deno.symlink(realParent, aliasParent);
+        await fsMkdir(realParent);
+        await fsSymlink(realParent, aliasParent);
         const attempt = await createTestWorktreeAttempt({
             projectRoot,
             planName: "missing",
             worktreeRoot: aliasParent,
         });
-        await Deno.remove(attempt.path, { recursive: true });
+        await fsRm(attempt.path, { recursive: true });
         const results = [];
         for await (const result of discardWorktreeGitArtifacts({ projectRoot, ...attempt })) results.push(result);
         assertEquals(results.at(-1)?.status, "complete");
         assertEquals(await git(projectRoot, ["branch", "--list", attempt.branch]), "");
         assertEquals((await git(projectRoot, ["worktree", "list", "--porcelain"])).includes(attempt.branch), false);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(parent, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(parent, { recursive: true });
     }
 });
 
-Deno.test("preparation never adopts staged, unstaged, or committed user ignore rules", async () => {
+test("preparation never adopts staged, unstaged, or committed user ignore rules", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const worktree = await createTestWorktreeAttempt({ projectRoot, planName: "Ignore ownership", worktreeRoot });
         const { ensureRunWieldOwnedGitignoreBlock } = await import("./runwield-owned-paths.ts");
         await ensureRunWieldOwnedGitignoreBlock(worktree.path);
         await savePlanForTest(worktree.path, "ignore-ownership", "# Ignore ownership", { status: "ready_for_work" });
-        const owned = await Deno.readTextFile(`${worktree.path}/.gitignore`);
+        const owned = await fsReadFile(`${worktree.path}/.gitignore`, "utf8");
         for (const staged of [false, true]) {
             const mixed = owned + "user-only-secret-path/\n";
-            await Deno.writeTextFile(`${worktree.path}/.gitignore`, mixed);
+            await fsWriteFile(`${worktree.path}/.gitignore`, mixed);
             if (staged) {
                 await git(worktree.path, ["add", ".gitignore"]);
                 // A clean-looking working file must not hide unrelated staged content.
-                await Deno.writeTextFile(`${worktree.path}/.gitignore`, owned);
+                await fsWriteFile(`${worktree.path}/.gitignore`, owned);
             }
             const indexBefore = await git(worktree.path, ["diff", "--cached"]);
             assertEquals(
@@ -439,10 +450,10 @@ Deno.test("preparation never adopts staged, unstaged, or committed user ignore r
                 "outside preparation",
             );
             assertEquals(await git(worktree.path, ["diff", "--cached"]), indexBefore);
-            assertEquals(await Deno.readTextFile(`${worktree.path}/.gitignore`), staged ? owned : mixed);
+            assertEquals(await fsReadFile(`${worktree.path}/.gitignore`, "utf8"), staged ? owned : mixed);
             await git(worktree.path, ["reset", "--", ".gitignore"]);
         }
-        await Deno.writeTextFile(`${worktree.path}/.gitignore`, owned);
+        await fsWriteFile(`${worktree.path}/.gitignore`, owned);
         await checkpointExecutionPreparation({
             worktreePath: worktree.path,
             branch: worktree.branch,
@@ -457,7 +468,7 @@ Deno.test("preparation never adopts staged, unstaged, or committed user ignore r
             }),
             true,
         );
-        await Deno.writeTextFile(`${worktree.path}/.gitignore`, owned + "implementation-cache/\n");
+        await fsWriteFile(`${worktree.path}/.gitignore`, owned + "implementation-cache/\n");
         await git(worktree.path, ["add", ".gitignore"]);
         await git(worktree.path, ["commit", "-m", "user ignore change"]);
         assertEquals(
@@ -472,7 +483,7 @@ Deno.test("preparation never adopts staged, unstaged, or committed user ignore r
             true,
         );
     } finally {
-        await Deno.remove(worktreeRoot, { recursive: true });
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });

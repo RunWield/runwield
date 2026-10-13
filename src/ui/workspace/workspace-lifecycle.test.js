@@ -1,5 +1,15 @@
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import {
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlanBodyById, savePlan } from "../../plan-store.js";
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
@@ -45,7 +55,7 @@ async function postLifecycle(app, cwd, planId, payload) {
     );
 }
 
-Deno.test("workspace lifecycle action metadata blocks protected status movement and exposes DnD seams", () => {
+test("workspace lifecycle action metadata blocks protected status movement and exposes DnD seams", () => {
     const summary = serializePlanSummary({
         planId: "p1",
         planName: "plan",
@@ -96,7 +106,7 @@ Deno.test("workspace lifecycle action metadata blocks protected status movement 
     );
 });
 
-Deno.test("Workspace dev lifecycle projection uses core transitions without mutating its source Plan", () => {
+test("Workspace dev lifecycle projection uses core transitions without mutating its source Plan", () => {
     const summary = serializePlanSummary({
         planId: "memory-plan-id",
         planName: "memory-plan",
@@ -115,26 +125,26 @@ Deno.test("Workspace dev lifecycle projection uses core transitions without muta
     assertEquals(moved.message, "Plan moved to Approved.");
 });
 
-Deno.test("Workspace Plan document loads Plannotator viewer and published markdown editor", async () => {
-    const documentSource = await Deno.readTextFile(new URL("./react/WorkspacePlanDocument.tsx", import.meta.url));
-    const editorSource = await Deno.readTextFile(new URL("./react/WorkspaceMarkdownEditor.tsx", import.meta.url));
+test("Workspace Plan document loads Plannotator viewer and published markdown editor", async () => {
+    const documentSource = await fsReadFile(new URL("./react/WorkspacePlanDocument.tsx", import.meta.url), "utf8");
+    const editorSource = await fsReadFile(new URL("./react/WorkspaceMarkdownEditor.tsx", import.meta.url), "utf8");
 
     assertStringIncludes(documentSource, "@plannotator/ui/components/RenderedMarkdown.tsx");
     assertStringIncludes(editorSource, "node_modules/@plannotator/markdown-editor/dist/index.js");
     assertEquals(editorSource.includes("markdown-editor-shim"), false);
 });
 
-Deno.test("ArtifactReadSurface keeps the React read surface to Contents, notices, document, and Close", async () => {
-    const surfaceSource = await Deno.readTextFile(new URL("./react/ArtifactReadSurface.tsx", import.meta.url));
-    const pageSource = await Deno.readTextFile(new URL("./pages/review/plan.astro", import.meta.url));
-    const cssSource = await Deno.readTextFile(new URL("./react/plannotator.css", import.meta.url));
+test("ArtifactReadSurface keeps the React read surface to Contents, notices, document, and Close", async () => {
+    const surfaceSource = await fsReadFile(new URL("./react/ArtifactReadSurface.tsx", import.meta.url), "utf8");
+    const pageSource = await fsReadFile(new URL("./pages/review/plan.astro", import.meta.url), "utf8");
+    const cssSource = await fsReadFile(new URL("./react/plannotator.css", import.meta.url), "utf8");
 
     assertStringIncludes(pageSource, 'payload.surface === "artifact-read"');
     assertStringIncludes(pageSource, '<ArtifactReadSurface payload={payload} client:only="react">');
     assertStringIncludes(surfaceSource, "data-artifact-kind={artifactKind}");
     assertStringIncludes(surfaceSource, "aria-label={`${artifactLabel} notices`}");
     assertStringIncludes(surfaceSource, "{notices.map((notice) => <p key={notice}>{notice}</p>)}");
-    const componentsCssSource = await Deno.readTextFile(new URL("../design-system/components.css", import.meta.url));
+    const componentsCssSource = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
 
     assertStringIncludes(surfaceSource, 'className="rw-artifact-close-button rw-review-action-button"');
     assertStringIncludes(componentsCssSource, ".rw-review-action-button");
@@ -153,8 +163,8 @@ Deno.test("ArtifactReadSurface keeps the React read surface to Contents, notices
     assertEquals(surfaceSource.includes("WorkspaceMarkdownEditor"), false);
 });
 
-Deno.test("Workspace lifecycle API mutates through lifecycle events and blocks invalid actions", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace lifecycle API mutates through lifecycle events and blocks invalid actions", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
@@ -229,11 +239,11 @@ Deno.test("Workspace lifecycle API mutates through lifecycle events and blocks i
         assertEquals(loaded.closedWithoutVerificationReason, "Verified manually in staging.");
         assertEquals(loaded.frontMatter.verifiedAt, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace persisted User Verification records attestation and triggers Work Record generation", async () => {
+test("Workspace persisted User Verification records attestation and triggers Work Record generation", async () => {
     await withRuntimeCommandFixture("workspace-user-verify-", async ({ projectRoot: cwd, setModelMessages }) => {
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
@@ -282,7 +292,7 @@ Deno.test("Workspace persisted User Verification records attestation and trigger
     });
 });
 
-Deno.test("Workspace persisted close without verification triggers Work Record generation after closure", async () => {
+test("Workspace persisted close without verification triggers Work Record generation after closure", async () => {
     await withRuntimeCommandFixture("workspace-close-", async ({ projectRoot: cwd, setModelMessages }) => {
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
@@ -318,7 +328,7 @@ Deno.test("Workspace persisted close without verification triggers Work Record g
     });
 });
 
-Deno.test("Workspace persisted close preserves closure when Work Record generation fails", async () => {
+test("Workspace persisted close preserves closure when Work Record generation fails", async () => {
     await withRuntimeCommandFixture("workspace-close-failure-", async ({ projectRoot: cwd, setModelMessages }) => {
         await savePlan(cwd, "feature", "# Feature", {
             planId: "feature-id",
@@ -352,8 +362,8 @@ Deno.test("Workspace persisted close preserves closure when Work Record generati
     });
 });
 
-Deno.test("Workspace in-memory close preview is side-effect free", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace in-memory close preview is side-effect free", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const summary = serializePlanSummary({
             planId: "preview-id",
@@ -370,18 +380,18 @@ Deno.test("Workspace in-memory close preview is side-effect free", async () => {
         assertEquals(preview.plan.status, "closed_without_verification");
         let workRecordDirExists = true;
         try {
-            await Deno.stat(`${cwd}/docs/work-records`);
+            await fsStat(`${cwd}/docs/work-records`);
         } catch (error) {
-            workRecordDirExists = !(error instanceof Deno.errors.NotFound);
+            workRecordDirExists = !(error instanceof Error && "code" in error && error.code === "ENOENT");
         }
         assertEquals(workRecordDirExists, false);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace lifecycle API requires Resume Check confirmation for staleness warnings", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace lifecycle API requires Resume Check confirmation for staleness warnings", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await savePlan(cwd, "held-warning", "# Held Warning", {
             planId: "held-warning-id",
@@ -407,12 +417,12 @@ Deno.test("Workspace lifecycle API requires Resume Check confirmation for stalen
         assertEquals(accepted.status, 200);
         assertEquals((await loadWorkspaceDetail(cwd, "held-warning-id")).status, "ready_for_work");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace Resume Check does not expose absolute worktree paths in blocked API responses", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace Resume Check does not expose absolute worktree paths in blocked API responses", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         const missingWorktreePath = `${cwd}/missing-worktree`;
         await savePlan(cwd, "held-leak", "# Held Leak", {
@@ -435,17 +445,17 @@ Deno.test("Workspace Resume Check does not expose absolute worktree paths in blo
         assertEquals(bodyText.includes(cwd), false);
         assertEquals(bodyText.includes(missingWorktreePath), false);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace Resume Check blocks resume when recorded branch cannot be determined", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace Resume Check blocks resume when recorded branch cannot be determined", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await git(cwd, ["init", "-b", "main"]);
         await git(cwd, ["config", "user.email", "test@example.com"]);
         await git(cwd, ["config", "user.name", "Test User"]);
-        await Deno.writeTextFile(`${cwd}/README.md`, "hello\n");
+        await fsWriteFile(`${cwd}/README.md`, "hello\n");
         await git(cwd, ["add", "README.md"]);
         await git(cwd, ["commit", "-m", "initial"]);
         const head = (await git(cwd, ["rev-parse", "HEAD"])).trim();
@@ -464,12 +474,12 @@ Deno.test("Workspace Resume Check blocks resume when recorded branch cannot be d
             true,
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Workspace APIs return lock-aware 409 responses without mutating locked Plans", async () => {
-    const cwd = await Deno.makeTempDir();
+test("Workspace APIs return lock-aware 409 responses without mutating locked Plans", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await savePlan(cwd, "locked", "# Locked\n", {
             planId: "locked-api-id",
@@ -480,7 +490,7 @@ Deno.test("Workspace APIs return lock-aware 409 responses without mutating locke
             collaborationSpaceId: "space-1",
         });
         const loaded = await loadPlanBodyById(cwd, "locked-api-id");
-        const before = await Deno.readTextFile(`${cwd}/docs/plans/locked.md`);
+        const before = await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8");
         const app = createWorkspaceApp({
             cwd,
             token: "secret",
@@ -502,7 +512,7 @@ Deno.test("Workspace APIs return lock-aware 409 responses without mutating locke
         const bodyPayload = await bodyEdit.json();
         assertStringIncludes(bodyPayload.error, "remote-canonical");
         assertStringIncludes(bodyPayload.repair, "wld plans pull");
-        assertEquals(await Deno.readTextFile(`${cwd}/docs/plans/locked.md`), before);
+        assertEquals(await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8"), before);
 
         const lifecycle = await app(
             new Request("http://localhost/api/plans/locked-api-id/lifecycle-action", {
@@ -519,8 +529,8 @@ Deno.test("Workspace APIs return lock-aware 409 responses without mutating locke
         const lifecyclePayload = await lifecycle.json();
         assertStringIncludes(lifecyclePayload.blockedReason, "remote-canonical");
         assertStringIncludes(lifecyclePayload.repair, "wld plans pull");
-        assertEquals(await Deno.readTextFile(`${cwd}/docs/plans/locked.md`), before);
+        assertEquals(await fsReadFile(`${cwd}/docs/plans/locked.md`, "utf8"), before);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });

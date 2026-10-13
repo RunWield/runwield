@@ -1,3 +1,7 @@
+import { captureForegroundProcess } from "../captured-process.ts";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { readdir as fsReaddir, readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
+import { env } from "node:process";
 /**
  * @module shared/session
  * Shared helpers for loading agent definitions and running agent invocations.
@@ -28,8 +32,8 @@ import { createRunWieldGrepToolDefinition } from "../../tools/grep.js";
 import { createRunWieldReadToolDefinition } from "../../tools/read.js";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
 import { intersectBashAllowedCommands } from "../bash-command-policy.ts";
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
-import { basename, dirname, isAbsolute, join, relative } from "@std/path";
+import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { AGENTS, getCwd, getHomeDir, PROMPT_TEMPLATES_DIR } from "../../constants.js";
 import {
     emitHostedSessionRuntimeEvent,
@@ -183,8 +187,8 @@ function isAbortSignalMessage(msg) {
 export function appendDebugLog(debugLogPath, text) {
     if (!debugLogPath) return;
     try {
-        Deno.mkdirSync(dirname(debugLogPath), { recursive: true });
-        Deno.writeTextFileSync(debugLogPath, text.endsWith("\n") ? text : `${text}\n`, { append: true });
+        mkdirSync(dirname(debugLogPath), { recursive: true });
+        writeFileSync(debugLogPath, text.endsWith("\n") ? text : `${text}\n`, { flag: "a" });
     } catch (_e) {
         // Debug logging must never affect agent execution.
     }
@@ -195,7 +199,7 @@ export function appendDebugLog(debugLogPath, text) {
  * @returns {boolean}
  */
 function shouldWriteDebugLog(debugLogPath) {
-    return Boolean(debugLogPath) || Deno.env.get("DEBUG") === "1";
+    return Boolean(debugLogPath) || env.DEBUG === "1";
 }
 
 /**
@@ -351,7 +355,7 @@ export function getPromptTemplatePaths(cwd) {
  * @returns {Promise<{ description: string, argumentHint?: string, model?: string, agent?: string, thinkingLevel?: string }>}
  */
 async function parsePromptTemplateMeta(filePath) {
-    const raw = await Deno.readTextFile(filePath);
+    const raw = await fsReadFile(filePath, "utf8");
 
     /** @type {{ description?: string, model?: string, [key: string]: unknown }} */
     let attrs = {};
@@ -412,8 +416,8 @@ export async function listPromptTemplates(options = {}) {
         await assertPersonalResourcePath(layer.dir, `${layer.source} prompt directory`);
         if (!(await directoryExists(layer.dir))) continue;
 
-        for await (const entry of Deno.readDir(layer.dir)) {
-            if ((!entry.isFile && !entry.isSymlink) || !entry.name.endsWith(".md")) continue;
+        for await (const entry of await fsReaddir(layer.dir, { withFileTypes: true })) {
+            if ((!entry.isFile() && !entry.isSymbolicLink()) || !entry.name.endsWith(".md")) continue;
             const name = entry.name.replace(/\.md$/, "");
             if (seen.has(name)) continue;
 
@@ -451,8 +455,8 @@ export async function listPromptTemplates(options = {}) {
         const name = resource.path.split(/[\\/]/).pop()?.replace(/\.md$/, "") || "";
         if (!name || seen.has(name)) continue;
         try {
-            const project = await Deno.realPath(cwd || getCwd());
-            const path = await Deno.realPath(resource.path);
+            const project = await fsRealpath(cwd || getCwd());
+            const path = await fsRealpath(resource.path);
             const rest = relative(project, path);
             if (rest === ".." || rest.startsWith("../") || isAbsolute(rest)) {
                 await assertPersonalResourcePath(resource.path, `package prompt template "${name}"`, {
@@ -513,7 +517,7 @@ export async function readGlobalAgentMd(homeDir, options = {}) {
     for (const path of getGlobalAgentMdPaths(homeDir, options)) {
         try {
             await assertPersonalResourcePath(path, "global instruction");
-            return await Deno.readTextFile(path);
+            return await fsReadFile(path, "utf8");
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
             // Try next candidate.
@@ -1503,7 +1507,7 @@ function stringifyToolParameters(parameters) {
 async function readProjectInstructionFile(cwd) {
     for (const path of [join(cwd, "RUNWIELD.md"), join(cwd, "AGENTS.md")]) {
         try {
-            return { text: await Deno.readTextFile(path), path, source: "local" };
+            return { text: await fsReadFile(path, "utf8"), path, source: "local" };
         } catch {
             // Try next candidate.
         }
@@ -1522,7 +1526,7 @@ async function readGlobalInstructionFile(homeDir) {
             const source = path === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md")
                 ? /** @type {"external"} */ ("external")
                 : /** @type {"home"} */ ("home");
-            return { text: await Deno.readTextFile(path), path, source };
+            return { text: await fsReadFile(path, "utf8"), path, source };
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
             // Try next candidate.
@@ -1660,14 +1664,11 @@ export async function assembleFinalSystemPromptWithContextProjection(
     let memories = "";
     if (hasMemoriesPlaceholder) {
         try {
-            const command = new Deno.Command("mnemoteca", {
+            const output = await captureForegroundProcess("mnemoteca", {
                 args: ["list", "-t", "core", "-f", "plain"],
                 cwd,
-                stdout: "piped",
-                stderr: "piped",
             });
-            const output = await command.output();
-            if (output.success) {
+            if (output.code === 0) {
                 memories = new TextDecoder().decode(output.stdout).trim();
                 if (memories.startsWith("No documents") || memories.startsWith("Error:")) memories = "";
             }
@@ -4982,7 +4983,7 @@ export async function expandSkillCommand(skillName, additionalInstructions, cwd)
 export async function expandPromptTemplate(templatePath, additionalInstructions) {
     try {
         await assertPersonalResourcePath(templatePath, "prompt template");
-        const raw = await Deno.readTextFile(templatePath);
+        const raw = await fsReadFile(templatePath, "utf8");
         let body = raw;
 
         // Strip YAML frontmatter if present

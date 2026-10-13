@@ -1,9 +1,13 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdtemp as fsMkdtemp } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { savePlan } from "../../plan-store.js";
 import { buildExecutionSegmentContinuation, resolvePendingSegmentHandoff } from "./execution-segment-handoff.ts";
 
-Deno.test("rejects changed canonical Plan and worktree evidence before handoff", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-handoff-" });
+test("rejects changed canonical Plan and worktree evidence before handoff", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-handoff-"));
     await savePlan(root, "demo", "# Demo\n\nApproved", {
         planId: "plan-demo",
         status: "ready_for_work",
@@ -39,7 +43,7 @@ Deno.test("rejects changed canonical Plan and worktree evidence before handoff",
     assertEquals(result.kind, "refresh_required");
 });
 
-Deno.test("treats a marker as consumed after Pi's first seeded message entry", async () => {
+test("treats a marker as consumed after Pi's first seeded message entry", async () => {
     const continuation = buildExecutionSegmentContinuation({
         runwieldSessionId: "session-one",
         planId: "plan-demo",
@@ -73,10 +77,10 @@ Deno.test("treats a marker as consumed after Pi's first seeded message entry", a
     assertEquals(result.kind, "consumed");
 });
 
-Deno.test("a marker written before the Plan Engineer split still resumes", async () => {
+test("a marker written before the Plan Engineer split still resumes", async () => {
     // Pre-split markers name `engineer`; rejecting them would strand a segment
     // that was handed off before the split landed.
-    const root = await Deno.makeTempDir({ prefix: "runwield-handoff-legacy-" });
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-handoff-legacy-"));
     await savePlan(root, "legacy", "# Legacy\n\nApproved", {
         planId: "plan-legacy",
         status: "ready_for_work",

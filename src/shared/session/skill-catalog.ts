@@ -1,5 +1,6 @@
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
-import { dirname, join, resolve } from "@std/path";
+import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
+import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
+import { dirname, join, resolve } from "node:path";
 import { SKILLS_DIR } from "../../constants.js";
 import {
     assertPersonalResourcePath,
@@ -48,8 +49,8 @@ async function readLayer(layer: SkillLayer): Promise<SkillCandidate[]> {
     if (!(await directoryExists(layer.dir))) return [];
     const candidates: SkillCandidate[] = [];
     try {
-        for await (const entry of Deno.readDir(layer.dir)) {
-            if (!entry.isDirectory && !entry.isSymlink) continue;
+        for await (const entry of await fsReaddir(layer.dir, { withFileTypes: true })) {
+            if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
             const skillDir = join(layer.dir, entry.name);
             await assertPersonalResourcePath(skillDir, `${layer.source} Skill directory`);
             if (!(await directoryExists(skillDir))) continue;
@@ -57,7 +58,7 @@ async function readLayer(layer: SkillLayer): Promise<SkillCandidate[]> {
             await assertPersonalResourcePath(path, `${layer.source} Skill`);
             if (!(await fileExists(path))) continue;
             try {
-                const raw = await Deno.readTextFile(path);
+                const raw = await fsReadFile(path, "utf8");
                 let attrs: SkillFrontMatter = {};
                 if (hasFrontMatter(raw)) attrs = extractYaml(raw).attrs as SkillFrontMatter;
                 const declaredName = typeof attrs.name === "string" ? attrs.name.trim() : "";
@@ -81,7 +82,7 @@ async function readLayer(layer: SkillLayer): Promise<SkillCandidate[]> {
             }
         }
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     return candidates;
 }
@@ -147,7 +148,7 @@ export async function findSkill(name: string, options: { cwd?: string } = {}): P
 export async function expandSkillRecord(skill: SkillRecord, additionalInstructions?: string): Promise<string> {
     try {
         await assertPersonalResourcePath(skill.path, `Skill "${skill.name}"`);
-        const raw = await Deno.readTextFile(skill.path);
+        const raw = await fsReadFile(skill.path, "utf8");
         const body = (hasFrontMatter(raw) ? extractYaml(raw).body : raw).trim();
         const skillBlock = `<skill name="${skill.name}" location="${skill.path}">\nReferences are relative to ${
             dirname(skill.path)

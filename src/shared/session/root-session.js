@@ -3,24 +3,13 @@
  * Root interactive session lifecycle helpers (persisted in ~/.wld/sessions).
  */
 
-import { basename, dirname, isAbsolute, join, relative, resolve, SEPARATOR } from "@std/path";
-import { createHash } from "node:crypto";
+import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
+import { encodeCwdForSessionDir } from "./session-directory-name.ts";
+export { encodeCwdForSessionDir } from "./session-directory-name.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { getHomeDir } from "../../constants.js";
-
-/**
- * Encode cwd into a filesystem-safe directory segment (Pi-style).
- *
- * @param {string} cwd
- * @returns {string}
- */
-export function encodeCwdForSessionDir(cwd) {
-    const encoded = `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-    if (encoded.length <= 120) return encoded;
-    const digest = createHash("sha256").update(cwd).digest("hex").slice(0, 32);
-    const readableTail = basename(cwd).replace(/[/\\:]/g, "-").slice(0, 40) || "root";
-    return `--${readableTail}-${digest}--`;
-}
 
 /**
  * Resolve the root RunWield sessions base directory.
@@ -40,7 +29,7 @@ export function getRunWieldSessionsBaseDir() {
 function canonicalizeCwd(cwd) {
     let canonicalCwd = resolve(cwd);
     try {
-        canonicalCwd = Deno.realPathSync(canonicalCwd);
+        canonicalCwd = realpathSync.native(canonicalCwd);
     } catch {
         // A not-yet-created cwd still gets a stable absolute locator.
     }
@@ -85,7 +74,7 @@ export function getRunWieldSessionMemoryBackupDir(cwd, sessionId) {
  * @param {string} dir
  */
 function ensureDir(dir) {
-    Deno.mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true });
 }
 
 /**
@@ -108,7 +97,7 @@ export async function createRootSessionManager(mode, cwd) {
     const manager = mode === "continue"
         ? SessionManager.continueRecent(canonicalCwd, sessionDir)
         : SessionManager.create(canonicalCwd, sessionDir);
-    return installDenoSessionPersistence(manager);
+    return installSessionPersistence(manager);
 }
 
 /** @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager */
@@ -123,12 +112,12 @@ function getSessionManagerFileContents(sessionManager) {
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
  * @returns {import('@earendil-works/pi-coding-agent').SessionManager}
  */
-function installDenoSessionPersistence(sessionManager) {
+function installSessionPersistence(sessionManager) {
     function rewriteFile() {
         const transcriptPath = sessionManager.getSessionFile?.();
         const contents = getSessionManagerFileContents(sessionManager);
         if (!transcriptPath || contents === null) return;
-        Deno.writeTextFileSync(transcriptPath, contents);
+        writeFileSync(transcriptPath, contents);
     }
 
     /** @param {import('@earendil-works/pi-coding-agent').SessionEntry} entry */
@@ -136,13 +125,13 @@ function installDenoSessionPersistence(sessionManager) {
         const transcriptPath = sessionManager.getSessionFile?.();
         if (!transcriptPath) return;
         try {
-            Deno.statSync(transcriptPath);
-            Deno.writeTextFileSync(transcriptPath, `${JSON.stringify(entry)}\n`, { append: true });
+            statSync(transcriptPath);
+            writeFileSync(transcriptPath, `${JSON.stringify(entry)}\n`, { flag: "a" });
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             const contents = getSessionManagerFileContents(sessionManager);
             if (contents === null) return;
-            Deno.writeTextFileSync(transcriptPath, contents, { createNew: true });
+            writeFileSync(transcriptPath, contents, { flag: "wx" });
         }
         Reflect.set(sessionManager, "flushed", true);
     }
@@ -159,10 +148,10 @@ function installDenoSessionPersistence(sessionManager) {
 /** @param {any} sessionManager @param {string} transcriptPath */
 async function ensureCreatedSessionTranscriptFile(sessionManager, transcriptPath) {
     try {
-        const stat = await Deno.stat(transcriptPath);
-        if (stat.isFile) return;
+        const stat = await fsStat(transcriptPath);
+        if (stat.isFile()) return;
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     const header = sessionManager.getHeader?.();
     const entries = sessionManager.getEntries?.();
@@ -170,10 +159,10 @@ async function ensureCreatedSessionTranscriptFile(sessionManager, transcriptPath
         throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
     }
     const contents = [header, ...entries].map((entry) => `${JSON.stringify(entry)}\n`).join("");
-    await Deno.writeTextFile(transcriptPath, contents, { createNew: true });
+    await writeFile(transcriptPath, contents, { flag: "wx" });
     if ("flushed" in sessionManager) sessionManager.flushed = true;
-    const stat = await Deno.stat(transcriptPath);
-    if (!stat.isFile) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
+    const stat = await fsStat(transcriptPath);
+    if (!stat.isFile()) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
 }
 
 /** @param {string} cwd @param {any} sessionManager */
@@ -233,8 +222,8 @@ export function isPathInside(path, baseDir) {
 
 /** @param {string} path @param {string} baseDir */
 async function assertRealPathInside(path, baseDir) {
-    const realPath = await Deno.realPath(path);
-    const realBase = await Deno.realPath(baseDir);
+    const realPath = await realpath(path);
+    const realBase = await realpath(baseDir);
     if (!isPathInside(realPath, realBase)) {
         throw new Error("Persisted session path resolves outside the RunWield session directory for cwd");
     }
@@ -276,7 +265,7 @@ export async function classifyRootSessionLocator(options) {
     if (!store) return { kind: "blocked", reason: "session_store_unavailable" };
     let realCwd;
     try {
-        realCwd = await Deno.realPath(options.cwd);
+        realCwd = await realpath(options.cwd);
     } catch {
         realCwd = resolve(options.cwd);
     }
@@ -525,7 +514,7 @@ export async function openPersistedRootSession(options) {
         }
         throw new Error("Persisted session cwd does not match requested cwd");
     }
-    return { sessionManager: installDenoSessionPersistence(sessionManager), resolved };
+    return { sessionManager: installSessionPersistence(sessionManager), resolved };
 }
 
 /**
@@ -575,12 +564,12 @@ export async function readCatalogSafeRootSessionLocator(options) {
     }
     if (!sessionPath.endsWith(".jsonl")) throw new Error("Persisted session path must be a JSONL file");
     await assertRealPathInside(sessionPath, sessionDir);
-    const file = await Deno.open(sessionPath, { read: true });
+    const file = await open(sessionPath, "r");
     try {
         const fileInfo = await file.stat();
         const maxHeaderBytes = Math.max(128, options.maxHeaderBytes || 65536);
         const buffer = new Uint8Array(maxHeaderBytes);
-        const bytesRead = await file.read(buffer);
+        const { bytesRead } = await file.read(buffer);
         if (!bytesRead) throw new Error("Persisted session file is empty");
         const chunk = new TextDecoder().decode(buffer.subarray(0, bytesRead));
         const newlineIndex = chunk.indexOf("\n");
@@ -620,7 +609,7 @@ export async function readCatalogSafeRootSessionLocator(options) {
             modified: fileInfo.mtime,
         };
     } finally {
-        file.close();
+        await file.close();
     }
 }
 
@@ -656,15 +645,15 @@ export async function listCatalogSafeRootSessionLocators(cwd, options = {}) {
         ? Math.max(0, Math.floor(options.recentLimit))
         : null;
     try {
-        for await (const entry of Deno.readDir(sessionDir)) {
-            if (!entry.isFile || !entry.name.endsWith(".jsonl")) continue;
+        for (const entry of await readdir(sessionDir, { withFileTypes: true })) {
+            if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
             const sessionPath = join(sessionDir, entry.name);
             if (recentLimit === null) {
                 candidates.push({ sessionPath, modified: null });
                 continue;
             }
             try {
-                const fileInfo = await Deno.stat(sessionPath);
+                const fileInfo = await fsStat(sessionPath);
                 candidates.push({ sessionPath, modified: fileInfo.mtime });
             } catch (error) {
                 diagnostics.push({
@@ -675,7 +664,7 @@ export async function listCatalogSafeRootSessionLocators(cwd, options = {}) {
             }
         }
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return { locators, diagnostics };
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return { locators, diagnostics };
         throw error;
     }
     const candidatesToRead = recentLimit === null ? candidates : candidates.toSorted((left, right) => {
@@ -775,7 +764,7 @@ export function exportRootSessionToJsonl(sessionManager, outputPath) {
         prevId = entry.id;
     }
 
-    Deno.writeTextFileSync(filePath, `${lines.join("\n")}\n`);
+    writeFileSync(filePath, `${lines.join("\n")}\n`);
     return filePath;
 }
 
@@ -895,6 +884,6 @@ export async function exportRootSessionToHtml(sessionManager, outputPath) {
         "",
     ].join("\n");
 
-    await Deno.writeTextFile(filePath, html);
+    await writeFile(filePath, html);
     return filePath;
 }

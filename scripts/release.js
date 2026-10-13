@@ -1,3 +1,5 @@
+import { captureScriptProcess } from "./script-process.ts";
+import process from "node:process";
 /**
  * @module scripts/release
  *
@@ -177,14 +179,13 @@ export function releaseMetadataForTag(tag) {
  */
 function defaultRun() {
     return async (command, args, options = {}) => {
-        const child = new Deno.Command(command, {
+        const output = await captureScriptProcess(command, {
             args,
             cwd: options.cwd,
             env: options.env,
             stdout: "piped",
             stderr: "piped",
         });
-        const output = await child.output();
         const decoder = new TextDecoder();
         return {
             success: output.success,
@@ -778,4 +779,4 @@ export async function main(args, deps) {
     );
 }
 
-if (import.meta.main) await main(Deno.args, SYSTEM_RELEASE_PORT);
+if (import.meta.main) await main(process.argv.slice(2), SYSTEM_RELEASE_PORT);

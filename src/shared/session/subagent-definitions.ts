@@ -1,11 +1,12 @@
+import { readFile as fsReadFile } from "node:fs/promises";
 /**
  * @module shared/session/subagent-definitions
  *
  * Typed loader for hidden workflow-dispatched subagent definitions.
  */
 
-import { extractYaml } from "@std/front-matter";
-import { join } from "@std/path";
+import { extractYaml } from "../front-matter.ts";
+import { join } from "node:path";
 import { AGENT_DEFS_DIR, AGENTS, SUBAGENTS } from "../../constants.js";
 import { ensureBundledAgentDefFile } from "./agent-assets.ts";
 import { composeSharedPracticePrompt, loadAgentDefFromPath } from "./agents.js";
@@ -220,7 +221,7 @@ function delay(ms: number) {
 }
 
 function isRecoverableBundledPromptReadError(error: Error) {
-    return error instanceof Deno.errors.NotFound ||
+    return error instanceof Error && "code" in error && error.code === "ENOENT" ||
         (error instanceof TypeError && /Unexpected end of input|Prompt file was empty/i.test(error.message)) ||
         error.message.startsWith("Bundled agent asset is missing:");
 }
@@ -253,7 +254,7 @@ async function readBundledPromptFrontMatter(
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
             const promptPath = await ensureBundledAgentDefFile(relativePath);
-            const raw = await Deno.readTextFile(promptPath);
+            const raw = await fsReadFile(promptPath, "utf8");
             if (!raw.trim()) throw new TypeError("Prompt file was empty during bundled prompt load");
             const parsed = extractYaml<PromptFrontMatterAttrs>(raw);
             if (Object.hasOwn(parsed.attrs, "bashAllowedCommands")) {
@@ -269,7 +270,7 @@ async function readBundledPromptFrontMatter(
     }
     if (!isRecoverableBundledPromptReadError(lastError)) throw lastError;
     const fallbackPath = join(AGENT_DEFS_DIR, relativePath);
-    const parsed = extractYaml<PromptFrontMatterAttrs>(await Deno.readTextFile(fallbackPath));
+    const parsed = extractYaml<PromptFrontMatterAttrs>(await fsReadFile(fallbackPath, "utf8"));
     if (Object.hasOwn(parsed.attrs, "bashAllowedCommands")) {
         normalizeBashAllowedCommands(parsed.attrs.bashAllowedCommands as string[] | null, fallbackPath);
     }

@@ -1,4 +1,6 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 
@@ -49,7 +51,7 @@ function repairPort(outcomes = ["completed"]) {
     };
 }
 
-function makeValidationUi(cwd = Deno.cwd()) {
+function makeValidationUi(cwd = getCwd()) {
     const uiAPI = makeUi();
     return { uiAPI, hostedSession: attachRecorder(new HostedSession({ id: "validation-repair-test", cwd }), uiAPI) };
 }
@@ -131,7 +133,7 @@ async function withIncompleteRepairModel(prefix, attrs, run) {
     });
 }
 
-Deno.test("runValidationLoop preserves Frontend Engineer owner when CI repair pauses", async () => {
+test("runValidationLoop preserves Frontend Engineer owner when CI repair pauses", async () => {
     await withIncompleteRepairModel(
         "validation-repair-frontend-",
         { executionAgent: "frontend-engineer" },
@@ -156,7 +158,7 @@ Deno.test("runValidationLoop preserves Frontend Engineer owner when CI repair pa
     );
 });
 
-Deno.test("runValidationLoop offers a way out when the repair rounds for CI are spent", async () => {
+test("runValidationLoop offers a way out when the repair rounds for CI are spent", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "implemented",
@@ -197,7 +199,7 @@ Deno.test("runValidationLoop offers a way out when the repair rounds for CI are 
     assertEquals(plan?.attrs.validationCiAttempts, 3);
 });
 
-Deno.test("Retry after the CI rounds run out runs the tests again and carries on", async () => {
+test("Retry after the CI rounds run out runs the tests again and carries on", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "implemented",
@@ -245,7 +247,7 @@ Deno.test("Retry after the CI rounds run out runs the tests again and carries on
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
 });
 
-Deno.test("a stopped test run asks rather than reporting the work as broken", async () => {
+test("a stopped test run asks rather than reporting the work as broken", async () => {
     const projectRoot = await makeValidationProjectRoot("p", { classification: "QUICK_FIX", status: "implemented" });
     const { hostedSession, uiAPI } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
@@ -275,7 +277,7 @@ Deno.test("a stopped test run asks rather than reporting the work as broken", as
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
 });
 
-Deno.test("stopped validation can return control to the Engineer session", async () => {
+test("stopped validation can return control to the Engineer session", async () => {
     const projectRoot = await makeValidationProjectRoot("p", { classification: "QUICK_FIX", status: "implemented" });
     const { hostedSession, uiAPI } = makeValidationUi();
     hostedSession.setActiveExecutionWorkflow({
@@ -308,7 +310,7 @@ Deno.test("stopped validation can return control to the Engineer session", async
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
 });
 
-Deno.test("runValidationPhase keeps canonical progress when a stale checkpoint still names Mechanical Validation", async () => {
+test("runValidationPhase keeps canonical progress when a stale checkpoint still names Mechanical Validation", async () => {
     await withIncompleteRepairModel("validation-repair-rerun-", {}, async ({ projectRoot, hostedSession }) => {
         /** @type {number[]} */
         const ciExitCodes = [];

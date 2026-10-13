@@ -1,4 +1,8 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "./assertions.ts";
+import process from "node:process";
+import { stat as fsStat } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 // Tripwire. The suite writes to ~/.wld through both a live Deno.env.get("HOME")
@@ -7,11 +11,11 @@ import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 // settings, sessions and workflow metrics. scripts/run-tests.js sandboxes HOME;
 // this fails loudly when the suite is launched some other way.
 
-Deno.test("suite runs against a sandboxed HOME", async () => {
-    const sandbox = Deno.env.get("WLD_TEST_SANDBOX_HOME");
+test("suite runs against a sandboxed HOME", async () => {
+    const sandbox = process.env["WLD_TEST_SANDBOX_HOME"];
     assert(
         sandbox,
-        "Tests must run via `deno task test` (or scripts/run-tests.js), which points HOME at a sandbox. " +
+        "Tests must run via `bun run test` (or scripts/run-tests.js), which points HOME at a sandbox. " +
             "Running `deno test` directly lets tests write to the real ~/.wld.",
     );
 
@@ -19,21 +23,21 @@ Deno.test("suite runs against a sandboxed HOME", async () => {
     // while a test that leaked its swap still does.
     await withProcessGlobalTestLock(async () => {
         assertEquals(
-            Deno.env.get("HOME"),
+            process.env["HOME"],
             sandbox,
             "HOME escaped the sandbox — a test swapped HOME and did not restore it.",
         );
-        assertEquals(await Deno.stat(sandbox).then((s) => s.isDirectory).catch(() => false), true);
+        assertEquals(await fsStat(sandbox).then((s) => s.isDirectory()).catch(() => false), true);
     });
 });
 
-Deno.test("mnemoteca is pointed at a sandbox database", () => {
+test("mnemoteca is pointed at a sandbox database", () => {
     // work-records cleanup shells out to the real mnemoteca binary
     // (`mnemoteca forget`). Without this it operates on the developer's own
     // memory database, which HOME sandboxing alone does not prevent because
     // mnemoteca resolves its default path itself.
-    const sandbox = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-    const dbPath = Deno.env.get("MNEMOTECA_DB_PATH");
+    const sandbox = process.env["WLD_TEST_SANDBOX_HOME"];
+    const dbPath = process.env["MNEMOTECA_DB_PATH"];
     assert(sandbox, "Expected the suite to be sandboxed.");
     assert(dbPath, "MNEMOTECA_DB_PATH must be set so tests never touch the real memory database.");
     assert(

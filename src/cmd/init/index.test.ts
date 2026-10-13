@@ -1,6 +1,10 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import process from "node:process";
+import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { __resetSettingsForTests } from "../../shared/settings.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -44,13 +48,13 @@ async function captureConsole(run: () => void | Promise<void>): Promise<{ logs: 
     return { logs, warnings };
 }
 
-Deno.test("init exercises real project state, assets, settings, and Agent runtime in an isolated home", async (test) => {
+test("init exercises real project state, assets, settings, and Agent runtime in an isolated home", async (test) => {
     await withRuntimeCommandFixture(
         "init-command-",
         async ({ alternateRoot, homeDir, projectRoot, settingsPath, setModelMessages }) => {
-            const originalSettings = await Deno.readTextFile(settingsPath);
+            const originalSettings = await fsReadFile(settingsPath, "utf8");
 
-            await test.step("help comes from the real command registry before project inspection", async () => {
+            await test.test("help comes from the real command registry before project inspection", async () => {
                 const output = await captureConsole(() =>
                     runInitCommand(["--help"], { sessionPort: UNEXPECTED_SESSION_PORT })
                 );
@@ -58,8 +62,8 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                 assertStringIncludes(output.logs.join("\n"), "Runs a one-time agent");
             });
 
-            await test.step("an empty fixture project remains uninitialized", async () => {
-                Deno.chdir(alternateRoot);
+            await test.test("an empty fixture project remains uninitialized", async () => {
+                process.chdir(alternateRoot);
                 const ui = createUi();
                 await runInitCommand([], { uiAPI: ui.uiAPI, sessionPort: UNEXPECTED_SESSION_PORT });
 
@@ -67,12 +71,12 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                 assertEquals(await getCwdInitState(), undefined);
             });
 
-            await test.step("CLI init extracts real assets before delegating missing-model setup", async () => {
+            await test.test("CLI init extracts real assets before delegating missing-model setup", async () => {
                 const setupRoot = join(projectRoot, "model-setup-project");
-                await Deno.mkdir(setupRoot);
-                await Deno.writeTextFile(join(setupRoot, "README.md"), "# Model setup fixture\n");
-                Deno.chdir(setupRoot);
-                await Deno.writeTextFile(settingsPath, JSON.stringify({ notifications: { enabled: false } }));
+                await fsMkdir(setupRoot);
+                await fsWriteFile(join(setupRoot, "README.md"), "# Model setup fixture\n");
+                process.chdir(setupRoot);
+                await fsWriteFile(settingsPath, JSON.stringify({ notifications: { enabled: false } }));
                 __resetSettingsForTests();
                 let request: string | null = null;
                 let agentName = "";
@@ -90,7 +94,7 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                 assertEquals(request, "/init");
                 assertEquals(agentName, "router");
                 assert(
-                    (await Deno.stat(
+                    (await fsStat(
                         join(
                             homeDir,
                             ".wld",
@@ -98,19 +102,19 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                             "subagent-definitions",
                             "init-agent-prompt.md",
                         ),
-                    )).isFile,
+                    )).isFile(),
                 );
-                assert((await Deno.stat(join(homeDir, ".wld", "bundled-skills", "write-tests", "SKILL.md"))).isFile);
-                assert((await Deno.stat(join(homeDir, ".wld", "bundled-model-presets", "codex.json"))).isFile);
+                assert((await fsStat(join(homeDir, ".wld", "bundled-skills", "write-tests", "SKILL.md"))).isFile());
+                assert((await fsStat(join(homeDir, ".wld", "bundled-model-presets", "codex.json"))).isFile());
                 assertEquals(await getCwdInitState(), undefined);
 
-                await Deno.writeTextFile(settingsPath, originalSettings);
+                await fsWriteFile(settingsPath, originalSettings);
                 __resetSettingsForTests();
             });
 
-            await test.step("init refuses false success when the Agent writes no artifact", async () => {
-                Deno.chdir(projectRoot);
-                await Deno.writeTextFile(join(projectRoot, "mod.ts"), "export const fixture = true;\n");
+            await test.test("init refuses false success when the Agent writes no artifact", async () => {
+                process.chdir(projectRoot);
+                await fsWriteFile(join(projectRoot, "mod.ts"), "export const fixture = true;\n");
                 setModelMessages([
                     fauxAssistantMessage(fauxToolCall("init_save_verification_command", { command: "deno task ci" })),
                     fauxAssistantMessage(fauxText("Initialization inspection complete.")),
@@ -137,8 +141,8 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                 }
             });
 
-            await test.step("init runs the real isolated Agent, verifies its artifact, and records completion", async () => {
-                Deno.chdir(projectRoot);
+            await test.test("init runs the real isolated Agent, verifies its artifact, and records completion", async () => {
+                process.chdir(projectRoot);
                 setModelMessages([
                     fauxAssistantMessage(fauxToolCall("init_save_verification_command", { command: "deno task ci" })),
                     fauxAssistantMessage(fauxToolCall("write", {
@@ -173,7 +177,7 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                     assertEquals(typeof state?.offeredAt, "string");
                     assertEquals(typeof state?.doneAt, "string");
                     assertStringIncludes(
-                        await Deno.readTextFile(join(projectRoot, "docs", "domain-language.md")),
+                        await fsReadFile(join(projectRoot, "docs", "domain-language.md"), "utf8"),
                         "Current fixture terminology.",
                     );
                     assertStringIncludes(assistantText.join(""), "Initialization inspection complete.");
@@ -187,8 +191,8 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                 }
             });
 
-            await test.step("a second init reads the persisted guard and does not run another Agent", async () => {
-                Deno.chdir(projectRoot);
+            await test.test("a second init reads the persisted guard and does not run another Agent", async () => {
+                process.chdir(projectRoot);
                 const ui = createUi();
                 await runInitCommand([], { uiAPI: ui.uiAPI, sessionPort: UNEXPECTED_SESSION_PORT });
 
@@ -198,7 +202,7 @@ Deno.test("init exercises real project state, assets, settings, and Agent runtim
                 assertEquals((await getCwdInitState())?.initDone, true);
             });
 
-            await test.step("the registered init command keeps both CLI and slash surfaces", async () => {
+            await test.test("the registered init command keeps both CLI and slash surfaces", async () => {
                 const { getCommandDefinition, hasCommandSurface } = await import("../registry.js");
                 const command = getCommandDefinition("init");
                 assertEquals(command ? hasCommandSurface(command, "slash") : false, true);

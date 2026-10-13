@@ -1,10 +1,12 @@
 // @ts-nocheck: structural TypeScript migration; public shapes are tightened below while legacy tool schemas retain inference.
+import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/workflow-slicer
  * Slicer pseudo-agent orchestration for PROJECT plans.
  */
 
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
@@ -386,13 +388,13 @@ export function createSlicerFinalizeTool({ planName, cwd }) {
                             const stagedRevision = stagedWriteRevisions.get(writeResult.name);
                             const current = await loadPlan(cwd, writeResult.name).catch(() => null);
                             if (!stagedRevision || !current || current.revision !== stagedRevision) continue;
-                            await Deno.remove(writeResult.path).catch(() => {});
+                            await fsRm(writeResult.path).catch(() => {});
                         }
                         for (const snapshot of beforeSnapshots) {
                             const stagedRevision = stagedWriteRevisions.get(snapshot.name);
                             const current = await loadPlan(cwd, snapshot.name).catch(() => null);
                             if (!current) {
-                                await Deno.writeTextFile(snapshot.path, snapshot.markdown, { createNew: true });
+                                await fsWriteFile(snapshot.path, snapshot.markdown, { flag: "wx" });
                                 continue;
                             }
                             if (!stagedRevision) continue;
@@ -641,7 +643,7 @@ export async function openSlicerDecomposition(
     let currentMd = "";
     let currentPlan;
     try {
-        currentMd = await Deno.readTextFile(planPath);
+        currentMd = await fsReadFile(planPath, "utf8");
         currentPlan = parsePlanFrontMatter(currentMd);
     } catch {
         // fall through to validation / error below

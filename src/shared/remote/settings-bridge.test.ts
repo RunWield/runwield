@@ -1,19 +1,23 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import process from "node:process";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getCustomSetting, setCustomSetting } from "../settings.js";
 import { startRemoteControlService } from "./control.ts";
 
 const identity = { buildId: "b".repeat(64), protocol: 1 };
 
-Deno.test("an unfinished settings body cannot write after admission ends", async () => {
+test("an unfinished settings body cannot write after admission ends", async () => {
     await withProcessGlobalTestLock(async () => {
-        const home = await Deno.makeTempDir();
-        const previous = Deno.env.get("HOME");
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const previous = process.env["HOME"];
+        process.env["HOME"] = home;
         try {
-            await Deno.mkdir(join(home, ".wld"));
-            await Deno.writeTextFile(join(home, ".wld", "settings.json"), "{}");
+            await fsMkdir(join(home, ".wld"));
+            await fsWriteFile(join(home, ".wld", "settings.json"), "{}");
             let finish!: () => void;
             const pending = new Promise<void>((resolve) => finish = resolve);
             const service = startRemoteControlService(identity);
@@ -42,26 +46,26 @@ Deno.test("an unfinished settings body cannot write after admission ends", async
                 await service.close();
             }
         } finally {
-            if (previous === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previous);
-            await Deno.remove(home, { recursive: true });
+            if (previous === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previous;
+            await fsRm(home, { recursive: true });
         }
     });
 });
 
-Deno.test("laptop settings updates need the live authenticated connection and preserve other fields", async () => {
+test("laptop settings updates need the live authenticated connection and preserve other fields", async () => {
     await withProcessGlobalTestLock(async () => {
-        const home = await Deno.makeTempDir();
-        const previous = Deno.env.get("HOME");
-        Deno.env.set("HOME", home);
+        const home = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const previous = process.env["HOME"];
+        process.env["HOME"] = home;
         const service = startRemoteControlService(identity);
         const address = `http://127.0.0.1:${service.port}`;
         const headers = { Authorization: `Bearer ${service.credential}` };
         const request = (id: string, update: { kind: string; key: string; value: number | string }) =>
             fetch(`${address}/settings/update`, { method: "POST", headers, body: JSON.stringify({ id, update }) });
         try {
-            await Deno.mkdir(join(home, ".wld"));
-            await Deno.writeTextFile(
+            await fsMkdir(join(home, ".wld"));
+            await fsWriteFile(
                 join(home, ".wld", "settings.json"),
                 JSON.stringify({ other: 3, compaction: { keepRecentTokens: 9 } }),
             );
@@ -103,9 +107,9 @@ Deno.test("laptop settings updates need the live authenticated connection and pr
             assertEquals((await request("3".repeat(32), { kind: "set", key: "theme", value: "light" })).status, 403);
         } finally {
             await service.close();
-            if (previous === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previous);
-            await Deno.remove(home, { recursive: true });
+            if (previous === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previous;
+            await fsRm(home, { recursive: true });
         }
     });
 });

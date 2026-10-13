@@ -2,7 +2,7 @@
  * Composed Golden /load-plan journeys specific to PROJECT Epics.
  */
 
-import { assert } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 
 interface InteractionRecord {
@@ -27,8 +27,8 @@ function optionValues(interaction: InteractionRecord | undefined): Set<string | 
 }
 
 function selectedInteraction(result: EpicGoldenResult, prompt: string, selected: string): InteractionRecord {
-    const interaction = (result.state.scriptedInteractions || []).find((entry) =>
-        String(entry.request?.prompt || "").includes(prompt) && entry.interaction?.value === selected
+    const interaction = (result.state.scriptedInteractions || []).find(
+        (entry) => String(entry.request?.prompt || "").includes(prompt) && entry.interaction?.value === selected,
     );
     assert(interaction, `Expected ${prompt} interaction selecting ${selected}.`);
     return interaction;
@@ -48,38 +48,32 @@ function planStatus(result: EpicGoldenResult, name: string): string {
 
 const draftEpic = {
     path: "docs/plans/draft-epic.md",
-    text:
-        "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Draft Epic menu\naffectedPaths: []\nstatus: draft\n---\n# Draft Epic\n",
+    text: "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Draft Epic menu\naffectedPaths: []\nstatus: draft\n---\n# Draft Epic\n",
 };
 
 const decompositionEpic = {
     path: "docs/plans/decomposition-epic.md",
-    text:
-        "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Decomposition Epic menu\naffectedPaths: []\nstatus: ready_for_decomposition\n---\n# Decomposition Epic\n",
+    text: "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Decomposition Epic menu\naffectedPaths: []\nstatus: ready_for_decomposition\n---\n# Decomposition Epic\n",
 };
 
 const readyEpic = {
     path: "docs/plans/ready-epic.md",
-    text:
-        "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Ready Epic menu\naffectedPaths: []\nstatus: ready_for_work\n---\n# Ready Epic\n",
+    text: "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Ready Epic menu\naffectedPaths: []\nstatus: ready_for_work\n---\n# Ready Epic\n",
 };
 
 const readyChild = {
     path: "docs/plans/ready-epic/01-child.md",
-    text:
-        "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Ready child\naffectedPaths: []\nstatus: draft\nparentPlan: ready-epic\norder: 1\n---\n# Ready child\n",
+    text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Ready child\naffectedPaths: []\nstatus: draft\nparentPlan: ready-epic\norder: 1\n---\n# Ready child\n",
 };
 
 const terminalEpic = {
     path: "docs/plans/terminal-epic.md",
-    text:
-        "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Terminal Epic menu\naffectedPaths: []\nstatus: verified\nepicCompletionMode: done_enough\nepicDoneEnoughSummary: Golden terminal summary.\n---\n# Terminal Epic\n",
+    text: "---\nclassification: PROJECT\ncomplexity: HIGH\nsummary: Terminal Epic menu\naffectedPaths: []\nstatus: verified\nepicCompletionMode: done_enough\nepicDoneEnoughSummary: Golden terminal summary.\n---\n# Terminal Epic\n",
 };
 
 const terminalChild = {
     path: "docs/plans/terminal-epic/01-child.md",
-    text:
-        "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Remaining terminal child\naffectedPaths: []\nstatus: draft\nparentPlan: terminal-epic\norder: 1\n---\n# Remaining child\n",
+    text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Remaining terminal child\naffectedPaths: []\nstatus: draft\nparentPlan: terminal-epic\norder: 1\n---\n# Remaining child\n",
 };
 
 export const loadPlanEpicMenuOptionsScenario = {
@@ -104,25 +98,27 @@ export const loadPlanEpicMenuOptionsScenario = {
         { type: "enter" },
         { type: "enter" },
         { type: "waitForScreen", text: "Plan loaded: draft-epic", timeoutMs: 15000 },
-        { type: "waitForScriptedInteractions", remaining: 6, timeoutMs: 15000 },
+        // Epic menus prepare real Git branches and reconcile child Plans before prompting.
+        // Use the existing 90-second child deadline instead of a shorter per-menu deadline.
+        { type: "waitForScriptedInteractions", remaining: 6 },
         { type: "waitForIdle", timeoutMs: 15000 },
         { type: "type", text: "/load-plan decomposition-epic" },
         { type: "enter" },
         { type: "enter" },
         { type: "waitForScreen", text: "Plan loaded: decomposition-epic", timeoutMs: 15000 },
-        { type: "waitForScriptedInteractions", remaining: 4, timeoutMs: 15000 },
+        { type: "waitForScriptedInteractions", remaining: 4 },
         { type: "waitForIdle", timeoutMs: 15000 },
         { type: "type", text: "/load-plan ready-epic" },
         { type: "enter" },
         { type: "enter" },
         { type: "waitForScreen", text: "Plan loaded: ready-epic", timeoutMs: 15000 },
-        { type: "waitForScriptedInteractions", remaining: 2, timeoutMs: 15000 },
+        { type: "waitForScriptedInteractions", remaining: 2 },
         { type: "waitForIdle", timeoutMs: 15000 },
         { type: "type", text: "/load-plan terminal-epic" },
         { type: "enter" },
         { type: "enter" },
         { type: "waitForScreen", text: "Plan loaded: terminal-epic", timeoutMs: 15000 },
-        { type: "waitForScriptedInteractions", timeoutMs: 15000 },
+        { type: "waitForScriptedInteractions" },
         { type: "waitForIdle", timeoutMs: 15000 },
     ],
     assertions: [
@@ -135,8 +131,9 @@ export const loadPlanEpicMenuOptionsScenario = {
                 "view",
                 "cancel",
             ]);
-            const viewed = (result.state.scriptedInteractions || []).filter((entry) =>
-                String(entry.request?.prompt || "").includes("this Epic") && entry.interaction?.value === "view"
+            const viewed = (result.state.scriptedInteractions || []).filter(
+                (entry) =>
+                    String(entry.request?.prompt || "").includes("this Epic") && entry.interaction?.value === "view",
             );
             assert(viewed.length === 4, `Expected four Epic menu states; got ${viewed.length}`);
             assertExactOptions(viewed[1], ["slicer", "user_verify", "hold", "view", "cancel"]);
@@ -172,22 +169,26 @@ export const loadPlanEpicSlicerScenario = {
             phase: "slicer",
             ordinal: 1,
             requiredTools: ["slicer_finalize_decomposition"],
-            toolCalls: [{
-                name: "slicer_finalize_decomposition",
-                arguments: {
-                    confirmation: "User chose Slicer from the loaded Epic menu.",
-                    children: [{
-                        title: "Loaded Epic child",
-                        order: 1,
-                        summary: "Child created from /load-plan",
-                        dependencies: [],
-                        affectedPaths: [],
-                        executionAgent: "engineer",
-                        collaborationRecommendation: "autonomous",
-                        content: "# Loaded Epic child\n",
-                    }],
+            toolCalls: [
+                {
+                    name: "slicer_finalize_decomposition",
+                    arguments: {
+                        confirmation: "User chose Slicer from the loaded Epic menu.",
+                        children: [
+                            {
+                                title: "Loaded Epic child",
+                                order: 1,
+                                summary: "Child created from /load-plan",
+                                dependencies: [],
+                                affectedPaths: [],
+                                executionAgent: "engineer",
+                                collaborationRecommendation: "autonomous",
+                                content: "# Loaded Epic child\n",
+                            },
+                        ],
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "loaded-epic-slicer-closes",
@@ -214,8 +215,8 @@ export const loadPlanEpicSlicerScenario = {
             assertEventIncludes(result, "runtime:tool:start:slicer_finalize_decomposition");
             assertScreenIncludes(result, "Loaded Epic decomposition completed.");
             assert(planStatus(result, "decomposition-epic") === "ready_for_work", "Expected decomposed loaded Epic.");
-            const child = result.state.projectState?.plans?.find((entry) =>
-                entry.name === "decomposition-epic/01-loaded-epic-child"
+            const child = result.state.projectState?.plans?.find(
+                (entry) => entry.name === "decomposition-epic/01-loaded-epic-child",
             );
             assert(child?.attrs?.parentPlan === "decomposition-epic", "Expected loaded Epic child parent metadata.");
         },
@@ -232,13 +233,11 @@ export const loadPlanEpicChildMenusScenario = {
         readyEpic,
         {
             path: "docs/plans/ready-epic/01-complete.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Completed child\naffectedPaths: []\nstatus: verified\nparentPlan: ready-epic\norder: 1\n---\n# Complete child\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Completed child\naffectedPaths: []\nstatus: verified\nparentPlan: ready-epic\norder: 1\n---\n# Complete child\n",
         },
         {
             path: "docs/plans/ready-epic/02-next.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Next child\naffectedPaths: []\nstatus: draft\nparentPlan: ready-epic\norder: 2\n---\n# Next child\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Next child\naffectedPaths: []\nstatus: draft\nparentPlan: ready-epic\norder: 2\n---\n# Next child\n",
         },
     ],
     scriptedInteractions: [
@@ -342,22 +341,26 @@ export const loadPlanEpicDirectReviewScenario = {
             phase: "slicer",
             ordinal: 1,
             requiredTools: ["slicer_finalize_decomposition"],
-            toolCalls: [{
-                name: "slicer_finalize_decomposition",
-                arguments: {
-                    confirmation: "User approved direct Epic review and slice.",
-                    children: [{
-                        title: "Direct review child",
-                        order: 1,
-                        summary: "Child created after direct Epic review",
-                        dependencies: [],
-                        affectedPaths: [],
-                        executionAgent: "engineer",
-                        collaborationRecommendation: "autonomous",
-                        content: "# Direct review child\n",
-                    }],
+            toolCalls: [
+                {
+                    name: "slicer_finalize_decomposition",
+                    arguments: {
+                        confirmation: "User approved direct Epic review and slice.",
+                        children: [
+                            {
+                                title: "Direct review child",
+                                order: 1,
+                                summary: "Child created after direct Epic review",
+                                dependencies: [],
+                                affectedPaths: [],
+                                executionAgent: "engineer",
+                                collaborationRecommendation: "autonomous",
+                                content: "# Direct review child\n",
+                            },
+                        ],
+                    },
                 },
-            }],
+            ],
         },
     ],
     actions: [

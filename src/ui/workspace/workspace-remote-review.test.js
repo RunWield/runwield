@@ -1,5 +1,8 @@
+import { versions } from "node:process";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -15,7 +18,7 @@ import {
 } from "./react/remote-review-payload.js";
 import { RemoteCommentStateList } from "./react/RemoteCommentStateList.tsx";
 
-Deno.test("remote review legacy anchors stay in Plannotator sidebar without fallback highlighting metadata", () => {
+test("remote review legacy anchors stay in Plannotator sidebar without fallback highlighting metadata", () => {
     const annotation = remoteCommentToPlannotatorAnnotation({
         id: "legacy-comment",
         resolved: false,
@@ -35,11 +38,11 @@ Deno.test("remote review legacy anchors stay in Plannotator sidebar without fall
     assertEquals(annotation.text, "Legacy comment body");
 });
 
-Deno.test("remote review Plannotator sidebar does not expose delete controls", async () => {
-    const panelSource = await Deno.readTextFile(new URL("./react/RemoteCommentPanel.tsx", import.meta.url));
-    const plannotatorCss = await Deno.readTextFile(new URL("./react/plannotator.css", import.meta.url));
+test("remote review Plannotator sidebar does not expose delete controls", async () => {
+    const panelSource = await fsReadFile(new URL("./react/RemoteCommentPanel.tsx", import.meta.url), "utf8");
+    const plannotatorCss = await fsReadFile(new URL("./react/plannotator.css", import.meta.url), "utf8");
     const workspaceCss = await readWorkspaceStyles(new URL("./static/workspace.css", import.meta.url));
-    const reviewSource = await Deno.readTextFile(new URL("./react/RemotePlanReview.tsx", import.meta.url));
+    const reviewSource = await fsReadFile(new URL("./react/RemotePlanReview.tsx", import.meta.url), "utf8");
 
     assertEquals(panelSource.includes("onDelete={(id) => onResolve(id)}"), false);
     assertStringIncludes(panelSource, "onDelete={() => {}}");
@@ -55,7 +58,7 @@ Deno.test("remote review Plannotator sidebar does not expose delete controls", a
     assertEquals(/unshare/i.test(reviewSource), false);
 });
 
-Deno.test("remote review comment panel renders closed read-only controls and revision-scoped comments", () => {
+test("remote review comment panel renders closed read-only controls and revision-scoped comments", () => {
     const revisionOneComment = {
         id: "comment-rev-1",
         resolved: false,
@@ -106,7 +109,7 @@ Deno.test("remote review comment panel renders closed read-only controls and rev
     assertEquals(revisionTwoMarkup.includes("Revision one only"), false);
 });
 
-Deno.test("remote review comment panel renders tampered and missing-anchor placeholders", () => {
+test("remote review comment panel renders tampered and missing-anchor placeholders", () => {
     const unreadableComment = {
         id: "unreadable-comment",
         resolved: false,
@@ -159,7 +162,7 @@ Deno.test("remote review comment panel renders tampered and missing-anchor place
     assertEquals(missingAnchorMarkup.includes("Anchor is gone"), false);
 });
 
-Deno.test("remote review comment payload helper keeps semantic fields inside encrypted body shape", () => {
+test("remote review comment payload helper keeps semantic fields inside encrypted body shape", () => {
     const payload = buildRemoteCommentPayload({
         displayName: "Alice",
         body: "Please clarify this paragraph.",
@@ -205,7 +208,7 @@ Deno.test("remote review comment payload helper keeps semantic fields inside enc
     assertEquals(annotationPayload.anchor?.endMeta?.textOffset, 8);
 });
 
-Deno.test("remote review payload helper maps encrypted comments to Plannotator annotations", () => {
+test("remote review payload helper maps encrypted comments to Plannotator annotations", () => {
     const annotation = remoteCommentToPlannotatorAnnotation({
         id: "comment-1",
         resolved: false,
@@ -228,7 +231,7 @@ Deno.test("remote review payload helper maps encrypted comments to Plannotator a
     assertEquals(/** @type {{ textOffset: number }} */ (annotation.startMeta).textOffset, 4);
 });
 
-Deno.test("remote review comment payload helper rejects tampered or unsupported payloads", () => {
+test("remote review comment payload helper rejects tampered or unsupported payloads", () => {
     for (
         const value of [
             null,
@@ -247,11 +250,14 @@ Deno.test("remote review comment payload helper rejects tampered or unsupported 
     }
 });
 
-Deno.test("remote Workspace wrapper serves built Astro client assets", async () => {
-    const assetDir = new URL("../../../dist/workspace/client/_astro/", import.meta.url);
+test("remote Workspace wrapper serves built Astro client assets", async () => {
+    const assetDir = new URL(
+        `../../../dist/${versions.bun ? "workspace-bun" : "workspace"}/client/_astro/`,
+        import.meta.url,
+    );
     const assetPath = new URL("remote-review-test.js", assetDir);
-    await Deno.mkdir(assetDir, { recursive: true });
-    await Deno.writeTextFile(assetPath, "console.log('remote review asset');");
+    await fsMkdir(assetDir, { recursive: true });
+    await fsWriteFile(assetPath, "console.log('remote review asset');");
     try {
         const app = createWorkspaceApp({ mode: "remote" }).handler();
         const response = await app(new Request("http://localhost/_astro/remote-review-test.js"));
@@ -259,6 +265,6 @@ Deno.test("remote Workspace wrapper serves built Astro client assets", async () 
         assertEquals(response.headers.get("content-type"), "text/javascript; charset=utf-8");
         assertEquals(await response.text(), "console.log('remote review asset');");
     } finally {
-        await Deno.remove(assetPath).catch(() => {});
+        await fsRm(assetPath).catch(() => {});
     }
 });

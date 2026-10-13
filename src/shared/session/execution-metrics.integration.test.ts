@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -15,11 +18,11 @@ import {
 
 async function readMetrics(projectRoot: string) {
     await drainWorkflowMetrics();
-    return (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim()
+    return (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim()
         .split("\n").map((line) => JSON.parse(line));
 }
 
-Deno.test("disabled recording leaves no Project JSONL after a real Agent turn", async () => {
+test("disabled recording leaves no Project JSONL after a real Agent turn", async () => {
     await withRuntimeCommandFixture("metrics-opt-out-", async ({ projectRoot, setModelResponse }) => {
         await setCustomSetting("workflowMetrics", false, "project", projectRoot);
         setModelResponse("No metric should be written.");
@@ -29,17 +32,17 @@ Deno.test("disabled recording leaves no Project JSONL after a real Agent turn", 
             await runtime.switchAgent(sessionId, { agentName: "guide" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Answer briefly." })).ok, true);
             await drainWorkflowMetrics();
-            await assertRejects(() => Deno.stat(getWorkflowMetricsFilePath(projectRoot)), Deno.errors.NotFound);
+            await assertRejects(() => fsStat(getWorkflowMetricsFilePath(projectRoot)), Error, "ENOENT");
         } finally {
             await runtime.closeAllSessionsWhenIdle();
         }
     });
 });
 
-Deno.test("real mixed-tool turn reconstructs ordered calls and batch children from shuffled JSONL", async () => {
+test("real mixed-tool turn reconstructs ordered calls and batch children from shuffled JSONL", async () => {
     await withRuntimeCommandFixture("metrics-mixed-real-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
-        await Deno.writeTextFile(`${projectRoot}/readme.txt`, "Safe fixture content.\n");
+        await fsWriteFile(`${projectRoot}/readme.txt`, "Safe fixture content.\n");
         setModelResponseFactories([
             () => fauxAssistantMessage(fauxToolCall("read", { path: "readme.txt" })),
             () =>
@@ -108,7 +111,7 @@ Deno.test("real mixed-tool turn reconstructs ordered calls and batch children fr
     });
 });
 
-Deno.test("real background delegate records its parent execution without surfacing child calls as root calls", async () => {
+test("real background delegate records its parent execution without surfacing child calls as root calls", async () => {
     await withRuntimeCommandFixture("metrics-delegation-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         setModelResponseFactories([
@@ -153,7 +156,7 @@ Deno.test("real background delegate records its parent execution without surfaci
     });
 });
 
-Deno.test("two parallel background delegates retain their shared parent execution", async () => {
+test("two parallel background delegates retain their shared parent execution", async () => {
     await withRuntimeCommandFixture(
         "metrics-parallel-delegates-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -201,7 +204,7 @@ Deno.test("two parallel background delegates retain their shared parent executio
     );
 });
 
-Deno.test("isolated Reviewer delegates a nested child with its own execution identity", async () => {
+test("isolated Reviewer delegates a nested child with its own execution identity", async () => {
     await withRuntimeCommandFixture("metrics-nested-delegate-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         setModelResponseFactories([
@@ -237,7 +240,7 @@ Deno.test("isolated Reviewer delegates a nested child with its own execution ide
     });
 });
 
-Deno.test("real foreground delegate preserves parent links with no background task ID", async () => {
+test("real foreground delegate preserves parent links with no background task ID", async () => {
     await withRuntimeCommandFixture(
         "metrics-foreground-delegate-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -279,7 +282,7 @@ Deno.test("real foreground delegate preserves parent links with no background ta
     );
 });
 
-Deno.test("manual compaction outside a model turn links context to command without inventing execution", async () => {
+test("manual compaction outside a model turn links context to command without inventing execution", async () => {
     await withRuntimeCommandFixture(
         "metrics-manual-compaction-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -334,7 +337,7 @@ Deno.test("manual compaction outside a model turn links context to command witho
     );
 });
 
-Deno.test("manual compaction cancellation saves a canceled result with no invented execution", async () => {
+test("manual compaction cancellation saves a canceled result with no invented execution", async () => {
     await withRuntimeCommandFixture("metrics-manual-cancel-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         setModelResponseFactories([
@@ -378,7 +381,7 @@ Deno.test("manual compaction cancellation saves a canceled result with no invent
     });
 });
 
-Deno.test("Runtime manual compaction carries the caller command ID into saved observations", async () => {
+test("Runtime manual compaction carries the caller command ID into saved observations", async () => {
     await withRuntimeCommandFixture("metrics-runtime-compact-", async ({ projectRoot }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         const runtime = createSessionRuntime();
@@ -404,7 +407,7 @@ Deno.test("Runtime manual compaction carries the caller command ID into saved ob
     });
 });
 
-Deno.test("manual compaction failure records an error without fabricating execution", async () => {
+test("manual compaction failure records an error without fabricating execution", async () => {
     await withRuntimeCommandFixture("metrics-manual-error-", async ({ projectRoot }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         const hosted = new HostedSession({
@@ -417,7 +420,7 @@ Deno.test("manual compaction failure records an error without fabricating execut
             await assertRejects(() => root.compact(), Error, "Nothing to compact");
             await drainSessionCompactionMetrics(root);
             await drainWorkflowMetrics();
-            const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim()
+            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim()
                 .split("\n").map((line) => JSON.parse(line));
             const start = rows.find((row) => row.event === "compaction_started" && row.reason === "manual");
             assert(start);

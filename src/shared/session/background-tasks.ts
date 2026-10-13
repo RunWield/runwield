@@ -1,4 +1,6 @@
-import { dirname, join } from "@std/path";
+import { type FileHandle, open } from "node:fs/promises";
+import { mkdir as fsMkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { extractAssistantOutput } from "../workflow/workflow-results.js";
@@ -86,10 +88,10 @@ function lineCount(count: StreamCount): number {
     return count.lines + (count.lastByte !== null && count.lastByte !== 10 ? 1 : 0);
 }
 
-async function writeChunk(file: Deno.FsFile, chunk: Uint8Array, onWritten: (part: Uint8Array) => void): Promise<void> {
+async function writeChunk(file: FileHandle, chunk: Uint8Array, onWritten: (part: Uint8Array) => void): Promise<void> {
     let offset = 0;
     while (offset < chunk.byteLength) {
-        const written = await file.write(chunk.subarray(offset));
+        const { bytesWritten: written } = await file.write(chunk.subarray(offset));
         if (written === 0) throw new Error("Task log write made no progress");
         const part = chunk.subarray(offset, offset + written);
         onWritten(part);
@@ -222,7 +224,7 @@ export class BackgroundTasks {
 
     private async drain(
         stream: ReadableStream<Uint8Array>,
-        file: Deno.FsFile,
+        file: FileHandle,
         count: StreamCount,
         record: TaskRecord,
     ): Promise<void> {
@@ -273,16 +275,16 @@ export class BackgroundTasks {
         record: TaskRecord,
         options: { command: string; cwd: string; timeoutMs?: number },
     ): Promise<void> {
-        let out: Deno.FsFile | undefined;
-        let err: Deno.FsFile | undefined;
+        let out: FileHandle | undefined;
+        let err: FileHandle | undefined;
         let shell: ReturnType<typeof spawnForegroundShell> | undefined;
         let finalState: BackgroundTaskState = "failed";
         let finalExit: number | null | undefined;
         let finalError: string | undefined;
         try {
-            await Deno.mkdir(dirname(record.status.log_path), { recursive: true, mode: 0o700 });
-            out = await Deno.open(record.status.log_path, { createNew: true, write: true, mode: 0o600 });
-            err = await Deno.open(record.status.err_log_path, { createNew: true, write: true, mode: 0o600 });
+            await fsMkdir(dirname(record.status.log_path), { recursive: true, mode: 0o700 });
+            out = await open(record.status.log_path, "wx", 0o600);
+            err = await open(record.status.err_log_path, "wx", 0o600);
             if (record.controller.signal.aborted) {
                 finalState = "cancelled";
                 finalExit = null;
@@ -318,14 +320,14 @@ export class BackgroundTasks {
             finalError = `Task failed: ${errorText(error instanceof Error ? error : String(error))}`;
         } finally {
             try {
-                out?.close();
+                await out?.close();
             } catch (error) {
                 record.logFailure ??= `Task log close failed: ${
                     errorText(error instanceof Error ? error : String(error))
                 }`;
             }
             try {
-                err?.close();
+                await err?.close();
             } catch (error) {
                 record.logFailure ??= `Task log close failed: ${
                     errorText(error instanceof Error ? error : String(error))
@@ -346,14 +348,14 @@ export class BackgroundTasks {
             throw error;
         }
         record.finished = (async () => {
-            let out: Deno.FsFile | undefined;
-            let err: Deno.FsFile | undefined;
+            let out: FileHandle | undefined;
+            let err: FileHandle | undefined;
             let finalState: BackgroundTaskState = "failed";
             let finalError: string | undefined;
             try {
-                await Deno.mkdir(dirname(record.status.log_path), { recursive: true, mode: 0o700 });
-                out = await Deno.open(record.status.log_path, { createNew: true, write: true, mode: 0o600 });
-                err = await Deno.open(record.status.err_log_path, { createNew: true, write: true, mode: 0o600 });
+                await fsMkdir(dirname(record.status.log_path), { recursive: true, mode: 0o700 });
+                out = await open(record.status.log_path, "wx", 0o600);
+                err = await open(record.status.err_log_path, "wx", 0o600);
                 if (record.controller.signal.aborted) {
                     finalState = "cancelled";
                     return;
@@ -393,14 +395,14 @@ export class BackgroundTasks {
                 record.controller.abort();
             } finally {
                 try {
-                    out?.close();
+                    await out?.close();
                 } catch (error) {
                     record.logFailure ??= `Task log close failed: ${
                         errorText(error instanceof Error ? error : String(error))
                     }`;
                 }
                 try {
-                    err?.close();
+                    await err?.close();
                 } catch (error) {
                     record.logFailure ??= `Task log close failed: ${
                         errorText(error instanceof Error ? error : String(error))

@@ -1,5 +1,7 @@
+import { test } from "node:test";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Spacer, StdinBuffer, Text, TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView, findVisibleToolBlocks } from "./chat-view.ts";
 import { ToolExecutionBlock, ToolExecutionGroupBlock, UserPromptBlock } from "./blocks.js";
@@ -17,7 +19,7 @@ interface LongSessionFrameObservation {
     terminalOutputBytes: number;
 }
 
-Deno.test("TUI artifact shortcut opens the shared-reader picker without changing the draft", async () => {
+test("TUI artifact shortcut opens the shared-reader picker without changing the draft", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, store }) => {
         const managed = runtime.getSessionSnapshot(sessionId)?.managed;
         assert(managed);
@@ -65,7 +67,7 @@ Deno.test("TUI artifact shortcut opens the shared-reader picker without changing
     });
 });
 
-Deno.test("chat view reconstructs delayed mouse-wheel input without changing a draft or cancelling work", async () => {
+test("chat view reconstructs delayed mouse-wheel input without changing a draft or cancelling work", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
@@ -171,7 +173,7 @@ Deno.test("chat view reconstructs delayed mouse-wheel input without changing a d
     });
 });
 
-Deno.test("chat view shows messages appended after the first frame", async () => {
+test("chat view shows messages appended after the first frame", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
@@ -200,7 +202,7 @@ Deno.test("chat view shows messages appended after the first frame", async () =>
     });
 });
 
-Deno.test("chat view keeps unchanged retained blocks out of live-update renders", async () => {
+test("chat view keeps unchanged retained blocks out of live-update renders", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const retainedCounts = [100, 500, 1_000, 2_000];
         const terminalCaptureLimit = 16_384;
@@ -331,7 +333,7 @@ Deno.test("chat view keeps unchanged retained blocks out of live-update renders"
     });
 });
 
-Deno.test("chat view refreshes an active tool without reformatting retained message blocks", async () => {
+test("chat view refreshes an active tool without reformatting retained message blocks", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
         const tui = new RunWieldTui(terminal);
@@ -367,7 +369,7 @@ Deno.test("chat view refreshes an active tool without reformatting retained mess
     });
 });
 
-Deno.test("chat view finds only tool groups intersecting the viewport", () => {
+test("chat view finds only tool groups intersecting the viewport", () => {
     const messageList = new Container();
     const firstGroup = new ToolExecutionGroupBlock();
     const secondGroup = new ToolExecutionGroupBlock();
@@ -386,7 +388,7 @@ Deno.test("chat view finds only tool groups intersecting the viewport", () => {
     assertEquals(visibleBlocks[0] === secondGroup, true);
 });
 
-Deno.test("chat view keeps sidebar tabs on the first row above a queued steering message", async () => {
+test("chat view keeps sidebar tabs on the first row above a queued steering message", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
         const tui = new TuiAltScreen(terminal);
@@ -422,7 +424,7 @@ Deno.test("chat view keeps sidebar tabs on the first row above a queued steering
     });
 });
 
-Deno.test("chat view tracks quick fix validation in the workflow sidebar", async () => {
+test("chat view tracks quick fix validation in the workflow sidebar", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
         session.replaceWorkflowContext({ routingIntent: "QUICK_FIX", complexity: "LOW" });
         const terminal = new VirtualTerminal({ columns: 150, rows: 28 });
@@ -456,7 +458,7 @@ Deno.test("chat view tracks quick fix validation in the workflow sidebar", async
     });
 });
 
-Deno.test("chat view keeps block backgrounds out of the sidebar when the scrollbar is visible", async () => {
+test("chat view keeps block backgrounds out of the sidebar when the scrollbar is visible", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 20 });
         const tui = new TuiAltScreen(terminal);
@@ -492,7 +494,7 @@ Deno.test("chat view keeps block backgrounds out of the sidebar when the scrollb
     });
 });
 
-Deno.test("chat view keeps scrollback position during live thinking updates", async () => {
+test("chat view keeps scrollback position during live thinking updates", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 80, rows: 10 });
         const tui = new TuiAltScreen(terminal);
@@ -536,7 +538,7 @@ Deno.test("chat view keeps scrollback position during live thinking updates", as
     });
 });
 
-Deno.test("chat view keeps settled tool lines cached across a keystroke", async () => {
+test("chat view keeps settled tool lines cached across a keystroke", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId }) => {
         const terminal = new VirtualTerminal({ columns: 100, rows: 20 });
         const tui = new TuiAltScreen(terminal);
@@ -576,7 +578,7 @@ Deno.test("chat view keeps settled tool lines cached across a keystroke", async 
 });
 
 for (const recovery of ["ctrl+l", "focus"] as const) {
-    Deno.test(`chat view restores erased input on ${recovery} without losing draft or scroll position`, async () => {
+    test(`chat view restores erased input on ${recovery} without losing draft or scroll position`, async () => {
         await withSessionViewFixture(async ({ runtime, sessionId }) => {
             const terminal = new VirtualTerminal({ columns: 80, rows: 12 });
             const tui = new RunWieldTui(terminal);

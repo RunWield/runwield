@@ -1,4 +1,6 @@
-import { assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { McpIntegration } from "../mcp/integration.ts";
 import { HostedSession } from "./hosted-session.js";
 import { SessionHost } from "./session-host.ts";
@@ -18,7 +20,7 @@ function makeSessionManager(id, cwd = `/work/${id}`) {
     };
 }
 
-Deno.test("SessionHost creates sessions with deterministic ids and owns lookup metadata", () => {
+test("SessionHost creates sessions with deterministic ids and owns lookup metadata", () => {
     const sessionManager = makeSessionManager("manager-alpha", "/repo/alpha");
     const host = new SessionHost();
 
@@ -35,7 +37,7 @@ Deno.test("SessionHost creates sessions with deterministic ids and owns lookup m
     ]);
 });
 
-Deno.test("SessionHost can adopt an existing HostedSession", () => {
+test("SessionHost can adopt an existing HostedSession", () => {
     const hostedSession = new HostedSession({
         id: "adopted",
         cwd: "/repo/adopted",
@@ -52,7 +54,7 @@ Deno.test("SessionHost can adopt an existing HostedSession", () => {
     ]);
 });
 
-Deno.test("SessionHost prefers explicit internal ids and otherwise reuses SessionManager ids", () => {
+test("SessionHost prefers explicit internal ids and otherwise reuses SessionManager ids", () => {
     let idFactoryCalls = 0;
     const host = new SessionHost({ idFactory: () => `generated-${++idFactoryCalls}` });
 
@@ -69,7 +71,7 @@ Deno.test("SessionHost prefers explicit internal ids and otherwise reuses Sessio
     assertEquals(host.listSessions().map((session) => session.id), ["one", "provided-two"]);
 });
 
-Deno.test("SessionHost falls back to provided or generated ids when SessionManager has none", () => {
+test("SessionHost falls back to provided or generated ids when SessionManager has none", () => {
     let next = 0;
     const host = new SessionHost({ idFactory: () => `generated-${++next}` });
 
@@ -81,7 +83,7 @@ Deno.test("SessionHost falls back to provided or generated ids when SessionManag
     assertEquals(host.listSessions().map((session) => session.id), ["provided", "generated-1"]);
 });
 
-Deno.test("SessionHost requireSession fails clearly when the session is missing", () => {
+test("SessionHost requireSession fails clearly when the session is missing", () => {
     const host = new SessionHost();
 
     assertEquals(host.getSession("missing"), null);
@@ -92,7 +94,7 @@ Deno.test("SessionHost requireSession fails clearly when the session is missing"
     );
 });
 
-Deno.test("SessionHost rejects duplicate ids for created or adopted sessions", () => {
+test("SessionHost rejects duplicate ids for created or adopted sessions", () => {
     const host = new SessionHost();
 
     host.createSession({ id: "duplicate", cwd: "/repo/duplicate", sessionManager: makeSessionManager("duplicate") });
@@ -121,7 +123,7 @@ Deno.test("SessionHost rejects duplicate ids for created or adopted sessions", (
     );
 });
 
-Deno.test("SessionHost disposeSession removes and disposes only the target HostedSession", async () => {
+test("SessionHost disposeSession removes and disposes only the target HostedSession", async () => {
     const alphaManager = makeSessionManager("alpha-manager");
     const betaManager = makeSessionManager("beta-manager");
     const host = new SessionHost();
@@ -164,7 +166,7 @@ function makeManagedOptions(id, runwieldSessionId) {
     };
 }
 
-Deno.test("HostedSession keeps replacement MCP pool authoritative when prior pool close fails", async () => {
+test("HostedSession keeps replacement MCP pool authoritative when prior pool close fails", async () => {
     const hostedSession = new HostedSession({ id: "mcp-replacement", cwd: "/repo/mcp-replacement" });
     let replacementClosed = false;
     const priorPool = new McpIntegration();
@@ -184,7 +186,7 @@ Deno.test("HostedSession keeps replacement MCP pool authoritative when prior poo
     assertEquals(replacementClosed, true);
 });
 
-Deno.test("SessionHost rejects a second live HostedSession for one stable RunWield Session id", async () => {
+test("SessionHost rejects a second live HostedSession for one stable RunWield Session id", async () => {
     const host = new SessionHost();
     const first = host.createSession(makeManagedOptions("managed-one", "runwield-same"));
 

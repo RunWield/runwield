@@ -1,5 +1,7 @@
 // @ts-nocheck: Owner Workspace routes and projected operations are JavaScript.
-import { assert, assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -9,7 +11,7 @@ import { createOwnerWorkspaceApp } from "./server.js";
 
 const origin = "http://127.0.0.1:8787";
 
-Deno.test("owner Workspace reopens an Architect Epic review and projects the revised live review", async () => {
+test("owner Workspace reopens an Architect Epic review and projects the revised live review", async () => {
     await withRuntimeCommandFixture("owner-epic-live-review-", async ({ projectRoot, setModelResponseFactories }) => {
         const store = openOwnerCoordinationStore();
         const project = store.registerProject({ root: projectRoot, displayName: "Epic Project" });

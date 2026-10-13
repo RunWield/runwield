@@ -1,4 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
@@ -10,7 +12,7 @@ import { resolvePersistedExecutionRootConfiguration } from "./runtime/support.ts
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
 
 const repository = defineGitFixture(async (root) => {
-    await Deno.writeTextFile(`${root}/README.md`, "fixture\n");
+    await fsWriteFile(`${root}/README.md`, "fixture\n");
     await git(root, ["add", "."]);
     await git(root, ["commit", "-m", "fixture"]);
 });
@@ -57,7 +59,7 @@ for (
         "task_completed",
     ] as RecoveryCase[]
 ) {
-    Deno.test(`legacy execution recovery ${scenario} preserves writable ownership safety`, async () => {
+    test(`legacy execution recovery ${scenario} preserves writable ownership safety`, async () => {
         await withRuntimeCommandFixture("execution-recovery-", async () => {
             const root = await repository.checkout();
             const checkout = `${root}-execution`;
@@ -99,13 +101,13 @@ for (
                 await addEntry(root, entry);
                 if (scenario === "ambiguous") {
                     const path = getWorktreeRegistryPath(root);
-                    const registry = JSON.parse(await Deno.readTextFile(path));
+                    const registry = JSON.parse(await fsReadFile(path, "utf8"));
                     registry.entries.push({ ...entry, id: "conflicting-attempt" });
-                    await Deno.writeTextFile(path, JSON.stringify(registry));
+                    await fsWriteFile(path, JSON.stringify(registry));
                 }
                 if (scenario === "missing_checkout") await git(root, ["worktree", "remove", "--force", checkout]);
                 if (scenario === "unattached_checkout") {
-                    await Deno.remove(`${checkout}/.git`);
+                    await fsRm(`${checkout}/.git`);
                     await git(root, ["worktree", "prune", "--expire", "now"]);
                 }
                 const manager = SessionManager.inMemory(root);
@@ -221,8 +223,8 @@ for (
                     );
                 }
             } finally {
-                await Deno.remove(root, { recursive: true });
-                await Deno.remove(checkout, { recursive: true }).catch(() => {});
+                await fsRm(root, { recursive: true });
+                await fsRm(checkout, { recursive: true }).catch(() => {});
             }
         });
     });

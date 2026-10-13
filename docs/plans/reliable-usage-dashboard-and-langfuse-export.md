@@ -545,6 +545,19 @@ Left by the reviewers of individual children for the integration review. These a
 
 <!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/07-core-export-coordination-and-delivery-states" -->
 
+<!-- runwield:integration-notes:start child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
+
+**reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package**
+
+- Check that partial cost coverage survives recording and export mapping. Guided Review can record a known cost subtotal
+  with costSource=reported and measurementAvailability=partial. Contract 1 does not distinguish that case from partial
+  tokens with complete cost, and the exporter sends any supplied supported cost as native total. The assembled contract
+  must let partial cost omit cost_details and the pricing model without suppressing complete agy cost. (Children
+  02/07/08: src/ui/workspace/routes/api/review-agent-handlers.js recordGuideJobMetric;
+  src/shared/workflow/metrics-export-record.ts; packages/langfuse-exporter/exporter.ts map)
+
+<!-- runwield:integration-notes:end child="reliable-usage-dashboard-and-langfuse-export/08-langfuse-exporter-package" -->
+
 ## Edge Cases & Considerations
 
 ### Reviewable assumptions

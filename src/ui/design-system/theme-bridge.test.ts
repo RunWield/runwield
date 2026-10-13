@@ -1,9 +1,11 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { DARK_BROWSER_THEME } from "./themes/dark.ts";
 import type { BrowserThemeColors } from "./themes/dark.ts";
 import { renderRunWieldThemeCss } from "./theme-bridge.ts";
 
-Deno.test("browser theme defaults to the dark RunWield brand", () => {
+test("browser theme defaults to the dark RunWield brand", () => {
     const css = renderRunWieldThemeCss();
     assertStringIncludes(css, '--rw-theme-name: "runwield-dark";');
     assertStringIncludes(css, "color-scheme: dark;");
@@ -12,7 +14,7 @@ Deno.test("browser theme defaults to the dark RunWield brand", () => {
     assertStringIncludes(css, "--rw-brand: #85cbbf;");
 });
 
-Deno.test("browser theme preserves review component aliases", () => {
+test("browser theme preserves review component aliases", () => {
     const css = renderRunWieldThemeCss();
     assertStringIncludes(css, ".theme-runwield {");
     assertStringIncludes(css, "--card: var(--rw-surface);");
@@ -23,7 +25,7 @@ Deno.test("browser theme preserves review component aliases", () => {
     assertStringIncludes(css, "--font-mono: var(--rw-font-mono);");
 });
 
-Deno.test("another browser token set can replace colors without changing shared aliases or the default", () => {
+test("another browser token set can replace colors without changing shared aliases or the default", () => {
     const original = renderRunWieldThemeCss();
     const css = renderRunWieldThemeCss({
         name: 'test "light"',
@@ -56,9 +58,15 @@ function luminance(hex: string): number {
 type BrowserColorRole = keyof BrowserThemeColors;
 type ContrastPair = [BrowserColorRole, BrowserColorRole];
 
-Deno.test("browser text and action colors meet AA contrast on their surfaces", () => {
+test("browser text and action colors meet AA contrast on their surfaces", () => {
     const colors = DARK_BROWSER_THEME.colors;
-    const textRoles: BrowserColorRole[] = ["--rw-text", "--rw-text-muted", "--rw-text-dim", "--rw-accent", "--rw-error"];
+    const textRoles: BrowserColorRole[] = [
+        "--rw-text",
+        "--rw-text-muted",
+        "--rw-text-dim",
+        "--rw-accent",
+        "--rw-error",
+    ];
     const surfaces: BrowserColorRole[] = ["--rw-page-bg", "--rw-surface", "--rw-surface-raised", "--rw-surface-muted"];
     const pairs: ContrastPair[] = [];
     for (const text of textRoles) {

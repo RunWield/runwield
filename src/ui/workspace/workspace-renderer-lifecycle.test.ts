@@ -1,17 +1,21 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { loadPlanBodyById, savePlanBodyById } from "../../plan-store.js";
 import { createRendererFixture } from "../../../scripts/workspace-memory-fixture.ts";
 import { RUNWIELD_ROOT } from "../../../runtime-root.js";
 
 for (const mode of ["normal", "missing", "fallback", "disabled"]) {
-    Deno.test(`renderer entry lifecycle: ${mode}`, async () => {
-        const result = await new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "scripts/workspace-renderer-probe.ts", mode],
+    test(`renderer entry lifecycle: ${mode}`, async () => {
+        const result = await captureForegroundProcess(process.execPath, {
+            args: runtimeSourceArgs(["run", "-A", "scripts/workspace-renderer-probe.ts", mode]),
             cwd: RUNWIELD_ROOT,
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
         assertEquals(result.success, true, new TextDecoder().decode(result.stderr));
         const report = JSON.parse(new TextDecoder().decode(result.stdout));
         assertEquals(report.responses, 12);
@@ -19,21 +23,19 @@ for (const mode of ["normal", "missing", "fallback", "disabled"]) {
     });
 }
 
-Deno.test("module evaluation failure reports the error and restart action", async () => {
-    const result = await new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "scripts/workspace-renderer-probe.ts", "evaluation-failure"],
+test("module evaluation failure reports the error and restart action", async () => {
+    const result = await captureForegroundProcess(process.execPath, {
+        args: runtimeSourceArgs(["run", "-A", "scripts/workspace-renderer-probe.ts", "evaluation-failure"]),
         cwd: RUNWIELD_ROOT,
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    });
     assertEquals(result.success, true, new TextDecoder().decode(result.stderr));
     const report = JSON.parse(new TextDecoder().decode(result.stdout));
     assertStringIncludes(report.response, "restart");
     assertStringIncludes(new TextDecoder().decode(result.stderr), "Renderer evaluation failed");
 });
 
-Deno.test("fixture follows unprefixed Session and protected Plan navigation", async () => {
-    const root = await Deno.makeTempDir({ prefix: "renderer-navigation-" });
+test("fixture follows unprefixed Session and protected Plan navigation", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "renderer-navigation-"));
     const origin = "http://127.0.0.1";
     const fixture = await createRendererFixture(root, origin);
     try {
@@ -64,12 +66,12 @@ Deno.test("fixture follows unprefixed Session and protected Plan navigation", as
         }
     } finally {
         await fixture.close();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("unprefixed Code Review loads without a referer and routes its APIs to Code Review", async () => {
-    const root = await Deno.makeTempDir({ prefix: "renderer-code-review-" });
+test("unprefixed Code Review loads without a referer and routes its APIs to Code Review", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "renderer-code-review-"));
     const origin = "http://127.0.0.1";
     const fixture = await createRendererFixture(root, origin);
     try {
@@ -87,12 +89,12 @@ Deno.test("unprefixed Code Review loads without a referer and routes its APIs to
         assertEquals((await api.json()).mode, "review");
     } finally {
         await fixture.close();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("shared renderer serves concurrent pages with independent current Plan, review and question content", async () => {
-    const root = await Deno.makeTempDir({ prefix: "renderer-lifecycle-" });
+test("shared renderer serves concurrent pages with independent current Plan, review and question content", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "renderer-lifecycle-"));
     const fixture = await createRendererFixture(root, "http://127.0.0.1");
     try {
         const routes = [
@@ -132,6 +134,6 @@ Deno.test("shared renderer serves concurrent pages with independent current Plan
         assertStringIncludes(await other.text(), "Memory plan body 1");
     } finally {
         await fixture.close();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

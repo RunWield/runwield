@@ -1,11 +1,13 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 
-Deno.test("load-plan offers code review again after closing, including in a fresh Session", async () => {
+test("load-plan offers code review again after closing, including in a fresh Session", async () => {
     await withRuntimeCommandFixture("code-review-close-", async ({ projectRoot, setModelResponseFactory }) => {
         setModelResponseFactory(() => {
             throw new Error("Closing or reopening review must not run an Agent turn");
@@ -19,7 +21,7 @@ Deno.test("load-plan offers code review again after closing, including in a fres
             affectedPaths: [],
         });
         const implementationPath = join(projectRoot, "implementation.txt");
-        await Deno.writeTextFile(implementationPath, "ready for review\n");
+        await fsWriteFile(implementationPath, "ready for review\n");
         const offers: string[] = [];
         let reviews = 0;
         for (const choice of ["close", "close", "open"]) {
@@ -71,7 +73,7 @@ Deno.test("load-plan offers code review again after closing, including in a fres
                 const plan = await loadPlan(projectRoot, "review-later");
                 assertEquals(plan?.attrs.status, "reviewed", messages.join("\n"));
                 assertEquals(plan?.attrs.humanReviewDecision, null);
-                assertEquals(await Deno.readTextFile(implementationPath), "ready for review\n");
+                assertEquals(await fsReadFile(implementationPath, "utf8"), "ready for review\n");
                 if (choice === "close") {
                     assertEquals(reviews, 0);
                     assertStringIncludes(messages.join("\n"), "/load-plan review-later");

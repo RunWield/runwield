@@ -1,6 +1,8 @@
+import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
+import { test } from "node:test";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan, withPlanCatalogLock } from "../../plan-store.js";
@@ -41,7 +43,7 @@ async function waitForOperationSettlement(service, operationId) {
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n", "implementation.txt": "before\n" });
 
 for (const resumeStatus of ["in_progress", "failed"]) {
-    Deno.test(`saved Plan review preserves Later, starts Run, and resumes ${resumeStatus} in its worktree`, async () => {
+    test(`saved Plan review preserves Later, starts Run, and resumes ${resumeStatus} in its worktree`, async () => {
         await withRuntimeCommandFixture(
             "workspace-saved-review-",
             async ({ setModelResponseFactory, setModelResponseFactories }) => {
@@ -167,7 +169,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                             const segments = store.listSessionTranscriptSegments(managed.runwieldSessionId);
                             assertEquals(segments.at(-1)?.kind, "execution");
                             assertStringIncludes(
-                                await Deno.readTextFile(segments.at(-1).transcriptPath),
+                                await fsReadFile(segments.at(-1).transcriptPath, "utf8"),
                                 "implementing the approved saved Plan",
                             );
                         }
@@ -238,8 +240,8 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     const workflow =
                         service.runtime.getSessionSnapshot(hosted.runtimeSessionId).activeExecutionWorkflow;
                     assertExists(workflow?.executionCwd);
-                    assertEquals(await Deno.readTextFile(`${workflow.executionCwd}/continued.txt`), "continued");
-                    assertEquals(await Deno.stat(`${root}/continued.txt`).then(() => true).catch(() => false), false);
+                    assertEquals(await fsReadFile(`${workflow.executionCwd}/continued.txt`, "utf8"), "continued");
+                    assertEquals(await fsStat(`${root}/continued.txt`).then(() => true).catch(() => false), false);
                     assertEquals((await loadPlan(workflow.executionCwd, "saved-plan")).attrs.status, "implemented");
                     await service.cancelOperation({ operationId: result.operationId });
                     for (let i = 0; i < 500 && service.getOperation(result.operationId).status === "running"; i++) {
@@ -288,7 +290,7 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     await service.close();
                     await runtime.closeAllSessionsWhenIdle();
                     store.close();
-                    await Deno.remove(root, { recursive: true });
+                    await fsRm(root, { recursive: true });
                 }
             },
         );

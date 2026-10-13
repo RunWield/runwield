@@ -1,4 +1,16 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { delimiter } from "node:path";
+import { test } from "node:test";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { statSync as fsStatSync } from "node:fs";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -55,10 +67,10 @@ async function waitForPath(path: string, description: string, timeoutMs = 5_000)
     await waitFor(
         () => {
             try {
-                Deno.statSync(path);
+                fsStatSync(path);
                 return true;
             } catch (error) {
-                if (error instanceof Deno.errors.NotFound) return false;
+                if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
                 throw error;
             }
         },
@@ -76,11 +88,11 @@ async function submitText(terminal: VirtualTerminal, text: string): Promise<void
 async function countSessionTranscripts(projectRoot: string): Promise<number> {
     let count = 0;
     try {
-        for await (const entry of Deno.readDir(getRunWieldSessionDir(projectRoot))) {
-            if (entry.isFile && entry.name.endsWith(".jsonl")) count++;
+        for await (const entry of await fsReaddir(getRunWieldSessionDir(projectRoot), { withFileTypes: true })) {
+            if (entry.isFile() && entry.name.endsWith(".jsonl")) count++;
         }
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return 0;
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return 0;
         throw error;
     }
     return count;
@@ -101,7 +113,7 @@ async function startComposition(
     return { composition, terminal };
 }
 
-Deno.test("composition idle waits for a real slash-command interaction to finish", async () => {
+test("composition idle waits for a real slash-command interaction to finish", async () => {
     await withRuntimeCommandFixture("chat-input-pending-slash-", async () => {
         const { composition, terminal } = await startComposition();
         try {
@@ -161,12 +173,12 @@ async function seedActiveElsewhereManagedSession(
 }
 
 async function installFakeClipboardCommands(projectRoot: string): Promise<ClipboardFixtureCommands> {
-    const previousPath = Deno.env.get("PATH") || "";
+    const previousPath = process.env["PATH"] || "";
     const binDir = `${projectRoot}/clipboard-bin`;
     const imageReadMarkerPath = `${projectRoot}/clipboard-image-read`;
-    await Deno.mkdir(binDir, { recursive: true });
+    await fsMkdir(binDir, { recursive: true });
     const osascriptPath = `${binDir}/osascript`;
-    await Deno.writeTextFile(
+    await fsWriteFile(
         osascriptPath,
         [
             "#!/bin/sh",
@@ -181,9 +193,9 @@ async function installFakeClipboardCommands(projectRoot: string): Promise<Clipbo
             "",
         ].join("\n"),
     );
-    await Deno.chmod(osascriptPath, 0o755);
+    await fsChmod(osascriptPath, 0o755);
     const base64Path = `${binDir}/base64`;
-    await Deno.writeTextFile(
+    await fsWriteFile(
         base64Path,
         [
             "#!/bin/sh",
@@ -195,12 +207,12 @@ async function installFakeClipboardCommands(projectRoot: string): Promise<Clipbo
             "",
         ].join("\n"),
     );
-    await Deno.chmod(base64Path, 0o755);
-    Deno.env.set("PATH", `${binDir}:${previousPath}`);
+    await fsChmod(base64Path, 0o755);
+    process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
     return { previousPath, imageReadMarkerPath };
 }
 
-Deno.test("chat input controller sends accepted editor input through the real composed Runtime", async () => {
+test("chat input controller sends accepted editor input through the real composed Runtime", async () => {
     await withRuntimeCommandFixture("chat-input-real-submit-", async ({ setModelResponseFactory }) => {
         const modelRequests: string[] = [];
         setModelResponseFactory((context) => {
@@ -219,7 +231,7 @@ Deno.test("chat input controller sends accepted editor input through the real co
     });
 });
 
-Deno.test("Shift+Tab updates thinking level immediately and persists it later", async () => {
+test("Shift+Tab updates thinking level immediately and persists it later", async () => {
     await withRuntimeCommandFixture("chat-input-thinking-level-", async ({ setModelResponseFactory, settingsPath }) => {
         setModelResponseFactory(() => fauxAssistantMessage(fauxText("Fixture response.")));
         const { composition, terminal } = await startComposition();
@@ -238,7 +250,7 @@ Deno.test("Shift+Tab updates thinking level immediately and persists it later", 
                 "deferred thinking-level persistence",
             );
             await settingsManager.flush();
-            const persistedSettings = JSON.parse(await Deno.readTextFile(settingsPath));
+            const persistedSettings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
             assertEquals(persistedSettings.defaultThinkingLevel, "minimal");
         } finally {
             await composition.dispose();
@@ -246,7 +258,7 @@ Deno.test("Shift+Tab updates thinking level immediately and persists it later", 
     });
 });
 
-Deno.test("slash new replaces the TUI with an unpersisted shell until its first message", async () => {
+test("slash new replaces the TUI with an unpersisted shell until its first message", async () => {
     await withRuntimeCommandFixture("chat-input-slash-new-lazy-", async ({ setModelResponseFactory }) => {
         const modelRequests: string[] = [];
         const releaseModel = deferredSignal();
@@ -299,7 +311,7 @@ Deno.test("slash new replaces the TUI with an unpersisted shell until its first 
     });
 });
 
-Deno.test("slash resume restores conversation after an interrupted checkpoint", async () => {
+test("slash resume restores conversation after an interrupted checkpoint", async () => {
     await withRuntimeCommandFixture("chat-input-slash-resume-recovery-", async ({ setModelResponse }) => {
         setModelResponse("Persisted answer restored in the TUI.");
         const seeded = await startComposition();
@@ -329,7 +341,7 @@ Deno.test("slash resume restores conversation after an interrupted checkpoint", 
                 expectedGeneration: state.generation?.generation ?? null,
                 expectedCurrentSegmentId: segment.segmentId,
             });
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 segment.transcriptPath,
                 `${
                     JSON.stringify({
@@ -339,7 +351,7 @@ Deno.test("slash resume restores conversation after an interrupted checkpoint", 
                         data: { status: "failed" },
                     })
                 }\n`,
-                { append: true },
+                { flag: "a" },
             );
             store.markSessionUncertain(proof, { reason: "interrupted after a failed request" });
         } finally {
@@ -371,7 +383,7 @@ Deno.test("slash resume restores conversation after an interrupted checkpoint", 
     });
 });
 
-Deno.test("chat input controller runs local commands while a real Runtime turn is active", async () => {
+test("chat input controller runs local commands while a real Runtime turn is active", async () => {
     await withRuntimeCommandFixture("chat-input-real-bash-", async ({ setModelResponseFactory }) => {
         const releaseModel = deferredSignal();
         let modelStarted = false;
@@ -397,7 +409,7 @@ Deno.test("chat input controller runs local commands while a real Runtime turn i
     });
 });
 
-Deno.test("chat input controller queues deferred slash input for the next turn during a real Runtime turn", async () => {
+test("chat input controller queues deferred slash input for the next turn during a real Runtime turn", async () => {
     await withRuntimeCommandFixture("chat-input-real-slash-queue-", async ({ setModelResponseFactory }) => {
         const releaseModel = deferredSignal();
         let modelStarted = false;
@@ -431,7 +443,7 @@ Deno.test("chat input controller queues deferred slash input for the next turn d
     });
 });
 
-Deno.test("chat input controller restores the last queued draft through real keybindings", async () => {
+test("chat input controller restores the last queued draft through real keybindings", async () => {
     await withRuntimeCommandFixture("chat-input-real-restore-", async () => {
         const { composition, terminal } = await startComposition();
         try {
@@ -447,7 +459,7 @@ Deno.test("chat input controller restores the last queued draft through real key
     });
 });
 
-Deno.test("chat input controller recalls queued steering into the editor oldest to newest on Escape", async () => {
+test("chat input controller recalls queued steering into the editor oldest to newest on Escape", async () => {
     await withRuntimeCommandFixture("chat-input-real-escape-steering-", async ({ setModelResponseFactory }) => {
         const releaseModel = deferredSignal();
         let modelStarted = false;
@@ -481,11 +493,11 @@ Deno.test("chat input controller recalls queued steering into the editor oldest 
     });
 });
 
-Deno.test("chat input controller preflights pasted image attachments through the composed TUI", async () => {
+test("chat input controller preflights pasted image attachments through the composed TUI", async () => {
     await withRuntimeCommandFixture(
         "chat-input-real-image-preflight-",
         async ({ projectRoot, setModelResponseFactory }) => {
-            if (Deno.build.os !== "darwin") return;
+            if (process.platform !== "darwin") return;
             const clipboard = await installFakeClipboardCommands(projectRoot);
             const modelRequests: string[] = [];
             setModelResponseFactory((context) => {
@@ -514,14 +526,14 @@ Deno.test("chat input controller preflights pasted image attachments through the
                     ),
                 );
             } finally {
-                Deno.env.set("PATH", clipboard.previousPath);
+                process.env["PATH"] = clipboard.previousPath;
                 await composition.dispose();
             }
         },
     );
 });
 
-Deno.test("chat input controller shows safe text when submit fails", async () => {
+test("chat input controller shows safe text when submit fails", async () => {
     await withRuntimeCommandFixture("chat-input-safe-submit-error-", async () => {
         const { composition, terminal } = await startComposition();
         try {
@@ -542,7 +554,7 @@ Deno.test("chat input controller shows safe text when submit fails", async () =>
     });
 });
 
-Deno.test("chat input controller does not replace a reported Claude failure", async () => {
+test("chat input controller does not replace a reported Claude failure", async () => {
     await withRuntimeCommandFixture("chat-input-claude-submit-error-", async () => {
         const { composition, terminal } = await startComposition();
         try {
@@ -561,7 +573,7 @@ Deno.test("chat input controller does not replace a reported Claude failure", as
     });
 });
 
-Deno.test("chat input controller does not replace or log a reported Agy backend failure", async () => {
+test("chat input controller does not replace or log a reported Agy backend failure", async () => {
     await withRuntimeCommandFixture("chat-input-agy-backend-error-", async () => {
         const { composition, terminal } = await startComposition();
         const originalConsoleError = console.error;
@@ -589,7 +601,7 @@ Deno.test("chat input controller does not replace or log a reported Agy backend 
     });
 });
 
-Deno.test("chat input controller shows Agy MCP setup approval action without spilling a stack", async () => {
+test("chat input controller shows Agy MCP setup approval action without spilling a stack", async () => {
     await withRuntimeCommandFixture("chat-input-agy-setup-error-", async () => {
         const { composition, terminal } = await startComposition();
         const originalConsoleError = console.error;
@@ -623,7 +635,7 @@ Deno.test("chat input controller shows Agy MCP setup approval action without spi
     });
 });
 
-Deno.test("chat input controller preserves input while model setup blocks through the composed TUI", async () => {
+test("chat input controller preserves input while model setup blocks through the composed TUI", async () => {
     await withRuntimeCommandFixture("chat-input-real-model-block-", async () => {
         const harness = createInteractiveCompositionHarness({});
         try {
@@ -646,7 +658,7 @@ Deno.test("chat input controller preserves input while model setup blocks throug
     }, { providerState: "provider-no-model" });
 });
 
-Deno.test("chat input controller queues input while another surface is active", async () => {
+test("chat input controller queues input while another surface is active", async () => {
     await withRuntimeCommandFixture("chat-input-real-managed-block-", async ({ alternateRoot }) => {
         const activeStore = await seedActiveElsewhereManagedSession(alternateRoot);
         const { composition, terminal } = await startComposition("continue");
@@ -674,7 +686,7 @@ Deno.test("chat input controller queues input while another surface is active", 
     });
 });
 
-Deno.test("chat input controller connects Ctrl+C pending-exit state through real keybindings", async () => {
+test("chat input controller connects Ctrl+C pending-exit state through real keybindings", async () => {
     await withRuntimeCommandFixture("chat-input-real-ctrl-c-", async () => {
         const { composition, terminal } = await startComposition();
         try {
@@ -809,7 +821,7 @@ function createControllerHarness(runtimeOverrides: ControllerRuntimeOverrides = 
     return { controller, editor, pastedImages, previewImages, messages, busyStates, runtime };
 }
 
-Deno.test("chat input steers a generated background turn and keeps runtime busy", async () => {
+test("chat input steers a generated background turn and keeps runtime busy", async () => {
     let steered = "";
     let promptCalls = 0;
     const { controller, editor, busyStates } = createControllerHarness({
@@ -831,7 +843,7 @@ Deno.test("chat input steers a generated background turn and keeps runtime busy"
     assertEquals(busyStates.at(-1), true);
 });
 
-Deno.test("chat input controller submits tutorial discovery as a normal Planner turn", async () => {
+test("chat input controller submits tutorial discovery as a normal Planner turn", async () => {
     let submitted: Parameters<ChatInputRuntime["promptUserTurn"]>[1] | null = null;
     const { controller } = createControllerHarness({
         promptUserTurn: (_sessionId, options) => {
@@ -858,7 +870,7 @@ Deno.test("chat input controller submits tutorial discovery as a normal Planner 
     });
 });
 
-Deno.test("chat input controller restores exact draft and previews after image preflight rejection", async () => {
+test("chat input controller restores exact draft and previews after image preflight rejection", async () => {
     let promptCalled = false;
     const { editor, pastedImages, previewImages, messages } = createControllerHarness({
         preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
@@ -880,7 +892,7 @@ Deno.test("chat input controller restores exact draft and previews after image p
     assertEquals(messages, ["Cannot attach image."]);
 });
 
-Deno.test("chat input controller restores an empty draft after an image-only preflight rejection", async () => {
+test("chat input controller restores an empty draft after an image-only preflight rejection", async () => {
     const { editor, pastedImages, previewImages } = createControllerHarness({
         preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
     });
@@ -896,7 +908,7 @@ Deno.test("chat input controller restores an empty draft after an image-only pre
     assertEquals(pastedImages.length, 1);
 });
 
-Deno.test("chat input controller restores expanded pasted content after image preflight rejection", async () => {
+test("chat input controller restores expanded pasted content after image preflight rejection", async () => {
     const { editor, pastedImages } = createControllerHarness({
         preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
     });
@@ -908,7 +920,7 @@ Deno.test("chat input controller restores expanded pasted content after image pr
     assertEquals(editor.getText(), "before pasted content after");
 });
 
-Deno.test("chat input controller restores a whitespace-only image draft after Pi clears the editor", async () => {
+test("chat input controller restores a whitespace-only image draft after Pi clears the editor", async () => {
     const { editor, pastedImages } = createControllerHarness({
         preflightUserTurnImages: () => Promise.resolve({ ok: false, message: "Cannot attach image." }),
     });
@@ -920,7 +932,7 @@ Deno.test("chat input controller restores a whitespace-only image draft after Pi
     assertEquals(editor.getText(), "   \t  ");
 });
 
-Deno.test("chat input controller sends the model prepared by image preflight", async () => {
+test("chat input controller sends the model prepared by image preflight", async () => {
     let submittedModel = "";
     const { editor, pastedImages } = createControllerHarness({
         preflightUserTurnImages: () =>
@@ -942,7 +954,7 @@ Deno.test("chat input controller sends the model prepared by image preflight", a
     assertEquals(submittedModel, "runtime-command-fixture/fixture-model");
 });
 
-Deno.test("chat input controller sends one corrected image draft after a rejection", async () => {
+test("chat input controller sends one corrected image draft after a rejection", async () => {
     let preflightCalls = 0;
     let promptCalls = 0;
     let submittedImage = "";
@@ -971,7 +983,7 @@ Deno.test("chat input controller sends one corrected image draft after a rejecti
     assertEquals(submittedImage, btoa("good"));
 });
 
-Deno.test("chat input controller does not queue image steering that runtime rejects", async () => {
+test("chat input controller does not queue image steering that runtime rejects", async () => {
     const release = deferredSignal();
     let queued = false;
     const { controller, editor, pastedImages, previewImages, messages } = createControllerHarness({

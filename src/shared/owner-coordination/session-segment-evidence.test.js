@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { captureTranscriptEvidence } from "../session/session-transcript-projection.js";
 import { openOwnerCoordinationDatabase } from "./database.js";
@@ -18,9 +23,9 @@ function idFactory(prefix = "id") {
 /** @param {string} cwd @param {string} piSessionId */
 async function writeTranscript(cwd, piSessionId) {
     const sessionDir = getRunWieldSessionDir(cwd);
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     const path = `${sessionDir}/2026-01-01T00-00-00-000Z_${piSessionId}.jsonl`;
-    await Deno.writeTextFile(
+    await fsWriteFile(
         path,
         [
             { type: "session", id: piSessionId, cwd, timestamp: "2026-01-01T00:00:00.000Z" },
@@ -30,13 +35,13 @@ async function writeTranscript(cwd, piSessionId) {
     return path;
 }
 
-Deno.test("seal captures byte length digest and terminal entry evidence through a real migrated database", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-segment-evidence-" });
+test("seal captures byte length digest and terminal entry evidence through a real migrated database", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-evidence-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
             const root = `${dir}/repo`;
-            await Deno.mkdir(root);
+            await fsMkdir(root);
             const project = registerProject(database, { root, idFactory: idFactory("project"), now: () => "t0" });
             const transcriptPath = await writeTranscript(root, "pi-1");
             const session = await ensureSessionCatalogRecord(database, {
@@ -67,17 +72,17 @@ Deno.test("seal captures byte length digest and terminal entry evidence through 
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("seal rejects absent or mismatched evidence and leaves the segment unsealed", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-segment-evidence-reject-" });
+test("seal rejects absent or mismatched evidence and leaves the segment unsealed", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-evidence-reject-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
             const root = `${dir}/repo`;
-            await Deno.mkdir(root);
+            await fsMkdir(root);
             const project = registerProject(database, { root, idFactory: idFactory("project"), now: () => "t0" });
             const transcriptPath = await writeTranscript(root, "pi-1");
             const session = await ensureSessionCatalogRecord(database, {
@@ -115,6 +120,6 @@ Deno.test("seal rejects absent or mismatched evidence and leaves the segment uns
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

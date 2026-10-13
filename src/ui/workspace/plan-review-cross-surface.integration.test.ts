@@ -1,5 +1,12 @@
+import { fileURLToPath } from "node:url";
 // @ts-nocheck: The live session and owner service expose JavaScript records.
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { test } from "node:test";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -55,13 +62,19 @@ async function withRemoteReview(changePlan, expectDecision) {
                 store.close();
             }
         `;
-        const child = new Deno.Command(Deno.execPath(), {
-            args: ["eval", "--config", new URL("../../../deno.json", import.meta.url).pathname, code],
+        const child = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs([
+                "eval",
+                "--config",
+                fileURLToPath(new URL("../../../deno.json", import.meta.url)),
+                code,
+            ]),
             cwd: projectRoot,
             stdout: "piped",
             stderr: "piped",
-        }).spawn();
-        const outputPromise = child.output();
+            stdin: "null",
+        });
+        const outputPromise = collectProcessOutput(child);
         let finished = false;
         try {
             let operation;
@@ -112,14 +125,14 @@ async function withRemoteReview(changePlan, expectDecision) {
 
 async function unchanged() {}
 
-Deno.test("Workspace approves the original Plan from a live TUI review", async () => {
+test("Workspace approves the original Plan from a live TUI review", async () => {
     await withRemoteReview(unchanged, async (answer, root) => {
         assertEquals((await answer()).status, "accepted");
         assertEquals((await loadPlan(root, "saved"))?.attrs.status, "approved");
     });
 });
 
-Deno.test("Workspace rejects a changed Plan from a live TUI review", async () => {
+test("Workspace rejects a changed Plan from a live TUI review", async () => {
     await withRemoteReview(async (root) => {
         const current = await loadPlan(root, "saved");
         await savePlan(root, "saved", "# Saved\n\n## Context\n\nChanged after review opened.\n", current.attrs, {

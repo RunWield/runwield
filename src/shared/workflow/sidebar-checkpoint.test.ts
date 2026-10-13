@@ -1,4 +1,6 @@
-import { assertEquals, assertExists } from "@std/assert";
+import { rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { createGitPort } from "../git-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { loadPlan } from "../../plan-store.js";
@@ -7,7 +9,7 @@ import { continueWorkflowValidation } from "./validation-supervisor.ts";
 import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT } from "./validation-test-helpers.js";
 import { tuiSessionSidebarProjection } from "../../ui/tui/session-sidebar.ts";
 
-Deno.test("canceling Code Review settles a paused checkpoint and reopening skips finished checks", async () => {
+test("canceling Code Review settles a paused checkpoint and reopening skips finished checks", async () => {
     const root = await makeValidationProjectRoot("sample", {
         classification: "PLANNED_CHANGE",
         status: "reviewed",
@@ -61,6 +63,6 @@ Deno.test("canceling Code Review settles a paused checkpoint and reopening skips
         }
     } finally {
         session.dispose();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

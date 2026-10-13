@@ -1,7 +1,7 @@
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { loadReviewFeedbackImages, type ReviewImageDecision } from "./review-feedback-images.ts";
 /** A Sequence review is one decision over an ordinary PROJECT and its complete child set. */
-import { join, relative } from "@std/path";
+import { join, relative } from "node:path";
 import {
     ensurePlanIdentity,
     findPlansByParent,

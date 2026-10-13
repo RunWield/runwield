@@ -1,7 +1,10 @@
 // @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
 /** @module ui/workspace/server/workspace-search */
 
-import { DatabaseSync } from "node:sqlite";
+import { mkdirSync, renameSync } from "node:fs";
+import { readdir, stat as fsStat } from "node:fs/promises";
+import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timers";
+import { DatabaseSync } from "../../../shared/sqlite.ts";
 import { dirname, join, relative } from "node:path";
 import { getHomeDir } from "../../../constants.js";
 import { listPlanResources } from "../../../plan-store.js";
@@ -52,16 +55,16 @@ async function scanMarkdownDirectory(root, directory, type) {
         const pending = [directory];
         while (pending.length) {
             const current = pending.pop();
-            for await (const entry of Deno.readDir(join(root, current))) {
+            for (const entry of await readdir(join(root, current), { withFileTypes: true })) {
                 const relativePath = `${current}/${entry.name}`.replaceAll("\\", "/");
-                if (entry.isDirectory) {
+                if (entry.isDirectory()) {
                     pending.push(relativePath);
                     continue;
                 }
-                if (!entry.isFile || !entry.name.endsWith(".md")) continue;
+                if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
                 const markdown = await readContainedMarkdown(root, join(root, relativePath));
                 const facts = markdownFacts(markdown);
-                const stat = await Deno.stat(await assertContainedProjectPath(root, join(root, relativePath)));
+                const stat = await fsStat(await assertContainedProjectPath(root, join(root, relativePath)));
                 documents.push({
                     projectId: "",
                     projectName: "",
@@ -78,7 +81,7 @@ async function scanMarkdownDirectory(root, directory, type) {
             }
         }
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return [];
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
         throw error;
     }
     return documents;
@@ -88,7 +91,7 @@ async function scanMarkdownDirectory(root, directory, type) {
 async function documentationRecord(root, relativePath, type) {
     const markdown = await readContainedMarkdown(root, join(root, relativePath));
     const facts = markdownFacts(markdown);
-    const stat = await Deno.stat(await assertContainedProjectPath(root, join(root, relativePath)));
+    const stat = await fsStat(await assertContainedProjectPath(root, join(root, relativePath)));
     return {
         projectId: "",
         projectName: "",
@@ -138,7 +141,7 @@ async function scanProjectDocuments(root) {
             try {
                 await assertContainedProjectPath(root, join(root, "docs", "plans"));
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
             const found = [];
             const plans = await listPlanResources(root, { backfillMissing: false });
@@ -169,7 +172,7 @@ async function scanProjectDocuments(root) {
             try {
                 await assertContainedProjectPath(root, getWorkRecordsDir(root));
             } catch (error) {
-                if (error instanceof Deno.errors.NotFound) return [];
+                if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
                 throw error;
             }
             const found = [];
@@ -220,7 +223,7 @@ async function scanProjectDocuments(root) {
             try {
                 found.push(await documentationRecord(root, "docs/design-system.md", "design-system"));
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
             for (const relativePath of await domainLanguagePaths(root)) {
                 found.push(await documentationRecord(root, relativePath, "domain-language"));
@@ -283,7 +286,7 @@ async function scanSessionDocuments(store, projectId, root) {
 
 /** @param {string} dbPath */
 function initializeDatabase(dbPath) {
-    Deno.mkdirSync(dirname(dbPath), { recursive: true });
+    mkdirSync(dirname(dbPath), { recursive: true });
     const db = new DatabaseSync(dbPath);
     try {
         db.exec("PRAGMA busy_timeout = 5000");
@@ -328,16 +331,18 @@ function openSearchDatabase(path) {
         if (path === ":memory:") throw error;
         const quarantine = `${path}.quarantine-${Date.now()}`;
         try {
-            Deno.renameSync(path, quarantine);
+            renameSync(path, quarantine);
             for (const suffix of ["-wal", "-shm"]) {
                 try {
-                    Deno.renameSync(`${path}${suffix}`, `${quarantine}${suffix}`);
+                    renameSync(`${path}${suffix}`, `${quarantine}${suffix}`);
                 } catch (sidecarError) {
-                    if (!(sidecarError instanceof Deno.errors.NotFound)) throw sidecarError;
+                    if (!(sidecarError instanceof Error && "code" in sidecarError && sidecarError.code === "ENOENT")) {
+                        throw sidecarError;
+                    }
                 }
             }
         } catch (renameError) {
-            if (!(renameError instanceof Deno.errors.NotFound)) throw error;
+            if (!(renameError instanceof Error && "code" in renameError && renameError.code === "ENOENT")) throw error;
         }
         return initializeDatabase(path);
     }
@@ -453,7 +458,7 @@ async function hydrateCandidate(root, row, store, catalogs) {
     ) throw new Error("Domain Language document is not in the current map.");
     const markdown = await readContainedMarkdown(root, join(root, row.relative_path));
     const facts = markdownFacts(markdown);
-    const stat = await Deno.stat(await assertContainedProjectPath(root, join(root, row.relative_path)));
+    const stat = await fsStat(await assertContainedProjectPath(root, join(root, row.relative_path)));
     return {
         ...row,
         title: facts.title,
@@ -559,7 +564,7 @@ export function createWorkspaceSearchService(options) {
             scanPromise = null;
             if (!closed) {
                 scanTimer = setTimeout(scan, scanIntervalMs);
-                Deno.unrefTimer(scanTimer);
+                scanTimer.unref();
             }
         });
         return await scanPromise;
@@ -571,14 +576,14 @@ export function createWorkspaceSearchService(options) {
             if (project.lifecycle !== "enabled") continue;
             try {
                 const root = options.store.requireEnabledProjectRoot(project.projectId);
-                const stat = await Deno.stat(await getWorkspaceSearchRefreshMarker(root));
+                const stat = await fsStat(await getWorkspaceSearchRefreshMarker(root));
                 const revision = stat.mtime?.getTime() || stat.size;
                 if (observedRefreshMarkers.get(project.projectId) === revision) continue;
                 observedRefreshMarkers.set(project.projectId, revision);
                 await refresh();
                 return;
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) continue;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) continue;
             }
         }
     }
@@ -723,7 +728,7 @@ export function createWorkspaceSearchService(options) {
     }
 
     refreshTimer = setInterval(() => checkRefreshRequests().catch(() => {}), 1_000);
-    Deno.unrefTimer(refreshTimer);
+    refreshTimer.unref();
     queueMicrotask(() => scan().catch(() => {}));
     return { search, refresh, close, dbPath, scanIntervalMs };
 }

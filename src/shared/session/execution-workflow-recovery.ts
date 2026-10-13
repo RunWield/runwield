@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "../captured-process.ts";
+import { realpath as fsRealpath } from "node:fs/promises";
 import type { HostedSession } from "./hosted-session.js";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ActiveExecutionWorkflow } from "../types.js";
@@ -23,10 +25,10 @@ export async function restoreExecutionWorkflow(session: HostedSession): Promise<
     if (snapshot) {
         const workflow = snapshot.workflow;
         if (workflow?.executionCwd) {
-            const executionCwd = await Deno.realPath(workflow.executionCwd);
+            const executionCwd = await fsRealpath(workflow.executionCwd);
             // Keep the current root spelling when it already names this checkout.
             // A reloaded root has its canonical spelling; do not restore a stale alias.
-            if (await Deno.realPath(session.cwd) === executionCwd) workflow.executionCwd = session.cwd;
+            if (await fsRealpath(session.cwd) === executionCwd) workflow.executionCwd = session.cwd;
         }
         session.restoreActiveExecutionWorkflow(workflow, null);
         return;
@@ -71,21 +73,19 @@ export async function restoreExecutionWorkflow(session: HostedSession): Promise<
         if (candidates.length !== 1) return;
         const entry = candidates[0];
         if (entry.status !== "active" || entry.planName !== association.planName) return;
-        const output = await new Deno.Command("git", {
+        const output = await captureForegroundProcess("git", {
             cwd: session.cwd,
             args: ["worktree", "list", "--porcelain"],
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
-        if (!output.success) return;
-        const expectedPath = await Deno.realPath(entry.path);
+        });
+        if (output.code !== 0) return;
+        const expectedPath = await fsRealpath(entry.path);
         let attachedCount = 0;
         for (const block of new TextDecoder().decode(output.stdout).trim().split(/\n\n+/)) {
             const lines = block.split("\n");
             const path = lines.find((line) => line.startsWith("worktree "))?.slice(9);
             if (
                 path && lines.includes(`branch refs/heads/${entry.branch}`) &&
-                await Deno.realPath(path) === expectedPath
+                await fsRealpath(path) === expectedPath
             ) attachedCount++;
         }
         if (attachedCount !== 1) return;

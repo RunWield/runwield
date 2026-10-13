@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";
@@ -50,7 +51,7 @@ function makeUi() {
     return { transcript, uiAPI };
 }
 
-Deno.test("TUI appends projectAggregateTranscript events across segment ids without session_replaced", () => {
+test("TUI appends projectAggregateTranscript events across segment ids without session_replaced", () => {
     const sessionId = "runtime-session";
     const runtime = makeRuntime(sessionId);
     const { transcript, uiAPI } = makeUi();

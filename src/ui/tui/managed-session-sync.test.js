@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createManagedSessionSyncController } from "./managed-session-sync.js";
 
@@ -22,7 +23,7 @@ function createTimerFixture() {
     };
 }
 
-Deno.test("managed sync controller schedules fixture timers around a real SessionRuntime", async () => {
+test("managed sync controller schedules fixture timers around a real SessionRuntime", async () => {
     const runtime = createSessionRuntime();
     const timer = createTimerFixture();
     const controller = createManagedSessionSyncController({
@@ -44,7 +45,7 @@ Deno.test("managed sync controller schedules fixture timers around a real Sessio
     runtime.closeAllSessions();
 });
 
-Deno.test("managed sync controller never schedules after disposal", async () => {
+test("managed sync controller never schedules after disposal", async () => {
     const runtime = createSessionRuntime();
     const timer = createTimerFixture();
     const controller = createManagedSessionSyncController({

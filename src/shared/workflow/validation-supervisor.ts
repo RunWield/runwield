@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module shared/workflow/validation-supervisor
  * The sole production owner for planned-change validation and resume.
@@ -120,7 +121,7 @@ async function claimValidation(args: ContinueWorkflowValidationArgs): Promise<Cl
             status: plan.attrs.status,
             phase: compatible ? prior.nextPhase : phase,
             state: "running",
-            ownerPid: Deno.pid,
+            ownerPid: process.pid,
             ownerHostname: getLockHostname(),
             repairGeneration: compatible ? prior.repairGeneration : undefined,
             repairKind: compatible ? prior.repairKind : undefined,
@@ -318,7 +319,7 @@ function operationalFailureResult(
         ? "The Plan file could not be found. Restore it, then load the Plan to continue."
         : error instanceof ValidationStateError && error.code === "unknown_plan_status"
         ? "The saved Plan needs attention before validation can continue. Open the Plan and check its status."
-        : error instanceof Deno.errors.PermissionDenied
+        : error.name === "PermissionDenied" || ("code" in error && (error.code === "EACCES" || error.code === "EPERM"))
         ? "Validation could not access the project files. Check folder permissions, then retry."
         : "Validation paused before it could finish. Your changes are safe. Load this Plan to retry from the saved step.";
     return {

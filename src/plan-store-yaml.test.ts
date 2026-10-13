@@ -1,7 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
 import { injectFrontMatter, parsePlanFrontMatter } from "./plan-store.js";
 
-Deno.test("Plan Front Matter safely round-trips ANSI control characters", () => {
+test("Plan Front Matter safely round-trips ANSI control characters", () => {
     const failureReason = `CI failed: \u001b[31mFAILED\u001b[0m`;
     const markdown = injectFrontMatter("# Plan\n", { failureReason });
 

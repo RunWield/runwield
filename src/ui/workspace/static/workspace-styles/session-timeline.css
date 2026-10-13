@@ -90,6 +90,26 @@
     background: color-mix(in srgb, var(--rw-warning) 10%, var(--rw-surface-raised));
 }
 
+.session-live-interaction > .markdown-view {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
+.session-live-interaction > .markdown-view p {
+    margin: 0.45rem 0;
+}
+
+.session-live-interaction > .markdown-view p:first-child {
+    margin-top: 0.25rem;
+}
+
+.session-live-interaction > .markdown-view p:last-child {
+    margin-bottom: 0.5rem;
+}
+
 .session-activity-group {
     border: 0;
     border-radius: 0;

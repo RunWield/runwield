@@ -1,5 +1,7 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
@@ -11,7 +13,7 @@ type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
 
 async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes, body: string) {
     const path = join(cwd, "docs", "plans", `${name}.md`);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const lines = ["---"];
     for (const [key, value] of Object.entries(attrs)) {
         if (Array.isArray(value)) {
@@ -22,7 +24,7 @@ async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes
         }
     }
     lines.push("---", "", body);
-    await Deno.writeTextFile(path, lines.join("\n"));
+    await fsWriteFile(path, lines.join("\n"));
 }
 
 function childAttrs(order: number, status: string): PlanFixtureAttributes {
@@ -68,11 +70,11 @@ async function withSiblingWorktree(repo: string, run: (path: string) => Promise<
     }
 }
 
-Deno.test("scope moves synchronize an unstarted sibling's registered worktree and survive retry", async () => {
+test("scope moves synchronize an unstarted sibling's registered worktree and survive retry", async () => {
     const repo = await familyFixture.checkout();
     await withSiblingWorktree(repo, async (authority) => {
         const sibling = await loadPlan(repo, "epic/02-approved");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             sibling!.path,
             sibling!.markdown.replace("Original scope.", "Use the laptop save bridge."),
         );
@@ -105,21 +107,21 @@ Deno.test("scope moves synchronize an unstarted sibling's registered worktree an
     });
 });
 
-Deno.test("independent sibling edits merge without losing either planning session's work", async () => {
+test("independent sibling edits merge without losing either planning session's work", async () => {
     const repo = await familyFixture.checkout();
     const sibling = await loadPlan(repo, "epic/02-approved");
     const body = "# Original title\n\nContext.\n\nOriginal scope.\n\nVerification.\n";
-    await Deno.writeTextFile(sibling!.path, sibling!.markdown.replace(sibling!.body, body));
+    await fsWriteFile(sibling!.path, sibling!.markdown.replace(sibling!.body, body));
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "Detailed sibling"]);
     await withSiblingWorktree(repo, async (authority) => {
         const local = await loadPlan(repo, "epic/02-approved");
         const remote = await loadPlan(authority, "epic/02-approved");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             local!.path,
             local!.markdown.replace("Original scope.", "Use the laptop save bridge."),
         );
-        await Deno.writeTextFile(remote!.path, remote!.markdown.replace("Original title", "Revised title"));
+        await fsWriteFile(remote!.path, remote!.markdown.replace("Original title", "Revised title"));
 
         await prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH);
 
@@ -130,27 +132,27 @@ Deno.test("independent sibling edits merge without losing either planning sessio
     });
 });
 
-Deno.test("conflicting sibling scope is preserved in both worktrees", async () => {
+test("conflicting sibling scope is preserved in both worktrees", async () => {
     const repo = await familyFixture.checkout();
     await withSiblingWorktree(repo, async (authority) => {
         const local = await loadPlan(repo, "epic/02-approved");
         const remote = await loadPlan(authority, "epic/02-approved");
         const localText = local!.markdown.replace("Original scope.", "Use the laptop save bridge.");
         const remoteText = remote!.markdown.replace("Original scope.", "Use a different persistence design.");
-        await Deno.writeTextFile(local!.path, localText);
-        await Deno.writeTextFile(remote!.path, remoteText);
+        await fsWriteFile(local!.path, localText);
+        await fsWriteFile(remote!.path, remoteText);
 
         await assertRejects(
             () => prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH),
             Error,
             "conflicting scope changes",
         );
-        assertEquals(await Deno.readTextFile(local!.path), localText);
-        assertEquals(await Deno.readTextFile(remote!.path), remoteText);
+        assertEquals(await fsReadFile(local!.path, "utf8"), localText);
+        assertEquals(await fsReadFile(remote!.path, "utf8"), remoteText);
     });
 });
 
-Deno.test("a sibling started in its authoritative worktree cannot be reshaped from a stale draft", async () => {
+test("a sibling started in its authoritative worktree cannot be reshaped from a stale draft", async () => {
     const repo = await familyFixture.checkout();
     await withSiblingWorktree(repo, async (authority) => {
         const remote = await loadPlan(authority, "epic/02-approved");
@@ -158,7 +160,7 @@ Deno.test("a sibling started in its authoritative worktree cannot be reshaped fr
             expectedRevision: remote!.revision,
         });
         const local = await loadPlan(repo, "epic/02-approved");
-        await Deno.writeTextFile(local!.path, `${local!.markdown}\nMoved scope.\n`);
+        await fsWriteFile(local!.path, `${local!.markdown}\nMoved scope.\n`);
         await assertRejects(
             () => prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH),
             Error,
@@ -168,10 +170,10 @@ Deno.test("a sibling started in its authoritative worktree cannot be reshaped fr
     });
 });
 
-Deno.test("metadata-only normalization of a started sibling does not block preparation", async () => {
+test("metadata-only normalization of a started sibling does not block preparation", async () => {
     const repo = await familyFixture.checkout();
     const sibling = await loadPlan(repo, "epic/04-started");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         sibling!.path,
         sibling!.markdown.replace('classification: "PLANNED_CHANGE"', 'classification: "FEATURE"'),
     );
@@ -181,10 +183,10 @@ Deno.test("metadata-only normalization of a started sibling does not block prepa
     assertEquals((await loadPlan(repo, "epic/04-started"))?.attrs.status, "in_progress");
 });
 
-Deno.test("an approved sibling whose scope moved goes back to draft and travels with the child", async () => {
+test("an approved sibling whose scope moved goes back to draft and travels with the child", async () => {
     const repo = await familyFixture.checkout();
     const approved = await loadPlan(repo, "epic/02-approved");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         approved!.path,
         approved!.markdown.replace("Original scope.", "Original scope, plus the parser split out of child 1."),
     );
@@ -195,10 +197,10 @@ Deno.test("an approved sibling whose scope moved goes back to draft and travels 
     assertEquals((await loadPlan(repo, "epic/02-approved"))?.attrs.status, "draft");
 });
 
-Deno.test("an edited draft sibling and a new split-out draft travel with the child unchanged in status", async () => {
+test("an edited draft sibling and a new split-out draft travel with the child unchanged in status", async () => {
     const repo = await familyFixture.checkout();
     const draft = await loadPlan(repo, "epic/03-draft");
-    await Deno.writeTextFile(draft!.path, `${draft!.markdown}\nMoved here from child 1.\n`);
+    await fsWriteFile(draft!.path, `${draft!.markdown}\nMoved here from child 1.\n`);
     await writePlan(repo, "epic/05-split", childAttrs(5, "draft"), "# Split out of child 1\n");
 
     const paths = await prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH);
@@ -207,19 +209,19 @@ Deno.test("an edited draft sibling and a new split-out draft travel with the chi
     assertEquals((await loadPlan(repo, "epic/03-draft"))?.attrs.status, "draft");
 });
 
-Deno.test("a started sibling stays as it is", async () => {
+test("a started sibling stays as it is", async () => {
     const repo = await familyFixture.checkout();
     const started = await loadPlan(repo, "epic/04-started");
-    await Deno.writeTextFile(started!.path, `${started!.markdown}\nMore scope.\n`);
+    await fsWriteFile(started!.path, `${started!.markdown}\nMore scope.\n`);
 
     const error = await assertRejects(() => prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH));
 
     assertStringIncludes(String(error), "epic/04-started has already started (in_progress)");
 });
 
-Deno.test("a child with no sibling edits carries nothing extra", async () => {
+test("a child with no sibling edits carries nothing extra", async () => {
     const repo = await familyFixture.checkout();
-    await Deno.writeTextFile(join(repo, CURRENT_PATH), "---\nstatus: ready_for_work\n---\n# Edited current\n");
+    await fsWriteFile(join(repo, CURRENT_PATH), "---\nstatus: ready_for_work\n---\n# Edited current\n");
 
     assertEquals(await prepareEditedSiblingPlans(repo, "epic/01-current", CURRENT_PATH), []);
 });

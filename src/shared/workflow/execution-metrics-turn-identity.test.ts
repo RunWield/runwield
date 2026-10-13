@@ -1,8 +1,10 @@
-import { assert, assertEquals, assertNotEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 
-Deno.test("observations identify their turn without reusing the previous turn ID", async () => {
+test("observations identify their turn without reusing the previous turn ID", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot });
         await recorder.recordExecutionStart();
@@ -28,7 +30,7 @@ Deno.test("observations identify their turn without reusing the previous turn ID
     });
 });
 
-Deno.test("Pi turn usage retains its identity when the previous latency write is pending", async () => {
+test("Pi turn usage retains its identity when the previous latency write is pending", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot });
         const usage = {

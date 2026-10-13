@@ -1,8 +1,10 @@
+// @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
 import { Window } from "happy-dom";
 import { readSessionDraft, saveSessionDraft } from "./browser/session-drafts.ts";
-// @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
 import { readWorkspaceStyles } from "./workspace-styles.ts";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     activePlanProgressApiUrl,
     draftRecoveryDecision,
@@ -32,7 +34,7 @@ import {
     SessionTimeline,
 } from "./components/SessionTimeline.jsx";
 
-Deno.test("Session composer keeps provider/model identities and opens slash choices before the first message", async () => {
+test("Session composer keeps provider/model identities and opens slash choices before the first message", async () => {
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const props = {
@@ -71,7 +73,7 @@ Deno.test("Session composer keeps provider/model identities and opens slash choi
     assertEquals(models.includes("<strong>openai-codex/gpt-5.6-luna</strong>"), true);
 });
 
-Deno.test("Session composer renders restored image draft previews ready for corrected send", async () => {
+test("Session composer renders restored image draft previews ready for corrected send", async () => {
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const html = renderToStaticMarkup(
@@ -95,7 +97,7 @@ Deno.test("Session composer renders restored image draft previews ready for corr
     assertEquals(html.includes('aria-label="Sending"'), false);
 });
 
-Deno.test("Session surface retains an HTTP-rejected image draft and sends a corrected draft once", async () => {
+test("Session surface retains an HTTP-rejected image draft and sends a corrected draft once", async () => {
     const browser = new Window({ url: "http://localhost" });
     const globals = [
         "window",
@@ -200,7 +202,7 @@ Deno.test("Session surface retains an HTTP-rejected image draft and sends a corr
     }
 });
 
-Deno.test("Session surface preserves drafts and replaces a lost live wait with one interruption line", () => {
+test("Session surface preserves drafts and replaces a lost live wait with one interruption line", () => {
     assertEquals(sessionDraftKey("project-1", "session-1"), "runwield:owner:project:project-1:session:session-1:draft");
     assertEquals(
         newSessionDraftInstanceStorageKey("project-1"),
@@ -245,7 +247,7 @@ Deno.test("Session surface preserves drafts and replaces a lost live wait with o
     assertEquals(interrupted[0]?.text, "The agent was interrupted. Ask it to continue.");
 });
 
-Deno.test("file-locked Sessions wait for the active surface without offering takeover", () => {
+test("file-locked Sessions wait for the active surface without offering takeover", () => {
     const availability = deriveSessionAvailability({
         state: "active",
         activeSurface: "tui",
@@ -258,7 +260,7 @@ Deno.test("file-locked Sessions wait for the active surface without offering tak
     );
 });
 
-Deno.test("Session timeline labels transitions without inventing an initial Agent", () => {
+test("Session timeline labels transitions without inventing an initial Agent", () => {
     const items = reduceSessionEvents([
         {
             type: "user_message",
@@ -297,7 +299,7 @@ Deno.test("Session timeline labels transitions without inventing an initial Agen
     assertEquals(items.some((item) => String(item.text || "").includes("segment-id")), false);
 });
 
-Deno.test("Session interaction answers preserve Runtime outcome identity", () => {
+test("Session interaction answers preserve Runtime outcome identity", () => {
     assertEquals(
         sessionInteractionChoiceResponse("select", {
             type: "select",
@@ -323,7 +325,7 @@ Deno.test("Session interaction answers preserve Runtime outcome identity", () =>
     });
 });
 
-Deno.test("Session availability observes idle Sessions too, so TUI turns appear automatically", () => {
+test("Session availability observes idle Sessions too, so TUI turns appear automatically", () => {
     assertEquals(shouldRefreshSessionAvailability({ mode: "detail", state: "active" }), true);
     assertEquals(
         shouldRefreshSessionAvailability({ mode: "detail", state: "active", localOperationActive: true }),
@@ -337,15 +339,15 @@ Deno.test("Session availability observes idle Sessions too, so TUI turns appear 
     assertEquals(shouldRefreshSessionAvailability({ mode: "new", state: "active" }), false);
 });
 
-Deno.test("Session availability refreshes when a busy page becomes active again", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
+test("Session availability refreshes when a busy page becomes active again", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
     assertEquals(surface.includes('globalThis.addEventListener("focus", refresh)'), true);
     assertEquals(surface.includes('document.addEventListener("visibilitychange", refreshWhenVisible)'), true);
 });
 
-Deno.test("busy Session messages remain sendable and render above the Workspace composer", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
-    const continuation = await Deno.readTextFile(new URL("./server/session-continuation.js", import.meta.url));
+test("busy Session messages remain sendable and render above the Workspace composer", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
+    const continuation = await fsReadFile(new URL("./server/session-continuation.js", import.meta.url), "utf8");
     const css = await readWorkspaceStyles(new URL("./static/workspace.css", import.meta.url));
     assertEquals(surface.includes('["active", "workspace-running"].includes(availability.key)'), true);
     assertEquals(surface.includes("const [queuedMessages, setQueuedMessages] = useState"), true);
@@ -360,8 +362,8 @@ Deno.test("busy Session messages remain sendable and render above the Workspace 
     assertEquals(css.includes(".session-composer-queue"), true);
 });
 
-Deno.test("Workspace new Session creation uses Workspace navigation instead of remounting the shell", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
+test("Workspace new Session creation uses Workspace navigation instead of remounting the shell", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
     assertEquals(surface.includes("function workspaceNavigate"), true);
     assertEquals(
         surface.includes(
@@ -383,9 +385,9 @@ Deno.test("Workspace new Session creation uses Workspace navigation instead of r
     );
 });
 
-Deno.test("Workspace-owned Session operations use live updates instead of browser polling", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
-    const server = await Deno.readTextFile(new URL("./server.js", import.meta.url));
+test("Workspace-owned Session operations use live updates instead of browser polling", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
+    const server = await fsReadFile(new URL("./server.js", import.meta.url), "utf8");
     assertEquals(surface.includes("const freshTimeline = await loadTimeline();"), true);
     assertEquals(surface.includes("expectedGeneration: freshTimeline.generation"), true);
     assertEquals(surface.includes("pending-user:${envelope.requestId}"), true);
@@ -403,18 +405,18 @@ Deno.test("Workspace-owned Session operations use live updates instead of browse
     assertEquals(server.includes("/api/owner/session-operations/:operationId/stream"), true);
 });
 
-Deno.test("Workspace Session UI uses the shared thinking dots loader", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
-    const timeline = await Deno.readTextFile(new URL("./components/SessionTimeline.jsx", import.meta.url));
-    const css = await Deno.readTextFile(new URL("../design-system/components.css", import.meta.url));
-    const docs = await Deno.readTextFile(new URL("../../../docs/design-system.md", import.meta.url));
+test("Workspace Session UI uses the shared thinking dots loader", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
+    const timeline = await fsReadFile(new URL("./components/SessionTimeline.jsx", import.meta.url), "utf8");
+    const css = await fsReadFile(new URL("../design-system/components.css", import.meta.url), "utf8");
+    const docs = await fsReadFile(new URL("../../../docs/design-system.md", import.meta.url), "utf8");
     assertEquals(surface.includes("RunWieldThinkingDots"), true);
     assertEquals(timeline.includes("RunWieldThinkingDots"), true);
     assertEquals(css.includes(".rw-thinking-dots"), true);
     assertEquals(docs.includes("Use `RunWieldThinkingDots`"), true);
 });
 
-Deno.test("Session timeline puts usage and stop time on the assistant block", () => {
+test("Session timeline puts usage and stop time on the assistant block", () => {
     const completedAt = new Date(2026, 8, 1, 21, 56).toISOString();
     const items = reduceSessionEvents([
         { type: "user_message", eventId: "u1", messageId: "u1", text: "Do it", timestamp: "2026-09-01T01:54:00.000Z" },
@@ -441,7 +443,7 @@ Deno.test("Session timeline puts usage and stop time on the assistant block", ()
     assertEquals(formatSessionTimelineTime(completedAt), "9:56pm");
 });
 
-Deno.test("Session timeline groups completed technical activity after agent content resumes", () => {
+test("Session timeline groups completed technical activity after agent content resumes", () => {
     const items = reduceSessionEvents([
         { type: "user_message", eventId: "u1", messageId: "u1", text: "Do it" },
         { type: "tool_start", eventId: "t1s", toolCallId: "t1", toolName: "read", title: "Read file" },
@@ -457,7 +459,7 @@ Deno.test("Session timeline groups completed technical activity after agent cont
     assertEquals(items[1]?.items?.[0]?.output, "src/app.js");
 });
 
-Deno.test("Activity stays open as it grows and only synchronizes Thinking disclosures", async () => {
+test("Activity stays open as it grows and only synchronizes Thinking disclosures", async () => {
     const { createElement } = await import("react");
     const { create, act } = await import("react-test-renderer");
     const previousActFlag = globalThis.IS_REACT_ACT_ENVIRONMENT;
@@ -519,7 +521,7 @@ Deno.test("Activity stays open as it grows and only synchronizes Thinking disclo
     }
 });
 
-Deno.test("Session timeline keeps trailing or running technical activity visible", () => {
+test("Session timeline keeps trailing or running technical activity visible", () => {
     const trailing = reduceSessionEvents([
         { type: "tool_start", eventId: "t1s", toolCallId: "t1", toolName: "read", title: "read src/app.js" },
         { type: "tool_end", eventId: "t1e", toolCallId: "t1", toolName: "read", output: "full file output" },
@@ -536,21 +538,22 @@ Deno.test("Session timeline keeps trailing or running technical activity visible
     assertEquals(compactToolLine(running[0]), "edit src/app.js running");
 });
 
-Deno.test("Session scroll follows only while the reader stays near the live edge", () => {
+test("Session scroll follows only while the reader stays near the live edge", () => {
     assertEquals(isAtLiveScrollEdge({ scrollHeight: 1000, scrollTop: 553, clientHeight: 400 }), true);
     assertEquals(isAtLiveScrollEdge({ scrollHeight: 1000, scrollTop: 300, clientHeight: 400 }), false);
 });
 
-Deno.test("Existing Session route lets the shared chat shell own the page heading", async () => {
-    const route = await Deno.readTextFile(
+test("Existing Session route lets the shared chat shell own the page heading", async () => {
+    const route = await fsReadFile(
         new URL("./pages/projects/[projectId]/sessions/[runwieldSessionId].astro", import.meta.url),
+        "utf8",
     );
     assertEquals(route.includes("Session Continuation"), false);
     assertEquals(route.includes("Committed transcript history"), false);
     assertEquals(route.includes("SessionSurface"), true);
 });
 
-Deno.test("live Plan attachment updates sidebar state without replacing committed history", () => {
+test("live Plan attachment updates sidebar state without replacing committed history", () => {
     const initial = {
         events: [{ eventId: "committed-1", text: "Start with Ideator" }],
         nextCursor: "committed-1",
@@ -592,8 +595,8 @@ Deno.test("live Plan attachment updates sidebar state without replacing committe
     assertEquals(initial.snapshot.activeAgent, "ideator");
 });
 
-Deno.test("Session workflow sidebar uses canonical progress stages", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
+test("Session workflow sidebar uses canonical progress stages", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
     assertEquals(
         activePlanProgressApiUrl("project-1", "session-1", {
             activeExecutionWorkflow: { planId: "plan-demo" },
@@ -627,8 +630,8 @@ Deno.test("Session workflow sidebar uses canonical progress stages", async () =>
     assertEquals(surface.includes("WorkflowSidebar"), true);
 });
 
-Deno.test("Persisted Sessions expose the shared context sidebar tabs", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
+test("Persisted Sessions expose the shared context sidebar tabs", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
     assertEquals(surface.includes("SESSION_SIDEBAR_TABS.map"), true);
     assertEquals(surface.includes("session-context-tabs"), true);
     assertEquals(surface.includes("session-artifact-list"), true);
@@ -637,8 +640,8 @@ Deno.test("Persisted Sessions expose the shared context sidebar tabs", async () 
     assertEquals(surface.includes('title="Workflow"'), true);
 });
 
-Deno.test("Session sidebar adds current runtime settings to shared TUI fields", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
+test("Session sidebar adds current runtime settings to shared TUI fields", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
     assertEquals(
         surface.includes('sessionSidebarFields(sessionSidebar).filter((field) => field.label !== "Session")'),
         true,
@@ -655,8 +658,8 @@ Deno.test("Session sidebar adds current runtime settings to shared TUI fields", 
     assertEquals(surface.includes("thinkingValue={displayedThinking}"), true);
 });
 
-Deno.test("Session sidebar keeps one toggle and its tabs in the shared header", async () => {
-    const surface = await Deno.readTextFile(new URL("./islands/SessionSurface.jsx", import.meta.url));
+test("Session sidebar keeps one toggle and its tabs in the shared header", async () => {
+    const surface = await fsReadFile(new URL("./islands/SessionSurface.jsx", import.meta.url), "utf8");
     const header = surface.slice(
         surface.indexOf("<WorkspaceHeaderActionsPortal>"),
         surface.indexOf("</WorkspaceHeaderActionsPortal>"),
@@ -672,7 +675,7 @@ Deno.test("Session sidebar keeps one toggle and its tabs in the shared header", 
     assertEquals(sidebar.includes('className="kicker"'), false);
 });
 
-Deno.test("mobile Session context keeps covered chat out of keyboard navigation", async () => {
+test("mobile Session context keeps covered chat out of keyboard navigation", async () => {
     const browser = new Window({ url: "http://localhost" });
     const globals = [
         "window",
@@ -776,7 +779,7 @@ Deno.test("mobile Session context keeps covered chat out of keyboard navigation"
     }
 });
 
-Deno.test("Session image attachments use a Session-scoped draft key and request payload", () => {
+test("Session image attachments use a Session-scoped draft key and request payload", () => {
     assertEquals(
         sessionAttachmentsKey("project-1", "session-1"),
         "runwield:owner:project:project-1:session:session-1:image-attachments",
@@ -787,7 +790,7 @@ Deno.test("Session image attachments use a Session-scoped draft key and request 
     );
 });
 
-Deno.test("idle Sessions can continue with planning or execution history", () => {
+test("idle Sessions can continue with planning or execution history", () => {
     const planning = deriveSessionAvailability({
         state: "idle",
         generation: 4,
@@ -805,7 +808,7 @@ Deno.test("idle Sessions can continue with planning or execution history", () =>
     assertEquals(execution.canContinue, true);
 });
 
-Deno.test("review_diff stays collapsed while review_complete is an expanded workflow step", async () => {
+test("review_diff stays collapsed while review_complete is an expanded workflow step", async () => {
     const { SessionTimeline } = await import("./components/SessionTimeline.jsx");
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
@@ -829,7 +832,7 @@ Deno.test("review_diff stays collapsed while review_complete is an expanded work
     assertEquals(items[1].workflowMessage, "review_complete");
 });
 
-Deno.test("all workflow tools remain expanded outside routine activity, with accepted reports preserved", async () => {
+test("all workflow tools remain expanded outside routine activity, with accepted reports preserved", async () => {
     const { WORKFLOW_TOOL_NAMES } = await import("../../tools/registry.ts");
     const { workflowToolMarkdown, SessionTimeline } = await import("./components/SessionTimeline.jsx");
     const { createElement } = await import("react");
@@ -943,14 +946,160 @@ Deno.test("all workflow tools remain expanded outside routine activity, with acc
     assertEquals(artifactHtml.includes("Open Session findings"), true);
 });
 
-Deno.test("image-only user messages survive the browser timeline reducer", () => {
+test("Plan deviation card and pair programming card render as Markdown with correct newlines", async () => {
+    const { workflowToolMarkdown, SessionTimeline } = await import("./components/SessionTimeline.jsx");
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+
+    // 1. Plan deviation workflow card from structured details
+    const deviationFromDetails = reduceSessionEvents([{
+        type: "tool_end",
+        toolCallId: "dev-1",
+        toolName: "record_plan_deviation",
+        details: {
+            entry: {
+                supersededRequirement: "Keep monolithic router",
+                replacementRequirement: "Split router into sub-modules",
+                reason: "Improve testability",
+                approvedAt: "2026-10-11T12:00:00Z",
+            },
+        },
+    }]);
+    assertEquals(deviationFromDetails[0].kind, "workflow");
+    const mdDetails = workflowToolMarkdown(deviationFromDetails[0]);
+    assertEquals(mdDetails.includes("**Superseded requirement:**\n\nKeep monolithic router"), true);
+    assertEquals(mdDetails.includes("**Replacement requirement:**\n\nSplit router into sub-modules"), true);
+    assertEquals(mdDetails.includes("**Reason:**\n\nImprove testability"), true);
+    assertEquals(mdDetails.includes("*Approved at:* 2026-10-11T12:00:00Z"), true);
+    const htmlDeviationDetails = renderToStaticMarkup(createElement(SessionTimeline, { items: deviationFromDetails }));
+    assertEquals(htmlDeviationDetails.includes("<strong>Plan Deviation</strong>"), true);
+    assertEquals(
+        htmlDeviationDetails.includes('<strong class="quikdown-strong">Superseded requirement:</strong>'),
+        true,
+    );
+    assertEquals(
+        htmlDeviationDetails.includes('<strong class="quikdown-strong">Replacement requirement:</strong>'),
+        true,
+    );
+    assertEquals(htmlDeviationDetails.includes('<strong class="quikdown-strong">Reason:</strong>'), true);
+    assertEquals(htmlDeviationDetails.includes("<p>Keep monolithic router</p>"), true);
+    assertEquals(htmlDeviationDetails.includes("<p>Split router into sub-modules</p>"), true);
+
+    // 2. Plan deviation workflow card from prompt output string
+    const deviationFromString = reduceSessionEvents([{
+        type: "tool_end",
+        toolCallId: "dev-2",
+        toolName: "record_plan_deviation",
+        output:
+            "Plan Deviation recorded in the execution Plan. Reread the effective Plan projection and continue under this replacement.\n\n1. Superseded requirement: Single file\n   Replacement requirement: Multi file\n   Reason: Modular\n   Approved at: 2026-10-11T13:00:00Z",
+    }]);
+    const mdString = workflowToolMarkdown(deviationFromString[0]);
+    assertEquals(mdString.includes("**Superseded requirement:**\n\nSingle file"), true);
+    assertEquals(mdString.includes("**Replacement requirement:**\n\nMulti file"), true);
+    assertEquals(mdString.includes("**Reason:**\n\nModular"), true);
+    const htmlDeviationString = renderToStaticMarkup(createElement(SessionTimeline, { items: deviationFromString }));
+    assertEquals(
+        htmlDeviationString.includes('<strong class="quikdown-strong">Superseded requirement:</strong>'),
+        true,
+    );
+    assertEquals(htmlDeviationString.includes("<p>Single file</p>"), true);
+    assertEquals(
+        htmlDeviationString.includes('<strong class="quikdown-strong">Replacement requirement:</strong>'),
+        true,
+    );
+    assertEquals(htmlDeviationString.includes("<p>Multi file</p>"), true);
+
+    // 3. Pair programming workflow card from details
+    const pairFromDetails = reduceSessionEvents([{
+        type: "tool_end",
+        toolCallId: "pair-1",
+        toolName: "pair_checkpoint",
+        details: {
+            checkpointNumber: 2,
+            final: false,
+            summary: "Extracted database adapters.",
+            nextIncrement: "Wire migration tests.",
+            evidence: ["src/adapters/db.ts exists"],
+        },
+    }]);
+    const mdPairDetails = workflowToolMarkdown(pairFromDetails[0]);
+    assertEquals(mdPairDetails.includes("**Pair checkpoint 2.**"), true);
+    assertEquals(mdPairDetails.includes("**Summary**\n\nExtracted database adapters."), true);
+    assertEquals(mdPairDetails.includes("**Next increment:**\n\nWire migration tests."), true);
+    assertEquals(mdPairDetails.includes("- src/adapters/db.ts exists"), true);
+    const htmlPairDetails = renderToStaticMarkup(createElement(SessionTimeline, { items: pairFromDetails }));
+    assertEquals(htmlPairDetails.includes("<strong>Pair Checkpoint</strong>"), true);
+    assertEquals(htmlPairDetails.includes('<strong class="quikdown-strong">Pair checkpoint 2.</strong>'), true);
+    assertEquals(htmlPairDetails.includes('<strong class="quikdown-strong">Summary</strong>'), true);
+    assertEquals(htmlPairDetails.includes("<p>Extracted database adapters.</p>"), true);
+    assertEquals(htmlPairDetails.includes('<strong class="quikdown-strong">Next increment:</strong>'), true);
+    assertEquals(htmlPairDetails.includes("<p>Wire migration tests.</p>"), true);
+
+    // 4. Pair programming workflow card from output string
+    const pairFromString = reduceSessionEvents([{
+        type: "tool_end",
+        toolCallId: "pair-2",
+        toolName: "pair_checkpoint",
+        output:
+            "**Pair checkpoint 1.**\n\nThe folder rename and script updates are ready.\n\nNext increment: Update CI references and documentation.\n\nReply normally to ask a question, request a change, continue, stop, or switch to autonomous work.",
+    }]);
+    const htmlPairString = renderToStaticMarkup(createElement(SessionTimeline, { items: pairFromString }));
+    assertEquals(htmlPairString.includes('<strong class="quikdown-strong">Pair checkpoint 1.</strong>'), true);
+    assertEquals(htmlPairString.includes("<p>The folder rename and script updates are ready.</p>"), true);
+    assertEquals(htmlPairString.includes('<strong class="quikdown-strong">Next increment:</strong>'), true);
+    assertEquals(htmlPairString.includes("<p>Update CI references and documentation.</p>"), true);
+
+    // 5. Plan deviation interaction card
+    const deviationInteraction = reduceSessionEvents([{
+        type: "interaction_requested",
+        interactionId: "dev-confirm-1",
+        interactionType: "plan_deviation_confirmation",
+        prompt:
+            "Confirm this Plan Deviation before I treat it as authority.\n\nSuperseded requirement: Inline CSS styles\n\nReplacement requirement: Design system tokens\n\nReason: Consistent styling\n\nConfirmed text will be saved in the Plan and Work Record.",
+    }]);
+    assertEquals(deviationInteraction[0].kind, "interaction");
+    const htmlDeviationInteraction = renderToStaticMarkup(
+        createElement(SessionTimeline, { items: deviationInteraction }),
+    );
+    assertEquals(htmlDeviationInteraction.includes("<strong>Plan Deviation confirmation</strong>"), true);
+    assertEquals(htmlDeviationInteraction.includes('<div class="markdown-view">'), true);
+    assertEquals(
+        htmlDeviationInteraction.includes('<strong class="quikdown-strong">Superseded requirement:</strong>'),
+        true,
+    );
+    assertEquals(htmlDeviationInteraction.includes("<p>Inline CSS styles</p>"), true);
+    assertEquals(
+        htmlDeviationInteraction.includes('<strong class="quikdown-strong">Replacement requirement:</strong>'),
+        true,
+    );
+    assertEquals(htmlDeviationInteraction.includes("<p>Design system tokens</p>"), true);
+    assertEquals(htmlDeviationInteraction.includes('<strong class="quikdown-strong">Reason:</strong>'), true);
+    assertEquals(htmlDeviationInteraction.includes("<p>Consistent styling</p>"), true);
+
+    // 6. Pair programming interaction card
+    const pairInteraction = reduceSessionEvents([{
+        type: "interaction_requested",
+        interactionId: "pair-input-1",
+        interactionType: "pair_checkpoint",
+        prompt: "**Pair checkpoint 1.**\n\nStep 1 complete.\n\nNext increment: Step 2 verification.",
+    }]);
+    const htmlPairInteraction = renderToStaticMarkup(createElement(SessionTimeline, { items: pairInteraction }));
+    assertEquals(htmlPairInteraction.includes("<strong>Pair checkpoint</strong>"), true);
+    assertEquals(htmlPairInteraction.includes('<div class="markdown-view">'), true);
+    assertEquals(htmlPairInteraction.includes('<strong class="quikdown-strong">Pair checkpoint 1.</strong>'), true);
+    assertEquals(htmlPairInteraction.includes("<p>Step 1 complete.</p>"), true);
+    assertEquals(htmlPairInteraction.includes('<strong class="quikdown-strong">Next increment:</strong>'), true);
+    assertEquals(htmlPairInteraction.includes("<p>Step 2 verification.</p>"), true);
+});
+
+test("image-only user messages survive the browser timeline reducer", () => {
     const images = [{ base64: "aW1hZ2U=", mimeType: "image/png" }];
     const items = reduceSessionEvents([{ type: "user_message", messageId: "image", text: "", images }]);
     assertEquals(items[0].images, images);
     assertEquals(items[0].role, "user");
 });
 
-Deno.test("Core busy events show Working at the live edge before any assistant output and clear on idle", async () => {
+test("Core busy events show Working at the live edge before any assistant output and clear on idle", async () => {
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const events = [
@@ -974,7 +1123,7 @@ Deno.test("Core busy events show Working at the live edge before any assistant o
     assertEquals(reduceOperationTransientItems([]).length, 0);
 });
 
-Deno.test("Workspace displays a reported backend denial once", () => {
+test("Workspace displays a reported backend denial once", () => {
     const items = reduceSessionEvents([
         { type: "system_status", level: "error", message: "Blocked: read_file" },
         { type: "terminal_error", message: "Blocked: read_file", messageAlreadyReported: true },
@@ -985,7 +1134,7 @@ Deno.test("Workspace displays a reported backend denial once", () => {
     ]);
 });
 
-Deno.test("Workspace shows a saved provider interruption as history, not a running retry", () => {
+test("Workspace shows a saved provider interruption as history, not a running retry", () => {
     const items = reduceSessionEvents([
         {
             type: "terminal_error",
@@ -1001,7 +1150,7 @@ Deno.test("Workspace shows a saved provider interruption as history, not a runni
     assertEquals(text.includes("Retrying in"), false);
 });
 
-Deno.test("Session composer preserves drafts across focus changes and shares one Stop or Send action", async () => {
+test("Session composer preserves drafts across focus changes and shares one Stop or Send action", async () => {
     const previousDocument = globalThis.document;
     const previousActFlag = globalThis.IS_REACT_ACT_ENVIRONMENT;
     globalThis.document = { getElementById: () => null };
@@ -1115,7 +1264,7 @@ Deno.test("Session composer preserves drafts across focus changes and shares one
     }
 });
 
-Deno.test("saved and live reports reconcile by call and retain chronological Activity boundaries", () => {
+test("saved and live reports reconcile by call and retain chronological Activity boundaries", () => {
     const time = (minute) => `2026-09-19T20:${minute}:00.000Z`;
     const report = (call, minute) => [
         { type: "tool_end", toolName: "task_completed", toolCallId: call, timestamp: time(minute) },
@@ -1177,7 +1326,7 @@ Deno.test("saved and live reports reconcile by call and retain chronological Act
     assertEquals(new Set(items[1].items.map((item) => item.key)).size, 5);
 });
 
-Deno.test("Activity never spans a user message or special report", () => {
+test("Activity never spans a user message or special report", () => {
     const tool = (id) => ({ type: "tool_end", toolName: "read", toolCallId: id });
     const items = reduceSessionEvents([
         tool("a"),
@@ -1204,7 +1353,7 @@ Deno.test("Activity never spans a user message or special report", () => {
     );
 });
 
-Deno.test("nested completion reports keep their call identity and accepted time after late results", () => {
+test("nested completion reports keep their call identity and accepted time after late results", () => {
     const time = (minute) => `2026-09-19T20:${minute}:00.000Z`;
     const items = reduceSessionEvents([
         { type: "tool_start", toolName: "task_completed", toolCallId: "outer", timestamp: time("23") },
@@ -1235,7 +1384,7 @@ Deno.test("nested completion reports keep their call identity and accepted time 
     ], ["inner", "Inner report", time("26")]]);
 });
 
-Deno.test("live updates finish saved running tools without dropping later repeated user text", () => {
+test("live updates finish saved running tools without dropping later repeated user text", () => {
     const saved = reduceSessionEvents([
         { type: "user_message", messageId: "saved-user", text: "Continue", timestamp: "2026-09-19T20:00:01Z" },
         { type: "tool_start", toolCallId: "call", toolName: "read", timestamp: "2026-09-19T20:01:00Z" },
@@ -1252,7 +1401,7 @@ Deno.test("live updates finish saved running tools without dropping later repeat
     assertEquals(items[2].timestamp, "2026-09-19T20:03:00Z");
 });
 
-Deno.test("Workflow Resume submits the committed version and reports progress and errors inside the mobile sidebar", async () => {
+test("Workflow Resume submits the committed version and reports progress and errors inside the mobile sidebar", async () => {
     const browser = new Window({ url: "http://localhost" });
     const globals = [
         "window",
@@ -1430,7 +1579,7 @@ Deno.test("Workflow Resume submits the committed version and reports progress an
     }
 });
 
-Deno.test("mobile Answer agent reveals the waiting question", async () => {
+test("mobile Answer agent reveals the waiting question", async () => {
     const browser = new Window({ url: "http://localhost" });
     const globals = [
         "window",
@@ -1538,7 +1687,7 @@ Deno.test("mobile Answer agent reveals the waiting question", async () => {
     }
 });
 
-Deno.test("New Session selects a registered Project by route and creates only with destination defaults", async () => {
+test("New Session selects a registered Project by route and creates only with destination defaults", async () => {
     const browser = new Window({ url: "http://localhost/projects/project-a/sessions/new" });
     const globals = [
         "window",
@@ -1748,7 +1897,7 @@ function deferredResponse() {
     return { promise, resolve, reject };
 }
 
-Deno.test("New Session ignores a late create response after opening another surface", async () => {
+test("New Session ignores a late create response after opening another surface", async () => {
     const pending = deferredResponse();
     const navigations = [];
     await withNewSessionSurface(async ({ mount, composer, act }) => {
@@ -1786,7 +1935,7 @@ function defaultNewSessionResponse(url) {
     throw new Error(`Unexpected request: ${url}`);
 }
 
-Deno.test("New Session locks Project while an image is read and after it is attached or restored", async () => {
+test("New Session locks Project while an image is read and after it is attached or restored", async () => {
     await withNewSessionSurface(async ({ browser, mount, choice, composer, act }) => {
         await mount();
         let reader;
@@ -1822,7 +1971,7 @@ Deno.test("New Session locks Project while an image is read and after it is atta
     });
 });
 
-Deno.test("New Session waits for reads and ignores stale Project options", async () => {
+test("New Session waits for reads and ignores stale Project options", async () => {
     const projects = deferredResponse();
     const optionsA = deferredResponse();
     const optionsB = deferredResponse();
@@ -1856,7 +2005,7 @@ Deno.test("New Session waits for reads and ignores stale Project options", async
     );
 });
 
-Deno.test("New Session read failures offer Retry without sending or losing a draft", async () => {
+test("New Session read failures offer Retry without sending or losing a draft", async () => {
     let projectsFails = true;
     let optionsFails = true;
     await withNewSessionSurface(
@@ -1891,7 +2040,7 @@ Deno.test("New Session read failures offer Retry without sending or losing a dra
     );
 });
 
-Deno.test("New Session pending and network-error retry stay bound to the original Project", async () => {
+test("New Session pending and network-error retry stay bound to the original Project", async () => {
     const pending = deferredResponse();
     const posts = [];
     await withNewSessionSurface(async ({ mount, choice, composer, act }) => {
@@ -1927,7 +2076,7 @@ Deno.test("New Session pending and network-error retry stay bound to the origina
     });
 });
 
-Deno.test("New Session HTTP 422 preserves the editable draft and Project", async () => {
+test("New Session HTTP 422 preserves the editable draft and Project", async () => {
     await withNewSessionSurface(
         async ({ mount, choice, composer, act }) => {
             await mount("project-b");
@@ -1946,7 +2095,7 @@ Deno.test("New Session HTTP 422 preserves the editable draft and Project", async
     );
 });
 
-Deno.test("New Session ignores late Project choices from an unmounted surface", async () => {
+test("New Session ignores late Project choices from an unmounted surface", async () => {
     const oldProjects = deferredResponse();
     let projectReads = 0;
     await withNewSessionSurface(
@@ -1978,7 +2127,7 @@ async function startObservedNewSession(surface) {
     await surface.act(() => surface.composer().props.onSubmit());
 }
 
-Deno.test("New Session fallback does not overlap a slow operation read", async () => {
+test("New Session fallback does not overlap a slow operation read", async () => {
     const pending = deferredResponse();
     const reads = [];
     let stream;
@@ -2010,7 +2159,7 @@ Deno.test("New Session fallback does not overlap a slow operation read", async (
     });
 });
 
-Deno.test("New Session abandons an old fallback read on navigation and unmount", async () => {
+test("New Session abandons an old fallback read on navigation and unmount", async () => {
     const pending = deferredResponse();
     const reads = [];
     let stream;
@@ -2041,7 +2190,7 @@ Deno.test("New Session abandons an old fallback read on navigation and unmount",
     });
 });
 
-Deno.test("New Session terminal stream message followed by error does not report an interruption", async () => {
+test("New Session terminal stream message followed by error does not report an interruption", async () => {
     const streams = [];
     const reads = [];
     await withNewSessionSurface(async (surface) => {
@@ -2069,7 +2218,7 @@ Deno.test("New Session terminal stream message followed by error does not report
     });
 });
 
-Deno.test("Session history confirms busy archive before any request and guards duplicate actions", async () => {
+test("Session history confirms busy archive before any request and guards duplicate actions", async () => {
     const { SessionList } = await import("./components/SessionList.jsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
@@ -2141,7 +2290,7 @@ Deno.test("Session history confirms busy archive before any request and guards d
     }
 });
 
-Deno.test("Idle archive failure keeps its open link and supports retry; archived rows unarchive without confirmation", async () => {
+test("Idle archive failure keeps its open link and supports retry; archived rows unarchive without confirmation", async () => {
     const { SessionList } = await import("./components/SessionList.jsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
@@ -2214,7 +2363,7 @@ Deno.test("Idle archive failure keeps its open link and supports retry; archived
     }
 });
 
-Deno.test("Archived Sessions fetches the selected page and keeps saved links when Unarchive fails", async () => {
+test("Archived Sessions fetches the selected page and keeps saved links when Unarchive fails", async () => {
     const { default: ArchivedSessions } = await import("./islands/ArchivedSessions.tsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
@@ -2282,7 +2431,7 @@ Deno.test("Archived Sessions fetches the selected page and keeps saved links whe
     }
 });
 
-Deno.test("fresh Session history restores a previously removed ID and empty later pages keep Previous", async () => {
+test("fresh Session history restores a previously removed ID and empty later pages keep Previous", async () => {
     const { SessionList } = await import("./components/SessionList.jsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
@@ -2325,7 +2474,7 @@ Deno.test("fresh Session history restores a previously removed ID and empty late
     }
 });
 
-Deno.test("Plan Session archive keeps the row and switches its action; stale idle busy conflict confirms retry", async () => {
+test("Plan Session archive keeps the row and switches its action; stale idle busy conflict confirms retry", async () => {
     const { SessionList } = await import("./components/SessionList.jsx");
     const { createElement, act } = await import("react");
     const { create } = await import("react-test-renderer");
@@ -2396,7 +2545,7 @@ Deno.test("Plan Session archive keeps the row and switches its action; stale idl
 });
 
 for (const surface of ["archived", "history"]) {
-    Deno.test(`${surface} Session pagination returns from a page emptied by concurrent row actions`, async () => {
+    test(`${surface} Session pagination returns from a page emptied by concurrent row actions`, async () => {
         const { default: ArchivedSessions } = await import("./islands/ArchivedSessions.tsx");
         const { createElement, act } = await import("react");
         const { create } = await import("react-test-renderer");
@@ -2502,7 +2651,7 @@ for (const surface of ["archived", "history"]) {
     });
 }
 
-Deno.test("Session composer removes mascot markup and keeps controls when hidden", async () => {
+test("Session composer removes mascot markup and keeps controls when hidden", async () => {
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const props = {
@@ -2523,7 +2672,7 @@ Deno.test("Session composer removes mascot markup and keeps controls when hidden
     }
 });
 
-Deno.test("New Session honors loaded mascot options without flashing while loading", async () => {
+test("New Session honors loaded mascot options without flashing while loading", async () => {
     for (const mascot of [false, undefined]) {
         const options = deferredResponse();
         await withNewSessionSurface(async ({ mount, composer, act }) => {

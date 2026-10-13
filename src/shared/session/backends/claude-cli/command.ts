@@ -1,3 +1,7 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { env } from "node:process";
+import { chmod as fsChmod, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { RUNWIELD_MCP_TOOL_TIMEOUT_MS } from "../../bridged-tools/tool-timeout.ts";
 
 export interface ClaudeCliCommandRequest {
@@ -35,7 +39,7 @@ const CLAUDE_CLI_PROJECT_TOOL_NAMES = [
 ];
 
 function resolveMcpToolIdleTimeoutEnv(): string {
-    const inherited = Number(Deno.env.get("CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT"));
+    const inherited = Number(env.CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT);
     if (Number.isFinite(inherited) && inherited > RUNWIELD_MCP_TOOL_TIMEOUT_MS) {
         return String(Math.trunc(inherited));
     }
@@ -43,10 +47,10 @@ function resolveMcpToolIdleTimeoutEnv(): string {
 }
 
 async function writeOwnerOnlyTempFile(prefix: string, suffix: string, content: string): Promise<string> {
-    const path = await Deno.makeTempFile({ prefix, suffix });
-    await Deno.writeTextFile(path, content, { mode: 0o600 });
+    const path = join(tmpdir(), `${prefix}${crypto.randomUUID()}${suffix}`);
+    await fsWriteFile(path, content, { mode: 0o600, flag: "wx" });
     try {
-        await Deno.chmod(path, 0o600);
+        await fsChmod(path, 0o600);
     } catch {
         // Best effort on platforms without chmod support.
     }
@@ -96,17 +100,17 @@ export async function prepareClaudeCliCommand(request: ClaudeCliCommandRequest):
 
 export async function removeClaudeCliPromptFile(command: PreparedClaudeCliCommand): Promise<void> {
     try {
-        await Deno.remove(command.promptFilePath);
+        await fsRm(command.promptFilePath);
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
 }
 
 export async function removeClaudeCliMcpConfigFile(command: PreparedClaudeCliCommand): Promise<void> {
     if (!command.mcpConfigPath) return;
     try {
-        await Deno.remove(command.mcpConfigPath);
+        await fsRm(command.mcpConfigPath);
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
 }

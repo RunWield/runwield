@@ -1,5 +1,7 @@
+import process from "node:process";
+import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.js";
@@ -59,9 +61,9 @@ async function saveEpicWithChild(projectRoot: string, terminal: boolean): Promis
     });
 }
 
-Deno.test("automatic Work Record generation writes a canonical record and Plan backlink", async () => {
+test("automatic Work Record generation writes a canonical record and Plan backlink", async () => {
     await withRuntimeCommandFixture("work-record-auto-", async ({ projectRoot, setModelMessages }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveStandalonePlan(projectRoot);
         setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
             title: "Standalone Outcome",
@@ -87,7 +89,7 @@ Deno.test("automatic Work Record generation writes a canonical record and Plan b
     });
 });
 
-Deno.test("automatic Work Record generation reads acceptance from the registered worktree", async () => {
+test("automatic Work Record generation reads acceptance from the registered worktree", async () => {
     await withRuntimeCommandFixture("work-record-accepted-worktree-", async ({ projectRoot, setModelMessages }) => {
         await git(projectRoot, ["init", "-b", "main"]);
         await git(projectRoot, ["config", "user.email", "tests@example.com"]);
@@ -151,9 +153,9 @@ Deno.test("automatic Work Record generation reads acceptance from the registered
     });
 });
 
-Deno.test("automatic child completion generates only the terminal parent Epic record", async () => {
+test("automatic child completion generates only the terminal parent Epic record", async () => {
     await withRuntimeCommandFixture("work-record-auto-epic-", async ({ projectRoot, setModelMessages }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveEpicWithChild(projectRoot, true);
         setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
             title: "Epic Outcome",
@@ -176,9 +178,9 @@ Deno.test("automatic child completion generates only the terminal parent Epic re
     });
 });
 
-Deno.test("automatic child completion waits for its real parent Epic to become terminal", async () => {
+test("automatic child completion waits for its real parent Epic to become terminal", async () => {
     await withRuntimeCommandFixture("work-record-auto-wait-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveEpicWithChild(projectRoot, false);
 
         const result = await autoGenerateWorkRecordForCompletedPlan({
@@ -194,9 +196,9 @@ Deno.test("automatic child completion waits for its real parent Epic to become t
     });
 });
 
-Deno.test("automatic generation honors the project Work Record setting", async () => {
+test("automatic generation honors the project Work Record setting", async () => {
     await withRuntimeCommandFixture("work-record-auto-disabled-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveStandalonePlan(projectRoot);
         await setCustomSetting("workRecords", { autoGenerateOnPlanCompletion: false }, "project");
 
@@ -212,9 +214,9 @@ Deno.test("automatic generation honors the project Work Record setting", async (
     });
 });
 
-Deno.test("automatic generation persists normalized pending supersession proposals", async () => {
+test("automatic generation persists normalized pending supersession proposals", async () => {
     await withRuntimeCommandFixture("work-record-auto-proposal-", async ({ projectRoot, setModelMessages }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const predecessorId = "11111111-1111-4111-8111-111111111111";
         await savePredecessor(projectRoot, predecessorId, "Earlier Outcome");
         await saveStandalonePlan(projectRoot);
@@ -249,9 +251,9 @@ Deno.test("automatic generation persists normalized pending supersession proposa
     });
 });
 
-Deno.test("automatic generation settles Plan declarations and keeps only undeclared proposals pending", async () => {
+test("automatic generation settles Plan declarations and keeps only undeclared proposals pending", async () => {
     await withRuntimeCommandFixture("work-record-auto-declared-", async ({ projectRoot, setModelMessages }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const declaredId = "22222222-2222-4222-8222-222222222222";
         const proposedId = "33333333-3333-4333-8333-333333333333";
         await savePredecessor(projectRoot, declaredId, "Declared Earlier Outcome");
@@ -288,9 +290,9 @@ Deno.test("automatic generation settles Plan declarations and keeps only undecla
     });
 });
 
-Deno.test("automatic generation preserves terminal Plan state when Recorder fails", async () => {
+test("automatic generation preserves terminal Plan state when Recorder fails", async () => {
     await withRuntimeCommandFixture("work-record-auto-failure-", async ({ projectRoot, setModelResponseFactories }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveStandalonePlan(projectRoot);
         let calls = 0;
         const respond = () => {
@@ -319,9 +321,9 @@ Deno.test("automatic generation preserves terminal Plan state when Recorder fail
     });
 });
 
-Deno.test("Recorder corrects a text-only response once using the original source context", async () => {
+test("Recorder corrects a text-only response once using the original source context", async () => {
     await withRuntimeCommandFixture("work-record-retry-", async ({ projectRoot, setModelResponseFactories }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await saveStandalonePlan(projectRoot);
         let calls = 0;
         setModelResponseFactories([
@@ -352,9 +354,9 @@ Deno.test("Recorder corrects a text-only response once using the original source
 });
 
 for (const stopReason of ["error", "aborted"] as const) {
-    Deno.test(`Recorder does not retry a ${stopReason} turn as a missing-tool correction`, async () => {
+    test(`Recorder does not retry a ${stopReason} turn as a missing-tool correction`, async () => {
         await withRuntimeCommandFixture("work-record-stop-", async ({ projectRoot, setModelResponseFactories }) => {
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             await saveStandalonePlan(projectRoot);
             let calls = 0;
             const respond = () => {

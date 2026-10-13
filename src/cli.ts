@@ -11,54 +11,46 @@
  *   wld help
  *
  * Source-run fallback for contributors:
- *   deno run -A src/cli.ts "<user request>"
+ *   bun src/cli.ts "<user request>"
  */
 
-import { createRequire } from "node:module";
-import { parseArgs } from "@std/cli/parse-args";
+import { argv, env, exit } from "node:process";
+import { parseArgs } from "./shared/cli-args.ts";
+const cliArgs = argv.slice(2);
+
 // Keep private runtime entries ahead of helper exposure, browser startup and
 // command-registry imports. Static imports execute before top-level dispatch.
-if (["--remote-preflight", "--remote-view", "--remote-supervisor", "--remote-model-proof"].includes(Deno.args[0])) {
+if (["--remote-preflight", "--remote-view", "--remote-supervisor", "--remote-model-proof"].includes(cliArgs[0])) {
     try {
-        const { runRemoteModelProofEntry, runRemotePreflight, runRemoteView } = await import(
-            "./shared/remote/entry.ts"
-        );
-        if (Deno.args.length !== (Deno.args[0] === "--remote-supervisor" ? 2 : 1)) {
+        const { runRemoteModelProofEntry, runRemotePreflight, runRemoteView } =
+            await import("./shared/remote/entry.ts");
+        if (cliArgs.length !== (cliArgs[0] === "--remote-supervisor" ? 2 : 1)) {
             throw new Error("Unexpected remote entry arguments");
         }
-        if (Deno.args[0] === "--remote-preflight") await runRemotePreflight();
-        else if (Deno.args[0] === "--remote-supervisor") {
+        if (cliArgs[0] === "--remote-preflight") await runRemotePreflight();
+        else if (cliArgs[0] === "--remote-supervisor") {
             const { runRemoteSupervisor } = await import("./shared/remote/supervisor.ts");
             await runRemoteSupervisor();
-        } else if (Deno.args[0] === "--remote-model-proof") await runRemoteModelProofEntry();
+        } else if (cliArgs[0] === "--remote-model-proof") await runRemoteModelProofEntry();
         else await runRemoteView();
         // Private entries have no ordinary CLI or personal startup to serve.
-        Deno.exit(0);
+        exit(0);
     } catch (error) {
         console.error("[RunWield] Remote entry failed:", error);
-        Deno.exit(1);
+        exit(1);
     }
 }
-const { cleanupAgentBrowserSessionSync, initializeAgentBrowserSession } = await import(
-    "./shared/agent-browser-session.ts"
-);
+const { cleanupAgentBrowserSessionSync, initializeAgentBrowserSession } =
+    await import("./shared/agent-browser-session.ts");
 const { exposeBundledHelpersSync } = await import("./shared/package-install.ts");
 
 function isProtocolOnlyStartup(argv: string[]): boolean {
-    return argv[0] === "mcp" || argv[0] === "remote" ||
-        (argv[0] === "--mode" && argv[1] === "acp");
+    return argv[0] === "mcp" || argv[0] === "remote" || (argv[0] === "--mode" && argv[1] === "acp");
 }
 
-if (Deno.args[0] !== "remote") exposeBundledHelpersSync();
+if (cliArgs[0] !== "remote") exposeBundledHelpersSync();
 
-if (!isProtocolOnlyStartup(Deno.args)) initializeAgentBrowserSession();
-
-if (Deno.build.standalone) {
-    Object.defineProperty(globalThis, "require", {
-        value: createRequire(import.meta.url),
-        configurable: true,
-    });
-}
+if (!isProtocolOnlyStartup(cliArgs)) initializeAgentBrowserSession();
 
 function stripLeadingGlobalFlags(argv: string[]): string[] {
     const stripped: string[] = [];
@@ -67,7 +59,11 @@ function stripLeadingGlobalFlags(argv: string[]): string[] {
     for (const arg of argv) {
         if (
             stillInGlobalPrefix &&
-            (arg === "--help" || arg === "-h" || arg === "--continue" || arg === "-c" || arg === "--version" ||
+            (arg === "--help" ||
+                arg === "-h" ||
+                arg === "--continue" ||
+                arg === "-c" ||
+                arg === "--version" ||
                 arg === "-v")
         ) {
             continue;
@@ -103,7 +99,7 @@ function resolveHelpRequest(
 }
 
 async function main(): Promise<void> {
-    const args = Deno.args;
+    const args = cliArgs;
 
     const parsed = parseArgs(args, {
         stopEarly: true,
@@ -121,7 +117,7 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (normalizedArgs[0] === "package-smoke" && Deno.env.get("WLD_INTERNAL_PACKAGE_CHECK") === "1") {
+    if (normalizedArgs[0] === "package-smoke" && env.WLD_INTERNAL_PACKAGE_CHECK === "1") {
         const { runPackageSmokeCommand } = await import("./cmd/package-smoke/index.ts");
         await runPackageSmokeCommand(normalizedArgs.slice(1));
         return;
@@ -139,9 +135,8 @@ async function main(): Promise<void> {
         return;
     }
 
-    const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface } = await import(
-        "./cmd/registry.js"
-    );
+    const { COMMAND_NAMES, commandRegistry, getCommandDefinition, hasCommandSurface } =
+        await import("./cmd/registry.js");
     const { printCommandHelp, printGlobalHelp } = await import("./cmd/help/index.js");
 
     const helpRequest = resolveHelpRequest(args, COMMAND_NAMES);
@@ -153,7 +148,7 @@ async function main(): Promise<void> {
         if (!printCommandHelp(helpRequest.commandName)) {
             console.error(`[RunWield] Unknown command for help: ${helpRequest.commandName}`);
             console.log();
-            Deno.exit(1);
+            exit(1);
         }
         return;
     }
@@ -177,7 +172,7 @@ async function main(): Promise<void> {
     if (firstPositional === "guided-review") {
         const { createGuidedReviewCliIo, runGuidedReviewCommand } = await import("./cmd/guided-review/index.ts");
         const code = await runGuidedReviewCommand(createGuidedReviewCliIo());
-        if (code !== 0) Deno.exit(code);
+        if (code !== 0) exit(code);
         return;
     }
 
@@ -194,7 +189,7 @@ async function main(): Promise<void> {
             console.error(
                 `[RunWield] Command '${firstPositional}' is only available inside interactive chat as /${firstPositional}.`,
             );
-            Deno.exit(1);
+            exit(1);
         }
         const [, ...commandArgs] = normalizedArgs;
         await positionalCommand.execute(commandArgs);
@@ -209,7 +204,7 @@ async function main(): Promise<void> {
     if (normalizedArgs[0]?.startsWith("-")) {
         console.error(`[RunWield] Unknown option: ${normalizedArgs[0]}`);
         console.error("Use positional commands, for example: wld <command> [args]");
-        Deno.exit(1);
+        exit(1);
     }
 
     await commandRegistry[COMMAND_NAMES.ROUTER].execute(normalizedArgs, {
@@ -220,7 +215,7 @@ async function main(): Promise<void> {
 try {
     await main();
 } catch (err) {
-    if (!isProtocolOnlyStartup(Deno.args)) {
+    if (!isProtocolOnlyStartup(cliArgs)) {
         try {
             const { stopTUI } = await import("./ui/tui/tui.ts");
             stopTUI();
@@ -234,7 +229,7 @@ try {
         console.error("[RunWield] Fatal error:", err);
     }
     cleanupAgentBrowserSessionSync();
-    Deno.exit(1);
+    exit(1);
 } finally {
     cleanupAgentBrowserSessionSync();
 }

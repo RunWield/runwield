@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 // @ts-nocheck: this Deno-only stylesheet bundler is imported by the server, not the Astro browser program.
 /** @module ui/workspace/workspace-styles */
 import { dirname, join } from "node:path";
@@ -11,11 +12,11 @@ import { fileURLToPath } from "node:url";
  */
 export async function readWorkspaceStyles(path: string | URL) {
     const sourcePath = path instanceof URL ? fileURLToPath(path) : path;
-    const css = await Deno.readTextFile(sourcePath);
+    const css = await readFile(sourcePath, "utf8");
     const imports = /@import "(\.\/workspace-styles\/[a-z-]+\.css)";\n?/g;
     const matches = [...css.matchAll(imports)];
     const sections = await Promise.all(
-        matches.map((match) => Deno.readTextFile(join(dirname(sourcePath), match[1]))),
+        matches.map((match) => readFile(join(dirname(sourcePath), match[1]), "utf8")),
     );
     let index = 0;
     return css.replace(imports, () => sections[index++]);

@@ -1,23 +1,27 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { sha256Bytes } from "../../../scripts/build-metadata.js";
 import { extractReleaseRuntime, releaseRuntimeName } from "./release-artifact.ts";
 
-Deno.test("release names select only the VERSION-tagged GNU target", () => {
+test("release names select only the VERSION-tagged GNU target", () => {
     assertEquals(releaseRuntimeName("v1.2.3-rc.1", "linux-arm64"), "wld-v1.2.3-rc.1-linux-arm64.tar.gz");
     assertThrows(() => releaseRuntimeName("latest", "linux-x64"), Error, "Invalid launcher release tag");
     assertThrows(() => releaseRuntimeName("v1.2.3", "linux-musl"), Error, "Unsupported release runtime");
 });
 
-Deno.test("release extraction checks binary bytes, target, build and archive members", async () => {
-    const root = await Deno.makeTempDir();
+test("release extraction checks binary bytes, target, build and archive members", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const stage = join(root, "stage");
         const output = join(root, "out");
-        await Deno.mkdir(stage);
-        await Deno.mkdir(output);
+        await fsMkdir(stage);
+        await fsMkdir(output);
         const binary = new TextEncoder().encode("runtime");
-        await Deno.writeFile(join(stage, "wld"), binary);
+        await fsWriteFile(join(stage, "wld"), binary);
         const metadata = {
             schema: 1,
             protocol: 1,
@@ -29,10 +33,13 @@ Deno.test("release extraction checks binary bytes, target, build and archive mem
         const path = join(stage, "wld.build.json");
         const archive = join(root, "runtime.tar.gz");
         const pack = async (members = ["wld", "wld.build.json"]) => {
-            const result = await new Deno.Command("tar", { args: ["-czf", archive, "-C", stage, ...members] }).output();
-            if (!result.success) throw new Error("Could not create test archive");
+            const result = await captureForegroundProcess("tar", {
+                cwd: root,
+                args: ["-czf", archive, "-C", stage, ...members],
+            });
+            if (result.code !== 0) throw new Error("Could not create test archive");
         };
-        await Deno.writeTextFile(path, JSON.stringify(metadata));
+        await fsWriteFile(path, JSON.stringify(metadata));
         await pack();
         assertEquals(
             (await extractReleaseRuntime(archive, "linux-x64", {
@@ -55,7 +62,7 @@ Deno.test("release extraction checks binary bytes, target, build and archive mem
             Error,
             "launcher build",
         );
-        await Deno.writeTextFile(path, JSON.stringify({ ...metadata, sha256: "b".repeat(64) }));
+        await fsWriteFile(path, JSON.stringify({ ...metadata, sha256: "b".repeat(64) }));
         await pack();
         await assertRejects(
             () => extractReleaseRuntime(archive, "linux-x64", null, output),
@@ -65,6 +72,6 @@ Deno.test("release extraction checks binary bytes, target, build and archive mem
         await pack(["wld"]);
         await assertRejects(() => extractReleaseRuntime(archive, "linux-x64", null, output), Error, "only wld");
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

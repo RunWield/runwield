@@ -4,6 +4,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type {
     FileActivationProof,
     FileSessionActivation,
@@ -100,7 +101,7 @@ export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, 
         return;
     }
     if (!manifest.generation) {
-        const bytes = Deno.readFileSync(current.transcriptPath);
+        const bytes = readFileSync(current.transcriptPath);
         const baselineByteLength = manifest.activation.baselineByteLength;
         const baselineDigestHex = manifest.activation.baselineDigestHex;
         const unchanged = baselineByteLength === bytes.byteLength &&
@@ -115,7 +116,7 @@ export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, 
         manifest.updatedAt = now;
         return;
     }
-    const bytes = Deno.readFileSync(current.transcriptPath);
+    const bytes = readFileSync(current.transcriptPath);
     const committedBytes = bytes.subarray(0, manifest.generation.byteLength);
     const digest = createHash("sha256").update(committedBytes).digest("hex");
     if (bytes.byteLength === manifest.generation.byteLength && digest === manifest.generation.digestHex) {
@@ -135,7 +136,7 @@ export function committedTranscriptMatches(manifest: FileSessionManifest): boole
     const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
     if (!current) return false;
     try {
-        const bytes = Deno.readFileSync(current.transcriptPath);
+        const bytes = readFileSync(current.transcriptPath);
         if (bytes.byteLength !== manifest.generation.byteLength) return false;
         return createHash("sha256").update(bytes).digest("hex") === manifest.generation.digestHex;
     } catch {

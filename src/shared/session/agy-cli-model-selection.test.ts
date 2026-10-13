@@ -1,5 +1,19 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { delimiter } from "node:path";
+import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
+import { fileURLToPath } from "node:url";
+import { test } from "node:test";
+import {
+    chmod as fsChmod,
+    rm as fsRm,
+    mkdir as fsMkdir,
+    realpath as fsRealpath,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { AGENTS } from "../../constants.js";
 import { runModelsCommand } from "../../cmd/models/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -14,69 +28,39 @@ import {
 import { SessionHost } from "./session-host.ts";
 import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
 
+const WLD_EXECUTABLE = process.platform === "win32" ? "wld.exe" : "wld";
+const AGY_EXECUTABLE = process.platform === "win32" ? "agy.exe" : "agy";
+
 const FIXTURE_MODEL = "runtime-command-fixture/fixture-model";
 const AGY_FLASH = "agy-cli/gemini-3.8-flash";
 
 async function installAgyModelSelectionFixture(homeDir: string): Promise<string> {
     const binDir = join(homeDir, "agy-bin");
-    await Deno.mkdir(binDir, { recursive: true });
+    await fsMkdir(binDir, { recursive: true });
     // MCP setup inspects this binary header; the model-selection fixture never executes wld.
-    await Deno.writeFile(join(binDir, "wld"), new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x00]));
-    await Deno.chmod(join(binDir, "wld"), 0o755);
-    const agySource = String.raw`
-function readArg(args: string[], flag: string): string {
-    const index = args.indexOf(flag);
-    return index >= 0 ? args[index + 1] || "" : "";
-}
-function joinPath(...parts: string[]): string {
-    return parts.map((part, index) => {
-        const trimmed = index === 0 ? part.replace(/\/+$/, "") : part.replace(/^\/+|\/+$/g, "");
-        return trimmed;
-    }).filter(Boolean).join("/");
-}
-const prompt = readArg(Deno.args, "-p");
-const outputFormat = readArg(Deno.args, "--output-format");
-if (prompt === "/agents" && outputFormat === "json") {
-    const agentsRoot = joinPath(Deno.env.get("HOME") || "", ".gemini", "config", "agents");
-    const agents: Array<{ name: string }> = [];
-    try {
-        for await (const entry of Deno.readDir(agentsRoot)) {
-            if (!entry.isDirectory) continue;
-            try {
-                const definition = await Deno.readTextFile(joinPath(agentsRoot, entry.name, "agent.md"));
-                if (definition.includes("\nname: " + entry.name + "\n") || definition.startsWith("---\nname: " + entry.name + "\n")) {
-                    agents.push({ name: entry.name });
-                }
-            } catch {
-                // Ignore malformed agent directories.
-            }
-        }
-    } catch {
-        // No agents directory yet.
-    }
-    console.log(JSON.stringify({ agents }));
-    Deno.exit(0);
-}
-Deno.exit(0);
-`;
-    const agyPath = join(binDir, "agy-fixture.ts");
-    await Deno.writeTextFile(agyPath, agySource);
-    await Deno.writeTextFile(join(binDir, "agy"), `#!/bin/sh\nexec deno run -A ${JSON.stringify(agyPath)} "$@"\n`);
-    await Deno.chmod(join(binDir, "agy"), 0o755);
+    await fsWriteFile(
+        join(binDir, WLD_EXECUTABLE),
+        process.platform === "win32"
+            ? new Uint8Array([0x4d, 0x5a, 0, 0])
+            : new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x00]),
+    );
+    await fsChmod(join(binDir, WLD_EXECUTABLE), 0o755);
+    const agyPath = fileURLToPath(new URL("./backends/agy-cli/testing/fake-agy-model-selection.ts", import.meta.url));
+    await writeRuntimeExecutableFixture(join(binDir, "agy"), agyPath);
     return binDir;
 }
 
 async function pathExists(path: string): Promise<boolean> {
     try {
-        await Deno.stat(path);
+        await fsStat(path);
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
 
-Deno.test("approved Agy CLI models are registered and accepted by typed execution backend dispatch", () => {
+test("approved Agy CLI models are registered and accepted by typed execution backend dispatch", () => {
     for (const modelId of ["gemini-3.8-flash", "gemini-3.1-pro"]) {
         const model = getModelRegistry().find("agy-cli", modelId);
         assert(model);
@@ -86,58 +70,68 @@ Deno.test("approved Agy CLI models are registered and accepted by typed executio
     assertEquals(getModelRegistry().find("agy-cli", "fixture-model"), undefined);
 });
 
-Deno.test("unsupported Agy CLI selection is rejected before approval, agy launch, or global files", async () => {
-    await withRuntimeCommandFixture("runwield-agy-cli-unsupported-", async ({ homeDir, projectRoot }) => {
-        const messages: Array<{ text: string; isError: boolean }> = [];
-        const runtime = createSessionRuntime();
-        const agyLaunchLog = join(homeDir, "agy-launched.log");
-        const previousPath = Deno.env.get("PATH") || "";
-        try {
-            const binDir = await installAgyModelSelectionFixture(homeDir);
-            await Deno.writeTextFile(
-                join(binDir, "agy"),
-                `#!/bin/sh\necho launched >> ${JSON.stringify(agyLaunchLog)}\nexit 2\n`,
-            );
-            await Deno.chmod(join(binDir, "agy"), 0o755);
-            Deno.env.set("PATH", `${binDir}:${previousPath}`);
-            const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+test("unsupported Agy CLI selection is rejected before approval, agy launch, or global files", async () => {
+    await withRuntimeCommandFixture(
+        "runwield-agy-cli-unsupported-",
+        async ({ homeDir, projectRoot }) => {
+            const messages: Array<{ text: string; isError: boolean }> = [];
+            const runtime = createSessionRuntime();
+            const agyLaunchLog = join(homeDir, "agy-launched.log");
+            const previousPath = process.env["PATH"] || "";
+            try {
+                const binDir = await installAgyModelSelectionFixture(homeDir);
+                await fsRm(join(binDir, AGY_EXECUTABLE));
+                const unexpectedSource = join(binDir, "unexpected-launch.ts");
+                await fsWriteFile(
+                    unexpectedSource,
+                    `import { appendFileSync } from "node:fs";
+appendFileSync(${JSON.stringify(agyLaunchLog)}, "launched\\n"); process.exit(2);`,
+                );
+                await writeRuntimeExecutableFixture(join(binDir, "agy"), unexpectedSource);
+                process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
+                const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
 
-            await runModelsCommand(["agy-cli/fixture-model"], {
-                uiAPI: {
-                    appendSystemMessage: (message, isError = false) => messages.push({ text: message, isError }),
-                    promptSelect: () => Promise.resolve(null),
-                },
-                sessionId,
-                sessionRuntime: runtime,
-            });
+                await runModelsCommand(["agy-cli/fixture-model"], {
+                    uiAPI: {
+                        appendSystemMessage: (message, isError = false) => messages.push({ text: message, isError }),
+                        promptSelect: () => Promise.resolve(null),
+                    },
+                    sessionId,
+                    sessionRuntime: runtime,
+                });
 
-            assertEquals(messages.length, 1);
-            assertEquals(messages[0].isError, true);
-            assertStringIncludes(messages[0].text, "Unsupported Antigravity CLI model");
-            assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, { model: "", provider: "" });
-            assertEquals(await pathExists(agyLaunchLog), false);
-            assertEquals(await pathExists(join(homeDir, ".gemini")), false);
-        } finally {
-            Deno.env.set("PATH", previousPath);
-            runtime.closeAllSessions();
-        }
-    }, { providerState: "none" });
+                assertEquals(messages.length, 1);
+                assertEquals(messages[0].isError, true);
+                assertStringIncludes(messages[0].text, "Unsupported Antigravity CLI model");
+                assertEquals(runtime.getSessionSnapshot(sessionId)?.activeModel, { model: "", provider: "" });
+                assertEquals(await pathExists(agyLaunchLog), false);
+                assertEquals(await pathExists(join(homeDir, ".gemini")), false);
+            } finally {
+                process.env["PATH"] = previousPath;
+                runtime.closeAllSessions();
+            }
+        },
+        { providerState: "none" },
+    );
 });
 
-Deno.test("declined Agy MCP setup keeps the approved selected model without launching agy", async () => {
+test("declined Agy MCP setup keeps the approved selected model without launching agy", async () => {
     await withRuntimeCommandFixture("runwield-agy-cli-setup-decline-", async ({ homeDir, projectRoot }) => {
         let runtime: SessionRuntime | null = null;
         const agyLaunchLog = join(homeDir, "agy-launched.log");
-        const previousPath = Deno.env.get("PATH") || "";
+        const previousPath = process.env["PATH"] || "";
         try {
             const binDir = await installAgyModelSelectionFixture(homeDir);
-            await Deno.writeTextFile(
-                join(binDir, "agy"),
-                `#!/bin/sh\necho launched >> ${JSON.stringify(agyLaunchLog)}\nexit 2\n`,
+            await fsRm(join(binDir, AGY_EXECUTABLE));
+            const unexpectedSource = join(binDir, "unexpected-launch.ts");
+            await fsWriteFile(
+                unexpectedSource,
+                `import { appendFileSync } from "node:fs";
+appendFileSync(${JSON.stringify(agyLaunchLog)}, "launched\\n"); process.exit(2);`,
             );
-            await Deno.chmod(join(binDir, "agy"), 0o755);
-            Deno.env.set("PATH", `${binDir}:${previousPath}`);
-            assertEquals(await resolveInstalledWldExecutable(), await Deno.realPath(join(binDir, "wld")));
+            await writeRuntimeExecutableFixture(join(binDir, "agy"), unexpectedSource);
+            process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
+            assertEquals(await resolveInstalledWldExecutable(), await fsRealpath(join(binDir, WLD_EXECUTABLE)));
 
             const sessionHost = new SessionHost();
             const hostedSession = sessionHost.createSession({ cwd: projectRoot });
@@ -171,20 +165,20 @@ Deno.test("declined Agy MCP setup keeps the approved selected model without laun
             });
             assertEquals(await pathExists(agyLaunchLog), false);
         } finally {
-            Deno.env.set("PATH", previousPath);
+            process.env["PATH"] = previousPath;
             runtime?.closeAllSessions();
         }
     });
 });
 
-Deno.test("fresh Agy CLI model selection offers first-time MCP setup before the first turn", async () => {
+test("fresh Agy CLI model selection offers first-time MCP setup before the first turn", async () => {
     await withRuntimeCommandFixture("runwield-agy-cli-first-select-", async ({ homeDir, projectRoot }) => {
         const runtime = createSessionRuntime();
         const messages: string[] = [];
-        const previousPath = Deno.env.get("PATH") || "";
+        const previousPath = process.env["PATH"] || "";
         try {
             const binDir = await installAgyModelSelectionFixture(homeDir);
-            Deno.env.set("PATH", `${binDir}:${previousPath}`);
+            process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
             const { sessionId } = await runtime.createInteractiveSession({
                 cwd: projectRoot,
                 mode: "new",
@@ -216,21 +210,21 @@ Deno.test("fresh Agy CLI model selection offers first-time MCP setup before the 
             });
             assertStringIncludes(messages.at(-1) || "", `Switched model to ${AGY_FLASH}`);
         } finally {
-            Deno.env.set("PATH", previousPath);
+            process.env["PATH"] = previousPath;
             runtime.closeAllSessions();
         }
     });
 });
 
-Deno.test("explicit approved Agy CLI selection updates the active runtime Session model without persisting defaults", async () => {
+test("explicit approved Agy CLI selection updates the active runtime Session model without persisting defaults", async () => {
     await withRuntimeCommandFixture("runwield-agy-cli-selection-", async ({ homeDir, projectRoot }) => {
         const runtime = createSessionRuntime();
         const messages: string[] = [];
-        const previousPath = Deno.env.get("PATH") || "";
+        const previousPath = process.env["PATH"] || "";
         try {
             const binDir = await installAgyModelSelectionFixture(homeDir);
-            Deno.env.set("PATH", `${binDir}:${previousPath}`);
-            assertEquals(await resolveInstalledWldExecutable(), await Deno.realPath(join(binDir, "wld")));
+            process.env["PATH"] = `${binDir}${delimiter}${previousPath}`;
+            assertEquals(await resolveInstalledWldExecutable(), await fsRealpath(join(binDir, WLD_EXECUTABLE)));
             await installAgyCliMcpSetup();
             const { sessionId } = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
             await runModelsCommand([FIXTURE_MODEL], {
@@ -267,7 +261,7 @@ Deno.test("explicit approved Agy CLI selection updates the active runtime Sessio
             assertEquals(getSettingsManager(projectRoot).getDefaultModel(), "fixture-model");
             assertStringIncludes(messages.at(-1) || "", `Switched model to ${AGY_FLASH}`);
         } finally {
-            Deno.env.set("PATH", previousPath);
+            process.env["PATH"] = previousPath;
             runtime.closeAllSessions();
         }
     });

@@ -1,5 +1,22 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { makeTempDirectory } from "./testing/temp-file.ts";
+import { hostname } from "node:os";
+import { testWithFsPermissions } from "./testing/file-test.ts";
+import { realpathSync as fsRealpathSync } from "node:fs";
+import {
+    open as fsOpen,
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    symlink as fsSymlink,
+    utimes as fsUtimes,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "./testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "./constants.js";
 import { getWorktreeRegistryPath } from "./shared/worktree-registry.js";
 import { readControllerRecord } from "./shared/workflow/controller-registry.ts";
@@ -62,55 +79,57 @@ import {
  * @param {() => Promise<void>} fn
  */
 function testWithFs(name, fn) {
-    Deno.test({ name, permissions: { read: true, write: true }, fn });
+    testWithFsPermissions(name, fn);
 }
 
 /** @param {string} path */
 async function assertMissing(path) {
-    await assertRejects(() => Deno.stat(path), Deno.errors.NotFound);
+    await assertRejects(() => fsStat(path), Error, "ENOENT");
 }
 
-Deno.test("controller-only updates preserve a formatted validated Plan byte for byte", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "validated-plan-controller-" });
+test("controller-only updates preserve a formatted validated Plan byte for byte", async () => {
+    const cwd = await makeTempDirectory({ prefix: "validated-plan-controller-" });
     try {
         const path = join(cwd, "docs/plans/p.md");
-        await Deno.mkdir(join(cwd, "docs/plans"), { recursive: true });
+        await fsMkdir(join(cwd, "docs/plans"), { recursive: true });
         const markdown =
             '---\nplanId: "controller-only-plan"\nclassification: "PLANNED_CHANGE"\nstatus: "validated"\naffectedPaths:\n    - "src/example.ts"\ndependencies:\n    - "previous-plan"\ntargetBranch: "main"\n---\n# Already formatted\n';
-        await Deno.writeTextFile(path, markdown);
+        await fsWriteFile(path, markdown);
         const plan = await loadPlan(cwd, "p");
         assert(plan);
         await updatePlanFrontMatter(cwd, "p", { validationCiAttempts: 1 }, plan.attrs, {
             expectedRevision: plan.revision,
             expectedControllerRevision: plan.controllerRevision,
         });
-        assertEquals(await Deno.readTextFile(path), markdown);
+        assertEquals(await fsReadFile(path, "utf8"), markdown);
         assertEquals((await loadPlan(cwd, "p"))?.attrs.validationCiAttempts, 1);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 /** @param {string} cwd @param {string} planName */
 async function recordActiveAttempt(cwd, planName) {
     const registryPath = getWorktreeRegistryPath(cwd);
-    await Deno.mkdir(dirname(registryPath), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(dirname(registryPath), { recursive: true });
+    await fsWriteFile(
         registryPath,
         JSON.stringify({
             version: 2,
-            entries: [{
-                id: "attempt-one",
-                planName,
-                path: cwd,
-                branch: "worktree/test",
-                baseBranch: "main",
-                baseRef: "refs/heads/main",
-                baseCommit: "a".repeat(40),
-                status: "active",
-                createdAt: "2026-01-01T00:00:00.000Z",
-                updatedAt: "2026-01-01T00:00:00.000Z",
-            }],
+            entries: [
+                {
+                    id: "attempt-one",
+                    planName,
+                    path: cwd,
+                    branch: "worktree/test",
+                    baseBranch: "main",
+                    baseRef: "refs/heads/main",
+                    baseCommit: "a".repeat(40),
+                    status: "active",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    updatedAt: "2026-01-01T00:00:00.000Z",
+                },
+            ],
         }),
     );
 }
@@ -157,21 +176,21 @@ async function savePlanBodyByIdForTest(cwd, planId, body, expectedBodyHash) {
     return await savePlanBodyById(cwd, planId, body, expectedBodyHash, { expectedRevision: plan?.revision });
 }
 
-Deno.test("getStoredPlanPath resolves canonical top-level and nested plan paths", () => {
-    assertEquals(getStoredPlanPath("/project", "demo"), "/project/docs/plans/demo.md");
-    assertEquals(getStoredPlanPath("/project", "demo.md"), "/project/docs/plans/demo.md");
-    assertEquals(getStoredPlanPath("/project", "epic/child.md"), "/project/docs/plans/epic/child.md");
+test("getStoredPlanPath resolves canonical top-level and nested plan paths", () => {
+    assertEquals(getStoredPlanPath("/project", "demo"), join("/project", "docs", "plans", "demo.md"));
+    assertEquals(getStoredPlanPath("/project", "demo.md"), join("/project", "docs", "plans", "demo.md"));
+    assertEquals(getStoredPlanPath("/project", "epic/child.md"), join("/project", "docs", "plans", "epic", "child.md"));
     // The canonical store path prefix normalizes to the same store-relative name.
-    assertEquals(getStoredPlanPath("/project", "docs/plans/demo.md"), "/project/docs/plans/demo.md");
+    assertEquals(getStoredPlanPath("/project", "docs/plans/demo.md"), join("/project", "docs", "plans", "demo.md"));
 });
 
-Deno.test("getStoredPlanPath rejects escaping or ambiguous plan names", () => {
+test("getStoredPlanPath rejects escaping or ambiguous plan names", () => {
     for (const name of ["", "/tmp/demo", "epic//child", "epic/./child", "epic/../child", "../demo"]) {
         assertThrows(() => getStoredPlanPath("/project", name));
     }
 });
 
-Deno.test("front matter key constants expose canonical planning metadata order", () => {
+test("front matter key constants expose canonical planning metadata order", () => {
     assertEquals(PLAN_FRONT_MATTER_KEYS.planId, "planId");
     assertEquals(PLAN_FRONT_MATTER_KEY_ORDER[0], PLAN_FRONT_MATTER_KEYS.planId);
     assertEquals(PLAN_FRONT_MATTER_KEYS.frontend, "frontend");
@@ -199,7 +218,7 @@ Deno.test("front matter key constants expose canonical planning metadata order",
     assertEquals(new Set(PLAN_FRONT_MATTER_KEY_ORDER).size, PLAN_FRONT_MATTER_KEY_ORDER.length);
 });
 
-Deno.test("injectFrontMatter escapes YAML double-quoted values", () => {
+test("injectFrontMatter escapes YAML double-quoted values", () => {
     const markdown = "## Plan\n\nBody";
     const withFm = injectFrontMatter(markdown, {
         summary: 'Handle "Other" and \\slashes',
@@ -212,7 +231,7 @@ Deno.test("injectFrontMatter escapes YAML double-quoted values", () => {
     assertEquals(attrs.affectedPaths, ['<|"|src/tools/user-interview.js<|"|']);
 });
 
-Deno.test("injectFrontMatter keeps markdown formatted after front matter updates", () => {
+test("injectFrontMatter keeps markdown formatted after front matter updates", () => {
     const firstWrite = injectFrontMatter("# Plan\n\nBody", { status: "draft" });
     const secondWrite = injectFrontMatter(firstWrite, { status: "feedback" });
     const emptyWrite = injectFrontMatter("", { status: "draft" });
@@ -222,7 +241,7 @@ Deno.test("injectFrontMatter keeps markdown formatted after front matter updates
     assertEquals(parsePlanFrontMatter(emptyWrite).body, "");
 });
 
-Deno.test("Plan Deviation metadata round trips as Plan-owned definition", () => {
+test("Plan Deviation metadata round trips as Plan-owned definition", () => {
     const markdown = injectFrontMatter("# Plan\n\nBody", {
         status: "in_progress",
         planDeviations: [
@@ -264,7 +283,7 @@ Deno.test("Plan Deviation metadata round trips as Plan-owned definition", () => 
     assertStringIncludes(markdown, "replacementRequirement:");
 });
 
-Deno.test("malformed Plan Deviation metadata blocks Plan parsing", () => {
+test("malformed Plan Deviation metadata blocks Plan parsing", () => {
     assertThrows(
         () =>
             parsePlanFrontMatter(`---
@@ -282,7 +301,7 @@ planDeviations:
     );
 });
 
-Deno.test("Plan Work Record metadata round trips with nested YAML", () => {
+test("Plan Work Record metadata round trips with nested YAML", () => {
     const markdown = "## Plan\n\nBody";
     const withFm = injectFrontMatter(markdown, {
         status: "closed_without_verification",
@@ -308,7 +327,7 @@ Deno.test("Plan Work Record metadata round trips with nested YAML", () => {
     assertStringIncludes(withFm, "workRecord:\n  status:");
 });
 
-Deno.test("obsolete Objective Check front matter is ignored by active Plan parsing", () => {
+test("obsolete Objective Check front matter is ignored by active Plan parsing", () => {
     const parsed = parsePlanFrontMatter(`---
 classification: PLANNED_CHANGE
 objectiveChecks:
@@ -327,7 +346,7 @@ validationObjectiveCheckAttempts: 2
     assertEquals("validationObjectiveCheckAttempts" in parsed.attrs, false);
 });
 
-Deno.test("frontend verification front matter round trips as legacy source metadata", () => {
+test("frontend verification front matter round trips as legacy source metadata", () => {
     const markdown = "## Plan\n\nBody";
     const withFm = injectFrontMatter(markdown, {
         frontend: true,
@@ -355,7 +374,7 @@ Deno.test("frontend verification front matter round trips as legacy source metad
     assertEquals(withFm.indexOf("devServerHmr:") < withFm.indexOf("createdAt:"), true);
 });
 
-Deno.test("Plan execution policy preserves invalid raw values for diagnostics", () => {
+test("Plan execution policy preserves invalid raw values for diagnostics", () => {
     const { attrs } = parsePlanFrontMatter(`---
 classification: FEATURE
 executionAgent: typo-agent
@@ -373,7 +392,7 @@ collaborationRecommendation: buddy
     });
 });
 
-Deno.test("Plan execution policy preserves invalid non-string raw values for diagnostics", () => {
+test("Plan execution policy preserves invalid non-string raw values for diagnostics", () => {
     const { attrs } = parsePlanFrontMatter(`---
 classification: FEATURE
 executionAgent: 123
@@ -389,11 +408,7 @@ collaborationRecommendation: false
         reason: "invalid_execution_agent",
         error: "Invalid executionAgent: 123. Supported values are engineer and frontend-engineer.",
     });
-    assertThrows(
-        () => injectFrontMatter("# Bad\n", { executionAgent: 123 }),
-        Error,
-        "Invalid executionAgent: 123",
-    );
+    assertThrows(() => injectFrontMatter("# Bad\n", { executionAgent: 123 }), Error, "Invalid executionAgent: 123");
     assertThrows(
         () => injectFrontMatter("# Bad\n", { executionAgent: "frontend-engineer", collaborationRecommendation: false }),
         Error,
@@ -401,7 +416,7 @@ collaborationRecommendation: false
     );
 });
 
-Deno.test("Plan execution policy enforces owner and recommendation matrix", () => {
+test("Plan execution policy enforces owner and recommendation matrix", () => {
     assertEquals(resolvePlanExecutionPolicy({ classification: "FEATURE" }), {
         ok: true,
         policy: { executionAgent: "engineer", collaborationRecommendation: "autonomous", source: "absent" },
@@ -466,7 +481,7 @@ Deno.test("Plan execution policy enforces owner and recommendation matrix", () =
     );
 });
 
-Deno.test("injectFrontMatter preserves new closure and hold lifecycle fields", () => {
+test("injectFrontMatter preserves new closure and hold lifecycle fields", () => {
     const markdown = "## Plan\n\nBody";
     const withClosed = injectFrontMatter(markdown, {
         status: "closed_without_verification",
@@ -495,7 +510,7 @@ Deno.test("injectFrontMatter preserves new closure and hold lifecycle fields", (
     );
 });
 
-Deno.test("injectFrontMatter clears hold fields with null overrides", () => {
+test("injectFrontMatter clears hold fields with null overrides", () => {
     const withHold = injectFrontMatter("## Plan", {
         status: "on_hold",
         heldFromStatus: "ready_for_work",
@@ -518,7 +533,7 @@ Deno.test("injectFrontMatter clears hold fields with null overrides", () => {
     assertEquals(attrs.holdStalenessBaseline, undefined);
 });
 
-Deno.test("injectFrontMatter preserves human review metadata", () => {
+test("injectFrontMatter preserves human review metadata", () => {
     const markdown = "## Plan\n\nBody";
     const withFm = injectFrontMatter(markdown, {
         classification: "FEATURE",
@@ -546,7 +561,7 @@ Deno.test("injectFrontMatter preserves human review metadata", () => {
     );
 });
 
-Deno.test("planId round trips and blank values normalize away", () => {
+test("planId round trips and blank values normalize away", () => {
     const withId = injectFrontMatter("## Plan", { planId: "plan-123" });
     assertEquals(parsePlanFrontMatter(withId).attrs.planId, "plan-123");
 
@@ -555,7 +570,7 @@ Deno.test("planId round trips and blank values normalize away", () => {
     assertEquals(blank.includes("planId:"), false);
 });
 
-Deno.test("supersedes front matter normalizes, deduplicates, and round trips in canonical order", () => {
+test("supersedes front matter normalizes, deduplicates, and round trips in canonical order", () => {
     const recordB = "550e8400-e29b-41d4-a716-446655440000";
     const recordA = "550e8400-e29b-41d4-a716-446655440001";
     const markdown = injectFrontMatter("## Plan", {
@@ -570,7 +585,7 @@ Deno.test("supersedes front matter normalizes, deduplicates, and round trips in 
     assertEquals(markdown.indexOf("supersedes:") < markdown.indexOf("executionAgent:"), true);
 });
 
-Deno.test("malformed or empty supersedes front matter is omitted", () => {
+test("malformed or empty supersedes front matter is omitted", () => {
     const scalar = parsePlanFrontMatter("---\nsupersedes: record-a\n---\n# Plan\n");
     const mixed = parsePlanFrontMatter(
         "---\nsupersedes:\n    - 550e8400-e29b-41d4-a716-446655440000\n    - docs/old-record.md\n---\n# Plan\n",
@@ -590,7 +605,7 @@ Deno.test("malformed or empty supersedes front matter is omitted", () => {
     assertEquals(blank.includes("supersedes:"), false);
 });
 
-Deno.test("documentation Work Kind front matter round trips and unknown values normalize away", () => {
+test("documentation Work Kind front matter round trips and unknown values normalize away", () => {
     const withDocumentation = injectFrontMatter("## Plan", {
         classification: "PLANNED_CHANGE",
         workKind: "DOCUMENTATION",
@@ -603,26 +618,22 @@ Deno.test("documentation Work Kind front matter round trips and unknown values n
     assertEquals(unknown.includes("workKind:"), false);
 });
 
-Deno.test("order front matter round trips and numeric strings normalize", () => {
+test("order front matter round trips and numeric strings normalize", () => {
     const withOrder = injectFrontMatter("## Plan", { parentPlan: "epic-a", order: 3 });
     assertEquals(parsePlanFrontMatter(withOrder).attrs.order, 3);
     assertEquals(withOrder.includes("parentPlan:"), true);
     assertEquals(withOrder.indexOf("parentPlan:") < withOrder.indexOf("order:"), true);
 
-    const parsedString = parsePlanFrontMatter([
-        "---",
-        "classification: FEATURE",
-        "summary: child",
-        "parentPlan: epic-a",
-        'order: "4"',
-        "---",
-        "# Child",
-    ].join("\n"));
+    const parsedString = parsePlanFrontMatter(
+        ["---", "classification: FEATURE", "summary: child", "parentPlan: epic-a", 'order: "4"', "---", "# Child"].join(
+            "\n",
+        ),
+    );
     assertEquals(parsedString.attrs.order, 4);
 });
 
 testWithFs("ensurePlanIdentity backfills missing planId while preserving body exactly", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "missing-id", "\n\n# Title\n\nBody\n", { summary: "Missing ID" });
         const before = await loadPlan(cwd, "missing-id");
@@ -634,14 +645,14 @@ testWithFs("ensurePlanIdentity backfills missing planId while preserving body ex
         assertEquals(after?.body, before?.body);
         assertEquals(resource.relativePath, "docs/plans/missing-id.md");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs(
     "listPlanResources preserves existing IDs, hides archived plans, and retries generated collisions",
     async () => {
-        const cwd = await Deno.makeTempDir();
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
         try {
             await savePlan(cwd, "existing", "# Existing", { planId: "existing-id" });
             await savePlan(cwd, "missing", "# Missing");
@@ -653,16 +664,22 @@ testWithFs(
                 idGenerator: () => ids.shift() || "fallback-id",
             });
 
-            assertEquals(resources.map((resource) => resource.planName), ["existing", "missing"]);
-            assertEquals(resources.map((resource) => resource.planId), ["existing-id", "new-id"]);
+            assertEquals(
+                resources.map((resource) => resource.planName),
+                ["existing", "missing"],
+            );
+            assertEquals(
+                resources.map((resource) => resource.planId),
+                ["existing-id", "new-id"],
+            );
         } finally {
-            await Deno.remove(cwd, { recursive: true });
+            await fsRm(cwd, { recursive: true });
         }
     },
 );
 
 testWithFs("listPlanResources throws repair-oriented duplicate planId errors before backfill", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "a", "# A", { planId: "dup" });
         await savePlan(cwd, "b", "# B", { planId: "dup" });
@@ -675,12 +692,12 @@ testWithFs("listPlanResources throws repair-oriented duplicate planId errors bef
         );
         assertEquals((await loadPlan(cwd, "missing"))?.attrs.planId, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("findPlanById resolves non-archived plan resources", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "lookup", "# Lookup", { planId: "lookup-id" });
         await savePlan(cwd, "prefixed", "# Prefixed", { planId: "01-prefixed-id" });
@@ -692,18 +709,18 @@ testWithFs("findPlanById resolves non-archived plan resources", async () => {
 
         await assertRejects(() => findPlanById(cwd, "missing-id"), Error, "Plan not found for planId");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("splitPlanMarkdownBody preserves front matter delimiter bytes and body", () => {
+test("splitPlanMarkdownBody preserves front matter delimiter bytes and body", () => {
     const markdown = "---\r\n# comment\r\nplanId: quoted\r\n---\r\n# Body\n\nText\n";
     const split = splitPlanMarkdownBody(markdown);
     assertEquals(split.frontMatterBlock, "---\r\n# comment\r\nplanId: quoted\r\n---\r\n");
     assertEquals(split.body, "# Body\n\nText\n");
 });
 
-Deno.test("splitPlanMarkdownBody ignores indented front matter delimiter-like content", () => {
+test("splitPlanMarkdownBody ignores indented front matter delimiter-like content", () => {
     const markdown = "---\nsummary: |\n  ---\n  body marker remains metadata\n---\n# Body\n";
     const split = splitPlanMarkdownBody(markdown);
     assertEquals(split.frontMatterBlock, "---\nsummary: |\n  ---\n  body marker remains metadata\n---\n");
@@ -711,9 +728,9 @@ Deno.test("splitPlanMarkdownBody ignores indented front matter delimiter-like co
 });
 
 testWithFs("body-only save preserves front matter bytes and markdown body fidelity", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await Deno.mkdir(`${cwd}/docs/plans`, { recursive: true });
+        await fsMkdir(join(cwd, `docs/plans`), { recursive: true });
         const frontMatter = [
             "---",
             "# preserve this comment",
@@ -728,13 +745,13 @@ testWithFs("body-only save preserves front matter bytes and markdown body fideli
         ].join("\n");
         const body =
             "# Old\n\n- item\n- [ ] task\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n[RunWield](https://runwield.dev)\n\n```js\nconsole.log(1);\n```\n";
-        await Deno.writeTextFile(`${cwd}/docs/plans/body.md`, frontMatter + body);
+        await fsWriteFile(join(cwd, `docs/plans/body.md`), frontMatter + body);
         const loaded = await loadPlanBodyById(cwd, "body-id");
         const nextBody =
             "# New\n\n- item\n- [x] task\n\n| A | B |\n| - | - |\n| 3 | 4 |\n\n[RunWield](https://runwield.dev)\n\n```js\nconsole.log(2);\n```\n\n";
 
         const saved = await savePlanBodyByIdForTest(cwd, "body-id", nextBody, loaded.bodyHash);
-        const after = await Deno.readTextFile(`${cwd}/docs/plans/body.md`);
+        const after = await fsReadFile(join(cwd, `docs/plans/body.md`), "utf8");
 
         assertEquals(after, frontMatter.replace("worktreeStatus: active\n", "") + nextBody);
         assertEquals(saved.body, nextBody);
@@ -742,12 +759,12 @@ testWithFs("body-only save preserves front matter bytes and markdown body fideli
         assertEquals(parsePlanFrontMatter(after).attrs.status, "in_progress");
         assertEquals(parsePlanFrontMatter(after).attrs.worktreeStatus, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("body-only save rejects stale hashes duplicate IDs and archived plans", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "editable", "# Original", { planId: "editable-id" });
         const loaded = await loadPlanBodyById(cwd, "editable-id");
@@ -761,17 +778,17 @@ testWithFs("body-only save rejects stale hashes duplicate IDs and archived plans
         await savePlan(cwd, "dup-a", "# A", { planId: "dup" });
         await savePlan(cwd, "dup-b", "# B", { planId: "dup" });
         await assertRejects(() => loadPlanBodyById(cwd, "dup"), Error, "Duplicate planId values found");
-        await Deno.remove(`${cwd}/docs/plans/dup-a.md`);
-        await Deno.remove(`${cwd}/docs/plans/dup-b.md`);
+        await fsRm(join(cwd, `docs/plans/dup-a.md`));
+        await fsRm(join(cwd, `docs/plans/dup-b.md`));
 
         await savePlan(cwd, "archived/hidden", "# Hidden", { planId: "hidden-id" });
         await assertRejects(() => loadPlanBodyById(cwd, "hidden-id"), Error, "Plan not found for planId");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("groupPlanHierarchy groups Epics, nested children, standalone, and orphaned children", () => {
+test("groupPlanHierarchy groups Epics, nested children, standalone, and orphaned children", () => {
     const plans = [
         { name: "epic", path: "docs/plans/epic.md", attrs: { classification: "PROJECT", status: "draft" } },
         {
@@ -788,10 +805,22 @@ Deno.test("groupPlanHierarchy groups Epics, nested children, standalone, and orp
     ];
 
     const grouped = groupPlanHierarchy(/** @type {any} */ (plans));
-    assertEquals(grouped.epics.map((plan) => plan.name), ["epic"]);
-    assertEquals((grouped.childrenByParent.get("epic") || []).map((plan) => plan.name), ["epic/child"]);
-    assertEquals(grouped.standalone.map((plan) => plan.name), ["solo"]);
-    assertEquals(grouped.orphanChildren.map((plan) => plan.name), ["orphan/child"]);
+    assertEquals(
+        grouped.epics.map((plan) => plan.name),
+        ["epic"],
+    );
+    assertEquals(
+        (grouped.childrenByParent.get("epic") || []).map((plan) => plan.name),
+        ["epic/child"],
+    );
+    assertEquals(
+        grouped.standalone.map((plan) => plan.name),
+        ["solo"],
+    );
+    assertEquals(
+        grouped.orphanChildren.map((plan) => plan.name),
+        ["orphan/child"],
+    );
     assertEquals(countChildPlanProgress(/** @type {any} */ (plans.slice(1, 4))), {
         verified: 1,
         userVerified: 0,
@@ -806,11 +835,11 @@ Deno.test("groupPlanHierarchy groups Epics, nested children, standalone, and orp
 });
 
 testWithFs("updatePlanStatus fails closed on malformed front matter and preserves bytes", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const plansDir = `${cwd}/docs/plans`;
-        await Deno.mkdir(plansDir, { recursive: true });
-        const planPath = `${plansDir}/broken.md`;
+        const plansDir = join(cwd, `docs/plans`);
+        await fsMkdir(plansDir, { recursive: true });
+        const planPath = join(plansDir, `broken.md`);
 
         const malformed = [
             "---",
@@ -824,7 +853,7 @@ testWithFs("updatePlanStatus fails closed on malformed front matter and preserve
             "Keep going",
             "",
         ].join("\n");
-        await Deno.writeTextFile(planPath, malformed);
+        await fsWriteFile(planPath, malformed);
 
         await assertRejects(
             () =>
@@ -839,14 +868,14 @@ testWithFs("updatePlanStatus fails closed on malformed front matter and preserve
             planPath,
         );
 
-        assertEquals(await Deno.readTextFile(planPath), malformed);
+        assertEquals(await fsReadFile(planPath, "utf8"), malformed);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("plan-store saves and reloads on-hold metadata without normalizing to draft", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "held-plan", "## Objective\nPause", {
             classification: "FEATURE",
@@ -881,12 +910,12 @@ testWithFs("plan-store saves and reloads on-hold metadata without normalizing to
         assertEquals(updated.holdReason, undefined);
         assertEquals(updated.holdStalenessBaseline, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("plan-store saves and reloads manual closure status without verified metadata", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "closed-plan", "## Objective\nClose", {
             classification: "FEATURE",
@@ -901,12 +930,12 @@ testWithFs("plan-store saves and reloads manual closure status without verified 
         assertEquals(loaded?.attrs.status, "closed_without_verification");
         assertEquals(loaded?.attrs.verifiedAt, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("plan-store saves, loads, lists, and resolves project plans", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const savedPath = await savePlan(
             cwd,
@@ -922,7 +951,7 @@ testWithFs("plan-store saves, loads, lists, and resolves project plans", async (
             },
         );
 
-        assertEquals(savedPath, `${getPlansDir(cwd)}/ship-tests.md`);
+        assertEquals(savedPath, join(getPlansDir(cwd), "ship-tests.md"));
 
         const loaded = await loadPlan(cwd, "ship-tests");
         assertEquals(loaded?.attrs.classification, "PROJECT");
@@ -930,19 +959,22 @@ testWithFs("plan-store saves, loads, lists, and resolves project plans", async (
         assertEquals(loaded?.body.trim(), "## Context\nCoverage push\n\n## Objective\nGrow coverage");
 
         const listed = await listPlans(cwd);
-        assertEquals(listed.map((plan) => plan.name), ["ship-tests"]);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["ship-tests"],
+        );
         assertEquals(listed[0].attrs.summary, "Coverage push");
 
         const resolvedByName = await resolvePlan(cwd, "ship-tests");
         assertEquals(resolvedByName.planName, "ship-tests");
         assertEquals(resolvedByName.attrs.complexity, "HIGH");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("savePlan refuses unversioned overwrites of existing canonical Plans", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "requires-cas", "# Original", { status: "draft", planId: "requires-cas-id" });
         await assertRejects(
@@ -951,29 +983,35 @@ testWithFs("savePlan refuses unversioned overwrites of existing canonical Plans"
         );
         const loaded = await loadPlan(cwd, "requires-cas");
         if (!loaded) throw new Error("Expected Plan to exist");
-        await savePlan(cwd, "requires-cas", "# Overwrite", { status: "draft" }, {
-            expectedRevision: loaded.revision,
-        });
+        await savePlan(
+            cwd,
+            "requires-cas",
+            "# Overwrite",
+            { status: "draft" },
+            {
+                expectedRevision: loaded.revision,
+            },
+        );
         assertEquals((await loadPlan(cwd, "requires-cas"))?.body.trim(), "# Overwrite");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("listPlans fails closed with typed parse errors for malformed active Plans", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "valid", "# Valid", { status: "draft" });
-        await Deno.writeTextFile(`${getPlansDir(cwd)}/broken.md`, "---\nstatus: [unterminated\n---\n# Broken\n");
+        await fsWriteFile(`${getPlansDir(cwd)}/broken.md`, "---\nstatus: [unterminated\n---\n# Broken\n");
 
         await assertRejects(() => listPlans(cwd), PlanFrontMatterParseError, "broken.md");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("listPlans sorts by status, classification, then name", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const plans = [
             ["z-failed-feature", "FEATURE", "failed"],
@@ -998,29 +1036,32 @@ testWithFs("listPlans sorts by status, classification, then name", async () => {
             });
         }
 
-        assertEquals((await listPlans(cwd)).map((plan) => plan.name), [
-            "a-failed-project",
-            "z-failed-project",
-            "z-failed-feature",
-            "implemented-feature",
-            "ready-project",
-            "ready-feature",
-            "decompose-project",
-            "draft-feature",
-            "feedback-feature",
-            "approved-feature",
-            "in-progress-feature",
-            "verified-feature",
-            "closed-feature",
-            "held-feature",
-        ]);
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            [
+                "a-failed-project",
+                "z-failed-project",
+                "z-failed-feature",
+                "implemented-feature",
+                "ready-project",
+                "ready-feature",
+                "decompose-project",
+                "draft-feature",
+                "feedback-feature",
+                "approved-feature",
+                "in-progress-feature",
+                "verified-feature",
+                "closed-feature",
+                "held-feature",
+            ],
+        );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("plan-store preserves Epic and nested child metadata", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "project-breakdown-epic", "# Epic", {
             classification: "PROJECT",
@@ -1050,7 +1091,10 @@ testWithFs("plan-store preserves Epic and nested child metadata", async () => {
         assertEquals(child?.attrs.dependencies, ["feature0", "project-breakdown-epic/feature0"]);
 
         const listed = await listPlans(cwd);
-        assertEquals(listed.map((plan) => plan.name), ["project-breakdown-epic", "project-breakdown-epic/feature1"]);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["project-breakdown-epic", "project-breakdown-epic/feature1"],
+        );
 
         const resolvedChild = await resolvePlan(cwd, "project-breakdown-epic/feature1");
         assertEquals(resolvedChild.planName, "project-breakdown-epic/feature1");
@@ -1060,14 +1104,17 @@ testWithFs("plan-store preserves Epic and nested child metadata", async () => {
         assertEquals(resolvedChildWithExtension.planName, "project-breakdown-epic/feature1");
 
         const children = await findPlansByParent(cwd, "project-breakdown-epic");
-        assertEquals(children.map((plan) => plan.name), ["project-breakdown-epic/feature1"]);
+        assertEquals(
+            children.map((plan) => plan.name),
+            ["project-breakdown-epic/feature1"],
+        );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("listPlans hides archived plans", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "active-plan", "# Active", {
             classification: "FEATURE",
@@ -1087,17 +1134,20 @@ testWithFs("listPlans hides archived plans", async () => {
         });
 
         const listed = await listPlans(cwd);
-        assertEquals(listed.map((plan) => plan.name), ["active-plan"]);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["active-plan"],
+        );
 
         const explicitArchived = await loadPlan(cwd, "archived/old-plan");
         assertEquals(explicitArchived?.attrs.summary, "Hidden plan");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archivePlan moves verified nested plans with metadata and hides them from active lists", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic/01-child", "# Child\n\nBody stays", {
             planId: "child-id",
@@ -1113,8 +1163,14 @@ testWithFs("archivePlan moves verified nested plans with metadata and hides them
 
         assertEquals(archived.name, "epic/01-child");
         assertEquals(archived.relativePath, "docs/plans/archived/epic/01-child.md");
-        assertEquals((await listPlans(cwd)).map((plan) => plan.name), []);
-        assertEquals((await listArchivedPlans(cwd)).map((plan) => plan.name), ["epic/01-child"]);
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            [],
+        );
+        assertEquals(
+            (await listArchivedPlans(cwd)).map((plan) => plan.name),
+            ["epic/01-child"],
+        );
 
         const loaded = await loadArchivedPlan(cwd, "epic/01-child");
         assertEquals(loaded?.attrs.status, "verified");
@@ -1124,12 +1180,12 @@ testWithFs("archivePlan moves verified nested plans with metadata and hides them
         assertEquals(loaded?.attrs.archivedFromPath, "docs/plans/epic/01-child.md");
         assertEquals(loaded?.body, "# Child\n\nBody stays");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archivePlan allows terminal closure and requires force for non-terminal statuses", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "closed", "# Closed", { status: "closed_without_verification" });
         await archivePlan(cwd, "closed", { now: "2026-06-19T00:00:00.000Z" });
@@ -1140,12 +1196,12 @@ testWithFs("archivePlan allows terminal closure and requires force for non-termi
         await archivePlan(cwd, "draft", { force: true, now: "2026-06-20T00:00:00.000Z" });
         assertEquals((await loadArchivedPlan(cwd, "draft"))?.attrs.archivedFromStatus, "draft");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archivePlan refuses recoverable worktree states and refuses overwrites", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "busy", "# Busy", { status: "verified", worktreeStatus: "active" });
         await recordActiveAttempt(cwd, "busy");
@@ -1156,12 +1212,12 @@ testWithFs("archivePlan refuses recoverable worktree states and refuses overwrit
         await savePlan(cwd, "archived/dup", "# Archived Dup", { status: "verified" });
         await assertRejects(() => archivePlan(cwd, "dup"), Error, "already exists");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archivePlansByStatus archives matching parents with all children and reports no-op matches", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic", "# Epic", {
             classification: "PROJECT",
@@ -1182,14 +1238,23 @@ testWithFs("archivePlansByStatus archives matching parents with all children and
             now: "2026-07-04T00:00:00.000Z",
         });
 
-        assertEquals(result.matched.map((plan) => plan.name), ["epic", "epic/01-child", "standalone"]);
-        assertEquals(result.archived.map((plan) => plan.relativePath), [
-            "docs/plans/archived/epic.md",
-            "docs/plans/archived/epic/01-child.md",
-            "docs/plans/archived/standalone.md",
-        ]);
+        assertEquals(
+            result.matched.map((plan) => plan.name),
+            ["epic", "epic/01-child", "standalone"],
+        );
+        assertEquals(
+            result.archived.map((plan) => plan.relativePath),
+            [
+                "docs/plans/archived/epic.md",
+                "docs/plans/archived/epic/01-child.md",
+                "docs/plans/archived/standalone.md",
+            ],
+        );
         assertEquals(result.failed, []);
-        assertEquals((await listPlans(cwd)).map((plan) => plan.name), ["draft", "closed"]);
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["draft", "closed"],
+        );
         const archivedChild = await loadArchivedPlan(cwd, "epic/01-child");
         assertEquals(archivedChild?.attrs.archivedAt, "2026-07-04T00:00:00.000Z");
         assertEquals(archivedChild?.attrs.archiveReason, "done");
@@ -1198,12 +1263,12 @@ testWithFs("archivePlansByStatus archives matching parents with all children and
         const noOp = await archivePlansByStatus(cwd, "verified", { now: "2026-07-05T00:00:00.000Z" });
         assertEquals(noOp, { matched: [], archived: [], failed: [] });
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archivePlansByStatus ignores children when parent status does not match", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic", "# Epic", {
             classification: "PROJECT",
@@ -1214,15 +1279,18 @@ testWithFs("archivePlansByStatus ignores children when parent status does not ma
         const result = await archivePlansByStatus(cwd, "verified", { now: "2026-07-04T00:00:00.000Z" });
 
         assertEquals(result, { matched: [], archived: [], failed: [] });
-        assertEquals((await listPlans(cwd)).map((plan) => plan.name), ["epic", "epic/01-child"]);
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["epic", "epic/01-child"],
+        );
         assertEquals(await listArchivedPlans(cwd), []);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archivePlansByStatus keeps archiving safe matches when other matches fail", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "ok", "# OK", { status: "verified" });
         await savePlan(cwd, "blocked", "# Blocked", { status: "verified", worktreeStatus: "active" });
@@ -1232,20 +1300,32 @@ testWithFs("archivePlansByStatus keeps archiving safe matches when other matches
 
         const result = await archivePlansByStatus(cwd, "verified", { now: "2026-07-04T00:00:00.000Z" });
 
-        assertEquals(result.matched.map((plan) => plan.name), ["blocked", "dup", "ok"]);
+        assertEquals(
+            result.matched.map((plan) => plan.name),
+            ["blocked", "dup", "ok"],
+        );
         assertEquals(result.archived, [{ name: "ok", relativePath: "docs/plans/archived/ok.md" }]);
-        assertEquals(result.failed.map((plan) => plan.name), ["blocked", "dup"]);
+        assertEquals(
+            result.failed.map((plan) => plan.name),
+            ["blocked", "dup"],
+        );
         assertStringIncludes(result.failed[0].message, "worktreeStatus active");
         assertStringIncludes(result.failed[1].message, "already exists");
-        assertEquals((await listPlans(cwd)).map((plan) => plan.name), ["blocked", "dup"]);
-        assertEquals((await listArchivedPlans(cwd)).map((plan) => plan.name), ["dup", "ok"]);
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["blocked", "dup"],
+        );
+        assertEquals(
+            (await listArchivedPlans(cwd)).map((plan) => plan.name),
+            ["dup", "ok"],
+        );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archivePlansByStatus validates requested lifecycle status", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await assertRejects(
             () => archivePlansByStatus(cwd, /** @type {any} */ ("verfied")),
@@ -1253,12 +1333,12 @@ testWithFs("archivePlansByStatus validates requested lifecycle status", async ()
             "Unknown Plan status",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("deleteArchivedPlanUnit removes a top-level archived Epic unit", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
         await savePlan(cwd, "epic/01-child", "# Child", {
@@ -1274,37 +1354,37 @@ testWithFs("deleteArchivedPlanUnit removes a top-level archived Epic unit", asyn
         const removed = await deleteArchivedPlanUnit(cwd, "epic");
 
         assertEquals(removed, ["docs/plans/archived/epic.md", "docs/plans/archived/epic/01-child.md"]);
-        await assertRejects(() => Deno.stat(join(cwd, "docs", "plans", "archived", "epic.md")), Deno.errors.NotFound);
-        await assertRejects(() => Deno.stat(join(cwd, "docs", "plans", "archived", "epic")), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(join(cwd, "docs", "plans", "archived", "epic.md")), Error, "ENOENT");
+        await assertRejects(() => fsStat(join(cwd, "docs", "plans", "archived", "epic")), Error, "ENOENT");
         assertEquals((await loadArchivedPlan(cwd, "solo"))?.body, "# Solo");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("deleteArchivedPlanUnit refuses unsafe or partial deletions", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "o", "# O", { status: "verified" });
         await archivePlan(cwd, "o", { now: "2026-08-01T00:00:00Z" });
-        await Deno.mkdir(join(cwd, "docs", "plans", "archived", "o"));
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "archived", "o", "notes.txt"), "keep\n");
+        await fsMkdir(join(cwd, "docs", "plans", "archived", "o"));
+        await fsWriteFile(join(cwd, "docs", "plans", "archived", "o", "notes.txt"), "keep\n");
 
         await assertRejects(() => deleteArchivedPlanUnit(cwd, "missing"), Error, "Archived Plan not found");
         await assertRejects(() => deleteArchivedPlanUnit(cwd, "o/nested"), Error, "top-level");
         await assertRejects(() => deleteArchivedPlanUnit(cwd, "o"), Error, "non-markdown entry");
 
         assertEquals((await loadArchivedPlan(cwd, "o"))?.body, "# O");
-        assertEquals(await Deno.readTextFile(join(cwd, "docs", "plans", "archived", "o", "notes.txt")), "keep\n");
+        assertEquals(await fsReadFile(join(cwd, "docs", "plans", "archived", "o", "notes.txt"), "utf8"), "keep\n");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs(
     "restoreArchivedPlan moves archived plans back without changing body and refuses active overwrites",
     async () => {
-        const cwd = await Deno.makeTempDir();
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
         try {
             await savePlan(cwd, "done", "# Done\n\nBody", { status: "verified", planId: "done-id" });
             await archivePlan(cwd, "done", { now: "2026-06-19T00:00:00.000Z" });
@@ -1324,17 +1404,17 @@ testWithFs(
             await savePlan(cwd, "old", "# Active", { status: "draft" });
             await assertRejects(() => restoreArchivedPlan(cwd, "old"), Error, "already exists");
         } finally {
-            await Deno.remove(cwd, { recursive: true });
+            await fsRm(cwd, { recursive: true });
         }
     },
 );
 
 testWithFs("archived plan store resolves planId and preserves custom front matter text", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const planPath = `${getPlansDir(cwd)}/custom.md`;
-        await Deno.mkdir(getPlansDir(cwd), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(getPlansDir(cwd), { recursive: true });
+        await fsWriteFile(
             planPath,
             [
                 "---",
@@ -1363,50 +1443,50 @@ testWithFs("archived plan store resolves planId and preserves custom front matte
         assertEquals(archived?.body, "# Custom Body\n");
 
         await restoreArchivedPlan(cwd, "durable-custom-id", { now: "2026-06-22T00:00:00.000Z" });
-        const restoredMarkdown = await Deno.readTextFile(planPath);
+        const restoredMarkdown = await fsReadFile(planPath, "utf8");
         assertStringIncludes(restoredMarkdown, "customObject:\n  nested: true");
         assertStringIncludes(restoredMarkdown, "# keep this comment with the custom field");
         assertStringIncludes(restoredMarkdown, 'restoredAt: "2026-06-22T00:00:00.000Z"');
         assertStringIncludes(restoredMarkdown, "# Custom Body\n");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archived listing skips malformed files while direct reads report parse errors", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "archived/good", "# Good", { status: "verified", planId: "good-id" });
-        await Deno.writeTextFile(
-            `${getPlansDir(cwd)}/archived/bad.md`,
-            "---\nsummary: [unterminated\n---\n# Bad\n",
-        );
+        await fsWriteFile(`${getPlansDir(cwd)}/archived/bad.md`, "---\nsummary: [unterminated\n---\n# Bad\n");
 
         const listed = await listArchivedPlans(cwd);
-        assertEquals(listed.map((plan) => plan.name), ["good"]);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["good"],
+        );
         await assertRejects(
             () => loadArchivedPlan(cwd, "bad"),
             Error,
             "Malformed archived Plan docs/plans/archived/bad.md",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archive helpers reject traversal and active archive source names", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "archived/old", "# Old", { status: "verified" });
         await assertRejects(() => archivePlan(cwd, "archived/old"), Error, "active Plan name");
         await assertRejects(() => loadArchivedPlan(cwd, "../escape"), Error, "cannot escape");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("saveChildFeaturePlans creates draft child FEATURE plans with order and legacy sequence alias", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const results = await saveChildFeaturePlans(cwd, "project-breakdown-epic", [
             {
@@ -1433,10 +1513,13 @@ testWithFs("saveChildFeaturePlans creates draft child FEATURE plans with order a
             },
         ]);
 
-        assertEquals(results.map((result) => ({ name: result.name, action: result.action })), [
-            { name: "project-breakdown-epic/01-preserve-epic-and-child-metadata", action: "created" },
-            { name: "project-breakdown-epic/02-load-child-features", action: "created" },
-        ]);
+        assertEquals(
+            results.map((result) => ({ name: result.name, action: result.action })),
+            [
+                { name: "project-breakdown-epic/01-preserve-epic-and-child-metadata", action: "created" },
+                { name: "project-breakdown-epic/02-load-child-features", action: "created" },
+            ],
+        );
         assertEquals(results[0].metadata, {
             classification: "PLANNED_CHANGE",
             status: "draft",
@@ -1469,12 +1552,12 @@ testWithFs("saveChildFeaturePlans creates draft child FEATURE plans with order a
         assertEquals(second?.attrs.dependencies, ["project-breakdown-epic/01-preserve-epic-and-child-metadata"]);
         assertEquals(second?.attrs.workKind, "DOCUMENTATION");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("saveChildFeaturePlans rejects invalid child policies before writing any files", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await assertRejects(
             () =>
@@ -1506,12 +1589,12 @@ testWithFs("saveChildFeaturePlans rejects invalid child policies before writing 
         );
         assertEquals(await loadPlan(cwd, "project-breakdown-epic/01-valid-child"), null);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("findPlansByParent sorts child plans by order before name", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic-sort", "# Epic", {
             classification: "PROJECT",
@@ -1523,19 +1606,17 @@ testWithFs("findPlansByParent sorts child plans by order before name", async () 
         await savePlan(cwd, "epic-sort/04-also-second", "# Also Second", { parentPlan: "epic-sort", order: 2 });
 
         const children = await findPlansByParent(cwd, "epic-sort");
-        assertEquals(children.map((child) => child.name), [
-            "epic-sort/02-second",
-            "epic-sort/04-also-second",
-            "epic-sort/03-third",
-            "epic-sort/01-legacy",
-        ]);
+        assertEquals(
+            children.map((child) => child.name),
+            ["epic-sort/02-second", "epic-sort/04-also-second", "epic-sort/03-third", "epic-sort/01-legacy"],
+        );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("saveChildFeaturePlans updates existing drafts at stable child paths", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const descriptor = {
             sequence: 1,
@@ -1547,23 +1628,25 @@ testWithFs("saveChildFeaturePlans updates existing drafts at stable child paths"
         };
         await saveChildFeaturePlans(cwd, "epic-a", [descriptor]);
 
-        const results = await saveChildFeaturePlans(cwd, "epic-a", [{
-            ...descriptor,
-            summary: "Updated summary",
-            content: "# Write Draft Plans\n\n## Context\nUpdated summary\n\nUpdated content",
-        }]);
+        const results = await saveChildFeaturePlans(cwd, "epic-a", [
+            {
+                ...descriptor,
+                summary: "Updated summary",
+                content: "# Write Draft Plans\n\n## Context\nUpdated summary\n\nUpdated content",
+            },
+        ]);
 
         assertEquals(results[0].action, "updated");
         const loaded = await loadPlan(cwd, "epic-a/01-write-draft-plans");
         assertEquals(loaded?.attrs.summary, "Updated summary");
         assertEquals(loaded?.body.trim(), "# Write Draft Plans\n\n## Context\nUpdated summary\n\nUpdated content");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("saveChildFeaturePlans rejects invalid child and parent names", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const validChild = {
             sequence: 1,
@@ -1591,14 +1674,16 @@ testWithFs("saveChildFeaturePlans rejects invalid child and parent names", async
         );
         await assertRejects(
             () =>
-                saveChildFeaturePlans(cwd, "epic-a", [{
-                    sequence: 1,
-                    title: "...",
-                    summary: "Bad child",
-                    affectedPaths: [],
-                    dependencies: [],
-                    content: "# Bad",
-                }]),
+                saveChildFeaturePlans(cwd, "epic-a", [
+                    {
+                        sequence: 1,
+                        title: "...",
+                        summary: "Bad child",
+                        affectedPaths: [],
+                        dependencies: [],
+                        content: "# Bad",
+                    },
+                ]),
             Error,
             "Child plan title must produce a valid plan name",
         );
@@ -1632,12 +1717,12 @@ testWithFs("saveChildFeaturePlans rejects invalid child and parent names", async
             "Child plan dependencies must be an array",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("plan-store updates preserve parent-child metadata and unknown front matter", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const markdown = injectFrontMatter(
             "# Child",
@@ -1650,8 +1735,8 @@ testWithFs("plan-store updates preserve parent-child metadata and unknown front 
                 customTags: ["alpha", "beta"],
             }),
         );
-        await Deno.mkdir(`${cwd}/docs/plans/project-breakdown-epic`, { recursive: true });
-        await Deno.writeTextFile(`${cwd}/docs/plans/project-breakdown-epic/feature2.md`, markdown);
+        await fsMkdir(join(cwd, `docs/plans/project-breakdown-epic`), { recursive: true });
+        await fsWriteFile(join(cwd, `docs/plans/project-breakdown-epic/feature2.md`), markdown);
 
         await updatePlanStatusForTest(cwd, "project-breakdown-epic/feature2", "approved");
         const afterStatus = await loadPlan(cwd, "project-breakdown-epic/feature2");
@@ -1671,33 +1756,29 @@ testWithFs("plan-store updates preserve parent-child metadata and unknown front 
         assertEquals(attrs.dependencies, ["feature0"]);
         assertEquals(/** @type {any} */ (attrs).customFlag, true);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("plan-store rejects stored plan names that escape plans directory", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await assertRejects(
-            () => savePlan(cwd, "../outside", "# Bad"),
-            Error,
-            "Plan name cannot escape docs/plans/",
-        );
+        await assertRejects(() => savePlan(cwd, "../outside", "# Bad"), Error, "Plan name cannot escape docs/plans/");
         await assertRejects(
             () => savePlan(cwd, "/tmp/outside", "# Bad"),
             Error,
             "Plan name must be relative to docs/plans/",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("plan-store resolves external plans and injects defaults when front matter is missing", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const externalPath = `${cwd}/outside.md`;
-        await Deno.writeTextFile(externalPath, "# External plan\n\nBody");
+        const externalPath = join(cwd, `outside.md`);
+        await fsWriteFile(externalPath, "# External plan\n\nBody");
 
         const loaded = await loadExternalPlan(externalPath);
         assertEquals(loaded.attrs.origin, "external");
@@ -1708,17 +1789,13 @@ testWithFs("plan-store resolves external plans and injects defaults when front m
         assertEquals(resolved.planName, "outside");
         assertEquals(resolved.attrs.origin, "external");
 
-        await assertRejects(
-            () => resolvePlan(cwd, "missing"),
-            Error,
-            "Plan not found: missing",
-        );
+        await assertRejects(() => resolvePlan(cwd, "missing"), Error, "Plan not found: missing");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("worktree front matter fields round-trip and can be cleared", () => {
+test("worktree front matter fields round-trip and can be cleared", () => {
     const markdown = injectFrontMatter("## Body", {
         executionBaselineTree: "tree123",
         worktreeId: "wt-123",
@@ -1751,7 +1828,7 @@ Deno.test("worktree front matter fields round-trip and can be cleared", () => {
     assertEquals(reparsed.attrs.worktreeStatus, undefined);
 });
 
-Deno.test("delivery evidence front matter validates compact shapes and rejects malformed values", () => {
+test("delivery evidence front matter validates compact shapes and rejects malformed values", () => {
     /** @type {import("./plan-store.js").DeliveryEvidence} */
     const worktreeEvidence = {
         version: 1,
@@ -1768,32 +1845,38 @@ Deno.test("delivery evidence front matter validates compact shapes and rejects m
     assertEquals(parsed.attrs.executionMode, "worktree");
     assertEquals(parsed.attrs.deliveryEvidence, worktreeEvidence);
 
-    const nonGit = parsePlanFrontMatter(injectFrontMatter("## Body", {
-        executionMode: "non_git_in_place",
-        deliveryEvidence: /** @type {any} */ ({
-            version: 1,
-            mode: "non_git_in_place",
-            projectRoot: "/tmp/must-not-survive",
-            validationCwd: "/tmp/must-not-survive",
-            validatedAt: "2026-07-24T00:00:00.000Z",
+    const nonGit = parsePlanFrontMatter(
+        injectFrontMatter("## Body", {
+            executionMode: "non_git_in_place",
+            deliveryEvidence: /** @type {any} */ ({
+                version: 1,
+                mode: "non_git_in_place",
+                projectRoot: "/tmp/must-not-survive",
+                validationCwd: "/tmp/must-not-survive",
+                validatedAt: "2026-07-24T00:00:00.000Z",
+            }),
         }),
-    }));
+    );
     assertEquals(nonGit.attrs.deliveryEvidence, { version: 1, mode: "non_git_in_place" });
 
-    const malformed = parsePlanFrontMatter(injectFrontMatter("## Body", {
-        deliveryEvidence: /** @type {any} */ ({ version: 1, mode: "worktree_merge", executionCommit: "not-a-sha" }),
-    }));
+    const malformed = parsePlanFrontMatter(
+        injectFrontMatter("## Body", {
+            deliveryEvidence: /** @type {any} */ ({ version: 1, mode: "worktree_merge", executionCommit: "not-a-sha" }),
+        }),
+    );
     assertEquals(malformed.attrs.deliveryEvidence, undefined);
 
-    const partialSha = parsePlanFrontMatter(injectFrontMatter("## Body", {
-        deliveryEvidence: /** @type {any} */ ({
-            version: 1,
-            mode: "worktree_merge",
-            executionCommit: "a".repeat(39),
-            targetBranch: "main",
-            targetHeadBeforeMerge: "b".repeat(40),
+    const partialSha = parsePlanFrontMatter(
+        injectFrontMatter("## Body", {
+            deliveryEvidence: /** @type {any} */ ({
+                version: 1,
+                mode: "worktree_merge",
+                executionCommit: "a".repeat(39),
+                targetBranch: "main",
+                targetHeadBeforeMerge: "b".repeat(40),
+            }),
         }),
-    }));
+    );
     assertEquals(partialSha.attrs.deliveryEvidence, undefined);
 
     const cleared = parsePlanFrontMatter(injectFrontMatter(markdown, { deliveryEvidence: null, executionMode: null }));
@@ -1801,7 +1884,7 @@ Deno.test("delivery evidence front matter validates compact shapes and rejects m
     assertEquals(cleared.attrs.executionMode, undefined);
 });
 
-Deno.test("Epic done-enough front matter fields round-trip and can be cleared", () => {
+test("Epic done-enough front matter fields round-trip and can be cleared", () => {
     const markdown = injectFrontMatter("## Body", {
         epicCompletionMode: "done_enough",
         epicDoneEnoughAt: "2026-06-17T00:00:00.000Z",
@@ -1825,7 +1908,7 @@ Deno.test("Epic done-enough front matter fields round-trip and can be cleared", 
 });
 
 testWithFs("updatePlanFrontMatter preserves body and clears optional fields", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "front-matter", "## Body", {
             failureReason: "old failure",
@@ -1848,35 +1931,32 @@ testWithFs("updatePlanFrontMatter preserves body and clears optional fields", as
         const loaded = await loadPlan(cwd, "front-matter");
         assertEquals(loaded?.body.trim(), "## Body");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("updatePlanFrontMatter preserves exact body bytes", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await Deno.mkdir(join(cwd, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
         const path = join(cwd, "docs", "plans", "byte-preserve.md");
         const body = "\n  # Body with leading whitespace\n\n\tIndented line\n";
-        await Deno.writeTextFile(
-            path,
-            `---\nstatus: draft\nclassification: FEATURE\ncustomField: keep-me\n---\n${body}`,
-        );
+        await fsWriteFile(path, `---\nstatus: draft\nclassification: FEATURE\ncustomField: keep-me\n---\n${body}`);
 
         await updatePlanFrontMatterForTest(cwd, "byte-preserve", { status: "approved" });
-        const updated = await Deno.readTextFile(path);
+        const updated = await fsReadFile(path, "utf8");
         assertEquals(updated.slice(updated.indexOf("---\n", 4) + "---\n".length), body);
         assertEquals(
             /** @type {Record<string, unknown>} */ (parsePlanFrontMatter(updated).attrs).customField,
             "keep-me",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("updatePlanFrontMatter preserves and clears Delivery Evidence on partial updates", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     /** @type {import("./plan-store.js").DeliveryEvidence} */
     const deliveryEvidence = {
         version: 1,
@@ -1913,12 +1993,12 @@ testWithFs("updatePlanFrontMatter preserves and clears Delivery Evidence on part
         assertEquals(loaded?.attrs.deliveryEvidence, undefined);
         assertEquals(loaded?.attrs.executionMode, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("classification updates reject preserved canonical execution policy on PROJECT Epics", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "feature-policy", "# Body", {
             classification: "FEATURE",
@@ -1935,17 +2015,17 @@ testWithFs("classification updates reject preserved canonical execution policy o
         assertEquals(loaded?.attrs.classification, "PLANNED_CHANGE");
         assertEquals(loaded?.attrs.executionAgent, "frontend-engineer");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("lifecycle front matter updates preserve unchanged invalid raw policy values", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const plansDir = `${cwd}/docs/plans`;
-        await Deno.mkdir(plansDir, { recursive: true });
-        await Deno.writeTextFile(
-            `${plansDir}/invalid-policy.md`,
+        const plansDir = join(cwd, `docs/plans`);
+        await fsMkdir(plansDir, { recursive: true });
+        await fsWriteFile(
+            join(plansDir, `invalid-policy.md`),
             [
                 "---",
                 "classification: FEATURE",
@@ -1976,30 +2056,35 @@ testWithFs("lifecycle front matter updates preserve unchanged invalid raw policy
             "Invalid executionAgent: unknown-owner",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("updatePlanFrontMatter fails closed on malformed front matter", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        const plansDir = `${cwd}/docs/plans`;
-        await Deno.mkdir(plansDir, { recursive: true });
-        await Deno.writeTextFile(`${plansDir}/healed.md`, '---\nstatus: "bad\n---\n# Body');
+        const plansDir = join(cwd, `docs/plans`);
+        await fsMkdir(plansDir, { recursive: true });
+        await fsWriteFile(join(plansDir, `healed.md`), '---\nstatus: "bad\n---\n# Body');
 
-        const malformed = await Deno.readTextFile(`${plansDir}/healed.md`);
+        const malformed = await fsReadFile(join(plansDir, `healed.md`), "utf8");
         await assertRejects(
             () =>
-                updatePlanFrontMatter(cwd, "healed", { status: "feedback" }, {
-                    classification: "QUICK_FIX",
-                    complexity: "LOW",
-                    summary: "Recovered",
-                    affectedPaths: ["src/a.js"],
-                }),
+                updatePlanFrontMatter(
+                    cwd,
+                    "healed",
+                    { status: "feedback" },
+                    {
+                        classification: "QUICK_FIX",
+                        complexity: "LOW",
+                        summary: "Recovered",
+                        affectedPaths: ["src/a.js"],
+                    },
+                ),
             PlanFrontMatterParseError,
             "healed.md",
         );
-        assertEquals(await Deno.readTextFile(`${plansDir}/healed.md`), malformed);
+        assertEquals(await fsReadFile(join(plansDir, `healed.md`), "utf8"), malformed);
 
         await assertRejects(
             () => updatePlanFrontMatterForTest(cwd, "missing", { status: "draft" }),
@@ -2007,45 +2092,25 @@ testWithFs("updatePlanFrontMatter fails closed on malformed front matter", async
             "Plan not found: missing",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("parsePlanFrontMatter normalizes legacy and invalid statuses", () => {
-    const completed = parsePlanFrontMatter([
-        "---",
-        'status: "completed"',
-        "---",
-        "body",
-    ].join("\n"));
+test("parsePlanFrontMatter normalizes legacy and invalid statuses", () => {
+    const completed = parsePlanFrontMatter(["---", 'status: "completed"', "---", "body"].join("\n"));
     assertEquals(completed.attrs.status, "verified");
 
-    const inReview = parsePlanFrontMatter([
-        "---",
-        'status: "in_review"',
-        "---",
-        "body",
-    ].join("\n"));
+    const inReview = parsePlanFrontMatter(["---", 'status: "in_review"', "---", "body"].join("\n"));
     assertEquals(inReview.attrs.status, "feedback");
 
-    const readyForReview = parsePlanFrontMatter([
-        "---",
-        'status: "ready_for_review"',
-        "---",
-        "body",
-    ].join("\n"));
+    const readyForReview = parsePlanFrontMatter(["---", 'status: "ready_for_review"', "---", "body"].join("\n"));
     assertEquals(readyForReview.attrs.status, "implemented");
 
-    const invalid = parsePlanFrontMatter([
-        "---",
-        'status: "whatever"',
-        "---",
-        "body",
-    ].join("\n"));
+    const invalid = parsePlanFrontMatter(["---", 'status: "whatever"', "---", "body"].join("\n"));
     assertEquals(invalid.attrs.status, "draft");
 });
 
-Deno.test("planId front matter round-trips and blank values normalize away", () => {
+test("planId front matter round-trips and blank values normalize away", () => {
     const markdown = injectFrontMatter("## Body", { planId: "plan-123" });
     const parsed = parsePlanFrontMatter(markdown);
     assertEquals(parsed.attrs.planId, "plan-123");
@@ -2056,7 +2121,7 @@ Deno.test("planId front matter round-trips and blank values normalize away", () 
 });
 
 testWithFs("ensurePlanIdentity backfills missing planId while preserving body exactly", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "needs-id", "\n# Title\n\nBody with trailing spaces  \n\n", {
             summary: "Needs id",
@@ -2073,31 +2138,31 @@ testWithFs("ensurePlanIdentity backfills missing planId while preserving body ex
         assertEquals(after?.attrs.planId, "generated-id");
         assertEquals(after?.body, before?.body);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("ensurePlanIdentity preserves existing planId", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "has-id", "# Body", { planId: "existing-id" });
-        const before = await Deno.readTextFile(`${cwd}/docs/plans/has-id.md`);
+        const before = await fsReadFile(join(cwd, `docs/plans/has-id.md`), "utf8");
 
         const resource = await ensurePlanIdentity(cwd, "has-id", { idGenerator: () => "new-id" });
-        const after = await Deno.readTextFile(`${cwd}/docs/plans/has-id.md`);
+        const after = await fsReadFile(join(cwd, `docs/plans/has-id.md`), "utf8");
 
         assertEquals(resource.planId, "existing-id");
         assertEquals(after, before);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("ensurePlanIdentity skips archived plans and does not backfill them", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "archived/old", "# Old");
-        const before = await Deno.readTextFile(`${cwd}/docs/plans/archived/old.md`);
+        const before = await fsReadFile(join(cwd, `docs/plans/archived/old.md`), "utf8");
 
         await assertRejects(
             () => ensurePlanIdentity(cwd, "archived/old", { idGenerator: () => "archived-id" }),
@@ -2105,16 +2170,16 @@ testWithFs("ensurePlanIdentity skips archived plans and does not backfill them",
             "archived or hidden",
         );
 
-        const after = await Deno.readTextFile(`${cwd}/docs/plans/archived/old.md`);
+        const after = await fsReadFile(join(cwd, `docs/plans/archived/old.md`), "utf8");
         assertEquals(after, before);
         assertEquals((await loadPlan(cwd, "archived/old"))?.attrs.planId, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("ensurePlanIdentity retries generated collisions and rejects duplicate existing planIds", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "existing", "# Existing", { planId: "existing-id" });
         await savePlan(cwd, "missing", "# Missing");
@@ -2138,34 +2203,34 @@ testWithFs("ensurePlanIdentity retries generated collisions and rejects duplicat
             "Duplicate planId",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("listPlanResources detects duplicate existing planIds before backfilling", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "a", "# A", { planId: "dup" });
         await savePlan(cwd, "b", "# B", { planId: "dup" });
         await savePlan(cwd, "missing", "# Missing");
-        const before = await Deno.readTextFile(`${cwd}/docs/plans/missing.md`);
+        const before = await fsReadFile(join(cwd, `docs/plans/missing.md`), "utf8");
 
         await assertRejects(
             () => listPlanResources(cwd, { idGenerator: () => "should-not-write" }),
             Error,
             "Duplicate planId",
         );
-        const after = await Deno.readTextFile(`${cwd}/docs/plans/missing.md`);
+        const after = await fsReadFile(join(cwd, `docs/plans/missing.md`), "utf8");
         assertEquals(after, before);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs(
     "listPlanResources backfills missing IDs, retries generated collisions, and hides archived plans",
     async () => {
-        const cwd = await Deno.makeTempDir();
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
         try {
             await savePlan(cwd, "a", "# A", { planId: "existing" });
             await savePlan(cwd, "b", "# B");
@@ -2177,17 +2242,23 @@ testWithFs(
                 idGenerator: () => ids.shift() || "unused",
             });
 
-            assertEquals(resources.map((resource) => resource.name), ["a", "b"]);
-            assertEquals(resources.map((resource) => resource.planId), ["existing", "generated"]);
+            assertEquals(
+                resources.map((resource) => resource.name),
+                ["a", "b"],
+            );
+            assertEquals(
+                resources.map((resource) => resource.planId),
+                ["existing", "generated"],
+            );
             assertEquals((await loadPlan(cwd, "archived/old"))?.attrs.planId, undefined);
         } finally {
-            await Deno.remove(cwd, { recursive: true });
+            await fsRm(cwd, { recursive: true });
         }
     },
 );
 
 testWithFs("findPlanById resolves non-archived resources and reports unknown IDs", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "found", "# Found\n\n## Context\nFound plan\n\nBody", { planId: "lookup-id" });
         await savePlan(cwd, "archived/hidden", "# Hidden", { planId: "hidden-id" });
@@ -2202,11 +2273,11 @@ testWithFs("findPlanById resolves non-archived resources and reports unknown IDs
         await assertRejects(() => findPlanById(cwd, "hidden-id"), Error, "Plan not found for planId");
         await assertRejects(() => findPlanById(cwd, "missing-id"), Error, "Plan not found for planId");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("shared hierarchy helpers match Epic, child, orphan, standalone, and progress semantics", () => {
+test("shared hierarchy helpers match Epic, child, orphan, standalone, and progress semantics", () => {
     const plans = /** @type {any[]} */ ([
         { name: "epic", attrs: { classification: "PROJECT", status: "ready_for_work" } },
         { name: "epic/01-done", attrs: { classification: "FEATURE", parentPlan: "epic", status: "verified" } },
@@ -2220,15 +2291,22 @@ Deno.test("shared hierarchy helpers match Epic, child, orphan, standalone, and p
     assertEquals(isEpicPlan(plans[0].attrs), true);
     assertEquals(isChildFeaturePlan(plans[1]), true);
     const grouped = groupPlanHierarchy(plans);
-    assertEquals(grouped.epics.map((plan) => plan.name), ["epic"]);
-    assertEquals((grouped.childrenByParent.get("epic") || []).map((plan) => plan.name), [
-        "epic/01-done",
-        "epic/02-active",
-        "epic/03-failed",
-        "epic/04-todo",
-    ]);
-    assertEquals(grouped.orphanChildren.map((plan) => plan.name), ["orphan/01-child"]);
-    assertEquals(grouped.standalone.map((plan) => plan.name), ["standalone"]);
+    assertEquals(
+        grouped.epics.map((plan) => plan.name),
+        ["epic"],
+    );
+    assertEquals(
+        (grouped.childrenByParent.get("epic") || []).map((plan) => plan.name),
+        ["epic/01-done", "epic/02-active", "epic/03-failed", "epic/04-todo"],
+    );
+    assertEquals(
+        grouped.orphanChildren.map((plan) => plan.name),
+        ["orphan/01-child"],
+    );
+    assertEquals(
+        grouped.standalone.map((plan) => plan.name),
+        ["standalone"],
+    );
     assertEquals(countChildPlanProgress(grouped.childrenByParent.get("epic") || []), {
         verified: 1,
         userVerified: 0,
@@ -2242,7 +2320,7 @@ Deno.test("shared hierarchy helpers match Epic, child, orphan, standalone, and p
     });
 });
 
-Deno.test("resolveSiblingChildPlanDependencyStates exposes verified unverified and missing sibling states", () => {
+test("resolveSiblingChildPlanDependencyStates exposes verified unverified and missing sibling states", () => {
     const siblings = /** @type {any[]} */ ([
         {
             name: "epic/01-done",
@@ -2351,24 +2429,21 @@ testWithFs("collaboration front matter formats and parses non-secret metadata", 
 });
 
 testWithFs("locked shared plans reject normal save/status/front matter/body writes without mutation", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     const path = await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
-    const before = await Deno.readTextFile(path);
+    const before = await fsReadFile(path, "utf8");
 
     await assertRejects(() => savePlan(cwd, "locked", "## Plan\n\nChanged"), SharedPlanLockError);
     await assertRejects(() => updatePlanStatusForTest(cwd, "locked", "approved"), SharedPlanLockError);
     await assertRejects(() => updatePlanFrontMatterForTest(cwd, "locked", { summary: "Changed" }), SharedPlanLockError);
 
-    await Deno.writeTextFile(
-        path,
-        injectFrontMatter("## Plan\n\nOriginal", { ...lockedPlanFrontMatter(), planId: "plan-1" }),
-    );
+    await fsWriteFile(path, injectFrontMatter("## Plan\n\nOriginal", { ...lockedPlanFrontMatter(), planId: "plan-1" }));
     const bodyResource = await loadPlanBodyById(cwd, "plan-1");
     await assertRejects(
         () => savePlanBodyByIdForTest(cwd, "plan-1", "## Plan\n\nChanged", bodyResource.bodyHash),
         SharedPlanLockError,
     );
-    assertEquals((await Deno.readTextFile(path)).includes("Changed"), false);
+    assertEquals((await fsReadFile(path, "utf8")).includes("Changed"), false);
     assertEquals(before.includes("collaborationBodyHash:"), false);
     assertEquals(
         (await readControllerRecord(cwd, { planName: "locked", planId: "plan-1" }))?.state.collaborationBodyHash,
@@ -2377,7 +2452,7 @@ testWithFs("locked shared plans reject normal save/status/front matter/body writ
 });
 
 testWithFs("locked shared plan writes require exact collaboration bypass", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
     await assertRejects(
         () => savePlan(cwd, "locked", "## Plan\n\nChanged", {}, { collaborationLockBypass: /** @type {any} */ (true) }),
@@ -2385,19 +2460,25 @@ testWithFs("locked shared plan writes require exact collaboration bypass", async
     );
     const before = await loadPlan(cwd, "locked");
     if (!before) throw new Error("Expected locked Plan to exist");
-    await savePlan(cwd, "locked", "## Plan\n\nChanged", {}, {
-        collaborationLockBypass: COLLABORATION_LOCK_BYPASS.pull,
-        expectedRevision: before.revision,
-    });
+    await savePlan(
+        cwd,
+        "locked",
+        "## Plan\n\nChanged",
+        {},
+        {
+            collaborationLockBypass: COLLABORATION_LOCK_BYPASS.pull,
+            expectedRevision: before.revision,
+        },
+    );
     const loaded = await loadPlan(cwd, "locked");
     if (!loaded) throw new Error("Expected locked Plan to exist");
     assertStringIncludes(loaded.body, "Changed");
 });
 
 testWithFs("malformed remote-canonical front matter variants reject recovery writes without mutation", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     const dir = await ensurePlansDir(cwd);
-    const path = `${dir}/malformed.md`;
+    const path = join(dir, `malformed.md`);
     const malformed = [
         "---",
         "collaborationState : remote_canonical # locked on the Plan Server",
@@ -2407,60 +2488,71 @@ testWithFs("malformed remote-canonical front matter variants reject recovery wri
         "",
         "Original",
     ].join("\n");
-    await Deno.writeTextFile(path, malformed);
+    await fsWriteFile(path, malformed);
 
     await assertRejects(() => updatePlanStatusForTest(cwd, "malformed", "approved"), PlanFrontMatterParseError);
     await assertRejects(
         () => updatePlanFrontMatterForTest(cwd, "malformed", { summary: "Changed" }),
         PlanFrontMatterParseError,
     );
-    assertEquals(await Deno.readTextFile(path), malformed);
+    assertEquals(await fsReadFile(path, "utf8"), malformed);
 });
 
 testWithFs("saveChildFeaturePlans rejects stale expected child revisions", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await saveChildFeaturePlans(cwd, "epic", [{
-            title: "Child",
-            order: 1,
-            summary: "Original",
-            affectedPaths: [],
-            dependencies: [],
-            content: "# Original",
-        }]);
+        await saveChildFeaturePlans(cwd, "epic", [
+            {
+                title: "Child",
+                order: 1,
+                summary: "Original",
+                affectedPaths: [],
+                dependencies: [],
+                content: "# Original",
+            },
+        ]);
         const child = await loadPlan(cwd, "epic/01-child");
         await updatePlanFrontMatterForTest(cwd, "epic/01-child", { complexity: "HIGH" });
         await assertRejects(
             () =>
-                saveChildFeaturePlans(cwd, "epic", [{
-                    title: "Child",
-                    order: 1,
-                    summary: "Overwrite attempt",
-                    affectedPaths: [],
-                    dependencies: [],
-                    content: "# Overwrite",
-                }], { expectedRevisions: { "epic/01-child": child?.revision || "missing" } }),
+                saveChildFeaturePlans(
+                    cwd,
+                    "epic",
+                    [
+                        {
+                            title: "Child",
+                            order: 1,
+                            summary: "Overwrite attempt",
+                            affectedPaths: [],
+                            dependencies: [],
+                            content: "# Overwrite",
+                        },
+                    ],
+                    { expectedRevisions: { "epic/01-child": child?.revision || "missing" } },
+                ),
             StalePlanWriteError,
         );
         assertEquals((await loadPlan(cwd, "epic/01-child"))?.attrs.complexity, "HIGH");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("saveChildFeaturePlans rejects overwriting locked child plans", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(cwd, "epic/01-child", "## Child\n\nOriginal", lockedPlanFrontMatter());
     await assertRejects(
         () =>
-            saveChildFeaturePlans(cwd, "epic", [{
-                title: "Child",
-                summary: "Changed",
-                affectedPaths: [],
-                dependencies: [],
-                content: "## Child\n\nChanged",
-                order: 1,
-            }]),
+            saveChildFeaturePlans(cwd, "epic", [
+                {
+                    title: "Child",
+                    summary: "Changed",
+                    affectedPaths: [],
+                    dependencies: [],
+                    content: "## Child\n\nChanged",
+                    order: 1,
+                },
+            ]),
         SharedPlanLockError,
     );
     const loaded = await loadPlan(cwd, "epic/01-child");
@@ -2471,7 +2563,7 @@ testWithFs("saveChildFeaturePlans rejects overwriting locked child plans", async
 testWithFs(
     "createPulledCollaborationPlan creates locked plan and auto-suffixes generated name collisions",
     async () => {
-        const cwd = await Deno.makeTempDir();
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
         await savePlan(cwd, "remote-title", "## Existing\n\nBody", { planId: "other-plan" });
         const created = await createPulledCollaborationPlan(cwd, {
             title: "Remote Title",
@@ -2498,7 +2590,7 @@ testWithFs(
 );
 
 testWithFs("createPulledCollaborationPlan rejects explicit destination collisions", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(cwd, "copy/review", "## Existing\n\nBody", { planId: "other-plan" });
     await assertRejects(
         () =>
@@ -2513,7 +2605,7 @@ testWithFs("createPulledCollaborationPlan rejects explicit destination collision
 });
 
 testWithFs("updatePlanCollaborationMetadata intentionally refreshes controlled body hash", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
     const attrs = await updatePlanCollaborationMetadata(
         cwd,
@@ -2530,7 +2622,7 @@ testWithFs("updatePlanCollaborationMetadata intentionally refreshes controlled b
 });
 
 testWithFs("updatePlanCollaborationMetadata applies decrypted plan front matter", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(
         cwd,
         "locked",
@@ -2559,7 +2651,7 @@ testWithFs("updatePlanCollaborationMetadata applies decrypted plan front matter"
 });
 
 testWithFs("updatePlanCollaborationMetadata preserves body hash without controlled body write", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
     const attrs = await updatePlanCollaborationMetadata(
         cwd,
@@ -2572,7 +2664,7 @@ testWithFs("updatePlanCollaborationMetadata preserves body hash without controll
 });
 
 testWithFs("updatePlanCollaborationMetadata filters non-front-matter collaboration secrets", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(
         cwd,
         "locked",
@@ -2598,7 +2690,7 @@ testWithFs("updatePlanCollaborationMetadata filters non-front-matter collaborati
     );
     const loaded = await loadPlan(cwd, "locked");
     if (!loaded) throw new Error("Expected locked Plan to exist");
-    const markdown = await Deno.readTextFile(loaded.path);
+    const markdown = await fsReadFile(loaded.path, "utf8");
 
     assertEquals(attrs.collaborationRevision, 8);
     assertEquals(attrs.collaborationServerUrl, "https://plans.example.test/base");
@@ -2609,7 +2701,7 @@ testWithFs("updatePlanCollaborationMetadata filters non-front-matter collaborati
 });
 
 testWithFs("clearPlanCollaborationMetadata removes lock metadata and preserves body and normal metadata", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(
         cwd,
         "locked",
@@ -2617,15 +2709,12 @@ testWithFs("clearPlanCollaborationMetadata removes lock metadata and preserves b
         lockedPlanFrontMatter({ status: "approved", summary: "Keep me", planId: "plan-1" }),
     );
 
-    const attrs = await clearPlanCollaborationMetadata(
-        cwd,
-        "locked",
-        COLLABORATION_LOCK_BYPASS.unshare,
-        { updatedAt: "2026-07-04T12:00:00.000Z" },
-    );
+    const attrs = await clearPlanCollaborationMetadata(cwd, "locked", COLLABORATION_LOCK_BYPASS.unshare, {
+        updatedAt: "2026-07-04T12:00:00.000Z",
+    });
     const loaded = await loadPlan(cwd, "locked");
     if (!loaded) throw new Error("Expected locked Plan to exist");
-    const markdown = await Deno.readTextFile(loaded.path);
+    const markdown = await fsReadFile(loaded.path, "utf8");
 
     assertEquals(attrs.planId, "plan-1");
     assertEquals(attrs.status, "approved");
@@ -2642,7 +2731,7 @@ testWithFs("clearPlanCollaborationMetadata removes lock metadata and preserves b
 });
 
 testWithFs("clearPlanCollaborationMetadata requires exact unshare bypass", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     await savePlan(cwd, "locked", "## Plan\n\nOriginal", lockedPlanFrontMatter());
 
     await assertRejects(
@@ -2653,7 +2742,7 @@ testWithFs("clearPlanCollaborationMetadata requires exact unshare bypass", async
 });
 
 testWithFs("supersedes survives Plan revisions and archival", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     const recordA = "550e8400-e29b-41d4-a716-446655440000";
     const recordB = "550e8400-e29b-41d4-a716-446655440001";
     try {
@@ -2671,12 +2760,12 @@ testWithFs("supersedes survives Plan revisions and archival", async () => {
         assertEquals(archived?.attrs.supersedes, [recordA, recordB]);
         assertEquals(archived?.attrs.archivedAt, "2026-07-15T00:00:00.000Z");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("updateArchivedPlanFrontMatter preserves archive metadata while adding Work Record backlink", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "archived-link", "# Archived Link\n\n## Plan\n\nBody", {
             planId: "plan-archived-link",
@@ -2708,12 +2797,12 @@ testWithFs("updateArchivedPlanFrontMatter preserves archive metadata while addin
         assertEquals(loaded?.attrs.archiveReason, "complete");
         assertEquals(loaded?.attrs.workRecord?.status, "generated");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("Plan front matter normalizes and preserves Ticket References", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "ticketed", "# Ticketed", {
             summary: "Ticketed",
@@ -2732,78 +2821,86 @@ testWithFs("Plan front matter normalizes and preserves Ticket References", async
         const cleared = await updatePlanFrontMatterForTest(cwd, "ticketed", { tickets: [] });
         assertEquals(cleared.tickets, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs(
     "child plan materialization preserves omitted Ticket References and clears explicit empty references",
     async () => {
-        const cwd = await Deno.makeTempDir();
+        const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
         try {
             await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "approved" });
-            await saveChildFeaturePlans(cwd, "epic", [{
-                title: "Child",
-                order: 1,
-                summary: "Child",
-                affectedPaths: [],
-                dependencies: [],
-                tickets: [{ url: "https://example.com/tickets/CHILD-1" }],
-                content: "# Child",
-            }]);
-            await saveChildFeaturePlans(cwd, "epic", [{
-                title: "Child",
-                order: 1,
-                summary: "Updated",
-                affectedPaths: [],
-                dependencies: [],
-                content: "# Child updated",
-            }]);
-            assertEquals((await loadPlan(cwd, "epic/01-child"))?.attrs.tickets, [{
-                url: "https://example.com/tickets/CHILD-1",
-            }]);
-            await saveChildFeaturePlans(cwd, "epic", [{
-                title: "Child",
-                order: 1,
-                summary: "Cleared",
-                affectedPaths: [],
-                dependencies: [],
-                tickets: [],
-                content: "# Child cleared",
-            }]);
+            await saveChildFeaturePlans(cwd, "epic", [
+                {
+                    title: "Child",
+                    order: 1,
+                    summary: "Child",
+                    affectedPaths: [],
+                    dependencies: [],
+                    tickets: [{ url: "https://example.com/tickets/CHILD-1" }],
+                    content: "# Child",
+                },
+            ]);
+            await saveChildFeaturePlans(cwd, "epic", [
+                {
+                    title: "Child",
+                    order: 1,
+                    summary: "Updated",
+                    affectedPaths: [],
+                    dependencies: [],
+                    content: "# Child updated",
+                },
+            ]);
+            assertEquals((await loadPlan(cwd, "epic/01-child"))?.attrs.tickets, [
+                {
+                    url: "https://example.com/tickets/CHILD-1",
+                },
+            ]);
+            await saveChildFeaturePlans(cwd, "epic", [
+                {
+                    title: "Child",
+                    order: 1,
+                    summary: "Cleared",
+                    affectedPaths: [],
+                    dependencies: [],
+                    tickets: [],
+                    content: "# Child cleared",
+                },
+            ]);
             assertEquals((await loadPlan(cwd, "epic/01-child"))?.attrs.tickets, undefined);
         } finally {
-            await Deno.remove(cwd, { recursive: true });
+            await fsRm(cwd, { recursive: true });
         }
     },
 );
 
 testWithFs("listPlans fails closed for non-regular markdown Plan paths", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const plansDir = await ensurePlansDir(cwd);
-        await Deno.mkdir(join(plansDir, "dir-plan.md"));
+        await fsMkdir(join(plansDir, "dir-plan.md"));
         await assertRejects(() => listPlans(cwd), Error, "not a markdown file");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("listPlans fails closed for symlink markdown Plan paths", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const plansDir = await ensurePlansDir(cwd);
         const target = join(cwd, "external.md");
-        await Deno.writeTextFile(target, "# External");
-        await Deno.symlink(target, join(plansDir, "linked.md"));
+        await fsWriteFile(target, "# External");
+        await fsSymlink(target, join(plansDir, "linked.md"));
         await assertRejects(() => listPlans(cwd), Error, "not a regular markdown file");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("withPlanLock serializes concurrent same-process tasks while allowing nested reentry", async () => {
-    const cwd = await Deno.makeTempDir();
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         /** @type {string[]} */
         const events = [];
@@ -2812,7 +2909,7 @@ testWithFs("withPlanLock serializes concurrent same-process tasks while allowing
         const firstMayFinish = new Promise((resolve) => {
             releaseFirst = () => resolve(null);
         });
-        const resolvedCwd = Deno.realPathSync(cwd);
+        const resolvedCwd = fsRealpathSync(cwd);
         const lockPath = join(
             getRunWieldRuntimeDir(resolvedCwd),
             PROJECT_INTERNAL_RUNTIME_DIR_NAME,
@@ -2829,10 +2926,10 @@ testWithFs("withPlanLock serializes concurrent same-process tasks while allowing
         const firstEntered = new Promise((resolve) => {
             void withPlanLock(cwd, "demo", async () => {
                 events.push("first-enter");
-                await Deno.lstat(lockPath);
+                await fsLstat(lockPath);
                 await assertMissing(legacyLockPath);
                 await withPlanCatalogLock(cwd, async () => {
-                    await Deno.lstat(catalogPath);
+                    await fsLstat(catalogPath);
                 });
                 await withPlanLock(cwd, "demo", () => {
                     events.push("nested-enter");
@@ -2855,51 +2952,57 @@ testWithFs("withPlanLock serializes concurrent same-process tasks while allowing
         await second;
         assertEquals(events, ["first-enter", "nested-enter", "first-exit", "second-enter"]);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("a plain markdown file in docs/plans/ is readable and is never claimed by a passive read", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-external-plan-" });
+test("a plain markdown file in docs/plans/ is readable and is never claimed by a passive read", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-external-plan-" });
     try {
         const bare = "# Random notes\n\nI wrote this in vim.\n";
-        await Deno.mkdir(join(cwd, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
         const path = join(cwd, "docs", "plans", "random.md");
-        await Deno.writeTextFile(path, bare);
+        await fsWriteFile(path, bare);
 
         // Reads must tolerate the missing Front Matter rather than panic.
         const loaded = await loadPlan(cwd, "random");
         assertEquals(loaded?.attrs.status, "draft", "parsing falls back to defaults");
         assertEquals(loaded?.hasFrontMatter, false, "but the file's un-onboarded state stays visible");
-        assertEquals((await listPlans(cwd)).map((plan) => plan.name), ["random"]);
+        assertEquals(
+            (await listPlans(cwd)).map((plan) => plan.name),
+            ["random"],
+        );
 
         // Listing is not consent. Backfilling identity here would let opening a Plan
         // Board or reading the worktree registry stamp metadata into the user's file.
         const resources = await listPlanResources(cwd);
-        assertEquals(resources.map((resource) => resource.name), ["random"]);
+        assertEquals(
+            resources.map((resource) => resource.name),
+            ["random"],
+        );
         assertEquals(resources[0].planId, "", "no identity is invented for an un-onboarded file");
-        assertEquals(await Deno.readTextFile(path), bare, "the user's file is byte-for-byte untouched");
+        assertEquals(await fsReadFile(path, "utf8"), bare, "the user's file is byte-for-byte untouched");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("onboardExternalPlan adopts a plain markdown Plan and preserves the body exactly", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-onboard-plan-" });
+test("onboardExternalPlan adopts a plain markdown Plan and preserves the body exactly", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-onboard-plan-" });
     try {
         const bare = "# Old plan\n\nProse the user wrote, with `---` inside it.\n";
-        await Deno.mkdir(join(cwd, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
         const path = join(cwd, "docs", "plans", "old.md");
-        await Deno.writeTextFile(path, bare);
+        await fsWriteFile(path, bare);
         // A Plan that has existed for weeks before RunWield saw it.
         const past = new Date("2026-06-01T12:00:00.000Z");
-        await Deno.utime(path, past, past);
-        const createdBefore = (await Deno.stat(path)).birthtime;
+        await fsUtimes(path, past, past);
+        const createdBefore = (await fsStat(path)).birthtime;
 
         const adopted = await onboardExternalPlan(cwd, "old", { now: () => new Date("2026-07-01T00:00:00.000Z") });
         assertEquals(adopted.onboarded, true);
 
-        const attrs = parsePlanFrontMatter(await Deno.readTextFile(path)).attrs;
+        const attrs = parsePlanFrontMatter(await fsReadFile(path, "utf8")).attrs;
         assertEquals(attrs.classification, "PLANNED_CHANGE");
         assertEquals(attrs.status, "draft");
         assertEquals(attrs.origin, "external");
@@ -2913,56 +3016,55 @@ Deno.test("onboardExternalPlan adopts a plain markdown Plan and preserves the bo
         // The atomic rename resets the file's birthtime, so the Plan's real age only
         // survives because it was captured before the write.
         assertEquals(attrs.createdAt, createdBefore?.toISOString());
-        assertEquals(parsePlanFrontMatter(await Deno.readTextFile(path)).body, bare, "the body is untouched");
+        assertEquals(parsePlanFrontMatter(await fsReadFile(path, "utf8")).body, bare, "the body is untouched");
 
         // Idempotent: loading a Plan twice must not rewrite metadata the lifecycle set.
         const onboarded = await loadPlan(cwd, "old");
-        await updatePlanFrontMatter(cwd, "old", { status: "approved" }, {}, {
-            expectedRevision: onboarded?.revision,
-        });
+        await updatePlanFrontMatter(
+            cwd,
+            "old",
+            { status: "approved" },
+            {},
+            {
+                expectedRevision: onboarded?.revision,
+            },
+        );
         const again = await onboardExternalPlan(cwd, "old");
         assertEquals(again.onboarded, false);
         assertEquals(again.resource.planId, adopted.resource.planId, "identity is stable");
         assertEquals((await loadPlan(cwd, "old"))?.attrs.status, "approved", "lifecycle state is not reset");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a Plan lock left by a dead process is reclaimed immediately", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-dead-lock-" });
+test("a Plan lock left by a dead process is reclaimed immediately", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-dead-lock-" });
     try {
         await savePlan(cwd, "demo", "# Demo\n", { status: "draft", classification: "FEATURE" });
-        const resolvedCwd = Deno.realPathSync(cwd);
+        const resolvedCwd = fsRealpathSync(cwd);
         const lockDir = join(getRunWieldRuntimeDir(resolvedCwd), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks");
         const lockPath = join(lockDir, "demo.lock");
         const legacyLockPath = join(getRunWieldRuntimeDir(resolvedCwd), "plan-locks", "demo.lock");
-        await Deno.mkdir(lockDir, { recursive: true });
+        await fsMkdir(lockDir, { recursive: true });
         // A lock naming this host and a pid that is definitely gone. Waiting for it to
         // look old enough would block every operation on this Plan for the whole stale
         // window, which is RunWield's bookkeeping locking the user out of their Plan.
-        await Deno.writeTextFile(
-            lockPath,
-            JSON.stringify({ pid: 2147483646, hostname: Deno.hostname(), updatedAtMs: Date.now() }),
-        );
+        await fsWriteFile(lockPath, JSON.stringify({ pid: 2147483646, hostname: hostname(), updatedAtMs: Date.now() }));
 
         const started = Date.now();
         const held = await withPlanLock(cwd, "demo", () => Promise.resolve("acquired"));
         assertEquals(held, "acquired");
-        assertEquals(
-            Date.now() - started < 5_000,
-            true,
-            "a dead holder must be reclaimed at once, not waited out",
-        );
+        assertEquals(Date.now() - started < 5_000, true, "a dead holder must be reclaimed at once, not waited out");
         await assertMissing(lockPath);
         await assertMissing(legacyLockPath);
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
 testWithFs("listPlanResources does not write Plan files unless backfill is requested", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-plan-resources-readonly-" });
+    const cwd = await makeTempDirectory({ prefix: "runwield-plan-resources-readonly-" });
     try {
         await savePlan(cwd, "no-id", "# No Id\n", {
             classification: "FEATURE",
@@ -2984,17 +3086,17 @@ testWithFs("listPlanResources does not write Plan files unless backfill is reque
         assertEquals(healed[0].planId, "minted-id");
         assertEquals((await loadPlan(cwd, "no-id"))?.attrs.planId, "minted-id");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("legacy plans/ files are ignored, not migrated or accepted", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-legacy-plans-ignored-" });
+test("legacy plans/ files are ignored, not migrated or accepted", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-legacy-plans-ignored-" });
     try {
         // A project that only has the old store location. This is the clean-break
         // contract: the legacy directory is neither scanned nor readable.
-        await Deno.mkdir(join(cwd, "plans"), { recursive: true });
-        await Deno.writeTextFile(join(cwd, "plans", "legacy.md"), "# Legacy\n");
+        await fsMkdir(join(cwd, "plans"), { recursive: true });
+        await fsWriteFile(join(cwd, "plans", "legacy.md"), "# Legacy\n");
         assertEquals(await listPlans(cwd), [], "legacy plans/ files are not listed");
         assertEquals(await loadPlan(cwd, "legacy"), null, "legacy plans/ files cannot be loaded by name");
         assertEquals(await resolvePlan(cwd, "legacy").catch(() => null), null, "legacy name resolves to nothing");
@@ -3011,42 +3113,51 @@ Deno.test("legacy plans/ files are ignored, not migrated or accepted", async () 
         assertEquals(await listArchivedPlans(cwd), [], "plans/archived/ is not scanned either");
 
         // The same content under the canonical store is listed and loaded.
-        await Deno.mkdir(join(cwd, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
         const currentMarkdown = injectFrontMatter("# Current\n", { planId: "current-1" });
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "current.md"), currentMarkdown);
+        await fsWriteFile(join(cwd, "docs", "plans", "current.md"), currentMarkdown);
         const listed = await listPlans(cwd);
-        assertEquals(listed.map((plan) => plan.name), ["current"]);
+        assertEquals(
+            listed.map((plan) => plan.name),
+            ["current"],
+        );
         const loaded = await loadPlan(cwd, "current");
         assertEquals(loaded?.attrs.planId, "current-1");
         // The canonical store path prefix resolves to the same file.
         assertEquals((await loadPlan(cwd, "docs/plans/current.md"))?.attrs.planId, "current-1");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
 testWithFs("manual-qa Epic Artifact is excluded from Plan loading and listing", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "plan-store-epic-artifact-" });
+    const cwd = await makeTempDirectory({ prefix: "plan-store-epic-artifact-" });
     try {
         await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "ready_for_work" });
-        await Deno.mkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "not front matter");
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "not front matter");
 
         assertEquals(await loadPlan(cwd, "epic/manual-qa"), null);
         assertEquals(await loadPlan(cwd, "docs/plans/epic/manual-qa.md"), null);
         assertEquals((await loadPlanStrict(cwd, "epic/manual-qa")).kind, "not_found");
         assertEquals((await loadPlanStrict(cwd, "docs/plans/epic/manual-qa.md")).kind, "not_found");
-        assertEquals((await listPlans(cwd)).some((plan) => plan.name === "epic/manual-qa"), false);
+        assertEquals(
+            (await listPlans(cwd)).some((plan) => plan.name === "epic/manual-qa"),
+            false,
+        );
 
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "epic", "notes.md"), "not front matter");
-        assertEquals((await listPlans(cwd)).some((plan) => plan.name === "epic/notes"), true);
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "notes.md"), "not front matter");
+        assertEquals(
+            (await listPlans(cwd)).some((plan) => plan.name === "epic/notes"),
+            true,
+        );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("reserved manual-qa child Plan writes are rejected", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "plan-store-reserved-artifact-" });
+    const cwd = await makeTempDirectory({ prefix: "plan-store-reserved-artifact-" });
     try {
         await assertRejects(
             () => savePlan(cwd, "epic/manual-qa", "# Manual QA", { classification: "PLANNED_CHANGE" }),
@@ -3054,87 +3165,88 @@ testWithFs("reserved manual-qa child Plan writes are rejected", async () => {
             "reserved for an Epic Artifact",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archive and restore move Epic manual-qa artifact bytes", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "plan-store-artifact-archive-" });
+    const cwd = await makeTempDirectory({ prefix: "plan-store-artifact-archive-" });
     try {
         const artifactText = "# QA\n\n- [ ] Check\n";
         await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
-        await Deno.mkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), artifactText);
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), artifactText);
 
         const archived = await archivePlan(cwd, "epic");
         assertEquals(archived.artifacts?.[0].relativePath, "docs/plans/archived/epic/manual-qa.md");
         assertEquals(
-            await Deno.readTextFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md")),
+            await fsReadFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "utf8"),
             artifactText,
         );
-        await assertRejects(() => Deno.stat(join(cwd, "docs", "plans", "epic", "manual-qa.md")), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(join(cwd, "docs", "plans", "epic", "manual-qa.md")), Error, "ENOENT");
 
         const restored = await restoreArchivedPlan(cwd, "epic");
         assertEquals(restored.artifacts?.[0].relativePath, "docs/plans/epic/manual-qa.md");
-        assertEquals(await Deno.readTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md")), artifactText);
+        assertEquals(await fsReadFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "utf8"), artifactText);
         await assertRejects(
-            () => Deno.stat(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md")),
-            Deno.errors.NotFound,
+            () => fsStat(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md")),
+            Error,
+            "ENOENT",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("archive rolls back the archived Plan file when Epic Artifact movement collides", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "plan-store-artifact-archive-collision-" });
+    const cwd = await makeTempDirectory({ prefix: "plan-store-artifact-archive-collision-" });
     try {
         await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
-        await Deno.mkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
-        await Deno.mkdir(join(cwd, "docs", "plans", "archived", "epic"), { recursive: true });
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "active artifact");
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "archived artifact");
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsMkdir(join(cwd, "docs", "plans", "archived", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "active artifact");
+        await fsWriteFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "archived artifact");
 
         await assertRejects(() => archivePlan(cwd, "epic"), Error, "Epic Artifact already exists");
 
         assertEquals((await loadPlan(cwd, "epic"))?.attrs.classification, "PROJECT");
         assertEquals(await loadArchivedPlan(cwd, "epic"), null);
-        assertEquals(await Deno.readTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md")), "active artifact");
+        assertEquals(await fsReadFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "utf8"), "active artifact");
         assertEquals(
-            await Deno.readTextFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md")),
+            await fsReadFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "utf8"),
             "archived artifact",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
 testWithFs("restore rolls back the active Plan file when Epic Artifact movement collides", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "plan-store-artifact-restore-collision-" });
+    const cwd = await makeTempDirectory({ prefix: "plan-store-artifact-restore-collision-" });
     try {
         await savePlan(cwd, "epic", "# Epic", { classification: "PROJECT", status: "verified" });
-        await Deno.mkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "archived artifact");
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "archived artifact");
         await archivePlan(cwd, "epic");
-        await Deno.mkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "active artifact");
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "active artifact");
 
         await assertRejects(() => restoreArchivedPlan(cwd, "epic"), Error, "Epic Artifact already exists");
 
         assertEquals(await loadPlan(cwd, "epic"), null);
         assertEquals((await loadArchivedPlan(cwd, "epic"))?.name, "epic");
-        assertEquals(await Deno.readTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md")), "active artifact");
+        assertEquals(await fsReadFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "utf8"), "active artifact");
         assertEquals(
-            await Deno.readTextFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md")),
+            await fsReadFile(join(cwd, "docs", "plans", "archived", "epic", "manual-qa.md"), "utf8"),
             "archived artifact",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("legacy done-enough Epic remains deliberately closed without invented verification", async () => {
-    const root = await Deno.makeTempDir({ prefix: "legacy-epic-closure-" });
+test("legacy done-enough Epic remains deliberately closed without invented verification", async () => {
+    const root = await makeTempDirectory({ prefix: "legacy-epic-closure-" });
     try {
         await savePlan(root, "legacy-epic", "# Legacy Epic", {
             classification: "PROJECT",
@@ -3151,6 +3263,33 @@ Deno.test("legacy done-enough Epic remains deliberately closed without invented 
         assertEquals(inspected.attrs.status, "closed_without_verification");
         assertEquals((await listPlans(root))[0].attrs.status, "closed_without_verification");
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
+    }
+});
+
+test("Plan replacement preserves open readers and publishes the complete new Plan", async () => {
+    const root = await makeTempDirectory({ prefix: "plan-open-reader-" });
+    try {
+        await savePlan(root, "open-reader", "# Original body\n", { status: "draft", classification: "PLANNED_CHANGE" });
+        const initial = await loadPlan(root, "open-reader");
+        assert(initial);
+        const reader = await fsOpen(initial.path, "r");
+        try {
+            await updatePlanFrontMatter(
+                root,
+                "open-reader",
+                { status: "feedback" },
+                {},
+                { expectedRevision: initial.revision },
+            );
+            assertEquals(await reader.readFile("utf8"), initial.markdown);
+            const replaced = await loadPlan(root, "open-reader");
+            assertEquals(replaced?.attrs.status, "feedback");
+            assertEquals(replaced?.body, initial.body);
+        } finally {
+            await reader.close();
+        }
+    } finally {
+        await fsRm(root, { recursive: true });
     }
 });

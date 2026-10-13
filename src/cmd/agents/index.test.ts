@@ -1,5 +1,13 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { type CapturedProcessOutput } from "../../shared/captured-process.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { Container, Editor, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -48,8 +56,8 @@ interface AgentTuiHarness {
 
 async function writeFixtureAgent(projectRoot: string): Promise<void> {
     const agentDir = join(projectRoot, ".wld", "agents");
-    await Deno.mkdir(agentDir, { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(agentDir, { recursive: true });
+    await fsWriteFile(
         join(agentDir, `${FIXTURE_AGENT}.md`),
         [
             "---",
@@ -92,46 +100,44 @@ async function captureLogs(run: () => void | Promise<unknown>): Promise<string[]
     return logs;
 }
 
-async function runUnknownAgentChild(): Promise<Deno.CommandOutput> {
-    const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-agent-unknown-" });
+async function runUnknownAgentChild(): Promise<CapturedProcessOutput> {
+    const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-agent-unknown-"));
     const homeDir = join(fixtureRoot, "home");
     const projectRoot = join(fixtureRoot, "project");
     await Promise.all([
-        Deno.mkdir(homeDir, { recursive: true }),
-        Deno.mkdir(projectRoot, { recursive: true }),
+        fsMkdir(homeDir, { recursive: true }),
+        fsMkdir(projectRoot, { recursive: true }),
     ]);
     const moduleUrl = import.meta.resolve("./index.ts");
     const configPath = fromFileUrl(new URL("../../../deno.json", import.meta.url));
     const source = `import { runAgentsCommand } from ${JSON.stringify(moduleUrl)};\n` +
         `await runAgentsCommand(["not-a-real-agent"], { sessionPort: { startInteractiveSession: () => Promise.reject(new Error("unexpected session")) } });\n`;
     try {
-        return await new Deno.Command(Deno.execPath(), {
-            args: ["eval", "--config", configPath, source],
+        return await captureForegroundProcess(process.execPath, {
+            args: runtimeSourceArgs(["eval", "--config", configPath, source]),
             cwd: projectRoot,
             env: {
                 HOME: homeDir,
                 WLD_TEST_SANDBOX_HOME: homeDir,
             },
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
     } finally {
-        await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+        await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
     }
 }
 
-Deno.test("agent help uses the real command registry", async () => {
+test("agent help uses the real command registry", async () => {
     await withRuntimeCommandFixture("agent-help-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const logs = await captureLogs(() => runAgentsCommand(["help"], { sessionPort: UNEXPECTED_SESSION_PORT }));
         assertStringIncludes(logs.join("\n"), "Usage (agent):");
         assertStringIncludes(logs.join("\n"), "Talk directly to an agent");
     });
 });
 
-Deno.test("agent CLI lists definitions discovered from the fixture project", async () => {
+test("agent CLI lists definitions discovered from the fixture project", async () => {
     await withRuntimeCommandFixture("agent-list-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeFixtureAgent(projectRoot);
         const logs = await captureLogs(() => runAgentsCommand([], { sessionPort: UNEXPECTED_SESSION_PORT }));
         assertStringIncludes(logs.join("\n"), "Available agents:");
@@ -140,9 +146,9 @@ Deno.test("agent CLI lists definitions discovered from the fixture project", asy
     });
 });
 
-Deno.test("agent CLI starts the external session for a discovered fixture definition", async () => {
+test("agent CLI starts the external session for a discovered fixture definition", async () => {
     await withRuntimeCommandFixture("agent-start-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeFixtureAgent(projectRoot);
         let receivedRequest: string | null = null;
         let initialAgentName: string | undefined;
@@ -162,16 +168,16 @@ Deno.test("agent CLI starts the external session for a discovered fixture defini
     });
 });
 
-Deno.test("unknown agent exits an isolated CLI process with status one", async () => {
+test("unknown agent exits an isolated CLI process with status one", async () => {
     const result = await runUnknownAgentChild();
     assertEquals(result.code, 1);
     assertStringIncludes(decoder.decode(result.stderr), 'Unknown agent: "not-a-real-agent"');
     assertStringIncludes(decoder.decode(result.stdout), "Available agents:");
 });
 
-Deno.test("agent command keeps the active Agent when its configured model is unavailable", async () => {
+test("agent command keeps the active Agent when its configured model is unavailable", async () => {
     await withRuntimeCommandFixture("agent-tui-unavailable-model-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await setCustomSetting(
             "modelPresets",
             { broken: { agents: { planner: { model: "runtime-command-fixture/missing" } } } },
@@ -249,9 +255,9 @@ Deno.test("agent command keeps the active Agent when its configured model is una
     });
 });
 
-Deno.test("agent chooser switches the real Runtime session to a fixture definition", async () => {
+test("agent chooser switches the real Runtime session to a fixture definition", async () => {
     await withRuntimeCommandFixture("agent-tui-switch-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         await writeFixtureAgent(projectRoot);
         const runtime = createSessionRuntime();
         const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
@@ -286,9 +292,9 @@ Deno.test("agent chooser switches the real Runtime session to a fixture definiti
     });
 });
 
-Deno.test("the agent CLI listing hides workflow-only Plan executors", async () => {
+test("the agent CLI listing hides workflow-only Plan executors", async () => {
     await withRuntimeCommandFixture("agent-list-workflow-only-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const listing = (await captureLogs(() => runAgentsCommand([], { sessionPort: UNEXPECTED_SESSION_PORT })))
             .join("\n");
 
@@ -298,9 +304,9 @@ Deno.test("the agent CLI listing hides workflow-only Plan executors", async () =
     });
 });
 
-Deno.test("naming a workflow-only Agent explains what activates it instead of switching", async () => {
+test("naming a workflow-only Agent explains what activates it instead of switching", async () => {
     await withRuntimeCommandFixture("agent-workflow-only-cli-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         // Recorder is workflow-only too, and it activates when a Plan completes
         // rather than when one executes — so the message must not name execution.
         for (const agentName of ["plan-engineer", "frontend-engineer", "recorder"]) {
@@ -315,9 +321,9 @@ Deno.test("naming a workflow-only Agent explains what activates it instead of sw
     });
 });
 
-Deno.test("naming a workflow-only Agent in the TUI leaves the active Agent unchanged", async () => {
+test("naming a workflow-only Agent in the TUI leaves the active Agent unchanged", async () => {
     await withRuntimeCommandFixture("agent-workflow-only-tui-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const runtime = createSessionRuntime();
         const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
         const harness = makeTuiHarness();
@@ -347,9 +353,9 @@ Deno.test("naming a workflow-only Agent in the TUI leaves the active Agent uncha
     });
 });
 
-Deno.test("the agent chooser never offers a workflow-only Agent to pick", async () => {
+test("the agent chooser never offers a workflow-only Agent to pick", async () => {
     await withRuntimeCommandFixture("agent-chooser-hides-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const runtime = createSessionRuntime();
         const sessionId = await runtime.createPromptReadySession({ cwd: projectRoot, agentName: "router" });
         const harness = makeTuiHarness();

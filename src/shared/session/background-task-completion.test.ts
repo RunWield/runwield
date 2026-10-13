@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
@@ -15,7 +18,7 @@ const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQU
 type ModelInputMessage = { role: string; content: Array<{ type: string; text?: string }> };
 
 for (const recallLaterMessage of [false, true]) {
-    Deno.test(
+    test(
         recallLaterMessage
             ? "recalling a later user message preserves earlier image steering at completion"
             : "accepted completion removes queued background steering but keeps user images",
@@ -139,7 +142,7 @@ for (const recallLaterMessage of [false, true]) {
                             );
                             assert(session);
                             assertStringIncludes(
-                                await Deno.readTextFile(session.transcriptPath),
+                                await fsReadFile(session.transcriptPath, "utf8"),
                                 "runwield.background_task_steering",
                             );
                         } finally {
@@ -154,7 +157,7 @@ for (const recallLaterMessage of [false, true]) {
     );
 }
 
-Deno.test("completion during generated result acquisition prevents model dispatch", async () => {
+test("completion during generated result acquisition prevents model dispatch", async () => {
     await withRuntimeCommandFixture("background-dispatch-race-", async ({ projectRoot, setModelResponseFactories }) => {
         let calls = 0;
         setModelResponseFactories([
@@ -214,7 +217,7 @@ Deno.test("completion during generated result acquisition prevents model dispatc
     });
 });
 
-Deno.test("completion during generated result owner alignment rejects the stale turn", async () => {
+test("completion during generated result owner alignment rejects the stale turn", async () => {
     await withRuntimeCommandFixture(
         "background-alignment-race-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -296,7 +299,7 @@ Deno.test("completion during generated result owner alignment rejects the stale 
     );
 });
 
-Deno.test("completion after generated turn acceptance prevents final model dispatch", async () => {
+test("completion after generated turn acceptance prevents final model dispatch", async () => {
     await withRuntimeCommandFixture(
         "background-final-dispatch-",
         async ({ projectRoot, setModelResponseFactories }) => {
@@ -349,7 +352,7 @@ Deno.test("completion after generated turn acceptance prevents final model dispa
                     true,
                 );
                 armed = true;
-                await Deno.writeTextFile(`${projectRoot}/release-result`, "release\n");
+                await fsWriteFile(`${projectRoot}/release-result`, "release\n");
                 for (let attempt = 0; attempt < 300 && !preparationHeld; attempt++) {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
@@ -388,7 +391,7 @@ Deno.test("completion after generated turn acceptance prevents final model dispa
     );
 });
 
-Deno.test("automatic validation repair can start fresh background work after completion", async () => {
+test("automatic validation repair can start fresh background work after completion", async () => {
     await withRuntimeCommandFixture("background-repair-", async ({ projectRoot }) => {
         const session = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
         try {
@@ -421,7 +424,7 @@ Deno.test("automatic validation repair can start fresh background work after com
     });
 });
 
-Deno.test("fresh work in the same Session receives new background results after completion", async () => {
+test("fresh work in the same Session receives new background results after completion", async () => {
     await withRuntimeCommandFixture("background-next-work-", async ({ projectRoot, setModelResponseFactories }) => {
         let generatedRequest = "";
         let received = () => {};
@@ -463,7 +466,7 @@ Deno.test("fresh work in the same Session receives new background results after 
     });
 });
 
-Deno.test("task_completed warns before cancelling a running shell task and does not deliver its late result", async () => {
+test("task_completed warns before cancelling a running shell task and does not deliver its late result", async () => {
     await withRuntimeCommandFixture("background-completion-", async ({ projectRoot, setModelResponseFactories }) => {
         let calls = 0;
         const outcomes: string[] = [];

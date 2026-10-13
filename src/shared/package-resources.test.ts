@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../testing/assertions.ts";
+import { test } from "node:test";
 import type { ResolvedPaths } from "./package-resources.ts";
 import {
     countPackageResourcesForSource,
@@ -6,7 +7,7 @@ import {
     getPackagePromptTemplatePaths,
 } from "./package-resources.ts";
 
-Deno.test("filterEnabledPackagePrompts returns enabled package prompts only", () => {
+test("filterEnabledPackagePrompts returns enabled package prompts only", () => {
     const resolved: ResolvedPaths = {
         themes: [],
         extensions: [],
@@ -34,13 +35,15 @@ Deno.test("filterEnabledPackagePrompts returns enabled package prompts only", ()
     assertEquals(getPackagePromptTemplatePaths(resources), ["/pkg/prompts/explain.md"]);
 });
 
-Deno.test("countPackageResourcesForSource separates package resource types", () => {
+test("countPackageResourcesForSource separates package resource types", () => {
     const resolved: ResolvedPaths = {
-        themes: [{
-            path: "/pkg/themes/a.json",
-            enabled: true,
-            metadata: { source: "npm:x", scope: "user", origin: "package" },
-        }],
+        themes: [
+            {
+                path: "/pkg/themes/a.json",
+                enabled: true,
+                metadata: { source: "npm:x", scope: "user", origin: "package" },
+            },
+        ],
         prompts: [
             {
                 path: "/pkg/prompts/a.md",
@@ -53,16 +56,20 @@ Deno.test("countPackageResourcesForSource separates package resource types", () 
                 metadata: { source: "npm:other", scope: "user", origin: "package" },
             },
         ],
-        extensions: [{
-            path: "/pkg/index.js",
-            enabled: true,
-            metadata: { source: "npm:x", scope: "user", origin: "package" },
-        }],
-        skills: [{
-            path: "/pkg/skills/a.md",
-            enabled: true,
-            metadata: { source: "npm:x", scope: "user", origin: "package" },
-        }],
+        extensions: [
+            {
+                path: "/pkg/index.js",
+                enabled: true,
+                metadata: { source: "npm:x", scope: "user", origin: "package" },
+            },
+        ],
+        skills: [
+            {
+                path: "/pkg/skills/a.md",
+                enabled: true,
+                metadata: { source: "npm:x", scope: "user", origin: "package" },
+            },
+        ],
     };
 
     assertEquals(countPackageResourcesForSource(resolved, "npm:x"), {

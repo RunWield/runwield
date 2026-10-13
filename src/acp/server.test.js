@@ -1,11 +1,26 @@
+import { collectProcessOutput } from "../testing/subprocess-output.ts";
+import { runtimeSourceArgs } from "../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../shared/foreground-process.ts";
+import { makeTempFile } from "../testing/temp-file.ts";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /**
  * @module acp/server.test
  * ACP protocol coverage over the real RunWield Session Runtime.
  */
 
-import { assert, assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall, getSystemMessageText } from "@earendil-works/pi-ai";
-import { dirname, fromFileUrl, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { savePlan } from "../plan-store.js";
 import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.js";
@@ -357,15 +372,15 @@ async function createSession(handle, cwd) {
  * @returns {Promise<string | null>}
  */
 async function findManifestPath(directory, runwieldSessionId) {
-    for await (const entry of Deno.readDir(directory)) {
+    for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
-        if (entry.isDirectory) {
+        if (entry.isDirectory()) {
             const found = await findManifestPath(path, runwieldSessionId);
             if (found) return found;
             continue;
         }
         if (entry.name !== "manifest.json") continue;
-        const manifest = JSON.parse(await Deno.readTextFile(path));
+        const manifest = JSON.parse(await fsReadFile(path, "utf8"));
         if (manifest.runwieldSessionId === runwieldSessionId) return path;
     }
     return null;
@@ -378,9 +393,9 @@ async function findManifestPath(directory, runwieldSessionId) {
 async function forceActivationToRequireHydration(store, runwieldSessionId) {
     const path = await findManifestPath(store.path, runwieldSessionId);
     assert(path, `manifest not found for ${runwieldSessionId}`);
-    const manifest = JSON.parse(await Deno.readTextFile(path));
+    const manifest = JSON.parse(await fsReadFile(path, "utf8"));
     manifest.activation.state = "idle";
-    await Deno.writeTextFile(path, `${JSON.stringify(manifest, null, 4)}\n`);
+    await fsWriteFile(path, `${JSON.stringify(manifest, null, 4)}\n`);
 }
 
 /** @param {string} cwd */
@@ -421,7 +436,7 @@ async function createIdleUngeneratedPersistedSession(cwd) {
     }
 }
 
-Deno.test("createInitializeResponse advertises only implemented ACP capabilities", () => {
+test("createInitializeResponse advertises only implemented ACP capabilities", () => {
     const response = createInitializeResponse({ protocolVersion: 1 });
     const capabilities = /** @type {any} */ (response.agentCapabilities);
 
@@ -444,7 +459,7 @@ Deno.test("createInitializeResponse advertises only implemented ACP capabilities
     assertEquals(response.agentInfo?.name, "RunWield");
 });
 
-Deno.test("createInitializeResponse advertises Terminal Auth only to capable clients", () => {
+test("createInitializeResponse advertises Terminal Auth only to capable clients", () => {
     assertEquals(
         createInitializeResponse({ protocolVersion: 1, clientCapabilities: { auth: { terminal: true } } }).authMethods,
         [TERMINAL_AUTH_METHOD],
@@ -465,7 +480,7 @@ Deno.test("createInitializeResponse advertises Terminal Auth only to capable cli
     );
 });
 
-Deno.test("ACP server handles the registry initialize request with one Terminal Auth method", async () => {
+test("ACP server handles the registry initialize request with one Terminal Auth method", async () => {
     const handle = startTestServer();
     try {
         assertEquals(handle.diagnostics, ["RunWield ACP stdio server started"]);
@@ -478,7 +493,7 @@ Deno.test("ACP server handles the registry initialize request with one Terminal 
     }
 });
 
-Deno.test("ACP initialize answers with the version RunWield speaks, not the one requested", async () => {
+test("ACP initialize answers with the version RunWield speaks, not the one requested", async () => {
     const handle = startTestServer();
     try {
         for (const requested of [1, 99]) {
@@ -495,19 +510,19 @@ Deno.test("ACP initialize answers with the version RunWield speaks, not the one 
     }
 });
 
-Deno.test("ACP agentInfo reports the same build version as wld --version", async () => {
+test("ACP agentInfo reports the same build version as wld --version", async () => {
     const runCli = async (/** @type {string[]} */ args, /** @type {string} */ stdin) => {
-        const child = new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "src/cli.ts", ...args],
+        const child = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs(["run", "-A", "src/cli.ts", ...args]),
             cwd: REPO_ROOT,
             stdin: "piped",
             stdout: "piped",
             stderr: "piped",
-        }).spawn();
+        });
         const writer = child.stdin.getWriter();
         if (stdin) await writer.write(encoder.encode(stdin));
         await writer.close();
-        const { stdout } = await child.output();
+        const { stdout } = await collectProcessOutput(child);
         return decoder.decode(stdout).trim();
     };
 
@@ -523,7 +538,7 @@ Deno.test("ACP agentInfo reports the same build version as wld --version", async
     assert(VERSION && VERSION !== oldMvpVersion, `generated version should be real, got ${VERSION}`);
 });
 
-Deno.test("ACP initialize and prompt responses satisfy the published ACP schema", async () => {
+test("ACP initialize and prompt responses satisfy the published ACP schema", async () => {
     const handle = startTestServer();
     try {
         const response = await request(handle, ACP_REGISTRY_INITIALIZE_REQUEST);
@@ -545,7 +560,7 @@ Deno.test("ACP initialize and prompt responses satisfy the published ACP schema"
     assertAcpSchema("PromptResponse", { stopReason: "end_turn" });
 });
 
-Deno.test("ACP schema checker rejects published numeric and map constraints", () => {
+test("ACP schema checker rejects published numeric and map constraints", () => {
     assertThrows(() => assertAcpSchema("ProtocolVersion", 65_536), Error, "above maximum 65535");
     assertThrows(() => assertAcpSchema("RequestId", 1e100), Error, "format int64");
     assertThrows(
@@ -555,7 +570,7 @@ Deno.test("ACP schema checker rejects published numeric and map constraints", ()
     );
 });
 
-Deno.test("ACP server returns structured errors for unimplemented session methods", async () => {
+test("ACP server returns structured errors for unimplemented session methods", async () => {
     const handle = startTestServer();
     try {
         const response = await request(handle, {
@@ -572,19 +587,19 @@ Deno.test("ACP server returns structured errors for unimplemented session method
     }
 });
 
-Deno.test("CLI --mode acp routes to ACP stdio without stdout diagnostics", async () => {
-    const child = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "src/cli.ts", "--mode", "acp"],
+test("CLI --mode acp routes to ACP stdio without stdout diagnostics", async () => {
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs(["run", "-A", "src/cli.ts", "--mode", "acp"]),
         cwd: REPO_ROOT,
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const writer = child.stdin.getWriter();
     await writer.write(encoder.encode(`${JSON.stringify(ACP_REGISTRY_INITIALIZE_REQUEST)}\n`));
     await writer.close();
 
-    const { code, stdout, stderr } = await child.output();
+    const { code, stdout, stderr } = await collectProcessOutput(child);
     const stdoutText = decoder.decode(stdout).trim();
     const response = JSON.parse(stdoutText);
     assertEquals(code, 0);
@@ -594,7 +609,7 @@ Deno.test("CLI --mode acp routes to ACP stdio without stdout diagnostics", async
     assertStringIncludes(decoder.decode(stderr), "RunWield ACP");
 });
 
-Deno.test("ACP session/new requires login and a usable default model", async () => {
+test("ACP session/new requires login and a usable default model", async () => {
     await withRuntimeCommandFixture("runwield-acp-auth-required-", async (fixture) => {
         const handle = startTestServer();
         try {
@@ -612,7 +627,7 @@ Deno.test("ACP session/new requires login and a usable default model", async () 
     }, { providerState: "none" });
 });
 
-Deno.test("ACP session/new sends setup MCP warnings to the client", async () => {
+test("ACP session/new sends setup MCP warnings to the client", async () => {
     await withRuntimeCommandFixture("runwield-acp-mcp-warning-", async (fixture) => {
         const handle = startTestServer();
         try {
@@ -642,7 +657,7 @@ Deno.test("ACP session/new sends setup MCP warnings to the client", async () => 
     });
 });
 
-Deno.test("ACP session/new and session/prompt exercise the real Runtime and stream canonical updates", async () => {
+test("ACP session/new and session/prompt exercise the real Runtime and stream canonical updates", async () => {
     await withRuntimeCommandFixture("runwield-acp-prompt-", async (fixture) => {
         fixture.setModelResponse("hello from the fixture model");
         const handle = startTestServer();
@@ -667,7 +682,7 @@ Deno.test("ACP session/new and session/prompt exercise the real Runtime and stre
     });
 });
 
-Deno.test("ACP image prompts reach vision models", async () => {
+test("ACP image prompts reach vision models", async () => {
     await withRuntimeCommandFixture("runwield-acp-image-", async (fixture) => {
         let modelMessages = "";
         fixture.setModelResponseFactory((context) => {
@@ -702,18 +717,18 @@ Deno.test("ACP image prompts reach vision models", async () => {
     });
 });
 
-Deno.test("ACP image prompts expose see_image to text-only models with a vision fallback", async () => {
+test("ACP image prompts expose see_image to text-only models with a vision fallback", async () => {
     await withRuntimeCommandFixture(
         "runwield-acp-image-fallback-",
         async (fixture) => {
             const modelsPath = join(fixture.homeDir, ".wld", "models.json");
-            const modelConfiguration = parseRuntimeFixtureModelConfiguration(await Deno.readTextFile(modelsPath));
+            const modelConfiguration = parseRuntimeFixtureModelConfiguration(await fsReadFile(modelsPath, "utf8"));
             const models = modelConfiguration.providers["runtime-command-fixture"].models;
             const textOnlyModel = models.find((model) => model.id === "text-only-model");
             assert(textOnlyModel);
             textOnlyModel.input = ["text"];
-            await Deno.writeTextFile(modelsPath, JSON.stringify(modelConfiguration));
-            await Deno.writeTextFile(
+            await fsWriteFile(modelsPath, JSON.stringify(modelConfiguration));
+            await fsWriteFile(
                 fixture.settingsPath,
                 JSON.stringify({
                     defaultProvider: "runtime-command-fixture",
@@ -760,7 +775,7 @@ Deno.test("ACP image prompts expose see_image to text-only models with a vision 
     );
 });
 
-Deno.test("ACP model config switches the next turn and survives session/load", async () => {
+test("ACP model config switches the next turn and survives session/load", async () => {
     await withRuntimeCommandFixture("runwield-acp-model-config-", async (fixture) => {
         /** @type {string[]} */
         const models = [];
@@ -890,7 +905,7 @@ Deno.test("ACP model config switches the next turn and survives session/load", a
     }, { additionalModels: [{ id: "alternate-model", name: "Alternate Model", contextWindow: 64_000 }] });
 });
 
-Deno.test("ACP reasoning config controls the next turn, rejects unsupported values, and survives reload", async () => {
+test("ACP reasoning config controls the next turn, rejects unsupported values, and survives reload", async () => {
     await withRuntimeCommandFixture("runwield-acp-reasoning-config-", async (fixture) => {
         /** @type {string[]} */
         const reasoningLevels = [];
@@ -1012,7 +1027,7 @@ Deno.test("ACP reasoning config controls the next turn, rejects unsupported valu
     });
 });
 
-Deno.test("ACP model config can recover after a failed turn and rejects invalid selections", async () => {
+test("ACP model config can recover after a failed turn and rejects invalid selections", async () => {
     await withRuntimeCommandFixture("runwield-acp-model-recovery-", async (fixture) => {
         fixture.setModelResponseFactory(() => {
             throw new Error("You have hit your session limit");
@@ -1108,9 +1123,9 @@ Deno.test("ACP model config can recover after a failed turn and rejects invalid 
     }, { additionalModels: [{ id: "alternate-model", name: "Alternate Model" }] });
 });
 
-Deno.test("ACP session/new and session/prompt can invoke a real MCP fixture tool", async () => {
+test("ACP session/new and session/prompt can invoke a real MCP fixture tool", async () => {
     await withRuntimeCommandFixture("runwield-acp-mcp-call-", async (fixture) => {
-        const logPath = await Deno.makeTempFile({ prefix: "runwield-acp-mcp-log-" });
+        const logPath = await makeTempFile({ prefix: "runwield-acp-mcp-log-" });
         fixture.setModelResponseFactories([
             () => fauxAssistantMessage(fauxToolCall("mcp__fixture__fixture_echo", { marker: "acp-root" })),
             () => fauxAssistantMessage(fauxText("ACP MCP turn complete.")),
@@ -1125,8 +1140,8 @@ Deno.test("ACP session/new and session/prompt can invoke a real MCP fixture tool
                     cwd: fixture.projectRoot,
                     mcpServers: [{
                         name: "fixture",
-                        command: Deno.execPath(),
-                        args: ["run", "-A", MCP_FIXTURE_SERVER],
+                        command: process.execPath,
+                        args: runtimeSourceArgs(["run", "-A", MCP_FIXTURE_SERVER]),
                         env: [{ name: "RUNWIELD_MCP_FIXTURE_LOG", value: logPath }],
                     }],
                 },
@@ -1144,15 +1159,15 @@ Deno.test("ACP session/new and session/prompt can invoke a real MCP fixture tool
             const { response, messages } = await readThroughResponse(handle, "prompt-mcp");
             assertEquals(response.result, { stopReason: "end_turn" });
             assertStringIncludes(joinedAgentText(messages), "ACP MCP turn complete.");
-            assertStringIncludes(await Deno.readTextFile(logPath), '"marker":"acp-root"');
+            assertStringIncludes(await fsReadFile(logPath, "utf8"), '"marker":"acp-root"');
         } finally {
             await closeTestServer(handle);
-            await Deno.remove(logPath).catch(() => {});
+            await fsRm(logPath).catch(() => {});
         }
     });
 });
 
-Deno.test("ACP /agent opens selection without a model turn and affects the next request", async () => {
+test("ACP /agent opens selection without a model turn and affects the next request", async () => {
     await withRuntimeCommandFixture("runwield-acp-agent-command-", async (fixture) => {
         fixture.setModelResponseFactory(() => {
             throw new Error("/agent must not call the model");
@@ -1231,7 +1246,7 @@ Deno.test("ACP /agent opens selection without a model turn and affects the next 
 });
 
 for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-other"]) {
-    Deno.test(`ACP ${ending} form releases the Session for the next prompt`, async () => {
+    test(`ACP ${ending} form releases the Session for the next prompt`, async () => {
         await withRuntimeCommandFixture("runwield-acp-form-ending-", async (fixture) => {
             fixture.setModelResponseFactories([
                 () =>
@@ -1337,7 +1352,7 @@ for (const ending of ["cancel", "decline", "expired", "other", "choice", "empty-
     });
 }
 
-Deno.test("ACP /session reports real Runtime totals", async () => {
+test("ACP /session reports real Runtime totals", async () => {
     await withRuntimeCommandFixture("runwield-acp-session-command-", async (fixture) => {
         fixture.setModelResponse("session command fixture response");
         const handle = startTestServer();
@@ -1370,7 +1385,7 @@ Deno.test("ACP /session reports real Runtime totals", async () => {
     });
 });
 
-Deno.test("ACP /plan-review reports when this Session has no saved review", async () => {
+test("ACP /plan-review reports when this Session has no saved review", async () => {
     await withRuntimeCommandFixture("runwield-acp-plan-review-", async (fixture) => {
         await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
         const handle = startTestServer();
@@ -1386,7 +1401,7 @@ Deno.test("ACP /plan-review reports when this Session has no saved review", asyn
             assertStringIncludes(joinedAgentText(result.messages), "no previous Plan review");
             assertEquals(result.response.result.stopReason, "end_turn");
             await drainWorkflowMetrics();
-            const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(fixture.projectRoot))).trim().split("\n")
+            const rows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8")).trim().split("\n")
                 .map((line) => JSON.parse(line)).filter((row) =>
                     row.category === "command" && row.command === "plan-review"
                 );
@@ -1402,7 +1417,7 @@ Deno.test("ACP /plan-review reports when this Session has no saved review", asyn
     });
 });
 
-Deno.test("ACP /plan-review returns the live Plan Review URL while the original prompt remains pending", async () => {
+test("ACP /plan-review returns the live Plan Review URL while the original prompt remains pending", async () => {
     await withRuntimeCommandFixture("runwield-acp-live-plan-review-", async (fixture) => {
         await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
         await savePlan(fixture.projectRoot, "acp-review", "# ACP review\n\nReview this Plan.\n", {
@@ -1489,9 +1504,10 @@ Deno.test("ACP /plan-review returns the live Plan Review URL while the original 
             assertEquals(original.response.result.stopReason, "end_turn");
             assertEquals(modelTurns, 1);
             await drainWorkflowMetrics();
-            const commandRows = (await Deno.readTextFile(getWorkflowMetricsFilePath(fixture.projectRoot))).trim().split(
-                "\n",
-            )
+            const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8")).trim()
+                .split(
+                    "\n",
+                )
                 .map((line) => JSON.parse(line)).filter((row) =>
                     row.category === "command" && row.command === "plan-review"
                 );
@@ -1518,7 +1534,7 @@ Deno.test("ACP /plan-review returns the live Plan Review URL while the original 
     });
 });
 
-Deno.test("ACP /plan-review does not replace a prompt whose response is still pending", async () => {
+test("ACP /plan-review does not replace a prompt whose response is still pending", async () => {
     await withRuntimeCommandFixture("runwield-acp-plan-review-busy-", async (fixture) => {
         await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
         fixture.setModelResponse("Original turn complete.");
@@ -1544,9 +1560,10 @@ Deno.test("ACP /plan-review does not replace a prompt whose response is still pe
             assertEquals(result.response.result.stopReason, "end_turn");
             assert(result.messages.some((message) => message.id === "original-turn"), "Original prompt must finish.");
             await drainWorkflowMetrics();
-            const commandRows = (await Deno.readTextFile(getWorkflowMetricsFilePath(fixture.projectRoot))).trim().split(
-                "\n",
-            )
+            const commandRows = (await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8")).trim()
+                .split(
+                    "\n",
+                )
                 .map((line) => JSON.parse(line)).filter((row) =>
                     row.category === "command" && row.command === "plan-review"
                 );
@@ -1561,14 +1578,14 @@ Deno.test("ACP /plan-review does not replace a prompt whose response is still pe
     });
 });
 
-Deno.test("ACP /reload refreshes Runtime resources and advertised commands", async () => {
+test("ACP /reload refreshes Runtime resources and advertised commands", async () => {
     await withRuntimeCommandFixture("runwield-acp-reload-command-", async (fixture) => {
         const handle = startTestServer();
         try {
             const { sessionId } = await createSession(handle, fixture.projectRoot);
             const promptDir = join(fixture.projectRoot, ".wld", "prompts");
-            await Deno.mkdir(promptDir, { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(promptDir, { recursive: true });
+            await fsWriteFile(
                 join(promptDir, "after-reload.md"),
                 ["---", "description: Loaded after reload", "---", "Template loaded after reload."].join("\n"),
             );
@@ -1597,7 +1614,7 @@ Deno.test("ACP /reload refreshes Runtime resources and advertised commands", asy
     });
 });
 
-Deno.test("ACP /agent remains a command when a Plan attachment is present", async () => {
+test("ACP /agent remains a command when a Plan attachment is present", async () => {
     await withRuntimeCommandFixture("runwield-acp-agent-attachment-", async (fixture) => {
         fixture.setModelResponseFactory(() => {
             throw new Error("/agent with an attachment must not call the model");
@@ -1646,7 +1663,7 @@ Deno.test("ACP /agent remains a command when a Plan attachment is present", asyn
     });
 });
 
-Deno.test("ACP rejects prompts with more than one slash command", async () => {
+test("ACP rejects prompts with more than one slash command", async () => {
     await withRuntimeCommandFixture("runwield-acp-command-ambiguity-", async (fixture) => {
         const handle = startTestServer();
         try {
@@ -1668,7 +1685,7 @@ Deno.test("ACP rejects prompts with more than one slash command", async () => {
     });
 });
 
-Deno.test("ACP ordinary multiline prompt does not execute slash text from a later line", async () => {
+test("ACP ordinary multiline prompt does not execute slash text from a later line", async () => {
     await withRuntimeCommandFixture("runwield-acp-command-text-", async (fixture) => {
         fixture.setModelResponse("ordinary text kept its prompt behavior");
         const handle = startTestServer();
@@ -1693,11 +1710,11 @@ Deno.test("ACP ordinary multiline prompt does not execute slash text from a late
     });
 });
 
-Deno.test("ACP session/prompt resolves Prompt Template invocations through Core", async () => {
+test("ACP session/prompt resolves Prompt Template invocations through Core", async () => {
     await withRuntimeCommandFixture("runwield-acp-named-invocation-", async (fixture) => {
         const promptDir = join(fixture.projectRoot, ".wld", "prompts");
-        await Deno.mkdir(promptDir, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(promptDir, { recursive: true });
+        await fsWriteFile(
             join(promptDir, "acp-template.md"),
             ["---", "agent: operator", "---", "ACP expanded request for {{input}}"].join("\n"),
         );
@@ -1730,9 +1747,9 @@ Deno.test("ACP session/prompt resolves Prompt Template invocations through Core"
     });
 });
 
-Deno.test("ACP session/load replays a real persisted Session and accepts another prompt", async () => {
+test("ACP session/load replays a real persisted Session and accepts another prompt", async () => {
     await withRuntimeCommandFixture("runwield-acp-load-", async (fixture) => {
-        const logPath = await Deno.makeTempFile({ prefix: "runwield-acp-load-mcp-log-" });
+        const logPath = await makeTempFile({ prefix: "runwield-acp-load-mcp-log-" });
         let sawLoadedMcpResultInTurn = false;
         fixture.setModelResponseFactories([
             () => fauxAssistantMessage(fauxText("first fixture response")),
@@ -1765,8 +1782,8 @@ Deno.test("ACP session/load replays a real persisted Session and accepts another
                     cwd: fixture.projectRoot,
                     mcpServers: [{
                         name: "fixture",
-                        command: Deno.execPath(),
-                        args: ["run", "-A", MCP_FIXTURE_SERVER],
+                        command: process.execPath,
+                        args: runtimeSourceArgs(["run", "-A", MCP_FIXTURE_SERVER]),
                         env: [{ name: "RUNWIELD_MCP_FIXTURE_LOG", value: logPath }],
                     }],
                 },
@@ -1802,15 +1819,15 @@ Deno.test("ACP session/load replays a real persisted Session and accepts another
             assertEquals(continued.response.result.stopReason, "end_turn");
             assertEquals(sawLoadedMcpResultInTurn, true);
             assertStringIncludes(joinedAgentText(continued.messages), "continued fixture response");
-            assertStringIncludes(await Deno.readTextFile(logPath), '"marker":"acp-loaded"');
+            assertStringIncludes(await fsReadFile(logPath, "utf8"), '"marker":"acp-loaded"');
         } finally {
             await closeTestServer(secondHandle);
-            await Deno.remove(logPath).catch(() => {});
+            await fsRm(logPath).catch(() => {});
         }
     });
 });
 
-Deno.test("ACP rejects overlapping prompts and cancels the real in-flight Runtime turn", async () => {
+test("ACP rejects overlapping prompts and cancels the real in-flight Runtime turn", async () => {
     await withRuntimeCommandFixture("runwield-acp-cancel-", async (fixture) => {
         fixture.setModelResponseFactories([
             () => fauxAssistantMessage(fauxText("working ".repeat(5_000))),
@@ -1912,7 +1929,7 @@ Deno.test("ACP rejects overlapping prompts and cancels the real in-flight Runtim
     });
 });
 
-Deno.test("ACP rejects a prompt sent before the Client receives the cancelled response for request ID 0", async () => {
+test("ACP rejects a prompt sent before the Client receives the cancelled response for request ID 0", async () => {
     await withRuntimeCommandFixture("runwield-acp-cancel-response-held-", async (fixture) => {
         fixture.setModelResponseFactories([
             () => fauxAssistantMessage(fauxText("working ".repeat(5_000))),
@@ -1983,7 +2000,7 @@ function usageEvent(costUsd) {
     });
 }
 
-Deno.test("ACP usage_update reports the Session's cumulative cost, not the last turn's", () => {
+test("ACP usage_update reports the Session's cumulative cost, not the last turn's", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
 
@@ -2009,7 +2026,7 @@ Deno.test("ACP usage_update reports the Session's cumulative cost, not the last 
     assertAcpFrameSchema("SessionNotification", costedUsageFrame, (message) => message.params);
 });
 
-Deno.test("ACP replayed usage events keep adding to the same Session total", () => {
+test("ACP replayed usage events keep adding to the same Session total", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
 
@@ -2033,7 +2050,7 @@ Deno.test("ACP replayed usage events keep adding to the same Session total", () 
     assertEquals(/** @type {any} */ (afterLoad).update.cost, { amount: 0.75, currency: "USD" });
 });
 
-Deno.test("ACP non-usage events do not disturb the Session cost total", () => {
+test("ACP non-usage events do not disturb the Session cost total", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
 
@@ -2058,7 +2075,7 @@ Deno.test("ACP non-usage events do not disturb the Session cost total", () => {
     assertEquals(sessionMap.getRecord("acp-1")?.usageCostUsd, 0.25);
 });
 
-Deno.test("ACP streams exact current context usage from a real Runtime turn", async () => {
+test("ACP streams exact current context usage from a real Runtime turn", async () => {
     await withRuntimeCommandFixture("runwield-acp-usage-", async (fixture) => {
         let latestInputTokens = 0;
         fixture.setModelResponseFactory((context) => {
@@ -2102,7 +2119,7 @@ Deno.test("ACP streams exact current context usage from a real Runtime turn", as
     });
 });
 
-Deno.test("ACP live wire suppresses usage when Runtime context capacity is unavailable", async () => {
+test("ACP live wire suppresses usage when Runtime context capacity is unavailable", async () => {
     await withRuntimeCommandFixture("runwield-acp-unknown-capacity-", async (fixture) => {
         const handle = startTestServer();
         try {
@@ -2126,7 +2143,7 @@ Deno.test("ACP live wire suppresses usage when Runtime context capacity is unava
     }, { contextWindow: 0 });
 });
 
-Deno.test("ACP live wire suppresses unknown post-compaction context and restores exact usage", async () => {
+test("ACP live wire suppresses unknown post-compaction context and restores exact usage", async () => {
     await withRuntimeCommandFixture("runwield-acp-compacted-usage-", async (fixture) => {
         fixture.setModelResponseFactories([
             () => fauxAssistantMessage(fauxText("Context before compaction.")),
@@ -2192,7 +2209,7 @@ Deno.test("ACP live wire suppresses unknown post-compaction context and restores
     }, { additionalModels: [{ id: "alternate-model", name: "Alternate Model", contextWindow: 64_000 }] });
 });
 
-Deno.test("ACP usage_update uses exact Runtime context and suppresses unknown capacity", () => {
+test("ACP usage_update uses exact Runtime context and suppresses unknown capacity", () => {
     const event = usageEvent(0);
     const exact = mapRuntimeEventToAcpUpdate(event, 0, { tokens: 48_000, contextWindow: 128_000 });
     assertEquals(exact, { sessionUpdate: "usage_update", used: 48_000, size: 128_000 });
@@ -2209,7 +2226,7 @@ Deno.test("ACP usage_update uses exact Runtime context and suppresses unknown ca
     );
 });
 
-Deno.test("ACP session/close disposes a real Runtime session and rejects later prompts", async () => {
+test("ACP session/close disposes a real Runtime session and rejects later prompts", async () => {
     await withRuntimeCommandFixture("runwield-acp-close-", async (fixture) => {
         const handle = startTestServer();
         try {
@@ -2235,7 +2252,7 @@ Deno.test("ACP session/close disposes a real Runtime session and rejects later p
     });
 });
 
-Deno.test("ACP validates new/load inputs and maps missing persisted Sessions", async () => {
+test("ACP validates new/load inputs and maps missing persisted Sessions", async () => {
     assertThrows(() => validateNewSessionParams({ cwd: "relative", mcpServers: [] }));
     assertThrows(() => validateNewSessionParams({ cwd: REPO_ROOT }));
     assertThrows(() => validateNewSessionParams({ cwd: REPO_ROOT, mcpServers: { local: { command: "secret" } } }));
@@ -2287,7 +2304,7 @@ Deno.test("ACP validates new/load inputs and maps missing persisted Sessions", a
     });
 });
 
-Deno.test("ACP session/load maps a persisted Session with no configured model to authentication required", async () => {
+test("ACP session/load maps a persisted Session with no configured model to authentication required", async () => {
     await withRuntimeCommandFixture("runwield-acp-load-no-model-", async (fixture) => {
         const persisted = await createIdleUngeneratedPersistedSession(fixture.projectRoot);
         const handle = startTestServer();
@@ -2311,7 +2328,7 @@ Deno.test("ACP session/load maps a persisted Session with no configured model to
     }, { providerState: "none" });
 });
 
-Deno.test("ACP agent notices suppress activation and same-Agent rebuilds", () => {
+test("ACP agent notices suppress activation and same-Agent rebuilds", () => {
     const event = {
         type: /** @type {const} */ ("agent_changed"),
         sessionId: "session-1",
@@ -2327,7 +2344,7 @@ Deno.test("ACP agent notices suppress activation and same-Agent rebuilds", () =>
     );
 });
 
-Deno.test("ACP event mapper forwards canonical Runtime tool metadata", () => {
+test("ACP event mapper forwards canonical Runtime tool metadata", () => {
     const toolStart = mapRuntimeEventToAcpUpdate({
         type: "tool_start",
         sessionId: "session-1",
@@ -2356,7 +2373,7 @@ Deno.test("ACP event mapper forwards canonical Runtime tool metadata", () => {
     assertEquals(/** @type {any} */ (toolEnd)._meta?.runwield?.durationMs, 25);
 });
 
-Deno.test("ACP event mapper forwards structured validation progress", () => {
+test("ACP event mapper forwards structured validation progress", () => {
     const progress = /** @type {import('../shared/session/session-runtime-events.js').RuntimeValidationProgress} */ ({
         kind: "workflow",
         outcome: "paused",
@@ -2381,20 +2398,20 @@ Deno.test("ACP event mapper forwards structured validation progress", () => {
     assertEquals(/** @type {any} */ (update)._meta?.runwield?.validationProgress, progress);
 });
 
-Deno.test("ACP production modules do not import TUI adapter code", async () => {
+test("ACP production modules do not import TUI adapter code", async () => {
     /** @type {string[]} */
     const violations = [];
-    for await (const entry of Deno.readDir(new URL(".", import.meta.url))) {
-        if (!entry.isFile || !entry.name.endsWith(".js") || entry.name.endsWith(".test.js")) continue;
+    for await (const entry of await fsReaddir(new URL(".", import.meta.url), { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".js") || entry.name.endsWith(".test.js")) continue;
         const path = `src/acp/${entry.name}`;
-        const source = await Deno.readTextFile(path);
+        const source = await fsReadFile(path, "utf8");
         if (/from\s+["'][^"']*(?:\/ui\/|shared\/interactive)/.test(source)) violations.push(path);
         if (/import\(["'][^"']*(?:\/ui\/|shared\/interactive)/.test(source)) violations.push(path);
     }
     assertEquals(violations, []);
 });
 
-Deno.test("ACP interaction adapter does not expose the obsolete Pair form", async () => {
+test("ACP interaction adapter does not expose the obsolete Pair form", async () => {
     /** @type {unknown[]} */
     const requests = [];
     const adapter = createAcpInteractionAdapter({
@@ -2422,7 +2439,7 @@ Deno.test("ACP interaction adapter does not expose the obsolete Pair form", asyn
     assertEquals(requests, []);
 });
 
-Deno.test("ACP interaction adapter maps valid selections and rejects invalid ones", async () => {
+test("ACP interaction adapter maps valid selections and rejects invalid ones", async () => {
     const accepted = createAcpInteractionAdapter({
         acpSessionId: "acp-1",
         clientCapabilities: { elicitation: { form: {} } },
@@ -2453,7 +2470,7 @@ Deno.test("ACP interaction adapter maps valid selections and rejects invalid one
     assertEquals(response.message, "ACP elicitation returned invalid option: invalid");
 });
 
-Deno.test("ACP interaction adapter distinguishes approval acceptance from decline", async () => {
+test("ACP interaction adapter distinguishes approval acceptance from decline", async () => {
     const makeAdapter = (/** @type {string} */ answer) =>
         createAcpInteractionAdapter({
             acpSessionId: "acp-1",
@@ -2478,7 +2495,7 @@ Deno.test("ACP interaction adapter distinguishes approval acceptance from declin
     });
 });
 
-Deno.test("ACP interaction adapter falls back to a local browser question without form capabilities", async () => {
+test("ACP interaction adapter falls back to a local browser question without form capabilities", async () => {
     /** @type {PromiseWithResolvers<string>} */
     const notified = Promise.withResolvers();
     const adapter = createAcpInteractionAdapter({
@@ -2525,7 +2542,7 @@ Deno.test("ACP interaction adapter falls back to a local browser question withou
     assertEquals(await pending, { outcome: "selected", value: "guide", valueLabel: "Guide" });
 });
 
-Deno.test("ACP event mapper maps Plan review links without maintainer secrets", () => {
+test("ACP event mapper maps Plan review links without maintainer secrets", () => {
     const update = mapRuntimeEventToAcpUpdate({
         type: "plan_review_link",
         sessionId: "s1",
@@ -2548,7 +2565,7 @@ for (
         ["1, but include tests\nand preserve the notes.", "other", "1, but include tests\nand preserve the notes."],
     ]
 ) {
-    Deno.test(`ACP no-form interview returns the original tool result for ${JSON.stringify(reply)}`, async () => {
+    test(`ACP no-form interview returns the original tool result for ${JSON.stringify(reply)}`, async () => {
         await withRuntimeCommandFixture("runwield-acp-interview-chat-", async (fixture) => {
             fixture.setModelResponseFactories([
                 () =>
@@ -2627,7 +2644,7 @@ for (
     });
 }
 
-Deno.test("ACP chat interview keeps one tool open across three answer requests and an Other follow-up", async () => {
+test("ACP chat interview keeps one tool open across three answer requests and an Other follow-up", async () => {
     await withRuntimeCommandFixture("runwield-acp-batch-chat-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
@@ -2730,7 +2747,7 @@ Deno.test("ACP chat interview keeps one tool open across three answer requests a
     });
 });
 
-Deno.test("ACP interview reply cannot overtake a held question response", async () => {
+test("ACP interview reply cannot overtake a held question response", async () => {
     await withRuntimeCommandFixture("runwield-acp-held-chat-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
@@ -2803,7 +2820,7 @@ Deno.test("ACP interview reply cannot overtake a held question response", async 
     });
 });
 
-Deno.test("ACP cancellation between interview requests settles the original turn", async () => {
+test("ACP cancellation between interview requests settles the original turn", async () => {
     await withRuntimeCommandFixture("runwield-acp-cancel-chat-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
@@ -2871,7 +2888,7 @@ Deno.test("ACP cancellation between interview requests settles the original turn
     });
 });
 
-Deno.test("ACP duplicate load rejects an already mapped Session before it opens another Runtime Session", async () => {
+test("ACP duplicate load rejects an already mapped Session before it opens another Runtime Session", async () => {
     await withRuntimeCommandFixture("runwield-acp-duplicate-load-", async (fixture) => {
         fixture.setModelResponse("Original Session remains usable.");
         const handle = startTestServer();
@@ -2905,7 +2922,7 @@ Deno.test("ACP duplicate load rejects an already mapped Session before it opens 
     });
 });
 
-Deno.test("ACP chat interview returns two ordered answers to one waiting model turn", async () => {
+test("ACP chat interview returns two ordered answers to one waiting model turn", async () => {
     await withRuntimeCommandFixture("runwield-acp-two-chat-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
@@ -2984,7 +3001,7 @@ Deno.test("ACP chat interview returns two ordered answers to one waiting model t
     });
 });
 
-Deno.test("ACP interview cancellation during a blocked question write precedes its response", async () => {
+test("ACP interview cancellation during a blocked question write precedes its response", async () => {
     await withRuntimeCommandFixture("runwield-acp-question-cancel-", async (fixture) => {
         fixture.setModelResponseFactories([
             () =>
@@ -3027,7 +3044,7 @@ Deno.test("ACP interview cancellation during a blocked question write precedes i
     });
 });
 
-Deno.test("ACP session/delete archives a mapped Session and succeeds for repeated and missing IDs", async () => {
+test("ACP session/delete archives a mapped Session and succeeds for repeated and missing IDs", async () => {
     await withRuntimeCommandFixture("runwield-acp-delete-", async (fixture) => {
         fixture.setModelResponseFactories([() => fauxAssistantMessage(fauxText("saved conversation"))]);
         const handle = startTestServer();
@@ -3072,7 +3089,7 @@ Deno.test("ACP session/delete archives a mapped Session and succeeds for repeate
     });
 });
 
-Deno.test("ACP session/delete resolves an unmapped Pi segment ID to its multi-segment Session", async () => {
+test("ACP session/delete resolves an unmapped Pi segment ID to its multi-segment Session", async () => {
     await withRuntimeCommandFixture("runwield-acp-delete-pi-", async (fixture) => {
         const store = openFileSessionStore();
         const handle = startTestServer();
@@ -3086,7 +3103,7 @@ Deno.test("ACP session/delete resolves an unmapped Pi segment ID to its multi-se
             // Use a fresh uncataloged transcript for the successor segment.
             const piSessionId = "delete-pi-successor";
             const transcriptPath = join(dirname(first.transcriptPath), `2026-01-02T00-00-00-000Z_${piSessionId}.jsonl`);
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 transcriptPath,
                 `${
                     JSON.stringify({
@@ -3135,7 +3152,7 @@ Deno.test("ACP session/delete resolves an unmapped Pi segment ID to its multi-se
     });
 });
 
-Deno.test("ACP session/delete cancels busy work and archives only after writer settlement", async () => {
+test("ACP session/delete cancels busy work and archives only after writer settlement", async () => {
     await withRuntimeCommandFixture("runwield-acp-delete-busy-", async (fixture) => {
         fixture.setModelResponseFactories([() => fauxAssistantMessage(fauxText("working ".repeat(5_000)))]);
         const handle = startTestServer();
@@ -3181,8 +3198,8 @@ Deno.test("ACP session/delete cancels busy work and archives only after writer s
 
 for (const mapped of [false, true]) {
     for (const cancellationFails of [false, true]) {
-        Deno.test(`ACP session/delete ${mapped ? "mapped" : "unmapped"} remote owner ${cancellationFails ? "failed cancellation keeps archive unchanged" : "waits for cancellation settlement"}`, async () => {
-            if (Deno.build.os === "windows") return;
+        test(`ACP session/delete ${mapped ? "mapped" : "unmapped"} remote owner ${cancellationFails ? "failed cancellation keeps archive unchanged" : "waits for cancellation settlement"}`, async () => {
+            if (process.platform === "win32") return;
             const { createServer } = await import("node:http");
             const { createHash } = await import("node:crypto");
             const { getHomeDir } = await import("../constants.js");
@@ -3275,7 +3292,7 @@ for (const mapped of [false, true]) {
                     if (proof) store.releaseUnchangedActivation(proof);
                     const closingSocket = socket;
                     if (closingSocket) await new Promise((resolve) => closingSocket.close(resolve));
-                    if (socketPath) await Deno.remove(socketPath).catch(() => {});
+                    if (socketPath) await fsRm(socketPath).catch(() => {});
                     store.close();
                     await closeTestServer(handle);
                 }

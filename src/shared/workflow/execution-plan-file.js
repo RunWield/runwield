@@ -1,8 +1,10 @@
+import { captureForegroundProcess } from "../captured-process.ts";
+import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node:fs/promises";
 /**
  * Materialize and verify canonical Plan files inside execution worktrees.
  */
 
-import { dirname, join, relative, SEPARATOR } from "@std/path";
+import { dirname, join, relative, sep as SEPARATOR } from "node:path";
 import {
     atomicWriteTextFileIfAbsent,
     getPlanRevisionForText,
@@ -104,11 +106,11 @@ function executionMetadataOverrides(canonicalAttrs, executionAttrs) {
 }
 
 /**
- * @param {Deno.FileInfo} info
+ * @param {import('node:fs').Stats} info
  */
 function classifyNonRegular(info) {
-    if (info.isSymlink) return "symlink";
-    if (!info.isFile) return "non_regular";
+    if (info.isSymbolicLink()) return "symlink";
+    if (!info.isFile()) return "non_regular";
     return null;
 }
 
@@ -155,7 +157,7 @@ async function inspectCanonicalParentChain(projectRoot, segments, sourceRelative
                     `Canonical Plan source is absent: ${sourceRelativePath} (missing parent ${currentRelativePath}).`,
             };
         }
-        if (info.isSymlink) {
+        if (info.isSymbolicLink()) {
             return {
                 ok: false,
                 kind: "symlink",
@@ -163,7 +165,7 @@ async function inspectCanonicalParentChain(projectRoot, segments, sourceRelative
                     `Canonical Plan source parent is a symlink at ${currentRelativePath}; source: ${sourceRelativePath}.`,
             };
         }
-        if (!info.isDirectory) {
+        if (!info.isDirectory()) {
             return {
                 ok: false,
                 kind: "non_regular",
@@ -190,9 +192,9 @@ export async function loadCanonicalExecutionPlanSource(projectRoot, planName) {
 
     let info;
     try {
-        info = await Deno.lstat(path);
+        info = await fsLstat(path);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
             return { kind: "absent", path, relativePath, reason: `Canonical Plan source is absent: ${relativePath}.` };
         }
         return {
@@ -215,7 +217,7 @@ export async function loadCanonicalExecutionPlanSource(projectRoot, planName) {
     }
     let markdown;
     try {
-        markdown = await Deno.readTextFile(path);
+        markdown = await fsReadFile(path, "utf8");
     } catch {
         return {
             kind: "unreadable",
@@ -247,9 +249,9 @@ export async function loadCanonicalExecutionPlanSource(projectRoot, planName) {
  */
 async function lstatOrNull(path) {
     try {
-        return await Deno.lstat(path);
+        return await fsLstat(path);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
@@ -286,9 +288,9 @@ async function verifyParentChain(root, segments, createMissing) {
                 };
             }
             try {
-                await Deno.mkdir(current);
+                await fsMkdir(current);
             } catch (error) {
-                if (!(error instanceof Deno.errors.AlreadyExists)) {
+                if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) {
                     return {
                         ok: false,
                         kind: "restore_failed",
@@ -298,7 +300,7 @@ async function verifyParentChain(root, segments, createMissing) {
                 }
             }
             try {
-                info = await Deno.lstat(current);
+                info = await fsLstat(current);
             } catch {
                 return {
                     ok: false,
@@ -308,7 +310,7 @@ async function verifyParentChain(root, segments, createMissing) {
                 };
             }
         }
-        if (info.isSymlink) {
+        if (info.isSymbolicLink()) {
             return {
                 ok: false,
                 kind: "symlink",
@@ -316,7 +318,7 @@ async function verifyParentChain(root, segments, createMissing) {
                 reason: `Execution Plan parent is a symlink: ${current}. Existing evidence was preserved.`,
             };
         }
-        if (!info.isDirectory) {
+        if (!info.isDirectory()) {
             return {
                 ok: false,
                 kind: "non_regular",
@@ -375,7 +377,7 @@ export async function ensureExecutionPlanFile({
         }
         let markdown;
         try {
-            markdown = await Deno.readTextFile(targetPath);
+            markdown = await fsReadFile(targetPath, "utf8");
         } catch (error) {
             return {
                 kind: "unreadable",
@@ -405,7 +407,7 @@ export async function ensureExecutionPlanFile({
                 try {
                     await writePlanMarkdownWithRevision(targetPath, canonicalSource.markdown, expectedRevision);
                 } catch {
-                    const concurrentMarkdown = await Deno.readTextFile(targetPath).catch(() => null);
+                    const concurrentMarkdown = await fsReadFile(targetPath, "utf8").catch(() => null);
                     if (concurrentMarkdown === canonicalSource.markdown) {
                         return { kind: "present", path: targetPath, relativePath };
                     }
@@ -417,7 +419,7 @@ export async function ensureExecutionPlanFile({
                             `Could not materialize the latest execution Plan at ${relativePath}. Existing evidence was preserved.`,
                     };
                 }
-                if (await Deno.readTextFile(targetPath) !== planDocumentMarkdown(canonicalSource.markdown)) {
+                if (await fsReadFile(targetPath, "utf8") !== planDocumentMarkdown(canonicalSource.markdown)) {
                     return {
                         kind: "restore_failed",
                         path: targetPath,
@@ -440,7 +442,7 @@ export async function ensureExecutionPlanFile({
                     // Another real writer may have won the revision race. Accept
                     // that outcome only when it independently produced the locked
                     // canonical metadata; otherwise preserve its evidence and stop.
-                    const concurrentMarkdown = await Deno.readTextFile(targetPath).catch(() => null);
+                    const concurrentMarkdown = await fsReadFile(targetPath, "utf8").catch(() => null);
                     if (concurrentMarkdown !== null) {
                         try {
                             const concurrent = parsePlanFrontMatter(concurrentMarkdown);
@@ -463,7 +465,7 @@ export async function ensureExecutionPlanFile({
                             `Could not synchronize execution Plan metadata at ${relativePath}. Existing evidence was preserved.`,
                     };
                 }
-                const verifiedMarkdown = await Deno.readTextFile(targetPath);
+                const verifiedMarkdown = await fsReadFile(targetPath, "utf8");
                 const verified = parsePlanFrontMatter(verifiedMarkdown);
                 if (
                     hasPlanIdConflict(canonicalSource.attrs.planId, verified.attrs.planId) ||
@@ -522,17 +524,17 @@ export async function ensureExecutionPlanFile({
             const concurrent = await ensureExecutionPlanFile({ executionCwd, planName, canonicalSource });
             return concurrent.kind === "present" ? { kind: "present", path: targetPath, relativePath } : concurrent;
         }
-        await Deno.mkdir(targetDir, { recursive: true });
+        await fsMkdir(targetDir, { recursive: true });
         try {
             await atomicWriteTextFileIfAbsent(targetPath, planDocumentMarkdown(canonicalSource.markdown));
         } catch (error) {
-            if (error instanceof Deno.errors.AlreadyExists) {
+            if (error instanceof Error && "code" in error && error.code === "EEXIST") {
                 const concurrent = await ensureExecutionPlanFile({ executionCwd, planName, canonicalSource });
                 return concurrent.kind === "present" ? { kind: "present", path: targetPath, relativePath } : concurrent;
             }
             throw error;
         }
-        const restoredMarkdown = await Deno.readTextFile(targetPath);
+        const restoredMarkdown = await fsReadFile(targetPath, "utf8");
         if (restoredMarkdown !== planDocumentMarkdown(canonicalSource.markdown)) {
             return {
                 kind: "restore_failed",
@@ -603,12 +605,10 @@ export async function restoreExecutionPlanFromBaseline({ executionCwd, planName,
             reason: `Execution baseline is not a Git object id: ${baselineTree}.`,
         };
     }
-    const treeResult = await new Deno.Command("git", {
+    const treeResult = await captureForegroundProcess("git", {
         cwd: executionCwd,
         args: ["rev-parse", `${baselineTree}^{tree}`],
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    });
     if (treeResult.code !== 0) {
         return {
             kind: "restore_failed",
@@ -617,12 +617,10 @@ export async function restoreExecutionPlanFromBaseline({ executionCwd, planName,
         };
     }
     const tree = new TextDecoder().decode(treeResult.stdout).trim();
-    const blobResult = await new Deno.Command("git", {
+    const blobResult = await captureForegroundProcess("git", {
         cwd: executionCwd,
         args: ["show", `${tree}:${existing.relativePath}`],
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    });
     if (blobResult.code !== 0) {
         return {
             kind: "restore_failed",

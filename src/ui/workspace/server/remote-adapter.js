@@ -252,7 +252,7 @@ export function openRemoteWorkspaceAdapter(options = {}) {
     });
 }
 
-/** @param {import("node:sqlite").DatabaseSync} db @param {string} spaceId @param {string} capability @param {"reviewer" | "maintainer"} requiredScope */
+/** @param {import("../../../shared/sqlite.ts").DatabaseSync} db @param {string} spaceId @param {string} capability @param {"reviewer" | "maintainer"} requiredScope */
 async function verifyCapability(db, spaceId, capability, requiredScope) {
     getSpaceRow(db, spaceId);
     const presentedHash = await hashCapability(capability);
@@ -268,7 +268,7 @@ async function verifyCapability(db, spaceId, capability, requiredScope) {
     throw new RemoteWorkspaceError("forbidden", "Capability is not authorized for this operation.", 403);
 }
 
-/** @param {import("node:sqlite").DatabaseSync} db @param {string} spaceId */
+/** @param {import("../../../shared/sqlite.ts").DatabaseSync} db @param {string} spaceId */
 function getSpaceRow(db, spaceId) {
     const row = db.prepare(
         "SELECT id, plan_id, status, latest_revision, created_at, updated_at, closed_at, expires_at FROM shared_spaces WHERE id = ?",
@@ -277,7 +277,7 @@ function getSpaceRow(db, spaceId) {
     return row;
 }
 
-/** @param {import("node:sqlite").DatabaseSync} db @param {string} spaceId @param {number} revision */
+/** @param {import("../../../shared/sqlite.ts").DatabaseSync} db @param {string} spaceId @param {number} revision */
 function getRevisionRow(db, spaceId, revision) {
     const row = db.prepare(
         "SELECT space_id, revision, payload_ciphertext, created_at FROM space_revisions WHERE space_id = ? AND revision = ?",
@@ -286,7 +286,7 @@ function getRevisionRow(db, spaceId, revision) {
     return row;
 }
 
-/** @param {import("node:sqlite").DatabaseSync} db @param {string} spaceId */
+/** @param {import("../../../shared/sqlite.ts").DatabaseSync} db @param {string} spaceId */
 function listRevisionMetadata(db, spaceId) {
     return db.prepare(
         "SELECT space_id, revision, created_at FROM space_revisions WHERE space_id = ? ORDER BY revision",
@@ -294,7 +294,7 @@ function listRevisionMetadata(db, spaceId) {
 }
 
 /**
- * @param {import("node:sqlite").DatabaseSync} db
+ * @param {import("../../../shared/sqlite.ts").DatabaseSync} db
  * @param {string} spaceId
  * @param {string} updatedAt
  * @param {string | null} expiresAt

@@ -1,4 +1,8 @@
-import { join } from "@std/path";
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { mkdir as fsMkdir, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { join } from "node:path";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     canonicalizeStoredPlanName,
@@ -49,10 +53,10 @@ interface PlanningPlanAttributes {
 
 async function pathExists(path: string): Promise<boolean> {
     try {
-        await Deno.stat(path);
+        await fsStat(path);
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }
@@ -74,7 +78,7 @@ function loadedCanonicalSource(planName: string, plan: LoadedPlan): LoadedCanoni
 }
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     const stdout = new TextDecoder().decode(output.stdout);
     const stderr = new TextDecoder().decode(output.stderr);
     if (!output.success) throw new Error(`git ${args.join(" ")} failed: ${stderr || stdout}`.trim());
@@ -82,12 +86,10 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
 }
 
 async function gitRefExists(projectRoot: string, ref: string): Promise<boolean> {
-    const result = await new Deno.Command("git", {
+    const result = await captureForegroundProcess("git", {
         cwd: projectRoot,
         args: ["rev-parse", "--verify", "--quiet", ref],
-        stdout: "null",
-        stderr: "null",
-    }).output();
+    });
     return result.success;
 }
 
@@ -97,20 +99,13 @@ async function resolveExistingTargetSnapshot(projectRoot: string, targetBranch: 
         throw new Error(`Invalid target branch name: ${targetBranch}`);
     }
     const branch = target.startsWith("origin/") ? target.slice("origin/".length) : target;
-    const remote = await new Deno.Command("git", {
-        cwd: projectRoot,
-        args: ["remote", "get-url", "origin"],
-        stdout: "null",
-        stderr: "null",
-    }).output();
+    const remote = await captureForegroundProcess("git", { cwd: projectRoot, args: ["remote", "get-url", "origin"] });
     let remoteTargetExists = false;
     if (remote.success) {
-        const fetched = await new Deno.Command("git", {
+        const fetched = await captureForegroundProcess("git", {
             cwd: projectRoot,
             args: ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
         if (!fetched.success) {
             const error = new TextDecoder().decode(fetched.stderr);
             if (!error.includes("couldn't find remote ref")) {
@@ -132,12 +127,10 @@ async function resolveExistingTargetSnapshot(projectRoot: string, targetBranch: 
 
 async function readTargetPlanMarkdown(projectRoot: string, planName: string, baseRef: string) {
     const relativePath = `docs/plans/${planName}.md`;
-    const result = await new Deno.Command("git", {
+    const result = await captureForegroundProcess("git", {
         cwd: projectRoot,
         args: ["show", `${baseRef}:${relativePath}`],
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    });
     if (!result.success) return null;
     return {
         relativePath,
@@ -153,17 +146,11 @@ async function readTargetPlanMarkdowns(
 ): Promise<Map<string, string>> {
     const found = new Map<string, string>();
     if (relativePaths.length === 0) return found;
-    const child = new Deno.Command("git", {
+    const output = await captureForegroundProcess("git", {
         cwd: projectRoot,
         args: ["cat-file", "--batch"],
-        stdin: "piped",
-        stdout: "piped",
-        stderr: "piped",
-    }).spawn();
-    const writer = child.stdin.getWriter();
-    await writer.write(new TextEncoder().encode(relativePaths.map((path) => `${baseRef}:${path}\n`).join("")));
-    await writer.close();
-    const output = await child.output();
+        stdinText: relativePaths.map((path) => `${baseRef}:${path}\n`).join(""),
+    });
     if (!output.success) throw new Error(`git cat-file --batch failed: ${new TextDecoder().decode(output.stderr)}`);
     const bytes = output.stdout;
     const decoder = new TextDecoder();
@@ -185,12 +172,12 @@ async function readTargetPlanMarkdowns(
 async function loadTargetPlan(projectRoot: string, planName: string, baseRef: string) {
     const source = await readTargetPlanMarkdown(projectRoot, planName, baseRef);
     if (!source) return null;
-    const temp = await Deno.makeTempDir();
+    const temp = await mkdtemp(join(tmpdir(), "runwield-"));
     const path = join(temp, source.relativePath);
-    await Deno.mkdir(join(temp, "docs", "plans", ...planName.split("/").slice(0, -1)), { recursive: true });
-    await Deno.writeTextFile(path, source.markdown);
+    await fsMkdir(join(temp, "docs", "plans", ...planName.split("/").slice(0, -1)), { recursive: true });
+    await fsWriteFile(path, source.markdown);
     const plan = await loadPlan(temp, planName);
-    await Deno.remove(temp, { recursive: true }).catch(() => {});
+    await fsRm(temp, { recursive: true }).catch(() => {});
     return plan
         ? {
             ...plan,
@@ -219,14 +206,14 @@ export async function inspectTargetBranchPlansByParent(cwd: string, targetBranch
         if (!localRef) throw new Error(`Target branch does not exist: ${targetBranch}. Create it before planning.`);
         return await readTargetChildren(projectRoot, localRef, parentPlanName);
     }
-    const scratch = await Deno.makeTempDir({ prefix: "runwield-target-inspect-" });
+    const scratch = await mkdtemp(join(tmpdir(), "runwield-target-inspect-"));
     try {
         await runGit(projectRoot, ["clone", "--no-hardlinks", projectRoot, scratch]);
         await runGit(scratch, ["remote", "add", "publication", remoteUrl]);
         await runGit(scratch, ["fetch", "publication", `refs/heads/${branch}:refs/runwield/target`]);
         return await readTargetChildren(scratch, "refs/runwield/target", parentPlanName);
     } finally {
-        await Deno.remove(scratch, { recursive: true }).catch(() => {});
+        await fsRm(scratch, { recursive: true }).catch(() => {});
     }
 }
 

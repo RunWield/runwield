@@ -141,7 +141,7 @@ async function requestBrowserQuestion(options) {
         return await answered.promise;
     } finally {
         options.signal?.removeEventListener("abort", abort);
-        await question.shutdown();
+        await question.shutdown({ drain: used && !options.signal?.aborted });
     }
 }
 

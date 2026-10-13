@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     createTerminalFocusStateOwner,
     getCurrentTerminalFocusState,
@@ -26,7 +27,7 @@ class FocusTestTerminal {
     }
 }
 
-Deno.test("createTerminalFocusStateOwner enables and disables focus reporting idempotently", () => {
+test("createTerminalFocusStateOwner enables and disables focus reporting idempotently", () => {
     const terminal = new FocusTestTerminal();
     const owner = createTerminalFocusStateOwner(terminal);
 
@@ -39,7 +40,7 @@ Deno.test("createTerminalFocusStateOwner enables and disables focus reporting id
     assertEquals(terminal.writes, ["\x1b[?1004h", "\x1b[?1004l"]);
 });
 
-Deno.test("filterInput consumes focus reports and updates state", () => {
+test("filterInput consumes focus reports and updates state", () => {
     const terminal = new FocusTestTerminal();
     const owner = createTerminalFocusStateOwner(terminal);
 
@@ -49,7 +50,7 @@ Deno.test("filterInput consumes focus reports and updates state", () => {
     assertEquals(owner.getState(), "unfocused");
 });
 
-Deno.test("filterInput consumes split focus reports and updates state", () => {
+test("filterInput consumes split focus reports and updates state", () => {
     const terminal = new FocusTestTerminal();
     const owner = createTerminalFocusStateOwner(terminal);
 
@@ -62,7 +63,7 @@ Deno.test("filterInput consumes split focus reports and updates state", () => {
     assertEquals(owner.getState(), "unfocused");
 });
 
-Deno.test("filterInput passes standalone ESC through without pending", () => {
+test("filterInput passes standalone ESC through without pending", () => {
     const terminal = new FocusTestTerminal();
     const owner = createTerminalFocusStateOwner(terminal);
 
@@ -71,7 +72,7 @@ Deno.test("filterInput passes standalone ESC through without pending", () => {
     assertEquals(owner.getState(), "unknown");
 });
 
-Deno.test("filterInput passes non-focus input through unchanged and in order", () => {
+test("filterInput passes non-focus input through unchanged and in order", () => {
     const terminal = new FocusTestTerminal();
     const owner = createTerminalFocusStateOwner(terminal);
 
@@ -81,7 +82,7 @@ Deno.test("filterInput passes non-focus input through unchanged and in order", (
     assertEquals(owner.getState(), "unknown");
 });
 
-Deno.test("installTerminalFocusState filters terminal start input before the TUI callback", () => {
+test("installTerminalFocusState filters terminal start input before the TUI callback", () => {
     const terminal = new FocusTestTerminal();
     const owner = installTerminalFocusState(terminal);
     const inputs: string[] = [];
@@ -99,7 +100,7 @@ Deno.test("installTerminalFocusState filters terminal start input before the TUI
     assertEquals(getCurrentTerminalFocusState(), "unknown");
 });
 
-Deno.test("installTerminalFocusState preserves a delayed CSI keyboard sequence", async () => {
+test("installTerminalFocusState preserves a delayed CSI keyboard sequence", async () => {
     const terminal = new FocusTestTerminal();
     const owner = installTerminalFocusState(terminal);
     const inputs: string[] = [];
@@ -115,7 +116,7 @@ Deno.test("installTerminalFocusState preserves a delayed CSI keyboard sequence",
     }
 });
 
-Deno.test("installTerminalFocusState drops a delayed suffix of an incomplete mouse report", async () => {
+test("installTerminalFocusState drops a delayed suffix of an incomplete mouse report", async () => {
     const terminal = new FocusTestTerminal();
     const owner = installTerminalFocusState(terminal);
     const inputs: string[] = [];
@@ -133,7 +134,7 @@ Deno.test("installTerminalFocusState drops a delayed suffix of an incomplete mou
     }
 });
 
-Deno.test("installTerminalFocusState suppresses empty focus-only reports", () => {
+test("installTerminalFocusState suppresses empty focus-only reports", () => {
     const terminal = new FocusTestTerminal();
     installTerminalFocusState(terminal);
     const inputs: string[] = [];
@@ -145,7 +146,7 @@ Deno.test("installTerminalFocusState suppresses empty focus-only reports", () =>
     assertEquals(inputs, []);
 });
 
-Deno.test("terminal focus requests recovery only on gaining focus and preserves accompanying input", () => {
+test("terminal focus requests recovery only on gaining focus and preserves accompanying input", () => {
     const terminal = new FocusTestTerminal();
     let focusEvents = 0;
     const owner = installTerminalFocusState(terminal, () => focusEvents++);

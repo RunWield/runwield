@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { runOnboardCommand } from "./index.ts";
 
-Deno.test("wld onboard refuses a non-interactive terminal without starting a Session", async () => {
+test("wld onboard refuses a non-interactive terminal without starting a Session", async () => {
     let started = false;
     const originalError = console.error;
     const errors: string[] = [];
@@ -23,7 +24,7 @@ Deno.test("wld onboard refuses a non-interactive terminal without starting a Ses
     assertEquals(errors, ["[RunWield] wld onboard requires an interactive terminal."]);
 });
 
-Deno.test("slash onboarding delegates to the active TUI flow", async () => {
+test("slash onboarding delegates to the active TUI flow", async () => {
     let calls = 0;
     await runOnboardCommand([], {
         uiAPI: {} as never,

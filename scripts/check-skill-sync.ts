@@ -1,11 +1,13 @@
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env bun
+import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
 
 /**
  * Keeps the installable skills under `skills/` in step with the Agent Definitions they were derived from.
  *
  * A skill derived from an Agent Definition records the hash of both files. When either side changes, this check fails
  * and names the side that moved, so the edit is carried across before the baseline is accepted again with
- * `deno task skills:sync:update`. A skill that stands on its own records no source and is held to its own hashes.
+ * `bun run skills:sync:update`. A skill that stands on its own records no source and is held to its own hashes.
  *
  * Every Markdown file in a published skill directory is tracked, not only its SKILL.md, and the file list comes from
  * disk rather than from the baseline. A support file added and never registered is still scanned and still reported.
@@ -18,7 +20,7 @@
  * opts out.
  */
 
-import { fromFileUrl } from "@std/path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const BASELINE_PATH = new URL("./skill-sync-baseline.json", import.meta.url);
 const REPO_ROOT = new URL("../", import.meta.url);
@@ -131,7 +133,7 @@ export function formatDrift(drift: SkillSyncDrift[]): string {
         "Published skills no longer match the baseline:",
         ...lines,
         "",
-        "Review each file above, then run: deno task skills:sync:update",
+        "Review each file above, then run: bun run skills:sync:update",
     ].join("\n");
 }
 
@@ -241,19 +243,19 @@ export async function discoverSkillsInContainers(rootPath: string): Promise<Disc
     const discovered: DiscoveredSkill[] = [];
 
     const walk = async (relativeDir: string, depth: number): Promise<void> => {
-        let entries: Deno.DirEntry[];
+        let entries: import("node:fs").Dirent[];
         try {
-            entries = await Array.fromAsync(Deno.readDir(`${rootPath}/${relativeDir}`));
+            entries = await Array.fromAsync(await fsReaddir(`${rootPath}/${relativeDir}`, { withFileTypes: true }));
         } catch {
             return;
         }
         for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-            if (!entry.isDirectory) continue;
+            if (!entry.isDirectory()) continue;
             const childDir = `${relativeDir}/${entry.name}`;
             const skillPath = `${childDir}/SKILL.md`;
             let content: string;
             try {
-                content = await Deno.readTextFile(`${rootPath}/${skillPath}`);
+                content = await fsReadFile(`${rootPath}/${skillPath}`, "utf8");
             } catch {
                 if (depth < SKILL_CONTAINER_DEPTH) await walk(childDir, depth + 1);
                 continue;
@@ -278,10 +280,10 @@ export async function collectPublishedSkillFiles(rootPath: string, skillPath: st
     const support: string[] = [];
 
     const walk = async (relativeDir: string): Promise<void> => {
-        const entries = await Array.fromAsync(Deno.readDir(`${rootPath}/${relativeDir}`));
+        const entries = await Array.fromAsync(await fsReaddir(`${rootPath}/${relativeDir}`, { withFileTypes: true }));
         for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
             const path = `${relativeDir}/${entry.name}`;
-            if (entry.isDirectory) await walk(path);
+            if (entry.isDirectory()) await walk(path);
             else if (entry.name.endsWith(".md") && path !== skillPath) support.push(path);
         }
     };
@@ -291,7 +293,7 @@ export async function collectPublishedSkillFiles(rootPath: string, skillPath: st
 }
 
 async function hashFile(relativePath: string): Promise<string> {
-    const content = await Deno.readFile(new URL(relativePath, REPO_ROOT));
+    const content = await fsReadFile(new URL(relativePath, REPO_ROOT));
     const digest = await crypto.subtle.digest("SHA-256", content);
     return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -319,7 +321,7 @@ export async function readCurrentSkills(skills: PublishedSkill[]): Promise<Publi
 }
 
 async function readBaseline(): Promise<SkillSyncBaseline> {
-    const parsed = JSON.parse(await Deno.readTextFile(BASELINE_PATH));
+    const parsed = JSON.parse(await fsReadFile(BASELINE_PATH, "utf8"));
     if (!parsed || !Array.isArray(parsed.skills)) {
         throw new Error("skill-sync-baseline.json must contain a `skills` array");
     }
@@ -340,22 +342,22 @@ if (import.meta.main) {
     const baseline = await readBaseline();
     const current = await readCurrentSkills(baseline.skills);
 
-    if (Deno.args.includes("--update")) {
+    if (process.argv.slice(2).includes("--update")) {
         const skills = current.map(forBaselineFile);
-        await Deno.writeTextFile(BASELINE_PATH, `${JSON.stringify({ skills }, null, 4)}\n`);
+        await fsWriteFile(BASELINE_PATH, `${JSON.stringify({ skills }, null, 4)}\n`);
         console.log("Updated scripts/skill-sync-baseline.json.");
-        Deno.exit(0);
+        process.exit(0);
     }
 
     const leaks: ProjectSpecificLeak[] = [];
     for (const entry of current) {
         for (const path of [entry.skill, ...entry.supportFiles.map((file) => file.path)]) {
-            leaks.push(...findProjectSpecificLeaks(path, await Deno.readTextFile(new URL(path, REPO_ROOT))));
+            leaks.push(...findProjectSpecificLeaks(path, await fsReadFile(new URL(path, REPO_ROOT), "utf8")));
         }
     }
     if (leaks.length > 0) {
         console.error(formatLeaks(leaks));
-        Deno.exit(1);
+        process.exit(1);
     }
 
     const unpublished = findUnpublishedSkills(
@@ -364,13 +366,13 @@ if (import.meta.main) {
     );
     if (unpublished.length > 0) {
         console.error(formatUnpublishedSkills(unpublished));
-        Deno.exit(1);
+        process.exit(1);
     }
 
     const drift = findSkillSyncDrift(baseline.skills, current);
     if (drift.length > 0) {
         console.error(formatDrift(drift));
-        Deno.exit(1);
+        process.exit(1);
     }
 
     console.log(`Skill sync baseline matches ${baseline.skills.length} published skills.`);

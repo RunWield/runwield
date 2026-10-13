@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createTuiInteractionAdapter as createAdapter } from "./runtime-interaction-adapter.js";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";
@@ -33,8 +37,8 @@ function makeUi(selection, state = {}) {
     });
 }
 
-Deno.test("TUI Plan review resumes progress after feedback and review failures", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-review-progress-" });
+test("TUI Plan review resumes progress after feedback and review failures", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-review-progress-"));
     const busyValues = /** @type {boolean[]} */ ([]);
     const scripted = createScriptedReviewBrowser("deny", { feedback: "Add a test" });
     const adapter = createAdapter(makeUi(null, { busyValues }), { browser: scripted.browser });
@@ -53,15 +57,15 @@ Deno.test("TUI Plan review resumes progress after feedback and review failures",
         assertEquals(response._meta?.feedback, "Add a test");
         assertEquals(busyValues, [false, true]);
 
-        await Deno.remove(request._meta.planPath);
+        await fsRm(request._meta.planPath);
         await assertRejects(async () => await adapter.requestInteraction(request));
         assertEquals(busyValues, [false, true, false, true]);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("TUI interaction adapter closes a question answered on another surface", async () => {
+test("TUI interaction adapter closes a question answered on another surface", async () => {
     let resolvePrompt = /** @type {(value: string | null) => void} */ (() => {});
     let promptClosed = false;
     const uiAPI = /** @type {any} */ ({
@@ -87,7 +91,7 @@ Deno.test("TUI interaction adapter closes a question answered on another surface
     assertEquals((await responsePromise).outcome, "canceled");
 });
 
-Deno.test("TUI interaction adapter rejects invalid selected options", async () => {
+test("TUI interaction adapter rejects invalid selected options", async () => {
     const adapter = createTuiInteractionAdapter(makeUi("invalid"));
     const response = await adapter.requestInteraction({
         type: "select",
@@ -99,7 +103,7 @@ Deno.test("TUI interaction adapter rejects invalid selected options", async () =
     assertEquals(response.message, "Select prompt returned invalid option: invalid");
 });
 
-Deno.test("TUI interaction adapter maps declined approval choices to canceled outcome", async () => {
+test("TUI interaction adapter maps declined approval choices to canceled outcome", async () => {
     const adapter = createTuiInteractionAdapter(makeUi("deny"));
     const response = await adapter.requestInteraction({
         type: "approval",
@@ -111,7 +115,7 @@ Deno.test("TUI interaction adapter maps declined approval choices to canceled ou
     assertEquals(response.value, false);
 });
 
-Deno.test("TUI interaction adapter does not auto-accept arbitrary single approval options", async () => {
+test("TUI interaction adapter does not auto-accept arbitrary single approval options", async () => {
     const adapter = createTuiInteractionAdapter(makeUi("deny"));
     const response = await adapter.requestInteraction({
         type: "approval",
@@ -123,7 +127,7 @@ Deno.test("TUI interaction adapter does not auto-accept arbitrary single approva
     assertEquals(response.value, false);
 });
 
-Deno.test("TUI interaction adapter maps approval prompts to accepted outcome", async () => {
+test("TUI interaction adapter maps approval prompts to accepted outcome", async () => {
     const adapter = createTuiInteractionAdapter(makeUi("approve"));
     const response = await adapter.requestInteraction({
         type: "approval",
@@ -135,7 +139,7 @@ Deno.test("TUI interaction adapter maps approval prompts to accepted outcome", a
     assertEquals(response.value, true);
 });
 
-Deno.test("TUI interaction adapter advertises browser-backed review capabilities", () => {
+test("TUI interaction adapter advertises browser-backed review capabilities", () => {
     const adapter = createTuiInteractionAdapter(makeUi(null));
 
     assertEquals(adapter.supportsInteraction?.("pair_checkpoint"), false);
@@ -145,7 +149,7 @@ Deno.test("TUI interaction adapter advertises browser-backed review capabilities
     assertEquals(adapter.supportsInteraction?.("text"), false);
 });
 
-Deno.test("TUI interaction adapter confirms Plan Deviations explicitly", async () => {
+test("TUI interaction adapter confirms Plan Deviations explicitly", async () => {
     let prompt = "";
     let options = /** @type {Array<{ value: string, label: string }>} */ ([]);
     const adapter = createTuiInteractionAdapter(
@@ -177,15 +181,22 @@ Deno.test("TUI interaction adapter confirms Plan Deviations explicitly", async (
     });
 
     assertEquals(response, { outcome: "accepted", value: true });
-    assertEquals(prompt.includes("Plan Deviation confirmation"), true);
-    assertEquals(prompt.includes("Superseded requirement: Replace nav."), true);
+    assertEquals(
+        prompt,
+        "Plan Deviation confirmation\n\n" + [
+            "Confirm this Plan Deviation before I treat it as authority.",
+            "Superseded requirement: Replace nav.",
+            "Replacement requirement: Keep nav.",
+            "Confirmed text will be saved in the Plan and Work Record.",
+        ].join("\n"),
+    );
     assertEquals(options, [
         { value: "confirm", label: "Confirm Plan Deviation" },
         { value: "cancel", label: "Cancel; keep original" },
     ]);
 });
 
-Deno.test("TUI interaction adapter shows the full Plan Deviation confirmation prompt", async () => {
+test("TUI interaction adapter shows the full Plan Deviation confirmation prompt", async () => {
     let prompt = "";
     const tail = "This persistence warning must stay visible.";
     const adapter = createTuiInteractionAdapter(
@@ -207,7 +218,7 @@ Deno.test("TUI interaction adapter shows the full Plan Deviation confirmation pr
     assertEquals(prompt.endsWith("..."), false);
 });
 
-Deno.test("TUI interaction adapter returns canceled Plan Deviation confirmation", async () => {
+test("TUI interaction adapter returns canceled Plan Deviation confirmation", async () => {
     const adapter = createTuiInteractionAdapter(makeUi("cancel"));
 
     const response = await adapter.requestInteraction({
@@ -222,7 +233,7 @@ Deno.test("TUI interaction adapter returns canceled Plan Deviation confirmation"
     assertEquals(response, { outcome: "canceled" });
 });
 
-Deno.test("TUI interaction adapter does not open a form for Pair checkpoints", async () => {
+test("TUI interaction adapter does not open a form for Pair checkpoints", async () => {
     let promptCount = 0;
     const adapter = createTuiInteractionAdapter(
         /** @type {any} */ ({
@@ -249,8 +260,8 @@ Deno.test("TUI interaction adapter does not open a form for Pair checkpoints", a
     assertEquals(promptCount, 0);
 });
 
-Deno.test("TUI code review exposes each real surface URL without browser opening and clears settled links", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-tui-code-link-" });
+test("TUI code review exposes each real surface URL without browser opening and clears settled links", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-tui-code-link-"));
     const state = {
         busyValues: /** @type {boolean[]} */ ([]),
         outputs: /** @type {string[]} */ ([]),
@@ -286,12 +297,12 @@ Deno.test("TUI code review exposes each real surface URL without browser opening
             assertEquals(state.outputs[index * 2 + 1], "Code Review approved.");
         }
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("TUI code review closes the live link and restores progress on cancellation", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-tui-code-cancel-" });
+test("TUI code review closes the live link and restores progress on cancellation", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-tui-code-cancel-"));
     const state = {
         busyValues: /** @type {boolean[]} */ ([]),
         outputs: /** @type {string[]} */ ([]),
@@ -318,11 +329,11 @@ Deno.test("TUI code review closes the live link and restores progress on cancell
         assertEquals(state.busyValues, [false, true]);
         assertEquals(state.ended, [false]);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("TUI review setup failure closes its block as an error", async () => {
+test("TUI review setup failure closes its block as an error", async () => {
     const state = {
         busyValues: /** @type {boolean[]} */ ([]),
         outputs: /** @type {string[]} */ ([]),

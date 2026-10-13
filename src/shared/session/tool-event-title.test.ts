@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { describeRuntimeTool } from "./tool-event-title.js";
 
-Deno.test("Runtime provides one stable tool descriptor for live, replay, TUI, ACP, and future consumers", () => {
+test("Runtime provides one stable tool descriptor for live, replay, TUI, ACP, and future consumers", () => {
     assertEquals(describeRuntimeTool("bash", { command: "git status" }), {
         toolName: "bash",
         title: "$ git status",

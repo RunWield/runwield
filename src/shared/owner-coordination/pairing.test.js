@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertMatch, assertThrows } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
 import { hashSecret, randomHumanCode } from "./crypto.ts";
 import {
@@ -26,7 +31,7 @@ function getLastSeen(database, deviceId) {
     );
 }
 
-Deno.test("pairing approval codes use cryptographic randomness by default", () => {
+test("pairing approval codes use cryptographic randomness by default", () => {
     const originalRandom = Math.random;
     try {
         Math.random = () => 0;
@@ -38,8 +43,8 @@ Deno.test("pairing approval codes use cryptographic randomness by default", () =
     }
 });
 
-Deno.test("pairing request stores only hashes and requires approval before claim", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-pairing-" });
+test("pairing request stores only hashes and requires approval before claim", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-pairing-"));
     const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     try {
         const ids = idFactory();
@@ -84,12 +89,12 @@ Deno.test("pairing request stores only hashes and requires approval before claim
         assertEquals(verifyDeviceCsrf(database, claimed.deviceId, claimed.csrf), true);
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("pairing device labels strip terminal control characters", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-pairing-label-" });
+test("pairing device labels strip terminal control characters", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-pairing-label-"));
     const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     try {
         assertEquals(stripTerminalControlCharacters("Phone\x1B[31m\x07"), "Phone");
@@ -104,12 +109,12 @@ Deno.test("pairing device labels strip terminal control characters", async () =>
         assertEquals(approved.deviceLabel, "PhoneName");
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("pairing expiry and pending cap are enforced", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-pairing-expiry-" });
+test("pairing expiry and pending cap are enforced", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-pairing-expiry-"));
     const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     try {
         const ids = idFactory();
@@ -151,12 +156,12 @@ Deno.test("pairing expiry and pending cap are enforced", async () => {
         );
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("pairing code generation skips unpruned claimed requests", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-pairing-claimed-collision-" });
+test("pairing code generation skips unpruned claimed requests", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-pairing-claimed-collision-"));
     const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     try {
         const ids = idFactory();
@@ -188,12 +193,12 @@ Deno.test("pairing code generation skips unpruned claimed requests", async () =>
         );
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("device credentials are revocable and never listed as secrets", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-devices-" });
+test("device credentials are revocable and never listed as secrets", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-devices-"));
     const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
     try {
         const request = createPairingRequest(database, {
@@ -228,12 +233,12 @@ Deno.test("device credentials are revocable and never listed as secrets", async 
         assertEquals(verifyDeviceCsrf(database, claimed.deviceId, "csrf-secret"), false);
     } finally {
         database.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("two database connections cannot claim one approved request twice", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-pairing-race-" });
+test("two database connections cannot claim one approved request twice", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-pairing-race-"));
     const dbPath = `${dir}/owner.sqlite3`;
     const first = openOwnerCoordinationDatabase({ dbPath });
     const second = openOwnerCoordinationDatabase({ dbPath });
@@ -267,6 +272,6 @@ Deno.test("two database connections cannot claim one approved request twice", as
     } finally {
         first.close();
         second.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

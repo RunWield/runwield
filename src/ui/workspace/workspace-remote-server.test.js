@@ -1,5 +1,11 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../../shared/http-server.ts";
+import { tmpdir } from "node:os";
+import { getCwd } from "../../constants.js";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
+import { test } from "node:test";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 
 import { RUNWIELD_ROOT } from "../../../runtime-root.js";
 import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";
@@ -20,48 +26,48 @@ import { createWorkspaceApp } from "./server.js";
 import { createTestApiContext, createTestEnv } from "./workspace-test-helpers.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
-Deno.test("remote Shared Space development gate requires both development and remote mode", () => {
+test("remote Shared Space development gate requires both development and remote mode", () => {
     assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: true, workspaceMode: "remote" }), true);
     assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: true, workspaceMode: "local" }), false);
     assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: true, workspaceMode: undefined }), false);
     assertEquals(isRemoteDevelopmentModeEnabled({ isDevelopment: false, workspaceMode: "remote" }), false);
 });
 
-Deno.test("remote development API and page share the central gate", async () => {
-    const apiSource = await Deno.readTextFile(join(RUNWIELD_ROOT, "src/ui/workspace/server/remote-dev-api.js"));
-    const pageSource = await Deno.readTextFile(join(RUNWIELD_ROOT, "src/ui/workspace/pages/p/[spaceId].astro"));
+test("remote development API and page share the central gate", async () => {
+    const apiSource = await fsReadFile(join(RUNWIELD_ROOT, "src/ui/workspace/server/remote-dev-api.js"), "utf8");
+    const pageSource = await fsReadFile(join(RUNWIELD_ROOT, "src/ui/workspace/pages/p/[spaceId].astro"), "utf8");
     assertStringIncludes(apiSource, "isRemoteDevelopmentModeEnabled");
     assertStringIncludes(pageSource, "isRemoteDevelopmentModeEnabled");
 });
 
-Deno.test("remote development API rejects non-development and non-remote requests", async () => {
+test("remote development API rejects non-development and non-remote requests", async () => {
     // RUNWIELD_WORKSPACE_MODE is process-global; without the lock this window is
     // visible to every other test file running concurrently.
     await withProcessGlobalTestLock(async () => {
-        const originalMode = Deno.env.get("RUNWIELD_WORKSPACE_MODE");
+        const originalMode = process.env["RUNWIELD_WORKSPACE_MODE"];
         try {
-            Deno.env.set("RUNWIELD_WORKSPACE_MODE", "remote");
+            process.env["RUNWIELD_WORKSPACE_MODE"] = "remote";
             const nonDevelopment = await handleRemoteSpaceApi(
                 createTestApiContext(new Request("http://localhost/api/spaces")),
             );
             assertEquals(nonDevelopment.status, 404);
             assertEquals(await nonDevelopment.json(), { error: "Not found" });
 
-            Deno.env.set("RUNWIELD_WORKSPACE_MODE", "local");
+            process.env["RUNWIELD_WORKSPACE_MODE"] = "local";
             const nonRemote = await handleRemoteSpaceApi(
                 createTestApiContext(new Request("http://localhost/api/spaces")),
             );
             assertEquals(nonRemote.status, 404);
             assertEquals(await nonRemote.json(), { error: "Not found" });
         } finally {
-            if (originalMode === undefined) Deno.env.delete("RUNWIELD_WORKSPACE_MODE");
-            else Deno.env.set("RUNWIELD_WORKSPACE_MODE", originalMode);
+            if (originalMode === undefined) delete process.env["RUNWIELD_WORKSPACE_MODE"];
+            else process.env["RUNWIELD_WORKSPACE_MODE"] = originalMode;
         }
     });
 });
 
-Deno.test("remote Shared Space review route is isolated to remote mode", async () => {
-    const localApp = createWorkspaceApp({ cwd: Deno.cwd(), token: "secret" }).handler();
+test("remote Shared Space review route is isolated to remote mode", async () => {
+    const localApp = createWorkspaceApp({ cwd: getCwd(), token: "secret" }).handler();
     const localResponse = await localApp(new Request("http://localhost/p/space-1?token=secret"));
     assertEquals(localResponse.status, 404);
 
@@ -70,8 +76,8 @@ Deno.test("remote Shared Space review route is isolated to remote mode", async (
     assertEquals(remoteResponse.status === 200 || remoteResponse.status === 503, true);
 });
 
-Deno.test("remote Workspace health and readiness endpoints are remote-only and non-secret", async () => {
-    const localApp = createWorkspaceApp({ cwd: Deno.cwd(), token: "secret" }).handler();
+test("remote Workspace health and readiness endpoints are remote-only and non-secret", async () => {
+    const localApp = createWorkspaceApp({ cwd: getCwd(), token: "secret" }).handler();
     assertEquals((await localApp(new Request("http://localhost/healthz?token=secret"))).status, 404);
     assertEquals((await localApp(new Request("http://localhost/readyz?token=secret"))).status, 404);
 
@@ -86,7 +92,7 @@ Deno.test("remote Workspace health and readiness endpoints are remote-only and n
     assertEquals(await readyResponse.json(), { ok: true, mode: "remote" });
 });
 
-Deno.test("remote server entry reads env defaults and validates ports", () => {
+test("remote server entry reads env defaults and validates ports", () => {
     assertEquals(
         readRemoteServerConfig(createTestEnv({
             RUNWIELD_REMOTE_HOST: "127.0.0.1",
@@ -109,11 +115,11 @@ Deno.test("remote server entry reads env defaults and validates ports", () => {
     assertEquals(parseRetentionDays("0"), undefined);
 });
 
-Deno.test("remote server entry runs the real adapter, HTTP server, and cleanup lifecycle", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-remote-server-main-" });
-    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+test("remote server entry runs the real adapter, HTTP server, and cleanup lifecycle", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-remote-server-main-"));
+    const listener = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, () => new Response("reserved"));
     const port = listener.addr.port;
-    listener.close();
+    await listener.shutdown();
     const controller = new AbortController();
     /** @type {(() => void) | undefined} */
     let cleanupCallback;
@@ -152,18 +158,18 @@ Deno.test("remote server entry runs the real adapter, HTTP server, and cleanup l
         assertEquals(typeof cleanupCallback, "function");
         if (!cleanupCallback) throw new Error("Cleanup interval was not scheduled.");
         cleanupCallback();
-        assertEquals((await Deno.stat(dbPath)).isFile, true);
+        assertEquals((await fsStat(dbPath)).isFile(), true);
 
         controller.abort();
         await run;
         assertEquals(clearedTimer, 73);
     } finally {
         controller.abort();
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("remote Shared Space review route SSR smoke keeps fragments out of rendered shell", async () => {
+test("remote Shared Space review route SSR smoke keeps fragments out of rendered shell", async () => {
     const remoteApp = createWorkspaceApp({ mode: "remote" }).handler();
     const response = await remoteApp(new Request("http://localhost/p/smoke-space#key=secret-key&cap=secret-cap"));
     assertEquals(response.status === 200 || response.status === 503, true);

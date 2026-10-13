@@ -1,11 +1,12 @@
-import { assertEquals, assertExists } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 import { tuiSessionSidebarProjection } from "../../ui/tui/session-sidebar.ts";
 
 for (const planState of ["verified", "implemented", "missing", "different-id"] as const) {
-    Deno.test(`legacy sidebar reconciles completion only from the same Plan: ${planState}`, async () => {
+    test(`legacy sidebar reconciles completion only from the same Plan: ${planState}`, async () => {
         await withRuntimeCommandFixture("legacy-sidebar-", async ({ homeDir, projectRoot }) => {
             const fixture = await makeManagedSessionFixture({
                 home: homeDir,
@@ -50,11 +51,17 @@ for (const planState of ["verified", "implemented", "missing", "different-id"] a
                 if (planState === "verified") {
                     const currentPlan = await loadPlan(projectRoot, "sample");
                     assertExists(currentPlan);
-                    await savePlan(projectRoot, "sample", "# Sample reopened\n", {
-                        planId: "sample-id",
-                        classification: "PLANNED_CHANGE",
-                        status: "implemented",
-                    }, { expectedRevision: currentPlan.revision });
+                    await savePlan(
+                        projectRoot,
+                        "sample",
+                        "# Sample reopened\n",
+                        {
+                            planId: "sample-id",
+                            classification: "PLANNED_CHANGE",
+                            status: "implemented",
+                        },
+                        { expectedRevision: currentPlan.revision },
+                    );
                     await handle.runtime.synchronizeManagedSession(handle.adoptedSessionId, { replayFromStart: true });
                     assertEquals(
                         handle.runtime.getSessionSnapshot(handle.adoptedSessionId)?.workflowContext?.status,

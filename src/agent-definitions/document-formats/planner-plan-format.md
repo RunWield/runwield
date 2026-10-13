@@ -16,8 +16,10 @@ affectedPaths:
 devServerCommand: null
 devServerUrl: null
 devServerHmr: null
-# Optional: target an execution branch when explicitly requested by the user.
+# Optional: source branch and intended onward destination when explicitly requested by the user.
 # targetBranch: "feature/base-branch"
+# RunWield records the actual landing as deliveryBranch during execution preparation; do not author it here.
+# Standalone Plans default to a separate plan/<plan-name> landing unless auto-merge into target is enabled.
 createdAt: "<ISO-8601 date or timestamp>"
 status: "draft"
 ---

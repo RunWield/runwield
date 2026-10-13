@@ -1,3 +1,5 @@
+import { getCwd } from "../../constants.js";
+import { spawnNativeProcess } from "../foreground-process.ts";
 /* Remote location resolution. This source is constant: only JSON on stdin contains user input.
  * OpenSSH still owns host configuration, authentication and host verification.
  */
@@ -96,13 +98,14 @@ export async function resolveRemoteTarget(
         throw new Error("Invalid SSH destination");
     }
     if (path !== null && (typeof path !== "string" || path.includes("\0"))) throw new Error("Invalid remote path");
-    const result = await new Deno.Command(sshExecutable, {
+    const result = await spawnNativeProcess(sshExecutable, {
+        cwd: getCwd(),
         args: ["-T", "--", host, REMOTE_RESOLVE_COMMAND],
         signal,
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const writer = result.stdin.getWriter();
     try {
         await writer.write(new TextEncoder().encode(JSON.stringify({ path }) + "\n"));

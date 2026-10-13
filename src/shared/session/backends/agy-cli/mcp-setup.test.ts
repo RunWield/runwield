@@ -1,5 +1,20 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { delimiter } from "node:path";
+import process from "node:process";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { HostedSession } from "../../hosted-session.js";
 import type { ManagedOperationCapability } from "../../managed-operation.ts";
@@ -12,50 +27,56 @@ import {
     resolveInstalledWldExecutable,
 } from "./mcp-setup.ts";
 
+const WLD_EXECUTABLE = process.platform === "win32" ? "wld.exe" : "wld";
+const NATIVE_HEADER =
+    process.platform === "win32"
+        ? new Uint8Array([0x4d, 0x5a, 0x00, 0x00])
+        : new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x00]);
+
 async function withSetupHome(callback: (home: string, binDir: string) => Promise<void>): Promise<void> {
     await withProcessGlobalTestLock(async () => {
-        const priorHome = Deno.env.get("HOME");
-        const priorPath = Deno.env.get("PATH");
-        const home = await Deno.makeTempDir({ prefix: "runwield-agy-mcp-setup-" });
+        const priorHome = process.env["HOME"];
+        const priorPath = process.env["PATH"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-agy-mcp-setup-"));
         const binDir = join(home, "bin");
         try {
-            await Deno.mkdir(binDir, { recursive: true });
-            const wldPath = join(binDir, "wld");
-            await Deno.writeFile(wldPath, new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x00]));
-            await Deno.chmod(wldPath, 0o755);
-            Deno.env.set("HOME", home);
-            Deno.env.set("PATH", `${binDir}:${priorPath || ""}`);
+            await fsMkdir(binDir, { recursive: true });
+            const wldPath = join(binDir, WLD_EXECUTABLE);
+            await fsWriteFile(wldPath, NATIVE_HEADER);
+            await fsChmod(wldPath, 0o755);
+            process.env["HOME"] = home;
+            process.env["PATH"] = `${binDir}${delimiter}${priorPath || ""}`;
             await callback(home, binDir);
         } finally {
-            if (priorHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", priorHome);
-            if (priorPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", priorPath);
-            await Deno.remove(home, { recursive: true }).catch(() => undefined);
+            if (priorHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = priorHome;
+            if (priorPath === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = priorPath;
+            await fsRm(home, { recursive: true }).catch(() => undefined);
         }
     });
 }
 
 async function readJson(path: string) {
-    return JSON.parse(await Deno.readTextFile(path));
+    return JSON.parse(await fsReadFile(path, "utf8"));
 }
 
 for (const initialText of ["", " \n\t\r\n"]) {
-    Deno.test(`Agy MCP setup initializes ${initialText === "" ? "empty" : "whitespace-only"} files after approval`, async () => {
+    test(`Agy MCP setup initializes ${initialText === "" ? "empty" : "whitespace-only"} files after approval`, async () => {
         await withSetupHome(async (home, binDir) => {
             const configPath = join(home, ".gemini", "config", "mcp_config.json");
             const settingsPath = join(home, ".gemini", "antigravity-cli", "settings.json");
-            await Deno.mkdir(join(home, ".gemini", "config"), { recursive: true });
-            await Deno.mkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
-            await Deno.writeTextFile(configPath, initialText);
-            await Deno.writeTextFile(settingsPath, initialText);
+            await fsMkdir(join(home, ".gemini", "config"), { recursive: true });
+            await fsMkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+            await fsWriteFile(configPath, initialText);
+            await fsWriteFile(settingsPath, initialText);
 
             const status = await inspectAgyCliMcpSetup();
             assertEquals(status.ok, false);
             assertEquals(status.repairable, true);
             await assertRejects(() => ensureAgyCliMcpSetup(), Error, "needs approval");
-            assertEquals(await Deno.readTextFile(configPath), initialText);
-            assertEquals(await Deno.readTextFile(settingsPath), initialText);
+            assertEquals(await fsReadFile(configPath, "utf8"), initialText);
+            assertEquals(await fsReadFile(settingsPath, "utf8"), initialText);
 
             const approved = new HostedSession({ id: "agy-mcp-empty-approved", cwd: home });
             approved.setInteractionAdapter({
@@ -65,7 +86,7 @@ for (const initialText of ["", " \n\t\r\n"]) {
             await ensureAgyCliMcpSetup({ hostedSession: approved });
             assertEquals(await readJson(configPath), {
                 mcpServers: {
-                    runwield: { command: await Deno.realPath(join(binDir, "wld")), args: [...AGY_MCP_ARGS] },
+                    runwield: { command: await fsRealpath(join(binDir, WLD_EXECUTABLE)), args: [...AGY_MCP_ARGS] },
                 },
             });
             assertEquals(await readJson(settingsPath), { permissions: { allow: [AGY_MCP_PERMISSION] } });
@@ -74,27 +95,24 @@ for (const initialText of ["", " \n\t\r\n"]) {
     });
 }
 
-Deno.test("Agy MCP setup installs the exact stable server and preserves unrelated settings", async () => {
+test("Agy MCP setup installs the exact stable server and preserves unrelated settings", async () => {
     await withSetupHome(async (home, binDir) => {
         const configPath = join(home, ".gemini", "config", "mcp_config.json");
         const settingsPath = join(home, ".gemini", "antigravity-cli", "settings.json");
-        await Deno.mkdir(join(home, ".gemini", "config"), { recursive: true });
-        await Deno.mkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(home, ".gemini", "config"), { recursive: true });
+        await fsMkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+        await fsWriteFile(
             configPath,
             JSON.stringify({ mcpServers: { other: { command: "other", args: ["x"] } }, keep: true }),
         );
-        await Deno.writeTextFile(
-            settingsPath,
-            JSON.stringify({ permissions: { allow: ["shell(ls)"] }, theme: "dark" }),
-        );
+        await fsWriteFile(settingsPath, JSON.stringify({ permissions: { allow: ["shell(ls)"] }, theme: "dark" }));
 
         await installAgyCliMcpSetup();
 
         const config = await readJson(configPath);
         assertEquals(config.keep, true);
         assertEquals(config.mcpServers.other.command, "other");
-        assertEquals(config.mcpServers.runwield.command, await Deno.realPath(join(binDir, "wld")));
+        assertEquals(config.mcpServers.runwield.command, await fsRealpath(join(binDir, WLD_EXECUTABLE)));
         assertEquals(config.mcpServers.runwield.args, [...AGY_MCP_ARGS]);
         assertEquals(config.mcpServers.runwield.env, undefined);
         assertEquals(config.mcpServers.runwield.url, undefined);
@@ -106,14 +124,14 @@ Deno.test("Agy MCP setup installs the exact stable server and preserves unrelate
     });
 });
 
-Deno.test("Agy MCP setup repairs persistent turn data on the runwield server entry", async () => {
+test("Agy MCP setup repairs persistent turn data on the runwield server entry", async () => {
     await withSetupHome(async (home, binDir) => {
         const configPath = join(home, ".gemini", "config", "mcp_config.json");
         const settingsPath = join(home, ".gemini", "antigravity-cli", "settings.json");
-        await Deno.mkdir(join(home, ".gemini", "config"), { recursive: true });
-        await Deno.mkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
-        const command = await Deno.realPath(join(binDir, "wld"));
-        await Deno.writeTextFile(
+        await fsMkdir(join(home, ".gemini", "config"), { recursive: true });
+        await fsMkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+        const command = await fsRealpath(join(binDir, WLD_EXECUTABLE));
+        await fsWriteFile(
             configPath,
             JSON.stringify({
                 mcpServers: {
@@ -127,10 +145,7 @@ Deno.test("Agy MCP setup repairs persistent turn data on the runwield server ent
                 },
             }),
         );
-        await Deno.writeTextFile(
-            settingsPath,
-            JSON.stringify({ permissions: { allow: [AGY_MCP_PERMISSION] } }),
-        );
+        await fsWriteFile(settingsPath, JSON.stringify({ permissions: { allow: [AGY_MCP_PERMISSION] } }));
 
         assertEquals((await inspectAgyCliMcpSetup()).ok, false);
         await installAgyCliMcpSetup();
@@ -141,15 +156,15 @@ Deno.test("Agy MCP setup repairs persistent turn data on the runwield server ent
     });
 });
 
-Deno.test("Agy MCP setup accepts an existing standalone wld when switching binaries", async () => {
+test("Agy MCP setup accepts an existing standalone wld when switching binaries", async () => {
     await withSetupHome(async (home) => {
         const configPath = join(home, ".gemini", "config", "mcp_config.json");
-        const oldCommand = join(home, ".local", "bin", "wld");
-        await Deno.mkdir(join(home, ".local", "bin"), { recursive: true });
-        await Deno.writeFile(oldCommand, new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x00]));
-        await Deno.chmod(oldCommand, 0o755);
-        await Deno.mkdir(join(home, ".gemini", "config"), { recursive: true });
-        await Deno.writeTextFile(
+        const oldCommand = join(home, ".local", "bin", WLD_EXECUTABLE);
+        await fsMkdir(join(home, ".local", "bin"), { recursive: true });
+        await fsWriteFile(oldCommand, NATIVE_HEADER);
+        await fsChmod(oldCommand, 0o755);
+        await fsMkdir(join(home, ".gemini", "config"), { recursive: true });
+        await fsWriteFile(
             configPath,
             JSON.stringify({
                 mcpServers: {
@@ -158,8 +173,8 @@ Deno.test("Agy MCP setup accepts an existing standalone wld when switching binar
                 },
             }),
         );
-        await Deno.mkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+        await fsWriteFile(
             join(home, ".gemini", "antigravity-cli", "settings.json"),
             JSON.stringify({ permissions: { allow: [AGY_MCP_PERMISSION] } }),
         );
@@ -175,21 +190,21 @@ Deno.test("Agy MCP setup accepts an existing standalone wld when switching binar
     });
 });
 
-Deno.test("Agy MCP setup refuses foreign runwield servers and contradictory permissions", async () => {
+test("Agy MCP setup refuses foreign runwield servers and contradictory permissions", async () => {
     await withSetupHome(async (home) => {
         const configPath = join(home, ".gemini", "config", "mcp_config.json");
         const settingsPath = join(home, ".gemini", "antigravity-cli", "settings.json");
-        await Deno.mkdir(join(home, ".gemini", "config"), { recursive: true });
-        await Deno.mkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
-        await Deno.writeTextFile(configPath, JSON.stringify({ mcpServers: { runwield: { command: "/tmp/other" } } }));
-        await Deno.writeTextFile(settingsPath, JSON.stringify({ permissions: { allow: [] } }));
+        await fsMkdir(join(home, ".gemini", "config"), { recursive: true });
+        await fsMkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+        await fsWriteFile(configPath, JSON.stringify({ mcpServers: { runwield: { command: "/tmp/other" } } }));
+        await fsWriteFile(settingsPath, JSON.stringify({ permissions: { allow: [] } }));
         await assertRejects(() => installAgyCliMcpSetup(), Error, "mcpServers.runwield");
 
-        const otherWld = join(home, "other", "wld");
-        await Deno.mkdir(join(home, "other"));
-        await Deno.writeFile(otherWld, new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x00]));
-        await Deno.chmod(otherWld, 0o755);
-        await Deno.writeTextFile(
+        const otherWld = join(home, "other", WLD_EXECUTABLE);
+        await fsMkdir(join(home, "other"));
+        await fsWriteFile(otherWld, NATIVE_HEADER);
+        await fsChmod(otherWld, 0o755);
+        await fsWriteFile(
             configPath,
             JSON.stringify({
                 mcpServers: { runwield: { command: otherWld, args: [...AGY_MCP_ARGS], env: { TOKEN: "other" } } },
@@ -197,26 +212,26 @@ Deno.test("Agy MCP setup refuses foreign runwield servers and contradictory perm
         );
         await assertRejects(() => installAgyCliMcpSetup(), Error, "mcpServers.runwield");
 
-        await Deno.writeTextFile(configPath, JSON.stringify({ mcpServers: {} }));
-        await Deno.writeTextFile(settingsPath, JSON.stringify({ permissions: { deny: [AGY_MCP_PERMISSION] } }));
+        await fsWriteFile(configPath, JSON.stringify({ mcpServers: {} }));
+        await fsWriteFile(settingsPath, JSON.stringify({ permissions: { deny: [AGY_MCP_PERMISSION] } }));
         const error = await assertRejects(() => installAgyCliMcpSetup(), Error, "Ask or Deny");
         assertStringIncludes(error.message, settingsPath);
         assertStringIncludes(error.message, AGY_MCP_PERMISSION);
     });
 });
 
-Deno.test("Agy MCP setup refuses non-interactive first use without mutating files", async () => {
+test("Agy MCP setup refuses non-interactive first use without mutating files", async () => {
     await withSetupHome(async (home) => {
         const { ensureAgyCliMcpSetup } = await import("./mcp-setup.ts");
         await assertRejects(() => ensureAgyCliMcpSetup(), Error, "needs approval");
         const status = await inspectAgyCliMcpSetup();
         assertEquals(status.ok, false);
         assertStringIncludes(status.message, "needs approval");
-        await assertRejects(() => Deno.stat(join(home, ".gemini", "config", "mcp_config.json")), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(join(home, ".gemini", "config", "mcp_config.json")), Error, "ENOENT");
     });
 });
 
-Deno.test("Agy MCP setup asks once, accepts explicit approval, and preserves files on decline", async () => {
+test("Agy MCP setup asks once, accepts explicit approval, and preserves files on decline", async () => {
     await withSetupHome(async (home) => {
         const declined = new HostedSession({ id: "agy-mcp-declined", cwd: home });
         declined.setInteractionAdapter({
@@ -224,14 +239,14 @@ Deno.test("Agy MCP setup asks once, accepts explicit approval, and preserves fil
             supportsInteraction: () => true,
         });
         await assertRejects(() => ensureAgyCliMcpSetup({ hostedSession: declined }), Error, "not approved");
-        await assertRejects(() => Deno.stat(join(home, ".gemini", "config", "mcp_config.json")), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(join(home, ".gemini", "config", "mcp_config.json")), Error, "ENOENT");
 
         const approved = new HostedSession({ id: "agy-mcp-approved", cwd: home });
         approved.setInteractionAdapter({
             requestInteraction: (request) => {
-                assertStringIncludes(request.prompt, ".gemini/config/mcp_config.json");
-                assertStringIncludes(request.prompt, ".gemini/antigravity-cli/settings.json");
-                assertStringIncludes(request.prompt, "wld mcp agy-cli");
+                assertStringIncludes(request.prompt, join(".gemini", "config", "mcp_config.json"));
+                assertStringIncludes(request.prompt, join(".gemini", "antigravity-cli", "settings.json"));
+                assertStringIncludes(request.prompt, `${WLD_EXECUTABLE} mcp agy-cli`);
                 assertStringIncludes(request.prompt, AGY_MCP_PERMISSION);
                 assertStringIncludes(request.prompt, "persists");
                 return { outcome: "accepted", value: "approve" };
@@ -243,7 +258,7 @@ Deno.test("Agy MCP setup asks once, accepts explicit approval, and preserves fil
     });
 });
 
-Deno.test("Agy MCP setup approval works during a managed operation", async () => {
+test("Agy MCP setup approval works during a managed operation", async () => {
     await withSetupHome(async (home) => {
         const approved = new HostedSession({ id: "agy-mcp-managed-approved", cwd: home });
         approved.setManagedMetadata({
@@ -302,78 +317,79 @@ Deno.test("Agy MCP setup approval works during a managed operation", async () =>
     });
 });
 
-Deno.test("Agy MCP setup rejects malformed files and symbolic links", async () => {
+test("Agy MCP setup rejects malformed files and symbolic links", async () => {
     await withSetupHome(async (home) => {
         const configPath = join(home, ".gemini", "config", "mcp_config.json");
         const settingsPath = join(home, ".gemini", "antigravity-cli", "settings.json");
-        await Deno.mkdir(join(home, ".gemini", "config"), { recursive: true });
-        await Deno.mkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+        await fsMkdir(join(home, ".gemini", "config"), { recursive: true });
+        await fsMkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
 
-        await Deno.writeTextFile(configPath, "[]");
-        await Deno.writeTextFile(settingsPath, JSON.stringify({ permissions: { allow: [] } }));
+        await fsWriteFile(configPath, "[]");
+        await fsWriteFile(settingsPath, JSON.stringify({ permissions: { allow: [] } }));
         await assertRejects(() => installAgyCliMcpSetup(), Error, "must contain a JSON object");
 
-        await Deno.writeTextFile(configPath, '{"mcpServers":');
+        await fsWriteFile(configPath, '{"mcpServers":');
         assertEquals((await inspectAgyCliMcpSetup()).repairable, false);
         await assertRejects(() => installAgyCliMcpSetup(), Error);
-        assertEquals(await Deno.readTextFile(configPath), '{"mcpServers":');
+        assertEquals(await fsReadFile(configPath, "utf8"), '{"mcpServers":');
 
-        await Deno.writeTextFile(configPath, JSON.stringify({ mcpServers: {} }));
-        await Deno.remove(settingsPath);
-        await Deno.symlink(configPath, settingsPath);
+        await fsWriteFile(configPath, JSON.stringify({ mcpServers: {} }));
+        await fsRm(settingsPath);
+        await fsSymlink(configPath, settingsPath);
         await assertRejects(() => installAgyCliMcpSetup(), Error, "must not be a symbolic link");
     });
 });
 
-Deno.test("Agy MCP setup refuses malformed permission structures", async () => {
+test("Agy MCP setup refuses malformed permission structures", async () => {
     await withSetupHome(async (home) => {
         const configPath = join(home, ".gemini", "config", "mcp_config.json");
         const settingsPath = join(home, ".gemini", "antigravity-cli", "settings.json");
-        await Deno.mkdir(join(home, ".gemini", "config"), { recursive: true });
-        await Deno.mkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
-        await Deno.writeTextFile(configPath, JSON.stringify({ mcpServers: {} }));
+        await fsMkdir(join(home, ".gemini", "config"), { recursive: true });
+        await fsMkdir(join(home, ".gemini", "antigravity-cli"), { recursive: true });
+        await fsWriteFile(configPath, JSON.stringify({ mcpServers: {} }));
 
-        await Deno.writeTextFile(settingsPath, JSON.stringify({ permissions: "keep-me" }));
+        await fsWriteFile(settingsPath, JSON.stringify({ permissions: "keep-me" }));
         await assertRejects(() => installAgyCliMcpSetup(), Error, "permissions must be a JSON object");
         assertEquals((await readJson(settingsPath)).permissions, "keep-me");
 
-        await Deno.writeTextFile(settingsPath, JSON.stringify({ permissions: { allow: "keep-me" } }));
+        await fsWriteFile(settingsPath, JSON.stringify({ permissions: { allow: "keep-me" } }));
         await assertRejects(() => installAgyCliMcpSetup(), Error, "permissions.allow must be a JSON array");
         assertEquals((await readJson(settingsPath)).permissions.allow, "keep-me");
     });
 });
 
-Deno.test("Agy MCP setup refuses source-run wld commands", async () => {
+test("Agy MCP setup refuses source-run wld commands", async () => {
     await withSetupHome(async (_home, binDir) => {
-        Deno.env.set("PATH", binDir);
-        const wldPath = join(binDir, "wld");
-        await Deno.writeTextFile(wldPath, '#!/bin/sh\nexec deno run -A src/cli.ts "$@"\n');
-        await Deno.chmod(wldPath, 0o755);
+        process.env["PATH"] = binDir;
+        const wldPath = join(binDir, WLD_EXECUTABLE);
+        await fsWriteFile(wldPath, '#!/bin/sh\nexec deno run -A src/cli.ts "$@"\n');
+        await fsChmod(wldPath, 0o755);
         await assertRejects(() => resolveInstalledWldExecutable(), Error, "standalone wld executable");
     });
 });
 
-Deno.test("Agy MCP setup refuses non-executable wld commands", async () => {
+test("Agy MCP setup refuses non-executable wld commands", async () => {
     await withSetupHome(async (_home, binDir) => {
-        Deno.env.set("PATH", binDir);
-        const wldPath = join(binDir, "wld");
-        await Deno.chmod(wldPath, 0o644);
+        process.env["PATH"] = binDir;
+        const wldPath = join(binDir, WLD_EXECUTABLE);
+        if (process.platform === "win32") await fsWriteFile(wldPath, new Uint8Array([0x7f, 0x45, 0x4c, 0x46]));
+        else await fsChmod(wldPath, 0o644);
         await assertRejects(() => resolveInstalledWldExecutable(), Error, "standalone wld executable");
     });
 });
 
-Deno.test("Agy MCP setup is idempotent and concurrent installers converge", async () => {
+test("Agy MCP setup is idempotent and concurrent installers converge", async () => {
     await withSetupHome(async (home) => {
         const configPath = join(home, ".gemini", "config", "mcp_config.json");
         const settingsPath = join(home, ".gemini", "antigravity-cli", "settings.json");
 
         await Promise.all([installAgyCliMcpSetup(), installAgyCliMcpSetup()]);
-        const firstConfig = await Deno.readTextFile(configPath);
-        const firstSettings = await Deno.readTextFile(settingsPath);
+        const firstConfig = await fsReadFile(configPath, "utf8");
+        const firstSettings = await fsReadFile(settingsPath, "utf8");
         await installAgyCliMcpSetup();
 
-        assertEquals(await Deno.readTextFile(configPath), firstConfig);
-        assertEquals(await Deno.readTextFile(settingsPath), firstSettings);
+        assertEquals(await fsReadFile(configPath, "utf8"), firstConfig);
+        assertEquals(await fsReadFile(settingsPath, "utf8"), firstSettings);
         const config = await readJson(configPath);
         const settings = await readJson(settingsPath);
         assertEquals(Object.keys(config.mcpServers).sort(), ["runwield"]);

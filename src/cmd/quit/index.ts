@@ -1,3 +1,4 @@
+import { exit } from "node:process";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { stopTUI } from "../../ui/tui/tui.ts";
 import { cleanupAgentBrowserSessionSync } from "../../shared/agent-browser-session.ts";
@@ -31,7 +32,7 @@ export async function runQuitCommand(_argv: string[], options: QuitCommandOption
             }
             stopTUI();
             cleanupAgentBrowserSessionSync();
-            setTimeout(() => Deno.exit(0), 100);
+            setTimeout(() => exit(0), 100);
         })();
     }, 50);
 

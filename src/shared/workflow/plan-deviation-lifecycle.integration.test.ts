@@ -1,5 +1,14 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { HostedSession } from "../session/hosted-session.js";
 import { createGitPort } from "../git-port.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";
@@ -34,14 +43,14 @@ async function executeDeviation(tool: PlanDeviationTool) {
     );
 }
 
-Deno.test("confirmed Pair Plan Deviation survives restart, review, and Work Record backfill", async () => {
+test("confirmed Pair Plan Deviation survives restart, review, and Work Record backfill", async () => {
     const projectRoot = await FIXTURE.checkout({ prefix: "runwield-plan-deviation-primary-" });
-    const executionRoot = await Deno.makeTempDir({ prefix: "runwield-plan-deviation-worktree-" });
-    await Deno.remove(executionRoot, { recursive: true });
+    const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plan-deviation-worktree-"));
+    await fsRm(executionRoot, { recursive: true });
     try {
         await git(projectRoot, ["worktree", "add", "-b", "worktree/navigation", executionRoot, "HEAD"]);
-        await Deno.mkdir(join(executionRoot, "src"), { recursive: true });
-        await Deno.writeTextFile(join(executionRoot, "src", "app.js"), "export const nav = 'replace';\n");
+        await fsMkdir(join(executionRoot, "src"), { recursive: true });
+        await fsWriteFile(join(executionRoot, "src", "app.js"), "export const nav = 'replace';\n");
         await savePlan(executionRoot, "navigation", "# Navigation\n\nReplace the existing navigation.", {
             planId: "plan-navigation",
             classification: "PLANNED_CHANGE",
@@ -58,7 +67,7 @@ Deno.test("confirmed Pair Plan Deviation survives restart, review, and Work Reco
         await git(executionRoot, ["commit", "-m", "validation baseline"]);
         const baselineTree = await git(executionRoot, ["rev-parse", "HEAD^{tree}"]);
         const baselineCommit = await git(executionRoot, ["rev-parse", "HEAD"]);
-        await Deno.writeTextFile(join(executionRoot, "src", "app.js"), "export const nav = 'keep';\n");
+        await fsWriteFile(join(executionRoot, "src", "app.js"), "export const nav = 'keep';\n");
 
         const pairRequests: RuntimeInteractionRequest[] = [];
         const pairSession = new HostedSession({
@@ -91,7 +100,7 @@ Deno.test("confirmed Pair Plan Deviation survives restart, review, and Work Reco
 
         const deviation = await executeDeviation(createPlanDeviationTool({ hostedSession: pairSession }));
         assertEquals(deviation.details.decision, "recorded");
-        const planMarkdown = await Deno.readTextFile(join(executionRoot, "docs", "plans", "navigation.md"));
+        const planMarkdown = await fsReadFile(join(executionRoot, "docs", "plans", "navigation.md"), "utf8");
         assertStringIncludes(planMarkdown, "planDeviations:");
         assertStringIncludes(planMarkdown, 'replacementRequirement: "Keep the existing navigation."');
         pairSession.dispose();
@@ -190,9 +199,9 @@ Deno.test("confirmed Pair Plan Deviation survives restart, review, and Work Reco
             await git(projectRoot, ["worktree", "remove", "--force", executionRoot]);
         } catch {
             try {
-                await Deno.remove(executionRoot, { recursive: true });
+                await fsRm(executionRoot, { recursive: true });
             } catch { /* already gone */ }
         }
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });

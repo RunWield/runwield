@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { handleBashCommand } from "./bash-interceptor.ts";
 
 /**
@@ -19,7 +20,7 @@ function makeContext(userRequest, concurrent = false) {
     return { userRequest, concurrent, sessionRuntime, sessionId: "runtime-session", calls };
 }
 
-Deno.test("handleBashCommand ignores non-bang input and swallows an empty bang", async () => {
+test("handleBashCommand ignores non-bang input and swallows an empty bang", async () => {
     const ordinary = makeContext("hello");
     const empty = makeContext("!");
 
@@ -29,7 +30,7 @@ Deno.test("handleBashCommand ignores non-bang input and swallows an empty bang",
     assertEquals(empty.calls, []);
 });
 
-Deno.test("handleBashCommand delegates persistent commands to SessionRuntime", async () => {
+test("handleBashCommand delegates persistent commands to SessionRuntime", async () => {
     const ctx = makeContext("!printf hello");
 
     assertEquals(await handleBashCommand(ctx), true);
@@ -39,7 +40,7 @@ Deno.test("handleBashCommand delegates persistent commands to SessionRuntime", a
     }]);
 });
 
-Deno.test("handleBashCommand marks double-bang commands ephemeral", async () => {
+test("handleBashCommand marks double-bang commands ephemeral", async () => {
     const ctx = makeContext("!!printf hidden");
 
     assertEquals(await handleBashCommand(ctx), true);
@@ -47,7 +48,7 @@ Deno.test("handleBashCommand marks double-bang commands ephemeral", async () => 
     assertEquals(ctx.calls[0].options.command, "printf hidden");
 });
 
-Deno.test("handleBashCommand never persists commands submitted during an active turn", async () => {
+test("handleBashCommand never persists commands submitted during an active turn", async () => {
     const ctx = makeContext("!printf concurrent", true);
 
     assertEquals(await handleBashCommand(ctx), true);

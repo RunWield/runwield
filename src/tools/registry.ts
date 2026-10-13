@@ -7,9 +7,7 @@
  * Tools present for every user-facing Agent and protected from runtime narrowing.
  * Isolated Subagent definitions do not receive this list.
  */
-export const UNIVERSAL_AGENT_TOOL_NAMES: readonly string[] = Object.freeze([
-    "set_session_name",
-]);
+export const UNIVERSAL_AGENT_TOOL_NAMES: readonly string[] = Object.freeze(["set_session_name"]);
 
 /**
  * Tools protected from removal when they are present in an agent's bundled frontmatter.
@@ -45,6 +43,34 @@ export const PROTECTED_TOOL_NAMES: readonly string[] = Object.freeze([
     "work_record_search",
     "work_record_read",
 ]);
+
+/**
+ * Named tool groups an Agent definition can request with `toolSets` instead of
+ * listing each tool. Keep these in sync when a tool is added to a family.
+ */
+export const AGENT_TOOL_SETS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+    read: Object.freeze([
+        "read",
+        "grep",
+        "find",
+        "ls",
+        "code_search",
+        "code_show",
+        "code_outline",
+        "code_batch",
+        "code_refs",
+        "code_impact",
+        "code_trace",
+        "code_investigate",
+        "code_structure",
+        "code_impls",
+        "code_importers",
+    ]),
+    write: Object.freeze(["edit", "write", "multi_file_edit"]),
+    docs: Object.freeze(["write_docs", "edit_docs"]),
+    shell: Object.freeze(["bash", "background_task"]),
+    web: Object.freeze(["web_search", "web_fetch", "web_code_search", "web_docs_search"]),
+});
 
 /**
  * Tools that advance or finalize a RunWield workflow.

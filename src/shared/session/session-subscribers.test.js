@@ -1,4 +1,7 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { makeTempFile } from "../../testing/temp-file.ts";
+import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { attachSessionEventSubscribers } from "./session.js";
 import { createSessionRuntimeEvent } from "./session-runtime-events.js";
@@ -43,7 +46,7 @@ function makeRuntimeHarness(id) {
 
 const agentDef = /** @type {any} */ ({ name: "tester", displayName: "Tester" });
 
-Deno.test("explicit isolated-step cancellation does not erase the validation panel with a terminal error", () => {
+test("explicit isolated-step cancellation does not erase the validation panel with a terminal error", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("completed-step-cancellation");
     const cancellation = new AbortController();
@@ -59,7 +62,7 @@ Deno.test("explicit isolated-step cancellation does not erase the validation pan
     state.unsubscribe();
 });
 
-Deno.test("aborted signal assistant errors stay hidden when Esc already reported cancellation", () => {
+test("aborted signal assistant errors stay hidden when Esc already reported cancellation", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("agent-cancellation-abort-error");
     const state = attachSessionEventSubscribers(session, agentDef, undefined, hostedSession);
@@ -75,7 +78,7 @@ Deno.test("aborted signal assistant errors stay hidden when Esc already reported
     state.unsubscribe();
 });
 
-Deno.test("session subscriber emits thinking, message, status, error, usage, and lifecycle events only", () => {
+test("session subscriber emits thinking, message, status, error, usage, and lifecycle events only", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("subscriber-streams");
     const state = attachSessionEventSubscribers(session, agentDef, undefined, hostedSession);
@@ -125,7 +128,7 @@ Deno.test("session subscriber emits thinking, message, status, error, usage, and
     assertEquals(events.filter((event) => event.type === "assistant_thinking_end").length, 1);
 });
 
-Deno.test("plan_written tool start ends active thinking before waiting for review", () => {
+test("plan_written tool start ends active thinking before waiting for review", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("subscriber-plan-written-thinking");
     attachSessionEventSubscribers(session, agentDef, undefined, hostedSession);
@@ -145,7 +148,7 @@ Deno.test("plan_written tool start ends active thinking before waiting for revie
     assertEquals(events[2].messageId, events[1].messageId);
 });
 
-Deno.test("session subscriber maps one Pi tool lifecycle to one runtime tool lifecycle", () => {
+test("session subscriber maps one Pi tool lifecycle to one runtime tool lifecycle", () => {
     const { session, emit, unsubscribed } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("subscriber-tools");
     const state = attachSessionEventSubscribers(session, agentDef, undefined, hostedSession);
@@ -194,7 +197,7 @@ Deno.test("session subscriber maps one Pi tool lifecycle to one runtime tool lif
     assertEquals(unsubscribed(), true);
 });
 
-Deno.test("delegated child messages remain visible on the parent HostedSession event surface", () => {
+test("delegated child messages remain visible on the parent HostedSession event surface", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("subscriber-delegated");
     const delegatedAgent = /** @type {import('./types.js').AgentDefinition} */ ({
@@ -221,25 +224,25 @@ Deno.test("delegated child messages remain visible on the parent HostedSession e
     state.unsubscribe();
 });
 
-Deno.test("session subscriber writes debug stream logs without any presentation port", async () => {
+test("session subscriber writes debug stream logs without any presentation port", async () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession } = makeRuntimeHarness("subscriber-debug");
-    const debugLogPath = await Deno.makeTempFile({ prefix: "runwield-subscriber-log-test-", suffix: ".log" });
+    const debugLogPath = await makeTempFile({ prefix: "runwield-subscriber-log-test-", suffix: ".log" });
     try {
         attachSessionEventSubscribers(session, agentDef, debugLogPath, hostedSession);
         emit({ type: "message_start", message: { role: "assistant" } });
         emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "thinking live" } });
         emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "writing live" } });
-        const log = await Deno.readTextFile(debugLogPath);
+        const log = await fsReadFile(debugLogPath, "utf8");
         assertStringIncludes(log, "Event: MESSAGE START");
         assertStringIncludes(log, "thinking live");
         assertStringIncludes(log, "writing live");
     } finally {
-        await Deno.remove(debugLogPath);
+        await fsRm(debugLogPath);
     }
 });
 
-Deno.test("provider notices use shared safe language while retaining diagnostic evidence", () => {
+test("provider notices use shared safe language while retaining diagnostic evidence", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("provider-notices");
     const state = attachSessionEventSubscribers(session, agentDef, undefined, hostedSession);
@@ -276,7 +279,7 @@ Deno.test("provider notices use shared safe language while retaining diagnostic 
     state.unsubscribe();
 });
 
-Deno.test("cancelled retry emits no provider failure or exhaustion notice", () => {
+test("cancelled retry emits no provider failure or exhaustion notice", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("cancelled-provider-retry");
     const controller = new AbortController();
@@ -296,7 +299,7 @@ Deno.test("cancelled retry emits no provider failure or exhaustion notice", () =
     state.unsubscribe();
 });
 
-Deno.test("a permanent final error gives its action instead of suggesting another unchanged retry", () => {
+test("a permanent final error gives its action instead of suggesting another unchanged retry", () => {
     const { session, emit } = makeSubscribableSession();
     const { hostedSession, events } = makeRuntimeHarness("provider-permanent-after-retry");
     const state = attachSessionEventSubscribers(session, agentDef, undefined, hostedSession);

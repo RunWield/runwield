@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { buildWorkflowPresentation } from "./workflow-presentation.ts";
 
-Deno.test("workflow presentation derives current stage and blocker from raw progress facts without fabricating recovery", () => {
+test("workflow presentation derives current stage and blocker from raw progress facts without fabricating recovery", () => {
     const presentation = buildWorkflowPresentation({
         planName: "workspace/diagram",
         epicName: "workspace",
@@ -21,7 +22,7 @@ Deno.test("workflow presentation derives current stage and blocker from raw prog
     assertEquals(presentation.connections.some((connection) => connection.kind === "repair_return"), true);
 });
 
-Deno.test("workflow presentation exposes recovery only when live capability is present", () => {
+test("workflow presentation exposes recovery only when live capability is present", () => {
     const presentation = buildWorkflowPresentation({
         planName: "workspace/diagram",
         status: "implemented",
@@ -32,7 +33,7 @@ Deno.test("workflow presentation exposes recovery only when live capability is p
     assertEquals(presentation.action?.kind, "recover");
 });
 
-Deno.test("workflow presentation returns repairs to the failed check, not repair itself", () => {
+test("workflow presentation returns repairs to the failed check, not repair itself", () => {
     const presentation = buildWorkflowPresentation({
         planName: "workspace/diagram",
         status: "reviewed",
@@ -45,7 +46,7 @@ Deno.test("workflow presentation returns repairs to the failed check, not repair
     );
 });
 
-Deno.test("workflow presentation does not fabricate review actions from missing live facts", () => {
+test("workflow presentation does not fabricate review actions from missing live facts", () => {
     const presentation = buildWorkflowPresentation({
         planName: "ready-plan",
         intent: "PLANNED_CHANGE",
@@ -58,7 +59,7 @@ Deno.test("workflow presentation does not fabricate review actions from missing 
     assertEquals(presentation.stages.some((stage) => stage.id === "delivery"), true);
 });
 
-Deno.test("workflow presentation gives container Plans child-work stages", () => {
+test("workflow presentation gives container Plans child-work stages", () => {
     const presentation = buildWorkflowPresentation({
         planName: "workspace",
         classification: "PROJECT",
@@ -70,7 +71,7 @@ Deno.test("workflow presentation gives container Plans child-work stages", () =>
     assertEquals(presentation.currentStage?.id, "decomposition");
 });
 
-Deno.test("ready Plans begin at execution with useful step descriptions", () => {
+test("ready Plans begin at execution with useful step descriptions", () => {
     const result = buildWorkflowPresentation({ planName: "Ready", status: "ready_for_work" });
     assertEquals(result.currentStage?.id, "execution");
     assertEquals(result.stages[0].state, "completed");
@@ -87,7 +88,7 @@ Deno.test("ready Plans begin at execution with useful step descriptions", () => 
     ]);
 });
 
-Deno.test("workflow descriptions show live user actions and publication failures", () => {
+test("workflow descriptions show live user actions and publication failures", () => {
     const review = buildWorkflowPresentation({ planName: "Review", status: "reviewed", hasCodeReview: true });
     assertEquals(review.currentStage?.id, "code_review");
     assertEquals(review.currentStage?.detail, "Inspect the changes and approve them or request a repair.");
@@ -104,7 +105,7 @@ Deno.test("workflow descriptions show live user actions and publication failures
     assertEquals(publication.blocker, "Push rejected by the remote.");
 });
 
-Deno.test("live validation replaces the pre-resume paused checkpoint", () => {
+test("live validation replaces the pre-resume paused checkpoint", () => {
     const presentation = buildWorkflowPresentation({
         planName: "Resume repair",
         status: "implemented",
@@ -131,7 +132,7 @@ Deno.test("live validation replaces the pre-resume paused checkpoint", () => {
     assertEquals(presentation.action?.kind, "open_session");
 });
 
-Deno.test("saved approval offers Review Plan while validation keeps Resume and live work keeps its action", () => {
+test("saved approval offers Review Plan while validation keeps Resume and live work keeps its action", () => {
     for (const status of ["approved", "ready_for_work"]) {
         const input = { planName: "Saved", status, sessionState: "idle", canResume: true };
         assertEquals(buildWorkflowPresentation(input).action?.kind, "review_plan");
@@ -149,7 +150,7 @@ Deno.test("saved approval offers Review Plan while validation keeps Resume and l
     );
 });
 
-Deno.test("active and finished workflows ignore obsolete continuation flags", () => {
+test("active and finished workflows ignore obsolete continuation flags", () => {
     for (
         const input of [
             { status: "implemented", sessionState: "active" },
@@ -169,7 +170,7 @@ Deno.test("active and finished workflows ignore obsolete continuation flags", ()
     }
 });
 
-Deno.test("held Plans offer Resume from hold only when the saved workflow is available", () => {
+test("held Plans offer Resume from hold only when the saved workflow is available", () => {
     const input = { planName: "Held", status: "on_hold", hasWorkingSession: true };
     assertEquals(buildWorkflowPresentation({ ...input, canResume: true }).action?.kind, "resume_from_hold");
     assertEquals(buildWorkflowPresentation({ ...input, canResume: false }).action?.kind, "open_session");
@@ -179,7 +180,7 @@ Deno.test("held Plans offer Resume from hold only when the saved workflow is ava
     );
 });
 
-Deno.test("implemented Plans retain passed CI while the saved semantic phase resumes", () => {
+test("implemented Plans retain passed CI while the saved semantic phase resumes", () => {
     const presentation = buildWorkflowPresentation({
         planName: "Resume review",
         status: "implemented",

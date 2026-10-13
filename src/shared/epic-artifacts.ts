@@ -1,4 +1,7 @@
-import { dirname, join, relative } from "@std/path";
+import { recoverWindowsRename } from "./native-file-replace-windows.ts";
+import { rename as fsRename } from "node:fs/promises";
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 import { loadPlan } from "../plan-store.js";
 
 export const EPIC_MANUAL_QA_FILE_NAME = "manual-qa.md";
@@ -28,7 +31,10 @@ export type MoveEpicArtifactResult = {
 };
 
 function splitPlanName(planName: string): string[] {
-    return String(planName || "").split("/").map((segment) => segment.trim()).filter(Boolean);
+    return String(planName || "")
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter(Boolean);
 }
 
 function assertSafePlanName(planName: string, label: string): string[] {
@@ -62,9 +68,7 @@ export function isEpicArtifactPlanPath(path: string): boolean {
 
 export function assertNotReservedEpicArtifactPlanName(planName: string): void {
     if (!isEpicArtifactPlanName(planName)) return;
-    throw new Error(
-        `${planName} is reserved for an Epic Artifact. Choose a different child Plan name and call again.`,
-    );
+    throw new Error(`${planName} is reserved for an Epic Artifact. Choose a different child Plan name and call again.`);
 }
 
 export function getEpicArtifactPath(projectRoot: string, epicPlanName: string, fileName: string): string {
@@ -117,18 +121,22 @@ function validateChecklistMarkdown(childPlanName: string, checklistMarkdown: str
 
 async function readTextIfExists(path: string): Promise<string | null> {
     try {
-        return await Deno.readTextFile(path);
+        return await fsReadFile(path, "utf8");
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
 
 async function writeAtomic(path: string, text: string): Promise<void> {
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const tmp = `${path}.${crypto.randomUUID()}.tmp`;
-    await Deno.writeTextFile(tmp, text);
-    await Deno.rename(tmp, path);
+    await fsWriteFile(tmp, text);
+    try {
+        await fsRename(tmp, path);
+    } catch (error) {
+        if (!(error instanceof Error && recoverWindowsRename(error, tmp, path))) throw error;
+    }
 }
 
 export async function appendEpicManualQaSection(
@@ -160,7 +168,8 @@ export async function appendEpicManualQaSection(
         throw new Error(`Manual QA artifact appears malformed: ${relativePath}`);
     }
 
-    const header = `# Manual QA for ${args.epicPlanName}\n\n` +
+    const header =
+        `# Manual QA for ${args.epicPlanName}\n\n` +
         "This checklist is advisory. It does not change RunWield verification status.\n";
     const section = [
         sectionStartMarker(args.childPlanName),
@@ -193,11 +202,11 @@ async function moveFileIfPresent(
 ): Promise<MoveEpicArtifactResult | null> {
     const text = await readTextIfExists(fromPath);
     if (text === null) return null;
-    if (await readTextIfExists(toPath) !== null) {
+    if ((await readTextIfExists(toPath)) !== null) {
         throw new Error(`Epic Artifact already exists: ${projectRelativePath(projectRoot, toPath)}`);
     }
-    await Deno.mkdir(dirname(toPath), { recursive: true });
-    await Deno.rename(fromPath, toPath);
+    await fsMkdir(dirname(toPath), { recursive: true });
+    await fsRename(fromPath, toPath);
     return { fileName, fromPath, toPath, relativePath: projectRelativePath(projectRoot, toPath) };
 }
 
@@ -218,7 +227,7 @@ export async function moveEpicArtifactsToArchive(
         }
         return moved;
     } catch (error) {
-        for (const item of moved.toReversed()) await Deno.rename(item.toPath, item.fromPath).catch(() => {});
+        for (const item of moved.toReversed()) await fsRename(item.toPath, item.fromPath).catch(() => {});
         throw error;
     }
 }
@@ -240,7 +249,7 @@ export async function moveEpicArtifactsFromArchive(
         }
         return moved;
     } catch (error) {
-        for (const item of moved.toReversed()) await Deno.rename(item.toPath, item.fromPath).catch(() => {});
+        for (const item of moved.toReversed()) await fsRename(item.toPath, item.fromPath).catch(() => {});
         throw error;
     }
 }

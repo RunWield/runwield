@@ -1,5 +1,8 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, getCurrentSystemPrompt, type TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -17,8 +20,8 @@ async function writeSkill(
 ): Promise<string> {
     const directory = join(root, relativeLayer, directoryName);
     const path = join(directory, "SKILL.md");
-    await Deno.mkdir(directory, { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(directory, { recursive: true });
+    await fsWriteFile(
         path,
         ["---", `name: "${name}"`, `description: "${marker} description"`, "---", `${marker} body`].join("\n"),
     );
@@ -54,7 +57,7 @@ async function assertPublicSelection(
     assertEquals(resolved.payload.source.layer, expectedSource);
 }
 
-Deno.test("installed review skill is user-invokable with its portable instructions and support files", async () => {
+test("installed review skill is user-invokable with its portable instructions and support files", async () => {
     await withRuntimeCommandFixture("skill-catalog-review-", async ({ projectRoot }) => {
         const review = (await listSkills({ cwd: projectRoot })).find((skill) => skill.name === "review");
         assertEquals(review?.source, "bundled");
@@ -69,19 +72,19 @@ Deno.test("installed review skill is user-invokable with its portable instructio
         const bundledDir = dirname(review.path);
         for (const file of ["SKILL.md", "github.md", "gitlab.md", "pull-requests.md"]) {
             assertEquals(
-                await Deno.readTextFile(join(bundledDir, file)),
-                (await Deno.readTextFile(fromFileUrl(new URL(`../../../skills/review/${file}`, import.meta.url))))
+                await fsReadFile(join(bundledDir, file), "utf8"),
+                (await fsReadFile(fromFileUrl(new URL(`../../../skills/review/${file}`, import.meta.url)), "utf8"))
                     .replace("license: MIT; complete terms in ../LICENSE", "license: MIT; complete terms in LICENSE"),
             );
         }
         assertEquals(
-            await Deno.readTextFile(join(bundledDir, "LICENSE")),
-            await Deno.readTextFile(fromFileUrl(new URL("../../../skills/LICENSE", import.meta.url))),
+            await fsReadFile(join(bundledDir, "LICENSE"), "utf8"),
+            await fsReadFile(fromFileUrl(new URL("../../../skills/LICENSE", import.meta.url)), "utf8"),
         );
     });
 });
 
-Deno.test("Skill catalog applies all four custom layers in order and refreshes after winner removal", async () => {
+test("Skill catalog applies all four custom layers in order and refreshes after winner removal", async () => {
     await withRuntimeCommandFixture("skill-catalog-layers-", async ({ projectRoot, homeDir }) => {
         const name = "layered-fixture";
         const layers = [
@@ -118,13 +121,13 @@ Deno.test("Skill catalog applies all four custom layers in order and refreshes a
         for (let index = 0; index < layers.length; index++) {
             const layer = layers[index];
             await assertPublicSelection(projectRoot, name, paths[index], layer.source, layer.marker);
-            await Deno.remove(join(layer.root, layer.relative, name), { recursive: true });
+            await fsRm(join(layer.root, layer.relative, name), { recursive: true });
         }
         await assertRejects(() => expandSkillCommand(name, undefined, projectRoot), Error, `Unknown skill: ${name}`);
 
         const malformedDirectory = join(projectRoot, ".wld", "skills", "readable-fallback");
-        await Deno.mkdir(malformedDirectory, { recursive: true });
-        await Deno.writeTextFile(join(malformedDirectory, "SKILL.md"), "---\nname: [\n---\nmalformed body");
+        await fsMkdir(malformedDirectory, { recursive: true });
+        await fsWriteFile(join(malformedDirectory, "SKILL.md"), "---\nname: [\n---\nmalformed body");
         const readableFallback = await writeSkill(
             homeDir,
             join(".agents", "skills"),
@@ -151,7 +154,7 @@ Deno.test("Skill catalog applies all four custom layers in order and refreshes a
     });
 });
 
-Deno.test("Skill catalog protects bundled names and lets wld layers override them", async () => {
+test("Skill catalog protects bundled names and lets wld layers override them", async () => {
     await withRuntimeCommandFixture("skill-catalog-bundled-", async ({ projectRoot, homeDir }) => {
         const projectExternalDeclaredAlias = await writeSkill(
             projectRoot,
@@ -213,7 +216,7 @@ Deno.test("Skill catalog protects bundled names and lets wld layers override the
     });
 });
 
-Deno.test("Skill catalog uses one winner for published names and keeps only its directory alias", async () => {
+test("Skill catalog uses one winner for published names and keeps only its directory alias", async () => {
     await withRuntimeCommandFixture("skill-catalog-published-name-", async ({ projectRoot, homeDir }) => {
         const winnerPath = await writeSkill(
             projectRoot,
@@ -238,7 +241,7 @@ Deno.test("Skill catalog uses one winner for published names and keeps only its 
     });
 });
 
-Deno.test("Skill catalog disables both external scopes and does not scan a Project without cwd", async () => {
+test("Skill catalog disables both external scopes and does not scan a Project without cwd", async () => {
     await withRuntimeCommandFixture("skill-catalog-disabled-", async ({ projectRoot, homeDir }) => {
         const projectExternal = await writeSkill(
             projectRoot,
@@ -288,9 +291,9 @@ Deno.test("Skill catalog disables both external scopes and does not scan a Proje
             "ordinary",
         );
         await assertPublicSelection(projectRoot, "research", projectOverride, "local", "disabled project wld");
-        await Deno.remove(join(projectRoot, ".wld", "skills", "project-research"), { recursive: true });
+        await fsRm(join(projectRoot, ".wld", "skills", "project-research"), { recursive: true });
         await assertPublicSelection(projectRoot, "research", homeOverride, "home", "disabled home wld");
-        await Deno.remove(join(homeDir, ".wld", "skills", "home-research"), { recursive: true });
+        await fsRm(join(homeDir, ".wld", "skills", "home-research"), { recursive: true });
         assertEquals(
             (await listSkills({ cwd: projectRoot })).find((skill) => skill.name === "research")?.source,
             "bundled",
@@ -298,12 +301,12 @@ Deno.test("Skill catalog disables both external scopes and does not scan a Proje
 
         assertEquals((await listSkills()).some((skill) => skill.path === projectOnly), false);
         const secondProject = join(homeDir, "second-project");
-        await Deno.mkdir(secondProject);
+        await fsMkdir(secondProject);
         assertEquals((await listSkills({ cwd: secondProject })).some((skill) => skill.path === projectOnly), false);
     });
 });
 
-Deno.test("Agent Session keeps Pi skills empty before and after Runtime reload", async () => {
+test("Agent Session keeps Pi skills empty before and after Runtime reload", async () => {
     await withRuntimeCommandFixture(
         "skill-catalog-pi-disabled-",
         async ({ projectRoot, homeDir, setModelResponseFactories }) => {
@@ -398,7 +401,7 @@ Deno.test("Agent Session keeps Pi skills empty before and after Runtime reload",
     );
 });
 
-Deno.test("disabled external Skill requests cannot reach the model through Pi fallback", async () => {
+test("disabled external Skill requests cannot reach the model through Pi fallback", async () => {
     await withRuntimeCommandFixture(
         "skill-catalog-disabled-runtime-",
         async ({ projectRoot, homeDir, setModelResponseFactories }) => {

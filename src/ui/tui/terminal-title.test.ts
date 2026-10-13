@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { initTUIWithPair, stopTUI } from "./tui.ts";
@@ -18,20 +19,20 @@ class CompatibleVirtualTerminal extends VirtualTerminal {
     }
 }
 
-Deno.test("sanitizeSessionName trims, collapses whitespace, and strips control characters", () => {
+test("sanitizeSessionName trims, collapses whitespace, and strips control characters", () => {
     assertEquals(sanitizeSessionName("  fix\n\tmodel\u0007 routing  "), "fix model routing");
 });
 
-Deno.test("sanitizeSessionName truncates to a tab-friendly length", () => {
+test("sanitizeSessionName truncates to a tab-friendly length", () => {
     assertEquals(sanitizeSessionName("a".repeat(50)), "a".repeat(40));
 });
 
-Deno.test("formatTerminalTitle prefixes sanitized names and falls back to W.", () => {
+test("formatTerminalTitle prefixes sanitized names and falls back to W.", () => {
     assertEquals(formatTerminalTitle(" terminal titles "), "W. - terminal titles");
     assertEquals(formatTerminalTitle("\n\t"), "W.");
 });
 
-Deno.test("setTerminalTitleForName updates the active terminal", () => {
+test("setTerminalTitleForName updates the active terminal", () => {
     const terminal = new CompatibleVirtualTerminal();
     const tui = new TuiMainScreen(terminal);
     initTUIWithPair({ terminal, tui });
@@ -43,7 +44,7 @@ Deno.test("setTerminalTitleForName updates the active terminal", () => {
     }
 });
 
-Deno.test("setTerminalTitleForName ignores an unavailable terminal", () => {
+test("setTerminalTitleForName ignores an unavailable terminal", () => {
     stopTUI();
     assertEquals(setTerminalTitleForName("safe"), "W. - safe");
 });

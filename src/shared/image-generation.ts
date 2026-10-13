@@ -1,8 +1,15 @@
+import { link as fsLink, open as fsOpen } from "node:fs/promises";
+import {
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+} from "node:fs/promises";
+import { loadPhoton } from "./photon-loader.ts";
 import { Buffer } from "node:buffer";
-import { createRequire } from "node:module";
-import { dirname, extname, isAbsolute, join, relative, resolve, toFileUrl } from "@std/path";
-import type { PhotonImage } from "@silvia-odwyer/photon-node";
-import { RUNWIELD_ROOT } from "../../runtime-root.js";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { getImageDimensions } from "@earendil-works/pi-tui";
 import { resizeImage } from "@earendil-works/pi-coding-agent";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -42,16 +49,6 @@ interface OpenRouterImagePayload {
     provider?: { require_parameters: boolean };
 }
 
-interface PhotonModule {
-    PhotonImage: typeof PhotonImage;
-}
-
-/** Keep Photon's CommonJS/WASM loader outside Deno's ESM compile bundle. */
-function loadPhoton(): PhotonModule {
-    const entry = toFileUrl(join(RUNWIELD_ROOT, "node_modules", "@silvia-odwyer", "photon-node", "photon_rs.js"));
-    return createRequire(entry)("./photon_rs.js") as PhotonModule;
-}
-
 /** Verified mappings, not a claim that all image models accept chat options. */
 function piOptions(provider: string, id: string, settings: ImageGenerationSettings): ImagesOptions {
     const gemini = provider === "openrouter" &&
@@ -86,7 +83,7 @@ function piOptions(provider: string, id: string, settings: ImageGenerationSettin
 /** Refuse escaping or symlinked destinations before spending image quota. */
 async function outputDestination(cwd: string, outputPath: string): Promise<string> {
     if (!outputPath.trim()) throw new Error("outputPath is required.");
-    const root = await Deno.realPath(cwd);
+    const root = await fsRealpath(cwd);
     const path = resolve(root, outputPath);
     const local = relative(root, path);
     if (!local || isAbsolute(local) || local === ".." || local.startsWith("../") || local.startsWith("..\\")) {
@@ -100,20 +97,20 @@ async function outputDestination(cwd: string, outputPath: string): Promise<strin
     for (const part of parts) {
         current = join(current, part);
         try {
-            const stat = await Deno.lstat(current);
-            if (!stat.isDirectory || stat.isSymlink) {
+            const stat = await fsLstat(current);
+            if (!stat.isDirectory() || stat.isSymbolicLink()) {
                 throw new Error("outputPath cannot traverse symlinks or non-directories.");
             }
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
-            await Deno.mkdir(current);
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+            await fsMkdir(current);
         }
     }
     try {
-        await Deno.lstat(path);
+        await fsLstat(path);
         throw new Error(`Output already exists: ${outputPath}. Choose a new path.`);
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     return path;
 }
@@ -175,19 +172,19 @@ export async function createImage(request: CreateImageRequest): Promise<CreatedI
     const references: string[] = [];
     for (const ref of request.imageRefs || []) {
         const resolved = await resolveImageRef(ref, request);
-        const path = await Deno.realPath(resolved.path);
-        const root = await Deno.realPath(
+        const path = await fsRealpath(resolved.path);
+        const root = await fsRealpath(
             resolved.refType === "attachment" ? getSessionImageDir(request.sessionManager, request.cwd) : request.cwd,
         );
         const local = relative(root, path);
         if (isAbsolute(local) || local === ".." || local.startsWith("../") || local.startsWith("..\\")) {
             throw new Error("Reference image escapes its project or session directory through a symlink.");
         }
-        const stat = await Deno.stat(path);
-        if (!stat.isFile || stat.size > 32 * 1024 * 1024) {
+        const stat = await fsStat(path);
+        if (!stat.isFile() || stat.size > 32 * 1024 * 1024) {
             throw new Error("Reference image must be a file under 32 MiB.");
         }
-        const bytes = await Deno.readFile(path);
+        const bytes = await fsReadFile(path);
         if (bytes.length > 32 * 1024 * 1024) throw new Error("Reference image exceeds 32 MiB.");
         references.push(path);
         input.push({ type: "image", data: Buffer.from(bytes).toString("base64"), mimeType: resolved.mimeType });
@@ -246,16 +243,19 @@ export async function createImage(request: CreateImageRequest): Promise<CreatedI
     request.signal?.throwIfAborted();
     // Recheck after generation, including parent symlinks introduced while waiting.
     await outputDestination(request.cwd, request.outputPath);
-    const staging = await Deno.makeTempFile({ dir: dirname(outputPath), prefix: ".runwield-image-" });
+    const staging = join(dirname(outputPath), `.runwield-image-${crypto.randomUUID()}`);
+    const file = await fsOpen(staging, "wx", 0o600);
     try {
-        await Deno.writeFile(staging, encoded.bytes);
+        await file.writeFile(encoded.bytes);
+        await file.close();
         request.signal?.throwIfAborted();
-        await Deno.link(staging, outputPath);
+        await fsLink(staging, outputPath);
     } finally {
-        await Deno.remove(staging);
+        await file.close();
+        await fsRm(staging);
     }
     return {
-        path: relative(await Deno.realPath(request.cwd), outputPath),
+        path: relative(await fsRealpath(request.cwd), outputPath),
         model: settings.model,
         mimeType,
         width: encoded.width,

@@ -1,5 +1,9 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../testing/assertions.ts";
+import { test } from "node:test";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { platform } from "node:process";
+import { join } from "node:path";
 import {
     bundledHelperDirectoryForInstall,
     packageMetadataPathForExecutablePath,
@@ -7,18 +11,18 @@ import {
     readRunWieldPackageInstallSync,
 } from "./package-install.ts";
 
-Deno.test("package metadata is read beside the real executable", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-package-install-" });
+test("package metadata is read beside the real executable", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runwield-package-install-"));
     try {
         const libexec = join(root, "Cellar", "wld", "libexec");
         const bin = join(root, "bin");
-        await Deno.mkdir(libexec, { recursive: true });
-        await Deno.mkdir(bin, { recursive: true });
+        await mkdir(libexec, { recursive: true });
+        await mkdir(bin, { recursive: true });
         const exe = join(libexec, "wld");
         const link = join(bin, "wld");
-        await Deno.writeTextFile(exe, "fixture");
-        await Deno.symlink(exe, link);
-        await Deno.writeTextFile(
+        await writeFile(exe, "fixture");
+        await symlink(exe, link);
+        await writeFile(
             join(libexec, "runwield-install.json"),
             JSON.stringify({
                 schemaVersion: 1,
@@ -33,10 +37,10 @@ Deno.test("package metadata is read beside the real executable", async () => {
 
         assertEquals(
             packageMetadataPathForExecutablePath(link),
-            join(await Deno.realPath(libexec), "runwield-install.json"),
+            join(await realpath(libexec), "runwield-install.json"),
         );
         assertEquals(readRunWieldPackageInstallSync(link)?.updateCommand, "brew upgrade gandazgul/tap/wld");
-        await Deno.writeTextFile(
+        await writeFile(
             join(libexec, "runwield-install.json"),
             JSON.stringify({
                 schemaVersion: 1,
@@ -48,31 +52,31 @@ Deno.test("package metadata is read beside the real executable", async () => {
                 version: "v1.2.3",
             }),
         );
-        assertEquals(readRunWieldPackageInstallSync(link)?.installDirectory, await Deno.realPath(libexec));
+        assertEquals(readRunWieldPackageInstallSync(link)?.installDirectory, await realpath(libexec));
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await rm(root, { recursive: true });
     }
 });
 
-Deno.test("invalid or absent package metadata does not classify a standalone executable", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-package-install-" });
+test("invalid or absent package metadata does not classify a standalone executable", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runwield-package-install-"));
     try {
         const exe = join(root, "wld");
-        await Deno.writeTextFile(exe, "fixture");
+        await writeFile(exe, "fixture");
         assertEquals(readRunWieldPackageInstallSync(exe), null);
-        await Deno.writeTextFile(join(root, "runwield-install.json"), JSON.stringify({ packageManager: "homebrew" }));
+        await writeFile(join(root, "runwield-install.json"), JSON.stringify({ packageManager: "homebrew" }));
         assertEquals(readRunWieldPackageInstallSync(exe), null);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await rm(root, { recursive: true });
     }
 });
 
-Deno.test("WinGet helper lookup requires a complete sibling helper directory", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield package install spaces-" });
+test("WinGet helper lookup requires a complete sibling helper directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runwield package install spaces-"));
     try {
         const helpers = join(root, "runtime", "helpers");
-        await Deno.mkdir(helpers, { recursive: true });
-        const suffix = Deno.build.os === "windows" ? ".exe" : "";
+        await mkdir(helpers, { recursive: true });
+        const suffix = platform === "win32" ? ".exe" : "";
         const install = {
             schemaVersion: 1 as const,
             packageManager: "winget" as const,
@@ -83,18 +87,18 @@ Deno.test("WinGet helper lookup requires a complete sibling helper directory", a
             version: "v1.2.3",
         };
         for (const name of ["mnemoteca", "cymbal", "ketch"]) {
-            await Deno.writeTextFile(join(helpers, `${name}${suffix}`), name);
+            await writeFile(join(helpers, `${name}${suffix}`), name);
         }
         assertEquals(bundledHelperDirectoryForInstall(install), null);
-        await Deno.writeTextFile(join(helpers, `agent-browser${suffix}`), "agent-browser");
+        await writeFile(join(helpers, `agent-browser${suffix}`), "agent-browser");
         assertEquals(bundledHelperDirectoryForInstall(install), helpers);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await rm(root, { recursive: true });
     }
 });
 
-Deno.test("PATH prepending preserves Windows Path key casing", () => {
-    const key = Deno.build.os === "windows" ? "Path" : "PATH";
+test("PATH prepending preserves Windows Path key casing", () => {
+    const key = platform === "win32" ? "Path" : "PATH";
     const env = prependToPathEnv({ [key]: "C:\\Windows" }, "C:\\Run Wield\\runtime\\helpers");
     assertEquals(env[key].startsWith("C:\\Run Wield\\runtime\\helpers"), true);
 });

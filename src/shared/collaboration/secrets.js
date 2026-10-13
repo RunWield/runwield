@@ -1,6 +1,15 @@
+import { recoverWindowsRename } from "../native-file-replace-windows.ts";
+import { rename as fsRename } from "node:fs/promises";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 /** @module shared/collaboration/secrets */
 
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { redactCapabilityValue, redactSecrets } from "./capabilities.ts";
 import { assertRecord, normalizeLocalSecretRecord } from "./protocol.js";
 import { getHomeDir, PROJECT_SECRET_STORE_RELATIVE_PATH } from "../../constants.js";
@@ -82,10 +91,12 @@ async function resolveSecretStorePath(location) {
 export async function readSecretStore(location) {
     const path = await resolveSecretStorePath(location);
     try {
-        const raw = await Deno.readTextFile(path);
+        const raw = await fsReadFile(path, "utf8");
         return normalizeSecretStore(JSON.parse(raw));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return { schemaVersion: SECRET_STORE_SCHEMA_VERSION, records: {} };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+            return { schemaVersion: SECRET_STORE_SCHEMA_VERSION, records: {} };
+        }
         throw new Error(`Unable to read collaboration secret store: ${redactSecrets(error)}`);
     }
 }
@@ -97,22 +108,32 @@ export async function readSecretStore(location) {
 export async function writeSecretStore(location, document) {
     const path = await resolveSecretStorePath(location);
     const normalized = normalizeSecretStore(document);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const tempPath = `${path}.${crypto.randomUUID()}.tmp`;
     const content = `${JSON.stringify(normalized, null, 2)}\n`;
     try {
-        await Deno.writeTextFile(tempPath, content, { mode: 0o600 });
+        await fsWriteFile(tempPath, content, { mode: 0o600 });
         try {
-            await Deno.chmod(tempPath, 0o600);
-        } catch { /* best effort */ }
-        await Deno.rename(tempPath, path);
+            await fsChmod(tempPath, 0o600);
+        } catch {
+            /* best effort */
+        }
         try {
-            await Deno.chmod(path, 0o600);
-        } catch { /* best effort */ }
+            await fsRename(tempPath, path);
+        } catch (error) {
+            if (!(error instanceof Error && recoverWindowsRename(error, tempPath, path))) throw error;
+        }
+        try {
+            await fsChmod(path, 0o600);
+        } catch {
+            /* best effort */
+        }
     } catch (error) {
         try {
-            await Deno.remove(tempPath);
-        } catch { /* ignore cleanup */ }
+            await fsRm(tempPath);
+        } catch {
+            /* ignore cleanup */
+        }
         throw new Error(`Unable to write collaboration secret store: ${redactSecrets(error)}`);
     }
 }
@@ -164,14 +185,17 @@ function isCompatibleSecretRecord(record, planId, spaceId) {
 function assertCompatiblePullSecretMatches(matches, expected) {
     const normalizedExpected = expected ? normalizeLocalSecretRecord(expected) : undefined;
     const records = normalizedExpected
-        ? [...matches.map((match) => ({ label: `${match.path}:${match.key}`, record: match.record })), {
-            label: "incoming maintainer URL",
-            record: normalizedExpected,
-        }]
+        ? [
+              ...matches.map((match) => ({ label: `${match.path}:${match.key}`, record: match.record })),
+              {
+                  label: "incoming maintainer URL",
+                  record: normalizedExpected,
+              },
+          ]
         : matches.map((match) => ({ label: `${match.path}:${match.key}`, record: match.record }));
     for (const field of ["contentKey", "maintainerCapability"]) {
-        const baseline = records.find((entry) =>
-            /** @type {Record<string, string | undefined>} */ (entry.record)[field]
+        const baseline = records.find(
+            (entry) => /** @type {Record<string, string | undefined>} */ (entry.record)[field],
         );
         if (!baseline) continue;
         const expectedValue = /** @type {Record<string, string | undefined>} */ (baseline.record)[field];
@@ -243,7 +267,7 @@ export async function resolvePullSecretRecord(paths, planId, spaceId) {
  */
 export async function resolveCompatibleSecretRecord(paths, planId, spaceId) {
     const matches = (await collectPullSecretMatches(paths, planId, spaceId)).filter((match) =>
-        isCompatibleSecretRecord(match.record, planId, spaceId)
+        isCompatibleSecretRecord(match.record, planId, spaceId),
     );
     assertCompatiblePullSecretMatches(matches);
     return matches[0] || null;
@@ -337,7 +361,7 @@ export function normalizeSecretStore(value) {
  */
 export async function ensureProjectSecretStoreIgnored(projectRoot) {
     const layout = await enterProjectRuntime(projectRoot);
-    await Deno.mkdir(layout.primary.internalRoot, { recursive: true });
+    await fsMkdir(layout.primary.internalRoot, { recursive: true });
     await ensureRunWieldOwnedGitignoreBlock(layout.primary.checkoutRoot);
 }
 

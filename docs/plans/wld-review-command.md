@@ -16,14 +16,26 @@ affectedPaths:
     - "src/ui/workspace/react/CodeReviewSurface.tsx"
     - "docs/prd/runwield-core-prd.md"
     - "docs/domain-language.md"
+planDeviations:
+    - id: "call_ei9r5mlNsfiA0lOOOzyJRkpv|fc_053f6f309b9ad936016acc0706ddb887d1bd41d054c2663919"
+      supersededRequirement: "Manual verification step 3: Ask the user before posting, then post a comment and approve on a PR the user picks."
+      replacementRequirement: "Manual verification step 3: Use the user-authorized test PR #244. Post a comment through wld review and confirm it through the GitHub API. Attempt approval, confirm GitHub rejects self-approval with HTTP 422 and that the page remains usable with annotations retained. Verify successful approval submission through the automated Forge subprocess tests; live approval success is not required for this same-account test PR."
+      reason: "The user authorized testing as needed on the test PR opened with their account. GitHub forbids approving one's own PR. Live neutral review posting succeeded; the approval refusal and page recovery were verified."
+      approvedAt: "2026-10-11T22:31:05.032Z"
 executionAgent: "engineer"
 collaborationRecommendation: "pair"
 createdAt: "2026-10-11"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/wld-review-command"
+validatedCommit: "1441851d48b5976803dd7913c91bb364e99c0e28"
+workRecord:
+    status: "generated"
+    recordId: "42299407-d261-4d55-ae9f-d7cd2c56fbe2"
+    path: "docs/work-records/2026-10-13-standalone-code-review-with-wld-review.md"
+    lastAttemptAt: "2026-10-13T13:21:13.659Z"
+status: "verified"
 ---
 
 # Add the `wld review` Command
@@ -72,9 +84,9 @@ This Plan adds `wld review`. It opens the same code review page for three source
 
 ### PRD capabilities
 
-- [Execution, validation, and recovery](runwield-core-prd.md#execution-validation-and-recovery) owns the current Code
-  Review requirements: the live review URL in the TUI and the labels **AI Code Review** and **Code Review**. This Plan
-  must not change them.
+- [Execution, validation, and recovery](../prd/runwield-core-prd.md#execution-validation-and-recovery) owns the current
+  Code Review requirements: the live review URL in the TUI and the labels **AI Code Review** and **Code Review**. This
+  Plan must not change them.
 - No capability owns a review that runs without a Plan. This Plan **adds** a new Core capability, **Standalone code
   review**, with the requirements and scenarios in this Plan.
 

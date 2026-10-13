@@ -1,15 +1,25 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { publishExecutionWorktreeIsolated } from "./isolated-publication.ts";
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 
 for (const targetChange of ["advanced", "rewritten"] as const) {
-    Deno.test(`publication verification handles a target ${targetChange} immediately after push`, async () => {
+    test(`publication verification handles a target ${targetChange} immediately after push`, async () => {
         const root = await makeRepo();
-        const directory = await Deno.makeTempDir({ prefix: "publication-target-progress-" });
+        const directory = await fsMkdtemp(join(tmpdir(), "publication-target-progress-"));
         const remote = join(directory, "remote.git");
         try {
-            await Deno.mkdir(remote);
+            await fsMkdir(remote);
             await git(remote, ["init", "--bare"]);
             await git(root, ["remote", "add", "origin", remote]);
             await git(root, ["push", "-u", "origin", "main"]);
@@ -19,11 +29,11 @@ for (const targetChange of ["advanced", "rewritten"] as const) {
                 planName: "target-progress",
                 worktreeRoot: directory,
             });
-            await Deno.writeTextFile(join(tree.path, "implementation.txt"), "published implementation\n");
+            await fsWriteFile(join(tree.path, "implementation.txt"), "published implementation\n");
             await git(tree.path, ["add", "implementation.txt"]);
             await git(tree.path, ["commit", "-m", "Implementation"]);
             const sealedCommit = await git(tree.path, ["rev-parse", "HEAD"]);
-            await Deno.writeTextFile(join(root, "README.md"), "Unsaved user work\n");
+            await fsWriteFile(join(root, "README.md"), "Unsaved user work\n");
             const primaryStatus = await git(root, ["status", "--porcelain"]);
             let publishedCommit = "";
             let verified = false;
@@ -47,7 +57,7 @@ for (const targetChange of ["advanced", "rewritten"] as const) {
                         await git(root, ["clone", "--branch", "main", remote, other]);
                         await git(other, ["config", "user.name", "Other developer"]);
                         await git(other, ["config", "user.email", "other@example.com"]);
-                        await Deno.writeTextFile(join(other, "later.txt"), "Later change\n");
+                        await fsWriteFile(join(other, "later.txt"), "Later change\n");
                         await git(other, ["add", "later.txt"]);
                         await git(other, ["commit", "-m", "Later change"]);
                         await git(other, ["push", "origin", "main"]);
@@ -69,10 +79,10 @@ for (const targetChange of ["advanced", "rewritten"] as const) {
             }
             assertEquals(await git(root, ["rev-parse", "HEAD"]), originalHead);
             assertEquals(await git(root, ["status", "--porcelain"]), primaryStatus);
-            assertEquals(await Deno.readTextFile(join(root, "README.md")), "Unsaved user work\n");
+            assertEquals(await fsReadFile(join(root, "README.md"), "utf8"), "Unsaved user work\n");
         } finally {
-            await Deno.remove(root, { recursive: true });
-            await Deno.remove(directory, { recursive: true });
+            await fsRm(root, { recursive: true });
+            await fsRm(directory, { recursive: true });
         }
     });
 }

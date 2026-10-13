@@ -1,3 +1,4 @@
+import { rmdir as fsRmdir } from "node:fs/promises";
 /**
  * @module cmd/load-plan/plan-epic-archive
  * Archive a terminal Epic with its child Plans.
@@ -16,7 +17,7 @@ import { runArchiveTransition } from "../../shared/workflow/state-transition.ts"
 import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { transitionFailureError } from "./transition-failure.ts";
-import { relative } from "@std/path";
+import { relative } from "node:path";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { UiAPI } from "../../ui/tui/types.js";
 
@@ -85,9 +86,9 @@ async function archiveOnePlan(
 async function removeActiveEpicChildDirectory(projectRoot: string, epicChildDirectory: string, uiAPI: UiAPI) {
     const relativePath = relativeProjectPath(projectRoot, epicChildDirectory);
     try {
-        await Deno.remove(epicChildDirectory);
+        await fsRmdir(epicChildDirectory);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
             uiAPI.appendSystemMessage(
                 `Active Epic child directory was already absent: ${relativePath}`,
                 false,

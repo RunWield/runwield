@@ -1,6 +1,9 @@
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { AGENTS } from "../../constants.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -108,20 +111,20 @@ function seedPersistedSession(projectRoot: string, content = "continue the fixtu
 }
 
 async function writeResumeThreshold(settingsPath: string, threshold: number): Promise<void> {
-    const settings = JSON.parse(await Deno.readTextFile(settingsPath));
+    const settings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
     settings.compactOnResumeThresholdPercent = threshold;
-    await Deno.writeTextFile(settingsPath, JSON.stringify(settings));
+    await fsWriteFile(settingsPath, JSON.stringify(settings));
     __resetSettingsForTests();
 }
 
-Deno.test("getResumeModelSelection preserves supported Agy CLI references with the conservative context window", () => {
+test("getResumeModelSelection preserves supported Agy CLI references with the conservative context window", () => {
     assertEquals(getResumeModelSelection({ provider: "agy-cli", modelId: "gemini-3.8-flash" }), {
         modelOverride: "agy-cli/gemini-3.8-flash",
         contextWindow: 128000,
     });
 });
 
-Deno.test("runResumeCommand loads, replaces, and replays a real persisted session", async () => {
+test("runResumeCommand loads, replaces, and replays a real persisted session", async () => {
     await withRuntimeCommandFixture("runwield-resume-command-", async ({ homeDir, projectRoot }) => {
         const seeded = seedPersistedSession(projectRoot);
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
@@ -149,7 +152,7 @@ Deno.test("runResumeCommand loads, replaces, and replays a real persisted sessio
     });
 });
 
-Deno.test("runResumeCommand falls back to read-only when another terminal claims a listed conversation", async () => {
+test("runResumeCommand falls back to read-only when another terminal claims a listed conversation", async () => {
     await withRuntimeCommandFixture("runwield-resume-command-", async ({ homeDir, projectRoot }) => {
         const seeded = seedPersistedSession(projectRoot);
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
@@ -215,7 +218,7 @@ Deno.test("runResumeCommand falls back to read-only when another terminal claims
     });
 });
 
-Deno.test("runResumeCommand recovers an interrupted checkpoint and replays the committed conversation", async () => {
+test("runResumeCommand recovers an interrupted checkpoint and replays the committed conversation", async () => {
     await withRuntimeCommandFixture("runwield-resume-command-", async ({ homeDir, projectRoot }) => {
         const seeded = seedPersistedSession(projectRoot, "conversation restored after interruption");
         const store = openOwnerCoordinationStore({ dbPath: `${homeDir}/owner.sqlite3` });
@@ -240,7 +243,7 @@ Deno.test("runResumeCommand recovers an interrupted checkpoint and replays the c
                 expectedGeneration: state.generation?.generation ?? null,
                 expectedCurrentSegmentId: managed.currentSegmentId,
             });
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 seeded.path,
                 `${
                     JSON.stringify({
@@ -250,7 +253,7 @@ Deno.test("runResumeCommand recovers an interrupted checkpoint and replays the c
                         data: { status: "failed" },
                     })
                 }\n`,
-                { append: true },
+                { flag: "a" },
             );
             store.markSessionUncertain(proof, { reason: "interrupted after a failed request" });
 
@@ -283,7 +286,7 @@ Deno.test("runResumeCommand recovers an interrupted checkpoint and replays the c
     });
 });
 
-Deno.test("runResumeCommand offers full session names with date-only descriptions", async () => {
+test("runResumeCommand offers full session names with date-only descriptions", async () => {
     await withRuntimeCommandFixture("runwield-resume-command-", async ({ homeDir, projectRoot }) => {
         const longMessage = "inspect the workspace sidebar rendering path ".repeat(4).trim();
         const seeded = seedPersistedSession(projectRoot, longMessage);
@@ -317,7 +320,7 @@ Deno.test("runResumeCommand offers full session names with date-only description
     });
 });
 
-Deno.test("runResumeCommand offers compaction from real transcript size and fixture settings", async () => {
+test("runResumeCommand offers compaction from real transcript size and fixture settings", async () => {
     await withRuntimeCommandFixture(
         "runwield-resume-command-",
         async ({ homeDir, projectRoot, settingsPath }) => {
@@ -347,7 +350,7 @@ Deno.test("runResumeCommand offers compaction from real transcript size and fixt
     );
 });
 
-Deno.test("runResumeCommand compacts a real loaded session through the faux model boundary", async () => {
+test("runResumeCommand compacts a real loaded session through the faux model boundary", async () => {
     await withRuntimeCommandFixture(
         "runwield-resume-command-",
         async ({ homeDir, projectRoot, setModelResponse, settingsPath }) => {

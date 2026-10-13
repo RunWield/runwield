@@ -1,4 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { savePlan } from "../plan-store.js";
 import { createQaChecklistGeneratedTool } from "./qa-checklist-generated.ts";
@@ -11,7 +15,7 @@ function text(result: { content: Array<{ type: string; text?: string }> }): stri
 }
 
 async function makeRoot() {
-    const projectRoot = await Deno.makeTempDir({ prefix: "qa-checklist-tool-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "qa-checklist-tool-"));
     await savePlan(projectRoot, "epic", "# Epic", {
         classification: "PROJECT",
         status: "ready_for_work",
@@ -26,7 +30,7 @@ async function makeRoot() {
     return projectRoot;
 }
 
-Deno.test("qa_checklist_generated records a real Epic child checklist", async () => {
+test("qa_checklist_generated records a real Epic child checklist", async () => {
     const projectRoot = await makeRoot();
     try {
         const tool = createQaChecklistGeneratedTool({
@@ -48,13 +52,13 @@ Deno.test("qa_checklist_generated records a real Epic child checklist", async ()
 
         assertEquals(result.details?.outcome, "recorded");
         assertStringIncludes(text(result), "docs/plans/epic/manual-qa.md");
-        assertStringIncludes(await Deno.readTextFile(`${projectRoot}/docs/plans/epic/manual-qa.md`), "Check one");
+        assertStringIncludes(await fsReadFile(`${projectRoot}/docs/plans/epic/manual-qa.md`, "utf8"), "Check one");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("qa_checklist_generated rejects invalid content without throwing", async () => {
+test("qa_checklist_generated rejects invalid content without throwing", async () => {
     const projectRoot = await makeRoot();
     try {
         const tool = createQaChecklistGeneratedTool({
@@ -77,6 +81,6 @@ Deno.test("qa_checklist_generated rejects invalid content without throwing", asy
         assertEquals(result.details?.outcome, "rejected");
         assertStringIncludes(text(result), "was not recorded");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });

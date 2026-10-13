@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS } from "../../constants.js";
 import {
@@ -22,7 +23,7 @@ function makeSessionManager(entries = []) {
     }));
 }
 
-Deno.test("recordActiveAgent stores and reads the latest active root agent", () => {
+test("recordActiveAgent stores and reads the latest active root agent", () => {
     const sessionManager = makeSessionManager();
 
     recordActiveAgent(sessionManager, AGENTS.ROUTER, "Router");
@@ -31,7 +32,7 @@ Deno.test("recordActiveAgent stores and reads the latest active root agent", () 
     assertEquals(readPersistedActiveAgentName(sessionManager), AGENTS.PLANNER);
 });
 
-Deno.test("recordActiveAgent persists display name with canonical root agent", () => {
+test("recordActiveAgent persists display name with canonical root agent", () => {
     /** @type {Array<Record<string, unknown>>} */
     const entries = [];
     const sessionManager = makeSessionManager(entries);
@@ -48,7 +49,7 @@ Deno.test("recordActiveAgent persists display name with canonical root agent", (
     assertEquals(readPersistedActiveAgentName(sessionManager), "project-operator");
 });
 
-Deno.test("recordActiveAgent skips duplicate adjacent markers", () => {
+test("recordActiveAgent skips duplicate adjacent markers", () => {
     /** @type {Array<Record<string, unknown>>} */
     const entries = [];
     const sessionManager = makeSessionManager(entries);
@@ -60,7 +61,7 @@ Deno.test("recordActiveAgent skips duplicate adjacent markers", () => {
     assertEquals(entries[0].customType, ACTIVE_AGENT_CUSTOM_TYPE);
 });
 
-Deno.test("readPersistedModelState returns the latest persisted model", () => {
+test("readPersistedModelState returns the latest persisted model", () => {
     const sessionManager = makeSessionManager([
         { type: "model_change", provider: "first-provider", modelId: "first-model" },
         { type: "model_change", provider: "last-provider", modelId: "last-model" },
@@ -72,7 +73,7 @@ Deno.test("readPersistedModelState returns the latest persisted model", () => {
     });
 });
 
-Deno.test("readPersistedModelState ignores malformed model entries", () => {
+test("readPersistedModelState ignores malformed model entries", () => {
     const sessionManager = makeSessionManager([
         { type: "model_change", provider: "valid-provider", modelId: "valid-model" },
         { type: "model_change", provider: "broken-provider", modelId: "" },
@@ -84,7 +85,7 @@ Deno.test("readPersistedModelState ignores malformed model entries", () => {
     });
 });
 
-Deno.test("manual model selection persists and reads the latest explicit choice", () => {
+test("manual model selection persists and reads the latest explicit choice", () => {
     const sessionManager = makeSessionManager();
 
     recordManualModelSelection(sessionManager, "openai-codex", "gpt-5.5");
@@ -96,7 +97,7 @@ Deno.test("manual model selection persists and reads the latest explicit choice"
     });
 });
 
-Deno.test("readPersistedManualModelState ignores malformed markers", () => {
+test("readPersistedManualModelState ignores malformed markers", () => {
     const sessionManager = makeSessionManager([
         { type: "custom", customType: "runwield.manual_model", data: { provider: "openai-codex", model: "gpt-5.5" } },
         { type: "custom", customType: "runwield.manual_model", data: { provider: "openai-codex", model: "" } },
@@ -108,7 +109,7 @@ Deno.test("readPersistedManualModelState ignores malformed markers", () => {
     });
 });
 
-Deno.test("manual model belongs to the active Agent and does not return after switching away and back", () => {
+test("manual model belongs to the active Agent and does not return after switching away and back", () => {
     const sessionManager = SessionManager.inMemory("/tmp");
     recordActiveAgent(sessionManager, "router");
     recordManualModelSelection(sessionManager, "test-provider", "manual");
@@ -127,7 +128,7 @@ Deno.test("manual model belongs to the active Agent and does not return after sw
     assertEquals(readPersistedManualModelState(sessionManager)?.model, "new-choice");
 });
 
-Deno.test("manual model selected before the first Agent marker survives initial activation only", () => {
+test("manual model selected before the first Agent marker survives initial activation only", () => {
     const sessionManager = SessionManager.inMemory("/tmp");
     recordManualModelSelection(sessionManager, "test-provider", "manual");
     recordActiveAgent(sessionManager, "router");
@@ -136,7 +137,7 @@ Deno.test("manual model selected before the first Agent marker survives initial 
     assertEquals(readPersistedManualModelState(sessionManager), null);
 });
 
-Deno.test("resolveResumeAgentName returns persisted valid agent", async () => {
+test("resolveResumeAgentName returns persisted valid agent", async () => {
     const sessionManager = makeSessionManager([
         { type: "custom", customType: ACTIVE_AGENT_CUSTOM_TYPE, data: { agentName: AGENTS.PLANNER } },
     ]);
@@ -144,7 +145,7 @@ Deno.test("resolveResumeAgentName returns persisted valid agent", async () => {
     assertEquals(await resolveResumeAgentName(sessionManager), AGENTS.PLANNER);
 });
 
-Deno.test("resolveResumeAgentName preserves the persistent workflow-only Slicer", async () => {
+test("resolveResumeAgentName preserves the persistent workflow-only Slicer", async () => {
     const sessionManager = makeSessionManager([
         { type: "custom", customType: ACTIVE_AGENT_CUSTOM_TYPE, data: { agentName: AGENTS.ARCHITECT } },
         { type: "custom", customType: ACTIVE_AGENT_CUSTOM_TYPE, data: { agentName: AGENTS.SLICER } },
@@ -153,7 +154,7 @@ Deno.test("resolveResumeAgentName preserves the persistent workflow-only Slicer"
     assertEquals(await resolveResumeAgentName(sessionManager), AGENTS.SLICER);
 });
 
-Deno.test("resolveResumeAgentName returns canonical filename identity instead of display casing", async () => {
+test("resolveResumeAgentName returns canonical filename identity instead of display casing", async () => {
     const sessionManager = makeSessionManager([
         { type: "custom", customType: ACTIVE_AGENT_CUSTOM_TYPE, data: { agentName: "Router" } },
     ]);
@@ -161,7 +162,7 @@ Deno.test("resolveResumeAgentName returns canonical filename identity instead of
     assertEquals(await resolveResumeAgentName(sessionManager), AGENTS.ROUTER);
 });
 
-Deno.test("resolveResumeAgentName skips stale invalid markers and uses the latest valid agent", async () => {
+test("resolveResumeAgentName skips stale invalid markers and uses the latest valid agent", async () => {
     const sessionManager = makeSessionManager([
         { type: "custom", customType: ACTIVE_AGENT_CUSTOM_TYPE, data: { agentName: AGENTS.PLANNER } },
         { type: "custom", customType: ACTIVE_AGENT_CUSTOM_TYPE, data: { agentName: "not-real" } },
@@ -170,7 +171,7 @@ Deno.test("resolveResumeAgentName skips stale invalid markers and uses the lates
     assertEquals(await resolveResumeAgentName(sessionManager), AGENTS.PLANNER);
 });
 
-Deno.test("resolveResumeAgentName falls back to router for missing or invalid markers", async () => {
+test("resolveResumeAgentName falls back to router for missing or invalid markers", async () => {
     assertEquals(await resolveResumeAgentName(makeSessionManager()), AGENTS.ROUTER);
     assertEquals(
         await resolveResumeAgentName(

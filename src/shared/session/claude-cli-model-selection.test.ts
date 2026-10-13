@@ -1,5 +1,10 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import process from "node:process";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { AGENTS } from "../../constants.js";
 import {
     assertModelExecutionBackendSupported,
@@ -10,21 +15,21 @@ import { __resetSettingsForTests, getSettingsManager } from "../settings.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { setActiveModel } from "../../ui/tui/chat-session.ts";
 
-Deno.test("configured Claude CLI model is supported by typed execution backend dispatch", () => {
+test("configured Claude CLI model is supported by typed execution backend dispatch", () => {
     const model = getModelRegistry().find("claude-cli", "sonnet");
     assert(model);
     assertModelExecutionBackendSupported(model);
 });
 
-Deno.test("explicit Claude CLI selection defers without changing defaults or current runtime Session", async () => {
+test("explicit Claude CLI selection defers without changing defaults or current runtime Session", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir({ prefix: "runwield-claude-cli-selection-home-" });
-        const project = await Deno.makeTempDir({ prefix: "runwield-claude-cli-selection-project-" });
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-claude-cli-selection-home-"));
+        const project = await fsMkdtemp(join(tmpdir(), "runwield-claude-cli-selection-project-"));
         try {
-            Deno.env.set("HOME", home);
+            process.env["HOME"] = home;
             __resetSettingsForTests();
-            await Deno.mkdir(join(home, ".wld"), { recursive: true });
+            await fsMkdir(join(home, ".wld"), { recursive: true });
             const calls: Array<{ model: string; provider: string }> = [];
             const runtime = {
                 getSessionSnapshot: () => ({
@@ -62,10 +67,10 @@ Deno.test("explicit Claude CLI selection defers without changing defaults or cur
             assertEquals(settings.getDefaultModel(), undefined);
         } finally {
             __resetSettingsForTests();
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            await Deno.remove(home, { recursive: true });
-            await Deno.remove(project, { recursive: true });
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            await fsRm(home, { recursive: true });
+            await fsRm(project, { recursive: true });
         }
     });
 });

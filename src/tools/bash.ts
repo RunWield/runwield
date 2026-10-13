@@ -1,3 +1,4 @@
+import { platform } from "node:process";
 import { createBashToolDefinition } from "@earendil-works/pi-coding-agent";
 import { checkBashCommand, describeBashAllowedCommands } from "../shared/bash-command-policy.ts";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
@@ -14,7 +15,7 @@ export function createRunWieldBashToolDefinition(
     allowedCommands?: BashAllowedCommands,
     shellOptions?: BashShellOptions,
 ) {
-    const shellPath = shellOptions?.shellPath || (Deno.build.os === "windows" ? findWindowsBashPath() : undefined);
+    const shellPath = shellOptions?.shellPath || (platform === "win32" ? findWindowsBashPath() : undefined);
     const base = createBashToolDefinition(cwd, { ...shellOptions, shellPath });
     if (allowedCommands === undefined) return base;
     return {

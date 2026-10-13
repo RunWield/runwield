@@ -1,3 +1,4 @@
+import process from "node:process";
 /** List available Agents or start/switch to a chosen active Agent. */
 
 import type { Component } from "@earendil-works/pi-tui";
@@ -61,7 +62,7 @@ async function runAgentsCommandCli(
         for (const agent of agents) {
             console.log(`  ${agent.name.padEnd(14)} ${agent.description}`);
         }
-        Deno.exit(1);
+        process.exit(1);
     }
 
     const userRequest = rest.join(" ").trim();
