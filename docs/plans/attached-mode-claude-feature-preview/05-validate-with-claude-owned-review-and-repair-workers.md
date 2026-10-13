@@ -21,8 +21,8 @@ dependencies:
     - "05a-run-workflow-validation-without-a-core-session"
 targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "e04fdfeeebe18360dd2a271b994f9fa9246ccabb"
+status: "verified"
 ---
 
 # Validate with Claude-owned review and repair workers
