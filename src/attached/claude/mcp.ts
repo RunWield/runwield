@@ -52,7 +52,26 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
             },
         };
         const inputText = JSON.stringify(argumentsWithEvidence);
-        const coordinated = await runAttachedOperation(operation.name, projectRoot, inputText);
+        const progressToken = request.params._meta?.progressToken;
+        let progress = 0;
+        const timer = setInterval(() => {
+            if (closing) return;
+            const message =
+                "RunWield Core validation is still running. Waiting for the current check; no host action is needed.";
+            const notification = progressToken !== undefined
+                ? server.notification({
+                    method: "notifications/progress",
+                    params: { progressToken, progress: ++progress, message },
+                })
+                : server.sendLoggingMessage({ level: "info", logger: "runwield", data: message });
+            void notification.catch(() => {});
+        }, 30_000);
+        let coordinated;
+        try {
+            coordinated = await runAttachedOperation(operation.name, projectRoot, inputText);
+        } finally {
+            clearInterval(timer);
+        }
         const canHost = !closing && (operation.name === "plan_written" || operation.name === "status");
         const review = canHost && coordinated.workflow
             ? await ensureReviewHosted(projectRoot, coordinated.workflow)

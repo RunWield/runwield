@@ -28,7 +28,7 @@ createdAt: "2026-10-07T03:22:48.414Z"
 status: "draft"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
-order: 6
+order: 7
 dependencies:
     - "05-validate-with-claude-owned-review-and-repair-workers"
 targetBranch: "epic/attached-mode-claude-feature-preview"

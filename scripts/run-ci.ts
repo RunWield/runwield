@@ -64,19 +64,35 @@ export interface CiOptions {
 }
 
 export async function runCi(executeTask: ExecuteCiTask, options: CiOptions = {}): Promise<CiResult> {
-    const preTestRuns = PRE_TEST_TASKS.map((taskName) => settleTask(taskName, executeTask));
-    const preTestResults = await Promise.all(preTestRuns);
-    const preTestFailures = failedTasks(preTestResults);
+    // CI must keep running after the display sleeps. -w also releases the assertion if this process exits.
+    const sleepInhibitor = Deno.build.os === "darwin"
+        ? new Deno.Command("/usr/bin/caffeinate", {
+            args: ["-i", "-w", String(Deno.pid)],
+            stdin: "null",
+            stdout: "null",
+            stderr: "null",
+        }).spawn()
+        : null;
+    try {
+        const preTestRuns = PRE_TEST_TASKS.map((taskName) => settleTask(taskName, executeTask));
+        const preTestResults = await Promise.all(preTestRuns);
+        const preTestFailures = failedTasks(preTestResults);
 
-    if (preTestFailures.length > 0) {
-        printFailureSummary(preTestFailures);
-        return { exitCode: 1, failures: preTestFailures };
+        if (preTestFailures.length > 0) {
+            printFailureSummary(preTestFailures);
+            return { exitCode: 1, failures: preTestFailures };
+        }
+
+        const testResult = await settleTask(options.sourceOnly ? "test:suite" : "test:all:suite", executeTask);
+        const testFailures = failedTasks([testResult]);
+        printFailureSummary(testFailures);
+        return { exitCode: testResult.code, failures: testFailures };
+    } finally {
+        if (sleepInhibitor) {
+            sleepInhibitor.kill("SIGTERM");
+            await sleepInhibitor.status;
+        }
     }
-
-    const testResult = await settleTask(options.sourceOnly ? "test:suite" : "test:all:suite", executeTask);
-    const testFailures = failedTasks([testResult]);
-    printFailureSummary(testFailures);
-    return { exitCode: testResult.code, failures: testFailures };
 }
 
 async function executeRuntimeTask(taskName: CiTaskName, failFast: boolean): Promise<CiTaskResult> {

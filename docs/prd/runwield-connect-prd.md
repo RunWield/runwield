@@ -200,8 +200,10 @@ Initialization is optional and may occur before or after the first Attached Work
 Plannotator and Core. Review decisions are durable before browser acknowledgment. Claude receives Feedback and image
 paths through `status`, revises the Plan, and submits the next round into the same browser page. Cancellation returns to
 Claude with a review-canceled note and leaves the workflow open. The Preview also implements the guarded execution
-handoff and implementation checkpoint below. Verification, code review, and publication remain target scope (children 05
-and 06); Core owns their shared requirements.
+handoff, implementation checkpoint, and shared validation continuation below. Validation coordination has automated
+coverage and live Claude Code verification of direct reviewer MCP access, fresh repair workers, independent
+re-verification, restoration after MCP loss, and a CI call longer than five minutes. Code review and publication remain
+target scope (child 06); Core owns their shared requirements.
 
 **Requirement: Keep Core approval and verification authoritative.**
 
@@ -259,9 +261,10 @@ the external host. The host continues to own its conversation and model calls.
 worker recovery, and guarded implementation completion through Core. Automated real-Git and fresh-process tests cover
 these coordination guarantees. Host-native worker dispatch is instructed by the plugin, not sandboxed. Live acceptance
 on Claude Code 2.1.293 confirms automatic handoff after browser approval, coordinator-owned completion, and fresh-host
-restoration of the same worker action and worktree. No wider host-version range is declared. Validation and publication
-remain later Preview scope (children 05 and 06). Other hosts, QUICK_FIX, and safe-handoff fallback beyond non-Git
-consent remain targets.
+restoration of the same worker action and worktree. No wider host-version range is declared. Validation coordination now
+has automated real-Git, fresh-process, and shared-engine coverage. Live Claude reviewer MCP access remains to be
+confirmed. Publication remains later Preview scope (child 06). Other hosts, QUICK_FIX, and safe-handoff fallback beyond
+non-Git consent remain targets.
 
 **Requirement: Automatically hand approved work to its isolated implementer.**
 
@@ -292,7 +295,28 @@ consent remain targets.
 - Shared Core finalization restores a deleted execution Plan from its recorded baseline, checkpoints implementation, and
   records `implemented`. Accepted operations replay without repeating effects.
 - `implemented` means implementation is recorded, not validated, Verified, or published. The workflow stays open for
-  later validation and publication, under [Core recovery](runwield-core-prd.md#execution-validation-and-recovery).
+  validation and publication, under [Core recovery](runwield-core-prd.md#execution-validation-and-recovery).
+
+**Requirement: Continue shared validation with fresh host-owned workers.**
+
+- `start_validation` runs the shared Core attempt owner and validation engine without a Core Session or model turn. Core
+  owns CI, semantic convergence, finding identities, recovery, and all gate predicates. These remain authoritative under
+  [Core semantic review and repair](runwield-core-prd.md#semantic-review-and-repair).
+- The Attached record persists each reviewer, repair, or user-decision request and its action identity. An outcome is
+  saved before Core runs CI, outside the Attached record lock. A fresh process can restore the request or resume the
+  saved outcome. Concurrent calls report that validation is running instead of starting competing host workers.
+- A fresh Claude reviewer calls MCP `review_diff` directly. Core records returned byte ranges against that pending
+  action. Listing does not count as inspection; host-supplied coverage is not accepted. The coordinating conversation
+  submits the reviewer's structured outcome through `review_complete`. Core rejects incomplete coverage and stale
+  candidates through its shared guards.
+- A fresh repair worker receives the current focused repair instructions and existing execution checkout. It returns its
+  per-item report; the coordinating conversation submits `task_completed`. A user-decision request is asked in Claude
+  and returned through `validation_decision`, not guessed by the host.
+- `/runwield:validate` restores this flow. An active MCP call sends progress every 30 seconds, stopping when it returns.
+  The plugin sets a one-hour per-server timeout as a backup. Start Claude with `MCP_TOOL_TIMEOUT=600000` or a higher
+  value suitable for the configured check (milliseconds).
+- Passed validation stops at `reviewed` with `awaiting_delivery`. Publication is still a target in this Preview slice;
+  validation does not claim Verified or close the workflow.
 
 **Acceptance scenarios:**
 
@@ -304,6 +328,18 @@ consent remain targets.
 - Given a returned worker report against the issued action and unchanged Plan, Core records implementation and a Git
   checkpoint. A repeated accepted operation advances nothing twice; changed authority rejects completion.
 - Given a deleted execution Plan with a recorded baseline, Core restores it and completes through its shared guards.
+- Given failing CI, Core issues a repair request. A fresh Claude repair worker fixes it and the coordinating
+  conversation reports completion. Core reruns CI before issuing a fresh reviewer request.
+- Given a reviewer that lists files but does not read every required diff byte, Core requests a correction instead of
+  accepting approval. A stale action or changed candidate cannot advance review.
+- Given a Core process lost during CI, another conversation reads status and resumes validation from durable claims. A
+  live validation call does not block reading Attached status. Replaying an accepted completion repeats no effects.
+- Given Core advances its checkpoint but the final Attached write is lost, retry reconciles the durable claim without
+  reapplying the old outcome. Its original operation name and evidence remain available in the completion receipt.
+- Given a final Attached write fails while the MCP process stays alive, the settled call releases its operation claim; a
+  later validation call can recover without restarting that process.
+- Given complete accepted review outcomes, the Plan reaches `reviewed` and Attached reports `awaiting_delivery`, never
+  Verified. No publication effect runs at this boundary.
 - Given worker or process loss, `/runwield:implement` restores the same directory, action, and current role
   instructions. A lost Attached write after preparation adopts the same Core attempt; a lost write after completion
   settles the result on retry. Proven settled preparation journals heal without a second live worktree.

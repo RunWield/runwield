@@ -45,9 +45,10 @@ Start RunWield only for this request: $ARGUMENTS
   the same handoff, not `start_execution` again. On rejection, read `status` and repair; do not bypass guards.
 - For `implemented`, report the Core result, not the worker's earlier Git state: Core saved the Git checkpoint for
   worktree execution. Do not say changes are uncommitted or that `.gitignore` was untouched. Implementation is recorded,
-  not Verified. Validation and publication are later Preview steps (children 05 and 06); the workflow remains open.
+  not Verified. Immediately follow `/runwield:validate` for Core validation with fresh Claude workers. Publication
+  remains pending; the workflow stays open.
 
 Use Claude Code's tools and other MCP servers normally. RunWield adds no hooks or tool restrictions. Stay in Claude Code
 and the browser; use no RunWield CLI or TUI commands. Claude Code owns all model calls. This plugin supports FEATURE
-planning, review, isolated implementation, and durable handoff recovery. Installation and full preflight are separate
-capabilities.
+planning, review, isolated implementation, validation, and durable handoff recovery. Installation and full preflight are
+separate capabilities.

@@ -57,6 +57,10 @@ Deno.test("fresh MCP status restores the same pending round and transport close 
                 "plan_written",
                 "start_execution",
                 "task_completed",
+                "start_validation",
+                "review_diff",
+                "review_complete",
+                "validation_decision",
             ]);
             assertEquals(tools.tools.find(({ name }) => name === "status")?.inputSchema.required, []);
             const status = await call(first, "status", {});
