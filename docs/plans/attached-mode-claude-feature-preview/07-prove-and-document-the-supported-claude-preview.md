@@ -16,7 +16,7 @@ createdAt: "2026-10-07T03:22:49.110Z"
 status: "draft"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
-order: 7
+order: 8
 dependencies:
     - "06-publish-validated-work-and-record-the-outcome"
 targetBranch: "epic/attached-mode-claude-feature-preview"

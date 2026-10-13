@@ -7,6 +7,8 @@ import { semanticReviewMode } from "./validation-types.ts";
 import type { PhaseContext, ValidationLoopArgs } from "./validation-types.ts";
 import { readValidationReviewState, type ValidationCheckpoint } from "./validation-checkpoint.ts";
 import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import type { ValidationHostResume } from "./validation-host-contract.ts";
+import type { TriageMeta } from "./validation-types.ts";
 import type { ValidationHostRequest } from "./validation-host-contract.ts";
 
 export async function saveHostCheckpoint(
@@ -80,14 +82,35 @@ export async function validateHostReviewerResume(args: ValidationLoopArgs): Prom
     const workflow = args.session.getActiveWorkflow();
     const checkpoint = args.validationCheckpoint;
     if (!workflow?.executionCwd || !workflow.worktreeBaseBranch || !checkpoint) rejectHostResume();
+    await assertHostReviewerCandidate({
+        cwd: workflow.executionCwd,
+        baseBranch: workflow.worktreeBaseBranch,
+        checkpoint,
+        triageMeta: args.triageMeta,
+        resume,
+    });
+}
+
+export interface HostReviewerCandidateArgs {
+    cwd: string;
+    baseBranch: string;
+    checkpoint: ValidationCheckpoint;
+    triageMeta: TriageMeta;
+    resume: Extract<ValidationHostResume, { kind: "reviewer" }>;
+}
+
+/** Read-only shared preflight, before a carrier persists a stale reviewer claim. */
+export async function assertHostReviewerCandidate(args: HostReviewerCandidateArgs): Promise<void> {
     const { getWorktreeReviewDiff, getWorkflowDiff } = await import("./git-snapshot.ts");
     const { parseDiffFiles } = await import("./review-diff.ts");
     const { ReviewInspection } = await import("./review-inspection.ts");
     const { sameHostIdentity } = await import("./validation-host-contract.ts");
-    const fullDiff = await getWorktreeReviewDiff(workflow.executionCwd, workflow.worktreeBaseBranch);
+    const fullDiff = await getWorktreeReviewDiff(args.cwd, args.baseBranch);
+    const checkpoint = args.checkpoint;
+    const resume = args.resume;
     const durableReview = readValidationReviewState(checkpoint);
     const baseline = durableReview?.repairBaselineTree || "";
-    const repairDiff = baseline ? await getWorkflowDiff(workflow.executionCwd, baseline) : "";
+    const repairDiff = baseline ? await getWorkflowDiff(args.cwd, baseline) : "";
     const round = (durableReview?.semanticRound || readSemanticRound(args.triageMeta)) + 1;
     const mode = semanticReviewMode(round);
     const count = checkpoint.hostReview?.semanticRound === round ? checkpoint.hostReview.correctionCount : 0;

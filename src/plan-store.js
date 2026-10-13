@@ -210,6 +210,7 @@ export function getStoredPlanPath(cwd, planName) {
  * @property {string} [deliveryBranch] - Recorded landing branch, independent of setting changes
  * @property {string} [targetBranch] - User-selected target branch, independent of the current execution attempt
  * @property {string|null} [validatedCommit] - Validated implementation commit; durable after runtime cleanup
+ * @property {"mechanical"|"semantic"|"delivery"} [validationPhase] - Current Workflow Validation phase while status stays "implemented"
  * @property {PlanFrontMatter["status"]|null} [heldFromStatus] - Status captured before the Plan moved to on_hold
  * @property {string|null} [heldAt] - ISO timestamp when the Plan was put on hold
  * @property {string|null} [holdReason] - Optional human reason for the hold
