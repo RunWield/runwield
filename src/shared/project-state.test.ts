@@ -1,128 +1,141 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../testing/assertions.ts";
+import fsPromises from "node:fs/promises";
+import { test } from "node:test";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { isEmptyProjectDirectory } from "./project-state.ts";
 
 type TempProjectCheck = (dir: string) => Promise<void>;
 
 async function withTempProject(prefix: string, fn: TempProjectCheck): Promise<void> {
-    const dir = await Deno.makeTempDir({ prefix });
+    const dir = await fsMkdtemp(join(tmpdir(), prefix));
     try {
         await fn(dir);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 }
 
-Deno.test("truly empty directory is empty project directory", async () => {
+test("truly empty directory is empty project directory", async () => {
     await withTempProject("runwield-empty-project-", async (dir) => {
         assertEquals(await isEmptyProjectDirectory(dir), true);
     });
 });
 
-Deno.test("only dot-prefixed files and folders are empty project directory", async () => {
+test("only dot-prefixed files and folders are empty project directory", async () => {
     await withTempProject("runwield-dot-project-", async (dir) => {
-        await Deno.mkdir(join(dir, ".git"));
-        await Deno.mkdir(join(dir, ".wld"));
-        await Deno.mkdir(join(dir, ".vscode"));
-        await Deno.writeTextFile(join(dir, ".DS_Store"), "metadata");
-        await Deno.writeTextFile(join(dir, ".git", "config"), "git config");
+        await fsMkdir(join(dir, ".git"));
+        await fsMkdir(join(dir, ".wld"));
+        await fsMkdir(join(dir, ".vscode"));
+        await fsWriteFile(join(dir, ".DS_Store"), "metadata");
+        await fsWriteFile(join(dir, ".git", "config"), "git config");
 
         assertEquals(await isEmptyProjectDirectory(dir), true);
     });
 });
 
-Deno.test("empty visible folder is empty project directory", async () => {
+test("empty visible folder is empty project directory", async () => {
     await withTempProject("runwield-visible-dir-project-", async (dir) => {
-        await Deno.mkdir(join(dir, "src"));
+        await fsMkdir(join(dir, "src"));
 
         assertEquals(await isEmptyProjectDirectory(dir), true);
     });
 });
 
-Deno.test("zero-byte visible file is empty project directory", async () => {
+test("zero-byte visible file is empty project directory", async () => {
     await withTempProject("runwield-zero-file-project-", async (dir) => {
-        await Deno.writeTextFile(join(dir, "README.md"), "");
+        await fsWriteFile(join(dir, "README.md"), "");
 
         assertEquals(await isEmptyProjectDirectory(dir), true);
     });
 });
 
-Deno.test("non-empty visible README is not empty project directory", async () => {
+test("non-empty visible README is not empty project directory", async () => {
     await withTempProject("runwield-readme-project-", async (dir) => {
-        await Deno.writeTextFile(join(dir, "README.md"), "# Project\n");
+        await fsWriteFile(join(dir, "README.md"), "# Project\n");
 
         assertEquals(await isEmptyProjectDirectory(dir), false);
     });
 });
 
-Deno.test("non-empty nested visible file is not empty project directory", async () => {
+test("non-empty nested visible file is not empty project directory", async () => {
     await withTempProject("runwield-nested-project-", async (dir) => {
-        await Deno.mkdir(join(dir, "src"));
-        await Deno.writeTextFile(join(dir, "src", "main.js"), "console.log('hi');\n");
+        await fsMkdir(join(dir, "src"));
+        await fsWriteFile(join(dir, "src", "main.js"), "console.log('hi');\n");
 
         assertEquals(await isEmptyProjectDirectory(dir), false);
     });
 });
 
-Deno.test("non-empty file under dot-prefixed segment is empty project directory", async () => {
+test("non-empty file under dot-prefixed segment is empty project directory", async () => {
     await withTempProject("runwield-dot-nested-project-", async (dir) => {
-        await Deno.mkdir(join(dir, ".cache"));
-        await Deno.writeTextFile(join(dir, ".cache", "generated.txt"), "generated\n");
+        await fsMkdir(join(dir, ".cache"));
+        await fsWriteFile(join(dir, ".cache", "generated.txt"), "generated\n");
 
         assertEquals(await isEmptyProjectDirectory(dir), true);
     });
 });
 
-Deno.test("root read failure degrades to not empty project directory", async () => {
+test("root read failure degrades to not empty project directory", async () => {
     await withTempProject("runwield-root-read-failure-project-", async (dir) => {
-        const originalReadDir = Deno.readDir;
+        const originalReadDir = fsPromises.opendir;
         try {
-            Deno.readDir = (path) => {
-                if (path === dir) throw new Error("simulated root read failure");
-                return originalReadDir(path);
-            };
+            Object.defineProperty(fsPromises, "opendir", {
+                configurable: true,
+                value: (path: string | URL) => {
+                    if (path === dir) throw new Error("simulated root read failure");
+                    return originalReadDir(path);
+                },
+            });
 
             assertEquals(await isEmptyProjectDirectory(dir), false);
         } finally {
-            Deno.readDir = originalReadDir;
+            fsPromises.opendir = originalReadDir;
         }
     });
 });
 
-Deno.test("nested visible directory read failure degrades to not empty project directory", async () => {
+test("nested visible directory read failure degrades to not empty project directory", async () => {
     await withTempProject("runwield-nested-read-failure-project-", async (dir) => {
         const srcDir = join(dir, "src");
-        await Deno.mkdir(srcDir);
+        await fsMkdir(srcDir);
 
-        const originalReadDir = Deno.readDir;
+        const originalReadDir = fsPromises.opendir;
         try {
-            Deno.readDir = (path) => {
-                if (path === srcDir) throw new Error("simulated nested read failure");
-                return originalReadDir(path);
-            };
+            Object.defineProperty(fsPromises, "opendir", {
+                configurable: true,
+                value: (path: string | URL) => {
+                    if (path === srcDir) throw new Error("simulated nested read failure");
+                    return originalReadDir(path);
+                },
+            });
 
             assertEquals(await isEmptyProjectDirectory(dir), false);
         } finally {
-            Deno.readDir = originalReadDir;
+            fsPromises.opendir = originalReadDir;
         }
     });
 });
 
-Deno.test("visible entry stat failure degrades to not empty project directory", async () => {
+test("visible entry stat failure degrades to not empty project directory", async () => {
     await withTempProject("runwield-stat-failure-project-", async (dir) => {
         const readmePath = join(dir, "README.md");
-        await Deno.writeTextFile(readmePath, "");
+        await fsWriteFile(readmePath, "");
 
-        const originalLstat = Deno.lstat;
+        const originalLstat = fsPromises.lstat;
         try {
-            Deno.lstat = (path) => {
-                if (path === readmePath) throw new Error("simulated stat failure");
-                return originalLstat(path);
-            };
+            Object.defineProperty(fsPromises, "lstat", {
+                configurable: true,
+                value: (path: string | URL) => {
+                    if (path === readmePath) throw new Error("simulated stat failure");
+                    return originalLstat(path);
+                },
+            });
 
             assertEquals(await isEmptyProjectDirectory(dir), false);
         } finally {
-            Deno.lstat = originalLstat;
+            fsPromises.lstat = originalLstat;
         }
     });
 });

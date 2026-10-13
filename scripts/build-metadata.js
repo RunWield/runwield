@@ -1,14 +1,15 @@
 /* Common, content-based identity for explicit local and GNU/Linux builds.
  * This is build tooling, not a Git-commit or VERSION comparison.
  */
-import { join } from "@std/path";
+import { join } from "node:path";
+import { lstat, readdir, readFile } from "node:fs/promises";
 
 export const REMOTE_PROTOCOL_VERSION = 1;
 export const BUILD_IDENTITY_PATH = "src/shared/build-identity.js";
 export const BUILD_METADATA_SCHEMA = 1;
 
 // Capture first-party sources, generated workspace resources, config/lock and
-// the one npm resource directory explicitly embedded by deno compile. The lock
+// the one npm resource directory explicitly embedded by the executable compiler. The lock
 // identifies resolved dependencies; their locally installed bytes are not a
 // portable identity across npm installations/platforms.
 const INPUTS = [
@@ -17,8 +18,11 @@ const INPUTS = [
     "third_party/plannotator/packages",
     "brand",
     "dist/workspace-runtime",
-    "deno.json",
-    "deno.lock",
+    "package.json",
+    "bun.lock",
+    "bunfig.toml",
+    "tsconfig.json",
+    "tsconfig.bun.json",
     "config.schema.json",
     "image-resize-worker.js",
     "node_modules/@earendil-works/pi-coding-agent/dist/utils",
@@ -29,12 +33,13 @@ const encoder = new TextEncoder();
 /** @param {Uint8Array} bytes */
 export async function sha256Bytes(bytes) {
     return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes))))
-        .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 /** @param {string} path */
 export async function sha256File(path) {
-    return sha256Bytes(await Deno.readFile(path));
+    return sha256Bytes(await readFile(path));
 }
 
 /**
@@ -48,24 +53,28 @@ async function inputFiles(root, includeRuntime) {
     /** @param {string} name */
     async function visit(name) {
         if (
-            EXCLUDED.has(name) || name.endsWith(".test.js") || name.endsWith(".test.ts") ||
-            name.endsWith(".test.tsx") || name.endsWith(".spec.ts")
-        ) return;
+            EXCLUDED.has(name) ||
+            name.endsWith(".test.js") ||
+            name.endsWith(".test.ts") ||
+            name.endsWith(".test.tsx") ||
+            name.endsWith(".spec.ts")
+        )
+            return;
         const path = join(root, name);
-        const info = await Deno.lstat(path);
-        if (info.isSymlink) {
+        const info = await lstat(path);
+        if (info.isSymbolicLink()) {
             // Documentation links in the vendored tree are not compiled.
             if (name.startsWith("third_party/") && name.endsWith(".md")) return;
             throw new Error(`Build input is a symlink: ${name}`);
         }
-        if (info.isDirectory) {
+        if (info.isDirectory()) {
             const entries = [];
-            for await (const entry of Deno.readDir(path)) entries.push(entry.name);
+            entries.push(...(await readdir(path)));
             for (const entry of entries.sort()) {
                 if (["node_modules", ".git", ".astro", ".vite", "dist", "coverage"].includes(entry)) continue;
                 await visit(`${name}/${entry}`);
             }
-        } else if (info.isFile) found.push(name);
+        } else if (info.isFile()) found.push(name);
         else throw new Error(`Unsupported build input: ${name}`);
     }
     for (const name of INPUTS) {
@@ -77,17 +86,17 @@ async function inputFiles(root, includeRuntime) {
 
 /**
  * @param {string} root
- * @param {string} denoVersion
+ * @param {string} runtimeVersion
  * @param {string[]} compileOptions Common flags/includes, without output, target or reload.
  * @param {boolean} [includeRuntime]
  * @returns {Promise<string>}
  */
-export async function computeBuildIdentity(root, denoVersion, compileOptions, includeRuntime = true) {
+export async function computeBuildIdentity(root, runtimeVersion, compileOptions, includeRuntime = true) {
     const parts = [
         JSON.stringify({
             schema: BUILD_METADATA_SCHEMA,
             protocol: REMOTE_PROTOCOL_VERSION,
-            denoVersion,
+            runtimeVersion,
             compileOptions,
         }),
     ];
@@ -110,16 +119,20 @@ export async function computeBuildIdentity(root, denoVersion, compileOptions, in
 /** @param {string} artifact @param {string} metadataPath @returns {Promise<ArtifactMetadata>} */
 export async function verifyBuildArtifact(artifact, metadataPath = `${artifact}.build.json`) {
     /** @type {ArtifactMetadata} */
-    const metadata = JSON.parse(await Deno.readTextFile(metadataPath));
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
     if (
-        metadata.schema !== BUILD_METADATA_SCHEMA || metadata.protocol !== REMOTE_PROTOCOL_VERSION ||
-        !/^[a-f0-9]{64}$/.test(metadata.buildId) || !/^[a-z0-9_-]+$/.test(metadata.target) ||
-        typeof metadata.version !== "string" || !metadata.version || metadata.version.length > 100 ||
+        metadata.schema !== BUILD_METADATA_SCHEMA ||
+        metadata.protocol !== REMOTE_PROTOCOL_VERSION ||
+        !/^[a-f0-9]{64}$/.test(metadata.buildId) ||
+        !/^[a-z0-9_-]+$/.test(metadata.target) ||
+        typeof metadata.version !== "string" ||
+        !metadata.version ||
+        metadata.version.length > 100 ||
         !/^[a-f0-9]{64}$/.test(metadata.sha256)
     ) {
         throw new Error(`Invalid build metadata: ${metadataPath}`);
     }
-    if (await sha256File(artifact) !== metadata.sha256) {
+    if ((await sha256File(artifact)) !== metadata.sha256) {
         throw new Error(`Build artifact checksum mismatch: ${artifact}`);
     }
     return metadata;

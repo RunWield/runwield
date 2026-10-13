@@ -3,14 +3,16 @@
  * Shared constants for RunWield CLI orchestration.
  */
 
-import { join } from "@std/path";
+import { realpathSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
+import { argv, cwd, env, platform, versions } from "node:process";
 import { RUNWIELD_SOURCE_ROOT } from "../runtime-root.js";
 
 /** Name of the installed CLI binary shown in user-facing docs/help. */
 export const CLI_BIN = "wld";
 
 /** Fallback source-run invocation used in contributor docs and local dev. */
-export const DEV_CLI_RUN = "deno run -A --unstable-no-legacy-abort src/cli.ts";
+export const DEV_CLI_RUN = "bun src/cli.ts";
 
 /** Legacy project-local collaboration secret path, retained for migration and Git hazard checks. */
 export const PROJECT_SECRET_STORE_RELATIVE_PATH = ".wld/collaboration-secrets.json";
@@ -26,7 +28,7 @@ export const PROJECT_SECRET_STORE_RELATIVE_PATH = ".wld/collaboration-secrets.js
  * @returns {string}
  */
 export function getCwd() {
-    return Deno.cwd();
+    return cwd();
 }
 
 /**
@@ -199,8 +201,11 @@ export function getRunWieldRuntimeDir(projectRoot) {
     if (!sandboxHome) return join(projectRoot, RUNWIELD_DIR_NAME);
     // Keyed by project root so a test that does use its own project still gets its
     // own lock namespace, and readable so a stray file can be traced back.
-    const slug = String(projectRoot).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(-80) ||
-        "project";
+    const slug =
+        String(projectRoot)
+            .replace(/[^a-zA-Z0-9._-]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(-80) || "project";
     return join(sandboxHome, "project-runtime", slug, RUNWIELD_DIR_NAME);
 }
 
@@ -233,7 +238,7 @@ export const WORKTREE_BRANCH_PREFIX = "worktree/";
  */
 function readOptionalEnv(name) {
     try {
-        return Deno.env.get(name) || "";
+        return env[name] || "";
     } catch {
         return "";
     }
@@ -256,20 +261,16 @@ export function isTestModulePath(path) {
     return TEST_MODULE_PATTERN.test(path);
 }
 
-// Under `deno test`, Deno.mainModule is the test file for each realm, and it is
-// never a test module under the wld binary or `deno run`. Evaluated once: a
-// realm's main module cannot change.
-const IS_TEST_REALM = (() => {
-    try {
-        return isTestModulePath(new URL(Deno.mainModule).pathname);
-    } catch {
-        return false;
-    }
-})();
+// Bun's preload enforces the sandbox before imports; keep the module-level guard
+// for subprocesses that enter through a test file or Node's test context.
+const IS_TEST_REALM =
+    isTestModulePath(argv[1] || "") ||
+    Boolean(versions.bun && argv[1] === "test") ||
+    Boolean(readOptionalEnv("NODE_TEST_CONTEXT"));
 
 const UNSANDBOXED_TEST_RUN_MESSAGE =
-    "Run the suite with `deno task test` (or scripts/run-tests.js), which points HOME and MNEMOTECA_DB_PATH at a " +
-    "sandbox. Running `deno test` directly lets tests overwrite the real ~/.wld and the real mnemoteca memory database.";
+    "Run the suite with `bun run test`, whose isolated runners point HOME and " +
+    "MNEMOTECA_DB_PATH at a sandbox. Direct test commands can overwrite real ~/.wld and memory databases.";
 
 // Fail the moment a test realm loads this module without the sandbox marker
 // that only scripts/run-tests.js sets. The lazy guard below is what makes the
@@ -297,8 +298,10 @@ if (IS_TEST_REALM && !readOptionalEnv("WLD_TEST_SANDBOX_HOME")) {
  */
 export function describeUnsandboxedTestRun({ isTestRealm, sandboxHome, homeDir }) {
     if (!isTestRealm || !homeDir || sandboxHome || isTempTestHome(homeDir)) return null;
-    return `Refusing to resolve a home directory (${homeDir}) during an unsandboxed test run. ` +
-        UNSANDBOXED_TEST_RUN_MESSAGE;
+    return (
+        `Refusing to resolve a home directory (${homeDir}) during an unsandboxed test run. ` +
+        UNSANDBOXED_TEST_RUN_MESSAGE
+    );
 }
 
 /**
@@ -307,9 +310,10 @@ export function describeUnsandboxedTestRun({ isTestRealm, sandboxHome, homeDir }
  */
 function isTempTestHome(homeDir) {
     try {
-        const tempDir = Deno.realPathSync(readOptionalEnv("TMPDIR") || "/tmp");
-        const resolvedHome = Deno.realPathSync(homeDir);
-        return resolvedHome === tempDir || resolvedHome.startsWith(`${tempDir}/`);
+        const tempDir = realpathSync(readOptionalEnv("TMPDIR") || "/tmp");
+        const resolvedHome = realpathSync(homeDir);
+        const child = relative(tempDir, resolvedHome);
+        return child === "" || (!child.startsWith("..") && !isAbsolute(child));
     } catch {
         return false;
     }
@@ -342,7 +346,7 @@ function assertTestRunIsSandboxed(homeDir) {
  * @returns {string}
  */
 export function getHomeDir() {
-    const homeDir = readOptionalEnv("HOME") || (Deno.build.os === "windows" ? windowsHomeDir() : "");
+    const homeDir = readOptionalEnv("HOME") || (platform === "win32" ? windowsHomeDir() : "");
     assertTestRunIsSandboxed(homeDir);
     return homeDir;
 }

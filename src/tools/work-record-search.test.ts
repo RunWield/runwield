@@ -1,4 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { writeWorkRecord } from "../shared/work-records/index.ts";
 import type { WorkRecordFrontMatter } from "../shared/work-records/schema.ts";
@@ -28,8 +32,8 @@ function recordAttrs(): WorkRecordFrontMatter {
     };
 }
 
-Deno.test("work_record_search indexes and hydrates canonical fixture records", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "work-record-search-tool-" });
+test("work_record_search indexes and hydrates canonical fixture records", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "work-record-search-tool-"));
     try {
         await writeWorkRecord(
             projectRoot,
@@ -58,12 +62,12 @@ Deno.test("work_record_search indexes and hydrates canonical fixture records", a
         assertStringIncludes(resultText(result), "work: Planned documentation");
         assertStringIncludes(resultText(result), "Full durable summary text");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("work_record_search reports the external Mnemoteca failure as a tool error", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "work-record-search-failure-" });
+test("work_record_search reports the external Mnemoteca failure as a tool error", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "work-record-search-failure-"));
     const failedPort: WorkRecordMnemotecaPort = {
         run: () =>
             Promise.resolve({
@@ -88,6 +92,6 @@ Deno.test("work_record_search reports the external Mnemoteca failure as a tool e
         assertEquals(result.details?.accessMode, "all");
         assertStringIncludes(resultText(result), "fixture index unavailable");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });

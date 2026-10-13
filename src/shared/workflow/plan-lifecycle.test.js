@@ -1,4 +1,13 @@
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import { makeTempDirectory } from "../../testing/temp-file.ts";
+import { testWithFsPermissions } from "../../testing/file-test.ts";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
     buildPlanEventUpdates,
     getAllowedManualPlanStatuses,
@@ -34,7 +43,7 @@ const TEST_DELIVERY_DETAILS = {
     },
 };
 
-Deno.test("validation lifecycle phase transitions are ordered", () => {
+test("validation lifecycle phase transitions are ordered", () => {
     const ciPassed = buildPlanEventUpdates("mechanical_validation_passed", "implemented");
     assertEquals(ciPassed.status, "implemented");
     assertEquals(ciPassed.validationPhase, "semantic");
@@ -57,7 +66,7 @@ Deno.test("validation lifecycle phase transitions are ordered", () => {
     );
 });
 
-Deno.test("validation retry counters increment and reset on implemented re-entry", () => {
+test("validation retry counters increment and reset on implemented re-entry", () => {
     const failedCi = buildPlanEventUpdates("mechanical_validation_failed", "implemented", {
         triageMeta: { validationCiAttempts: 2 },
     });
@@ -75,7 +84,7 @@ Deno.test("validation retry counters increment and reset on implemented re-entry
     assertEquals(failedValidation.validationSemanticRounds, 0);
 });
 
-Deno.test("buildPlanEventUpdates promotes approved plans to ready_for_work", () => {
+test("buildPlanEventUpdates promotes approved plans to ready_for_work", () => {
     const updates = buildPlanEventUpdates("readiness_passed", "approved", {
         now: () => new Date("2026-01-02T03:04:05.000Z"),
     });
@@ -85,7 +94,7 @@ Deno.test("buildPlanEventUpdates promotes approved plans to ready_for_work", () 
     assertEquals(updates.failureReason, null);
 });
 
-Deno.test("buildPlanEventUpdates marks approved Epics ready for decomposition", () => {
+test("buildPlanEventUpdates marks approved Epics ready for decomposition", () => {
     const updates = buildPlanEventUpdates("epic_readiness_passed", "approved", {
         now: () => new Date("2026-01-02T03:04:05.000Z"),
     });
@@ -95,7 +104,7 @@ Deno.test("buildPlanEventUpdates marks approved Epics ready for decomposition", 
     assertEquals(updates.failureReason, null);
 });
 
-Deno.test("buildPlanEventUpdates captures execution baseline when work starts", () => {
+test("buildPlanEventUpdates captures execution baseline when work starts", () => {
     const updates = buildPlanEventUpdates("execution_started", "ready_for_work", {
         executionBaselineTree: "abc123",
         now: () => new Date("2026-01-02T03:04:05.000Z"),
@@ -107,7 +116,7 @@ Deno.test("buildPlanEventUpdates captures execution baseline when work starts", 
     assertEquals(updates.implementedAt, null);
 });
 
-Deno.test("buildPlanEventUpdates omits worktree metadata for non-Git in-place execution", () => {
+test("buildPlanEventUpdates omits worktree metadata for non-Git in-place execution", () => {
     const updates = buildPlanEventUpdates("execution_started", "ready_for_work", {
         nonGitInPlace: true,
         executionBaselineTree: "abc123",
@@ -121,7 +130,7 @@ Deno.test("buildPlanEventUpdates omits worktree metadata for non-Git in-place ex
     assertEquals(updates.worktreeStatus, null);
 });
 
-Deno.test("buildPlanEventUpdates records worktree metadata when execution starts", () => {
+test("buildPlanEventUpdates records worktree metadata when execution starts", () => {
     const updates = buildPlanEventUpdates("execution_started", "ready_for_work", {
         executionBaselineTree: "abc123",
         worktreeId: "wt-1",
@@ -137,7 +146,7 @@ Deno.test("buildPlanEventUpdates records worktree metadata when execution starts
     assertEquals(updates.worktreeStatus, "active");
 });
 
-Deno.test("buildPlanEventUpdates restores durable worktree identity when implementation finishes", () => {
+test("buildPlanEventUpdates restores durable worktree identity when implementation finishes", () => {
     const updates = buildPlanEventUpdates("implementation_finished", "in_progress", {
         executionMode: "worktree",
         executionBaselineTree: "attempt-tree",
@@ -156,7 +165,7 @@ Deno.test("buildPlanEventUpdates restores durable worktree identity when impleme
     assertEquals(updates.worktreeStatus, "completed");
 });
 
-Deno.test("buildPlanEventUpdates keeps implemented status when validation fails", () => {
+test("buildPlanEventUpdates keeps implemented status when validation fails", () => {
     const updates = buildPlanEventUpdates("validation_failed", "implemented", {
         failureReason: "CI failed",
     });
@@ -166,7 +175,7 @@ Deno.test("buildPlanEventUpdates keeps implemented status when validation fails"
     assertEquals(updates.failureReason, "CI failed");
 });
 
-Deno.test("buildPlanEventUpdates tracks implementation worktree statuses", () => {
+test("buildPlanEventUpdates tracks implementation worktree statuses", () => {
     assertEquals(
         buildPlanEventUpdates("implementation_finished", "in_progress").worktreeStatus,
         "completed",
@@ -199,7 +208,7 @@ Deno.test("buildPlanEventUpdates tracks implementation worktree statuses", () =>
     assertEquals(retained.worktreeStatus, null);
 });
 
-Deno.test("buildPlanEventUpdates records and clears human review metadata", () => {
+test("buildPlanEventUpdates records and clears human review metadata", () => {
     const passed = buildPlanEventUpdates("validation_passed", "reviewed", {
         humanReviewMode: "always",
         humanReviewDecision: "approved",
@@ -225,7 +234,7 @@ Deno.test("buildPlanEventUpdates records and clears human review metadata", () =
     assertEquals(reopened.humanReviewedAt, null);
 });
 
-Deno.test("buildPlanEventUpdates records continue recovery as ready_for_work", () => {
+test("buildPlanEventUpdates records continue recovery as ready_for_work", () => {
     const updates = buildPlanEventUpdates("recovery_continue", "failed", {
         now: () => new Date("2026-01-02T03:04:05.000Z"),
     });
@@ -235,7 +244,7 @@ Deno.test("buildPlanEventUpdates records continue recovery as ready_for_work", (
     assertEquals(updates.failedAt, null);
 });
 
-Deno.test("buildPlanEventUpdates marks Epics done enough as deliberate closure with metadata", () => {
+test("buildPlanEventUpdates marks Epics done enough as deliberate closure with metadata", () => {
     const updates = buildPlanEventUpdates("epic_done_enough", "ready_for_work", {
         triageMeta: { classification: "PROJECT" },
         now: () => new Date("2026-06-17T00:00:00.000Z"),
@@ -251,7 +260,7 @@ Deno.test("buildPlanEventUpdates marks Epics done enough as deliberate closure w
     assertEquals(updates.failedAt, null);
 });
 
-Deno.test("buildPlanEventUpdates allows manual board movement only within safe statuses", () => {
+test("buildPlanEventUpdates allows manual board movement only within safe statuses", () => {
     const updates = buildPlanEventUpdates("manual_status_change", "implemented", {
         manualTargetStatus: "ready_for_work",
         now: () => new Date("2026-01-02T03:04:05.000Z"),
@@ -265,7 +274,7 @@ Deno.test("buildPlanEventUpdates allows manual board movement only within safe s
     assertEquals(updates.worktreeId, undefined);
 });
 
-Deno.test("manual board movement blocks movement into implemented without execution proof", () => {
+test("manual board movement blocks movement into implemented without execution proof", () => {
     assertThrows(
         () =>
             buildPlanEventUpdates("manual_status_change", "implemented", {
@@ -283,7 +292,7 @@ Deno.test("manual board movement blocks movement into implemented without execut
     );
 });
 
-Deno.test("manual board movement clears stale completion metadata when moving before implemented", () => {
+test("manual board movement clears stale completion metadata when moving before implemented", () => {
     const updates = buildPlanEventUpdates("manual_status_change", "implemented", {
         manualTargetStatus: "approved",
         triageMeta: {
@@ -307,7 +316,7 @@ Deno.test("manual board movement clears stale completion metadata when moving be
     assertEquals(updates.failedAt, null);
 });
 
-Deno.test("manual board movement preserves recovery context for retry statuses", () => {
+test("manual board movement preserves recovery context for retry statuses", () => {
     const updates = buildPlanEventUpdates("manual_status_change", "implemented", {
         manualTargetStatus: "ready_for_work",
         triageMeta: {
@@ -327,7 +336,7 @@ Deno.test("manual board movement preserves recovery context for retry statuses",
     assertEquals(updates.worktreeBranch, "runwield/wt-1");
 });
 
-Deno.test("manual board movement allows ready_for_decomposition only for Epic plans", () => {
+test("manual board movement allows ready_for_decomposition only for Epic plans", () => {
     assertEquals(
         buildPlanEventUpdates("manual_status_change", "approved", {
             manualTargetStatus: "ready_for_decomposition",
@@ -347,7 +356,7 @@ Deno.test("manual board movement allows ready_for_decomposition only for Epic pl
     );
 });
 
-Deno.test("manual board movement blocks protected and terminal shortcuts", () => {
+test("manual board movement blocks protected and terminal shortcuts", () => {
     assertThrows(
         () => buildPlanEventUpdates("manual_status_change", "approved", {}),
         Error,
@@ -383,7 +392,7 @@ Deno.test("manual board movement blocks protected and terminal shortcuts", () =>
     );
 });
 
-Deno.test("manual closure is terminal and does not pretend validation passed", () => {
+test("manual closure is terminal and does not pretend validation passed", () => {
     const updates = buildPlanEventUpdates("manual_closed_without_verification", "implemented", {
         now: () => new Date("2026-01-02T03:04:05.000Z"),
         closedWithoutVerificationReason: "Verified manually in staging.",
@@ -410,7 +419,7 @@ Deno.test("manual closure is terminal and does not pretend validation passed", (
     );
 });
 
-Deno.test("manual user verification records user attestation without RunWield proof", () => {
+test("manual user verification records user attestation without RunWield proof", () => {
     const updates = buildPlanEventUpdates("manual_user_verified", "implemented", {
         now: () => new Date("2026-01-02T03:04:05.000Z"),
         userVerificationNote: "Checked in staging with Alice.",
@@ -455,14 +464,14 @@ Deno.test("manual user verification records user attestation without RunWield pr
     );
 });
 
-Deno.test("validated Plans expose user verification without exposing generic board movement", () => {
+test("validated Plans expose user verification without exposing generic board movement", () => {
     const actions = getPlanLifecycleActionMetadata("reviewed", { classification: "PLANNED_CHANGE" });
     assertEquals(actions.canUserVerify, true);
     assertEquals(actions.allowedManualTargetStatuses, []);
     assertEquals(actions.canCloseWithoutVerification, false);
 });
 
-Deno.test("hold events create, resume, and reset hold metadata", () => {
+test("hold events create, resume, and reset hold metadata", () => {
     const held = buildPlanEventUpdates("plan_held", "failed", {
         now: () => new Date("2026-01-02T03:04:05.000Z"),
         holdReason: "priority shifted",
@@ -497,7 +506,7 @@ Deno.test("hold events create, resume, and reset hold metadata", () => {
     assertEquals(reset.humanReviewedAt, null);
 });
 
-Deno.test("hold blocks terminal statuses and resume requires held-from status", () => {
+test("hold blocks terminal statuses and resume requires held-from status", () => {
     assertThrows(
         () => buildPlanEventUpdates("plan_held", "verified"),
         Error,
@@ -520,7 +529,7 @@ Deno.test("hold blocks terminal statuses and resume requires held-from status", 
     );
 });
 
-Deno.test("manual board helper exports expose lifecycle-owned rules", () => {
+test("manual board helper exports expose lifecycle-owned rules", () => {
     assertEquals(getAllowedManualPlanStatuses("approved"), [
         "draft",
         "feedback",
@@ -545,11 +554,11 @@ Deno.test("manual board helper exports expose lifecycle-owned rules", () => {
     );
 });
 
-Deno.test("recordPlanEvent mutates only the selected held plan file", async () => {
-    const cwd = await Deno.makeTempDir();
+test("recordPlanEvent mutates only the selected held plan file", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
-        await Deno.mkdir(`${cwd}/docs/plans/epic`, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(`${cwd}/docs/plans/epic`, { recursive: true });
+        await fsWriteFile(
             `${cwd}/docs/plans/epic.md`,
             [
                 "---",
@@ -564,7 +573,7 @@ Deno.test("recordPlanEvent mutates only the selected held plan file", async () =
                 "# Epic",
             ].join("\n"),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             `${cwd}/docs/plans/epic/child.md`,
             [
                 "---",
@@ -582,22 +591,22 @@ Deno.test("recordPlanEvent mutates only the selected held plan file", async () =
         );
 
         await recordPlanEvent({ cwd, planName: "epic", event: "plan_held", currentStatus: "ready_for_work" });
-        assertEquals((await Deno.readTextFile(`${cwd}/docs/plans/epic.md`)).includes('status: "on_hold"'), true);
+        assertEquals((await fsReadFile(`${cwd}/docs/plans/epic.md`, "utf8")).includes('status: "on_hold"'), true);
         assertEquals(
-            (await Deno.readTextFile(`${cwd}/docs/plans/epic/child.md`)).includes('status: "ready_for_work"'),
+            (await fsReadFile(`${cwd}/docs/plans/epic/child.md`, "utf8")).includes('status: "ready_for_work"'),
             true,
         );
 
         await recordPlanEvent({ cwd, planName: "epic/child", event: "plan_held", currentStatus: "ready_for_work" });
-        assertEquals((await Deno.readTextFile(`${cwd}/docs/plans/epic.md`)).includes('status: "on_hold"'), true);
-        assertEquals((await Deno.readTextFile(`${cwd}/docs/plans/epic/child.md`)).includes('status: "on_hold"'), true);
+        assertEquals((await fsReadFile(`${cwd}/docs/plans/epic.md`, "utf8")).includes('status: "on_hold"'), true);
+        assertEquals((await fsReadFile(`${cwd}/docs/plans/epic/child.md`, "utf8")).includes('status: "on_hold"'), true);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("recordPlanEvent verifies parent Epic when the final child feature is verified", async () => {
-    const cwd = await Deno.makeTempDir();
+test("recordPlanEvent verifies parent Epic when the final child feature is verified", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic", "# Epic", {
             classification: "PROJECT",
@@ -649,12 +658,12 @@ Deno.test("recordPlanEvent verifies parent Epic when the final child feature is 
             "All 2 child plans are completed after epic/02-last.",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("recordPlanEvent keeps parent Epic open while child features remain unverified", async () => {
-    const cwd = await Deno.makeTempDir();
+test("recordPlanEvent keeps parent Epic open while child features remain unverified", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(cwd, "epic", "# Epic", {
             classification: "PROJECT",
@@ -694,11 +703,11 @@ Deno.test("recordPlanEvent keeps parent Epic open while child features remain un
         assertEquals(parent?.attrs.status, "ready_for_work");
         assertEquals(parent?.attrs.epicCompletionMode, undefined);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("buildPlanEventUpdates only allows documented transitions", () => {
+test("buildPlanEventUpdates only allows documented transitions", () => {
     assertThrows(
         () => buildPlanEventUpdates("execution_started", "approved"),
         Error,
@@ -711,7 +720,7 @@ Deno.test("buildPlanEventUpdates only allows documented transitions", () => {
     );
 });
 
-Deno.test("buildPlanEventUpdates only marks PROJECT Epic plans done enough", () => {
+test("buildPlanEventUpdates only marks PROJECT Epic plans done enough", () => {
     assertThrows(
         () =>
             buildPlanEventUpdates("epic_done_enough", "ready_for_work", {
@@ -722,27 +731,27 @@ Deno.test("buildPlanEventUpdates only marks PROJECT Epic plans done enough", () 
     );
 });
 
-Deno.test("isExecutablePlanStatus only accepts ready_for_work", () => {
+test("isExecutablePlanStatus only accepts ready_for_work", () => {
     assertEquals(isExecutablePlanStatus("ready_for_work"), true);
     assertEquals(isExecutablePlanStatus("ready_for_decomposition"), false);
     assertEquals(isExecutablePlanStatus("approved"), false);
     assertEquals(isExecutablePlanStatus("implemented"), false);
 });
 
-Deno.test("isEpicPlan detects PROJECT plans by classification", () => {
+test("isEpicPlan detects PROJECT plans by classification", () => {
     assertEquals(isEpicPlan({ classification: "PROJECT" }), true);
     assertEquals(isEpicPlan({ type: "epic" }), false);
     assertEquals(isEpicPlan({ classification: "FEATURE" }), false);
     assertEquals(isEpicPlan(undefined), false);
 });
 
-Deno.test("stageValidationPassedInExecutionWorktree validates only the execution Plan and is idempotent", async () => {
-    const projectRoot = await Deno.makeTempDir();
-    const executionCwd = await Deno.makeTempDir();
+test("stageValidationPassedInExecutionWorktree validates only the execution Plan and is idempotent", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const canonicalPath = `${projectRoot}/docs/plans/feature.md`;
-        await Deno.mkdir(`${projectRoot}/docs/plans`, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
+        await fsWriteFile(
             canonicalPath,
             injectFrontMatter(
                 "# Feature",
@@ -798,14 +807,14 @@ Deno.test("stageValidationPassedInExecutionWorktree validates only the execution
         assertStringIncludes(executionMarkdown, "customFlag: true");
         assertStringIncludes(executionMarkdown, 'status: "reviewed"');
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("stageValidationPassedInExecutionWorktree keeps reviewed evidence immutable on retry", async () => {
-    const projectRoot = await Deno.makeTempDir();
-    const executionCwd = await Deno.makeTempDir();
+test("stageValidationPassedInExecutionWorktree keeps reviewed evidence immutable on retry", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(projectRoot, "feature", "# Feature", { status: "implemented", classification: "FEATURE" });
         await savePlan(executionCwd, "feature", "# Feature", {
@@ -838,14 +847,14 @@ Deno.test("stageValidationPassedInExecutionWorktree keeps reviewed evidence immu
         assertEquals(result.attrs.deliveryEvidence, TEST_DELIVERY_DETAILS.deliveryEvidence);
         assertEquals((await loadPlan(projectRoot, "feature"))?.attrs.status, "implemented");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("stageValidationPassedInExecutionWorktree preserves execution Plan human review evidence", async () => {
-    const projectRoot = await Deno.makeTempDir();
-    const executionCwd = await Deno.makeTempDir();
+test("stageValidationPassedInExecutionWorktree preserves execution Plan human review evidence", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(projectRoot, "feature", "# Feature", {
             status: "implemented",
@@ -898,14 +907,14 @@ Deno.test("stageValidationPassedInExecutionWorktree preserves execution Plan hum
         assertEquals(retried.attrs.humanReviewDecision, "approved");
         assertEquals(retried.attrs.humanReviewedAt, "2026-01-02T00:00:00.000Z");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("stageValidationPassedInExecutionWorktree advances the execution-worktree parent only", async () => {
-    const projectRoot = await Deno.makeTempDir();
-    const executionCwd = await Deno.makeTempDir();
+test("stageValidationPassedInExecutionWorktree advances the execution-worktree parent only", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const epicAttrs = /** @type {any} */ ({
             status: "ready_for_work",
@@ -959,14 +968,14 @@ Deno.test("stageValidationPassedInExecutionWorktree advances the execution-workt
         assertEquals(result.planPaths, ["docs/plans/child-b.md", "docs/plans/epic.md"]);
         assertEquals(retried.planPaths, result.planPaths);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("stageValidationPassedInExecutionWorktree idempotent retry does not reread the primary hierarchy", async () => {
-    const projectRoot = await Deno.makeTempDir();
-    const executionCwd = await Deno.makeTempDir();
+test("stageValidationPassedInExecutionWorktree idempotent retry does not reread the primary hierarchy", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const epicAttrs = /** @type {any} */ ({
             status: "ready_for_work",
@@ -1017,14 +1026,14 @@ Deno.test("stageValidationPassedInExecutionWorktree idempotent retry does not re
         assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "ready_for_work");
         assertEquals((await loadPlan(executionCwd, "child-b"))?.attrs.status, "in_progress");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only in the primary checkout", async () => {
-    const projectRoot = await Deno.makeTempDir();
-    const executionCwd = await Deno.makeTempDir();
+test("stageValidationPassedInExecutionWorktree ignores a sibling reopened only in the primary checkout", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const epicAttrs = /** @type {any} */ ({
             status: "ready_for_work",
@@ -1076,14 +1085,14 @@ Deno.test("stageValidationPassedInExecutionWorktree ignores a sibling reopened o
         assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "reviewed");
         assertEquals((await loadPlan(executionCwd, "child-b"))?.attrs.status, "verified");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("stageValidationPassedInExecutionWorktree does not import a newer primary parent state", async () => {
-    const projectRoot = await Deno.makeTempDir();
-    const executionCwd = await Deno.makeTempDir();
+test("stageValidationPassedInExecutionWorktree does not import a newer primary parent state", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         const epicAttrs = /** @type {any} */ ({
             status: "ready_for_work",
@@ -1138,14 +1147,14 @@ Deno.test("stageValidationPassedInExecutionWorktree does not import a newer prim
         assertEquals((await loadPlan(projectRoot, "epic"))?.attrs.status, "on_hold");
         assertEquals((await loadPlan(executionCwd, "epic"))?.attrs.status, "reviewed");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("stageValidationPassedInExecutionWorktree rejects a Plan outside Workflow Validation", async () => {
-    const projectRoot = await Deno.makeTempDir();
-    const executionCwd = await Deno.makeTempDir();
+test("stageValidationPassedInExecutionWorktree rejects a Plan outside Workflow Validation", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    const executionCwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         // Publishing is legal from any status validation actually runs from, so the
         // guard rejects statuses outside validation rather than one exact status. It
@@ -1160,13 +1169,13 @@ Deno.test("stageValidationPassedInExecutionWorktree rejects a Plan outside Workf
         );
         assertEquals((await loadPlan(executionCwd, "feature"))?.attrs.status, "in_progress");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("recordPlanEvent enforces FEATURE Delivery Evidence without supplied triage metadata", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("recordPlanEvent enforces FEATURE Delivery Evidence without supplied triage metadata", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(projectRoot, "feature", "# Feature", {
             status: "reviewed",
@@ -1185,12 +1194,12 @@ Deno.test("recordPlanEvent enforces FEATURE Delivery Evidence without supplied t
         );
         assertEquals((await loadPlan(projectRoot, "feature"))?.attrs.status, "reviewed");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("recordPlanEvent rejects invalid transitions before writing", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("recordPlanEvent rejects invalid transitions before writing", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await assertRejects(
             () =>
@@ -1204,12 +1213,12 @@ Deno.test("recordPlanEvent rejects invalid transitions before writing", async ()
             "Plan not found: missing",
         );
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("recordPlanEvent explains stale Plan status with a validation action", async () => {
-    const projectRoot = await Deno.makeTempDir();
+test("recordPlanEvent explains stale Plan status with a validation action", async () => {
+    const projectRoot = await makeTempDirectory({ prefix: "runwield-fixture-" });
     try {
         await savePlan(projectRoot, "feature", "# Feature", { status: "implemented" });
 
@@ -1230,11 +1239,11 @@ Deno.test("recordPlanEvent explains stale Plan status with a validation action",
         assertStringIncludes(error.message, "run validation again for this Plan");
         assertStringIncludes(error.message, "Do not reset your worktree.");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("getPlanLifecycleActionMetadata keeps protected states behind dedicated actions", () => {
+test("getPlanLifecycleActionMetadata keeps protected states behind dedicated actions", () => {
     const draft = getPlanLifecycleActionMetadata("draft", { classification: "FEATURE" });
     assertEquals(draft.allowedManualTargetStatuses.includes("verified"), false);
     assertEquals(draft.allowedManualTargetStatuses.includes("failed"), false);
@@ -1258,44 +1267,40 @@ Deno.test("getPlanLifecycleActionMetadata keeps protected states behind dedicate
     assertEquals(held.canResetToDraft, true);
 });
 
-Deno.test({
-    name: "recordPlanEvent blocks shared Plan lifecycle writes without mutating siblings",
-    permissions: { read: true, write: true },
-    fn: async () => {
-        const cwd = await Deno.makeTempDir();
-        try {
-            const lockedPath = await savePlan(cwd, "locked", "# Locked", {
-                status: "approved",
-                collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
-                collaborationServerUrl: "https://plans.example.test",
-                collaborationSpaceId: "space-1",
-            });
-            const siblingPath = await savePlan(cwd, "sibling", "# Sibling", { status: "approved" });
-            const lockedBefore = await Deno.readTextFile(lockedPath);
-            const siblingBefore = await Deno.readTextFile(siblingPath);
+testWithFsPermissions("recordPlanEvent blocks shared Plan lifecycle writes without mutating siblings", async () => {
+    const cwd = await makeTempDirectory({ prefix: "runwield-fixture-" });
+    try {
+        const lockedPath = await savePlan(cwd, "locked", "# Locked", {
+            status: "approved",
+            collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
+            collaborationServerUrl: "https://plans.example.test",
+            collaborationSpaceId: "space-1",
+        });
+        const siblingPath = await savePlan(cwd, "sibling", "# Sibling", { status: "approved" });
+        const lockedBefore = await fsReadFile(lockedPath, "utf8");
+        const siblingBefore = await fsReadFile(siblingPath, "utf8");
 
-            const error = await assertRejects(
-                () =>
-                    recordPlanEvent({
-                        cwd,
-                        planName: "locked",
-                        event: "readiness_passed",
-                        currentStatus: "approved",
-                    }),
-                SharedPlanLockError,
-            );
-            assertStringIncludes(error.repair, "wld plans pull");
-            assertEquals(await Deno.readTextFile(lockedPath), lockedBefore);
-            assertEquals(await Deno.readTextFile(siblingPath), siblingBefore);
-            assertEquals((await loadPlan(cwd, "sibling"))?.attrs.status, "approved");
-        } finally {
-            await Deno.remove(cwd, { recursive: true });
-        }
-    },
+        const error = await assertRejects(
+            () =>
+                recordPlanEvent({
+                    cwd,
+                    planName: "locked",
+                    event: "readiness_passed",
+                    currentStatus: "approved",
+                }),
+            SharedPlanLockError,
+        );
+        assertStringIncludes(error.repair, "wld plans pull");
+        assertEquals(await fsReadFile(lockedPath, "utf8"), lockedBefore);
+        assertEquals(await fsReadFile(siblingPath, "utf8"), siblingBefore);
+        assertEquals((await loadPlan(cwd, "sibling"))?.attrs.status, "approved");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
 });
 
-Deno.test("passing CI retains durable semantic review state across a fresh Plan load", async () => {
-    const root = await Deno.makeTempDir({ prefix: "lifecycle-ci-review-state-" });
+test("passing CI retains durable semantic review state across a fresh Plan load", async () => {
+    const root = await makeTempDirectory({ prefix: "lifecycle-ci-review-state-" });
     /** @type {import("./validation-checkpoint.ts").ValidationCheckpoint} */
     const checkpoint = {
         version: 1,
@@ -1341,6 +1346,6 @@ Deno.test("passing CI retains durable semantic review state across a fresh Plan 
         assertEquals(resumed?.attrs.validationSemanticRounds, 2);
         assertEquals(resumed?.attrs.validationCheckpoint, checkpoint);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

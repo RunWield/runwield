@@ -262,6 +262,18 @@ export function assertAcpFrameSchema(
     frame: string,
     select: (message: { [key: string]: JsonValue }) => JsonValue,
 ): void {
-    const parsed = JSON.parse(frame) as { [key: string]: JsonValue };
+    let parsed: JsonValue;
+    try {
+        parsed = JSON.parse(frame);
+    } catch (error) {
+        const details = error instanceof Error ? error.message : String(error);
+        throw new Error(`ACP ${definitionName} frame is not valid JSON: ${details}\n  Frame: ${frame}`, {
+            cause: error,
+        });
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        const actualType = Array.isArray(parsed) ? "array" : parsed === null ? "null" : typeof parsed;
+        throw new Error(`ACP ${definitionName} frame must be a JSON object, got ${actualType}\n  Frame: ${frame}`);
+    }
     assertAcpSchema(definitionName, select(parsed));
 }

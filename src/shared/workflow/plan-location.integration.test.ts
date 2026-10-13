@@ -1,5 +1,22 @@
-import { assert, assertEquals } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { realpathSync as fsRealpathSync } from "node:fs";
+import {
+    lstat as fsLstat,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
 import {
     listPlans,
@@ -23,16 +40,16 @@ import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// application\n" });
 
 async function pathExists(path: string): Promise<boolean> {
-    return await Deno.stat(path).then(() => true).catch(() => false);
+    return await fsStat(path).then(() => true).catch(() => false);
 }
 
 function selectedInternalLockPath(root: string, name: string): string {
-    return join(getRunWieldRuntimeDir(Deno.realPathSync(root)), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks", name);
+    return join(getRunWieldRuntimeDir(fsRealpathSync(root)), PROJECT_INTERNAL_RUNTIME_DIR_NAME, "plan-locks", name);
 }
 
-Deno.test("Plan locks stay in the linked checkout while primary locks remain independent", async () => {
+test("Plan locks stay in the linked checkout while primary locks remain independent", async () => {
     const root = await fixture.checkout({ prefix: "rw-selected-lock-primary-" });
-    const container = await Deno.makeTempDir({ prefix: "rw-selected-lock-tree-" });
+    const container = await fsMkdtemp(join(tmpdir(), "rw-selected-lock-tree-"));
     const selected = join(container, "selected");
     try {
         await git(root, ["worktree", "add", "-b", "worktree/selected-locks", selected, "HEAD"]);
@@ -40,15 +57,15 @@ Deno.test("Plan locks stay in the linked checkout while primary locks remain ind
         const selectedCatalog = selectedInternalLockPath(selected, "catalog.lock");
         const primaryLock = selectedInternalLockPath(root, "demo.lock");
         const primaryCatalog = selectedInternalLockPath(root, "catalog.lock");
-        const legacySelectedLock = join(getRunWieldRuntimeDir(Deno.realPathSync(selected)), "plan-locks", "demo.lock");
+        const legacySelectedLock = join(getRunWieldRuntimeDir(fsRealpathSync(selected)), "plan-locks", "demo.lock");
         const legacySelectedCatalog = join(
-            getRunWieldRuntimeDir(Deno.realPathSync(selected)),
+            getRunWieldRuntimeDir(fsRealpathSync(selected)),
             "plan-locks",
             "catalog.lock",
         );
         const primaryRegistryPath = getWorktreeRegistryPath(root);
         const selectedRegistryPath = join(
-            getRunWieldRuntimeDir(Deno.realPathSync(selected)),
+            getRunWieldRuntimeDir(fsRealpathSync(selected)),
             PROJECT_INTERNAL_RUNTIME_DIR_NAME,
             "worktrees.json",
         );
@@ -67,7 +84,7 @@ Deno.test("Plan locks stay in the linked checkout while primary locks remain ind
             updatedAt: "2026-01-01T00:00:00.000Z",
         });
         assertEquals((await findById(root, "selected-entry"))?.path, selected);
-        await Deno.lstat(primaryRegistryPath);
+        await fsLstat(primaryRegistryPath);
         assertEquals(await pathExists(selectedRegistryPath), false);
         await writeControllerState(selected, { planName: "demo", planId: "plan-demo" }, {
             failureReason: "primary proof",
@@ -83,7 +100,7 @@ Deno.test("Plan locks stay in the linked checkout while primary locks remain ind
         const firstPlanEntered = new Promise<void>((resolve) => signalFirstPlan = resolve);
         const firstPlan = withPlanLock(selected, "demo", async () => {
             planEntries.push("selected-first");
-            await Deno.lstat(selectedLock);
+            await fsLstat(selectedLock);
             assertEquals(await pathExists(primaryLock), false);
             assertEquals(await pathExists(legacySelectedLock), false);
             signalFirstPlan();
@@ -99,7 +116,7 @@ Deno.test("Plan locks stay in the linked checkout while primary locks remain ind
         assertEquals(planEntries, ["selected-first"]);
         await withPlanLock(root, "demo", async () => {
             planEntries.push("primary");
-            await Deno.lstat(primaryLock);
+            await fsLstat(primaryLock);
         });
         releaseFirstPlan();
         await Promise.all([firstPlan, selectedSecondPlan]);
@@ -114,7 +131,7 @@ Deno.test("Plan locks stay in the linked checkout while primary locks remain ind
         const firstCatalogEntered = new Promise<void>((resolve) => signalFirstCatalog = resolve);
         const firstCatalog = withPlanCatalogLock(selected, async () => {
             catalogEntries.push("selected-first");
-            await Deno.lstat(selectedCatalog);
+            await fsLstat(selectedCatalog);
             assertEquals(await pathExists(primaryCatalog), false);
             assertEquals(await pathExists(legacySelectedCatalog), false);
             signalFirstCatalog();
@@ -129,7 +146,7 @@ Deno.test("Plan locks stay in the linked checkout while primary locks remain ind
         assertEquals(catalogEntries, ["selected-first"]);
         await withPlanCatalogLock(root, async () => {
             catalogEntries.push("primary");
-            await Deno.lstat(primaryCatalog);
+            await fsLstat(primaryCatalog);
         });
         releaseFirstCatalog();
         await Promise.all([firstCatalog, selectedSecondCatalog]);
@@ -138,14 +155,14 @@ Deno.test("Plan locks stay in the linked checkout while primary locks remain ind
         assertEquals(await pathExists(primaryCatalog), false);
     } finally {
         await git(root, ["worktree", "remove", "--force", selected]).catch(() => {});
-        await Deno.remove(container, { recursive: true }).catch(() => {});
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(container, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("load-plan rebuilds a missing execution worktree from one rescued branch", async () => {
+test("load-plan rebuilds a missing execution worktree from one rescued branch", async () => {
     const root = await fixture.checkout({ prefix: "rw-rescued-execution-" });
-    const container = await Deno.makeTempDir({ prefix: "rw-rescued-execution-tree-" });
+    const container = await fsMkdtemp(join(tmpdir(), "rw-rescued-execution-tree-"));
     const executionPath = `${container}/execution`;
     try {
         await savePlan(root, "demo", "# Demo\n\n## Context\n\nImplement demo.\n", {
@@ -159,7 +176,7 @@ Deno.test("load-plan rebuilds a missing execution worktree from one rescued bran
         const baseCommit = await git(root, ["rev-parse", "HEAD"]);
         const baseTree = await git(root, ["rev-parse", "HEAD^{tree}"]);
         await git(root, ["switch", "-c", "rescued/demo"]);
-        await Deno.writeTextFile(`${root}/app.ts`, "// rescued implementation\n");
+        await fsWriteFile(`${root}/app.ts`, "// rescued implementation\n");
         const plan = await loadPlan(root, "demo");
         assert(plan);
         await updatePlanFrontMatter(root, "demo", { status: "implemented" }, plan.attrs, {
@@ -168,7 +185,7 @@ Deno.test("load-plan rebuilds a missing execution worktree from one rescued bran
         await git(root, ["add", "app.ts", "docs/plans/demo.md"]);
         await git(root, ["commit", "-m", "rescue completed implementation"]);
         await git(root, ["switch", "main"]);
-        await Deno.writeTextFile(`${root}/target.ts`, "// newer target work\n");
+        await fsWriteFile(`${root}/target.ts`, "// newer target work\n");
         await git(root, ["add", "target.ts"]);
         await git(root, ["commit", "-m", "new target work"]);
         await git(root, ["switch", "-c", "rescued/publication"]);
@@ -204,13 +221,13 @@ Deno.test("load-plan rebuilds a missing execution worktree from one rescued bran
         assertEquals((await loadPlan(root, "demo"))?.attrs.status, "ready_for_work");
     } finally {
         await git(root, ["worktree", "remove", "--force", executionPath]).catch(() => {});
-        await Deno.remove(container, { recursive: true }).catch(() => {});
-        await Deno.remove(root, { recursive: true });
+        await fsRm(container, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true });
     }
 });
 
 for (const surface of ["primary", "execution"]) {
-    Deno.test(`review from ${surface}, restart, approve and execute keeps the document and attempt`, async () => {
+    test(`review from ${surface}, restart, approve and execute keeps the document and attempt`, async () => {
         const root = await fixture.checkout();
         const first = new HostedSession({ id: "first", cwd: root, eventSink: () => {} });
         const second = new HostedSession({ id: "second", cwd: root, eventSink: () => {} });
@@ -236,7 +253,7 @@ for (const surface of ["primary", "execution"]) {
             const started = first.getActiveExecutionWorkflow();
             assert(started?.executionCwd && started.worktreeId);
             trees.push(started.executionCwd);
-            const primaryBytes = await Deno.readTextFile(initial.path);
+            const primaryBytes = await fsReadFile(initial.path, "utf8");
             const execution = await loadPlan(started.executionCwd, "demo");
             assert(execution);
             const reviewedMarkdown = execution.markdown.replace("Implement demo.", "The revised approved definition.");
@@ -290,17 +307,16 @@ for (const surface of ["primary", "execution"]) {
             const next = await resolveWorkflowPlanLocation(root, "demo");
             assert(next.plan);
             first.dispose();
-            const reader = await new Deno.Command(Deno.execPath(), {
-                args: [
+            const reader = await captureForegroundProcess(process.execPath, {
+                args: runtimeSourceArgs([
                     "run",
                     "-A",
                     fromFileUrl(new URL("./testing/controller-process-reader.ts", import.meta.url)),
                     root,
                     "demo",
-                ],
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+                ]),
+                cwd: getCwd(),
+            });
             assert(reader.success, new TextDecoder().decode(reader.stderr));
             const restarted = JSON.parse(new TextDecoder().decode(reader.stdout));
             assertEquals(restarted.path, execution.path);
@@ -320,7 +336,7 @@ for (const surface of ["primary", "execution"]) {
             assertEquals(result.worktreeBranch, started.worktreeBranch);
             assertEquals((await loadPlan(result.executionCwd, "demo"))?.attrs.status, "in_progress");
             assert((await loadPlan(result.executionCwd, "demo"))?.body.includes("The revised approved definition."));
-            assertEquals(await Deno.readTextFile(initial.path), primaryBytes);
+            assertEquals(await fsReadFile(initial.path, "utf8"), primaryBytes);
             assertEquals(
                 await git(root, ["show-ref", "--verify", "--hash", `refs/heads/${started.worktreeBranch}`]) !== "",
                 true,
@@ -331,7 +347,7 @@ for (const surface of ["primary", "execution"]) {
             first.dispose();
             second.dispose();
             for (const tree of trees) await git(root, ["worktree", "remove", "--force", tree]);
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 }

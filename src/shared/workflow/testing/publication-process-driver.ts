@@ -1,3 +1,6 @@
+import { captureForegroundProcess } from "../../captured-process.ts";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
 import { publishExecutionWorktreeIsolated } from "../../isolated-publication.ts";
 import { withPlanLock } from "../../../plan-store.js";
 import { checkpointExecutionWorktree } from "../../worktree.js";
@@ -22,34 +25,30 @@ type DriverConfig = {
 };
 
 function crash(config: DriverConfig, boundary: string): void {
-    if (config.crashAfter === boundary) Deno.exit(86);
+    if (config.crashAfter === boundary) process.exit(86);
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     if (!output.success) throw new Error(new TextDecoder().decode(output.stderr));
     return new TextDecoder().decode(output.stdout).trim();
 }
 
 async function removePublicationArtifacts(config: DriverConfig, publicationRoot: string): Promise<void> {
-    await new Deno.Command("git", {
+    await captureForegroundProcess("git", {
         cwd: config.projectRoot,
         args: ["worktree", "remove", "--force", config.executionCwd],
-        stdout: "null",
-        stderr: "null",
-    }).output();
-    await new Deno.Command("git", {
+    });
+    await captureForegroundProcess("git", {
         cwd: config.projectRoot,
         args: ["branch", "-D", config.executionBranch],
-        stdout: "null",
-        stderr: "null",
-    }).output();
-    await Deno.remove(publicationRoot, { recursive: true }).catch(() => {});
+    });
+    await fsRm(publicationRoot, { recursive: true }).catch(() => {});
 }
 
-const configPath = Deno.args[0];
+const configPath = process.argv.slice(2)[0];
 if (!configPath) throw new Error("publication process driver requires a config path");
-const config = JSON.parse(await Deno.readTextFile(configPath)) as DriverConfig;
+const config = JSON.parse(await fsReadFile(configPath, "utf8")) as DriverConfig;
 await withPlanLock(config.projectRoot, config.planName, async () => {
     let attempt = await loadPublicationAttempt(config.projectRoot, config.attemptId);
 
@@ -78,12 +77,12 @@ await withPlanLock(config.projectRoot, config.planName, async () => {
     attempt = await reconcileStoredPublication(config.projectRoot, attempt);
     if (attempt.phase === "candidate_sealed") {
         const planPath = `docs/plans/${config.planName}.md`;
-        await Deno.mkdir(`${config.executionCwd}/docs/plans`, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(`${config.executionCwd}/docs/plans`, { recursive: true });
+        await fsWriteFile(
             `${config.executionCwd}/${planPath}`,
             `---\nplanId: ${attempt.planId}\nclassification: PLANNED_CHANGE\nstatus: reviewed\n---\n# Matrix Plan\n`,
         );
-        await Deno.writeTextFile(`${config.executionCwd}/artifact-count.txt`, "1\n");
+        await fsWriteFile(`${config.executionCwd}/artifact-count.txt`, "1\n");
         const artifact = await checkpointExecutionWorktree({
             worktreePath: config.executionCwd,
             branch: config.executionBranch,

@@ -3,7 +3,7 @@
  * Publish an active saved Plan as a remote-canonical Shared Space.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
 import {
     ensurePlanIdentity,

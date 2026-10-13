@@ -34,7 +34,7 @@ export function reviewCollapseStatePlugin() {
         enforce: "pre" as const,
         transform(source: string, id: string) {
             if (!id.split("?")[0].endsWith(componentPath)) return null;
-            let code = source;
+            let code = source.replaceAll("\r\n", "\n");
             for (const [before, after] of replacements) {
                 if (code.split(before).length !== 2) {
                     throw new Error("Plannotator collapse-state adaptation no longer matches the pinned component.");

@@ -1,5 +1,9 @@
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Import published code before resuming an unstarted child's planning checkout. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
@@ -8,19 +12,14 @@ import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } fro
 import { runExecutionPreparationTransition } from "./state-transition.ts";
 
 async function git(cwd: string, args: string[]) {
-    const result = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureForegroundProcess("git", { cwd, args });
     const stdout = new TextDecoder().decode(result.stdout);
     if (!result.success) throw new Error(`git ${args.join(" ")} failed: ${new TextDecoder().decode(result.stderr)}`);
     return stdout;
 }
 
 async function readPlanAt(cwd: string, ref: string, path: string) {
-    const result = await new Deno.Command("git", {
-        cwd,
-        args: ["show", `${ref}:${path}`],
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    const result = await captureForegroundProcess("git", { cwd, args: ["show", `${ref}:${path}`] });
     return result.success ? new TextDecoder().decode(result.stdout) : null;
 }
 
@@ -42,16 +41,11 @@ async function mergePlanningDocument(
     const lifecycle = own || incomingAttrs.status === baseAttrs.status ? currentAttrs : incomingAttrs;
     const overrides = { status: lifecycle.status, userVerifiedAt: lifecycle.userVerifiedAt };
     const versions = [current, base, incoming].map((text) => planDocumentMarkdown(injectFrontMatter(text, overrides)));
-    const scratch = await Deno.makeTempDir({ prefix: "runwield-planning-merge-" });
+    const scratch = await mkdtemp(join(tmpdir(), "runwield-planning-merge-"));
     try {
         const paths = ["current", "base", "incoming"].map((name) => join(scratch, name));
-        await Promise.all(paths.map((path, index) => Deno.writeTextFile(path, versions[index])));
-        const result = await new Deno.Command("git", {
-            cwd,
-            args: ["merge-file", "-p", ...paths],
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        await Promise.all(paths.map((path, index) => fsWriteFile(path, versions[index])));
+        const result = await captureForegroundProcess("git", { cwd, args: ["merge-file", "-p", ...paths] });
         if (!result.success) {
             throw new Error(
                 `Cannot refresh ${path}: planning scope conflicts with published changes. Both versions are preserved.`,
@@ -59,7 +53,7 @@ async function mergePlanningDocument(
         }
         return new TextDecoder().decode(result.stdout);
     } finally {
-        await Deno.remove(scratch, { recursive: true });
+        await fsRm(scratch, { recursive: true });
     }
 }
 
@@ -79,19 +73,15 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
             entry = currentEntry;
             const branch = (await git(entry.path, ["branch", "--show-current"])).trim();
             if (branch !== entry.branch) throw new Error(`Planning worktree is no longer on ${entry.branch}.`);
-            const pendingMerge = await new Deno.Command("git", {
+            const pendingMerge = await captureForegroundProcess("git", {
                 cwd: entry.path,
                 args: ["rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
-                stdout: "null",
-                stderr: "null",
-            }).output();
+            });
             if (pendingMerge.success) throw new Error(`Planning worktree has an unfinished merge: ${entry.path}`);
-            const newerBase = await new Deno.Command("git", {
+            const newerBase = await captureForegroundProcess("git", {
                 cwd: entry.path,
                 args: ["merge-base", "--is-ancestor", targetCommit, entry.baseCommit],
-                stdout: "null",
-                stderr: "null",
-            }).output();
+            });
             if (newerBase.success) return entry;
             // On retry the merge may already be durable while registry settlement
             // is pending. Published code is never mistaken for child implementation.
@@ -146,7 +136,7 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
             // merge can be aborted without losing it or touching the primary checkout.
             if (base !== targetCommit) {
                 try {
-                    const merged = await new Deno.Command("git", {
+                    const merged = await captureForegroundProcess("git", {
                         cwd: entry.path,
                         args: [
                             "merge",
@@ -157,9 +147,7 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                             "--no-overwrite-ignore",
                             targetCommit,
                         ],
-                        stdout: "piped",
-                        stderr: "piped",
-                    }).output();
+                    });
                     const conflicts = (await git(entry.path, ["diff", "--name-only", "-z", "--diff-filter=U"]))
                         .split("\0").filter(Boolean);
                     if ((!merged.success && !conflicts.length) || conflicts.some((path) => !documents.has(path))) {
@@ -168,7 +156,7 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                         );
                     }
                     for (const [path, markdown] of documents) {
-                        await Deno.writeTextFile(join(entry.path, path), markdown);
+                        await fsWriteFile(join(entry.path, path), markdown);
                         await git(entry.path, ["add", "--", path]);
                     }
                     await git(entry.path, ["commit", "-m", `Refresh ${entry.planName} from ${entry.baseBranch}`]);

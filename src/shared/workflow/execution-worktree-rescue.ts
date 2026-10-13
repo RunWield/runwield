@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "../captured-process.ts";
+import { lstat as fsLstat } from "node:fs/promises";
 /** Recover a deleted execution checkout from Git evidence left by a manual rescue. */
 import { loadPlan, parsePlanFrontMatter } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
@@ -45,12 +47,7 @@ const RESCUED_EXECUTION_STATUSES = new Set([
 ]);
 
 async function runGitResult(cwd: string, args: string[]): Promise<GitResult> {
-    const output = await new Deno.Command("git", {
-        cwd,
-        args,
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     const decoder = new TextDecoder();
     return {
         code: output.code,
@@ -67,10 +64,10 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
 
 export async function executionWorktreePathExists(path: string): Promise<boolean> {
     try {
-        await Deno.lstat(path);
+        await fsLstat(path);
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }

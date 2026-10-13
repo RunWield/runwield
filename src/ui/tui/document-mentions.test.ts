@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { getCapabilities, setCapabilities, visibleWidth } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 import { DocumentLinkHost } from "../review/document-link-host.ts";
@@ -8,21 +13,21 @@ import { AgentMessageBlock, SystemMessageBlock, ToolExecutionBlock, UserPromptBl
 initRunWieldTheme();
 
 async function withDocuments(run: (host: DocumentLinkHost) => void | Promise<void>) {
-    const root = await Deno.makeTempDir({ prefix: "tui-document-mentions-" });
+    const root = await fsMkdtemp(join(tmpdir(), "tui-document-mentions-"));
     const host = new DocumentLinkHost(root);
     const capabilities = getCapabilities();
     setCapabilities({ ...capabilities, hyperlinks: true });
     try {
-        await Deno.mkdir(`${root}/docs`);
+        await fsMkdir(`${root}/docs`);
         for (const name of ["file.md", "café.md", "with space.md", "100%.md", "literal%20name.md", "literal name.md"]) {
-            await Deno.writeTextFile(`${root}/docs/${name}`, `# ${name}\nCurrent content`);
+            await fsWriteFile(`${root}/docs/${name}`, `# ${name}\nCurrent content`);
         }
-        await Deno.writeTextFile(`${root}/README.md`, "# Home");
+        await fsWriteFile(`${root}/README.md`, "# Home");
         await run(host);
     } finally {
         setCapabilities(capabilities);
         await host.dispose();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 }
 
@@ -31,7 +36,7 @@ function targets(text: string): string[] {
     return Array.from(text.matchAll(/\x1b\]8;;(http:\/\/127\.0\.0\.1:[^\x07]+)\x07/g), (match) => match[1]);
 }
 
-Deno.test("Agent mentions keep labels and resolve all Markdown shapes through a real reader", async () => {
+test("Agent mentions keep labels and resolve all Markdown shapes through a real reader", async () => {
     await withDocuments(async (host) => {
         const examples = [
             ["(docs/file.md)", "(docs/file.md)", "docs/file.md"],
@@ -70,7 +75,7 @@ Deno.test("Agent mentions keep labels and resolve all Markdown shapes through a 
     });
 });
 
-Deno.test("Agent document links wrap lists and repeat without duplicated punctuation", async () => {
+test("Agent document links wrap lists and repeat without duplicated punctuation", async () => {
     await withDocuments((host) => {
         const block = new AgentMessageBlock("", host);
         block.appendText("- Read (docs/file.md), then README.md!\n- Again docs/file.md.");
@@ -84,7 +89,7 @@ Deno.test("Agent document links wrap lists and repeat without duplicated punctua
     });
 });
 
-Deno.test("streamed partial mentions become links only when the path is complete", async () => {
+test("streamed partial mentions become links only when the path is complete", async () => {
     await withDocuments((host) => {
         const block = new AgentMessageBlock("", host);
         block.appendText("(docs/file.m");
@@ -97,7 +102,7 @@ Deno.test("streamed partial mentions become links only when the path is complete
     });
 });
 
-Deno.test("code, images, external and incomplete paths never gain local reader targets", async () => {
+test("code, images, external and incomplete paths never gain local reader targets", async () => {
     await withDocuments((host) => {
         for (
             const text of [
@@ -128,7 +133,7 @@ Deno.test("code, images, external and incomplete paths never gain local reader t
 
 for (const markers of ["**", "*", "~~", "***", "**~~"]) {
     const closing = markers === "**~~" ? "~~**" : markers;
-    Deno.test(`Agent mentions respect visible word boundaries across ${markers} formatting`, async () => {
+    test(`Agent mentions respect visible word boundaries across ${markers} formatting`, async () => {
         await withDocuments((host) => {
             for (
                 const source of [
@@ -165,7 +170,7 @@ for (const markers of ["**", "*", "~~", "***", "**~~"]) {
     });
 }
 
-Deno.test("no-hyperlink capability preserves fallback without starting reader URL output", async () => {
+test("no-hyperlink capability preserves fallback without starting reader URL output", async () => {
     await withDocuments((host) => {
         setCapabilities({ ...getCapabilities(), hyperlinks: false });
         for (const source of ["(docs/file.md)", "`docs/file.md`", "[Label](docs/file.md)"]) {
@@ -180,7 +185,7 @@ Deno.test("no-hyperlink capability preserves fallback without starting reader UR
     });
 });
 
-Deno.test("User, system and tool blocks remain plain document text", async () => {
+test("User, system and tool blocks remain plain document text", async () => {
     await withDocuments(() => {
         const user = new UserPromptBlock("README.md");
         const system = new SystemMessageBlock("README.md");

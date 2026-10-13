@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { serveHttp } from "../http-server.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     type AssistantMessage,
@@ -86,7 +89,7 @@ const events: AssistantMessageEvent[] = [
 function control(source: ModelRuntime) {
     const bridge = new LocalModelBridge(source);
     let streamBody = "";
-    const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
         if (request.headers.get("Authorization") !== "Bearer control-token") return new Response(null, { status: 401 });
         if (new URL(request.url).pathname === "/models/stream") streamBody = await request.clone().text();
         return handleModelRequest(bridge, request, new URL(request.url).pathname);
@@ -138,7 +141,7 @@ async function fixture(emittedEvents: AssistantMessageEvent[] = events) {
     return { ...service, options: () => receivedOptions, context: () => receivedContext };
 }
 
-Deno.test("remote Pi streams preserve thinking, tool calls, usage, and image input", async () => {
+test("remote Pi streams preserve thinking, tool calls, usage, and image input", async () => {
     const test = await fixture();
     try {
         const catalog = await fetchRemoteModelCatalog(test.connection);
@@ -171,7 +174,7 @@ Deno.test("remote Pi streams preserve thinking, tool calls, usage, and image inp
     }
 });
 
-Deno.test("remote model errors retain a safe unsupported-temperature reason", async () => {
+test("remote model errors retain a safe unsupported-temperature reason", async () => {
     const test = await fixture([{
         type: "error",
         reason: "error",
@@ -194,7 +197,7 @@ Deno.test("remote model errors retain a safe unsupported-temperature reason", as
     }
 });
 
-Deno.test("Pi streams forward approved reasoning, sampling, caching, and timeout options", async () => {
+test("Pi streams forward approved reasoning, sampling, caching, and timeout options", async () => {
     const test = await fixture();
     try {
         const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
@@ -224,7 +227,7 @@ Deno.test("Pi streams forward approved reasoning, sampling, caching, and timeout
     }
 });
 
-Deno.test("catalog projects Pi availability without exposing laptop endpoint or auth", async () => {
+test("catalog projects Pi availability without exposing laptop endpoint or auth", async () => {
     const test = await fixture();
     try {
         const catalog = await fetchRemoteModelCatalog(test.connection);
@@ -263,7 +266,7 @@ Deno.test("catalog projects Pi availability without exposing laptop endpoint or 
     }
 });
 
-Deno.test("empty laptop catalog cannot activate ambient Pi providers", async () => {
+test("empty laptop catalog cannot activate ambient Pi providers", async () => {
     const test = await fixture();
     try {
         const runtime = await createRemoteModelRuntime(test.connection, { providers: [], models: [], available: [] });
@@ -278,7 +281,7 @@ Deno.test("empty laptop catalog cannot activate ambient Pi providers", async () 
     }
 });
 
-Deno.test("malformed callbacks settle with a safe terminal error on both Pi streams", async () => {
+test("malformed callbacks settle with a safe terminal error on both Pi streams", async () => {
     const test = await fixture();
     try {
         const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
@@ -309,7 +312,7 @@ Deno.test("malformed callbacks settle with a safe terminal error on both Pi stre
     }
 });
 
-Deno.test("laptop OAuth renewal stays on laptop and projects subscription status", async () => {
+test("laptop OAuth renewal stays on laptop and projects subscription status", async () => {
     const credentials = new InMemoryCredentialStore();
     const source = await ModelRuntime.create({
         credentials,

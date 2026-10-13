@@ -1,3 +1,5 @@
+# Local test deployment; Bun runtime permission equivalence is deferred.
+# This definition is not a hardened production security boundary.
 services:
     runwield-plan-server:
         build:
@@ -5,20 +7,30 @@ services:
             dockerfile: Containerfile
         image: runwield-plan-server:local
         restart: unless-stopped
+        read_only: true
+        cap_drop: [ALL]
+        security_opt:
+            - no-new-privileges:true
+        tmpfs:
+            - /tmp:rw,noexec,nosuid,size=64m
         environment:
             RUNWIELD_REMOTE_HOST: 0.0.0.0
             RUNWIELD_REMOTE_PORT: "8080"
             RUNWIELD_REMOTE_DB_PATH: /data/runwield-shared-spaces.sqlite
             RUNWIELD_REMOTE_MAX_REQUEST_BYTES: "5242880"
-            # Set RUNWIELD_REMOTE_RETENTION_DAYS=7 for an accountless public instance behind a rate-limiting proxy.
+            # Optional retention for disposable collaboration tests.
         ports:
             - "127.0.0.1:8080:8080"
         volumes:
             - runwield-plan-server-data:/data
         healthcheck:
             test:
-                - CMD-SHELL
-                - printf 'const r = await fetch("http://127.0.0.1:8080/readyz"); if (!r.ok) Deno.exit(1);' | deno run --allow-net=127.0.0.1:8080 -
+                - CMD
+                - bun
+                - --no-env-file
+                - --no-install
+                - -e
+                - 'const r = await fetch("http://127.0.0.1:8080/readyz"); if (!r.ok) process.exit(1);'
             interval: 10s
             timeout: 5s
             retries: 5

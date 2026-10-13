@@ -1,4 +1,17 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { rmdir as fsRmdir } from "node:fs/promises";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    rename as fsRename,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
@@ -40,24 +53,24 @@ function recordingBrowser(opened: boolean): BrowserPort & { urls: string[] } {
 }
 
 function reviewLauncherTest(name: string, run: (projectRoot: string) => Promise<void>): void {
-    Deno.test(name, () =>
+    test(name, () =>
         withProcessGlobalTestLock(async () => {
-            const previous = Deno.env.get("WLD_WORKSPACE_DISABLE_BUILT_SERVER");
-            const projectRoot = await Deno.makeTempDir({ prefix: "runwield-review-launcher-" });
-            Deno.env.set("WLD_WORKSPACE_DISABLE_BUILT_SERVER", "1");
+            const previous = process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"];
+            const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-review-launcher-"));
+            process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"] = "1";
             try {
                 await run(projectRoot);
             } finally {
                 await stopActiveReviewSurfaces();
-                await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-                if (previous === undefined) Deno.env.delete("WLD_WORKSPACE_DISABLE_BUILT_SERVER");
-                else Deno.env.set("WLD_WORKSPACE_DISABLE_BUILT_SERVER", previous);
+                await fsRm(projectRoot, { recursive: true }).catch(() => {});
+                if (previous === undefined) delete process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"];
+                else process.env["WLD_WORKSPACE_DISABLE_BUILT_SERVER"] = previous;
             }
         }));
 }
 
 async function runGit(cwd: string, args: string[]): Promise<string> {
-    const result = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureForegroundProcess("git", { cwd, args });
     if (!result.success) throw new Error(new TextDecoder().decode(result.stderr));
     return new TextDecoder().decode(result.stdout).trim();
 }
@@ -343,12 +356,12 @@ reviewLauncherTest("reloading Code Review recomputes the proposed branch patch",
     await runGit(projectRoot, ["init", "-b", "main"]);
     await runGit(projectRoot, ["config", "user.email", "runwield@example.com"]);
     await runGit(projectRoot, ["config", "user.name", "RunWield Test"]);
-    await Deno.writeTextFile(`${projectRoot}/review.ts`, "export const label = 'base';\n");
+    await fsWriteFile(`${projectRoot}/review.ts`, "export const label = 'base';\n");
     await runGit(projectRoot, ["add", "review.ts"]);
     await runGit(projectRoot, ["commit", "-m", "fixture base"]);
     await runGit(projectRoot, ["branch", "target"]);
     await runGit(projectRoot, ["switch", "-c", "execution"]);
-    await Deno.writeTextFile(`${projectRoot}/review.ts`, "export const label = 'first';\n");
+    await fsWriteFile(`${projectRoot}/review.ts`, "export const label = 'first';\n");
 
     const server = await startCodeReviewSurface<CodeDecision>({
         rawPatch: "stale patch",
@@ -360,7 +373,7 @@ reviewLauncherTest("reloading Code Review recomputes the proposed branch patch",
     await runGit(projectRoot, ["add", "review.ts"]);
     await runGit(projectRoot, ["commit", "-m", "advance target"]);
     await runGit(projectRoot, ["update-ref", "refs/heads/target", "HEAD"]);
-    await Deno.writeTextFile(`${projectRoot}/review.ts`, "export const label = 'second';\n");
+    await fsWriteFile(`${projectRoot}/review.ts`, "export const label = 'second';\n");
     const expectedPatch = await getWorktreeReviewDiff(projectRoot, "target");
     const response = await fetch(server.url);
     const html = await response.text();
@@ -378,8 +391,8 @@ reviewLauncherTest("reloading Code Review recomputes the proposed branch patch",
 
     const indexPath = `${projectRoot}/.git/index`;
     const savedIndexPath = `${projectRoot}/.git/index.saved`;
-    await Deno.rename(indexPath, savedIndexPath);
-    await Deno.mkdir(indexPath);
+    await fsRename(indexPath, savedIndexPath);
+    await fsMkdir(indexPath);
     try {
         const fallbackResponse = await fetch(server.url);
         const fallbackHtml = await fallbackResponse.text();
@@ -389,16 +402,16 @@ reviewLauncherTest("reloading Code Review recomputes the proposed branch patch",
         assertEquals(fallbackResponse.status, 200);
         assertEquals(JSON.parse(fallbackEmbedded).rawPatch, "stale patch");
     } finally {
-        await Deno.remove(indexPath);
-        await Deno.rename(savedIndexPath, indexPath);
+        await fsRmdir(indexPath);
+        await fsRename(savedIndexPath, indexPath);
     }
 
-    const unrelatedRoot = await Deno.makeTempDir({ prefix: "runwield-unrelated-review-target-" });
+    const unrelatedRoot = await fsMkdtemp(join(tmpdir(), "runwield-unrelated-review-target-"));
     try {
         await runGit(unrelatedRoot, ["init", "-b", "target"]);
         await runGit(unrelatedRoot, ["config", "user.email", "runwield@example.com"]);
         await runGit(unrelatedRoot, ["config", "user.name", "RunWield Test"]);
-        await Deno.writeTextFile(`${unrelatedRoot}/unrelated.ts`, "export const unrelated = true;\n");
+        await fsWriteFile(`${unrelatedRoot}/unrelated.ts`, "export const unrelated = true;\n");
         await runGit(unrelatedRoot, ["add", "unrelated.ts"]);
         await runGit(unrelatedRoot, ["commit", "-m", "unrelated target"]);
         await runGit(projectRoot, ["fetch", unrelatedRoot, "+target:refs/heads/target"]);
@@ -408,7 +421,7 @@ reviewLauncherTest("reloading Code Review recomputes the proposed branch patch",
         assertEquals(invalidResponse.status, 500);
         assertEquals(invalidHtml.includes("stale patch"), false);
     } finally {
-        await Deno.remove(unrelatedRoot, { recursive: true });
+        await fsRm(unrelatedRoot, { recursive: true });
         await server.stop();
     }
 });
@@ -418,7 +431,7 @@ reviewLauncherTest(
     async () => {
         const projectRoot = await codeReviewGitFixture.checkout({ prefix: "runwield-code-review-" });
         try {
-            await Deno.writeTextFile(`${projectRoot}/change.ts`, "export const changed = true;\n");
+            await fsWriteFile(`${projectRoot}/change.ts`, "export const changed = true;\n");
             const abort = new AbortController();
             let inspectPayload = Promise.resolve();
             const browser: BrowserPort = {
@@ -492,7 +505,7 @@ reviewLauncherTest(
                 _meta: { approved: false, feedback: "Not yet.", annotations: [], canceled: false, exit: false },
             });
         } finally {
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
         }
     },
 );

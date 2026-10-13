@@ -1,18 +1,19 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../src/testing/assertions.ts";
+import { test } from "node:test";
 import { curateRows, getUnambiguousHumanSeed, isPureGreetingRow } from "./curate-router-judgement-csv.js";
 
-Deno.test("isPureGreetingRow identifies greeting rows", () => {
+test("isPureGreetingRow identifies greeting rows", () => {
     assertEquals(isPureGreetingRow({ requestText: "hi there" }), true);
     assertEquals(isPureGreetingRow({ requestText: "hello there who are you?" }), false);
 });
 
-Deno.test("getUnambiguousHumanSeed seeds clear current-intent mappings", () => {
+test("getUnambiguousHumanSeed seeds clear current-intent mappings", () => {
     assertEquals(getUnambiguousHumanSeed({ requestText: "is @ci.js used anywhere?" })?.intent, "INQUIRY");
     assertEquals(getUnambiguousHumanSeed({ requestText: "commit the changes" })?.intent, "OPERATION");
     assertEquals(getUnambiguousHumanSeed({ requestText: "help me flush this out more" }), null);
 });
 
-Deno.test("curateRows collapses duplicate greetings and preserves existing human labels", () => {
+test("curateRows collapses duplicate greetings and preserves existing human labels", () => {
     const result = curateRows([
         { decisionId: "d1", requestText: "hi", humanJudgement: "", humanNotes: "" },
         { decisionId: "d2", requestText: "hello", humanJudgement: "", humanNotes: "" },

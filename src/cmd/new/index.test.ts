@@ -1,4 +1,6 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { readdir as fsReaddir } from "node:fs/promises";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";
@@ -36,17 +38,17 @@ class CompatibleVirtualTerminal extends VirtualTerminal {
 async function countTranscripts(projectRoot: string): Promise<number> {
     let count = 0;
     try {
-        for await (const entry of Deno.readDir(getRunWieldSessionDir(projectRoot))) {
-            if (entry.isFile && entry.name.endsWith(".jsonl")) count++;
+        for await (const entry of await fsReaddir(getRunWieldSessionDir(projectRoot), { withFileTypes: true })) {
+            if (entry.isFile() && entry.name.endsWith(".jsonl")) count++;
         }
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return 0;
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return 0;
         throw error;
     }
     return count;
 }
 
-Deno.test("runNewCommand creates and names an in-memory Router session until its first message", async () => {
+test("runNewCommand creates and names an in-memory Router session until its first message", async () => {
     await withRuntimeCommandFixture("runwield-new-command-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("New Session ready.");
         const runtime = createSessionRuntime();
@@ -83,7 +85,7 @@ Deno.test("runNewCommand creates and names an in-memory Router session until its
     });
 });
 
-Deno.test("runNewCommand uses the fixture cwd when there is no current session", async () => {
+test("runNewCommand uses the fixture cwd when there is no current session", async () => {
     await withRuntimeCommandFixture("runwield-new-command-", async ({ alternateRoot }) => {
         const runtime = createSessionRuntime();
         const terminal = new CompatibleVirtualTerminal();
@@ -112,7 +114,7 @@ Deno.test("runNewCommand uses the fixture cwd when there is no current session",
     });
 });
 
-Deno.test("runNewCommand reports unavailable interactive state", async () => {
+test("runNewCommand reports unavailable interactive state", async () => {
     await withRuntimeCommandFixture("runwield-new-command-", async () => {
         const errors = await captureErrors(() => runNewCommand([]));
         assertEquals(errors, ["The /new command is only available inside an interactive session."]);

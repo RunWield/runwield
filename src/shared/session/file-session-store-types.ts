@@ -3,8 +3,37 @@
  * Domain contracts for file-authoritative Session storage.
  */
 
-export type SessionTranscriptSegment = import("../types.js").SessionTranscriptSegment;
-export type SessionSegmentLineageEvidence = import("../types.js").SessionSegmentLineageEvidence;
+export interface SessionTranscriptSegment {
+    segmentId: string;
+    runwieldSessionId: string;
+    projectId: string;
+    piSessionId: string;
+    transcriptPath: string;
+    transcriptCwd: string;
+    ordinal: number;
+    kind: string;
+    sealedAt: string | null;
+    headerVersion: number | null;
+    headerTimestamp: string | null;
+    firstCatalogedAt: string;
+    lastCatalogedAt: string;
+    lineageParentSegmentId: string | null;
+    lineageParentPiSessionId: string | null;
+    lineageGroupKey: string | null;
+    lineageRecordedAt: string | null;
+    sealedByteLength: number | null;
+    sealedDigestHex: string | null;
+    sealedTerminalEntryId: string | null;
+}
+
+export interface SessionSegmentLineageEvidence {
+    segmentId: string;
+    runwieldSessionId: string;
+    parentSegmentId?: string | null;
+    parentPiSessionId?: string | null;
+    lineageGroupKey?: string | null;
+    kind?: "planning" | "execution" | "semantic_repair";
+}
 export type SessionPhase = "bootstrap" | "preparing" | "hydrated" | "turning" | "checkpointing";
 export type ProcessKind = "workspace" | "tui" | "acp" | "test";
 
@@ -116,8 +145,14 @@ export interface FileActivationProof {
     expectedCurrentSegmentId?: string | null;
 }
 
+/** Operations retained after acquiring a Session writer lock. */
+export interface SessionWriterLockHandle {
+    unlockSync(): void;
+    close(): void;
+}
+
 export interface HeldFileLock {
-    file: Deno.FsFile;
+    file: SessionWriterLockHandle;
     manifestPath: string;
 }
 

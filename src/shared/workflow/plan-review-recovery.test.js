@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     appendSessionCompleteGuidance,
     isAnsweredPlanReview,
@@ -6,7 +7,7 @@ import {
     SESSION_COMPLETE_GUIDANCE,
 } from "./plan-review-recovery.js";
 
-Deno.test("Plan Review recovery treats approval, remote review, and substantive feedback as answered", () => {
+test("Plan Review recovery treats approval, remote review, and substantive feedback as answered", () => {
     assertEquals(isAnsweredPlanReview({ _meta: { approved: true } }), true);
     assertEquals(isAnsweredPlanReview({ approved: false, remoteReview: true }), true);
     assertEquals(isAnsweredPlanReview({ approved: false, feedback: "change it" }), true);
@@ -15,7 +16,7 @@ Deno.test("Plan Review recovery treats approval, remote review, and substantive 
     assertEquals(isAnsweredPlanReview({ approved: false, globalAttachments: [{ path: "reference.png" }] }), true);
 });
 
-Deno.test("Plan Review recovery treats cancellation, exit, and unsupported outcomes as unanswered before feedback", () => {
+test("Plan Review recovery treats cancellation, exit, and unsupported outcomes as unanswered before feedback", () => {
     assertEquals(isAnsweredPlanReview({ outcome: "canceled" }), false);
     assertEquals(isAnsweredPlanReview({ outcome: "blocked", feedback: "blocked" }), false);
     assertEquals(isAnsweredPlanReview({ outcome: "unsupported", feedback: "unsupported" }), false);
@@ -24,7 +25,7 @@ Deno.test("Plan Review recovery treats cancellation, exit, and unsupported outco
     assertEquals(isAnsweredPlanReview({ approved: false, feedback: "" }), false);
 });
 
-Deno.test("Plan Review recovery retries after unanswered review when user accepts", async () => {
+test("Plan Review recovery retries after unanswered review when user accepts", async () => {
     const reviews = [{ outcome: "canceled" }, { _meta: { approved: true, approvalAction: "run" } }];
     /** @type {string[]} */
     const prompts = [];
@@ -41,7 +42,7 @@ Deno.test("Plan Review recovery retries after unanswered review when user accept
     assertEquals(prompts, ["review_canceled"]);
 });
 
-Deno.test("Plan Review recovery completes session when retry is declined", async () => {
+test("Plan Review recovery completes session when retry is declined", async () => {
     const result = await requestRecoverablePlanReview({
         requestReview: () => Promise.resolve({ outcome: "unsupported", message: "server failed" }),
         requestRetry: () => Promise.resolve({ outcome: "canceled", value: false }),
@@ -52,7 +53,7 @@ Deno.test("Plan Review recovery completes session when retry is declined", async
     assertEquals(result.message, SESSION_COMPLETE_GUIDANCE);
 });
 
-Deno.test("Plan Review recovery completes session when retry confirmation throws", async () => {
+test("Plan Review recovery completes session when retry confirmation throws", async () => {
     const result = await requestRecoverablePlanReview({
         requestReview: () => Promise.resolve({ outcome: "canceled" }),
         requestRetry: () => Promise.reject(new Error("confirmation canceled")),
@@ -63,7 +64,7 @@ Deno.test("Plan Review recovery completes session when retry confirmation throws
     assertEquals(result.message, SESSION_COMPLETE_GUIDANCE);
 });
 
-Deno.test("appendSessionCompleteGuidance appends the canonical message once", () => {
+test("appendSessionCompleteGuidance appends the canonical message once", () => {
     const first = appendSessionCompleteGuidance("Plan saved.");
     assertEquals(first, `Plan saved.\n\n${SESSION_COMPLETE_GUIDANCE}`);
     assertEquals(appendSessionCompleteGuidance(first), first);

@@ -1,3 +1,6 @@
+import { getCwd } from "../../constants.js";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import process from "node:process";
 /**
  * @module cmd/copy
  * Command to copy the last assistant message to the clipboard.
@@ -12,7 +15,7 @@ import type { CommandContext } from "../registry.js";
  * @returns True when the text was copied successfully.
  */
 async function copyToClipboard(text: string): Promise<boolean> {
-    const platform = Deno.build.os;
+    const platform = process.platform;
 
     let command: string;
     let args: string[] = [];
@@ -25,8 +28,8 @@ async function copyToClipboard(text: string): Promise<boolean> {
         case "linux": {
             // Try xclip first, fall back to xsel
             try {
-                const xclipCheck = new Deno.Command("which", { args: ["xclip"], stdout: "null", stderr: "null" });
-                const { success: hasXclip } = await xclipCheck.output();
+                const xclipCheck = captureForegroundProcess("which", { args: ["xclip"], cwd: getCwd() });
+                const { success: hasXclip } = await xclipCheck;
                 if (hasXclip) {
                     command = "xclip";
                     args = ["-selection", "clipboard"];
@@ -36,8 +39,8 @@ async function copyToClipboard(text: string): Promise<boolean> {
                 // fall through
             }
             try {
-                const xselCheck = new Deno.Command("which", { args: ["xsel"], stdout: "null", stderr: "null" });
-                const { success: hasXsel } = await xselCheck.output();
+                const xselCheck = captureForegroundProcess("which", { args: ["xsel"], cwd: getCwd() });
+                const { success: hasXsel } = await xselCheck;
                 if (hasXsel) {
                     command = "xsel";
                     args = ["--clipboard", "--input"];
@@ -48,7 +51,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
             }
             return false;
         }
-        case "windows":
+        case "win32":
             command = "clip";
             args = [];
             break;
@@ -57,18 +60,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
     }
 
     try {
-        const proc = new Deno.Command(command, {
-            args,
-            stdin: "piped",
-            stdout: "null",
-            stderr: "null",
-        });
-        const child = proc.spawn();
-        const writer = child.stdin.getWriter();
-        await writer.write(new TextEncoder().encode(text));
-        writer.releaseLock();
-        await child.stdin.close();
-        const { success } = await child.output();
+        const { success } = await captureForegroundProcess(command, { args, cwd: getCwd(), stdinText: text });
         return success;
     } catch {
         return false;

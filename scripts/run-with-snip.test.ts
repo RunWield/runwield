@@ -1,45 +1,85 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { captureScriptProcess } from "./script-process.ts";
+import { delimiter } from "node:path";
+import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
+import { makeTempFile } from "../src/testing/temp-file.ts";
+import { test } from "node:test";
+import {
+    chmod as fsChmod,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { runBoundedTest, runWithSnip } from "./run-with-snip.ts";
 
-Deno.test("runWithSnip preserves compact success output", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-snip-command-success-" });
-    try {
-        const snipPath = join(root, "snip");
-        await Deno.writeTextFile(
-            snipPath,
-            "#!/bin/sh\nprintf 'all tests passed\\n'\nprintf 'snip: tracking error: ignored\\n' >&2\n",
+async function writeSnipFixture(root: string, stdout: string, stderr: string, code = 0): Promise<void> {
+    if (process.platform === "win32") {
+        const source = join(root, "snip-fixture.ts");
+        const binary = join(root, "snip.exe");
+        await fsWriteFile(
+            source,
+            `import process from "node:process"; process.stdout.write(${JSON.stringify(stdout)}); process.stderr.write(${JSON.stringify(stderr)}); process.exitCode = ${code};`,
         );
-        await Deno.chmod(snipPath, 0o755);
+        const args = process.versions.bun
+            ? [
+                  "build",
+                  "--compile",
+                  "--no-compile-autoload-dotenv",
+                  "--no-compile-autoload-bunfig",
+                  source,
+                  "--outfile",
+                  binary,
+              ]
+            : ["compile", "-A", "--no-check", "--output", binary, source];
+        const result = await captureScriptProcess(process.execPath, {
+            args,
+            cwd: root,
+        });
+        assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
+        return;
+    }
+    const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+    const path = join(root, "snip");
+    await fsWriteFile(
+        path,
+        `#!/bin/sh\nprintf '%s' ${quote(stdout)}\nprintf '%s' ${quote(stderr)} >&2\nexit ${code}\n`,
+    );
+    await fsChmod(path, 0o755);
+}
+
+test("runWithSnip preserves compact success output", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-snip-command-success-"));
+    try {
+        await writeSnipFixture(root, "all tests passed\n", "snip: tracking error: ignored\n");
 
         const result = await runWithSnip("deno", ["test"], {
-            env: { PATH: `${root}:${Deno.env.get("PATH") || ""}` },
+            env: { PATH: `${root}${delimiter}${process.env["PATH"] || ""}` },
             failureLabel: "tests",
         });
 
         assertEquals(result, { code: 0, stdout: "all tests passed\n", stderr: "" });
     } finally {
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("runWithSnip stores only Deno failure diagnostics", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-snip-command-failure-" });
+test("runWithSnip stores only Deno failure diagnostics", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-snip-command-failure-"));
     let failureLogPath = "";
     try {
-        const snipPath = join(root, "snip");
-        await Deno.writeTextFile(
-            snipPath,
-            `#!/bin/sh
-printf '%s\n' 'Check src/pass.ts' 'running 2 tests from ./sample.test.ts' 'passing ... ok (1ms)' 'failure ... FAILED (2ms)' 'AssertionError: expected true' 'FAILED | 1 passed | 1 failed (3ms)'
-printf 'snip: tracking error: test database is read-only\n' >&2
-exit 1
-`,
+        await writeSnipFixture(
+            root,
+            "Check src/pass.ts\nrunning 2 tests from ./sample.test.ts\npassing ... ok (1ms)\nfailure ... FAILED (2ms)\nAssertionError: expected true\nFAILED | 1 passed | 1 failed (3ms)\n",
+            "snip: tracking error: test database is read-only\n",
+            1,
         );
-        await Deno.chmod(snipPath, 0o755);
 
         const result = await runWithSnip("deno", ["test", "sample.test.ts"], {
-            env: { PATH: `${root}:${Deno.env.get("PATH") || ""}` },
+            env: { PATH: `${root}${delimiter}${process.env["PATH"] || ""}` },
             failureLabel: "tests",
         });
         failureLogPath = result.failureLogPath || "";
@@ -47,7 +87,7 @@ exit 1
         assertEquals(result.code, 1);
         assertEquals(result.stdout, "");
         assertStringIncludes(result.stderr, `tests failed, read the failure log here: ${failureLogPath}`);
-        const failureLog = await Deno.readTextFile(failureLogPath);
+        const failureLog = await fsReadFile(failureLogPath, "utf8");
         assertStringIncludes(failureLog, "failure ... FAILED");
         assertStringIncludes(failureLog, "AssertionError: expected true");
         assertEquals(failureLog.includes("Check src/pass.ts"), false);
@@ -55,53 +95,79 @@ exit 1
         assertEquals(failureLog.includes("passed"), false);
         assertEquals(failureLog.includes("tracking error"), false);
     } finally {
-        if (failureLogPath) await Deno.remove(failureLogPath).catch(() => {});
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        if (failureLogPath) await fsRm(failureLogPath).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a timed-out test stops its process and reports the timeout", async () => {
-    const pidPath = await Deno.makeTempFile({ prefix: "runwield-test-timeout-" });
+test("a timed-out test reaps a SIGTERM-resistant process and reports the timeout", async () => {
+    const pidPath = await makeTempFile({ prefix: "runwield-test-timeout-" });
     let failureLogPath = "";
     try {
-        const result = await runBoundedTest([
-            "eval",
-            `Deno.writeTextFileSync(${JSON.stringify(pidPath)}, String(Deno.pid)); setInterval(() => {}, 1000);`,
-        ], { failureLabel: "tests", timeoutMs: 500 });
+        const startedAt = performance.now();
+        const result = await runBoundedTest(
+            runtimeSourceArgs([
+                "eval",
+                `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(
+                    pidPath,
+                )}, String(process.pid)); if (process.platform !== "win32") process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);`,
+            ]),
+            { failureLabel: "tests", timeoutMs: 500, command: process.execPath },
+        );
         failureLogPath = result.failureLogPath || "";
         assertEquals(result.code, 124);
+        assertEquals(performance.now() - startedAt < 10_000, true);
         assertStringIncludes(result.stderr, "tests timed out");
-        assertStringIncludes(await Deno.readTextFile(failureLogPath), "exceeded 0.5s");
-        const pid = Number(await Deno.readTextFile(pidPath));
+        assertStringIncludes(await fsReadFile(failureLogPath, "utf8"), "exceeded 0.5s");
+        const pid = Number(await fsReadFile(pidPath, "utf8"));
         let stopped = false;
         try {
-            Deno.kill(pid, "SIGTERM");
+            process.kill(pid, "SIGTERM");
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
             stopped = true;
         }
         assertEquals(stopped, true);
     } finally {
-        if (failureLogPath) await Deno.remove(failureLogPath).catch(() => {});
-        await Deno.remove(pidPath).catch(() => {});
+        if (failureLogPath) await fsRm(failureLogPath).catch(() => {});
+        await fsRm(pidPath).catch(() => {});
     }
 });
 
-Deno.test("quiet Snip commands preserve failures from real subprocesses", async () => {
-    const success = await runWithSnip("deno", ["eval", 'console.log("verbose success")'], {
+test("quiet Snip commands preserve failures from real subprocesses", async () => {
+    const success = await runWithSnip(process.execPath, runtimeSourceArgs(["eval", 'console.log("verbose success")']), {
         failureLabel: "quiet success",
         quietOnSuccess: true,
     });
     assertEquals(success, { code: 0, stdout: "", stderr: "" });
-    const failure = await runWithSnip("deno", ["eval", 'console.error("real failure evidence"); Deno.exit(7)'], {
-        failureLabel: "quiet failure",
-        quietOnSuccess: true,
-    });
+    const failure = await runWithSnip(
+        process.execPath,
+        runtimeSourceArgs(["eval", 'console.error("real failure evidence"); process.exit(7)']),
+        {
+            failureLabel: "quiet failure",
+            quietOnSuccess: true,
+        },
+    );
     try {
         assertEquals(failure.code, 7);
-        assertStringIncludes(await Deno.readTextFile(failure.failureLogPath!), "real failure evidence");
+        assertStringIncludes(await fsReadFile(failure.failureLogPath!, "utf8"), "real failure evidence");
         assertStringIncludes(failure.stderr, failure.failureLogPath!);
     } finally {
-        if (failure.failureLogPath) await Deno.remove(failure.failureLogPath);
+        if (failure.failureLogPath) await fsRm(failure.failureLogPath);
+    }
+});
+
+test("Snip filter verification accepts actual temporary paths requiring TOML escaping", async () => {
+    const prefix = process.platform === "win32" ? "snip config-" : String.raw`snip \" quote-`;
+    const root = await fsMkdtemp(join(tmpdir(), prefix));
+    try {
+        const result = await captureScriptProcess(process.execPath, {
+            args: runtimeSourceArgs(["run", "-A", "scripts/check-snip-filters.ts"]),
+            env: { ...process.env, TMPDIR: root, TEMP: root, TMP: root },
+        });
+        assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
+        assertStringIncludes(new TextDecoder().decode(result.stdout), "Snip verified all generic Deno filters.");
+    } finally {
+        await fsRm(root, { recursive: true });
     }
 });

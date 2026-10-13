@@ -1,4 +1,6 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { defaultPlanBranchName, ensurePlanBranch, shouldAdoptPlanBranch } from "./plan-branch.ts";
 import { setCustomSetting } from "../settings.js";
@@ -6,16 +8,16 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 
 const repo = defineCommittedGitFixture();
 
-Deno.test("Plan Branch names use the full worktree slug", () => {
+test("Plan Branch names use the full worktree slug", () => {
     assertEquals(defaultPlanBranchName("Fix/API auth"), "plan/fix-api-auth");
     assertEquals(defaultPlanBranchName("A".repeat(60)), `plan/${"a".repeat(48)}`);
 });
 
-Deno.test("Plan Branch starts from an explicit source and existing work is retained", async () => {
+test("Plan Branch starts from an explicit source and existing work is retained", async () => {
     const root = await repo.checkout();
     try {
         await git(root, ["checkout", "-b", "release"]);
-        await Deno.writeTextFile(`${root}/release.txt`, "release\n");
+        await fsWriteFile(`${root}/release.txt`, "release\n");
         await git(root, ["add", "."]);
         await git(root, ["commit", "-m", "release"]);
         const head = await git(root, ["rev-parse", "HEAD"]);
@@ -31,11 +33,11 @@ Deno.test("Plan Branch starts from an explicit source and existing work is retai
         assertEquals(await git(root, ["rev-parse", "plan/fix"]), head);
         assertEquals(await git(root, ["branch", "--show-current"]), "release");
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("Plan Branch defaults to main locally rather than the current checkout", async () => {
+test("Plan Branch defaults to main locally rather than the current checkout", async () => {
     const root = await repo.checkout();
     try {
         const base = await git(root, ["rev-parse", "main"]);
@@ -50,11 +52,11 @@ Deno.test("Plan Branch defaults to main locally rather than the current checkout
             "Source branch does not exist",
         );
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("Plan Branch uses origin's default and explicit remote sources", async () => {
+test("Plan Branch uses origin's default and explicit remote sources", async () => {
     const remote = await repo.checkout();
     const root = await repo.checkout();
     try {
@@ -68,12 +70,12 @@ Deno.test("Plan Branch uses origin's default and explicit remote sources", async
         await ensurePlanBranch({ projectRoot: root, planName: "release", sourceBranch: "origin/release" });
         assertEquals(await git(root, ["rev-parse", "plan/release"]), base);
     } finally {
-        await Deno.remove(root, { recursive: true });
-        await Deno.remove(remote, { recursive: true });
+        await fsRm(root, { recursive: true });
+        await fsRm(remote, { recursive: true });
     }
 });
 
-Deno.test("only standalone Planned Changes without an authored Plan Branch adopt one", async () => {
+test("only standalone Planned Changes without an authored Plan Branch adopt one", async () => {
     await withRuntimeCommandFixture("plan-adoption-gate-", async ({ projectRoot }) => {
         assertEquals(shouldAdoptPlanBranch(projectRoot, { classification: "PLANNED_CHANGE" }), true);
         assertEquals(shouldAdoptPlanBranch(projectRoot, { classification: "FEATURE" }), true);

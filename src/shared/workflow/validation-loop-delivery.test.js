@@ -1,4 +1,6 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlan, savePlan } from "../../plan-store.js";
 import {
@@ -14,7 +16,7 @@ function makeValidationUi() {
     return { uiAPI, hostedSession: makeRecordedSession("validation-delivery-test", uiAPI) };
 }
 
-Deno.test("runValidationLoop does not preserve a nonexistent Plan path for quick-fix worktrees", async () => {
+test("runValidationLoop does not preserve a nonexistent Plan path for quick-fix worktrees", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -55,7 +57,7 @@ Deno.test("runValidationLoop does not preserve a nonexistent Plan path for quick
     assertEquals(plan?.attrs.deliveryEvidence, { version: 1, mode: "non_git_in_place" });
 });
 
-Deno.test("runValidationLoop publishes only from reviewed after human review is durably complete", async () => {
+test("runValidationLoop publishes only from reviewed after human review is durably complete", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "reviewed",
@@ -97,7 +99,7 @@ Deno.test("runValidationLoop publishes only from reviewed after human review is 
     assertEquals(plan?.attrs.humanReviewDecision, "not_required");
 });
 
-Deno.test("Epic child delivery commits its Manual QA artifact with verified metadata", async () => {
+test("Epic child delivery commits its Manual QA artifact with verified metadata", async () => {
     const projectRoot = await makeValidationProjectRoot("epic/01-one", {
         classification: "PLANNED_CHANGE",
         status: "reviewed",
@@ -164,7 +166,7 @@ Deno.test("Epic child delivery commits its Manual QA artifact with verified meta
     assertEquals(result.epicContinuation?.completedPlanName, "epic/01-one");
     assertEquals(result.epicContinuation?.projectRoot, projectRoot);
     assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "verified");
-    const artifact = await Deno.readTextFile(`${projectRoot}/docs/plans/epic/manual-qa.md`);
+    const artifact = await fsReadFile(`${projectRoot}/docs/plans/epic/manual-qa.md`, "utf8");
     assertStringIncludes(artifact, "# Manual QA for epic");
     assertStringIncludes(artifact, "This checklist is advisory. It does not change RunWield verification status.");
     assertStringIncludes(artifact, '<!-- runwield:manual-qa:start child="epic/01-one" -->');
@@ -173,7 +175,7 @@ Deno.test("Epic child delivery commits its Manual QA artifact with verified meta
     assertStringIncludes(artifact, '<!-- runwield:manual-qa:end child="epic/01-one" -->');
 });
 
-Deno.test("Epic child publication stops when the Manual QA Agent has a fatal failure", async () => {
+test("Epic child publication stops when the Manual QA Agent has a fatal failure", async () => {
     const projectRoot = await makeValidationProjectRoot("epic/01-one", {
         classification: "PLANNED_CHANGE",
         status: "reviewed",
@@ -218,7 +220,7 @@ Deno.test("Epic child publication stops when the Manual QA Agent has a fatal fai
     assertEquals((await loadPlan(projectRoot, "epic/01-one"))?.attrs.status, "reviewed");
 });
 
-Deno.test("publication pauses on missing target branch metadata without recording validation failure", async () => {
+test("publication pauses on missing target branch metadata without recording validation failure", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "reviewed",

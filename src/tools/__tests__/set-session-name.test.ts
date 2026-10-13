@@ -1,4 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
@@ -33,7 +37,7 @@ async function withSessionNameFixture(
         },
     ) => Promise<void>,
 ): Promise<void> {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-set-session-name-" });
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-set-session-name-"));
     try {
         const sessionManager = SessionManager.inMemory(projectRoot);
         const events: CapturedRuntimeEvent[] = [];
@@ -45,11 +49,11 @@ async function withSessionNameFixture(
         });
         await callback({ projectRoot, sessionManager, events, hostedSession });
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 }
 
-Deno.test("set_session_name exposes expected metadata", () => {
+test("set_session_name exposes expected metadata", () => {
     const tool = createSetSessionNameTool();
 
     assertEquals(tool.name, "set_session_name");
@@ -59,7 +63,7 @@ Deno.test("set_session_name exposes expected metadata", () => {
     assertEquals(tool.parameters.required, ["name"]);
 });
 
-Deno.test("set_session_name sanitizes, persists, and emits one rename event", async () => {
+test("set_session_name sanitizes, persists, and emits one rename event", async () => {
     await withSessionNameFixture(async ({ sessionManager, events, hostedSession }) => {
         const tool = createSetSessionNameTool({ hostedSession });
 
@@ -75,7 +79,7 @@ Deno.test("set_session_name sanitizes, persists, and emits one rename event", as
     });
 });
 
-Deno.test("set_session_name replaces an existing Session Name", async () => {
+test("set_session_name replaces an existing Session Name", async () => {
     await withSessionNameFixture(async ({ sessionManager, events, hostedSession }) => {
         sessionManager.appendSessionInfo("old name");
         const tool = createSetSessionNameTool({ hostedSession });
@@ -89,7 +93,7 @@ Deno.test("set_session_name replaces an existing Session Name", async () => {
     });
 });
 
-Deno.test("set_session_name rejects names that sanitize to empty", async () => {
+test("set_session_name rejects names that sanitize to empty", async () => {
     await withSessionNameFixture(async ({ sessionManager, events, hostedSession }) => {
         const tool = createSetSessionNameTool({ hostedSession });
 
@@ -103,7 +107,7 @@ Deno.test("set_session_name rejects names that sanitize to empty", async () => {
     });
 });
 
-Deno.test("set_session_name fails clearly without a HostedSession", async () => {
+test("set_session_name fails clearly without a HostedSession", async () => {
     const tool = createSetSessionNameTool();
 
     const result = await executeSetSessionNameTool(tool, "valid name");
@@ -113,8 +117,8 @@ Deno.test("set_session_name fails clearly without a HostedSession", async () => 
     assertEquals(result.details, null);
 });
 
-Deno.test("set_session_name fails clearly without a writable root Session manager", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-set-session-name-missing-manager-" });
+test("set_session_name fails clearly without a writable root Session manager", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-set-session-name-missing-manager-"));
     try {
         const hostedSession = new HostedSession({ id: "missing-manager", cwd: projectRoot });
         const tool = createSetSessionNameTool({ hostedSession });
@@ -125,6 +129,6 @@ Deno.test("set_session_name fails clearly without a writable root Session manage
         assertStringIncludes(result.content[0].text, "no writable root Session manager");
         assertEquals(result.details, null);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 });

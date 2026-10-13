@@ -1,5 +1,8 @@
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
-import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 const ROUTE_PATH = "src/ui/workspace/pages/projects/[projectId]/plans/[planId].astro";
 const SURFACE_PATH = "src/ui/workspace/react/PlanReviewSurface.tsx";
@@ -8,13 +11,13 @@ const REMOTE_SURFACE_PATH = "src/ui/workspace/react/RemotePlanReview.tsx";
 const ANNOTATION_TOOLSTRIP_PATH = "src/ui/workspace/react/RunWieldAnnotationToolstrip.tsx";
 const SETTINGS_PATH = "src/ui/workspace/react/PlanReviewSettings.tsx";
 
-Deno.test("Phone Plan review keeps full editing annotations and actions reachable", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("Phone Plan review keeps full editing annotations and actions reachable", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(surface, "Edit");
     assertStringIncludes(surface, "Annotations");
     assertStringIncludes(surface, "Feedback");
-    const styles = await Deno.readTextFile("src/ui/workspace/react/plannotator.css");
+    const styles = await fsReadFile("src/ui/workspace/react/plannotator.css", "utf8");
     // A base mobile selector loses to desktop selectors with sidebar-state attributes,
     // leaving a 320px annotations column inside a 390px phone viewport.
     const phoneStyles = styles.slice(styles.indexOf("@media (max-width: 980px)"));
@@ -24,12 +27,13 @@ Deno.test("Phone Plan review keeps full editing annotations and actions reachabl
     assertEquals(styles.includes("min-height: 72vh"), false);
 });
 
-Deno.test("Workspace reviews replace the owner shell with the shared full-window review layout", async () => {
-    const planRoute = await Deno.readTextFile(ROUTE_PATH);
-    const codeRoute = await Deno.readTextFile(
+test("Workspace reviews replace the owner shell with the shared full-window review layout", async () => {
+    const planRoute = await fsReadFile(ROUTE_PATH, "utf8");
+    const codeRoute = await fsReadFile(
         "src/ui/workspace/pages/projects/[projectId]/sessions/[runwieldSessionId]/review/code.astro",
+        "utf8",
     );
-    const layout = await Deno.readTextFile("src/ui/workspace/layouts/ReviewLayout.astro");
+    const layout = await fsReadFile("src/ui/workspace/layouts/ReviewLayout.astro", "utf8");
     assertStringIncludes(planRoute, "const Layout = reviewPayload ? ReviewLayout : WorkspaceLayout");
     assertStringIncludes(planRoute, '<PlanReviewSurface payload={reviewPayload} client:only="react">');
     assertStringIncludes(codeRoute, "<ReviewLayout");
@@ -45,14 +49,14 @@ Deno.test("Workspace reviews replace the owner shell with the shared full-window
         assertStringIncludes(route, "sessionHref");
         assertStringIncludes(route, "interactionAnswerUrl");
     }
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
     assertStringIncludes(surface, 'initialPayload.mode === "workspace" || presentation === "workspace"');
 });
 
-Deno.test("Owner shell retains its shared navigation and header outside reviews", async () => {
-    const layout = await Deno.readTextFile("src/ui/workspace/layouts/WorkspaceLayout.astro");
-    const shell = await Deno.readTextFile("src/ui/workspace/static/workspace-shell.ts");
-    const workspaceMenu = await Deno.readTextFile("src/ui/workspace/react/WorkspaceMenu.tsx");
+test("Owner shell retains its shared navigation and header outside reviews", async () => {
+    const layout = await fsReadFile("src/ui/workspace/layouts/WorkspaceLayout.astro", "utf8");
+    const shell = await fsReadFile("src/ui/workspace/static/workspace-shell.ts", "utf8");
+    const workspaceMenu = await fsReadFile("src/ui/workspace/react/WorkspaceMenu.tsx", "utf8");
     assertStringIncludes(layout, 'class="workspace-main-session-name" data-workspace-surface-title');
     assertStringIncludes(shell, 'header.querySelector("[data-workspace-main-session-name]")?.remove()');
     assertStringIncludes(layout, '<WorkspaceMenu client:only="react" />');
@@ -62,9 +66,9 @@ Deno.test("Owner shell retains its shared navigation and header outside reviews"
     assertEquals(layout.includes("BrowserNotificationPermissionControl"), false);
 });
 
-Deno.test("Plan Review fixture navigation lives in the Surface Lab instead of the review page", async () => {
-    const devSurface = await Deno.readTextFile("src/ui/workspace/react/ReviewDevSurface.tsx");
-    const catalog = await Deno.readTextFile("src/ui/workspace/pages/dev/index.astro");
+test("Plan Review fixture navigation lives in the Surface Lab instead of the review page", async () => {
+    const devSurface = await fsReadFile("src/ui/workspace/react/ReviewDevSurface.tsx", "utf8");
+    const catalog = await fsReadFile("src/ui/workspace/pages/dev/index.astro", "utf8");
 
     assertStringIncludes(catalog, 'id: "feature"');
     assertStringIncludes(catalog, 'href: "/dev/plan-review?variant=read-only"');
@@ -75,9 +79,9 @@ Deno.test("Plan Review fixture navigation lives in the Surface Lab instead of th
     }
 });
 
-Deno.test("Plan Review fixtures show every callout kind next to a dense comparison without callouts", async () => {
-    const devSurface = await Deno.readTextFile("src/ui/workspace/react/ReviewDevSurface.tsx");
-    const catalog = await Deno.readTextFile("src/ui/workspace/pages/dev/index.astro");
+test("Plan Review fixtures show every callout kind next to a dense comparison without callouts", async () => {
+    const devSurface = await fsReadFile("src/ui/workspace/react/ReviewDevSurface.tsx", "utf8");
+    const catalog = await fsReadFile("src/ui/workspace/pages/dev/index.astro", "utf8");
     const between = (start: string, end: string) =>
         devSurface.slice(devSurface.indexOf(start), devSurface.indexOf(end, devSurface.indexOf(start)));
     const concise = between("const PLAN_FIXTURE =", "const DENSE_PLAN_FIXTURE =");
@@ -94,9 +98,9 @@ Deno.test("Plan Review fixtures show every callout kind next to a dense comparis
     assertStringIncludes(catalog, 'id: "dense"');
 });
 
-Deno.test("Plan approval outcomes use shared completion routing", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("Plan approval outcomes use shared completion routing", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(route, "interactionAnswerUrl");
     assertStringIncludes(route, "progressUrl");
@@ -109,9 +113,9 @@ Deno.test("Plan approval outcomes use shared completion routing", async () => {
     assertStringIncludes(surface, "approved-later");
 });
 
-Deno.test("Plan review exposes Workspace recovery when live Plan evidence requires it", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("Plan review exposes Workspace recovery when live Plan evidence requires it", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(route, "recoveryUrl");
     assertStringIncludes(route, "force-recovery");
@@ -120,8 +124,8 @@ Deno.test("Plan review exposes Workspace recovery when live Plan evidence requir
     assertStringIncludes(surface, "runRecoveryAction");
 });
 
-Deno.test("Plan review stale errors offer a clear reload action", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("Plan review stale errors offer a clear reload action", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(surface, "staleReviewError");
     assertStringIncludes(surface, "Review is out of date");
@@ -129,14 +133,14 @@ Deno.test("Plan review stale errors offer a clear reload action", async () => {
     assertStringIncludes(surface, "globalThis.location.reload()");
 });
 
-Deno.test("Plan feedback action sits above the annotation list with theme accent styling", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
-    const styles = await Deno.readTextFile("src/ui/workspace/react/plannotator.css");
+test("Plan feedback action sits above the annotation list with theme accent styling", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
+    const styles = await fsReadFile("src/ui/workspace/react/plannotator.css", "utf8");
     const sidebarIndex = surface.indexOf('className="rw-plan-review-annotation-sidebar"');
     const actionIndex = surface.indexOf('label="Send Annotations"');
     const panelIndex = surface.indexOf('presentation="embedded"');
 
-    const components = await Deno.readTextFile("src/ui/design-system/components.css");
+    const components = await fsReadFile("src/ui/design-system/components.css", "utf8");
 
     assertStringIncludes(surface, 'className="rw-review-feedback-action rw-review-action');
     assertStringIncludes(styles, ".rw-review-feedback-action");
@@ -147,12 +151,12 @@ Deno.test("Plan feedback action sits above the annotation list with theme accent
     }
 });
 
-Deno.test("Plan review offers a reusable Planner conversation without replacing Send Annotations", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
-    const surface = await Deno.readTextFile(SURFACE_PATH);
-    const conversation = await Deno.readTextFile("src/ui/workspace/react/ArtifactConversationSidebar.tsx");
-    const components = await Deno.readTextFile("src/ui/design-system/components.css");
-    const docs = await Deno.readTextFile("docs/design-system.md");
+test("Plan review offers a reusable Planner conversation without replacing Send Annotations", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
+    const conversation = await fsReadFile("src/ui/workspace/react/ArtifactConversationSidebar.tsx", "utf8");
+    const components = await fsReadFile("src/ui/design-system/components.css", "utf8");
+    const docs = await fsReadFile("docs/design-system.md", "utf8");
 
     assertStringIncludes(route, "operationStatusUrl");
     assertStringIncludes(route, "planDetailUrl");
@@ -172,24 +176,25 @@ Deno.test("Plan review offers a reusable Planner conversation without replacing 
     assertStringIncludes(docs, "**Artifact conversation**");
 });
 
-Deno.test("Code feedback action matches the Plan annotation sidebar treatment", async () => {
-    const surface = await Deno.readTextFile(CODE_SURFACE_PATH);
+test("Code feedback action matches the Plan annotation sidebar treatment", async () => {
+    const surface = await fsReadFile(CODE_SURFACE_PATH, "utf8");
     const sidebarIndex = surface.indexOf('className="rw-code-review-annotation-sidebar"');
-    const actionIndex = surface.indexOf('label="Send Annotations"');
+    const actionIndex = surface.indexOf(': "Send Annotations"');
     const listIndex = surface.indexOf("<ReviewSidebar", sidebarIndex);
 
     assertStringIncludes(surface, 'className="rw-review-feedback-action rw-review-action');
-    assertStringIncludes(surface, 'label="Send Annotations"');
+    assertStringIncludes(surface, ': "Send Annotations"');
     if (sidebarIndex < 0 || actionIndex < sidebarIndex || listIndex < actionIndex) {
         throw new Error("Code Review's Send Annotations action must sit above the annotation list");
     }
 });
 
-Deno.test("Code Review reuses artifact chat and reloads the republished file diff", async () => {
-    const route = await Deno.readTextFile(
+test("Code Review reuses artifact chat and reloads the republished file diff", async () => {
+    const route = await fsReadFile(
         "src/ui/workspace/pages/projects/[projectId]/sessions/[runwieldSessionId]/review/code.astro",
+        "utf8",
     );
-    const surface = await Deno.readTextFile(CODE_SURFACE_PATH);
+    const surface = await fsReadFile(CODE_SURFACE_PATH, "utf8");
 
     assertStringIncludes(route, "operationStatusUrl");
     assertStringIncludes(route, "interactionAnswerBaseUrl");
@@ -200,11 +205,11 @@ Deno.test("Code Review reuses artifact chat and reloads the republished file dif
     assertStringIncludes(surface, "waitForWorkspaceCodeReview");
     assertStringIncludes(surface, "setActiveRawPatch(options.rawPatch)");
     assertStringIncludes(surface, "conversationTurn: true");
-    assertStringIncludes(surface, 'label="Send Annotations"');
+    assertStringIncludes(surface, ': "Send Annotations"');
 });
 
-Deno.test("Code Review uses the Workspace header when embedded and preserves standalone controls", async () => {
-    const surface = await Deno.readTextFile(CODE_SURFACE_PATH);
+test("Code Review uses the Workspace header when embedded and preserves standalone controls", async () => {
+    const surface = await fsReadFile(CODE_SURFACE_PATH, "utf8");
     const headingIndex = surface.indexOf('className="rw-plan-review-heading"');
     const optionsIndex = surface.indexOf("{reviewOptions}", headingIndex);
     const logoIndex = surface.indexOf('<img src="/brand/logo.svg"', headingIndex);
@@ -215,7 +220,7 @@ Deno.test("Code Review uses the Workspace header when embedded and preserves sta
 
     assertStringIncludes(surface, "function CodeReviewOptionsMenu({\n    iconOnly = false,");
     assertStringIncludes(surface, '<RunWieldMenu label="Options" iconOnly={iconOnly}');
-    const menu = await Deno.readTextFile("src/ui/design-system/components/react/RunWieldMenu.tsx");
+    const menu = await fsReadFile("src/ui/design-system/components/react/RunWieldMenu.tsx", "utf8");
     assertStringIncludes(menu, "!iconOnly && <span");
     assertStringIncludes(surface, "const codeReviewHeading = `Code Review - ${codeReviewPlanTitle}`;");
     assertStringIncludes(surface, "<h1 title={codeReviewHeading}>{codeReviewHeading}</h1>");
@@ -227,8 +232,8 @@ Deno.test("Code Review uses the Workspace header when embedded and preserves sta
     }
 });
 
-Deno.test("Code Review title ellipsizes without moving toolbar actions", async () => {
-    const styles = await Deno.readTextFile("src/ui/workspace/react/plannotator.css");
+test("Code Review title ellipsizes without moving toolbar actions", async () => {
+    const styles = await fsReadFile("src/ui/workspace/react/plannotator.css", "utf8");
 
     assertStringIncludes(styles, ".rw-code-review .rw-plan-review-heading {");
     assertStringIncludes(styles, "flex: 1 1 auto;");
@@ -239,8 +244,8 @@ Deno.test("Code Review title ellipsizes without moving toolbar actions", async (
     assertStringIncludes(styles, "flex: none;");
 });
 
-Deno.test("Code Review uses the Plan Review card surface for review panels", async () => {
-    const styles = await Deno.readTextFile("src/ui/workspace/react/plannotator.css");
+test("Code Review uses the Plan Review card surface for review panels", async () => {
+    const styles = await fsReadFile("src/ui/workspace/react/plannotator.css", "utf8");
 
     assertStringIncludes(styles, ".rw-review-file-tree {");
     assertStringIncludes(styles, ".rw-code-review-annotation-sidebar {");
@@ -252,10 +257,10 @@ Deno.test("Code Review uses the Plan Review card surface for review panels", asy
     assertStringIncludes(styles, "background: var(--card) !important;");
 });
 
-Deno.test("Plan and Code review use shared toolbar structure with edge-aligned restore buttons", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
-    const codeSurface = await Deno.readTextFile(CODE_SURFACE_PATH);
-    const styles = await Deno.readTextFile("src/ui/workspace/react/plannotator.css");
+test("Plan and Code review use shared toolbar structure with edge-aligned restore buttons", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
+    const codeSurface = await fsReadFile(CODE_SURFACE_PATH, "utf8");
+    const styles = await fsReadFile("src/ui/workspace/react/plannotator.css", "utf8");
     const leftRestoreIndex = surface.indexOf(
         'className="rw-review-toolbar-edge rw-review-toolbar-edge-left rw-plan-review-sidebar-restore rw-plan-review-sidebar-restore-left"',
     );
@@ -321,7 +326,7 @@ Deno.test("Plan and Code review use shared toolbar structure with edge-aligned r
     assertStringIncludes(surface, '<PanelCollapseIcon side="left" />');
     assertStringIncludes(surface, 'title="Collapse annotations sidebar"');
     assertStringIncludes(surface, 'aria-label="Collapse annotations sidebar"');
-    const sharedStyles = await Deno.readTextFile("src/ui/design-system/components.css");
+    const sharedStyles = await fsReadFile("src/ui/design-system/components.css", "utf8");
     assertStringIncludes(sharedStyles, ".rw-menu-positioner {\n    z-index: 90;");
     assertStringIncludes(surface, 'planWidthMode === "wide"');
     assertStringIncludes(surface, "function PanelCollapseIcon({ side })");
@@ -389,14 +394,14 @@ Deno.test("Plan and Code review use shared toolbar structure with edge-aligned r
     }
 });
 
-Deno.test("Review segmented toggles use shared compact icon-label behavior", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
-    const remoteSurface = await Deno.readTextFile(REMOTE_SURFACE_PATH);
-    const settings = await Deno.readTextFile(SETTINGS_PATH);
-    const wrapper = await Deno.readTextFile(ANNOTATION_TOOLSTRIP_PATH);
-    const styles = await Deno.readTextFile("src/ui/workspace/react/plannotator.css");
-    const components = await Deno.readTextFile("src/ui/design-system/components.css");
-    const docs = await Deno.readTextFile("docs/design-system.md");
+test("Review segmented toggles use shared compact icon-label behavior", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
+    const remoteSurface = await fsReadFile(REMOTE_SURFACE_PATH, "utf8");
+    const settings = await fsReadFile(SETTINGS_PATH, "utf8");
+    const wrapper = await fsReadFile(ANNOTATION_TOOLSTRIP_PATH, "utf8");
+    const styles = await fsReadFile("src/ui/workspace/react/plannotator.css", "utf8");
+    const components = await fsReadFile("src/ui/design-system/components.css", "utf8");
+    const docs = await fsReadFile("docs/design-system.md", "utf8");
 
     assertStringIncludes(surface, "<RunWieldAnnotationToolstrip");
     assertStringIncludes(remoteSurface, "<RunWieldAnnotationToolstrip");
@@ -417,9 +422,9 @@ Deno.test("Review segmented toggles use shared compact icon-label behavior", asy
     assertStringIncludes(settings, "title={option.label}");
 });
 
-Deno.test("Feedback and Run return to Session while Later stays on confirmation", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("Feedback and Run return to Session while Later stays on confirmation", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(route, "interactionAnswerUrl");
     assertStringIncludes(surface, "Approve & Run");
@@ -427,16 +432,16 @@ Deno.test("Feedback and Run return to Session while Later stays on confirmation"
     assertStringIncludes(surface, "approved-later");
 });
 
-Deno.test("Plan and Epic reviews expose classification-correct actions", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("Plan and Epic reviews expose classification-correct actions", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(surface, "PLAN_APPROVAL_ACTIONS.DECOMPOSE");
     assertStringIncludes(surface, "Approve & Slice");
     assertStringIncludes(surface, "Approve & Run");
 });
 
-Deno.test("revised Plan reviews expose selectable Plannotator version history", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("revised Plan reviews expose selectable Plannotator version history", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(surface, "usePlanDiff");
     assertStringIncludes(surface, "PlanDiffViewer");
@@ -446,8 +451,8 @@ Deno.test("revised Plan reviews expose selectable Plannotator version history", 
     assertStringIncludes(surface, "Changes");
 });
 
-Deno.test("Plan reviews inspect affected files and export complete feedback", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("Plan reviews inspect affected files and export complete feedback", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(surface, "AffectedFilesMenu");
     assertStringIncludes(surface, "onOpenCodeFile={codeFilePopout.open}");
@@ -457,8 +462,8 @@ Deno.test("Plan reviews inspect affected files and export complete feedback", as
     assertStringIncludes(surface, 'annotationsOutput={exportOpen ? currentFeedback() : ""}');
 });
 
-Deno.test("Plan reviews recover unfinished work and send direct edits as feedback", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
+test("Plan reviews recover unfinished work and send direct edits as feedback", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
 
     assertStringIncludes(surface, "Unfinished review found");
     assertStringIncludes(surface, "Restore draft");
@@ -469,14 +474,14 @@ Deno.test("Plan reviews recover unfinished work and send direct edits as feedbac
     assertStringIncludes(surface, "buildPlanReviewFeedback");
 });
 
-Deno.test("Plan and Code annotation tabs occupy the shared header in every presentation", async () => {
+test("Plan and Code annotation tabs occupy the shared header in every presentation", async () => {
     for (
         const [path, headingClass] of [
             [SURFACE_PATH, "rw-plan-review-annotation-heading"],
             [CODE_SURFACE_PATH, "rw-review-annotation-heading"],
         ]
     ) {
-        const source = await Deno.readTextFile(path);
+        const source = await fsReadFile(path, "utf8");
         const heading = source.indexOf(`className="${headingClass}`);
         const tabs = source.indexOf('role="tablist"', heading);
         const collapse = source.indexOf('title="Collapse annotations sidebar"', heading);
@@ -486,9 +491,9 @@ Deno.test("Plan and Code annotation tabs occupy the shared header in every prese
         assertStringIncludes(source.slice(heading, tabs), "conversationEnabled");
     }
 });
-Deno.test("Compact Plan Review starts collapsed and keeps panel controls outside document scrolling", async () => {
-    const surface = await Deno.readTextFile(SURFACE_PATH);
-    const styles = await Deno.readTextFile("src/ui/workspace/react/plannotator.css");
+test("Compact Plan Review starts collapsed and keeps panel controls outside document scrolling", async () => {
+    const surface = await fsReadFile(SURFACE_PATH, "utf8");
+    const styles = await fsReadFile("src/ui/workspace/react/plannotator.css", "utf8");
     assertStringIncludes(surface, 'globalThis.matchMedia?.("(max-width: 980px)")');
     assertStringIncludes(surface, "!compactLayout && getUIPreferences().tocEnabled");
     assertStringIncludes(surface, "useReviewAnnotations(annotations.length + codeAnnotations.length)");

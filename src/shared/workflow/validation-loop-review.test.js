@@ -1,15 +1,11 @@
-import {
-    assertEquals,
-    assertExists,
-    assertNotEquals,
-    assertObjectMatch,
-    assertRejects,
-    assertStringIncludes,
-} from "@std/assert";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { notDeepStrictEqual as assertNotEquals, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlan } from "../../plan-store.js";
 import { getHomeDir } from "../../constants.js";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { setCustomSetting } from "../settings.js";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { captureWorktreeTree, getWorktreeReviewDiff } from "./git-snapshot.ts";
@@ -49,7 +45,7 @@ async function makeValidatedCiRun(attrs = {}) {
     await git(projectRoot, ["add", "."]);
     await git(projectRoot, ["commit", "-m", "validation baseline"]);
     const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-    await Deno.writeTextFile(`${projectRoot}/workflow.js`, "export const scopedWorkflowChange = true;\n");
+    await fsWriteFile(`${projectRoot}/workflow.js`, "export const scopedWorkflowChange = true;\n");
     /** @type {import('../../tools/plan-written.ts').TriageMeta} */
     const triageMeta = { classification: "QUICK_FIX", status: "validated_ci", ...attrs };
     hostedSession.setWorkflowExecutionContext({
@@ -77,52 +73,60 @@ async function makeValidatedCiRun(attrs = {}) {
  */
 function reviewerMessages(result = {}) {
     const approved = result.approved !== false;
-    return /** @type {any} */ ([{
-        role: "toolResult",
-        toolName: "review_diff",
-        details: { command: "list", scope: "full", fileCount: 1 },
-    }, {
-        role: "toolResult",
-        toolName: "review_complete",
-        details: {
-            outcome: approved ? "approved" : "feedback",
-            approved,
-            feedback: result.feedback || "",
-            findings: result.findings || [],
-            advisories: result.advisories || [],
+    return /** @type {any} */ ([
+        {
+            role: "toolResult",
+            toolName: "review_diff",
+            details: { command: "list", scope: "full", fileCount: 1 },
         },
-    }]);
+        {
+            role: "toolResult",
+            toolName: "review_complete",
+            details: {
+                outcome: approved ? "approved" : "feedback",
+                approved,
+                feedback: result.feedback || "",
+                findings: result.findings || [],
+                advisories: result.advisories || [],
+            },
+        },
+    ]);
 }
 
 function repairMessages(message = "R1-1 — fixed: added the missing guard.") {
-    return /** @type {any} */ ([{
-        role: "toolResult",
-        toolName: "task_completed",
-        details: { outcome: "task_completed", message },
-    }]);
+    return /** @type {any} */ ([
+        {
+            role: "toolResult",
+            toolName: "task_completed",
+            details: { outcome: "task_completed", message },
+        },
+    ]);
 }
 
 function providerErrorMessages(errorMessage = "404 Not Found") {
-    return /** @type {any} */ ([{
-        role: "assistant",
-        content: [],
-        api: "openai-responses",
-        provider: "openai-codex",
-        model: "gpt-5.5",
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {} },
-        stopReason: "error",
-        errorMessage,
-        timestamp: Date.now(),
-    }]);
+    return /** @type {any} */ ([
+        {
+            role: "assistant",
+            content: [],
+            api: "openai-responses",
+            provider: "openai-codex",
+            model: "gpt-5.5",
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {} },
+            stopReason: "error",
+            errorMessage,
+            timestamp: Date.now(),
+        },
+    ]);
 }
 
 /**
  * @param {Record<string, unknown>} [overrides]
  */
 function reviewPort(overrides = {}) {
-    const overrideRun = typeof overrides.runIsolatedAgentSession === "function"
-        ? overrides.runIsolatedAgentSession
-        : () => Promise.reject(new Error("Unexpected isolated Agent session"));
+    const overrideRun =
+        typeof overrides.runIsolatedAgentSession === "function"
+            ? overrides.runIsolatedAgentSession
+            : () => Promise.reject(new Error("Unexpected isolated Agent session"));
     return /** @type {any} */ ({
         ...overrides,
         runIsolatedAgentSession: async (/** @type {any} */ opts) => {
@@ -152,8 +156,8 @@ function reviewPort(overrides = {}) {
                                             path: file.path,
                                             offsetBytes: index * 65536,
                                         },
-                                    }))
-                                )
+                                    })),
+                                ),
                             ),
                         ];
                     }),
@@ -175,24 +179,26 @@ function roundLimitPort(reviewer = {}) {
         runIsolatedAgentSession: (/** @type {any} */ options) =>
             Promise.resolve(
                 options?.agentName === "reviewer-feedback-engineer"
-                    ? /** @type {any[]} */ ([{
-                        role: "toolResult",
-                        toolName: "task_completed",
-                        toolCallId: "repair-1",
-                        content: [],
-                        isError: false,
-                        timestamp: new Date().toISOString(),
-                        details: { outcome: "task_completed", message: "- Addressed the finding." },
-                    }])
+                    ? /** @type {any[]} */ ([
+                          {
+                              role: "toolResult",
+                              toolName: "task_completed",
+                              toolCallId: "repair-1",
+                              content: [],
+                              isError: false,
+                              timestamp: new Date().toISOString(),
+                              details: { outcome: "task_completed", message: "- Addressed the finding." },
+                          },
+                      ])
                     : reviewerMessages({
-                        approved: reviewer.approved === true,
-                        findings: [{ title: "Repair introduced a regression", origin: "repair_regression" }],
-                    }),
+                          approved: reviewer.approved === true,
+                          findings: [{ title: "Repair introduced a regression", origin: "repair_regression" }],
+                      }),
             ),
     });
 }
 
-Deno.test("runValidationPhase resumes at validated_ci and skips CI before recording semantic approval for non-Git validation", async () => {
+test("runValidationPhase resumes at validated_ci and skips CI before recording semantic approval for non-Git validation", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "validated_ci",
@@ -229,7 +235,7 @@ Deno.test("runValidationPhase resumes at validated_ci and skips CI before record
     assertEquals(plan?.attrs.status, "reviewed");
 });
 
-Deno.test("runValidationPhase reviews the proposed branch patch from validated_ci", async () => {
+test("runValidationPhase reviews the proposed branch patch from validated_ci", async () => {
     const expectedWorkflowContext = {
         routingIntent: "QUICK_FIX",
         complexity: "MEDIUM",
@@ -261,7 +267,7 @@ Deno.test("runValidationPhase reviews the proposed branch patch from validated_c
     assertEquals(plan?.attrs.status, "reviewed");
 });
 
-Deno.test("AI review and repair receive the same proposed branch patch", async () => {
+test("AI review and repair receive the same proposed branch patch", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "QUICK_FIX",
         status: "validated_ci",
@@ -270,19 +276,17 @@ Deno.test("AI review and repair receive the same proposed branch patch", async (
     await git(projectRoot, ["init", "-b", "target"]);
     await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
     await git(projectRoot, ["config", "user.name", "RunWield Test"]);
-    await Deno.writeTextFile(`${projectRoot}/.gitignore`, "docs/plans/\n");
+    await fsWriteFile(`${projectRoot}/.gitignore`, "docs/plans/\n");
     await git(projectRoot, ["add", "."]);
     await git(projectRoot, ["commit", "-m", "execution baseline"]);
     const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-    await Deno.writeTextFile(`${projectRoot}/inherited.js`, "export const inherited = true;\n");
+    await fsWriteFile(`${projectRoot}/inherited.js`, "export const inherited = true;\n");
     await git(projectRoot, ["add", "inherited.js"]);
     await git(projectRoot, ["commit", "-m", "target behavior"]);
     await git(projectRoot, ["switch", "-c", "execution"]);
-    const implementation = Array.from(
-        { length: 40 },
-        (_, index) => `export const planned${index} = true;`,
-    ).join("\n") + "\n";
-    await Deno.writeTextFile(`${projectRoot}/plan-change.js`, implementation);
+    const implementation =
+        Array.from({ length: 40 }, (_, index) => `export const planned${index} = true;`).join("\n") + "\n";
+    await fsWriteFile(`${projectRoot}/plan-change.js`, implementation);
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
         triageMeta: { classification: "QUICK_FIX", status: "validated_ci" },
@@ -347,7 +351,7 @@ Deno.test("AI review and repair receive the same proposed branch patch", async (
     assertEquals(expectedDiff.includes("inherited.js"), false);
 });
 
-Deno.test("runValidationPhase configures Semantic Reviewer with diff tools and isolated session", async () => {
+test("runValidationPhase configures Semantic Reviewer with diff tools and isolated session", async () => {
     const { hostedSession } = await makeValidatedCiRun();
     const rootSessionManager = /** @type {any} */ ({ id: "shared-root-history" });
     const sessionOpts = /** @type {any[]} */ ([]);
@@ -388,7 +392,7 @@ Deno.test("runValidationPhase configures Semantic Reviewer with diff tools and i
     );
 });
 
-Deno.test("runValidationPhase rejects an approved verdict reached without inspecting the diff", async () => {
+test("runValidationPhase rejects an approved verdict reached without inspecting the diff", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun();
     const reviewPrompts = /** @type {string[]} */ ([]);
     let reviewCalls = 0;
@@ -404,11 +408,13 @@ Deno.test("runValidationPhase rejects an approved verdict reached without inspec
                 reviewCalls += 1;
                 if (reviewCalls === 1) {
                     return Promise.resolve(
-                        /** @type {any} */ ([{
-                            role: "toolResult",
-                            toolName: "review_complete",
-                            details: { outcome: "approved", approved: true, feedback: "", findings: [] },
-                        }]),
+                        /** @type {any} */ ([
+                            {
+                                role: "toolResult",
+                                toolName: "review_complete",
+                                details: { outcome: "approved", approved: true, feedback: "", findings: [] },
+                            },
+                        ]),
                     );
                 }
                 return Promise.resolve(reviewerMessages());
@@ -422,7 +428,7 @@ Deno.test("runValidationPhase rejects an approved verdict reached without inspec
     assertEquals(plan?.attrs.status, "reviewed");
 });
 
-Deno.test("runValidationPhase does not count a failed review_diff call as inspecting the diff", async () => {
+test("runValidationPhase does not count a failed review_diff call as inspecting the diff", async () => {
     const { hostedSession } = await makeValidatedCiRun();
     const reviewPrompts = /** @type {string[]} */ ([]);
     let reviewCalls = 0;
@@ -438,16 +444,19 @@ Deno.test("runValidationPhase does not count a failed review_diff call as inspec
                 reviewCalls += 1;
                 if (reviewCalls === 1) {
                     return Promise.resolve(
-                        /** @type {any} */ ([{
-                            role: "toolResult",
-                            toolName: "review_diff",
-                            isError: true,
-                            details: { command: "show", scope: "full", found: false },
-                        }, {
-                            role: "toolResult",
-                            toolName: "review_complete",
-                            details: { outcome: "approved", approved: true, feedback: "", findings: [] },
-                        }]),
+                        /** @type {any} */ ([
+                            {
+                                role: "toolResult",
+                                toolName: "review_diff",
+                                isError: true,
+                                details: { command: "show", scope: "full", found: false },
+                            },
+                            {
+                                role: "toolResult",
+                                toolName: "review_complete",
+                                details: { outcome: "approved", approved: true, feedback: "", findings: [] },
+                            },
+                        ]),
                     );
                 }
                 return Promise.resolve(reviewerMessages());
@@ -459,7 +468,7 @@ Deno.test("runValidationPhase does not count a failed review_diff call as inspec
     assertStringIncludes(reviewPrompts[1], "Read every remaining diff chunk");
 });
 
-Deno.test("runValidationPhase nudges the same reviewer session when review_complete is omitted", async () => {
+test("runValidationPhase nudges the same reviewer session when review_complete is omitted", async () => {
     const { uiAPI, hostedSession } = await makeValidatedCiRun();
     const reviewOpts = /** @type {any[]} */ ([]);
     let reviewCalls = 0;
@@ -475,14 +484,17 @@ Deno.test("runValidationPhase nudges the same reviewer session when review_compl
                 reviewCalls += 1;
                 if (reviewCalls === 1) {
                     return Promise.resolve(
-                        /** @type {any} */ ([{
-                            role: "toolResult",
-                            toolName: "review_diff",
-                            details: { command: "list", scope: "full", fileCount: 1 },
-                        }, {
-                            role: "assistant",
-                            content: [{ type: "text", text: "The implementation matches the plan." }],
-                        }]),
+                        /** @type {any} */ ([
+                            {
+                                role: "toolResult",
+                                toolName: "review_diff",
+                                details: { command: "list", scope: "full", fileCount: 1 },
+                            },
+                            {
+                                role: "assistant",
+                                content: [{ type: "text", text: "The implementation matches the plan." }],
+                            },
+                        ]),
                     );
                 }
                 return Promise.resolve(reviewerMessages());
@@ -497,7 +509,7 @@ Deno.test("runValidationPhase nudges the same reviewer session when review_compl
     assertStringIncludes(uiAPI.messages.join(" "), "AI review needs more time");
 });
 
-Deno.test("runValidationPhase nudges the same Reviewer after real argument validation rejects review_complete", async () => {
+test("runValidationPhase nudges the same Reviewer after real argument validation rejects review_complete", async () => {
     const { hostedSession } = await makeValidatedCiRun();
     const reviewOpts = /** @type {any[]} */ ([]);
 
@@ -512,10 +524,12 @@ Deno.test("runValidationPhase nudges the same Reviewer after real argument valid
                 if (reviewOpts.length === 1) {
                     await assertRejects(
                         () =>
-                            executeWorkflowTestTools(opts, [{
-                                name: "review_complete",
-                                arguments: { approved: true, findings: "not an array" },
-                            }]),
+                            executeWorkflowTestTools(opts, [
+                                {
+                                    name: "review_complete",
+                                    arguments: { approved: true, findings: "not an array" },
+                                },
+                            ]),
                         Error,
                     );
                     return [];
@@ -530,7 +544,7 @@ Deno.test("runValidationPhase nudges the same Reviewer after real argument valid
     assertEquals(reviewOpts[0].sessionManager, reviewOpts[1].sessionManager);
 });
 
-Deno.test("runValidationPhase cannot advance from a failed diff lookup without review_complete", async () => {
+test("runValidationPhase cannot advance from a failed diff lookup without review_complete", async () => {
     const { hostedSession } = await makeValidatedCiRun();
     const reviewOpts = /** @type {any[]} */ ([]);
 
@@ -543,10 +557,12 @@ Deno.test("runValidationPhase cannot advance from a failed diff lookup without r
             runIsolatedAgentSession: async (/** @type {any} */ opts) => {
                 reviewOpts.push(opts);
                 if (reviewOpts.length === 1) {
-                    await executeWorkflowTestTools(opts, [{
-                        name: "review_diff",
-                        arguments: { command: "show", path: "missing-file.js" },
-                    }]);
+                    await executeWorkflowTestTools(opts, [
+                        {
+                            name: "review_diff",
+                            arguments: { command: "show", path: "missing-file.js" },
+                        },
+                    ]);
                     return [];
                 }
                 return Promise.resolve(reviewerMessages());
@@ -559,7 +575,7 @@ Deno.test("runValidationPhase cannot advance from a failed diff lookup without r
     assertEquals(reviewOpts[0].sessionManager, reviewOpts[1].sessionManager);
 });
 
-Deno.test("runValidationPhase stops after one unknown Reviewer failure", async () => {
+test("runValidationPhase stops after one unknown Reviewer failure", async () => {
     const { projectRoot, hostedSession, uiAPI } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     let reviewCalls = 0;
 
@@ -583,12 +599,12 @@ Deno.test("runValidationPhase stops after one unknown Reviewer failure", async (
     assertStringIncludes(uiAPI.messages.join(" "), "AI review for p stopped.");
     assertEquals(uiAPI.messages.join(" ").includes("Context window exceeded"), false);
     assertStringIncludes(
-        await Deno.readTextFile(join(getHomeDir(), ".wld", "debug", "validation-errors.jsonl")),
+        await fsReadFile(join(getHomeDir(), ".wld", "debug", "validation-errors.jsonl"), "utf8"),
         "Context window exceeded",
     );
 });
 
-Deno.test("runValidationPhase treats a Reviewer 404 as an operational retry without consuming a review round", async () => {
+test("runValidationPhase treats a Reviewer 404 as an operational retry without consuming a review round", async () => {
     const { projectRoot, hostedSession, uiAPI } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     await setCustomSetting("retry.baseDelayMs", 1, "project", projectRoot);
     await setCustomSetting("retry.validation.maxDelayMs", 1, "project", projectRoot);
@@ -617,7 +633,7 @@ Deno.test("runValidationPhase treats a Reviewer 404 as an operational retry with
     assertStringIncludes(uiAPI.messages.join(" "), "The model provider could not complete AI review");
 });
 
-Deno.test("runValidationPhase pauses a Reviewer outage without recording feedback or advancing its round", async () => {
+test("runValidationPhase pauses a Reviewer outage without recording feedback or advancing its round", async () => {
     const { projectRoot, hostedSession, uiAPI } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     await setCustomSetting("retry.maxRetries", 1, "project", projectRoot);
 
@@ -639,7 +655,7 @@ Deno.test("runValidationPhase pauses a Reviewer outage without recording feedbac
     assertEquals(uiAPI.messages.join(" ").includes("have not called review_complete"), false);
 });
 
-Deno.test("runValidationPhase dispatches semantic review feedback to Reviewer-Feedback Engineer and records feedback event", async () => {
+test("runValidationPhase dispatches semantic review feedback to Reviewer-Feedback Engineer and records feedback event", async () => {
     const expectedWorkflowContext = {
         routingIntent: "QUICK_FIX",
         complexity: "MEDIUM",
@@ -681,11 +697,13 @@ Deno.test("runValidationPhase dispatches semantic review feedback to Reviewer-Fe
                     return Promise.resolve(repairMessages());
                 }
                 reviewerWorkflowContexts.push(hostedSession.getWorkflowContext());
-                return Promise.resolve(reviewerMessages({
-                    approved: false,
-                    feedback: "Missing guard",
-                    findings: [{ title: "Missing guard", requirement: "Step 2", evidence: "file.js" }],
-                }));
+                return Promise.resolve(
+                    reviewerMessages({
+                        approved: false,
+                        feedback: "Missing guard",
+                        findings: [{ title: "Missing guard", requirement: "Step 2", evidence: "file.js" }],
+                    }),
+                );
             },
         }),
     });
@@ -693,7 +711,10 @@ Deno.test("runValidationPhase dispatches semantic review feedback to Reviewer-Fe
     const plan = await loadPlan(projectRoot, "p");
     assertEquals(result.kind, "semantic_repair_handoff");
     assertStringIncludes(result.semanticRepairHandoff?.findingsSection || "", "Missing guard");
-    assertEquals(sessions.map((opts) => opts.agentName), ["reviewer"]);
+    assertEquals(
+        sessions.map((opts) => opts.agentName),
+        ["reviewer"],
+    );
     assertStringIncludes(
         sessions[0].userRequest.replace(/\s+/g, " ").trim(),
         approvedPlanBody.replace(/\s+/g, " ").trim(),
@@ -713,17 +734,19 @@ Deno.test("runValidationPhase dispatches semantic review feedback to Reviewer-Fe
     assertStringIncludes(uiAPI.messages.join(" "), "AI review 1 of 3 has begun");
 });
 
-Deno.test("runValidationPhase carries existing ledger identities and repair report into the next semantic round", async () => {
+test("runValidationPhase carries existing ledger identities and repair report into the next semantic round", async () => {
     const ledger = {
         sequence: 1,
-        items: [{
-            id: "R1-1",
-            openedInRound: 1,
-            resolvedInRound: null,
-            title: "Missing guard",
-            requirement: "Step 2",
-            evidence: "file.js",
-        }],
+        items: [
+            {
+                id: "R1-1",
+                openedInRound: 1,
+                resolvedInRound: null,
+                title: "Missing guard",
+                requirement: "Step 2",
+                evidence: "file.js",
+            },
+        ],
     };
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     hostedSession.setActiveExecutionWorkflow(
@@ -745,9 +768,11 @@ Deno.test("runValidationPhase carries existing ledger identities and repair repo
             runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
                 reviewModes.push(opts.subAgentDefinition?.options?.reviewerMode);
-                return Promise.resolve(reviewerMessages({
-                    findings: [{ id: "R1-1", resolved: true, title: "Missing guard" }],
-                }));
+                return Promise.resolve(
+                    reviewerMessages({
+                        findings: [{ id: "R1-1", resolved: true, title: "Missing guard" }],
+                    }),
+                );
             },
         }),
     });
@@ -764,7 +789,7 @@ Deno.test("runValidationPhase carries existing ledger identities and repair repo
     assertEquals(plan?.attrs.validationCheckpoint?.reviewState?.reviewLedger.items[0].resolvedInRound, 2);
 });
 
-Deno.test("round-two origin metrics are recorded separately from durable repair states", async () => {
+test("round-two origin metrics are recorded separately from durable repair states", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     await setCustomSetting("workflowMetrics", true, "project", projectRoot);
     /** @type {import('./review-ledger.ts').ReviewLedger} */
@@ -791,25 +816,28 @@ Deno.test("round-two origin metrics are recorded separately from durable repair 
         supportsSemanticRepairHandoff: true,
         semanticReviewPort: reviewPort({
             runIsolatedAgentSession: () =>
-                Promise.resolve(reviewerMessages({
-                    approved: false,
-                    findings: [
-                        {
-                            id: "R1-1",
-                            title: "Existing defect",
-                            status: "fix_rejected",
-                            rejectionReason: "The empty case still fails.",
-                        },
-                        { id: "R1-2", title: "Existing defect", status: "fix_confirmed" },
-                        { title: "Original miss", status: "new", origin: "missed_original" },
-                        { title: "Repair regression", status: "new", origin: "repair_regression" },
-                    ],
-                })),
+                Promise.resolve(
+                    reviewerMessages({
+                        approved: false,
+                        findings: [
+                            {
+                                id: "R1-1",
+                                title: "Existing defect",
+                                status: "fix_rejected",
+                                rejectionReason: "The empty case still fails.",
+                            },
+                            { id: "R1-2", title: "Existing defect", status: "fix_confirmed" },
+                            { title: "Original miss", status: "new", origin: "missed_original" },
+                            { title: "Repair regression", status: "new", origin: "repair_regression" },
+                        ],
+                    }),
+                ),
         }),
     });
-    const records = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n").map((line) =>
-        JSON.parse(line)
-    );
+    const records = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
     const metric = records.find((record) => record.event === "semantic_review_result");
     assertEquals(metric.details.missedOriginalCount, 1);
     assertEquals(metric.details.repairRegressionCount, 1);
@@ -817,12 +845,18 @@ Deno.test("round-two origin metrics are recorded separately from durable repair 
     assertEquals(metric.details.fixConfirmedCount, 1);
     const saved = (await loadPlan(projectRoot, "p"))?.attrs.validationCheckpoint?.reviewState?.reviewLedger;
     assertExists(saved);
-    assertEquals(saved.items.map((item) => item.status), ["fix_rejected", "fix_confirmed", "new", "new"]);
+    assertEquals(
+        saved.items.map((item) => item.status),
+        ["fix_rejected", "fix_confirmed", "new", "new"],
+    );
     assertEquals(saved.items[0].rejectionReason, "The empty case still fails.");
-    assertEquals(saved.items.some((item) => "origin" in item), false);
+    assertEquals(
+        saved.items.some((item) => "origin" in item),
+        false,
+    );
 });
 
-Deno.test("a resumed round two without persisted findings still performs a complete review", async () => {
+test("a resumed round two without persisted findings still performs a complete review", async () => {
     const { hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     const reviewModes = /** @type {string[]} */ ([]);
 
@@ -842,7 +876,7 @@ Deno.test("a resumed round two without persisted findings still performs a compl
     assertEquals(reviewModes, ["discovery"]);
 });
 
-Deno.test("an interrupted semantic repair pauses without recording validation failure", async () => {
+test("an interrupted semantic repair pauses without recording validation failure", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun();
     const result = await runValidationPhase({
         hostedSession,
@@ -853,11 +887,13 @@ Deno.test("an interrupted semantic repair pauses without recording validation fa
         semanticReviewPort: reviewPort({
             runIsolatedAgentSession: (/** @type {any} */ opts) =>
                 Promise.resolve(
-                    opts.agentName === "reviewer-feedback-engineer" ? [] : reviewerMessages({
-                        approved: false,
-                        feedback: "Missing guard",
-                        findings: [{ title: "Missing guard" }],
-                    }),
+                    opts.agentName === "reviewer-feedback-engineer"
+                        ? []
+                        : reviewerMessages({
+                              approved: false,
+                              feedback: "Missing guard",
+                              findings: [{ title: "Missing guard" }],
+                          }),
                 ),
         }),
     });
@@ -868,21 +904,23 @@ Deno.test("an interrupted semantic repair pauses without recording validation fa
     assertEquals(plan?.attrs.worktreeStatus, undefined);
 });
 
-Deno.test("runValidationPhase gives later semantic rounds a repair-scoped review_diff", async () => {
+test("runValidationPhase gives later semantic rounds a repair-scoped review_diff", async () => {
     const ledger = {
         sequence: 1,
-        items: [{
-            id: "R1-1",
-            openedInRound: 1,
-            resolvedInRound: null,
-            title: "Missing guard",
-            requirement: "Step 2",
-            evidence: "workflow.js",
-        }],
+        items: [
+            {
+                id: "R1-1",
+                openedInRound: 1,
+                resolvedInRound: null,
+                title: "Missing guard",
+                requirement: "Step 2",
+                evidence: "workflow.js",
+            },
+        ],
     };
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     const repairBaselineTree = await captureWorktreeTree(projectRoot);
-    await Deno.writeTextFile(`${projectRoot}/workflow.js`, "export const repairedWorkflowChange = true;\n");
+    await fsWriteFile(`${projectRoot}/workflow.js`, "export const repairedWorkflowChange = true;\n");
     hostedSession.setActiveExecutionWorkflow(
         /** @type {any} */ ({
             ...hostedSession.getActiveExecutionWorkflow(),
@@ -925,17 +963,19 @@ Deno.test("runValidationPhase gives later semantic rounds a repair-scoped review
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });
 
-Deno.test("runValidationPhase refuses semantic approval while a prior finding is unmentioned", async () => {
+test("runValidationPhase refuses semantic approval while a prior finding is unmentioned", async () => {
     const ledger = {
         sequence: 1,
-        items: [{
-            id: "R1-1",
-            openedInRound: 1,
-            resolvedInRound: null,
-            title: "Missing guard",
-            requirement: "Step 2",
-            evidence: "file.js",
-        }],
+        items: [
+            {
+                id: "R1-1",
+                openedInRound: 1,
+                resolvedInRound: null,
+                title: "Missing guard",
+                requirement: "Step 2",
+                evidence: "file.js",
+            },
+        ],
     };
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     hostedSession.setActiveExecutionWorkflow(
@@ -954,9 +994,11 @@ Deno.test("runValidationPhase refuses semantic approval while a prior finding is
                 reviewPrompts.push(opts.userRequest);
                 reviewCalls += 1;
                 if (reviewCalls === 1) return Promise.resolve(reviewerMessages({ approved: true, findings: [] }));
-                return Promise.resolve(reviewerMessages({
-                    findings: [{ id: "R1-1", resolved: true, title: "Missing guard" }],
-                }));
+                return Promise.resolve(
+                    reviewerMessages({
+                        findings: [{ id: "R1-1", resolved: true, title: "Missing guard" }],
+                    }),
+                );
             },
         }),
     });
@@ -968,24 +1010,27 @@ Deno.test("runValidationPhase refuses semantic approval while a prior finding is
     assertEquals(plan?.attrs.status, "reviewed");
 });
 
-Deno.test("runValidationPhase narrows semantic review to verification mode after discovery rounds", async () => {
+test("runValidationPhase narrows semantic review to verification mode after discovery rounds", async () => {
     const ledger = {
         sequence: 2,
-        items: [{
-            id: "R1-1",
-            openedInRound: 1,
-            resolvedInRound: null,
-            title: "Issue from round 1",
-            requirement: "Step 1",
-            evidence: "file.js",
-        }, {
-            id: "R2-2",
-            openedInRound: 2,
-            resolvedInRound: null,
-            title: "Issue from round 2",
-            requirement: "Step 2",
-            evidence: "file.js",
-        }],
+        items: [
+            {
+                id: "R1-1",
+                openedInRound: 1,
+                resolvedInRound: null,
+                title: "Issue from round 1",
+                requirement: "Step 1",
+                evidence: "file.js",
+            },
+            {
+                id: "R2-2",
+                openedInRound: 2,
+                resolvedInRound: null,
+                title: "Issue from round 2",
+                requirement: "Step 2",
+                evidence: "file.js",
+            },
+        ],
     };
     const { hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
     hostedSession.setActiveExecutionWorkflow(
@@ -1001,12 +1046,14 @@ Deno.test("runValidationPhase narrows semantic review to verification mode after
         semanticReviewPort: reviewPort({
             runIsolatedAgentSession: (/** @type {any} */ opts) => {
                 reviewPrompts.push(opts.userRequest);
-                return Promise.resolve(reviewerMessages({
-                    findings: [
-                        { id: "R1-1", resolved: true, title: "Issue from round 1" },
-                        { id: "R2-2", resolved: true, title: "Issue from round 2" },
-                    ],
-                }));
+                return Promise.resolve(
+                    reviewerMessages({
+                        findings: [
+                            { id: "R1-1", resolved: true, title: "Issue from round 1" },
+                            { id: "R2-2", resolved: true, title: "Issue from round 2" },
+                        ],
+                    }),
+                );
             },
         }),
     });
@@ -1017,7 +1064,7 @@ Deno.test("runValidationPhase narrows semantic review to verification mode after
     assertStringIncludes(reviewPrompts[0], "R2-2");
 });
 
-Deno.test("runValidationPhase offers Code Review after automatic semantic rounds", async () => {
+test("runValidationPhase offers Code Review after automatic semantic rounds", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
     const interactions = /** @type {any[]} */ ([]);
 
@@ -1049,7 +1096,7 @@ Deno.test("runValidationPhase offers Code Review after automatic semantic rounds
     assertEquals(plan?.attrs.humanReviewDecision, undefined);
 });
 
-Deno.test("Stop at the review round limit keeps the passing tests and the open findings", async () => {
+test("Stop at the review round limit keeps the passing tests and the open findings", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
 
     hostedSession.setInteractionAdapter({
@@ -1078,7 +1125,7 @@ Deno.test("Stop at the review round limit keeps the passing tests and the open f
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
 });
 
-Deno.test("inline round-limit repair records passing CI before another Reviewer round", async () => {
+test("inline round-limit repair records passing CI before another Reviewer round", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({
         validationSemanticRounds: 2,
         humanReviewMode: "always",
@@ -1108,13 +1155,13 @@ Deno.test("inline round-limit repair records passing CI before another Reviewer 
                 return Promise.resolve(
                     reviewerRuns === 1
                         ? reviewerMessages({
-                            approved: false,
-                            findings: [{ title: "Round-limit issue", origin: "repair_regression" }],
-                        })
+                              approved: false,
+                              findings: [{ title: "Round-limit issue", origin: "repair_regression" }],
+                          })
                         : reviewerMessages({
-                            approved: true,
-                            findings: [{ id: "R3-1", resolved: true, title: "Round-limit issue" }],
-                        }),
+                              approved: true,
+                              findings: [{ id: "R3-1", resolved: true, title: "Round-limit issue" }],
+                          }),
                 );
             },
         }),
@@ -1132,7 +1179,7 @@ Deno.test("inline round-limit repair records passing CI before another Reviewer 
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "reviewed");
 });
 
-Deno.test("look again re-enters at the focused reviewer, after the repair and its tests", async () => {
+test("look again re-enters at the focused reviewer, after the repair and its tests", async () => {
     const { projectRoot, hostedSession } = await makeValidatedCiRun({ validationSemanticRounds: 2 });
     /** @type {Array<"discovery" | "verify">} */
     const modes = [];
@@ -1182,7 +1229,7 @@ Deno.test("look again re-enters at the focused reviewer, after the repair and it
     assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
 });
 
-Deno.test("transcript provenance cannot waive production diff inspection", async () => {
+test("transcript provenance cannot waive production diff inspection", async () => {
     // A provenance label cannot substitute for actual diff read receipts.
     const { projectRoot, hostedSession } = await makeValidatedCiRun();
     const reviewPrompts = /** @type {string[]} */ ([]);
@@ -1198,18 +1245,20 @@ Deno.test("transcript provenance cannot waive production diff inspection", async
                 reviewPrompts.push(opts.userRequest);
                 reviewCalls += 1;
                 return Promise.resolve(
-                    /** @type {any} */ ([{
-                        role: "toolResult",
-                        toolName: "review_complete",
-                        details: {
-                            outcome: "approved",
-                            approved: true,
-                            feedback: "",
-                            findings: [],
-                            advisories: [],
-                            provenance: "claude-cli-mcp",
+                    /** @type {any} */ ([
+                        {
+                            role: "toolResult",
+                            toolName: "review_complete",
+                            details: {
+                                outcome: "approved",
+                                approved: true,
+                                feedback: "",
+                                findings: [],
+                                advisories: [],
+                                provenance: "claude-cli-mcp",
+                            },
                         },
-                    }]),
+                    ]),
                 );
             },
         }),
@@ -1232,17 +1281,19 @@ Deno.test("transcript provenance cannot waive production diff inspection", async
                 untrustedCalls += 1;
                 if (untrustedCalls === 1) {
                     return Promise.resolve(
-                        /** @type {any} */ ([{
-                            role: "toolResult",
-                            toolName: "review_complete",
-                            details: {
-                                outcome: "approved",
-                                approved: true,
-                                feedback: "",
-                                findings: [],
-                                advisories: [],
+                        /** @type {any} */ ([
+                            {
+                                role: "toolResult",
+                                toolName: "review_complete",
+                                details: {
+                                    outcome: "approved",
+                                    approved: true,
+                                    feedback: "",
+                                    findings: [],
+                                    advisories: [],
+                                },
                             },
-                        }]),
+                        ]),
                     );
                 }
                 return Promise.resolve(reviewerMessages());
@@ -1256,14 +1307,16 @@ Deno.test("transcript provenance cannot waive production diff inspection", async
     // accepted verdict that leaves an open ledger identity unmentioned is nudged.
     const ledger = {
         sequence: 1,
-        items: [{
-            id: "R1-1",
-            openedInRound: 1,
-            resolvedInRound: null,
-            title: "Missing guard",
-            requirement: "Step 2",
-            evidence: "file.js",
-        }],
+        items: [
+            {
+                id: "R1-1",
+                openedInRound: 1,
+                resolvedInRound: null,
+                title: "Missing guard",
+                requirement: "Step 2",
+                evidence: "file.js",
+            },
+        ],
     };
     const third = await makeValidatedCiRun({ validationSemanticRounds: 1 });
     third.hostedSession.setActiveExecutionWorkflow(
@@ -1282,23 +1335,28 @@ Deno.test("transcript provenance cannot waive production diff inspection", async
                 ledgerCalls += 1;
                 if (ledgerCalls === 1) {
                     return Promise.resolve(
-                        /** @type {any} */ ([reviewerMessages()[0], {
-                            role: "toolResult",
-                            toolName: "review_complete",
-                            details: {
-                                outcome: "approved",
-                                approved: true,
-                                feedback: "",
-                                findings: [],
-                                advisories: [],
-                                provenance: "claude-cli-mcp",
+                        /** @type {any} */ ([
+                            reviewerMessages()[0],
+                            {
+                                role: "toolResult",
+                                toolName: "review_complete",
+                                details: {
+                                    outcome: "approved",
+                                    approved: true,
+                                    feedback: "",
+                                    findings: [],
+                                    advisories: [],
+                                    provenance: "claude-cli-mcp",
+                                },
                             },
-                        }]),
+                        ]),
                     );
                 }
-                return Promise.resolve(reviewerMessages({
-                    findings: [{ id: "R1-1", resolved: true, title: "Missing guard" }],
-                }));
+                return Promise.resolve(
+                    reviewerMessages({
+                        findings: [{ id: "R1-1", resolved: true, title: "Missing guard" }],
+                    }),
+                );
             },
         }),
     });

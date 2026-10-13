@@ -1,11 +1,15 @@
-import { assertEquals } from "@std/assert";
-import { dirname } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname } from "node:path";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { getWorktreeRegistryPath } from "../worktree-registry.js";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 
 async function makeProject(): Promise<{ root: string; revision: string }> {
-    const root = await Deno.makeTempDir({ prefix: "runwield-plan-action-" });
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-plan-action-"));
     await savePlan(root, "demo", "# Demo\n\nBody\n", {
         planId: "plan-demo",
         status: "draft",
@@ -18,11 +22,11 @@ async function makeProject(): Promise<{ root: string; revision: string }> {
 
 async function writeRegistry(root: string, entries: Array<Record<string, string>>): Promise<void> {
     const registryPath = getWorktreeRegistryPath(root);
-    await Deno.mkdir(dirname(registryPath), { recursive: true });
-    await Deno.writeTextFile(registryPath, JSON.stringify({ version: 2, entries }));
+    await fsMkdir(dirname(registryPath), { recursive: true });
+    await fsWriteFile(registryPath, JSON.stringify({ version: 2, entries }));
 }
 
-Deno.test("rejects stale Plan revision before lifecycle mutation", async () => {
+test("rejects stale Plan revision before lifecycle mutation", async () => {
     const { root, revision } = await makeProject();
     await savePlan(root, "demo", "# Demo\n\nBody changed\n", {
         planId: "plan-demo",
@@ -43,7 +47,7 @@ Deno.test("rejects stale Plan revision before lifecycle mutation", async () => {
     assertEquals(current?.attrs.status, "draft");
 });
 
-Deno.test("rejects replaced worktree evidence before lifecycle mutation", async () => {
+test("rejects replaced worktree evidence before lifecycle mutation", async () => {
     const { root, revision } = await makeProject();
     await savePlan(root, "demo", "# Demo\n\nBody\n", {
         planId: "plan-demo",
@@ -89,7 +93,7 @@ Deno.test("rejects replaced worktree evidence before lifecycle mutation", async 
     assertEquals(current?.attrs.status, "on_hold");
 });
 
-Deno.test("applies a valid lifecycle action and returns new evidence", async () => {
+test("applies a valid lifecycle action and returns new evidence", async () => {
     const { root } = await makeProject();
     const evidence = await loadPlanActionEvidence(root, "plan-demo");
     if (evidence.kind !== "success") throw new Error(evidence.message);
@@ -108,7 +112,7 @@ Deno.test("applies a valid lifecycle action and returns new evidence", async () 
     assertEquals(current?.attrs.status, "on_hold");
 });
 
-Deno.test("requires recovery when the registered execution Plan is missing", async () => {
+test("requires recovery when the registered execution Plan is missing", async () => {
     const { root, revision } = await makeProject();
     await savePlan(root, "demo", "# Demo\n\nBody\n", {
         planId: "plan-demo",
@@ -138,9 +142,9 @@ Deno.test("requires recovery when the registered execution Plan is missing", asy
     assertEquals(evidence.kind, "recovery_required");
 });
 
-Deno.test("registry owns mutable worktree facts while Plan validation state owns lifecycle", async () => {
+test("registry owns mutable worktree facts while Plan validation state owns lifecycle", async () => {
     const { root, revision } = await makeProject();
-    const executionRoot = await Deno.makeTempDir({ prefix: "runwield-plan-action-validation-repair-" });
+    const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plan-action-validation-repair-"));
     await savePlan(root, "demo", "# Demo\n\nPrimary copy\n", {
         planId: "plan-demo",
         status: "ready_for_work",
@@ -200,9 +204,9 @@ Deno.test("registry owns mutable worktree facts while Plan validation state owns
     }
 });
 
-Deno.test("live execution Plan owns action evidence when the primary copy is stale", async () => {
+test("live execution Plan owns action evidence when the primary copy is stale", async () => {
     const { root } = await makeProject();
-    const executionRoot = await Deno.makeTempDir({ prefix: "runwield-plan-action-execution-" });
+    const executionRoot = await fsMkdtemp(join(tmpdir(), "runwield-plan-action-execution-"));
     await savePlan(executionRoot, "demo", "# Demo\n\nImplemented\n", {
         planId: "plan-demo",
         status: "implemented",
@@ -248,7 +252,7 @@ Deno.test("live execution Plan owns action evidence when the primary copy is sta
     }
 });
 
-Deno.test("rejects ambiguous registry integrity issues before lifecycle mutation", async () => {
+test("rejects ambiguous registry integrity issues before lifecycle mutation", async () => {
     const { root } = await makeProject();
     const evidence = await loadPlanActionEvidence(root, "plan-demo");
     if (evidence.kind !== "success") throw new Error(evidence.message);

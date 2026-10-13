@@ -1,11 +1,26 @@
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+    symlink as fsSymlink,
+    utimes as fsUtimes,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import process from "node:process";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     createRootSessionManager,
     encodeCwdForSessionDir,
     getRootSessionBranchEntries,
     getRunWieldSessionDir,
+    getRunWieldSessionsBaseDir,
     getRunWieldSessionMemoryBackupDir,
     isPathInside,
     listCatalogSafeRootSessionLocators,
@@ -15,20 +30,32 @@ import {
     resolveCreatedRootSessionPath,
 } from "./root-session.js";
 
-Deno.test("root-session path containment accepts children but rejects sibling prefixes", () => {
+test("root-session path containment accepts children but rejects sibling prefixes", () => {
     const base = join("root", "sessions");
     assertEquals(isPathInside(base, base), true);
     assertEquals(isPathInside(join(base, "session.jsonl"), base), true);
     assertEquals(isPathInside(`${base}-other`, base), false);
 });
 
-Deno.test("root-session persists a new transcript without Pi's private rewrite method", async () => {
+test("Windows root Session paths use native canonical casing", { skip: process.platform !== "win32" }, async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-root-alias-"));
+    try {
+        const canonicalRoot = await fsRealpath(root);
+        const expected = join(getRunWieldSessionsBaseDir(), encodeCwdForSessionDir(canonicalRoot));
+        assertEquals(getRunWieldSessionDir(root.toUpperCase()), expected);
+        assertEquals(getRunWieldSessionDir(root.toLowerCase()), expected);
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
+});
+
+test("root-session persists a new transcript without Pi's private rewrite method", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
         const cwd = join(home, "repo");
-        Deno.env.set("HOME", home);
-        await Deno.mkdir(cwd);
+        process.env["HOME"] = home;
+        await fsMkdir(cwd);
         try {
             const manager = await createRootSessionManager("new", cwd);
             for (const method of ["_rewriteFile", "_persist"]) {
@@ -41,7 +68,10 @@ Deno.test("root-session persists a new transcript without Pi's private rewrite m
             }
             const transcriptPath = await resolveCreatedRootSessionPath(cwd, manager);
             manager.appendModelChange("anthropic", "test-model");
-            const lines = (await Deno.readTextFile(transcriptPath)).trim().split("\n").map((line) => JSON.parse(line));
+            const lines = (await fsReadFile(transcriptPath, "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line));
             assertEquals(lines[0].id, manager.getSessionId());
             assertEquals(lines[1].type, "model_change");
 
@@ -57,39 +87,39 @@ Deno.test("root-session persists a new transcript without Pi's private rewrite m
                 },
             });
             reopened.sessionManager.appendModelChange("anthropic", "reopened-model");
-            const reopenedLines = (await Deno.readTextFile(transcriptPath)).trim().split("\n");
+            const reopenedLines = (await fsReadFile(transcriptPath, "utf8")).trim().split("\n");
             assertEquals(reopenedLines.length, 3);
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            await Deno.remove(home, { recursive: true });
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            await fsRm(home, { recursive: true });
         }
     });
 });
 
-Deno.test("root-session cwd directory encoding stays inside filename limits for long worktree paths", () => {
-    const longWorktreeCwd = `/tmp/${"deep-directory-name-".repeat(12)}/.wld/worktrees/${
-        "nested-project-path-".repeat(10)
-    }/follow-up-repaint`;
+test("root-session cwd directory encoding stays inside filename limits for long worktree paths", () => {
+    const longWorktreeCwd = `/tmp/${"deep-directory-name-".repeat(12)}/.wld/worktrees/${"nested-project-path-".repeat(
+        10,
+    )}/follow-up-repaint`;
     const encoded = encodeCwdForSessionDir(longWorktreeCwd);
     assertEquals(encoded.length < 255, true);
     assertEquals(encoded.startsWith("--follow-up-repaint-"), true);
     assertEquals(encoded.endsWith("--"), true);
 });
 
-Deno.test("root-session opens a validated transcript stored under the Project session directory with a worktree cwd", async () => {
+test("root-session opens a validated transcript stored under the Project session directory with a worktree cwd", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         let manager;
         let opened;
         try {
             const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-            const projectRoot = `${home}/repo`;
-            const worktreeRoot = `${home}/worktree`;
-            await Deno.mkdir(projectRoot, { recursive: true });
-            await Deno.mkdir(worktreeRoot, { recursive: true });
+            const projectRoot = join(home, `repo`);
+            const worktreeRoot = join(home, `worktree`);
+            await fsMkdir(projectRoot, { recursive: true });
+            await fsMkdir(worktreeRoot, { recursive: true });
             const projectSessionDir = getRunWieldSessionDir(projectRoot);
             manager = SessionManager.create(worktreeRoot, projectSessionDir, { id: "worktree-header" });
             manager.appendMessage(
@@ -149,7 +179,7 @@ Deno.test("root-session opens a validated transcript stored under the Project se
                 managedProjectRoot: projectRoot,
                 managedSegmentCwd: worktreeRoot,
             });
-            assertEquals(opened.resolved.cwd, await Deno.realPath(worktreeRoot));
+            assertEquals(opened.resolved.cwd, await fsRealpath(worktreeRoot));
             assertEquals(opened.resolved.sessionDir, projectSessionDir);
             assertEquals(opened.resolved.sessionPath, transcriptPath);
             assertEquals(opened.sessionManager.getSessionId(), "worktree-header");
@@ -169,28 +199,28 @@ Deno.test("root-session opens a validated transcript stored under the Project se
                 "Persisted session not found",
             );
         } finally {
-            await Promise.resolve((/** @type {any} */ (opened?.sessionManager))?.dispose?.());
-            await Promise.resolve((/** @type {any} */ (manager))?.dispose?.());
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            await Promise.resolve(/** @type {any} */ (opened?.sessionManager)?.dispose?.());
+            await Promise.resolve(/** @type {any} */ (manager)?.dispose?.());
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
 });
 
-Deno.test("root-session persisted helpers list open and guard cwd paths", async () => {
+test("root-session persisted helpers list open and guard cwd paths", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         try {
             const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-            const cwd = `${home}/repo`;
-            await Deno.mkdir(cwd, { recursive: true });
+            const cwd = join(home, `repo`);
+            await fsMkdir(cwd, { recursive: true });
             const sessionDir = getRunWieldSessionDir(cwd);
             assertEquals(
                 getRunWieldSessionMemoryBackupDir(cwd, "persisted-test"),
-                `${sessionDir}/persisted-test_memory-backups`,
+                join(sessionDir, `persisted-test_memory-backups`),
             );
             const manager = SessionManager.create(cwd, sessionDir, { id: "persisted-test" });
             manager.appendMessage(
@@ -214,7 +244,7 @@ Deno.test("root-session persisted helpers list open and guard cwd paths", async 
                 }),
             );
 
-            Deno.env.set("HOME", home);
+            process.env["HOME"] = home;
             const sessions = await listPersistedRootSessions(cwd);
             assertEquals(sessions.length, 1);
             assertEquals(sessions[0].id, "persisted-test");
@@ -222,7 +252,7 @@ Deno.test("root-session persisted helpers list open and guard cwd paths", async 
             let opened;
             for (let attempt = 0; attempt < 5; attempt++) {
                 try {
-                    Deno.env.set("HOME", home);
+                    process.env["HOME"] = home;
                     opened = await openPersistedRootSession({ cwd, sessionId: "persisted-test" });
                     break;
                 } catch (error) {
@@ -243,29 +273,29 @@ Deno.test("root-session persisted helpers list open and guard cwd paths", async 
                     openPersistedRootSession({
                         cwd,
                         sessionId: "persisted-test",
-                        sessionPath: `${home}/outside.jsonl`,
+                        sessionPath: join(home, `outside.jsonl`),
                     }),
                 Error,
                 "outside the RunWield session directory",
             );
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
 });
 
-Deno.test("root-session helpers create list and open through canonical cwd aliases", async () => {
+test("root-session helpers create list and open through canonical cwd aliases", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         try {
-            const realCwd = `${home}/repo`;
-            const linkedCwd = `${home}/repo-link`;
-            await Deno.mkdir(realCwd, { recursive: true });
-            await Deno.symlink(realCwd, linkedCwd);
+            const realCwd = join(home, `repo`);
+            const linkedCwd = join(home, `repo-link`);
+            await fsMkdir(realCwd, { recursive: true });
+            await fsSymlink(realCwd, linkedCwd);
             const manager = await createRootSessionManager("new", linkedCwd);
             manager.appendMessage({ role: "user", timestamp: Date.now(), content: [{ type: "text", text: "hello" }] });
             manager.appendMessage(
@@ -284,26 +314,29 @@ Deno.test("root-session helpers create list and open through canonical cwd alias
             const sessionId = manager.getSessionId();
 
             const sessions = await listPersistedRootSessions(realCwd);
-            assertEquals(sessions.some((session) => session.id === sessionId), true);
+            assertEquals(
+                sessions.some((session) => session.id === sessionId),
+                true,
+            );
             const opened = await openPersistedRootSession({ cwd: realCwd, sessionId });
             assertEquals(opened.sessionManager.getSessionId(), sessionId);
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
 });
 
-Deno.test("root-session helpers reopen Claude CLI entries in the existing RunWield JSONL", async () => {
+test("root-session helpers reopen Claude CLI entries in the existing RunWield JSONL", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         try {
             const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-            const cwd = `${home}/repo`;
-            await Deno.mkdir(cwd, { recursive: true });
+            const cwd = join(home, `repo`);
+            await fsMkdir(cwd, { recursive: true });
             const sessionDir = getRunWieldSessionDir(cwd);
             const manager = SessionManager.create(cwd, sessionDir, { id: "claude-root" });
             manager.appendCustomEntry("runwield.execution_backend", { version: 1, backend: "claude-cli" });
@@ -334,64 +367,68 @@ Deno.test("root-session helpers reopen Claude CLI entries in the existing RunWie
             assertEquals(serialized.includes("model_change"), true);
             assertEquals(serialized.includes("hi"), true);
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
 });
 
-Deno.test("catalog-safe root session locators read only header metadata and preserve transcript bytes", async () => {
+test("catalog-safe root session locators read only header metadata and preserve transcript bytes", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         try {
-            const cwd = `${home}/repo`;
-            await Deno.mkdir(cwd, { recursive: true });
+            const cwd = join(home, `repo`);
+            await fsMkdir(cwd, { recursive: true });
             const sessionDir = getRunWieldSessionDir(cwd);
-            await Deno.mkdir(sessionDir, { recursive: true });
-            const sessionPath = `${sessionDir}/2026-01-01T00-00-00-000Z_pi-safe.jsonl`;
-            const text = JSON.stringify({
-                type: "session",
-                version: 3,
-                id: "pi-safe",
-                timestamp: "2026-01-01T00:00:00.000Z",
-                cwd,
-            }) + "\n" + JSON.stringify({ type: "message", message: { role: "user", content: "secret" } }) + "\n";
-            await Deno.writeTextFile(sessionPath, text);
-            const before = await Deno.stat(sessionPath);
+            await fsMkdir(sessionDir, { recursive: true });
+            const sessionPath = join(sessionDir, `2026-01-01T00-00-00-000Z_pi-safe.jsonl`);
+            const text =
+                JSON.stringify({
+                    type: "session",
+                    version: 3,
+                    id: "pi-safe",
+                    timestamp: "2026-01-01T00:00:00.000Z",
+                    cwd,
+                }) +
+                "\n" +
+                JSON.stringify({ type: "message", message: { role: "user", content: "secret" } }) +
+                "\n";
+            await fsWriteFile(sessionPath, text);
+            const before = await fsStat(sessionPath);
 
             const locator = await readCatalogSafeRootSessionLocator({ cwd, sessionPath });
             const listed = await listCatalogSafeRootSessionLocators(cwd);
-            const after = await Deno.stat(sessionPath);
+            const after = await fsStat(sessionPath);
 
             assertEquals(locator.piSessionId, "pi-safe");
             assertEquals(locator.headerCwd, cwd);
             assertEquals(listed.locators.length, 1);
             assertEquals(listed.diagnostics, []);
-            assertEquals(await Deno.readTextFile(sessionPath), text);
+            assertEquals(await fsReadFile(sessionPath, "utf8"), text);
             assertEquals(before.mtime?.getTime(), after.mtime?.getTime());
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
 });
 
-Deno.test("catalog-safe root session locator validates exact Pi filename structure", async () => {
+test("catalog-safe root session locator validates exact Pi filename structure", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         try {
-            const cwd = `${home}/repo`;
-            await Deno.mkdir(cwd, { recursive: true });
+            const cwd = join(home, `repo`);
+            await fsMkdir(cwd, { recursive: true });
             const sessionDir = getRunWieldSessionDir(cwd);
-            await Deno.mkdir(sessionDir, { recursive: true });
-            const substringPath = `${sessionDir}/2026-01-01T00-00-00-000Z_not-pi-safe.jsonl`;
-            await Deno.writeTextFile(
+            await fsMkdir(sessionDir, { recursive: true });
+            const substringPath = join(sessionDir, `2026-01-01T00-00-00-000Z_not-pi-safe.jsonl`);
+            await fsWriteFile(
                 substringPath,
                 JSON.stringify({
                     type: "session",
@@ -407,8 +444,8 @@ Deno.test("catalog-safe root session locator validates exact Pi filename structu
                 "exactly match",
             );
 
-            const timestampPath = `${sessionDir}/2026-01-02T00-00-00-000Z_pi-safe.jsonl`;
-            await Deno.writeTextFile(
+            const timestampPath = join(sessionDir, `2026-01-02T00-00-00-000Z_pi-safe.jsonl`);
+            await fsWriteFile(
                 timestampPath,
                 JSON.stringify({
                     type: "session",
@@ -424,25 +461,25 @@ Deno.test("catalog-safe root session locator validates exact Pi filename structu
                 "timestamp does not match",
             );
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
 });
 
-Deno.test("catalog-safe root session locator rejects headers that exceed the catalog limit", async () => {
+test("catalog-safe root session locator rejects headers that exceed the catalog limit", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         try {
-            const cwd = `${home}/repo`;
-            await Deno.mkdir(cwd, { recursive: true });
+            const cwd = join(home, `repo`);
+            await fsMkdir(cwd, { recursive: true });
             const sessionDir = getRunWieldSessionDir(cwd);
-            await Deno.mkdir(sessionDir, { recursive: true });
-            const sessionPath = `${sessionDir}/2026-01-01T00-00-00-000Z_pi-long.jsonl`;
-            await Deno.writeTextFile(
+            await fsMkdir(sessionDir, { recursive: true });
+            const sessionPath = join(sessionDir, `2026-01-01T00-00-00-000Z_pi-long.jsonl`);
+            await fsWriteFile(
                 sessionPath,
                 `{"type":"session","id":"pi-long","cwd":"${cwd}","padding":"${"x".repeat(256)}`,
             );
@@ -452,89 +489,92 @@ Deno.test("catalog-safe root session locator rejects headers that exceed the cat
                 "exceeds catalog limit",
             );
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
 });
 
-Deno.test("catalog-safe root session locator list limits header reads to newest candidates", async () => {
+test("catalog-safe root session locator list limits header reads to newest candidates", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         try {
-            const cwd = `${home}/repo`;
-            await Deno.mkdir(cwd, { recursive: true });
+            const cwd = join(home, `repo`);
+            await fsMkdir(cwd, { recursive: true });
             const sessionDir = getRunWieldSessionDir(cwd);
-            await Deno.mkdir(sessionDir, { recursive: true });
-            const oldMalformed = `${sessionDir}/malformed.jsonl`;
-            await Deno.writeTextFile(oldMalformed, "not-json\n");
+            await fsMkdir(sessionDir, { recursive: true });
+            const oldMalformed = join(sessionDir, `malformed.jsonl`);
+            await fsWriteFile(oldMalformed, "not-json\n");
             const oldTime = new Date(Date.UTC(2025, 0, 1));
-            await Deno.utime(oldMalformed, oldTime, oldTime);
+            await fsUtimes(oldMalformed, oldTime, oldTime);
             for (let index = 0; index < 31; index++) {
                 const timestamp = new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString();
                 const id = `pi-${String(index).padStart(2, "0")}`;
-                const sessionPath = `${sessionDir}/${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
-                await Deno.writeTextFile(
+                const sessionPath = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`);
+                await fsWriteFile(
                     sessionPath,
                     JSON.stringify({ type: "session", version: 3, id, timestamp, cwd }) + "\n",
                 );
                 const modified = new Date(Date.UTC(2026, 1, 1, 0, 0, index));
-                await Deno.utime(sessionPath, modified, modified);
+                await fsUtimes(sessionPath, modified, modified);
             }
 
             const listed = await listCatalogSafeRootSessionLocators(cwd, { recentLimit: 30 });
 
             assertEquals(listed.diagnostics, []);
             assertEquals(listed.locators.length, 30);
-            assertEquals(listed.locators.some((locator) => locator.sessionPath === oldMalformed), false);
+            assertEquals(
+                listed.locators.some((locator) => locator.sessionPath === oldMalformed),
+                false,
+            );
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
 });
 
-Deno.test("catalog-safe root session locator rejects malformed or out-of-directory files", async () => {
+test("catalog-safe root session locator rejects malformed or out-of-directory files", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir();
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
+        process.env["HOME"] = home;
         try {
-            const cwd = `${home}/repo`;
-            await Deno.mkdir(cwd, { recursive: true });
+            const cwd = join(home, `repo`);
+            await fsMkdir(cwd, { recursive: true });
             const sessionDir = getRunWieldSessionDir(cwd);
-            await Deno.mkdir(sessionDir, { recursive: true });
-            const malformed = `${sessionDir}/malformed.jsonl`;
-            await Deno.writeTextFile(malformed, "not-json\n");
+            await fsMkdir(sessionDir, { recursive: true });
+            const malformed = join(sessionDir, `malformed.jsonl`);
+            await fsWriteFile(malformed, "not-json\n");
             const listed = await listCatalogSafeRootSessionLocators(cwd);
             assertEquals(listed.locators, []);
             assertEquals(listed.diagnostics.length, 1);
 
             await assertRejects(
-                () => readCatalogSafeRootSessionLocator({ cwd, sessionPath: `${home}/outside.jsonl` }),
+                () => readCatalogSafeRootSessionLocator({ cwd, sessionPath: join(home, `outside.jsonl`) }),
                 Error,
                 "outside the RunWield session directory",
             );
 
-            const outsideTarget = `${home}/outside-target.jsonl`;
-            await Deno.writeTextFile(
+            const outsideTarget = join(home, `outside-target.jsonl`);
+            await fsWriteFile(
                 outsideTarget,
                 JSON.stringify({ type: "session", version: 3, id: "outside-target", cwd }) + "\n",
             );
-            const symlinkPath = `${sessionDir}/2026-01-01T00-00-00-000Z_outside-target.jsonl`;
-            await Deno.symlink(outsideTarget, symlinkPath);
+            const symlinkPath = join(sessionDir, `2026-01-01T00-00-00-000Z_outside-target.jsonl`);
+            await fsSymlink(outsideTarget, symlinkPath);
             await assertRejects(
                 () => readCatalogSafeRootSessionLocator({ cwd, sessionPath: symlinkPath }),
                 Error,
                 "resolves outside the RunWield session directory",
             );
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDirBestEffort(home);
         }
     });
@@ -548,10 +588,10 @@ Deno.test("catalog-safe root session locator rejects malformed or out-of-directo
 async function removeTempDirBestEffort(path) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            await Deno.remove(path, { recursive: true });
+            await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
             if (attempt === 4) throw error;
             await new Promise((resolve) => setTimeout(resolve, 25));
         }

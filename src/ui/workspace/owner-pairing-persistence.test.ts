@@ -1,14 +1,19 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createOwnerWorkspaceApp } from "./server.js";
 
-Deno.test("paired app leaves a restored pairing page, survives server restart, and respects revocation", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "workspace-pairing-persistence-" });
+test("paired app leaves a restored pairing page, survives server restart, and respects revocation", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "workspace-pairing-persistence-"));
     const dbPath = `${dir}/owner.sqlite3`;
     const publicOrigin = "https://workspace.example.test";
     let store = openOwnerCoordinationStore({ dbPath });
+    let workspace = createOwnerWorkspaceApp({ mode: "owner", store, publicOrigin });
     try {
-        let app = createOwnerWorkspaceApp({ mode: "owner", store, publicOrigin }).handler();
+        let app = workspace.handler();
         const pairing = store.createPairingRequest({ deviceLabel: "Installed phone app" });
         store.approvePairingRequest(pairing.code);
         const claim: Response = await app(
@@ -29,9 +34,11 @@ Deno.test("paired app leaves a restored pairing page, survives server restart, a
         const cookie = [credentialCookie, csrfCookie].map((value) => value.split(";")[0]).join("; ");
         const claimed = await claim.json();
 
+        await workspace.close();
         store.close();
         store = openOwnerCoordinationStore({ dbPath });
-        app = createOwnerWorkspaceApp({ mode: "owner", store, publicOrigin }).handler();
+        workspace = createOwnerWorkspaceApp({ mode: "owner", store, publicOrigin });
+        app = workspace.handler();
         const revisit = await app(new Request(`${publicOrigin}/pair`, { headers: { cookie } }));
         assertEquals(revisit.status, 302);
         assertEquals(revisit.headers.get("location"), "/");
@@ -74,7 +81,8 @@ Deno.test("paired app leaves a restored pairing page, survives server restart, a
         assertEquals(protectedPage.headers.get("location"), "/pair");
         assertEquals(protectedPage.headers.getSetCookie(), []);
     } finally {
+        await workspace.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

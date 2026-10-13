@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { setCustomSetting } from "../settings.js";
 import { loadPlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
@@ -29,7 +32,7 @@ interface ReviewerCall {
 
 async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes, body: string, extraYaml = "") {
     const path = join(cwd, "docs", "plans", `${name}.md`);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const lines = ["---"];
     for (const [key, value] of Object.entries(attrs)) {
         if (Array.isArray(value)) {
@@ -41,7 +44,7 @@ async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes
     }
     if (extraYaml) lines.push(extraYaml.trimEnd());
     lines.push("---", "", body);
-    await Deno.writeTextFile(path, lines.join("\n"));
+    await fsWriteFile(path, lines.join("\n"));
 }
 
 function childAttrs(order: number, extra: PlanFixtureAttributes = {}): PlanFixtureAttributes {
@@ -72,7 +75,7 @@ function deliveryYaml(executionCommit: string): string {
 }
 
 const repoFixture = defineGitFixture(async (repo) => {
-    await Deno.writeTextFile(join(repo, "README.md"), "# Fixture\n");
+    await fsWriteFile(join(repo, "README.md"), "# Fixture\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "primary"]);
 });
@@ -86,11 +89,11 @@ async function epicWithPendingSecondChild() {
     const base = await git(repo, ["rev-parse", "main"]);
     await git(repo, ["switch", "-c", "epic/epic"]);
     await writePlan(repo, "epic/01-first", childAttrs(1), "# First\n");
-    await Deno.writeTextFile(join(repo, "first.js"), "export const first = true;\n");
+    await fsWriteFile(join(repo, "first.js"), "export const first = true;\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "first child delivered"]);
     await git(repo, ["switch", "-c", "side", "main"]);
-    await Deno.writeTextFile(join(repo, "second.js"), "export const second = true;\n");
+    await fsWriteFile(join(repo, "second.js"), "export const second = true;\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "second child work"]);
     const secondCommit = await git(repo, ["rev-parse", "HEAD"]);
@@ -162,7 +165,7 @@ function gateSession() {
     return { recorder, hostedSession: makeRecordedSession("epic-integration-test", recorder) };
 }
 
-Deno.test("a validated child with pending publication does not complete the Epic", async () => {
+test("a validated child with pending publication does not complete the Epic", async () => {
     const { repo } = await epicWithPendingSecondChild();
 
     const state = await readEpicDeliveryState(repo, "epic");
@@ -176,7 +179,7 @@ Deno.test("a validated child with pending publication does not complete the Epic
     assertEquals((await loadPlan(repo, "epic"))?.attrs.status, "ready_for_work");
 });
 
-Deno.test("delivering the last child to the Epic branch makes the Epic implemented", async () => {
+test("delivering the last child to the Epic branch makes the Epic implemented", async () => {
     const { repo } = await epicWithPendingSecondChild();
     await deliverSecondChild(repo);
 
@@ -188,7 +191,7 @@ Deno.test("delivering the last child to the Epic branch makes the Epic implement
     assert(epic?.attrs.implementedAt);
 });
 
-Deno.test("the integration gate validates the exact Epic branch head", async () => {
+test("the integration gate validates the exact Epic branch head", async () => {
     const { repo } = await epicWithPendingSecondChild();
     await setCustomSetting("codereview", "none", "project", repo);
     await deliverSecondChild(repo);
@@ -223,7 +226,7 @@ Deno.test("the integration gate validates the exact Epic branch head", async () 
     );
 });
 
-Deno.test("a new commit on the Epic branch makes a passed gate stale", async () => {
+test("a new commit on the Epic branch makes a passed gate stale", async () => {
     const { repo } = await epicWithPendingSecondChild();
     await deliverSecondChild(repo);
     const { hostedSession } = gateSession();
@@ -236,7 +239,7 @@ Deno.test("a new commit on the Epic branch makes a passed gate stale", async () 
         localCIPort: scriptedChecks(PASSING_CHECKS),
     });
     await git(repo, ["switch", "epic/epic"]);
-    await Deno.writeTextFile(join(repo, "late.js"), "export const late = true;\n");
+    await fsWriteFile(join(repo, "late.js"), "export const late = true;\n");
     await git(repo, ["add", "late.js"]);
     await git(repo, ["commit", "-m", "late change"]);
     await git(repo, ["switch", "main"]);
@@ -248,7 +251,7 @@ Deno.test("a new commit on the Epic branch makes a passed gate stale", async () 
     assertEquals((await loadPlan(repo, "epic"))?.attrs.validatedCommit, undefined);
 });
 
-Deno.test("integration findings produce a report and a draft repair child on the Epic branch", async () => {
+test("integration findings produce a report and a draft repair child on the Epic branch", async () => {
     const { repo } = await epicWithPendingSecondChild();
     await deliverSecondChild(repo);
     const head = await git(repo, ["rev-parse", "epic/epic"]);
@@ -276,7 +279,7 @@ Deno.test("integration findings produce a report and a draft repair child on the
     const epic = await loadPlan(repo, "epic");
     assertEquals(epic?.attrs.status, "implemented");
     assertEquals(epic?.attrs.epicIntegrationReport, "docs/plans/epic/integration-report.md");
-    const report = await Deno.readTextFile(join(repo, "docs/plans/epic/integration-report.md"));
+    const report = await fsReadFile(join(repo, "docs/plans/epic/integration-report.md"), "utf8");
     assertStringIncludes(report, "second.js never calls first.js");
     assertStringIncludes(report, "1 test failed");
     // The repair child is an ordinary draft under the Epic, already on the Epic branch for Planner.
@@ -294,7 +297,7 @@ Deno.test("integration findings produce a report and a draft repair child on the
     assertEquals((await reconcileEpicDelivery(repo, "epic")).gateReady, false);
 });
 
-Deno.test("the gate does not run before every child is delivered", async () => {
+test("the gate does not run before every child is delivered", async () => {
     const { repo } = await epicWithPendingSecondChild();
     const { hostedSession } = gateSession();
 
@@ -311,7 +314,7 @@ Deno.test("the gate does not run before every child is delivered", async () => {
     assertEquals((await loadPlan(repo, "epic"))?.attrs.status, "ready_for_work");
 });
 
-Deno.test("Epic gate events apply only to Epics and a pass must name the checked commit", async () => {
+test("Epic gate events apply only to Epics and a pass must name the checked commit", async () => {
     const epic = { classification: "PROJECT" as const, status: "implemented" as const };
     assertEquals(
         buildPlanEventUpdates("epic_integration_passed", "implemented", { triageMeta: epic, integrationCommit: "abc" })
@@ -338,7 +341,7 @@ Deno.test("Epic gate events apply only to Epics and a pass must name the checked
     );
 });
 
-Deno.test("review_complete carries an Epic child's Integration Notes without blocking approval", async () => {
+test("review_complete carries an Epic child's Integration Notes without blocking approval", async () => {
     const { createReviewCompletedTool } = await import("../../tools/review-complete.ts");
     const { hostedSession } = gateSession();
     const tool = createReviewCompletedTool({ hostedSession });
@@ -357,7 +360,7 @@ Deno.test("review_complete carries an Epic child's Integration Notes without blo
     assertEquals(details.integrationNotes, [{ check: "Child 3 must read the new index", where: "index.ts" }]);
 });
 
-Deno.test("a reviewed Epic becomes verified only after its checked work reaches the final target", async () => {
+test("a reviewed Epic becomes verified only after its checked work reaches the final target", async () => {
     const { repo } = await epicWithPendingSecondChild();
     await setCustomSetting("codereview", "none", "project", repo);
     await deliverSecondChild(repo);

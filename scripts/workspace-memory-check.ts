@@ -1,6 +1,13 @@
+import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executable-fixture.ts";
+import { captureScriptProcess } from "./script-process.ts";
+import { getCwd } from "../src/constants.js";
+import { type NativeProcess, spawnNativeProcess } from "../src/shared/foreground-process.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
 // Run isolated source and standalone renderer, saved-operation, and combined workloads.
-import { join, resolve } from "@std/path";
-import { buildCompileArgs } from "./compile.js";
+import { join, resolve } from "node:path";
+import { compileBun } from "./compile-bun.ts";
 import { sha256File } from "./build-metadata.js";
 
 interface Sample {
@@ -23,8 +30,7 @@ interface Result {
 
 const decoder = new TextDecoder();
 const fixturePath = resolve("scripts/workspace-memory-fixture.ts");
-const artifactPath = resolve("dist/workspace-runtime/server.mjs");
-const sourcePath = resolve("dist/workspace/server/entry.mjs");
+const sourcePath = resolve("dist/workspace-bun/server/entry.mjs");
 const timeoutMs = 210_000;
 
 async function run(
@@ -36,13 +42,13 @@ async function run(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort("timeout"), timeout);
     try {
-        const output = await new Deno.Command(command, {
+        const output = await captureScriptProcess(command, {
             args,
             env,
             signal: controller.signal,
             stdout: "piped",
             stderr: "piped",
-        }).output();
+        });
         const stdout = decoder.decode(output.stdout);
         const stderr = decoder.decode(output.stderr);
         if (!output.success) {
@@ -50,9 +56,11 @@ async function run(
         }
         return {
             stdout,
-            samples: stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((entry) =>
-                entry.type === "sample"
-            ),
+            samples: stdout
+                .split("\n")
+                .filter(Boolean)
+                .map((line) => JSON.parse(line))
+                .filter((entry) => entry.type === "sample"),
         };
     } catch (error) {
         if (controller.signal.aborted) throw new Error(`INCOMPLETE: subprocess exceeded ${timeout} ms: ${command}`);
@@ -63,9 +71,9 @@ async function run(
 }
 
 async function isolatedRoot(): Promise<{ root: string; env: Record<string, string> }> {
-    const root = await Deno.makeTempDir({ prefix: "runwield-workspace-memory-" });
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-workspace-memory-"));
     const home = join(root, "home");
-    await Deno.mkdir(home);
+    await fsMkdir(home);
     return {
         root,
         env: {
@@ -77,14 +85,13 @@ async function isolatedRoot(): Promise<{ root: string; env: Record<string, strin
     };
 }
 
-async function compiledBinary(root: string, gc = false): Promise<string> {
-    const output = join(root, gc ? "workspace-memory-fixture-gc" : "workspace-memory-fixture");
-    // Reuse the production compile inclusion list: the runtime entry must be
-    // embedded as a passive asset, not imported as a normal Deno module.
-    const args = buildCompileArgs({ output });
-    args.splice(args.length - 1, 1, ...(gc ? ["--v8-flags=--expose-gc"] : []), fixturePath);
-    const result = await run("deno", args, undefined, 600_000);
-    if (result.stdout) console.log(result.stdout);
+async function compiledBinary(root: string): Promise<string> {
+    const output = join(
+        root,
+        process.platform === "win32" ? "workspace-memory-fixture.exe" : "workspace-memory-fixture",
+    );
+    // Use the production payload builder with the real diagnostic entrypoint.
+    await compileBun(output, undefined, undefined, undefined, "scripts/workspace-memory-fixture.ts");
     return output;
 }
 
@@ -117,45 +124,33 @@ function assertSamples(result: Result, gc: boolean, standalone: boolean, scenari
 }
 
 async function measure(scenario: "renderer" | "operations" | "combined"): Promise<void> {
-    await Deno.stat(sourcePath);
-    await Deno.stat(artifactPath);
+    await fsStat(sourcePath);
     const { root } = await isolatedRoot();
     try {
-        const hash = await sha256File(artifactPath);
+        const binary = await compiledBinary(root);
+        const hash = await sha256File(binary);
         console.log(
             JSON.stringify({
                 type: "artifact",
-                path: artifactPath,
+                path: binary,
                 sha256: hash,
                 source: sourcePath,
                 sourceSha256: await sha256File(sourcePath),
             }),
         );
-        const binary = await compiledBinary(root);
-        const binaryGc = await compiledBinary(root, true);
-        for (
-            const [label, command, standalone] of [
-                ["source", "deno", false],
-                ["compiled", binary, true],
-            ] as const
-        ) {
+        for (const [label, command, standalone] of [
+            ["source", process.execPath, false],
+            ["compiled", binary, true],
+        ] as const) {
             for (const gc of [true, false]) {
-                const workload = scenario === "renderer"
-                    ? []
-                    : [scenario === "combined" ? "--combined" : "--operations"];
-                const args = standalone ? ["--measure", ...workload, ...(gc ? ["--gc"] : [])] : [
-                    "run",
-                    "-A",
-                    ...(gc ? ["--v8-flags=--expose-gc"] : []),
-                    "--unstable-no-legacy-abort",
-                    fixturePath,
-                    "--measure",
-                    ...workload,
-                    ...(gc ? ["--gc"] : []),
-                ];
+                const workload =
+                    scenario === "renderer" ? [] : [scenario === "combined" ? "--combined" : "--operations"];
+                const args = standalone
+                    ? ["--measure", ...workload, ...(gc ? ["--gc"] : [])]
+                    : [fixturePath, "--measure", ...workload, ...(gc ? ["--gc"] : [])];
                 const isolated = await isolatedRoot();
                 try {
-                    const result = await run(standalone && gc ? binaryGc : command, args, isolated.env);
+                    const result = await run(command, args, isolated.env);
                     assertSamples(result, gc, standalone, scenario);
                     console.log(
                         JSON.stringify({
@@ -167,22 +162,28 @@ async function measure(scenario: "renderer" | "operations" | "combined"): Promis
                         }),
                     );
                 } finally {
-                    await Deno.remove(isolated.root, { recursive: true });
+                    await fsRm(isolated.root, { recursive: true });
                 }
             }
         }
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await removeExecutableFixtureDirectory(root);
     }
 }
 
 async function serve(): Promise<void> {
-    await Deno.stat(artifactPath);
     const { root, env } = await isolatedRoot();
-    let child: Deno.ChildProcess | undefined;
+    let child: NativeProcess | undefined;
     try {
         const binary = await compiledBinary(root);
-        child = new Deno.Command(binary, { args: ["--serve"], env, stdout: "piped", stderr: "inherit" }).spawn();
+        child = spawnNativeProcess(binary, {
+            args: ["--serve"],
+            cwd: getCwd(),
+            stdin: "null",
+            env,
+            stdout: "piped",
+            stderr: "inherit",
+        });
         const reader = child.stdout.getReader();
         const first = await Promise.race([
             reader.read(),
@@ -194,29 +195,31 @@ async function serve(): Promise<void> {
         console.log(`Fixture URL: ${listening.url}/`);
         console.log(`Fixture routes: ${JSON.stringify(listening.routes)}`);
         console.log(`Memory samples: ${listening.url}/__memory`);
-        console.log(`Shutdown: kill -INT ${Deno.pid} (or Ctrl-C)`);
+        console.log(`Shutdown: kill -INT ${process.pid} (or Ctrl-C)`);
         const onInterrupt = () => child?.kill("SIGTERM");
-        Deno.addSignalListener("SIGINT", onInterrupt);
-        Deno.addSignalListener("SIGTERM", onInterrupt);
+        process.on("SIGINT", onInterrupt);
+        process.on("SIGTERM", onInterrupt);
         try {
             await child.status;
         } finally {
-            Deno.removeSignalListener("SIGINT", onInterrupt);
-            Deno.removeSignalListener("SIGTERM", onInterrupt);
+            process.off("SIGINT", onInterrupt);
+            process.off("SIGTERM", onInterrupt);
         }
     } finally {
         if (child) {
             try {
                 child.kill("SIGTERM");
-            } catch { /* already exited */ }
+            } catch {
+                /* already exited */
+            }
             await child.status;
         }
-        await Deno.remove(root, { recursive: true });
+        await removeExecutableFixtureDirectory(root);
     }
 }
 
 if (import.meta.main) {
-    const arg = Deno.args.join(" ");
+    const arg = process.argv.slice(2).join(" ");
     if (arg === "--scenario renderer" || arg === "--scenario operations" || arg === "--scenario combined") {
         await measure(arg.split(" ")[1] as "renderer" | "operations" | "combined");
     } else if (arg === "--serve-fixture") await serve();

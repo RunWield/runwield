@@ -1,7 +1,9 @@
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { buildApiUrl, buildCollaborationUrl, parseCollaborationUrl, redactCollaborationUrl } from "./urls.ts";
 
-Deno.test("collaboration URLs keep key and capability in distinct fragment fields", () => {
+test("collaboration URLs keep key and capability in distinct fragment fields", () => {
     const url = buildCollaborationUrl({
         serverUrl: "https://plans.example.test/",
         spaceId: "space-1",
@@ -17,7 +19,7 @@ Deno.test("collaboration URLs keep key and capability in distinct fragment field
     assertEquals(parsed.role, "reviewer");
 });
 
-Deno.test("maintainer URLs parse with fragment-free API URLs", () => {
+test("maintainer URLs parse with fragment-free API URLs", () => {
     const url = buildCollaborationUrl({
         serverUrl: "https://plans.example.test/base",
         spaceId: "space-2",
@@ -34,12 +36,12 @@ Deno.test("maintainer URLs parse with fragment-free API URLs", () => {
     );
 });
 
-Deno.test("collaboration URL parsing rejects missing fragments and invalid roles", () => {
+test("collaboration URL parsing rejects missing fragments and invalid roles", () => {
     assertThrows(() => parseCollaborationUrl("https://plans.example.test/p/space-1#key=k&role=reviewer"));
     assertThrows(() => parseCollaborationUrl("https://plans.example.test/p/space-1#key=k&cap=c&role=owner"));
 });
 
-Deno.test("collaboration URL redaction removes key and capability", () => {
+test("collaboration URL redaction removes key and capability", () => {
     const redacted = redactCollaborationUrl(
         "https://plans.example.test/p/space#key=secret-key&cap=secret-cap&role=reviewer",
     );
@@ -47,7 +49,7 @@ Deno.test("collaboration URL redaction removes key and capability", () => {
     assert(!redacted.includes("secret-cap"));
 });
 
-Deno.test("API URLs reject endpoint paths that escape the server base", () => {
+test("API URLs reject endpoint paths that escape the server base", () => {
     assertThrows(() => buildApiUrl("https://plans.example.test/root", "https://other-host.example/api"));
     assertThrows(() => buildApiUrl("https://plans.example.test/root", "//other-host.example/api"));
     assertThrows(() => buildApiUrl("https://plans.example.test/root", "../api"));

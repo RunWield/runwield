@@ -1,17 +1,33 @@
-import { assertEquals, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { encodeCwdForSessionDir } from "./root-session.js";
 
-Deno.test("the latest Plan review is readable from another store before the writer settles", async () => {
-    const root = await Deno.makeTempDir();
+test("the latest Plan review is readable from another store before the writer settles", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const projectRoot = join(root, "project");
     const baseDir = join(root, "sessions");
-    await Deno.mkdir(projectRoot);
-    const transcriptDir = join(baseDir, encodeCwdForSessionDir(await Deno.realPath(projectRoot)));
-    await Deno.mkdir(transcriptDir, { recursive: true });
+    await fsMkdir(projectRoot);
+    const transcriptDir = join(baseDir, encodeCwdForSessionDir(await fsRealpath(projectRoot)));
+    await fsMkdir(transcriptDir, { recursive: true });
     const transcriptPath = join(transcriptDir, "2026-01-01T00-00-00-000Z_pi-session.jsonl");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         transcriptPath,
         `${
             JSON.stringify({
@@ -81,20 +97,20 @@ Deno.test("the latest Plan review is readable from another store before the writ
     } finally {
         reader.close();
         writer.close();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("a Plan review reference survives a writer process crash before settlement", async () => {
-    const root = await Deno.makeTempDir();
+test("a Plan review reference survives a writer process crash before settlement", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const projectRoot = join(root, "project");
     const baseDir = join(root, "sessions");
     const readyPath = join(root, "writer-ready.json");
-    await Deno.mkdir(projectRoot);
-    const transcriptDir = join(baseDir, encodeCwdForSessionDir(await Deno.realPath(projectRoot)));
-    await Deno.mkdir(transcriptDir, { recursive: true });
+    await fsMkdir(projectRoot);
+    const transcriptDir = join(baseDir, encodeCwdForSessionDir(await fsRealpath(projectRoot)));
+    await fsMkdir(transcriptDir, { recursive: true });
     const transcriptPath = join(transcriptDir, "2026-01-01T00-00-00-000Z_pi-session.jsonl");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         transcriptPath,
         `${
             JSON.stringify({
@@ -123,26 +139,28 @@ Deno.test("a Plan review reference survives a writer process crash before settle
         store.recordLastPlanReview(proof, {
             planId: "crash-plan-id", planName: "crash-plan", planningAgentName: "planner",
         });
-        Deno.writeTextFileSync(${JSON.stringify(readyPath)}, JSON.stringify({
+        (await import("node:fs")).writeFileSync(${JSON.stringify(readyPath)}, JSON.stringify({
             sessionId: session.runwieldSessionId, projectId: project.projectId,
         }));
         setInterval(() => {}, 1000);
     `;
-    const worker = new Deno.Command(Deno.execPath(), {
-        args: ["eval", script],
+    const worker = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs(["eval", script]),
         stdout: "null",
         stderr: "piped",
-    }).spawn();
+        cwd: getCwd(),
+        stdin: "null",
+    });
     try {
         const deadline = Date.now() + 10_000;
         let ready = false;
         while (Date.now() < deadline) {
             try {
-                await Deno.stat(readyPath);
+                await fsStat(readyPath);
                 ready = true;
                 break;
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
             await new Promise((resolve) => setTimeout(resolve, 25));
         }
@@ -150,10 +168,10 @@ Deno.test("a Plan review reference survives a writer process crash before settle
             try {
                 worker.kill("SIGKILL");
             } catch { /* Worker already stopped. */ }
-            const result = await worker.output();
+            const result = await collectProcessOutput(worker);
             throw new Error(`Writer never recorded the review: ${new TextDecoder().decode(result.stderr)}`);
         }
-        const { sessionId, projectId } = JSON.parse(await Deno.readTextFile(readyPath));
+        const { sessionId, projectId } = JSON.parse(await fsReadFile(readyPath, "utf8"));
         worker.kill("SIGKILL");
         await worker.status;
         const reopened = openFileSessionStore({ baseDir });
@@ -166,6 +184,6 @@ Deno.test("a Plan review reference survives a writer process crash before settle
         try {
             worker.kill("SIGKILL");
         } catch { /* Worker already stopped. */ }
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

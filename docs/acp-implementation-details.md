@@ -39,7 +39,7 @@ This document compares the current repository implementation against:
 - Current ACP v1 form and URL elicitation: <https://agentclientprotocol.com/protocol/v1/elicitation>
 - Session configuration: <https://agentclientprotocol.com/protocol/v1/session-config-options>
 - Client filesystem access: <https://agentclientprotocol.com/protocol/v1/file-system>
-- RunWield's `@agentclientprotocol/sdk` dependency in `deno.json` (`^1.4.0`, resolved to 1.4.0 in `deno.lock`).
+- RunWield's `@agentclientprotocol/sdk` dependency in `package.json` (`1.4.0`, pinned in `bun.lock`).
 
 The upstream v1 pages were checked on the audit date. Protocol version `1` does not mean every optional feature is
 implemented. SDK version `1.4.0` is a separate version number. Current upstream v1 documents include elicitation;

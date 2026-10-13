@@ -1,10 +1,12 @@
+import { opendir } from "node:fs/promises";
+import { stat as fsStat } from "node:fs/promises";
 import {
     type AgentSession,
     createAgentSession,
     DefaultResourceLoader,
     SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import { isAbsolute, join } from "@std/path";
+import { isAbsolute, join } from "node:path";
 import { type RunWieldModel, RunWieldModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../models/model-registry.ts";
 import {
     applySessionTemperature,
@@ -162,13 +164,13 @@ export async function createBoundedRemoteModelSession(options: {
     // Pi reads symlink targets directly. Check every personal template before passing paths to its loader.
     for (const path of promptPaths) {
         await assertPersonalResourcePath(path, "prompt template path");
-        const stat = await Deno.stat(path).catch((error) => {
-            if (error instanceof Deno.errors.NotFound) return undefined;
+        const stat = await fsStat(path).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
             throw error;
         });
-        if (!stat?.isDirectory) continue;
-        for await (const entry of Deno.readDir(path)) {
-            if ((entry.isFile || entry.isSymlink) && entry.name.endsWith(".md")) {
+        if (!stat?.isDirectory()) continue;
+        for await (const entry of (await opendir(path))) {
+            if ((entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md")) {
                 await assertPersonalResourcePath(join(path, entry.name), "prompt template");
             }
         }

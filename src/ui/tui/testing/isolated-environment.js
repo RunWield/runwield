@@ -1,9 +1,23 @@
+import { delimiter } from "node:path";
+import { tmpdir } from "node:os";
+import {
+    copyFile as fsCopyFile,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readdir as fsReaddir,
+    readlink as fsReadlink,
+    realpath as fsRealpath,
+    rm as fsRm,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /**
  * @module ui/tui/testing/isolated-environment
  * Isolated filesystem fixture setup for Golden TUI scenarios.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { git } from "../../../shared/git-test-fixture.ts";
 import {
     assertWorkflowBinaryCallsSupported,
@@ -33,8 +47,8 @@ async function sha256(value) {
  */
 export async function writeGoldenModelConfig(runwieldDir, options = {}) {
     const models = options.models || [{ id: GOLDEN_FAUX_MODEL, name: "Golden Faux Model" }];
-    await Deno.mkdir(runwieldDir, { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(runwieldDir, { recursive: true });
+    await fsWriteFile(
         join(runwieldDir, "models.json"),
         JSON.stringify(
             {
@@ -71,10 +85,10 @@ function delay(ms) {
 async function removeTempDir(path) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            await Deno.remove(path, { recursive: true });
+            await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return;
+            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
             if (attempt === 4) throw error;
             await delay(20 * (attempt + 1));
         }
@@ -96,15 +110,15 @@ async function removeTempDir(path) {
 async function createGoldenRepository(root, initArtifact) {
     const projectRoot = join(root, "project");
     const remoteRoot = join(root, "remote.git");
-    await Deno.mkdir(projectRoot, { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(projectRoot, { recursive: true });
+    await fsWriteFile(
         join(projectRoot, "README.md"),
         "# Golden TUI Fixture\n\nRouting uses the Router to select Guide.\n",
     );
-    await Deno.writeTextFile(join(projectRoot, ".gitignore"), RUNWIELD_GITIGNORE_BLOCK);
+    await fsWriteFile(join(projectRoot, ".gitignore"), RUNWIELD_GITIGNORE_BLOCK);
     if (initArtifact) {
-        await Deno.mkdir(join(projectRoot, "docs"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(projectRoot, "docs"), { recursive: true });
+        await fsWriteFile(
             join(projectRoot, "docs", "domain-language.md"),
             "# Domain Language\n\n## Golden Fixture\n\nCurrent Golden project terminology.\n",
         );
@@ -122,13 +136,13 @@ async function createGoldenRepository(root, initArtifact) {
 
 /** @param {string} source @param {string} destination */
 async function copyFixtureTree(source, destination) {
-    await Deno.mkdir(destination, { recursive: true });
-    for await (const entry of Deno.readDir(source)) {
+    await fsMkdir(destination, { recursive: true });
+    for await (const entry of await fsReaddir(source, { withFileTypes: true })) {
         const from = join(source, entry.name);
         const to = join(destination, entry.name);
-        if (entry.isDirectory) await copyFixtureTree(from, to);
-        else if (entry.isSymlink) await Deno.symlink(await Deno.readLink(from), to);
-        else await Deno.copyFile(from, to);
+        if (entry.isDirectory()) await copyFixtureTree(from, to);
+        else if (entry.isSymbolicLink()) await fsSymlink(await fsReadlink(from), to);
+        else await fsCopyFile(from, to);
     }
 }
 
@@ -140,7 +154,7 @@ async function copyFixtureTree(source, destination) {
 export async function prepareGoldenRepositoryTemplates(root) {
     await Promise.all([true, false].map(async (initialized) => {
         const path = join(root, initialized ? "initialized" : "uninitialized");
-        await Deno.mkdir(path, { recursive: true });
+        await fsMkdir(path, { recursive: true });
         await createGoldenRepository(path, initialized);
     }));
 }
@@ -158,16 +172,16 @@ export async function prepareGoldenRepositoryTemplates(root) {
  * @returns {Promise<GoldenIsolatedEnvironment>}
  */
 export async function createGoldenIsolatedEnvironment(options = {}) {
-    const root = await Deno.makeTempDir({ prefix: "runwield-golden-tui-" });
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-golden-tui-"));
     const home = join(root, "home");
     const projectRoot = join(root, "project");
     const remoteRoot = join(root, "remote.git");
     const runwieldDir = join(home, ".wld");
     const fixtureBinDir = await writeWorkflowBinaryFixtures(root, { githubUnavailable: true });
-    await Deno.mkdir(runwieldDir, { recursive: true });
+    await fsMkdir(runwieldDir, { recursive: true });
     const initDone = options.initDone !== false;
     const initArtifact = options.initArtifact ?? initDone;
-    const templateRoot = options.repositoryTemplateRoot || Deno.env.get("WLD_GOLDEN_FIXTURE_ROOT");
+    const templateRoot = options.repositoryTemplateRoot || process.env["WLD_GOLDEN_FIXTURE_ROOT"];
     if (templateRoot) {
         const template = join(templateRoot, initArtifact ? "initialized" : "uninitialized");
         await Promise.all([
@@ -179,9 +193,9 @@ export async function createGoldenIsolatedEnvironment(options = {}) {
         await createGoldenRepository(root, initArtifact);
     }
     await writeGoldenModelConfig(runwieldDir);
-    const canonicalProjectRoot = await Deno.realPath(projectRoot);
+    const canonicalProjectRoot = await fsRealpath(projectRoot);
     const projectHash = await sha256(canonicalProjectRoot);
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(runwieldDir, "init-state.json"),
         JSON.stringify(
             {
@@ -199,10 +213,10 @@ export async function createGoldenIsolatedEnvironment(options = {}) {
             2,
         ) + "\n",
     );
-    await Deno.mkdir(join(runwieldDir, "sessions"), { recursive: true });
-    await Deno.mkdir(join(runwieldDir, "worktrees"), { recursive: true });
-    await Deno.mkdir(join(runwieldDir, "registry"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(runwieldDir, "sessions"), { recursive: true });
+    await fsMkdir(join(runwieldDir, "worktrees"), { recursive: true });
+    await fsMkdir(join(runwieldDir, "registry"), { recursive: true });
+    await fsWriteFile(
         join(runwieldDir, "settings.json"),
         JSON.stringify({
             theme: "default",
@@ -217,7 +231,7 @@ export async function createGoldenIsolatedEnvironment(options = {}) {
     const env = {
         HOME: home,
         RUNWIELD_HOME: runwieldDir,
-        PATH: `${fixtureBinDir}:${Deno.env.get("PATH") || ""}`,
+        PATH: `${fixtureBinDir}${delimiter}${process.env["PATH"] || ""}`,
         NO_COLOR: "1",
         TERM: "screen",
         WLD_GOLDEN_TUI: "1",

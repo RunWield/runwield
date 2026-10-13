@@ -1,11 +1,12 @@
+import { assertEquals } from "../testing/assertions.ts";
+import { test } from "node:test";
 /**
  * @module acp/interaction-mapper.test
  */
 
-import { assertEquals } from "@std/assert";
 import { createAcpInteractionAdapter } from "./interaction-mapper.js";
 
-Deno.test("ACP interaction adapter does not expose the obsolete Pair form", async () => {
+test("ACP interaction adapter does not expose the obsolete Pair form", async () => {
     /** @type {unknown[]} */
     const requests = [];
     const adapter = createAcpInteractionAdapter({
@@ -33,7 +34,7 @@ Deno.test("ACP interaction adapter does not expose the obsolete Pair form", asyn
     assertEquals(requests, []);
 });
 
-Deno.test("ACP interaction adapter maps valid selections and rejects invalid ones", async () => {
+test("ACP interaction adapter maps valid selections and rejects invalid ones", async () => {
     const accepted = createAcpInteractionAdapter({
         acpSessionId: "acp-1",
         clientCapabilities: { elicitation: { form: {} } },
@@ -64,7 +65,7 @@ Deno.test("ACP interaction adapter maps valid selections and rejects invalid one
     assertEquals(response.message, "ACP elicitation returned invalid option: invalid");
 });
 
-Deno.test("ACP interaction adapter distinguishes approval acceptance from decline", async () => {
+test("ACP interaction adapter distinguishes approval acceptance from decline", async () => {
     const makeAdapter = (/** @type {string} */ answer) =>
         createAcpInteractionAdapter({
             acpSessionId: "acp-1",
@@ -89,7 +90,7 @@ Deno.test("ACP interaction adapter distinguishes approval acceptance from declin
     });
 });
 
-Deno.test("ACP interaction adapter browser fallback cancels with the request signal", async () => {
+test("ACP interaction adapter browser fallback cancels with the request signal", async () => {
     const adapter = createAcpInteractionAdapter({ acpSessionId: "acp-1", clientCapabilities: {}, context: {} });
     const controller = new AbortController();
     const pending = adapter.requestInteraction({ type: "text", prompt: "Name?" }, controller.signal);
@@ -97,7 +98,7 @@ Deno.test("ACP interaction adapter browser fallback cancels with the request sig
     assertEquals(await pending, { outcome: "canceled", message: "Interaction canceled." });
 });
 
-Deno.test("ACP browser fallback rejects answer submissions without same-origin proof", async () => {
+test("ACP browser fallback rejects answer submissions without same-origin proof", async () => {
     /** @type {PromiseWithResolvers<string>} */
     const notified = Promise.withResolvers();
     const adapter = createAcpInteractionAdapter({

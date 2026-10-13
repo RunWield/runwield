@@ -1,5 +1,17 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import process from "node:process";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -85,13 +97,13 @@ function makeHostedSession(id: string, cwd: string, events: RuntimeStatusEvent[]
     return hostedSession;
 }
 
-Deno.test("execution preparation progress reports fresh worktree setup before launching Engineer", async () => {
+test("execution preparation progress reports fresh worktree setup before launching Engineer", async () => {
     await withRuntimeCommandFixture("execution-progress-fresh-", async ({ setModelMessages }) => {
         setModelMessages([fauxAssistantMessage(fauxText("Execution remains paused in the fixture."))]);
         const projectRoot = await makeWorkflowProject([{
             name: "fresh-progress",
         }]);
-        await Deno.writeTextFile(join(projectRoot, ".gitignore"), ".wld/\n");
+        await fsWriteFile(join(projectRoot, ".gitignore"), ".wld/\n");
         const events: RuntimeStatusEvent[] = [];
         const hostedSession = makeHostedSession("fresh-progress", projectRoot, events);
         const originalWarn = console.warn;
@@ -135,12 +147,12 @@ Deno.test("execution preparation progress reports fresh worktree setup before la
                     undefined
                 );
             }
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+            await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
         }
     });
 });
 
-Deno.test("execution preparation progress reports reused worktree without claiming creation", async () => {
+test("execution preparation progress reports reused worktree without claiming creation", async () => {
     const projectRoot = await makeWorkflowProject([{
         name: "reuse-progress",
     }]);
@@ -186,11 +198,11 @@ Deno.test("execution preparation progress reports reused worktree without claimi
         if (executionCwd) {
             await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(() => undefined);
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 });
 
-Deno.test("restart resumes a dirty ready-for-work worktree without repeating preparation", async () => {
+test("restart resumes a dirty ready-for-work worktree without repeating preparation", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "restart-progress" }]);
     const events: RuntimeStatusEvent[] = [];
     const hostedSession = makeHostedSession("restart-progress", projectRoot, events);
@@ -213,7 +225,7 @@ Deno.test("restart resumes a dirty ready-for-work worktree without repeating pre
             affectedPaths: ["implemented.txt"],
             planId: PLAN_ID,
         });
-        await Deno.writeTextFile(`${worktree.path}/implemented.txt`, "Agent work survived the restart.\n");
+        await fsWriteFile(`${worktree.path}/implemented.txt`, "Agent work survived the restart.\n");
         const poisonedBaseline = await captureWorktreeTree(worktree.path);
         await updateWorktreeRegistryEntry(projectRoot, worktree.id, {
             status: "active",
@@ -239,7 +251,10 @@ Deno.test("restart resumes a dirty ready-for-work worktree without repeating pre
 
         const executionPlan = await loadPlan(worktree.path, "restart-progress");
         assertEquals(executionPlan?.attrs.status, "in_progress");
-        assertEquals(await Deno.readTextFile(`${worktree.path}/implemented.txt`), "Agent work survived the restart.\n");
+        assertEquals(
+            await fsReadFile(`${worktree.path}/implemented.txt`, "utf8"),
+            "Agent work survived the restart.\n",
+        );
         assertEquals(
             workflow.baselineTree,
             worktree.baseTree,
@@ -259,8 +274,8 @@ Deno.test("restart resumes a dirty ready-for-work worktree without repeating pre
         });
         const recoveryDirectory = getTransitionJournalDir(worktree.path);
         const recoveryPath = `${recoveryDirectory}/interrupted-restart.json`;
-        await Deno.mkdir(recoveryDirectory, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(recoveryDirectory, { recursive: true });
+        await fsWriteFile(
             recoveryPath,
             JSON.stringify({
                 version: 1,
@@ -302,18 +317,18 @@ Deno.test("restart resumes a dirty ready-for-work worktree without repeating pre
             ports: createExecutionStartPorts(),
         });
         assertEquals(resumedWorkflow.baselineTree, worktree.baseTree);
-        assertEquals(await Deno.stat(recoveryPath).then(() => true).catch(() => false), false);
+        assertEquals(await fsStat(recoveryPath).then(() => true).catch(() => false), false);
     } finally {
         resumedSession?.dispose();
         hostedSession.dispose();
         if (executionCwd) {
             await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(() => undefined);
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 });
 
-Deno.test("restart accepts an existing Plan-only preparation commit", async () => {
+test("restart accepts an existing Plan-only preparation commit", async () => {
     const projectRoot = await makeWorkflowProject([{ name: "prepared-restart" }]);
     const hostedSession = makeHostedSession("prepared-restart", projectRoot, []);
     let executionCwd = "";
@@ -383,12 +398,12 @@ Deno.test("restart accepts an existing Plan-only preparation commit", async () =
         if (executionCwd) {
             await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(() => undefined);
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 });
 
 for (const checkpointed of [false, true]) {
-    Deno.test(`child preparation preserves parent edits in a reused ${checkpointed ? "prepared" : "planning"} worktree`, async () => {
+    test(`child preparation preserves parent edits in a reused ${checkpointed ? "prepared" : "planning"} worktree`, async () => {
         const parentName = "usage";
         const planName = "usage/01-recording";
         const parentPath = "docs/plans/usage.md";
@@ -410,7 +425,7 @@ for (const checkpointed of [false, true]) {
             const parent = await loadPlan(worktree.path, parentName);
             assert(parent);
             const revisedParent = `${parent.markdown}\nRecording remains opt-in, as requested by the owner.\n`;
-            await Deno.writeTextFile(parent.path, revisedParent);
+            await fsWriteFile(parent.path, revisedParent);
             if (checkpointed) {
                 await checkpointExecutionPreparation({
                     worktreePath: worktree.path,
@@ -421,9 +436,9 @@ for (const checkpointed of [false, true]) {
                     relatedPlanPaths: [parentPath],
                 });
                 // A subsequent planning edit must survive restarting preparation too.
-                await Deno.writeTextFile(parent.path, `${revisedParent}\nMetrics must never block delivery.\n`);
+                await fsWriteFile(parent.path, `${revisedParent}\nMetrics must never block delivery.\n`);
             }
-            const expectedParent = await Deno.readTextFile(parent.path);
+            const expectedParent = await fsReadFile(parent.path, "utf8");
             await updateWorktreeRegistryEntry(projectRoot, worktree.id, {
                 status: checkpointed ? "active" : "planning",
             });
@@ -439,7 +454,7 @@ for (const checkpointed of [false, true]) {
             assertEquals(workflow.executionCwd, worktree.path);
             assertEquals(workflow.executionStarted, true);
             assertEquals((await loadPlan(worktree.path, planName))?.attrs.status, "in_progress");
-            assertEquals(await Deno.readTextFile(parent.path), expectedParent);
+            assertEquals(await fsReadFile(parent.path, "utf8"), expectedParent);
             assertEquals(await git(worktree.path, ["show", `HEAD:${parentPath}`]), expectedParent.trim());
             assertEquals(await git(worktree.path, ["status", "--porcelain"]), "");
             assertEquals((await loadPlan(projectRoot, parentName))?.markdown, parent.markdown);
@@ -450,12 +465,12 @@ for (const checkpointed of [false, true]) {
                     undefined
                 );
             }
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+            await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
         }
     });
 }
 
-Deno.test("reused child preparation does not require a local copy of its parent", async () => {
+test("reused child preparation does not require a local copy of its parent", async () => {
     const planName = "epic/01-child";
     const projectRoot = await makeWorkflowProject([{ name: planName, attrs: { parentPlan: "epic" } }]);
     const hostedSession = makeHostedSession("child-only-planning", projectRoot, []);
@@ -487,11 +502,11 @@ Deno.test("reused child preparation does not require a local copy of its parent"
         if (executionCwd) {
             await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true }).catch(() => undefined);
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 });
 
-Deno.test("execution starts with registered sibling scope moves and leftover planning documents", async () => {
+test("execution starts with registered sibling scope moves and leftover planning documents", async () => {
     const planName = "remote/03-writer";
     const siblingName = "remote/04-history";
     const projectRoot = await makeWorkflowProject([
@@ -526,7 +541,7 @@ Deno.test("execution starts with registered sibling scope moves and leftover pla
         await updateWorktreeRegistryEntry(projectRoot, worktree.id, { status: "planning" });
         const sibling = await loadPlan(worktree.path, siblingName);
         assert(sibling);
-        await Deno.writeTextFile(
+        await fsWriteFile(
             sibling.path,
             `${sibling.markdown}\nUse the laptop-owned save bridge from child 03.\n`,
         );
@@ -567,16 +582,16 @@ Deno.test("execution starts with registered sibling scope moves and leftover pla
         for (const path of worktrees) {
             await removeWorktreeGitArtifacts({ projectRoot, path, force: true }).catch(() => undefined);
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 });
 
-Deno.test("execution preparation progress reports non-Git in-place preparation without worktree creation", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-non-git-progress-" });
+test("execution preparation progress reports non-Git in-place preparation without worktree creation", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-non-git-progress-"));
     const events: RuntimeStatusEvent[] = [];
     const hostedSession = makeHostedSession("non-git-progress", projectRoot, events);
     try {
-        await Deno.mkdir(join(projectRoot, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
         await savePlan(projectRoot, "non-git-progress", "# non-git-progress", {
             classification: "PLANNED_CHANGE",
             status: "ready_for_work",
@@ -604,15 +619,15 @@ Deno.test("execution preparation progress reports non-Git in-place preparation w
         ]);
         assertEquals(messages.some((message) => message.includes("worktree")), false);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 });
 
 for (const tutorial of [false, true]) {
-    Deno.test(`${tutorial ? "Tutorial" : "Plan"} execution carries uncommitted Init files and preserves them on resume`, async () => {
+    test(`${tutorial ? "Tutorial" : "Plan"} execution carries uncommitted Init files and preserves them on resume`, async () => {
         await withRuntimeCommandFixture("init-context-execution-", async ({ setModelMessages }) => {
             const projectRoot = await makeWorkflowProject([{ name: "init-context" }]);
-            Deno.chdir(projectRoot);
+            process.chdir(projectRoot);
             const initialHead = await git(projectRoot, ["rev-parse", "HEAD"]);
             const glossary = "# Domain Language\n\n## Fixture\n\nCurrent fixture terminology.\n";
             setModelMessages([
@@ -646,9 +661,9 @@ for (const tutorial of [false, true]) {
                     sessionPort: { startInteractiveSession: () => Promise.reject(new Error("Unexpected model setup")) },
                     uiAPI: { appendSystemMessage: (_message, error) => assert(!error) },
                 });
-                await Deno.writeTextFile(join(projectRoot, "unrelated.txt"), "Keep in the original checkout.\n");
+                await fsWriteFile(join(projectRoot, "unrelated.txt"), "Keep in the original checkout.\n");
                 const status = await git(projectRoot, ["status", "--porcelain"]);
-                const settings = await Deno.readTextFile(join(projectRoot, ".wld/settings.json"));
+                const settings = await fsReadFile(join(projectRoot, ".wld/settings.json"), "utf8");
                 await executePlan({
                     planName: "init-context",
                     triageMeta: { planId: PLAN_ID, classification: "PLANNED_CHANGE" },
@@ -657,10 +672,10 @@ for (const tutorial of [false, true]) {
                 const workflow = hostedSession.getActiveExecutionWorkflow();
                 assert(workflow?.executionCwd, messagesFrom(events).join("\n"));
                 executionCwd = workflow.executionCwd;
-                assertEquals(await Deno.readTextFile(join(executionCwd, "docs/domain-language.md")), glossary);
-                assertEquals(await Deno.readTextFile(join(executionCwd, ".wld/settings.json")), settings);
+                assertEquals(await fsReadFile(join(executionCwd, "docs/domain-language.md"), "utf8"), glossary);
+                assertEquals(await fsReadFile(join(executionCwd, ".wld/settings.json"), "utf8"), settings);
                 assertStringIncludes(
-                    await Deno.readTextFile(join(executionCwd, ".gitignore")),
+                    await fsReadFile(join(executionCwd, ".gitignore"), "utf8"),
                     RUNWIELD_GITIGNORE_BLOCK,
                 );
                 const preparationFiles = await git(executionCwd, ["diff", "--name-only", `${initialHead}..HEAD`]);
@@ -669,9 +684,9 @@ for (const tutorial of [false, true]) {
                 }
                 assertEquals(await git(projectRoot, ["rev-parse", "HEAD"]), initialHead);
                 assertEquals(await git(projectRoot, ["status", "--porcelain"]), status);
-                assertEquals(await Deno.stat(join(executionCwd, "unrelated.txt")).catch(() => null), null);
-                await Deno.writeTextFile(join(executionCwd, "docs/domain-language.md"), "Repaired glossary\n");
-                await Deno.writeTextFile(
+                assertEquals(await fsStat(join(executionCwd, "unrelated.txt")).catch(() => null), null);
+                await fsWriteFile(join(executionCwd, "docs/domain-language.md"), "Repaired glossary\n");
+                await fsWriteFile(
                     join(executionCwd, ".wld/settings.json"),
                     '{"verification_command":"printf repaired"}\n',
                 );
@@ -693,14 +708,14 @@ for (const tutorial of [false, true]) {
                     ports: createExecutionStartPorts(),
                 });
                 assertEquals(
-                    await Deno.readTextFile(join(executionCwd, "docs/domain-language.md")),
+                    await fsReadFile(join(executionCwd, "docs/domain-language.md"), "utf8"),
                     "Repaired glossary\n",
                 );
                 assertStringIncludes(
-                    await Deno.readTextFile(join(executionCwd, ".wld/settings.json")),
+                    await fsReadFile(join(executionCwd, ".wld/settings.json"), "utf8"),
                     "printf repaired",
                 );
-                assertEquals(await Deno.readTextFile(join(projectRoot, ".wld/settings.json")), settings);
+                assertEquals(await fsReadFile(join(projectRoot, ".wld/settings.json"), "utf8"), settings);
                 const resumed = await loadPlan(executionCwd, "init-context");
                 assert(resumed);
                 await updatePlanFrontMatter(executionCwd, "init-context", { status: "reviewed" }, {}, {
@@ -718,23 +733,23 @@ for (const tutorial of [false, true]) {
                     allowedPlanPaths: ["docs/plans/init-context.md"],
                 });
                 assertEquals(
-                    await Deno.readTextFile(join(projectRoot, "docs/domain-language.md")),
+                    await fsReadFile(join(projectRoot, "docs/domain-language.md"), "utf8"),
                     "Repaired glossary\n",
                 );
                 assertStringIncludes(
-                    await Deno.readTextFile(join(projectRoot, ".wld/settings.json")),
+                    await fsReadFile(join(projectRoot, ".wld/settings.json"), "utf8"),
                     "printf repaired",
                 );
                 assertEquals(
-                    await Deno.readTextFile(join(projectRoot, "unrelated.txt")),
+                    await fsReadFile(join(projectRoot, "unrelated.txt"), "utf8"),
                     "Keep in the original checkout.\n",
                 );
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
                 hostedSession.dispose();
                 if (executionCwd) await removeWorktreeGitArtifacts({ projectRoot, path: executionCwd, force: true });
-                Deno.chdir(projectRoot + "/..");
-                await Deno.remove(projectRoot, { recursive: true });
+                process.chdir(projectRoot + "/..");
+                await fsRm(projectRoot, { recursive: true });
             }
         });
     });

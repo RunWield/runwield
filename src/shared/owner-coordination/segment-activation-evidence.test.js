@@ -1,4 +1,8 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
 import {
     acquireSessionActivation,
@@ -22,8 +26,8 @@ function insertCatalogedSessionWithSegment(database) {
     });
 }
 
-Deno.test("acquireSessionActivation rejects a wrong current-segment expectation", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-segment-acquire-" });
+test("acquireSessionActivation rejects a wrong current-segment expectation", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-acquire-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -49,12 +53,12 @@ Deno.test("acquireSessionActivation rejects a wrong current-segment expectation"
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("acquireSessionActivation rejects an explicit null current-segment expectation", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-segment-null-acquire-" });
+test("acquireSessionActivation rejects an explicit null current-segment expectation", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-null-acquire-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -80,12 +84,12 @@ Deno.test("acquireSessionActivation rejects an explicit null current-segment exp
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("publishGenerationAndRelease rejects a wrong-current-segment proof", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-segment-proof-" });
+test("publishGenerationAndRelease rejects a wrong-current-segment proof", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-proof-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -130,12 +134,12 @@ Deno.test("publishGenerationAndRelease rejects a wrong-current-segment proof", a
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("segment evidence does not introduce segment-level activation locks", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-segment-lock-" });
+test("segment evidence does not introduce segment-level activation locks", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-lock-"));
     try {
         const database = openOwnerCoordinationDatabase({ dbPath: `${dir}/owner.sqlite3` });
         try {
@@ -168,6 +172,6 @@ Deno.test("segment evidence does not introduce segment-level activation locks", 
             database.close();
         }
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

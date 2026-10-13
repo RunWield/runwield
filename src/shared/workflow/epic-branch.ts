@@ -1,3 +1,7 @@
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { rm as fsRm } from "node:fs/promises";
 /**
  * @module shared/workflow/epic-branch
  * Every Epic starts and ends on its own branch. This module names that branch,
@@ -9,7 +13,7 @@
  * compare-and-swap.
  */
 
-import { join, relative } from "@std/path";
+import { join, relative } from "node:path";
 import {
     ensurePlanIdentity,
     findPlansByParent,
@@ -65,7 +69,7 @@ interface GitResult {
 }
 
 async function runGitResult(cwd: string, args: string[], env?: Record<string, string>): Promise<GitResult> {
-    const output = await new Deno.Command("git", { cwd, args, env, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args, env });
     return {
         success: output.success,
         stdout: new TextDecoder().decode(output.stdout),
@@ -244,7 +248,7 @@ async function seedEpicChildren(
         );
     }
 
-    const indexDir = await Deno.makeTempDir({ prefix: "wld-epic-seed-" });
+    const indexDir = await mkdtemp(join(tmpdir(), "wld-epic-seed-"));
     try {
         const env = { GIT_INDEX_FILE: join(indexDir, "index") };
         await runGit(primaryRoot, ["read-tree", head], env);
@@ -272,7 +276,7 @@ async function seedEpicChildren(
             await runGit(primaryRoot, ["update-ref", `refs/heads/${branch}`, commit, head]);
         }
     } finally {
-        await Deno.remove(indexDir, { recursive: true }).catch(() => {});
+        await fsRm(indexDir, { recursive: true }).catch(() => {});
     }
     return pending.map((child) => child.name);
 }

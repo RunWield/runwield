@@ -1,9 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { createGenerationGuard } from "./generation-guard.ts";
 
 // ─── Tests for the real createGenerationGuard() factory ───
 
-Deno.test("isCurrent returns true before any bump", () => {
+test("isCurrent returns true before any bump", () => {
     const { bump, isCurrent } = createGenerationGuard();
     // Initial generation is 0
     assertEquals(isCurrent(0), true);
@@ -12,7 +13,7 @@ Deno.test("isCurrent returns true before any bump", () => {
     assertEquals(isCurrent(0), false);
 });
 
-Deno.test("isCurrent returns true for current, false for stale", () => {
+test("isCurrent returns true for current, false for stale", () => {
     const { bump, isCurrent } = createGenerationGuard();
     const gen1 = bump(); // gen1 = 1
     assertEquals(isCurrent(gen1), true);
@@ -22,7 +23,7 @@ Deno.test("isCurrent returns true for current, false for stale", () => {
     assertEquals(isCurrent(gen2), true); // gen2 is current
 });
 
-Deno.test("multiple bumps invalidate all previous generations", () => {
+test("multiple bumps invalidate all previous generations", () => {
     const { bump, isCurrent } = createGenerationGuard();
     const generations = [bump(), bump(), bump()];
     // Only the last one should be current
@@ -31,7 +32,7 @@ Deno.test("multiple bumps invalidate all previous generations", () => {
     assertEquals(isCurrent(generations[2]), true);
 });
 
-Deno.test("invalidateAll bumps without exposing the new id", () => {
+test("invalidateAll bumps without exposing the new id", () => {
     const { bump, isCurrent, invalidateAll } = createGenerationGuard();
     const gen = bump();
     assertEquals(isCurrent(gen), true);
@@ -39,7 +40,7 @@ Deno.test("invalidateAll bumps without exposing the new id", () => {
     assertEquals(isCurrent(gen), false);
 });
 
-Deno.test("late result suppression pattern works correctly", async () => {
+test("late result suppression pattern works correctly", async () => {
     const { bump, isCurrent } = createGenerationGuard();
     const results: string[] = [];
 
@@ -65,7 +66,7 @@ Deno.test("late result suppression pattern works correctly", async () => {
     assertEquals(results.length, 0);
 });
 
-Deno.test("completed result is accepted when not canceled", async () => {
+test("completed result is accepted when not canceled", async () => {
     const { bump, isCurrent } = createGenerationGuard();
     const results: string[] = [];
 

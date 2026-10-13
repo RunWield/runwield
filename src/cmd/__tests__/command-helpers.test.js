@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { resetTuiState } from "../command-helpers.ts";
 
-Deno.test("resetTuiState re-enables input and focus", () => {
+test("resetTuiState re-enables input and focus", () => {
     let busy = true;
     let enabled = false;
     let focused = false;

@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { test } from "node:test";
 import { sessionAgentSelection, sessionCommandSuggestions, sessionModelLabel } from "./session-commands.ts";
 
 const options = {
@@ -16,7 +17,7 @@ const options = {
     thinkingLevels: ["low", "medium", "high"],
 };
 
-Deno.test("slash completion offers commands and project macros only for a leading slash", () => {
+test("slash completion offers commands and project macros only for a leading slash", () => {
     assertEquals(sessionCommandSuggestions("/", options).map((item) => item.label), [
         "/agent",
         "/model",
@@ -30,7 +31,7 @@ Deno.test("slash completion offers commands and project macros only for a leadin
     assertEquals(sessionCommandSuggestions("/commit\nMore context", options), []);
 });
 
-Deno.test("slash arguments filter Agents and distinguish identical model names by provider", () => {
+test("slash arguments filter Agents and distinguish identical model names by provider", () => {
     assertEquals(sessionCommandSuggestions("/agent id", options).map((item) => item.value), ["guide", "ideator"]);
     assertEquals(sessionCommandSuggestions("/model luna", options).map((item) => item.label), [
         "openai-codex/gpt-5.6-luna",
@@ -40,7 +41,7 @@ Deno.test("slash arguments filter Agents and distinguish identical model names b
     assertEquals(sessionModelLabel(options.models[0]), "openai-codex/gpt-5.6-luna");
 });
 
-Deno.test("Agent defaults supply the displayed selectors without inventing a manual choice", () => {
+test("Agent defaults supply the displayed selectors without inventing a manual choice", () => {
     assertEquals(
         sessionAgentSelection({
             name: "guide",

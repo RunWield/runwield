@@ -1,5 +1,21 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { basename, dirname, join } from "@std/path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rename as fsRename,
+    rm as fsRm,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { basename, dirname, join } from "node:path";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
@@ -27,14 +43,14 @@ const repository = defineGitFixture(async (root) => {
 
 async function fixture() {
     const projectRoot = await repository.checkout();
-    const worktreeRoot = await Deno.makeTempDir({ prefix: "publication-revalidation-" });
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "publication-revalidation-"));
     const entry = await createTestWorktreeAttempt({
         projectRoot,
         worktreeRoot,
         planName: "rewrite",
         planId: "rewrite-plan",
     });
-    await Deno.writeTextFile(join(entry.path, "feature.txt"), "validated implementation\n");
+    await fsWriteFile(join(entry.path, "feature.txt"), "validated implementation\n");
     await git(entry.path, ["add", "."]);
     await git(entry.path, ["commit", "-m", "Implement"]);
     const validatedCommit = await git(entry.path, ["rev-parse", "HEAD"]);
@@ -68,8 +84,8 @@ async function fixture() {
         artifactCommit,
         planPaths: ["docs/plans/rewrite.md"],
     });
-    await Deno.mkdir(attempt.publicationRoot, { recursive: true });
-    await Deno.writeTextFile(join(attempt.publicationRoot, "repair.txt"), "preserve unfinished repair\n");
+    await fsMkdir(attempt.publicationRoot, { recursive: true });
+    await fsWriteFile(join(attempt.publicationRoot, "repair.txt"), "preserve unfinished repair\n");
     return {
         projectRoot,
         entry,
@@ -78,22 +94,22 @@ async function fixture() {
             await git(entry.path, ["commit", "--amend", "-m", "Rewritten artifacts"]);
         },
         async cleanup() {
-            await Deno.remove(worktreeRoot, { recursive: true });
-            await Deno.remove(projectRoot, { recursive: true });
+            await fsRm(worktreeRoot, { recursive: true });
+            await fsRm(projectRoot, { recursive: true });
         },
     };
 }
 
-Deno.test("rewritten publication preserves files and starts fresh validation instead of repeating stale delivery", async () => {
+test("rewritten publication preserves files and starts fresh validation instead of repeating stale delivery", async () => {
     const f = await fixture();
     try {
         await f.rewrite();
-        await Deno.writeTextFile(join(f.entry.path, ".gitignore"), "new-rule\n");
+        await fsWriteFile(join(f.entry.path, ".gitignore"), "new-rule\n");
         await git(f.entry.path, ["add", ".gitignore"]);
         await git(f.entry.path, ["commit", "-m", "Ignore policy"]);
-        await Deno.writeTextFile(join(f.entry.path, "staged.txt"), "staged work\n");
+        await fsWriteFile(join(f.entry.path, "staged.txt"), "staged work\n");
         await git(f.entry.path, ["add", "staged.txt"]);
-        await Deno.writeTextFile(join(f.entry.path, "untracked.txt"), "untracked work\n");
+        await fsWriteFile(join(f.entry.path, "untracked.txt"), "untracked work\n");
         const head = await git(f.entry.path, ["rev-parse", "HEAD"]);
         const index = await git(f.entry.path, ["diff", "--cached"]);
         const target = await git(f.projectRoot, ["rev-parse", "main"]);
@@ -102,9 +118,9 @@ Deno.test("rewritten publication preserves files and starts fresh validation ins
         assertEquals(await git(f.entry.path, ["rev-parse", "HEAD"]), head);
         assertEquals(await git(f.entry.path, ["diff", "--cached"]), index);
         assertEquals(await git(f.projectRoot, ["rev-parse", "main"]), target);
-        assertEquals(await Deno.readTextFile(join(f.entry.path, "untracked.txt")), "untracked work\n");
-        assertEquals(await Deno.readTextFile(join(archive, "checkout/repair.txt")), "preserve unfinished repair\n");
-        assertStringIncludes(await Deno.readTextFile(join(archive, "publication.json")), f.attempt.artifactCommit!);
+        assertEquals(await fsReadFile(join(f.entry.path, "untracked.txt"), "utf8"), "untracked work\n");
+        assertEquals(await fsReadFile(join(archive, "checkout/repair.txt"), "utf8"), "preserve unfinished repair\n");
+        assertStringIncludes(await fsReadFile(join(archive, "publication.json"), "utf8"), f.attempt.artifactCommit!);
         const plan = await loadPlan(f.entry.path, f.entry.planName);
         assertEquals(plan?.attrs.status, "implemented");
         assertEquals(plan?.attrs.validatedCommit, undefined);
@@ -116,7 +132,7 @@ Deno.test("rewritten publication preserves files and starts fresh validation ins
     }
 });
 
-Deno.test("unchanged publication and harmless empty commits keep their validation", async () => {
+test("unchanged publication and harmless empty commits keep their validation", async () => {
     const f = await fixture();
     try {
         await git(f.entry.path, ["commit", "--allow-empty", "-m", "Empty"]);
@@ -127,29 +143,27 @@ Deno.test("unchanged publication and harmless empty commits keep their validatio
     }
 });
 
-Deno.test({
-    name: "publication recovery uses one Plan lock spelling for aliased execution paths",
-    ignore: Deno.build.os === "windows", // Directory symlinks require host privileges on Windows.
-    fn: async () => {
-        const f = await fixture();
-        try {
-            const parentAlias = join(dirname(f.entry.path), "parent-alias");
-            await Deno.symlink(dirname(f.entry.path), parentAlias, { type: "dir" });
-            const alias = join(parentAlias, basename(f.entry.path));
-            const attempt = { ...f.attempt, executionCwd: alias, revision: f.attempt.revision + 1 };
-            await updatePublication(f.projectRoot, f.entry.id, f.attempt.revision, attempt);
-            assertEquals(await preparePublicationRevalidation(f.projectRoot, f.entry.planName), null);
-            assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, attempt);
-            await Deno.writeTextFile(join(alias, "feature.txt"), "changed implementation\n");
-            assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
-            assertEquals((await loadPlan(alias, f.entry.planName))?.attrs.status, "implemented");
-        } finally {
-            await f.cleanup();
-        }
-    },
+test("publication recovery uses one Plan lock spelling for aliased execution paths", {
+    skip: process.platform === "win32",
+}, async () => {
+    const f = await fixture();
+    try {
+        const parentAlias = join(dirname(f.entry.path), "parent-alias");
+        await fsSymlink(dirname(f.entry.path), parentAlias, "dir");
+        const alias = join(parentAlias, basename(f.entry.path));
+        const attempt = { ...f.attempt, executionCwd: alias, revision: f.attempt.revision + 1 };
+        await updatePublication(f.projectRoot, f.entry.id, f.attempt.revision, attempt);
+        assertEquals(await preparePublicationRevalidation(f.projectRoot, f.entry.planName), null);
+        assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, attempt);
+        await fsWriteFile(join(alias, "feature.txt"), "changed implementation\n");
+        assert(await preparePublicationRevalidation(f.projectRoot, f.entry.planName));
+        assertEquals((await loadPlan(alias, f.entry.planName))?.attrs.status, "implemented");
+    } finally {
+        await f.cleanup();
+    }
 });
 
-Deno.test("publication recovery also handles pruned pre-rewrite commits", async () => {
+test("publication recovery also handles pruned pre-rewrite commits", async () => {
     const f = await fixture();
     try {
         await f.rewrite();
@@ -165,7 +179,7 @@ Deno.test("publication recovery also handles pruned pre-rewrite commits", async 
 });
 
 for (const boundary of ["intent", "preserved_checkout", "plan_reset"]) {
-    Deno.test(`fresh process resumes publication revalidation after ${boundary}`, async () => {
+    test(`fresh process resumes publication revalidation after ${boundary}`, async () => {
         const f = await fixture();
         try {
             await f.rewrite();
@@ -186,12 +200,12 @@ for (const boundary of ["intent", "preserved_checkout", "plan_reset"]) {
                 })
             );
             if (boundary !== "intent") {
-                await Deno.mkdir(attempt.revalidation.archiveRoot);
-                await Deno.writeTextFile(
+                await fsMkdir(attempt.revalidation.archiveRoot);
+                await fsWriteFile(
                     join(attempt.revalidation.archiveRoot, "publication.json"),
                     `${JSON.stringify(attempt, null, 2)}\n`,
                 );
-                await Deno.rename(attempt.publicationRoot, join(attempt.revalidation.archiveRoot, "checkout"));
+                await fsRename(attempt.publicationRoot, join(attempt.revalidation.archiveRoot, "checkout"));
             }
             if (boundary === "plan_reset") {
                 const plan = await loadPlan(f.entry.path, f.entry.planName);
@@ -201,23 +215,22 @@ for (const boundary of ["intent", "preserved_checkout", "plan_reset"]) {
                 });
             }
             const moduleUrl = new URL("./publication-revalidation.ts", import.meta.url).href;
-            const output = await new Deno.Command(Deno.execPath(), {
-                args: [
+            const output = await captureForegroundProcess(process.execPath, {
+                args: runtimeSourceArgs([
                     "eval",
                     `import {preparePublicationRevalidation} from ${
                         JSON.stringify(moduleUrl)
-                    }; await preparePublicationRevalidation(Deno.args[0], Deno.args[1]);`,
+                    }; await preparePublicationRevalidation((await import("node:process")).argv.slice(2)[0], (await import("node:process")).argv.slice(2)[1]);`,
                     f.projectRoot,
                     f.entry.planName,
-                ],
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+                ]),
+                cwd: getCwd(),
+            });
             assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
             assertEquals((await loadPlan(f.entry.path, f.entry.planName))?.attrs.status, "implemented");
             assertEquals((await findById(f.projectRoot, f.entry.id))?.publication, undefined);
             assertEquals(
-                await Deno.readTextFile(join(attempt.revalidation.archiveRoot, "checkout/repair.txt")),
+                await fsReadFile(join(attempt.revalidation.archiveRoot, "checkout/repair.txt"), "utf8"),
                 "preserve unfinished repair\n",
             );
             await assertRejects(() => retirePublicationForRevalidation(f.projectRoot, f.entry.id, attempt.revision));
@@ -227,7 +240,7 @@ for (const boundary of ["intent", "preserved_checkout", "plan_reset"]) {
     });
 }
 
-Deno.test("an integration that may already have been pushed is never retired for source drift", async () => {
+test("an integration that may already have been pushed is never retired for source drift", async () => {
     const f = await fixture();
     try {
         const integrated = await advanceStoredPublication(f.projectRoot, f.attempt, "target_integrated", {
@@ -242,7 +255,7 @@ Deno.test("an integration that may already have been pushed is never retired for
     }
 });
 
-Deno.test("validation overrides stale delivery claims and reruns CI after a rewrite", async () => {
+test("validation overrides stale delivery claims and reruns CI after a rewrite", async () => {
     const f = await fixture();
     try {
         await f.rewrite();
@@ -254,7 +267,7 @@ Deno.test("validation overrides stale delivery claims and reruns CI after a rewr
             status: "reviewed",
             phase: "delivery",
             state: "running",
-            ownerPid: Deno.pid,
+            ownerPid: process.pid,
             ownerHostname: "test-host",
         });
         await updatePlanFrontMatter(f.entry.path, f.entry.planName, { validationCheckpoint: checkpoint }, {}, {

@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import process from "node:process";
 import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 /**
  * @module ui/review/review-launcher
@@ -67,6 +69,10 @@ export interface ReviewConversationEvent {
 }
 
 export interface ReviewConversation {
+    onExit?(): void;
+    completed?: boolean;
+    resultMessage?: string;
+    completionDelivered?: boolean;
     id: string;
     agentLabel: string;
     revision: number;
@@ -102,7 +108,30 @@ interface ArtifactReadSurfaceOptions {
     onOutput?(output: ReviewServerOutput): void;
 }
 
+export interface StandaloneForgeState {
+    platform: "github" | "gitlab";
+    label: string;
+    available: boolean;
+    unavailableReason?: string;
+    postEnabled: boolean;
+    postDisabledReason?: string;
+}
+export interface StandaloneCommitState {
+    enabled: boolean;
+    disabledReason?: string;
+}
+export interface StandaloneReviewPayload {
+    mode: "pr" | "branch" | "uncommitted";
+    /** Selected commit before the Engineer worktree exists. */
+    headRef?: string;
+    forge?: StandaloneForgeState;
+    commit?: StandaloneCommitState;
+    reviewContext?: string;
+    resultMessage?: string;
+}
+
 interface CodeReviewSurfaceOptions {
+    standaloneReview?: StandaloneReviewPayload;
     rawPatch: string;
     gitRef: string;
     agentCwd: string;
@@ -120,6 +149,7 @@ interface CodeReviewSurfaceOptions {
 }
 
 interface CodeReviewPayload extends Record<string, unknown> {
+    standaloneReview?: StandaloneReviewPayload;
     rawPatch: string;
     gitRef: string;
     agentCwd: string;
@@ -194,10 +224,10 @@ function installProcessExitCleanup(): void {
             const handler = (): void => {
                 void (async () => {
                     await stopActiveReviewSurfaces();
-                    Deno.exit(exitCode);
+                    process.exit(exitCode);
                 })();
             };
-            Deno.addSignalListener(signal, handler);
+            process.on(signal, handler);
             processExitCleanupSignalHandlers.push({ signal, handler });
         } catch {
             // Some platforms and test environments do not support all signals.
@@ -210,7 +240,7 @@ function uninstallProcessExitCleanup(): void {
     globalThis.removeEventListener("unload", stopActiveReviewSurfacesBestEffort);
     for (const { signal, handler } of processExitCleanupSignalHandlers) {
         try {
-            Deno.removeSignalListener(signal, handler);
+            process.off(signal, handler);
         } catch {
             // Best-effort cleanup for runtimes without signal support.
         }
@@ -221,8 +251,9 @@ function uninstallProcessExitCleanup(): void {
 
 function registerReviewSurface<TDecision>(
     server: ReviewSurfaceServer<TDecision>,
+    handlesSignals = false,
 ): ReviewSurfaceServer<TDecision> {
-    installProcessExitCleanup();
+    if (!handlesSignals) installProcessExitCleanup();
     activeReviewSurfaces.add(server);
     const stop = server.stop.bind(server);
     return {
@@ -247,12 +278,7 @@ interface CodeReviewStatus {
 async function loadCodeReviewStatus(cwd: string): Promise<CodeReviewStatus> {
     const empty: CodeReviewStatus = { stagedFiles: [], unstagedFiles: [], untrackedFiles: [] };
     try {
-        const output = await new Deno.Command("git", {
-            args: ["status", "--porcelain=v1", "-z"],
-            cwd,
-            stdout: "piped",
-            stderr: "null",
-        }).output();
+        const output = await captureForegroundProcess("git", { args: ["status", "--porcelain=v1", "-z"], cwd });
         if (!output.success) return empty;
         return parseGitPorcelainStatus(new TextDecoder().decode(output.stdout));
     } catch {
@@ -295,7 +321,7 @@ function workspaceServer<TDecision>(
         url: server.url,
         waitForDecision: () => server.waitForDecision() as Promise<TDecision>,
         stop: () => server.stop(),
-    });
+    }, Boolean(options.reviewPayload.standaloneReview));
 }
 
 export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({
@@ -411,6 +437,7 @@ export async function startArtifactReadSurface<TDecision = ReviewDecisionValue>(
 }
 
 export async function startCodeReviewSurface<TDecision = ReviewDecisionValue>({
+    standaloneReview,
     rawPatch,
     gitRef,
     agentCwd,
@@ -430,6 +457,7 @@ export async function startCodeReviewSurface<TDecision = ReviewDecisionValue>({
     const reviewStatus = await loadCodeReviewStatus(agentCwd);
     const resolvedAgentLabel = agentLabel || reviewConversation?.agentLabel || "Reviewer Feedback Engineer";
     const reviewPayload: CodeReviewPayload = {
+        standaloneReview,
         rawPatch,
         gitRef,
         agentCwd,

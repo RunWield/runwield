@@ -1,5 +1,15 @@
-import { parse as parseJsonc } from "@std/jsonc";
-import { basename, dirname, join } from "@std/path";
+import { mkdtemp, rename } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { captureForegroundProcess } from "./captured-process.ts";
+import {
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { parse as parseJsonc } from "./jsonc.ts";
+import { basename, dirname, join } from "node:path";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
@@ -19,7 +29,7 @@ export interface WorktreeProjectContext {
 }
 
 async function git(cwd: string, args: string[]) {
-    const result = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureForegroundProcess("git", { cwd, args });
     return {
         code: result.code,
         stdout: new TextDecoder().decode(result.stdout),
@@ -33,15 +43,15 @@ export async function readProjectContextFile(root: string, path: string): Promis
     for (const part of path.split("/")) {
         current = join(current, part);
         try {
-            if ((await Deno.lstat(current)).isSymlink) {
+            if ((await fsLstat(current)).isSymbolicLink()) {
                 throw new Error(`Cannot carry project context through a symlink: ${path}`);
             }
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return null;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
             throw error;
         }
     }
-    return await Deno.readTextFile(current);
+    return await fsReadFile(current, "utf8");
 }
 
 export async function readProjectContextRevision(root: string, ref: string, path: string): Promise<string | null> {
@@ -57,11 +67,11 @@ export async function readProjectContextRevision(root: string, ref: string, path
 }
 
 async function mergeContext(root: string, path: string, base: string, source: string, target: string): Promise<string> {
-    const temporary = await Deno.makeTempDir({ prefix: "runwield-project-context-" });
+    const temporary = await mkdtemp(join(tmpdir(), "runwield-project-context-"));
     try {
         const paths = ["target", "base", "source"].map((name) => join(temporary, name));
         for (const [index, content] of [target, base, source].entries()) {
-            await Deno.writeTextFile(paths[index], content);
+            await fsWriteFile(paths[index], content);
         }
         const result = await git(root, ["merge-file", "-p", ...paths]);
         if (result.code !== 0) {
@@ -72,7 +82,7 @@ async function mergeContext(root: string, path: string, base: string, source: st
         }
         return result.stdout;
     } finally {
-        await Deno.remove(temporary, { recursive: true });
+        await fsRm(temporary, { recursive: true });
     }
 }
 
@@ -105,8 +115,8 @@ export async function captureWorktreeProjectContext(root: string, targetRef: str
 export async function materializeWorktreeProjectContext(root: string, context: WorktreeProjectContext): Promise<void> {
     for (const file of context.files) {
         await readProjectContextFile(root, file.path);
-        await Deno.mkdir(dirname(join(root, file.path)), { recursive: true });
-        await Deno.writeTextFile(join(root, file.path), file.content);
+        await fsMkdir(dirname(join(root, file.path)), { recursive: true });
+        await fsWriteFile(join(root, file.path), file.content);
     }
     // Recreate only our managed block, never copy unrelated source ignore edits.
     if (context.ownedGitignore || context.files.length > 0) {
@@ -122,8 +132,8 @@ export async function materializeWorktreeProjectContext(root: string, context: W
         const receipt = receiptPath(root);
         const internalRoot = dirname(receipt);
         await readProjectContextFile(dirname(internalRoot), join(basename(internalRoot), basename(receipt)));
-        await Deno.mkdir(dirname(receipt), { recursive: true });
-        await Deno.writeTextFile(receipt, JSON.stringify({ files }) + "\n");
+        await fsMkdir(dirname(receipt), { recursive: true });
+        await fsWriteFile(receipt, JSON.stringify({ files }) + "\n");
     }
 }
 
@@ -140,10 +150,12 @@ interface ContextReceipt {
 
 async function readContextReceipt(root: string): Promise<ContextReceipt> {
     try {
-        const receipt: ContextReceipt = JSON.parse(await Deno.readTextFile(receiptPath(root)));
+        const receipt: ContextReceipt = JSON.parse(await fsReadFile(receiptPath(root), "utf8"));
         return { files: Array.isArray(receipt?.files) ? receipt.files : [] };
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound || error instanceof SyntaxError) return { files: [] };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT" || error instanceof SyntaxError) {
+            return { files: [] };
+        }
         throw error;
     }
 }
@@ -215,10 +227,10 @@ export async function recordValidationSettingsWrite(snapshot: ValidationSettings
     });
     await enterProjectRuntime(snapshot.executionRoot);
     const target = receiptPath(snapshot.executionRoot);
-    await Deno.mkdir(dirname(target), { recursive: true });
+    await fsMkdir(dirname(target), { recursive: true });
     const temporary = `${target}.${crypto.randomUUID()}.tmp`;
-    await Deno.writeTextFile(temporary, JSON.stringify(receipt) + "\n", { mode: 0o600 });
-    await Deno.rename(temporary, target);
+    await fsWriteFile(temporary, JSON.stringify(receipt) + "\n", { mode: 0o600 });
+    await rename(temporary, target);
 }
 
 function receiptPath(root: string): string {
@@ -235,9 +247,11 @@ export async function isTransferredProjectContext(root: string, path: string, re
     if (!PROJECT_CONTEXT_PATHS.some((candidate) => candidate === path)) return false;
     let receipt: ContextReceipt;
     try {
-        receipt = JSON.parse(await Deno.readTextFile(receiptPath(root)));
+        receipt = JSON.parse(await fsReadFile(receiptPath(root), "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound || error instanceof SyntaxError) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT" || error instanceof SyntaxError) {
+            return false;
+        }
         throw error;
     }
     const recorded = Array.isArray(receipt?.files) ? receipt.files.find((file) => file?.path === path) : undefined;
@@ -262,8 +276,8 @@ export async function recordInitializedProjectContext(root: string): Promise<voi
         if (content !== null) files.push({ path, digest: await digest(content), owned: true });
     }
     const receipt = receiptPath(root);
-    await Deno.mkdir(dirname(receipt), { recursive: true });
-    await Deno.writeTextFile(receipt, JSON.stringify({ files }) + "\n");
+    await fsMkdir(dirname(receipt), { recursive: true });
+    await fsWriteFile(receipt, JSON.stringify({ files }) + "\n");
 }
 
 /** Original source bytes may differ from the merged target bytes in the worktree. */
@@ -275,9 +289,11 @@ export async function isUnchangedTransferredSource(
     if (!PROJECT_CONTEXT_PATHS.some((candidate) => candidate === path)) return false;
     let receipt: ContextReceipt;
     try {
-        receipt = JSON.parse(await Deno.readTextFile(receiptPath(executionRoot)));
+        receipt = JSON.parse(await fsReadFile(receiptPath(executionRoot), "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound || error instanceof SyntaxError) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT" || error instanceof SyntaxError) {
+            return false;
+        }
         throw error;
     }
     const file = Array.isArray(receipt?.files) ? receipt.files.find((file) => file?.path === path) : undefined;

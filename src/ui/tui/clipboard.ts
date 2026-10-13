@@ -3,13 +3,20 @@
  * Terminal UI integration for reading images from the system clipboard.
  */
 
+import { unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { platform } from "node:process";
+import { getCwd } from "../../constants.js";
+import { spawnForegroundProcess } from "../../shared/foreground-process.ts";
+
 interface ClipboardCommandResult {
     success: boolean;
     stdout: Uint8Array;
 }
 
 export interface ClipboardSystemPort {
-    os: typeof Deno.build.os;
+    os: string;
     runCommand(command: string, args: string[]): Promise<ClipboardCommandResult>;
     makeTempFile(options: { prefix: string; suffix: string }): Promise<string>;
     remove(path: string): Promise<void>;
@@ -21,13 +28,22 @@ export interface ClipboardReader {
 }
 
 const systemClipboardPort: ClipboardSystemPort = {
-    os: Deno.build.os,
+    os: platform === "win32" ? "windows" : platform,
     async runCommand(command, args) {
-        const result = await new Deno.Command(command, { args }).output();
-        return { success: result.success, stdout: result.stdout };
+        const child = spawnForegroundProcess({ command, args, cwd: getCwd() });
+        const [result, stdout] = await Promise.all([
+            child.done,
+            new Response(child.stdout).arrayBuffer(),
+            new Response(child.stderr).arrayBuffer(),
+        ]);
+        return { success: result.exitCode === 0, stdout: new Uint8Array(stdout) };
     },
-    makeTempFile: (options) => Deno.makeTempFile(options),
-    remove: (path) => Deno.remove(path),
+    async makeTempFile(options) {
+        const path = join(tmpdir(), `${options.prefix}${crypto.randomUUID()}${options.suffix}`);
+        await writeFile(path, "", { flag: "wx", mode: 0o600 });
+        return path;
+    },
+    remove: (path) => unlink(path),
 };
 
 /** Compose clipboard behavior over the operating-system boundary. */

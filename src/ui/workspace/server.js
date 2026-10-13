@@ -8,14 +8,18 @@ import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
  * delegate to the Astro Deno adapter output when it is available.
  */
 
+import { serveHttp } from "../../shared/http-server.ts";
+import { env, versions } from "node:process";
+import { readFile } from "node:fs/promises";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
 import { sessionArtifactKindLabel } from "../../shared/session/session-sidebar.ts";
-import { basename, dirname, extname, join, toFileUrl } from "@std/path";
+import { basename, dirname, extname, join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { parseWorkRecordMarkdown } from "../../shared/work-records/markdown.js";
 import { workRecordNotices } from "../../shared/work-records/list.ts";
 import { isEpicArtifactPlanName } from "../../shared/epic-artifacts.ts";
 import { RUNWIELD_ROOT, RUNWIELD_SOURCE_ROOT } from "../../../runtime-root.js";
-import { PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../../constants.js";
+import { getCwd, PLAN_UI_TOKEN_HEADER, PLAN_UI_TOKEN_QUERY } from "../../constants.js";
 import { getWorktreeReviewDiff, WorktreeReviewComparisonError } from "../../shared/workflow/git-snapshot.ts";
 import {
     boardApi,
@@ -125,7 +129,7 @@ const COMPONENTS_CSS_PATH = join(DESIGN_SYSTEM_DIR, "components.css");
 const WORKSPACE_CSS_PATH = join(WORKSPACE_DIR, "static", "workspace.css");
 const WORKSPACE_SHELL_JS_PATH = join(WORKSPACE_DIR, "static", "workspace-shell.ts");
 const LOGO_PATH = join(ROOT_DIR, "brand", "logo.svg");
-const ASTRO_SOURCE_DIST_DIR = join(ROOT_DIR, "dist", "workspace");
+const ASTRO_SOURCE_DIST_DIR = join(ROOT_DIR, "dist", versions.bun ? "workspace-bun" : "workspace");
 const ASTRO_RUNTIME_DIR = join(ROOT_DIR, "dist", "workspace-runtime");
 const ASTRO_SOURCE_ENTRY_PATH = join(ASTRO_SOURCE_DIST_DIR, "server", "entry.mjs");
 const ASTRO_RUNTIME_ENTRY_PATH = join(ASTRO_RUNTIME_DIR, "server.mjs");
@@ -164,8 +168,10 @@ const QUESTION_PAYLOAD_HEADER = "x-runwield-question-payload";
  */
 export function hasWorkspaceToken(request, expectedToken) {
     const url = new URL(request.url);
-    return url.searchParams.get(PLAN_UI_TOKEN_QUERY) === expectedToken ||
-        request.headers.get(PLAN_UI_TOKEN_HEADER) === expectedToken;
+    return (
+        url.searchParams.get(PLAN_UI_TOKEN_QUERY) === expectedToken ||
+        request.headers.get(PLAN_UI_TOKEN_HEADER) === expectedToken
+    );
 }
 
 /**
@@ -215,7 +221,7 @@ export function createRemoteWorkspaceApp(options = { mode: "remote" }) {
         }
     });
     app.get("/p/:spaceId", async (ctx) => {
-        const astroResponse = await renderAstroPage(ctx.req, Deno.cwd());
+        const astroResponse = await renderAstroPage(ctx.req, getCwd());
         if (astroResponse) return astroResponse;
         return workspaceBuildUnavailable();
     });
@@ -276,7 +282,8 @@ export function createOwnerWorkspaceApp(options) {
             }
             let response = await ctx.next();
             if (
-                ctx.state.ownerDevice && ctx.req.method === "GET" &&
+                ctx.state.ownerDevice &&
+                ctx.req.method === "GET" &&
                 response.headers.get("content-type")?.includes("text/html")
             ) {
                 response = renewDeviceCookies(ctx.req, response, ctx.state, ctx.state.ownerDevice.deviceId);
@@ -287,9 +294,9 @@ export function createOwnerWorkspaceApp(options) {
             if (ctx.url.pathname.startsWith("/api/")) return ownerJsonResponse({ error: message }, 403);
             return ownerHtmlResponse(
                 "RunWield Workspace",
-                `<section class=\"error-panel\"><h2>Workspace request blocked</h2><p>${
-                    escapeHtml(message)
-                }</p></section>`,
+                `<section class=\"error-panel\"><h2>Workspace request blocked</h2><p>${escapeHtml(
+                    message,
+                )}</p></section>`,
                 { status: 403 },
             );
         }
@@ -313,10 +320,7 @@ export function createOwnerWorkspaceApp(options) {
     app.get("/projects/:projectId/artifacts/:artifactType/:sourceId", renderOwnerProjectArtifactPage);
     app.get("/projects/:projectId/sessions", renderOwnerProjectSessionsPage);
     app.get("/projects/:projectId/sessions/new", renderOwnerProjectSessionNewPage);
-    app.get(
-        "/projects/:projectId/sessions/:runwieldSessionId/review/code",
-        renderRequiredOwnerAstroPage,
-    );
+    app.get("/projects/:projectId/sessions/:runwieldSessionId/review/code", renderRequiredOwnerAstroPage);
     app.get("/projects/:projectId/sessions/:runwieldSessionId", renderOwnerProjectSessionDetailPage);
     app.get(
         "/projects/:projectId/sessions/:runwieldSessionId/artifacts/:artifactId",
@@ -420,7 +424,7 @@ function createLocalWorkspaceApp({ cwd, token, skipTokenCheck = false, mnemoteca
 }
 
 /**
- * @param {{ cwd: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: { id: string, agentLabel: string, revision: number, events: Array<{ type: string, delta: string, messageId: string, agentName: string }> } }} options
+ * @param {{ cwd: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: import("../review/review-launcher.ts").ReviewConversation }} options
  */
 /**
  * @param {{ cwd: string, token: string, questionPayload: Record<string, unknown>, answerQuestion: (request: Request) => Promise<Response>|Response }} options
@@ -477,7 +481,9 @@ export function createDocumentReadWorkspaceApp({ cwd, token }) {
                 if (imageRequest && !authenticated) {
                     try {
                         const referer = new URL(request.headers.get("referer") || "");
-                        authenticated = referer.origin === url.origin && referer.pathname === "/review/plan" &&
+                        authenticated =
+                            referer.origin === url.origin &&
+                            referer.pathname === "/review/plan" &&
                             referer.searchParams.get(PLAN_UI_TOKEN_QUERY) === token;
                     } catch {
                         authenticated = false;
@@ -497,7 +503,7 @@ export function createDocumentReadWorkspaceApp({ cwd, token }) {
                     if (!file || extname(file.absolutePath).toLowerCase() !== ".md") {
                         return new Response("Document not found.", { status: 404, headers });
                     }
-                    const markdown = await Deno.readTextFile(file.absolutePath);
+                    const markdown = await readFile(file.absolutePath, "utf8");
                     const artifactKind = linkedDocumentKind(file.path);
                     let notices = [];
                     if (artifactKind === "work-record" && dirname(file.path) === "docs/work-records") {
@@ -520,23 +526,24 @@ export function createDocumentReadWorkspaceApp({ cwd, token }) {
                         imageBaseDir: dirname(file.path),
                         notices,
                     };
-                    const response = await renderAstroReviewPage(request, cwd, payload) ||
+                    const response =
+                        (await renderAstroReviewPage(request, cwd, payload)) ||
                         renderStaticReviewFallback("plan", payload);
                     response.headers.set("cache-control", "no-store");
                     response.headers.set("referrer-policy", "same-origin");
                     return response;
                 } catch (error) {
-                    const status = error instanceof Deno.errors.PermissionDenied
+                    const status = ["EACCES", "EPERM"].includes(error.code)
                         ? 403
-                        : error instanceof Deno.errors.NotFound || error instanceof Deno.errors.NotADirectory
-                        ? 404
-                        : 500;
+                        : ["ENOENT", "ENOTDIR"].includes(error.code)
+                          ? 404
+                          : 500;
                     return new Response(
                         status === 403
                             ? "Document path is outside this Project."
                             : status === 404
-                            ? "Document not found."
-                            : "Unable to read document.",
+                              ? "Document not found."
+                              : "Unable to read document.",
                         { status, headers },
                     );
                 }
@@ -556,12 +563,22 @@ function linkedDocumentKind(path) {
     return "document";
 }
 
+/**
+ * @typedef {Object} ReviewWorkspaceAppOptions
+ * @property {string} cwd
+ * @property {string} token
+ * @property {Record<string, unknown>} reviewPayload
+ * @property {"plan" | "code"} reviewType
+ * @property {import("../review/review-launcher.ts").ReviewConversation} [reviewConversation]
+ */
+/** @param {ReviewWorkspaceAppOptions} options */
 export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType, reviewConversation }) {
-    const reviewAgentState = reviewType === "code"
-        ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runConfiguredGuideCommand })
-        : null;
+    const reviewAgentState =
+        reviewType === "code"
+            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runConfiguredGuideCommand })
+            : null;
     return {
-        cleanup: () => reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve(),
+        cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
         handler() {
             /** @param {Request} request */
             return async (request) => {
@@ -583,7 +600,17 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                     if (!hasReviewAssetToken(request, token)) {
                         return new Response("Review token required.", { status: 401 });
                     }
-                    return await reviewFileContentApi(request, { cwd });
+                    const source = reviewPayload.standaloneReview;
+                    return await reviewFileContentApi(request, {
+                        cwd: source && typeof reviewPayload.agentCwd === "string" ? reviewPayload.agentCwd : cwd,
+                        headRef:
+                            source &&
+                            typeof source === "object" &&
+                            "headRef" in source &&
+                            typeof source.headRef === "string"
+                                ? source.headRef
+                                : undefined,
+                    });
                 }
                 if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
                     if (!hasReviewAssetToken(request, token)) {
@@ -597,27 +624,47 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                     }
                     return reviewLocalConfigApi();
                 }
+                if (
+                    request.method === "POST" &&
+                    url.pathname === "/api/review/exit" &&
+                    reviewPayload.standaloneReview &&
+                    reviewConversation?.onExit
+                ) {
+                    if (!hasReviewAssetToken(request, token)) {
+                        return new Response("Review token required.", { status: 401 });
+                    }
+                    reviewConversation.onExit();
+                    return Response.json({ ok: true });
+                }
                 if (request.method === "GET" && url.pathname === "/api/review/conversation") {
                     if (!reviewConversation || !hasReviewAssetToken(request, token)) {
                         return new Response("Review conversation unavailable.", { status: 404 });
                     }
-                    return Response.json({
-                        agentLabel: reviewConversation.agentLabel,
-                        revision: reviewConversation.revision,
-                        sequenceDocuments: reviewPayload.sequenceDocuments,
-                        plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
-                        rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
-                        gitRef: typeof reviewPayload.gitRef === "string" ? reviewPayload.gitRef : "",
-                        reviewStatus: reviewPayload.reviewStatus || null,
-                        events: reviewConversation.events.map((event) => ({ ...event })),
-                    }, { headers: { "cache-control": "no-store" } });
+                    if (reviewConversation.completed) reviewConversation.completionDelivered = true;
+                    return Response.json(
+                        {
+                            completed: reviewConversation.completed,
+                            resultMessage: reviewConversation.resultMessage,
+                            standaloneReview: reviewPayload.standaloneReview,
+                            agentLabel: reviewConversation.agentLabel,
+                            revision: reviewConversation.revision,
+                            sequenceDocuments: reviewPayload.sequenceDocuments,
+                            plan: typeof reviewPayload.plan === "string" ? reviewPayload.plan : "",
+                            rawPatch: typeof reviewPayload.rawPatch === "string" ? reviewPayload.rawPatch : "",
+                            gitRef: typeof reviewPayload.gitRef === "string" ? reviewPayload.gitRef : "",
+                            reviewStatus: reviewPayload.reviewStatus || null,
+                            events: reviewConversation.events.map((event) => ({ ...event })),
+                        },
+                        { headers: { "cache-control": "no-store" } },
+                    );
                 }
                 if (
                     reviewType === "code" &&
                     (url.pathname.startsWith("/api/agents/") || url.pathname.startsWith("/api/guide/"))
                 ) {
                     if (
-                        !hasReviewAssetToken(request, token) && request.headers.get("x-runwield-review-token") !== token
+                        !hasReviewAssetToken(request, token) &&
+                        request.headers.get("x-runwield-review-token") !== token
                     ) {
                         return new Response("Review token required.", { status: 401 });
                     }
@@ -626,7 +673,8 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                 }
                 if (reviewType === "code" && url.pathname.startsWith("/api/review/widgets/")) {
                     if (
-                        !hasReviewAssetToken(request, token) && request.headers.get("x-runwield-review-token") !== token
+                        !hasReviewAssetToken(request, token) &&
+                        request.headers.get("x-runwield-review-token") !== token
                     ) {
                         return new Response("Review token required.", { status: 401 });
                     }
@@ -768,15 +816,13 @@ let astroHandlePromise;
 let astroImportFailure = false;
 
 function loadAstroHandle() {
-    if (Deno.env.get("WLD_WORKSPACE_DISABLE_BUILT_SERVER") === "1") return null;
+    if (env.WLD_WORKSPACE_DISABLE_BUILT_SERVER === "1") return null;
     if (!astroHandlePromise) {
         astroHandlePromise = (async () => {
-            const entryPaths = Deno.build.standalone
-                ? [ASTRO_RUNTIME_ENTRY_PATH, ASTRO_SOURCE_ENTRY_PATH]
-                : [ASTRO_SOURCE_ENTRY_PATH, ASTRO_RUNTIME_ENTRY_PATH];
+            const entryPaths = [ASTRO_SOURCE_ENTRY_PATH, ASTRO_RUNTIME_ENTRY_PATH];
             for (const entryPath of entryPaths) {
                 try {
-                    if (!await isAstroEntryImportable(entryPath)) continue;
+                    if (!(await isAstroEntryImportable(entryPath))) continue;
                     const entry = await import(/* @vite-ignore */ toFileUrl(entryPath).href);
                     if (typeof entry.handle === "function") return entry.handle;
                 } catch (error) {
@@ -789,20 +835,23 @@ function loadAstroHandle() {
                 }
             }
             return null;
-        })().then((handle) => {
-            if (!handle) astroHandlePromise = null;
-            return handle;
-        }, (error) => {
-            astroHandlePromise = null;
-            throw error;
-        });
+        })().then(
+            (handle) => {
+                if (!handle) astroHandlePromise = null;
+                return handle;
+            },
+            (error) => {
+                astroHandlePromise = null;
+                throw error;
+            },
+        );
     }
     return astroHandlePromise;
 }
 
 async function isAstroEntryImportable(entryPath) {
     try {
-        const source = await Deno.readTextFile(entryPath);
+        const source = await readFile(entryPath, "utf8");
         return source.includes('"key":');
     } catch {
         return false;
@@ -849,10 +898,12 @@ async function renderAstroQuestionPage(request, cwd, payload) {
 
 /** @param {string} pathname */
 function isLegacyReviewApiPath(pathname) {
-    return pathname === "/api/decision" ||
+    return (
+        pathname === "/api/decision" ||
         pathname === "/api/deny" ||
         pathname === "/api/feedback" ||
-        pathname === "/api/exit";
+        pathname === "/api/exit"
+    );
 }
 
 /**
@@ -860,11 +911,12 @@ function isLegacyReviewApiPath(pathname) {
  * @param {Record<string, unknown>} payload
  */
 function renderStaticReviewFallback(reviewType, payload) {
-    const title = payload?.surface === "artifact-read"
-        ? `${sessionArtifactKindLabel(payload.artifactKind)} · RunWield Workspace`
-        : reviewType === "plan"
-        ? "Plan Review · RunWield Workspace"
-        : "Code Review · RunWield Workspace";
+    const title =
+        payload?.surface === "artifact-read"
+            ? `${sessionArtifactKindLabel(payload.artifactKind)} · RunWield Workspace`
+            : reviewType === "plan"
+              ? "Plan Review · RunWield Workspace"
+              : "Code Review · RunWield Workspace";
     const payloadAttribute = reviewType === "plan" ? "data-review-payload" : "data-code-review-payload";
     const payloadJson = escapeReviewPayloadJson(JSON.stringify(payload));
     return new Response(
@@ -901,7 +953,7 @@ function workspaceBuildUnavailable() {
     return new Response(
         astroImportFailure
             ? "Workspace renderer module evaluation failed. Repair the build and restart the Workspace server; JavaScript may cache the failure."
-            : "Workspace Astro build unavailable. Run `deno task workspace:build` before serving page routes.",
+            : "Workspace Astro build unavailable. Run `bun run workspace:build` before serving page routes.",
         {
             status: 503,
             headers: { "content-type": "text/plain; charset=utf-8" },
@@ -911,10 +963,11 @@ function workspaceBuildUnavailable() {
 
 /** @param {string} value */
 function escapeHtml(value) {
-    return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll(
-        '"',
-        "&quot;",
-    );
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
 }
 
 /** @param {unknown} body @param {number} [status] */
@@ -939,17 +992,16 @@ function redirectResponse(location) {
 function ownerHtmlResponse(title, body, options = {}) {
     const status = options.status ?? 200;
     const headerTitle = options.surfaceTitle
-        ? `<strong class="workspace-main-session-name" data-workspace-surface-title>${
-            escapeHtml(options.surfaceTitle)
-        }</strong>`
+        ? `<strong class="workspace-main-session-name" data-workspace-surface-title>${escapeHtml(
+              options.surfaceTitle,
+          )}</strong>`
         : `<a class="brand workspace-main-brand" href="/" aria-label="RunWield Workspace home"><img class="brand-logo" src="/brand/logo.svg" alt="" aria-hidden="true"><span>RunWield Workspace</span></a>`;
     const headerClass = options.surfaceTitle
         ? "workspace-main-header workspace-main-surface-header"
         : "workspace-main-header";
-    const html =
-        `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${
-            escapeHtml(title)
-        }</title><link rel="icon" href="/brand/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/components.css"><link rel="stylesheet" href="/workspace.css"><link rel="stylesheet" href="/theme.css"></head><body class="theme-runwield"><div class="workspace-shell workspace-shell-with-sidebar owner-workspace-shell"><aside class="workspace-sidebar" data-workspace-sidebar aria-label="Workspace navigation"><p class="workspace-sidebar-empty"><span class="rw-thinking-dots" role="status"><span class="rw-thinking-glyph" aria-hidden="true"></span>Loading Workspace</span></p></aside><div class="workspace-main-shell"><header class="${headerClass}"><div class="workspace-main-header-left" data-workspace-main-header-left>${headerTitle}</div></header><main>${body}</main></div></div><script type="module" src="/workspace-shell.js"></script></body></html>`;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(
+        title,
+    )}</title><link rel="icon" href="/brand/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/components.css"><link rel="stylesheet" href="/workspace.css"><link rel="stylesheet" href="/theme.css"></head><body class="theme-runwield"><div class="workspace-shell workspace-shell-with-sidebar owner-workspace-shell"><aside class="workspace-sidebar" data-workspace-sidebar aria-label="Workspace navigation"><p class="workspace-sidebar-empty"><span class="rw-thinking-dots" role="status"><span class="rw-thinking-glyph" aria-hidden="true"></span>Loading Workspace</span></p></aside><div class="workspace-main-shell"><header class="${headerClass}"><div class="workspace-main-header-left" data-workspace-main-header-left>${headerTitle}</div></header><main>${body}</main></div></div><script type="module" src="/workspace-shell.js"></script></body></html>`;
     return withOwnerSecurityHeaders(
         new Response(html, { status, headers: { "content-type": "text/html; charset=utf-8" } }),
     );
@@ -1007,7 +1059,7 @@ async function ownerInSituReviewFileContent(ctx) {
  * @param {any} ctx
  * @param {string} [cwd]
  */
-async function renderRequiredOwnerAstroPage(ctx, cwd = Deno.cwd()) {
+async function renderRequiredOwnerAstroPage(ctx, cwd = getCwd()) {
     const handle = await loadAstroHandle();
     if (!handle) return workspaceBuildUnavailable();
     return await handle(withWorkspaceCwdHeader(ctx.req, cwd));
@@ -1027,7 +1079,7 @@ async function renderOwnerProjectSessionsPage(ctx) {
     if (response) return response;
     return ownerHtmlResponse(
         "Project Sessions",
-        `<section class="page-header"><a class="detail-back-link" href="/">← Projects</a><h1>Project Sessions</h1><p>Build the Workspace frontend to enable the interactive phone Session list.</p></section><section class="owner-card empty-state"><h2>Workspace build unavailable</h2><p>Run <code>deno task workspace:build</code>, then reopen Sessions.</p></section>`,
+        `<section class="page-header"><a class="detail-back-link" href="/">← Projects</a><h1>Project Sessions</h1><p>Build the Workspace frontend to enable the interactive phone Session list.</p></section><section class="owner-card empty-state"><h2>Workspace build unavailable</h2><p>Run <code>bun run workspace:build</code>, then reopen Sessions.</p></section>`,
         { status: 503 },
     );
 }
@@ -1039,9 +1091,9 @@ async function renderOwnerProjectSessionNewPage(ctx) {
     if (response) return response;
     return ownerHtmlResponse(
         "New Project Session",
-        `<section class="page-header"><a class="detail-back-link" href="/projects/${
-            encodeURIComponent(ctx.params.projectId)
-        }/sessions">← Sessions</a><h1>New Session</h1></section><section class="owner-card empty-state"><h2>Workspace build unavailable</h2><p>Run <code>deno task workspace:build</code>, then reopen New Session.</p></section>`,
+        `<section class="page-header"><a class="detail-back-link" href="/projects/${encodeURIComponent(
+            ctx.params.projectId,
+        )}/sessions">← Sessions</a><h1>New Session</h1></section><section class="owner-card empty-state"><h2>Workspace build unavailable</h2><p>Run <code>bun run workspace:build</code>, then reopen New Session.</p></section>`,
         { status: 503 },
     );
 }
@@ -1061,9 +1113,9 @@ async function renderOwnerProjectSessionDetailPage(ctx) {
     if (response) return response;
     return ownerHtmlResponse(
         "Project Session",
-        `<section class="page-header"><a class="detail-back-link" href="/projects/${
-            encodeURIComponent(ctx.params.projectId)
-        }/sessions">← Sessions</a><h1>Session Continuation</h1><p>Build the Workspace frontend to enable interactive Session continuation.</p></section><section class="owner-card empty-state"><h2>Workspace build unavailable</h2><p>Run <code>deno task workspace:build</code>, then reopen this Session.</p></section>`,
+        `<section class="page-header"><a class="detail-back-link" href="/projects/${encodeURIComponent(
+            ctx.params.projectId,
+        )}/sessions">← Sessions</a><h1>Session Continuation</h1><p>Build the Workspace frontend to enable interactive Session continuation.</p></section><section class="owner-card empty-state"><h2>Workspace build unavailable</h2><p>Run <code>bun run workspace:build</code>, then reopen this Session.</p></section>`,
         { status: 503 },
     );
 }
@@ -1112,8 +1164,8 @@ function createWorkspaceRouter() {
         },
         handler: () => async (request) => {
             const url = new URL(request.url);
-            const route = routes.find((candidate) =>
-                candidate.method === request.method && matchRoute(candidate.pattern, url.pathname)
+            const route = routes.find(
+                (candidate) => candidate.method === request.method && matchRoute(candidate.pattern, url.pathname),
             );
             const params = route ? matchRoute(route.pattern, url.pathname) : {};
             const state = {};
@@ -1208,18 +1260,13 @@ async function handleAstroAsset(pathname) {
     }
 
     const runtimeAssetName = getOpaqueWorkspaceAssetName(assetName);
-    const assetPaths = Deno.build.standalone
-        ? [
-            join(ASTRO_RUNTIME_CLIENT_ASSET_DIR, runtimeAssetName),
-            join(ASTRO_SOURCE_CLIENT_ASSET_DIR, assetName),
-        ]
-        : [
-            join(ASTRO_SOURCE_CLIENT_ASSET_DIR, assetName),
-            join(ASTRO_RUNTIME_CLIENT_ASSET_DIR, runtimeAssetName),
-        ];
+    const assetPaths = [
+        join(ASTRO_SOURCE_CLIENT_ASSET_DIR, assetName),
+        join(ASTRO_RUNTIME_CLIENT_ASSET_DIR, runtimeAssetName),
+    ];
     for (const assetPath of assetPaths) {
         try {
-            const body = await Deno.readFile(assetPath);
+            const body = await readFile(assetPath);
             return new Response(body, {
                 headers: {
                     "content-type": contentTypeForAsset(assetName),
@@ -1256,7 +1303,7 @@ function contentTypeForAsset(path) {
 /** @param {string} path @param {string} contentType */
 async function textFileResponse(path, contentType) {
     try {
-        const body = path === WORKSPACE_CSS_PATH ? await readWorkspaceStyles(path) : await Deno.readTextFile(path);
+        const body = path === WORKSPACE_CSS_PATH ? await readWorkspaceStyles(path) : await readFile(path, "utf8");
         return new Response(body, { headers: { "content-type": contentType } });
     } catch {
         return new Response("Not found", { status: 404 });
@@ -1265,7 +1312,9 @@ async function textFileResponse(path, contentType) {
 
 /** @param {string} pathname */
 function isPublicWorkspaceAsset(pathname) {
-    return WORKSPACE_PWA_PATHS.includes(pathname) || pathname === "/styles.css" ||
+    return (
+        WORKSPACE_PWA_PATHS.includes(pathname) ||
+        pathname === "/styles.css" ||
         pathname === "/tokens.css" ||
         pathname === "/components.css" ||
         pathname === "/workspace.css" ||
@@ -1273,14 +1322,18 @@ function isPublicWorkspaceAsset(pathname) {
         pathname === "/design-system/sidebar-motion.js" ||
         pathname === "/theme.css" ||
         pathname === "/brand/logo.svg" ||
-        pathname.startsWith("/_astro/");
+        pathname.startsWith("/_astro/")
+    );
 }
 
 function jsonNotFound() {
-    return Response.json({ error: "not_found", message: "Not found.", status: 404 }, {
-        status: 404,
-        headers: { "cache-control": "no-store" },
-    });
+    return Response.json(
+        { error: "not_found", message: "Not found.", status: 404 },
+        {
+            status: 404,
+            headers: { "cache-control": "no-store" },
+        },
+    );
 }
 
 /** @param {unknown} data @param {number} [status] */
@@ -1328,28 +1381,30 @@ export function startWorkspaceServer(options) {
     if (options.mode === "owner" && !options.store) {
         throw new Error("Owner Workspace requires an open owner-coordination store.");
     }
-    const ownerPublicOrigin = options.mode === "owner"
-        ? normalizeWorkspacePublicOrigin(options.publicOrigin || `http://${options.host}:${options.port}`)
-        : "";
-    const app = options.mode === "remote"
-        ? createWorkspaceApp({
-            mode: "remote",
-            dbPath: options.dbPath,
-            maxRequestBytes: options.maxRequestBytes,
-            retentionDays: options.retentionDays,
-        })
-        : options.mode === "owner"
-        ? createWorkspaceApp({
-            mode: "owner",
-            store: options.store,
-            publicOrigin: ownerPublicOrigin,
-        })
-        : createWorkspaceApp({
-            cwd: options.cwd ?? Deno.cwd(),
-            token: options.token ?? "",
-            mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-        });
-    const server = Deno.serve(
+    const ownerPublicOrigin =
+        options.mode === "owner"
+            ? normalizeWorkspacePublicOrigin(options.publicOrigin || `http://${options.host}:${options.port}`)
+            : "";
+    const app =
+        options.mode === "remote"
+            ? createWorkspaceApp({
+                  mode: "remote",
+                  dbPath: options.dbPath,
+                  maxRequestBytes: options.maxRequestBytes,
+                  retentionDays: options.retentionDays,
+              })
+            : options.mode === "owner"
+              ? createWorkspaceApp({
+                    mode: "owner",
+                    store: options.store,
+                    publicOrigin: ownerPublicOrigin,
+                })
+              : createWorkspaceApp({
+                    cwd: options.cwd ?? getCwd(),
+                    token: options.token ?? "",
+                    mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+                });
+    const server = serveHttp(
         {
             hostname: options.host,
             port: options.port,
@@ -1357,10 +1412,10 @@ export function startWorkspaceServer(options) {
             automaticCompression: true,
         },
         withAccessLogger(app.handler(), {
-            mode: Deno.env.get("RUNWIELD_LOG_MODE")?.toLowerCase() === "prod" ||
-                    Deno.env.get("RUNWIELD_LOG_MODE")?.toLowerCase() === "production"
-                ? "prod"
-                : "dev",
+            mode:
+                env.RUNWIELD_LOG_MODE?.toLowerCase() === "prod" || env.RUNWIELD_LOG_MODE?.toLowerCase() === "production"
+                    ? "prod"
+                    : "dev",
         }),
     );
     if (options.mode !== "owner") return server;
@@ -1386,25 +1441,28 @@ export function startWorkspaceServer(options) {
 export function startSessionQuestionWorkspaceServer(options) {
     const host = options.host ?? "127.0.0.1";
     const app = createSessionQuestionWorkspaceApp({
-        cwd: options.cwd ?? Deno.cwd(),
+        cwd: options.cwd ?? getCwd(),
         token: options.token,
         questionPayload: options.questionPayload,
         answerQuestion: options.answerQuestion,
     });
-    return Deno.serve({
-        hostname: host,
-        port: options.port ?? 0,
-        signal: options.signal,
-        automaticCompression: true,
-        onListen() {},
-    }, app.handler());
+    return serveHttp(
+        {
+            hostname: host,
+            port: options.port ?? 0,
+            signal: options.signal,
+            automaticCompression: true,
+            onListen() {},
+        },
+        app.handler(),
+    );
 }
 
 /**
- * @param {{ cwd?: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: { id: string, agentLabel: string, revision: number, events: Array<{ type: string, delta: string, messageId: string, agentName: string }> }, host?: string, port?: number, signal?: AbortSignal, onOutput?: ReviewServerOutputListener }} options
+ * @param {{ cwd?: string, token: string, reviewPayload: Record<string, unknown>, reviewType: "plan" | "code", reviewConversation?: import("../review/review-launcher.ts").ReviewConversation, host?: string, port?: number, signal?: AbortSignal, onOutput?: ReviewServerOutputListener }} options
  */
 export function startReviewWorkspaceServer(options) {
-    const cwd = options.cwd ?? Deno.cwd();
+    const cwd = options.cwd ?? getCwd();
     const host = options.host ?? "127.0.0.1";
     let decision = registerReviewDecisionPromise(options.token);
     const app = createReviewWorkspaceApp({
@@ -1416,22 +1474,25 @@ export function startReviewWorkspaceServer(options) {
     });
     let server;
     try {
-        server = Deno.serve({
-            hostname: host,
-            port: options.port ?? 0,
-            automaticCompression: true,
-            onListen(address) {
-                options.onOutput?.({
-                    stream: "stdout",
-                    text: `Listening on http://${address.hostname}:${address.port}/\n`,
-                });
+        server = serveHttp(
+            {
+                hostname: host,
+                port: options.port ?? 0,
+                automaticCompression: true,
+                onListen(address) {
+                    options.onOutput?.({
+                        stream: "stdout",
+                        text: `Listening on http://${address.hostname}:${address.port}/\n`,
+                    });
+                },
+                onError(error) {
+                    const text = error instanceof Error ? error.stack || error.message : String(error);
+                    options.onOutput?.({ stream: "stderr", text: `${text}\n` });
+                    return new Response("Internal Server Error", { status: 500 });
+                },
             },
-            onError(error) {
-                const text = error instanceof Error ? error.stack || error.message : String(error);
-                options.onOutput?.({ stream: "stderr", text: `${text}\n` });
-                return new Response("Internal Server Error", { status: 500 });
-            },
-        }, app.handler());
+            app.handler(),
+        );
     } catch (error) {
         const text = error instanceof Error ? error.stack || error.message : String(error);
         options.onOutput?.({ stream: "stderr", text: `${text}\n` });
@@ -1444,15 +1505,18 @@ export function startReviewWorkspaceServer(options) {
 
     const stop = () => {
         options.signal?.removeEventListener("abort", onAbort);
-        const canceledDecision = options.reviewType === "plan"
-            ? { approved: false, feedback: "", exit: true, canceled: true }
-            : { approved: false, feedback: "", annotations: [], exit: true, canceled: true };
+        const canceledDecision =
+            options.reviewType === "plan"
+                ? { approved: false, feedback: "", exit: true, canceled: true }
+                : { approved: false, feedback: "", annotations: [], exit: true, canceled: true };
         resolveReviewDecision(options.token, canceledDecision);
-        stopPromise ??= Promise.resolve(app.cleanup()).then(() => server.shutdown()).catch((error) => {
-            const text = error instanceof Error ? error.stack || error.message : String(error);
-            options.onOutput?.({ stream: "stderr", text: `${text}\n` });
-            throw error;
-        });
+        stopPromise ??= Promise.resolve(app.cleanup())
+            .then(() => server.shutdown())
+            .catch((error) => {
+                const text = error instanceof Error ? error.stack || error.message : String(error);
+                options.onOutput?.({ stream: "stderr", text: `${text}\n` });
+                throw error;
+            });
         return stopPromise;
     };
     const onAbort = () => {

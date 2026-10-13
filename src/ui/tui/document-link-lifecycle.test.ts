@@ -1,6 +1,10 @@
-import { assert, assertEquals, assertNotEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import process from "node:process";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";
@@ -72,11 +76,11 @@ function captureCurrentRender(terminal: VirtualTerminal): string {
     return terminal.writes.slice(offset);
 }
 
-Deno.test("Agent document links serve the Session Project without changing saved transcript text", async () => {
+test("Agent document links serve the Session Project without changing saved transcript text", async () => {
     await withDocumentLinkFixture("document-links-agent-", async ({ projectRoot, setModelResponse }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const markdown = "# Project document\nOriginal content.\n";
-        await Deno.writeTextFile(join(projectRoot, "README.md"), markdown);
+        await fsWriteFile(join(projectRoot, "README.md"), markdown);
         const output = "Read README.md before continuing.";
         setModelResponse(output);
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
@@ -96,7 +100,7 @@ Deno.test("Agent document links serve the Session Project without changing saved
             assertStringIncludes(terminal.getScreenText(), output);
             const exportedPath = join(projectRoot, "transcript.jsonl");
             await composition.runtime.exportSession(composition.sessionId, exportedPath);
-            const entries: TranscriptEntry[] = (await Deno.readTextFile(exportedPath)).trim().split("\n").map((line) =>
+            const entries: TranscriptEntry[] = (await fsReadFile(exportedPath, "utf8")).trim().split("\n").map((line) =>
                 JSON.parse(line)
             );
             const assistantText = entries.filter((entry) => entry.message?.role === "assistant")
@@ -111,10 +115,10 @@ Deno.test("Agent document links serve the Session Project without changing saved
 });
 
 for (const role of ["user", "system"] as const) {
-    Deno.test(`${role} document mentions remain plain text in the composed TUI`, async () => {
+    test(`${role} document mentions remain plain text in the composed TUI`, async () => {
         await withDocumentLinkFixture(`document-links-${role}-`, async ({ projectRoot }) => {
-            Deno.chdir(projectRoot);
-            await Deno.writeTextFile(join(projectRoot, "README.md"), "# Document\n");
+            process.chdir(projectRoot);
+            await fsWriteFile(join(projectRoot, "README.md"), "# Document\n");
             const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
             const composition = await createInteractiveTuiComposition(null, {
                 browser: NO_OPEN_BROWSER_PORT,
@@ -140,14 +144,14 @@ for (const role of ["user", "system"] as const) {
     });
 }
 
-Deno.test("Session replacement revokes old links and binds the new Project before replacement output", async () => {
+test("Session replacement revokes old links and binds the new Project before replacement output", async () => {
     await withDocumentLinkFixture(
         "document-links-replacement-",
         async ({ projectRoot, alternateRoot, setModelResponse }) => {
-            Deno.chdir(projectRoot);
-            await Deno.writeTextFile(join(projectRoot, "README.md"), "# Original Project\n");
-            await Deno.writeTextFile(join(alternateRoot, "README.md"), "# Alternate Project\n");
-            await Deno.writeTextFile(join(alternateRoot, "alternate-only.md"), "# Alternate only\n");
+            process.chdir(projectRoot);
+            await fsWriteFile(join(projectRoot, "README.md"), "# Original Project\n");
+            await fsWriteFile(join(alternateRoot, "README.md"), "# Alternate Project\n");
+            await fsWriteFile(join(alternateRoot, "alternate-only.md"), "# Alternate only\n");
             const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
             let replacementOutput = "";
             const composition = await createInteractiveTuiComposition(null, {
@@ -207,10 +211,10 @@ Deno.test("Session replacement revokes old links and binds the new Project befor
     );
 });
 
-Deno.test("disposing the composed TUI closes its document listener and is safe to repeat", async () => {
+test("disposing the composed TUI closes its document listener and is safe to repeat", async () => {
     await withDocumentLinkFixture("document-links-dispose-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
-        await Deno.writeTextFile(join(projectRoot, "README.md"), "# Document\n");
+        process.chdir(projectRoot);
+        await fsWriteFile(join(projectRoot, "README.md"), "# Document\n");
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
         const composition = await createInteractiveTuiComposition(null, {
             browser: NO_OPEN_BROWSER_PORT,
@@ -233,10 +237,10 @@ Deno.test("disposing the composed TUI closes its document listener and is safe t
     });
 });
 
-Deno.test("startup failure closes a document listener started by the renderer", async () => {
+test("startup failure closes a document listener started by the renderer", async () => {
     await withDocumentLinkFixture("document-links-startup-failure-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
-        await Deno.writeTextFile(join(projectRoot, "README.md"), "# Document\n");
+        process.chdir(projectRoot);
+        await fsWriteFile(join(projectRoot, "README.md"), "# Document\n");
         const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
         let url = "";
         await assertRejects(

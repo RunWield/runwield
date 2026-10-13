@@ -18,6 +18,7 @@
  */
 
 /**
+ * @typedef {Omit<import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent, "type" | "sessionId" | "timestamp">} ManagedSyncStatus
  * @typedef {{ task: number, assignee: string, description: string }} RunningTask
  */
 
@@ -52,13 +53,13 @@
  *   updateValidationProgress?: (progress: import('../../shared/session/session-runtime-events.js').RuntimeValidationProgress) => void,
  *   updateValidationReport?: (role: "engineer" | "reviewer", report: { agentName: string, markdown: string, approved?: boolean }) => void,
  *   clearValidationPanel?: (preserveProgress?: boolean) => void,
- *   setManagedSyncStatus?: (status: import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent) => void,
+ *   setManagedSyncStatus?: (status: ManagedSyncStatus) => void,
  *   getActiveToolBlock?: (id: string) => ToolExecutionBlockApi | undefined,
  *   toggleToolOutputsExpanded?: () => void,
  *   showKeyboardHelp?: (help: import('../../shared/session/session-help.ts').SessionHelpPayload) => void,
  *   hideKeyboardHelp?: () => void,
- *   addToolInvoked?: (event: import('@earendil-works/pi-coding-agent').SessionEvent) => void,
- *   addToolResult?: (event: import('@earendil-works/pi-coding-agent').SessionEvent) => void,
+ *   addToolInvoked?: (event: import('@earendil-works/pi-coding-agent').AgentSessionEvent) => void,
+ *   addToolResult?: (event: import('@earendil-works/pi-coding-agent').AgentSessionEvent) => void,
  *   isOutputSuppressed?: () => boolean,
  *   suppressOutput?: () => void,
  *   abortActivePrompt: () => void,
@@ -88,3 +89,5 @@
  *   addChild?: (component: import('@earendil-works/pi-tui').Component) => void,
  * }} TuiAPI
  */
+
+export {};

@@ -1,4 +1,5 @@
-import { join } from "@std/path";
+import { lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { getHomeDir, MODEL_PRESETS_DIR } from "../constants.js";
 import type { ImageGenerationSettings } from "./image-generation-settings.ts";
 
@@ -27,10 +28,10 @@ const extractedDirectories = new Set<string>();
 function readBundledPresets(): ModelPresetsMap {
     if (bundledPresets) return bundledPresets;
     const presets: ModelPresetsMap = {};
-    for (const entry of Deno.readDirSync(MODEL_PRESETS_DIR)) {
-        if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+    for (const entry of readdirSync(MODEL_PRESETS_DIR, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
         presets[entry.name.slice(0, -5)] = JSON.parse(
-            Deno.readTextFileSync(join(MODEL_PRESETS_DIR, entry.name)),
+            readFileSync(join(MODEL_PRESETS_DIR, entry.name), "utf8"),
         ) as ModelPreset;
     }
     bundledPresets = presets;
@@ -45,21 +46,21 @@ export function extractBundledModelPresets(): string | null {
     if (extractedDirectories.has(directory)) return directory;
     const presets = readBundledPresets();
     try {
-        Deno.mkdirSync(directory, { recursive: true });
+        mkdirSync(directory, { recursive: true });
         for (const [name, preset] of Object.entries(presets)) {
             const path = join(directory, `${name}.json`);
             try {
-                const stat = Deno.lstatSync(path);
-                if (stat.isDirectory) Deno.removeSync(path, { recursive: true });
-                else if (stat.isSymlink) Deno.removeSync(path);
+                const stat = lstatSync(path);
+                if (stat.isDirectory()) rmSync(path, { recursive: true });
+                else if (stat.isSymbolicLink()) rmSync(path);
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
-            Deno.writeTextFileSync(path, JSON.stringify(preset, null, 4) + "\n");
+            writeFileSync(path, JSON.stringify(preset, null, 4) + "\n");
         }
-        for (const entry of Deno.readDirSync(directory)) {
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
             if (entry.name.endsWith(".json") && !Object.hasOwn(presets, entry.name.slice(0, -5))) {
-                Deno.removeSync(join(directory, entry.name), { recursive: true });
+                rmSync(join(directory, entry.name), { recursive: true });
             }
         }
         extractedDirectories.add(directory);

@@ -1,12 +1,14 @@
 // @ts-nocheck: browser tests install happy-dom globals around React.
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { importTestBundle } from "../../testing/import-test-bundle.ts";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { Window } from "happy-dom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { build, stop } from "esbuild";
-import { fromFileUrl } from "@std/path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
-Deno.test("review completion returns Workspace to its Session and preserves standalone closing", async () => {
+test("review completion returns Workspace to its Session and preserves standalone closing", async () => {
     // Bundle the real component as the browser does: upstream imports omit file extensions.
     const bundle = await build({
         entryPoints: [fromFileUrl(new URL("./react/ReviewCompletion.tsx", import.meta.url))],
@@ -28,7 +30,7 @@ Deno.test("review completion returns Workspace to its Session and preserves stan
         }],
     });
     stop();
-    const { ReviewCompletion } = await import(`data:text/javascript,${encodeURIComponent(bundle.outputFiles[0].text)}`);
+    const { ReviewCompletion } = await importTestBundle(bundle.outputFiles[0].text);
     const browser = new Window({ url: "http://localhost/review" });
     const names = ["window", "document", "location", "CustomEvent", "IS_REACT_ACT_ENVIRONMENT"];
     const previous = new Map(names.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));

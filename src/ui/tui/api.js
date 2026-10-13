@@ -129,10 +129,10 @@ export function createUiApi(
     let keyboardHelp = null;
     /** @type {{ block: ManagedSyncStatusBlock, spacer: Spacer } | null} */
     let managedSyncStatus = null;
-    /** @type {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent | null} */
+    /** @type {import('./types.js').ManagedSyncStatus | null} */
     let visibleManagedSyncState = null;
 
-    /** @param {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent} state */
+    /** @param {import('./types.js').ManagedSyncStatus} state */
     const isSameVisibleManagedSyncState = (state) => {
         return visibleManagedSyncState?.status === state.status &&
             visibleManagedSyncState.localGeneration === state.localGeneration &&
@@ -676,7 +676,7 @@ export function createUiApi(
             tui.requestRender();
         },
 
-        /** @param {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent} state */
+        /** @param {import('./types.js').ManagedSyncStatus} state */
         setManagedSyncStatus: (state) => {
             if (!inputAccessoryContainer || outputSuppressed) return;
             if (state.status === "syncing" && !managedSyncStatus) return;

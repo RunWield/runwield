@@ -1,4 +1,5 @@
 // @ts-nocheck: server module uses the repository's JSDoc JavaScript style while keeping the TypeScript production extension.
+import { readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
 /** @module ui/workspace/server/project-artifacts */
 
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -15,9 +16,9 @@ function markdownTitle(markdown, fallback) {
 
 /** @param {string} root @param {string} path */
 export async function assertContainedProjectPath(root, path) {
-    const canonicalRoot = await Deno.realPath(root);
-    const canonicalPath = await Deno.realPath(path);
-    const contained = relative(canonicalRoot, canonicalPath);
+    const canonicalRoot = await fsRealpath(root);
+    const canonicalPath = await fsRealpath(path);
+    const contained = relative(canonicalRoot, canonicalPath).replaceAll("\\", "/");
     if (isAbsolute(contained) || contained === ".." || contained.startsWith("../")) {
         throw new Error("Artifact identity leaves the Project.");
     }
@@ -29,7 +30,7 @@ export async function assertAuthorizedPlanPath(root, path, planName) {
     try {
         return await assertContainedProjectPath(root, path);
     } catch (containmentError) {
-        const canonicalPath = await Deno.realPath(path);
+        const canonicalPath = await fsRealpath(path);
         const attempts = await listControllerDocumentWorktrees(root);
         for (const attempt of attempts) {
             if (attempt.planName !== planName) continue;
@@ -38,7 +39,7 @@ export async function assertAuthorizedPlanPath(root, path, planName) {
                 const containedPath = await assertContainedProjectPath(attempt.path, expectedPath);
                 if (containedPath === canonicalPath) return canonicalPath;
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
         }
         throw containmentError;
@@ -48,13 +49,15 @@ export async function assertAuthorizedPlanPath(root, path, planName) {
 /** @param {string} root @param {string} relativePath */
 export async function readSafeProjectMarkdown(root, relativePath) {
     if (
-        !relativePath || relativePath.startsWith("/") || relativePath.split("/").includes("..") ||
+        !relativePath ||
+        relativePath.startsWith("/") ||
+        relativePath.split("/").includes("..") ||
         !relativePath.endsWith(".md")
     ) {
         throw new Error("Artifact identity is invalid.");
     }
     const canonicalPath = await assertContainedProjectPath(root, join(root, relativePath));
-    return await Deno.readTextFile(canonicalPath);
+    return await fsReadFile(canonicalPath, "utf8");
 }
 
 /** @param {string} root */
@@ -72,12 +75,12 @@ export async function domainLanguagePaths(root) {
         }
         return [...new Set(paths)];
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         try {
             await readSafeProjectMarkdown(root, "docs/domain-language.md");
             return ["docs/domain-language.md"];
         } catch (nested) {
-            if (nested instanceof Deno.errors.NotFound) return [];
+            if (nested instanceof Error && "code" in nested && nested.code === "ENOENT") return [];
             throw nested;
         }
     }
@@ -96,7 +99,7 @@ async function currentWorkRecords(root) {
     try {
         await assertContainedProjectPath(root, getWorkRecordsDir(root));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
     const records = await listWorkRecords(root, { createDir: false });
@@ -108,8 +111,8 @@ async function currentWorkRecords(root) {
 export async function readProjectArtifact(root, type, sourceId) {
     if (!PROJECT_ARTIFACT_TYPES.has(type)) throw new Error("Artifact type is not supported.");
     if (type === "work-record") {
-        const matches = (await currentWorkRecords(root)).filter((record) =>
-            record.attrs.recordId.toLowerCase() === sourceId.toLowerCase()
+        const matches = (await currentWorkRecords(root)).filter(
+            (record) => record.attrs.recordId.toLowerCase() === sourceId.toLowerCase(),
         );
         if (matches.length > 1) {
             throw new Error("Duplicate Work Record identity. Repair the Project before opening it.");

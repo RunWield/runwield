@@ -1,4 +1,17 @@
-import { join } from "@std/path";
+import { bashFixtureExecutable, bashFixturePath, quoteBashFixture } from "./bash-fixture.ts";
+import { captureForegroundProcess } from "../src/shared/captured-process.ts";
+import { captureScriptProcess } from "./script-process.ts";
+import { tmpdir } from "node:os";
+import {
+    chmod as fsChmod,
+    copyFile as fsCopyFile,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
+import { join } from "node:path";
 
 import { RUNWIELD_ROOT } from "../runtime-root.js";
 
@@ -40,8 +53,8 @@ export const HELPER_NAMES = ["cymbal", "ketch", "snip"];
  * @param {string} body
  */
 export async function writeExecutable(path, body) {
-    await Deno.writeTextFile(path, body);
-    await Deno.chmod(path, 0o755);
+    await fsWriteFile(path, body);
+    await fsChmod(path, 0o755);
 }
 
 /**
@@ -50,7 +63,7 @@ export async function writeExecutable(path, body) {
  * @param {string} [entryName]
  */
 export async function makeArchive(root, binaryName, entryName = binaryName) {
-    const dir = await Deno.makeTempDir({ dir: root });
+    const dir = await fsMkdtemp(join(root ?? tmpdir(), "runwield-fixture-"));
     const body = binaryName === "wld"
         ? `#!/usr/bin/env bash
 if [[ "$1" == "snip-filters" && "$2" == "install" ]]; then
@@ -62,8 +75,7 @@ echo wld version
         : `#!/usr/bin/env bash\necho ${binaryName} version\n`;
     await writeExecutable(join(dir, entryName), body);
     const archive = join(root, `${binaryName}-${entryName}.tar.gz`);
-    const command = new Deno.Command("tar", { args: ["-czf", archive, "-C", dir, entryName] });
-    const status = await command.output();
+    const status = await captureScriptProcess("tar", { args: ["-czf", archive, "-C", dir, entryName] });
     if (!status.success) throw new Error(`tar failed for ${binaryName}`);
     return archive;
 }
@@ -72,7 +84,7 @@ echo wld version
  * @param {string} path
  */
 export async function sha256(path) {
-    const bytes = await Deno.readFile(path);
+    const bytes = await fsReadFile(path);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -99,7 +111,7 @@ export function assetNamesFor(os, arch) {
  * @param {{ os?: TestOs, arch?: TestArch, badChecksumFor?: ReleaseBinaryName, omitChecksumFor?: ReleaseBinaryName, badDigestFor?: BinaryName, omitDigestFor?: BinaryName, missingAssetFor?: BinaryName, missingExecutableFor?: BinaryName, latestApiFailsFor?: string[], releaseApiFailsFor?: string[], mnemotecaInstallerFails?: boolean, mnemotecaInstallerSkipsExecutable?: boolean, mnemotecaInstallerPrompts?: boolean }} [options]
  */
 export async function createFixture(options = {}) {
-    const root = await Deno.makeTempDir();
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const fixtureDir = join(root, "fixtures");
     const binDir = join(root, "fake-bin");
     const installDir = join(root, "install dir with spaces");
@@ -108,9 +120,9 @@ export async function createFixture(options = {}) {
     const os = options.os ?? "Linux";
     const arch = options.arch ?? "x86_64";
     const assets = assetNamesFor(os, arch);
-    await Deno.mkdir(fixtureDir);
-    await Deno.mkdir(binDir);
-    await Deno.mkdir(installDir);
+    await fsMkdir(fixtureDir);
+    await fsMkdir(binDir);
+    await fsMkdir(installDir);
 
     /** @type {Record<ReleaseBinaryName, string>} */
     const archivePaths = /** @type {Record<ReleaseBinaryName, string>} */ ({});
@@ -118,7 +130,7 @@ export async function createFixture(options = {}) {
         const entryName = options.missingExecutableFor === name ? `${name}-wrong` : name;
         archivePaths[name] = await makeArchive(root, name, entryName);
         if (options.missingAssetFor !== name) {
-            await Deno.copyFile(archivePaths[name], join(fixtureDir, assets[name]));
+            await fsCopyFile(archivePaths[name], join(fixtureDir, assets[name]));
         }
     }
 
@@ -140,12 +152,12 @@ export async function createFixture(options = {}) {
         if (name === "wld") wldSums.push(line);
         else helperSums.push(line);
     }
-    await Deno.writeTextFile(join(fixtureDir, "SHA256SUMS"), `${wldSums.join("\n")}\n`);
-    await Deno.writeTextFile(join(fixtureDir, "checksums.txt"), `${helperSums.join("\n")}\n`);
+    await fsWriteFile(join(fixtureDir, "SHA256SUMS"), `${wldSums.join("\n")}\n`);
+    await fsWriteFile(join(fixtureDir, "checksums.txt"), `${helperSums.join("\n")}\n`);
 
     for (const name of RELEASE_BINARY_NAMES) {
         const assetDigest = options.omitDigestFor === name || !digests[name] ? null : `sha256:${digests[name]}`;
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(fixtureDir, `${name}-release.json`),
             JSON.stringify({ assets: assetDigest ? [{ name: assets[name], digest: assetDigest }] : [] }, null, 2),
         );
@@ -154,14 +166,14 @@ export async function createFixture(options = {}) {
                 assets[name]
             }</a>\n<clipboard-copy id="clipboard-button-${assetDigest}"></clipboard-copy>\n`
             : `<a href="/${name}/download/${assets[name]}">${assets[name]}</a>\n`;
-        await Deno.writeTextFile(join(fixtureDir, `${name}-expanded-assets.html`), expandedAssetsHtml);
+        await fsWriteFile(join(fixtureDir, `${name}-expanded-assets.html`), expandedAssetsHtml);
     }
 
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(fixtureDir, "mnemoteca-install.sh"),
         `#!/usr/bin/env bash
 set -euo pipefail
-printf 'repo=%s\\ninstall_dir=%s\\ndb_path=%s\\n' "\${MNEMOTECA_REPO:-}" "\${INSTALL_DIR:-}" "\${MNEMOTECA_DB_PATH-unset}" >> '${mnemotecaInstallerLog}'
+printf 'repo=%s\\ninstall_dir=%s\\ndb_path=%s\\n' "\${MNEMOTECA_REPO:-}" "\${INSTALL_DIR:-}" "\${MNEMOTECA_DB_PATH-unset}" >> '${bashFixturePath(mnemotecaInstallerLog)}'
 ${
             options.mnemotecaInstallerPrompts
                 ? `printf 'Mnemoteca upgrade prompt: '
@@ -170,7 +182,7 @@ for _ in 1 2 3; do
   IFS= read -r answer || answer=
   [ -n "$answer" ] && break
 done
-printf 'answer=%s\\n' "$answer" >> '${mnemotecaInstallerLog}'
+printf 'answer=%s\\n' "$answer" >> '${bashFixturePath(mnemotecaInstallerLog)}'
 `
                 : ""
         }${options.mnemotecaInstallerFails ? "exit 42\n" : ""}${
@@ -199,7 +211,7 @@ while [[ $# -gt 0 ]]; do
     *) url="$1"; shift ;;
   esac
 done
-printf '%s\n' "$url" >> '${curlLog}'
+printf '%s\n' "$url" >> '${bashFixturePath(curlLog)}'
 latest_api_failures=' ${(options.latestApiFailsFor ?? []).join(" ")} '
 release_api_failures=' ${(options.releaseApiFailsFor ?? []).join(" ")} '
 case "$url" in
@@ -225,27 +237,27 @@ case "$url" in
   *github.com/edouard-claude/snip/releases/latest*) effective_url='https://github.com/edouard-claude/snip/releases/tag/${VERSIONS.snip}' ;;
   *api.github.com/repos/gandazgul/runwield/releases/tags/*)
     [[ "$release_api_failures" == *' runwield '* ]] && exit 22
-    file='${join(fixtureDir, "wld-release.json")}'
+    file='${bashFixturePath(join(fixtureDir, "wld-release.json"))}'
     ;;
   *api.github.com/repos/1broseidon/cymbal/releases/tags/*)
     [[ "$release_api_failures" == *' cymbal '* ]] && exit 22
-    file='${join(fixtureDir, "cymbal-release.json")}'
+    file='${bashFixturePath(join(fixtureDir, "cymbal-release.json"))}'
     ;;
   *api.github.com/repos/1broseidon/ketch/releases/tags/*)
     [[ "$release_api_failures" == *' ketch '* ]] && exit 22
-    file='${join(fixtureDir, "ketch-release.json")}'
+    file='${bashFixturePath(join(fixtureDir, "ketch-release.json"))}'
     ;;
   *api.github.com/repos/edouard-claude/snip/releases/tags/*)
     [[ "$release_api_failures" == *' snip '* ]] && exit 22
-    file='${join(fixtureDir, "snip-release.json")}'
+    file='${bashFixturePath(join(fixtureDir, "snip-release.json"))}'
     ;;
-  *github.com/1broseidon/cymbal/releases/expanded_assets/*) file='${join(fixtureDir, "cymbal-expanded-assets.html")}' ;;
-  *github.com/1broseidon/ketch/releases/expanded_assets/*) file='${join(fixtureDir, "ketch-expanded-assets.html")}' ;;
-  *github.com/edouard-claude/snip/releases/expanded_assets/*) file='${join(fixtureDir, "snip-expanded-assets.html")}' ;;
-  *raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh) file='${join(fixtureDir, "mnemoteca-install.sh")}' ;;
-  */SHA256SUMS) file='${join(fixtureDir, "SHA256SUMS")}' ;;
-  */checksums.txt) file='${join(fixtureDir, "checksums.txt")}' ;;
-  *) file='${fixtureDir}'/"$(basename "$url")" ;;
+  *github.com/1broseidon/cymbal/releases/expanded_assets/*) file='${bashFixturePath(join(fixtureDir, "cymbal-expanded-assets.html"))}' ;;
+  *github.com/1broseidon/ketch/releases/expanded_assets/*) file='${bashFixturePath(join(fixtureDir, "ketch-expanded-assets.html"))}' ;;
+  *github.com/edouard-claude/snip/releases/expanded_assets/*) file='${bashFixturePath(join(fixtureDir, "snip-expanded-assets.html"))}' ;;
+  *raw.githubusercontent.com/gandazgul/mnemoteca/main/install.sh) file='${bashFixturePath(join(fixtureDir, "mnemoteca-install.sh"))}' ;;
+  */SHA256SUMS) file='${bashFixturePath(join(fixtureDir, "SHA256SUMS"))}' ;;
+  */checksums.txt) file='${bashFixturePath(join(fixtureDir, "checksums.txt"))}' ;;
+  *) file='${bashFixturePath(fixtureDir)}'/"$(basename "$url")" ;;
 esac
 if [[ "$write_format" == '%{url_effective}' ]]; then
   printf '%s' "\${effective_url:-$url}"
@@ -290,22 +302,22 @@ chmod 755 "$prefix/bin/agent-browser"
  * @param {{ extraPathDir?: string, requestedVersion?: string | null, noninteractive?: boolean, extraEnv?: Record<string, string>, unsetEnv?: string[] }} [options]
  */
 export async function runInstaller(fixture, options = {}) {
-    const pathPrefix = options.extraPathDir ? `${options.extraPathDir}:` : "";
+    const pathPrefix = options.extraPathDir ? `${bashFixturePath(options.extraPathDir)}:` : "";
     /** @type {Record<string, string>} */
     const env = {
-        ...Deno.env.toObject(),
-        PATH: `${pathPrefix}${fixture.binDir}:/usr/bin:/bin`,
+        ...{ ...process.env },
+        WLD_FIXTURE_PATH: `${pathPrefix}${bashFixturePath(fixture.binDir)}:/usr/bin:/bin`,
         HOME: fixture.root,
-        WLD_INSTALL_DIR: fixture.installDir,
+        WLD_INSTALL_DIR: bashFixturePath(fixture.installDir),
         WLD_TEST_UNAME_S: fixture.os,
         WLD_TEST_UNAME_M: fixture.arch,
         ...options.extraEnv,
     };
     for (const key of options.unsetEnv ?? []) delete env[key];
     if (options.noninteractive !== false) env.WLD_NONINTERACTIVE = "1";
-    const args = [repoPath("install.sh")];
+    const args = ["-c", 'export PATH="$WLD_FIXTURE_PATH"; exec /bin/bash "$@"', "installer-fixture", bashFixturePath(repoPath("install.sh"))];
     if (options.requestedVersion !== null) args.push(options.requestedVersion ?? VERSIONS.runwield);
-    const command = new Deno.Command("/bin/bash", {
+    const output = await captureScriptProcess(bashFixtureExecutable(), {
         args,
         cwd: REPO_ROOT,
         env,
@@ -313,7 +325,6 @@ export async function runInstaller(fixture, options = {}) {
         stdout: "piped",
         stderr: "piped",
     });
-    const output = await command.output();
     return {
         code: output.code,
         stdout: new TextDecoder().decode(output.stdout),
@@ -328,31 +339,47 @@ export async function runInstaller(fixture, options = {}) {
  */
 export async function runInstallerInPseudoTty(fixture, input, options = {}) {
     const scriptPath = repoPath("install.sh");
-    const command = `PATH=${quoteShell(`${fixture.binDir}:/usr/bin:/bin`)} HOME=${
-        quoteShell(fixture.root)
-    } WLD_INSTALL_DIR=${quoteShell(fixture.installDir)} WLD_NONINTERACTIVE=0 WLD_TEST_UNAME_S=${
+    const command = `PATH=${quoteShell(`${bashFixturePath(fixture.binDir)}:/usr/bin:/bin`)} HOME=${
+        quoteShell(bashFixturePath(fixture.root))
+    } WLD_INSTALL_DIR=${quoteShell(bashFixturePath(fixture.installDir))} WLD_NONINTERACTIVE=0 WLD_TEST_UNAME_S=${
         quoteShell(fixture.os)
     } WLD_TEST_UNAME_M=${quoteShell(fixture.arch)} ${
-        Object.entries(options.extraEnv ?? {}).map(([key, value]) => `${key}=${quoteShell(value)}`).join(" ")
-    } /bin/bash ${quoteShell(scriptPath)} ${quoteShell(VERSIONS.runwield)}`;
-    const scriptArgs = Deno.build.os === "linux"
+        Object.entries(options.extraEnv ?? {}).map(([key, value]) => `${key}=${quoteShell(key === "WLD_FILTER_LOG" ? bashFixturePath(value) : value)}`).join(" ")
+    } /bin/bash ${quoteShell(bashFixturePath(scriptPath))} ${quoteShell(VERSIONS.runwield)}`;
+    if (process.versions.bun) {
+        // macOS `script` rejects Bun's socket-backed stdin; attach an actual PTY directly.
+        /** @type {import("./terminal-fixture.ts").TerminalRuntime} */
+        const bun = Reflect.get(globalThis, String("Bun"));
+        const decoder = new TextDecoder();
+        let stdout = "";
+        const child = bun.spawn([bashFixtureExecutable(), "-lc", command], {
+            cwd: REPO_ROOT,
+            timeout: 30_000,
+            terminal: {
+                cols: 100,
+                rows: 30,
+                data(_terminal, data) {
+                    stdout += decoder.decode(data, { stream: true });
+                },
+            },
+        });
+        try {
+            child.terminal.write(process.platform === "win32" ? input.replaceAll("\n", "\r") : input);
+            const code = await child.exited;
+            stdout += decoder.decode();
+            return { code, stdout, stderr: "" };
+        } finally {
+            child.terminal.close();
+        }
+    }
+    const scriptArgs = process.platform === "linux"
         ? ["-q", "-c", command, "/dev/null"]
         : ["-q", "/dev/null", "/bin/bash", "-lc", command];
-    const proc = new Deno.Command("script", {
+    const output = await captureForegroundProcess("script", {
         args: scriptArgs,
         cwd: REPO_ROOT,
-        stdin: "piped",
-        stdout: "piped",
-        stderr: "piped",
-    }).spawn();
-    const writer = proc.stdin.getWriter();
-    try {
-        await writer.write(new TextEncoder().encode(input));
-        await writer.close();
-    } catch (error) {
-        if (!(error instanceof Deno.errors.BrokenPipe)) throw error;
-    }
-    const output = await proc.output();
+        stdinText: input,
+    });
     return {
         code: output.code,
         stdout: new TextDecoder().decode(output.stdout),
@@ -364,7 +391,7 @@ export async function runInstallerInPseudoTty(fixture, input, options = {}) {
  * @param {string} value
  */
 function quoteShell(value) {
-    return `'${value.replaceAll("'", `'\\''`)}'`;
+    return quoteBashFixture(value);
 }
 
 /**
@@ -372,9 +399,9 @@ function quoteShell(value) {
  */
 export async function readCurlLog(curlLog) {
     try {
-        return await Deno.readTextFile(curlLog);
+        return await fsReadFile(curlLog, "utf8");
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return "";
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return "";
         throw error;
     }
 }

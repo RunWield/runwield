@@ -1,3 +1,4 @@
+import { serveHttp } from "../../http-server.ts";
 /**
  * @module shared/session/bridged-tools/mcp-bridge
  *
@@ -479,13 +480,11 @@ export async function startRunWieldMcpBridge(
 
     await mcpServer.connect(transport);
     let url = "";
-    const serveServer = Deno.serve(
+    const serveServer = serveHttp(
         {
             hostname: "127.0.0.1",
             port: 0,
-            onListen: (addr) => {
-                url = `http://127.0.0.1:${addr.port}`;
-            },
+            onListen: () => {},
         },
         (request) => {
             const origin = request.headers.get("origin");
@@ -505,10 +504,7 @@ export async function startRunWieldMcpBridge(
             return transport.handleRequest(request);
         },
     );
-    if (!url) {
-        await serveServer.shutdown();
-        throw new Error("startRunWieldMcpBridge: loopback listener did not report its port");
-    }
+    url = `http://127.0.0.1:${serveServer.addr.port}`;
     const config = buildMcpConfigJson(url, token);
 
     let closed = false;

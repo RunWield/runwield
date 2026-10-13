@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, type FauxResponseFactory, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -97,7 +98,7 @@ async function runWorkRecordHandoff(
     }
 }
 
-Deno.test("post-verification handoffs run real Work Record machinery through the Mnemoteca port", async () => {
+test("post-verification handoffs run real Work Record machinery through the Mnemoteca port", async () => {
     await withRuntimeCommandFixture("validation-work-record-", async (fixture) => {
         const { records, indexCount, sessionManager, ui } = await runWorkRecordHandoff(fixture);
         const generated = records.find((record) =>
@@ -137,7 +138,7 @@ Deno.test("post-verification handoffs run real Work Record machinery through the
     });
 });
 
-Deno.test("post-verification hosted confirmation applies canonical Work Record supersession", async () => {
+test("post-verification hosted confirmation applies canonical Work Record supersession", async () => {
     await withRuntimeCommandFixture("validation-work-record-confirm-", async (fixture) => {
         const { records, indexCount, ui } = await runWorkRecordHandoff(fixture, "confirm");
         const predecessor = records.find((record) => record.attrs.recordId === PREDECESSOR_RECORD_ID);
@@ -152,7 +153,7 @@ Deno.test("post-verification hosted confirmation applies canonical Work Record s
     });
 });
 
-Deno.test("post-verification hosted rejection removes the proposal without mutating its predecessor", async () => {
+test("post-verification hosted rejection removes the proposal without mutating its predecessor", async () => {
     await withRuntimeCommandFixture("validation-work-record-reject-", async (fixture) => {
         const { records, indexCount, ui } = await runWorkRecordHandoff(fixture, "reject");
         const predecessor = records.find((record) => record.attrs.recordId === PREDECESSOR_RECORD_ID);
@@ -167,7 +168,7 @@ Deno.test("post-verification hosted rejection removes the proposal without mutat
     });
 });
 
-Deno.test("post-verification canceled hosted interaction retains the proposal without canonical mutation", async () => {
+test("post-verification canceled hosted interaction retains the proposal without canonical mutation", async () => {
     await withRuntimeCommandFixture("validation-work-record-cancel-", async (fixture) => {
         const { records, indexCount, ui } = await runWorkRecordHandoff(fixture, null);
         const predecessor = records.find((record) => record.attrs.recordId === PREDECESSOR_RECORD_ID);

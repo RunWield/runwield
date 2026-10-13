@@ -1,9 +1,11 @@
+import { readFile as fsReadFile } from "node:fs/promises";
+import { captureForegroundProcess } from "../shared/captured-process.ts";
 /**
  * @module tools/delegate-agent
  * Context-isolated foreground Delegated Agent Session tool.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
@@ -169,9 +171,8 @@ export function resolveEffectiveDelegationMode(
  * @returns {Promise<string>}
  */
 async function runGit(cwd: string, args: string[]): Promise<string> {
-    const command = new Deno.Command("git", { args, cwd, stdout: "piped", stderr: "piped" });
-    const output = await command.output();
-    if (!output.success) {
+    const output = await captureForegroundProcess("git", { args, cwd });
+    if (output.code !== 0) {
         throw new Error(new TextDecoder().decode(output.stderr).trim() || `git ${args.join(" ")} failed`);
     }
     return new TextDecoder().decode(output.stdout);
@@ -184,7 +185,7 @@ async function runGit(cwd: string, args: string[]): Promise<string> {
  */
 async function hashWorktreeFile(cwd: string, path: string): Promise<string | null> {
     try {
-        const bytes = await Deno.readFile(join(cwd, path));
+        const bytes = await fsReadFile(join(cwd, path));
         const digest = await crypto.subtle.digest("SHA-256", bytes);
         return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     } catch {

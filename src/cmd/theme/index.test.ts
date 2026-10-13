@@ -1,6 +1,18 @@
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { getCwd } from "../../constants.js";
+import process from "node:process";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { DEFAULT_THEME_NAME, getAvailableThemes, initRunWieldTheme, setTheme, theme } from "../../ui/theme/theme.js";
@@ -30,20 +42,20 @@ interface SelectionHooks {
 
 async function withThemeCommandFixture(run: (fixture: ThemeCommandFixture) => Promise<void>): Promise<void> {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const previousSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        const previousCwd = Deno.cwd();
-        const previousExitCode = Deno.exitCode;
-        const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-theme-command-" });
+        const previousHome = process.env["HOME"];
+        const previousSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
+        const previousCwd = getCwd();
+        const previousExitCode = process.exitCode;
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-theme-command-"));
         const homeDir = join(fixtureRoot, "home");
         const packageDir = join(fixtureRoot, "fixture-theme-package");
         const projectRoot = join(fixtureRoot, "project");
         await Promise.all([
-            Deno.mkdir(homeDir, { recursive: true }),
-            Deno.mkdir(join(packageDir, "themes"), { recursive: true }),
-            Deno.mkdir(projectRoot, { recursive: true }),
+            fsMkdir(homeDir, { recursive: true }),
+            fsMkdir(join(packageDir, "themes"), { recursive: true }),
+            fsMkdir(projectRoot, { recursive: true }),
         ]);
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(packageDir, "package.json"),
             JSON.stringify({
                 name: "fixture-theme-command-package",
@@ -51,7 +63,7 @@ async function withThemeCommandFixture(run: (fixture: ThemeCommandFixture) => Pr
                 pi: { themes: ["themes/*.json"] },
             }),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(packageDir, "themes", "fixture-theme.json"),
             JSON.stringify({
                 name: FIXTURE_THEME_NAME,
@@ -59,27 +71,27 @@ async function withThemeCommandFixture(run: (fixture: ThemeCommandFixture) => Pr
                 colors: { accent: "fixtureAccent" },
             }),
         );
-        const canonicalPackageDir = await Deno.realPath(packageDir);
-        const canonicalProjectRoot = await Deno.realPath(projectRoot);
+        const canonicalPackageDir = await fsRealpath(packageDir);
+        const canonicalProjectRoot = await fsRealpath(projectRoot);
 
         try {
-            Deno.env.set("HOME", homeDir);
-            Deno.env.set("WLD_TEST_SANDBOX_HOME", homeDir);
-            Deno.chdir(canonicalProjectRoot);
-            Deno.exitCode = 0;
+            process.env["HOME"] = homeDir;
+            process.env["WLD_TEST_SANDBOX_HOME"] = homeDir;
+            process.chdir(canonicalProjectRoot);
+            process.exitCode = 0;
             __resetSettingsForTests();
             initRunWieldTheme();
             await run({ projectRoot: canonicalProjectRoot, source: canonicalPackageDir });
         } finally {
             initRunWieldTheme();
             __resetSettingsForTests();
-            Deno.chdir(previousCwd);
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", previousSandboxHome);
-            Deno.exitCode = previousExitCode;
-            await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+            process.chdir(previousCwd);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            if (previousSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = previousSandboxHome;
+            process.exitCode = previousExitCode;
+            await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
         }
     });
 }
@@ -110,7 +122,7 @@ async function captureConsole(run: () => Promise<void>): Promise<CapturedConsole
     return { logs, errors };
 }
 
-Deno.test("runThemeCommand prints real command help", async () => {
+test("runThemeCommand prints real command help", async () => {
     await withThemeCommandFixture(async () => {
         const output = await captureConsole(() => runThemeCommand(["help"]));
 
@@ -121,7 +133,7 @@ Deno.test("runThemeCommand prints real command help", async () => {
     });
 });
 
-Deno.test("runThemeCommand lists a theme from a real local package", async () => {
+test("runThemeCommand lists a theme from a real local package", async () => {
     await withThemeCommandFixture(async ({ projectRoot, source }) => {
         await installFixtureTheme(projectRoot, source);
 
@@ -135,7 +147,7 @@ Deno.test("runThemeCommand lists a theme from a real local package", async () =>
     });
 });
 
-Deno.test("runThemeCommand switches to and persists a real installed theme", async () => {
+test("runThemeCommand switches to and persists a real installed theme", async () => {
     await withThemeCommandFixture(async ({ projectRoot, source }) => {
         await installFixtureTheme(projectRoot, source);
 
@@ -145,11 +157,11 @@ Deno.test("runThemeCommand switches to and persists a real installed theme", asy
         assertEquals(output.logs, [`Theme switched to ${FIXTURE_THEME_NAME}`]);
         assertEquals(getSettingsManager(projectRoot).getTheme(), FIXTURE_THEME_NAME);
         assertEquals(setTheme(FIXTURE_THEME_NAME).success, true);
-        assertEquals(Deno.exitCode, 0);
+        assertEquals(process.exitCode, 0);
     });
 });
 
-Deno.test("runThemeCommand rejects a theme that is not installed", async () => {
+test("runThemeCommand rejects a theme that is not installed", async () => {
     await withThemeCommandFixture(async ({ projectRoot }) => {
         const output = await captureConsole(() => runThemeCommand(["missing-theme"]));
 
@@ -158,11 +170,11 @@ Deno.test("runThemeCommand rejects a theme that is not installed", async () => {
             "Theme \"missing-theme\" not found. Run 'wld theme --list' to see available themes.",
         ]);
         assertEquals(getSettingsManager(projectRoot).getTheme(), undefined);
-        assertEquals(Deno.exitCode, 1);
+        assertEquals(process.exitCode, 1);
     });
 });
 
-Deno.test("runThemeCommand persists the theme selected through the user interaction port", async () => {
+test("runThemeCommand persists the theme selected through the user interaction port", async () => {
     await withThemeCommandFixture(async ({ projectRoot, source }) => {
         await installFixtureTheme(projectRoot, source);
         let offeredFixtureTheme = false;
@@ -182,7 +194,7 @@ Deno.test("runThemeCommand persists the theme selected through the user interact
     });
 });
 
-Deno.test("runThemeCommand restores the persisted theme when selection is cancelled", async () => {
+test("runThemeCommand restores the persisted theme when selection is cancelled", async () => {
     await withThemeCommandFixture(async ({ projectRoot, source }) => {
         await installFixtureTheme(projectRoot, source);
         const settings = getSettingsManager(projectRoot);
@@ -203,7 +215,7 @@ Deno.test("runThemeCommand restores the persisted theme when selection is cancel
     });
 });
 
-Deno.test("runThemeCommand without arguments outside the TUI prints CLI guidance", async () => {
+test("runThemeCommand without arguments outside the TUI prints CLI guidance", async () => {
     await withThemeCommandFixture(async () => {
         const output = await captureConsole(() => runThemeCommand([]));
 

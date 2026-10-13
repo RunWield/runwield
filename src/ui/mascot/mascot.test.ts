@@ -1,8 +1,10 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { animations, mascotRoleForAgent, terminalLines } from "./frames.ts";
 import { mascotPose, MASCOTS } from "./mascot.ts";
 
-Deno.test("mascot identities follow aliases, hidden agents and inherited delegation", () => {
+test("mascot identities follow aliases, hidden agents and inherited delegation", () => {
     for (
         const [agent, expected] of [
             ["Guide", "guide"],
@@ -26,7 +28,7 @@ Deno.test("mascot identities follow aliases, hidden agents and inherited delegat
     }
 });
 
-Deno.test("all approved frames stay one-bit and round trip through terminal half blocks", () => {
+test("all approved frames stay one-bit and round trip through terminal half blocks", () => {
     for (const animation of animations) {
         for (const pixels of [...animation.frames.map((f) => f.pixels), animation.idle, animation.answering]) {
             assertEquals(pixels.length, 18);
@@ -43,14 +45,14 @@ Deno.test("all approved frames stay one-bit and round trip through terminal half
     assertEquals(base.frames.map((f) => f.pixels[14][15]), ["#", "#", ".", ".", "#", "#", ".", "."]);
 });
 
-Deno.test("waiting and idle override answering; activity does not imply estimated progress", () => {
+test("waiting and idle override answering; activity does not imply estimated progress", () => {
     assertEquals(mascotPose({ busy: true }), "thinking");
     assertEquals(mascotPose({ busy: true, answering: true }), "answering");
     assertEquals(mascotPose({ busy: true, answering: true, waiting: true }), "idle");
     assertEquals(mascotPose({ busy: false, answering: true }), "idle");
 });
 
-Deno.test("mascot drawing widths include every animation frame and still pose", () => {
+test("mascot drawing widths include every animation frame and still pose", () => {
     for (const mascot of MASCOTS) {
         const widths = [...mascot.frames, mascot.idle, mascot.answering]
             .flatMap((frame) => frame.lines.map((line) => line.trimEnd().length));

@@ -1,3 +1,4 @@
+import { test } from "node:test";
 import {
     buildDiffInspectionSection,
     createReviewDiffTool,
@@ -6,7 +7,7 @@ import {
     listDiffFiles,
     parseDiffFiles,
 } from "./review-diff-tool.js";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { __resetSettingsForTests } from "../settings.js";
 
@@ -54,7 +55,7 @@ index 0000000..7777777
 Binary files /dev/null and b/src/binary.png differ
 `;
 
-Deno.test("parseDiffFiles parses modified, added, deleted, renamed, and binary files", () => {
+test("parseDiffFiles parses modified, added, deleted, renamed, and binary files", () => {
     const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
     assertEquals(entries.length, 5, "expected 5 file entries");
 
@@ -82,13 +83,13 @@ Deno.test("parseDiffFiles parses modified, added, deleted, renamed, and binary f
     assertEquals(binaryEntry?.hunkLines.removed, 0);
 });
 
-Deno.test("parseDiffFiles returns empty array for empty diff", () => {
+test("parseDiffFiles returns empty array for empty diff", () => {
     assertEquals(parseDiffFiles(""), []);
     assertEquals(parseDiffFiles("   "), []);
     assertEquals(parseDiffFiles("no header here"), []);
 });
 
-Deno.test("formatChangedFileList includes all entries with summary info", () => {
+test("formatChangedFileList includes all entries with summary info", () => {
     const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
     const output = formatChangedFileList(entries);
     assertStringIncludes(output, "src/a.js");
@@ -100,7 +101,7 @@ Deno.test("formatChangedFileList includes all entries with summary info", () => 
     assertStringIncludes(output, "5 file(s)");
 });
 
-Deno.test("getFileDiff finds file by exact path", () => {
+test("getFileDiff finds file by exact path", () => {
     const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
     const result = getFileDiff(entries, "src/a.js");
     assertEquals(result.found, true);
@@ -110,7 +111,7 @@ Deno.test("getFileDiff finds file by exact path", () => {
     }
 });
 
-Deno.test("getFileDiff returns not-found for nonexistent file", () => {
+test("getFileDiff returns not-found for nonexistent file", () => {
     const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
     const result = getFileDiff(entries, "src/nope.js");
     assertEquals(result.found, false);
@@ -119,7 +120,7 @@ Deno.test("getFileDiff returns not-found for nonexistent file", () => {
     }
 });
 
-Deno.test("getFileDiff supports byte offset for truncated reads", () => {
+test("getFileDiff supports byte offset for truncated reads", () => {
     const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
     // Use a very small maxBytes to force truncation
     const result = getFileDiff(entries, "src/a.js", { offsetBytes: 0, maxBytes: 50 });
@@ -130,7 +131,7 @@ Deno.test("getFileDiff supports byte offset for truncated reads", () => {
     }
 });
 
-Deno.test("getFileDiff preserves UTF-8 characters across byte pages", () => {
+test("getFileDiff preserves UTF-8 characters across byte pages", () => {
     const diff =
         `diff --git a/src/unicode.js b/src/unicode.js\n--- a/src/unicode.js\n+++ b/src/unicode.js\n@@ -1 +1 @@\n-old\n+before 😀 after\n`;
     const entry = parseDiffFiles(diff)[0];
@@ -147,7 +148,7 @@ Deno.test("getFileDiff preserves UTF-8 characters across byte pages", () => {
     assertEquals(first.content + second.content, entry.text);
 });
 
-Deno.test("listDiffFiles marks entries exceeding max inline bytes as truncated", () => {
+test("listDiffFiles marks entries exceeding max inline bytes as truncated", () => {
     const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
     const summaries = listDiffFiles(entries, 1);
 
@@ -157,7 +158,7 @@ Deno.test("listDiffFiles marks entries exceeding max inline bytes as truncated",
     }
 });
 
-Deno.test("listDiffFiles does not mark small entries as truncated", () => {
+test("listDiffFiles does not mark small entries as truncated", () => {
     const entries = parseDiffFiles(SAMPLE_INLINE_DIFF);
     const summaries = listDiffFiles(entries, 10_000_000);
 
@@ -167,7 +168,7 @@ Deno.test("listDiffFiles does not mark small entries as truncated", () => {
     }
 });
 
-Deno.test("buildDiffInspectionSection lists changed files without inlining the diff", () => {
+test("buildDiffInspectionSection lists changed files without inlining the diff", () => {
     const section = buildDiffInspectionSection(SAMPLE_INLINE_DIFF);
 
     // The diff is never inlined — the Reviewer reads it through review_diff.
@@ -181,7 +182,7 @@ Deno.test("buildDiffInspectionSection lists changed files without inlining the d
     assertStringIncludes(section, "review_diff");
 });
 
-Deno.test("buildDiffInspectionSection documents the repair scope only when one exists", () => {
+test("buildDiffInspectionSection documents the repair scope only when one exists", () => {
     assertEquals(buildDiffInspectionSection(SAMPLE_INLINE_DIFF).includes('scope: "repair"'), false);
     assertStringIncludes(
         buildDiffInspectionSection(SAMPLE_INLINE_DIFF, { hasRepairScope: true }),
@@ -189,7 +190,7 @@ Deno.test("buildDiffInspectionSection documents the repair scope only when one e
     );
 });
 
-Deno.test("review_diff tool responds to list command", async () => {
+test("review_diff tool responds to list command", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
     const result = await /** @type {any} */ (tool.execute)("test-1", { command: "list" });
     assertStringIncludes(result.content[0].text, "src/a.js");
@@ -198,7 +199,7 @@ Deno.test("review_diff tool responds to list command", async () => {
     assertEquals(result.details.fileCount, 5);
 });
 
-Deno.test("review_diff describes full scope as the proposed branch patch", () => {
+test("review_diff describes full scope as the proposed branch patch", () => {
     const tool = createReviewDiffTool({ full: SAMPLE_INLINE_DIFF, repair: "" });
     const description = /** @type {any} */ (tool).description || /** @type {any} */ (tool).promptSnippet || "";
     assertStringIncludes(String(description), "entire proposed branch patch");
@@ -208,7 +209,7 @@ Deno.test("review_diff describes full scope as the proposed branch patch", () =>
     );
 });
 
-Deno.test("review_diff tool lists the repair scope separately from the full diff", async () => {
+test("review_diff tool lists the repair scope separately from the full diff", async () => {
     const repairOnly = `diff --git a/src/fix.js b/src/fix.js
 index 8888888..9999999 100644
 --- a/src/fix.js
@@ -229,7 +230,7 @@ index 8888888..9999999 100644
     assertStringIncludes(repair.content[0].text, "src/fix.js");
 });
 
-Deno.test("review_diff tool explains the repair scope is absent in the first round", async () => {
+test("review_diff tool explains the repair scope is absent in the first round", async () => {
     const tool = createReviewDiffTool({ full: SAMPLE_INLINE_DIFF });
     const result = await /** @type {any} */ (tool.execute)("scope-3", { command: "list", scope: "repair" });
 
@@ -238,7 +239,7 @@ Deno.test("review_diff tool explains the repair scope is absent in the first rou
     assertStringIncludes(result.content[0].text, "No repair scope in this round");
 });
 
-Deno.test("review_diff tool responds to show command", async () => {
+test("review_diff tool responds to show command", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
     const result = await /** @type {any} */ (tool.execute)("test-2", { command: "show", path: "src/a.js" });
     assertStringIncludes(result.content[0].text, "new line");
@@ -246,28 +247,28 @@ Deno.test("review_diff tool responds to show command", async () => {
     assertEquals(result.details.path, "src/a.js");
 });
 
-Deno.test("review_diff tool reports error for missing path in show", async () => {
+test("review_diff tool reports error for missing path in show", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
     const result = await /** @type {any} */ (tool.execute)("test-3", { command: "show" });
     assertEquals(result.isError, true);
     assertStringIncludes(result.content[0].text, "required");
 });
 
-Deno.test("review_diff tool reports error for unknown command", async () => {
+test("review_diff tool reports error for unknown command", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
     const result = await /** @type {any} */ (tool.execute)("test-4", { command: "unknown" });
     assertEquals(result.isError, true);
     assertStringIncludes(result.content[0].text, "unknown command");
 });
 
-Deno.test("review_diff tool reports not-found for nonexistent file", async () => {
+test("review_diff tool reports not-found for nonexistent file", async () => {
     const tool = createReviewDiffTool(SAMPLE_INLINE_DIFF);
     const result = await /** @type {any} */ (tool.execute)("test-5", { command: "show", path: "nonexistent.js" });
     assertEquals(result.isError, true);
     assertStringIncludes(result.content[0].text, "not found");
 });
 
-Deno.test("review_diff tool returns no-files message for empty diff", async () => {
+test("review_diff tool returns no-files message for empty diff", async () => {
     const tool = createReviewDiffTool("");
     const result = await /** @type {any} */ (tool.execute)("test-6", { command: "list" });
     assertEquals(result.details.fileCount, 0);

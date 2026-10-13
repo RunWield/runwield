@@ -1,16 +1,19 @@
+import { makeTempDirectory } from "../../../src/testing/temp-file.ts";
+import { rm, mkdir, writeFile } from "node:fs/promises";
+import { test } from "node:test";
 // Historical audit probe; run explicitly through scripts/run-tests.js.
 // See ../2026-09-07-plan-workflow-transitions.md.
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../src/testing/assertions.ts";
 import { loadPlan } from "../../../src/plan-store.js";
 import { HostedSession } from "../../../src/shared/session/hosted-session.js";
 import { listPendingWorkflowToolEvents } from "../../../src/shared/workflow/workflow-tool-events.ts";
 import { createPlanWrittenTool } from "../../../src/tools/plan-written.ts";
 
-Deno.test("AUDIT A1: PROJECT approve-later emits its saved workflow event", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "epic-save-audit-" });
-    await Deno.mkdir(`${cwd}/docs/plans`, { recursive: true });
+test("AUDIT A1: PROJECT approve-later emits its saved workflow event", async () => {
+    const cwd = await makeTempDirectory({ prefix: "epic-save-audit-" });
+    await mkdir(`${cwd}/docs/plans`, { recursive: true });
     // Real lifecycle writes require the approval established by Plan Review.
-    await Deno.writeTextFile(
+    await writeFile(
         `${cwd}/docs/plans/audit-epic.md`,
         "---\nclassification: PROJECT\nstatus: approved\n---\n# Audit Epic\n",
     );
@@ -50,9 +53,12 @@ Deno.test("AUDIT A1: PROJECT approve-later emits its saved workflow event", asyn
         );
         assertEquals(result.details?.outcome, "saved");
         assertEquals(plan?.attrs.status, "ready_for_decomposition");
-        assertEquals(events.some((event) => event.kind === "plan_written" && event.payload.outcome === "saved"), true);
+        assertEquals(
+            events.some((event) => event.kind === "plan_written" && event.payload.outcome === "saved"),
+            true,
+        );
     } finally {
         hostedSession.dispose();
-        await Deno.remove(cwd, { recursive: true });
+        await rm(cwd, { recursive: true });
     }
 });

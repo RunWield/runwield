@@ -1,5 +1,16 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
@@ -9,7 +20,9 @@ function digestHex(bytes: Uint8Array): Promise<string> {
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
     return crypto.subtle.digest("SHA-256", buffer).then((digest) =>
-        Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("")
+        Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join(""),
     );
 }
 
@@ -19,15 +32,15 @@ function idFactory(prefix: string): () => string {
 }
 
 async function createDormantManagedSession(prefix: string) {
-    const home = await Deno.makeTempDir({ prefix });
-    Deno.env.set("HOME", home);
+    const home = await fsMkdtemp(join(tmpdir(), prefix));
+    process.env["HOME"] = home;
     const cwd = join(home, "project");
-    await Deno.mkdir(cwd, { recursive: true });
+    await fsMkdir(cwd, { recursive: true });
     const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
     const project = store.registerProject({ root: cwd, idFactory: idFactory("project") });
     const piSessionId = "pi-dormant";
     const sessionDir = getRunWieldSessionDir(cwd);
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     const transcriptPath = join(sessionDir, "2026-01-01T00-00-00-000Z_pi-dormant.jsonl");
     const entries = [
         { type: "session", id: piSessionId, timestamp: "2026-01-01T00:00:00.000Z", cwd, name: "Dormant" },
@@ -38,7 +51,7 @@ async function createDormantManagedSession(prefix: string) {
             message: { role: "user", content: "Hello" },
         },
     ];
-    await Deno.writeTextFile(transcriptPath, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    await fsWriteFile(transcriptPath, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
     const cataloged = await store.ensureSessionCatalogRecord({
         projectId: project.projectId,
         piSessionId,
@@ -55,7 +68,7 @@ async function createDormantManagedSession(prefix: string) {
         phase: "bootstrap",
     });
     proof = store.changeSessionActivationPhase(proof, "checkpointing");
-    const bytes = await Deno.readFile(transcriptPath);
+    const bytes = await fsReadFile(transcriptPath);
     store.publishGenerationAndRelease(proof, {
         generation: 0,
         byteLength: bytes.length,
@@ -74,30 +87,35 @@ async function createDormantManagedSession(prefix: string) {
 async function countImageFiles(imageDir: string): Promise<number> {
     try {
         let count = 0;
-        for await (const entry of Deno.readDir(imageDir)) {
-            if (entry.isFile) count += 1;
+        for await (const entry of await fsReaddir(imageDir, { withFileTypes: true })) {
+            if (entry.isFile()) count += 1;
         }
         return count;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return 0;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return 0;
         throw error;
     }
 }
 
-Deno.test("blocked managed local shell creates zero Deno.Command processes for both persist modes", async () => {
+test("blocked managed local shell creates zero native processes for both persist modes", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
+        const previousHome = process.env["HOME"];
         const fixture = await createDormantManagedSession("fenced-shell-blocked-");
-        Deno.env.set("HOME", fixture.home);
-        const originalCommand = Deno.Command;
+        process.env["HOME"] = fixture.home;
+        const boundary = Reflect.get(globalThis, "Bun");
+        const key = "spawn";
+        const originalCommand = Reflect.get(boundary, key);
         let processCreations = 0;
         class CountingCommand {
-            constructor(_command: string | URL, _options?: ConstructorParameters<typeof Deno.Command>[1]) {
+            constructor() {
                 processCreations += 1;
-                throw new Error("Deno.Command must not be constructed before activation wins");
+                throw new Error("A native process must not be created before activation wins");
             }
         }
-        Object.defineProperty(Deno, "Command", { configurable: true, value: CountingCommand });
+        assertEquals(
+            Reflect.set(boundary, key, () => new CountingCommand()),
+            true,
+        );
         const holder = fixture.store.acquireSessionActivation({
             runwieldSessionId: fixture.cataloged.runwieldSessionId,
             projectId: fixture.cataloged.projectId,
@@ -116,22 +134,22 @@ Deno.test("blocked managed local shell creates zero Deno.Command processes for b
             }
             assertEquals(processCreations, 0);
         } finally {
-            Object.defineProperty(Deno, "Command", { configurable: true, value: originalCommand });
+            assertEquals(Reflect.set(boundary, key, originalCommand), true);
             fixture.store.releaseUnchangedActivation(holder);
             await fixture.runtime.closeAllSessionsWhenIdle();
             fixture.store.close();
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            await Deno.remove(fixture.home, { recursive: true });
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            await fsRm(fixture.home, { recursive: true });
         }
     });
 });
 
-Deno.test("blocked managed image persistence leaves zero files under the Session image directory", async () => {
+test("blocked managed image persistence leaves zero files under the Session image directory", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
+        const previousHome = process.env["HOME"];
         const fixture = await createDormantManagedSession("fenced-image-blocked-");
-        Deno.env.set("HOME", fixture.home);
+        process.env["HOME"] = fixture.home;
         const holder = fixture.store.acquireSessionActivation({
             runwieldSessionId: fixture.cataloged.runwieldSessionId,
             projectId: fixture.cataloged.projectId,
@@ -152,9 +170,9 @@ Deno.test("blocked managed image persistence leaves zero files under the Session
             fixture.store.releaseUnchangedActivation(holder);
             await fixture.runtime.closeAllSessionsWhenIdle();
             fixture.store.close();
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            await Deno.remove(fixture.home, { recursive: true });
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            await fsRm(fixture.home, { recursive: true });
         }
     });
 });

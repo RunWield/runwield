@@ -1,8 +1,10 @@
 // @ts-nocheck: happy-dom browser globals are installed for this test.
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../../../testing/assertions.ts";
 import { Window } from "happy-dom";
 
-Deno.test("printing splits oversized callouts and keeps short callouts together", async () => {
+test("printing splits oversized callouts and keeps short callouts together", async () => {
     const browser = new Window();
     const names = [
         "window",
@@ -51,7 +53,7 @@ Deno.test("printing splits oversized callouts and keeps short callouts together"
         browser.dispatchEvent(new browser.Event("runwield:prepare-print"));
         assertEquals(short.hasAttribute("data-print-long-callout"), false);
         assertEquals(long.hasAttribute("data-print-long-callout"), true);
-        const css = await Deno.readTextFile("src/ui/design-system/print.css");
+        const css = await fsReadFile("src/ui/design-system/print.css", "utf8");
         assertStringIncludes(
             css,
             ".rw-plan-review :is(.alert, .directive, blockquote) {\n        break-inside: avoid;",

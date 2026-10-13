@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { buildSessionSidebarProjection, sessionSidebarFields } from "./session-sidebar.ts";
 
-Deno.test("Session tab fields share counts and context percentages across surfaces", () => {
+test("Session tab fields share counts and context percentages across surfaces", () => {
     const projection = buildSessionSidebarProjection({
         sessionName: "Saved Session",
         userMessages: 3,
@@ -26,7 +27,7 @@ Deno.test("Session tab fields share counts and context percentages across surfac
     ]);
 });
 
-Deno.test("Session tab fields preserve the TUI's unavailable and empty states", () => {
+test("Session tab fields preserve the TUI's unavailable and empty states", () => {
     const projection = buildSessionSidebarProjection({ userMessages: 0, contextWindowTokens: 200000 });
     assertEquals(sessionSidebarFields(projection.session), [
         { label: "Session", value: "Untitled Session" },

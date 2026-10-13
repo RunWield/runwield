@@ -1,12 +1,22 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../testing/assertions.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { wrapPlanSafeFileTool } from "./plan-safe-file-tools.ts";
 
-Deno.test("Plan-safe write wrapper refuses existing canonical Plan overwrite", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-plan-safe-tool-" });
+test("Plan-safe write wrapper refuses existing canonical Plan overwrite", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-plan-safe-tool-"));
     try {
-        await Deno.mkdir(`${cwd}/docs/plans`, { recursive: true });
-        await Deno.writeTextFile(`${cwd}/docs/plans/demo.md`, "# Demo\n");
+        await fsMkdir(`${cwd}/docs/plans`, { recursive: true });
+        await fsWriteFile(`${cwd}/docs/plans/demo.md`, "# Demo\n");
         const tool = wrapPlanSafeFileTool(
             defineTool({
                 name: "write",
@@ -28,8 +38,8 @@ Deno.test("Plan-safe write wrapper refuses existing canonical Plan overwrite", a
             /** @type {any} */ (undefined),
         ));
         assertEquals(result.isError, true);
-        assertEquals(await Deno.readTextFile(`${cwd}/docs/plans/demo.md`), "# Demo\n");
+        assertEquals(await fsReadFile(`${cwd}/docs/plans/demo.md`, "utf8"), "# Demo\n");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });

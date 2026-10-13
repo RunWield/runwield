@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { Image } from "@earendil-works/pi-tui";
 import { initRunWieldTheme } from "../theme/theme.js";
 import { installKeybindings } from "./keybindings.ts";
@@ -158,59 +159,53 @@ function makeContext(overrides = {}) {
     return Object.assign(ctx, overrides);
 }
 
-Deno.test({
-    name: "installKeybindings recalls queued submissions before Escape cancellation",
-    fn: async () => {
-        let runtimeCancelCalls = 0;
-        /** @type {string[]} */
-        const events = [];
-        const ctx = makeContext({
-            recallQueuedSubmissionsToEditor: () => {
-                events.push("recall");
-                ctx.editor.setText("oldest\nnewest");
-            },
-            cancelRuntimeSession: () => {
-                events.push("cancel");
-                runtimeCancelCalls++;
-                return true;
-            },
-        });
-        installKeybindings(ctx);
+test("installKeybindings recalls queued submissions before Escape cancellation", async () => {
+    let runtimeCancelCalls = 0;
+    /** @type {string[]} */
+    const events = [];
+    const ctx = makeContext({
+        recallQueuedSubmissionsToEditor: () => {
+            events.push("recall");
+            ctx.editor.setText("oldest\nnewest");
+        },
+        cancelRuntimeSession: () => {
+            events.push("cancel");
+            runtimeCancelCalls++;
+            return true;
+        },
+    });
+    installKeybindings(ctx);
 
-        await ctx.editor.handleInput(RAW_KEY.escape);
+    await ctx.editor.handleInput(RAW_KEY.escape);
 
-        assertEquals(events, ["recall", "cancel"]);
-        assertEquals(ctx.stats.text, "oldest\nnewest");
-        assertEquals(ctx.stats.invalidations, 1);
-        assertEquals(runtimeCancelCalls, 1);
-        assertEquals(ctx.stats.resets, 1);
-        assertEquals(ctx.stats.systemMessages, []);
-        assertEquals(ctx.stats.renderCount, 1);
-    },
+    assertEquals(events, ["recall", "cancel"]);
+    assertEquals(ctx.stats.text, "oldest\nnewest");
+    assertEquals(ctx.stats.invalidations, 1);
+    assertEquals(runtimeCancelCalls, 1);
+    assertEquals(ctx.stats.resets, 1);
+    assertEquals(ctx.stats.systemMessages, []);
+    assertEquals(ctx.stats.renderCount, 1);
 });
 
-Deno.test({
-    name: "installKeybindings Ctrl+C clears input and pasted previews without cancelling runtime work",
-    fn: async () => {
-        const ctx = makeContext();
-        ctx.pastedImages.push({ base64: "a", mimeType: "image/png" });
-        ctx.previewImages.children.push("preview");
-        ctx.editor.setText("draft");
-        installKeybindings(ctx);
+test("installKeybindings Ctrl+C clears input and pasted previews without cancelling runtime work", async () => {
+    const ctx = makeContext();
+    ctx.pastedImages.push({ base64: "a", mimeType: "image/png" });
+    ctx.previewImages.children.push("preview");
+    ctx.editor.setText("draft");
+    installKeybindings(ctx);
 
-        await ctx.editor.handleInput(RAW_KEY.ctrlC);
+    await ctx.editor.handleInput(RAW_KEY.ctrlC);
 
-        assertEquals(ctx.stats.text, "");
-        assertEquals(ctx.pastedImages, []);
-        assertEquals(ctx.previewImages.children, []);
-        assertEquals(ctx.stats.invalidations, 0);
-        assertEquals(ctx.stats.promptDismissals, 0);
-        assertEquals(ctx.stats.runtimeCancels, 0);
-        assertEquals(ctx.stats.resets, 0);
-    },
+    assertEquals(ctx.stats.text, "");
+    assertEquals(ctx.pastedImages, []);
+    assertEquals(ctx.previewImages.children, []);
+    assertEquals(ctx.stats.invalidations, 0);
+    assertEquals(ctx.stats.promptDismissals, 0);
+    assertEquals(ctx.stats.runtimeCancels, 0);
+    assertEquals(ctx.stats.resets, 0);
 });
 
-Deno.test("installKeybindings toggles tool groups on Ctrl+O", async () => {
+test("installKeybindings toggles tool groups on Ctrl+O", async () => {
     const ctx = makeContext();
     installKeybindings(ctx);
 
@@ -221,7 +216,7 @@ Deno.test("installKeybindings toggles tool groups on Ctrl+O", async () => {
     assertEquals(ctx.stats.renderCount, 1);
 });
 
-Deno.test("installKeybindings requests keyboard help only for exact empty-editor question mark", async () => {
+test("installKeybindings requests keyboard help only for exact empty-editor question mark", async () => {
     const ctx = makeContext();
     installKeybindings(ctx);
 
@@ -238,7 +233,7 @@ Deno.test("installKeybindings requests keyboard help only for exact empty-editor
     assertEquals(ctx.stats.originalInputs, ["?", "?", "??"]);
 });
 
-Deno.test("installKeybindings hides keyboard help on Esc and forwarded input", async () => {
+test("installKeybindings hides keyboard help on Esc and forwarded input", async () => {
     const ctx = makeContext();
     installKeybindings(ctx);
 
@@ -250,7 +245,7 @@ Deno.test("installKeybindings hides keyboard help on Esc and forwarded input", a
     assertEquals(ctx.stats.invalidations, 1);
 });
 
-Deno.test("installKeybindings handles newline, image removal, thinking cycle, queue recall, and fallback input", async () => {
+test("installKeybindings handles newline, image removal, thinking cycle, queue recall, and fallback input", async () => {
     const ctx = makeContext();
     ctx.pastedImages.push({ base64: "a", mimeType: "image/png" });
     ctx.previewImages.children.push("preview");
@@ -272,7 +267,7 @@ Deno.test("installKeybindings handles newline, image removal, thinking cycle, qu
     assertEquals(ctx.stats.originalInputs, ["x"]);
 });
 
-Deno.test("installKeybindings checks editor emptiness through public getText", async () => {
+test("installKeybindings checks editor emptiness through public getText", async () => {
     const ctx = makeContext();
     delete ctx.editor.isEditorEmpty;
     ctx.pastedImages.push({ base64: "a", mimeType: "image/png" });
@@ -289,7 +284,7 @@ Deno.test("installKeybindings checks editor emptiness through public getText", a
     assertEquals(ctx.stats.originalInputs, []);
 });
 
-Deno.test("installKeybindings asks dequeue callback for up-arrow even without submission queue", async () => {
+test("installKeybindings asks dequeue callback for up-arrow even without submission queue", async () => {
     const ctx = makeContext();
     ctx.stats.dequeueResult = true;
     installKeybindings(ctx);
@@ -300,7 +295,7 @@ Deno.test("installKeybindings asks dequeue callback for up-arrow even without su
     assertEquals(ctx.stats.originalInputs, []);
 });
 
-Deno.test("installKeybindings previews pasted images before paste processing finishes", async () => {
+test("installKeybindings previews pasted images before paste processing finishes", async () => {
     initRunWieldTheme();
     let finishPasteProcessing = () => {};
     const pasteProcessingDone = new Promise((resolve) => {
@@ -333,7 +328,7 @@ Deno.test("installKeybindings previews pasted images before paste processing fin
     assertEquals(ctx.pastedImages, [{ base64: "YQ==", mimeType: "image/png", ref: "attachment:abc" }]);
 });
 
-Deno.test("installKeybindings removes previews when handleImagePaste blocks", async () => {
+test("installKeybindings removes previews when handleImagePaste blocks", async () => {
     let finishPasteProcessing = () => {};
     const pasteProcessingDone = new Promise((resolve) => {
         finishPasteProcessing = () => resolve(null);
@@ -356,7 +351,7 @@ Deno.test("installKeybindings removes previews when handleImagePaste blocks", as
     assertEquals(ctx.stats.renderCount, 2);
 });
 
-Deno.test("installKeybindings reports pasted image handler failures instead of throwing", async () => {
+test("installKeybindings reports pasted image handler failures instead of throwing", async () => {
     const ctx = makeContext({
         readClipboardImage: () => Promise.resolve({ base64: "YQ==", mimeType: "image/png" }),
         handleImagePaste: () => Promise.reject(new Error("managed_unsupported")),

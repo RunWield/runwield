@@ -3,8 +3,10 @@
  * TUI singleton manager.
  */
 
+import process, { exit, platform } from "node:process";
 import { Key, matchesKey, ProcessTerminal, type Terminal, type TUI, TuiAltScreen } from "@earendil-works/pi-tui";
 import { type BrowserPort, SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
+import { SYSTEM_TUI_CRASH_EVENTS } from "./tui-crash-events.ts";
 import { createTuiCrashGuards } from "./tui-crash-guards.ts";
 import { createTuiManager } from "./tui-manager.ts";
 import { cleanupAgentBrowserSessionSync } from "../../shared/agent-browser-session.ts";
@@ -55,10 +57,17 @@ const tuiManager = createTuiManager<Terminal, TUI>({
 
 const crashGuards = createTuiCrashGuards({
     stop: () => tuiManager.stopTUI(),
-    eventTarget: globalThis,
-    signalRuntime: Deno,
-    os: Deno.build.os,
-    exit: Deno.exit,
+    eventTarget: SYSTEM_TUI_CRASH_EVENTS,
+    signalRuntime: {
+        addSignalListener: (signal, handler) => {
+            process.on(signal, handler);
+        },
+        removeSignalListener: (signal, handler) => {
+            process.off(signal, handler);
+        },
+    },
+    os: platform === "win32" ? "windows" : platform,
+    exit,
     cleanup: cleanupAgentBrowserSessionSync,
 });
 

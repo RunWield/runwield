@@ -1,12 +1,22 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { getDeclaredPlanStatus, loadPlan, savePlan } from "../../plan-store.js";
 import { createTestWorktreeAttempt, makeRepo } from "../../shared/worktree-test-helpers.ts";
 import { removeWorktreeGitArtifacts } from "../../shared/worktree.js";
 import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
 
-Deno.test("load-plan reads the execution Plan without recreating a missing primary Plan", async () => {
+test("load-plan reads the execution Plan without recreating a missing primary Plan", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir({ prefix: "runwield-primary-plan-recovery-" });
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "runwield-primary-plan-recovery-"));
     const planName = "restore-me";
     const planId = "restore-me-id";
     let worktree: Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined;
@@ -28,7 +38,7 @@ Deno.test("load-plan reads the execution Plan without recreating a missing prima
 
         const result = await resolvePlanWithPrimaryRecovery(projectRoot, planName);
 
-        assertEquals(result.plan.path, `${worktree.path}/docs/plans/${planName}.md`);
+        assertEquals(result.plan.path, join(worktree.path, "docs", "plans", `${planName}.md`));
         assertEquals(result.plan.attrs.planId, planId);
         assertStringIncludes(result.plan.markdown, "Execution copy wins.");
         assertEquals(await loadPlan(projectRoot, planName), null);
@@ -36,14 +46,14 @@ Deno.test("load-plan reads the execution Plan without recreating a missing prima
         if (worktree) {
             await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true }).catch(() => {});
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("load-plan leaves a malformed primary Plan untouched and reads the execution Plan", async () => {
+test("load-plan leaves a malformed primary Plan untouched and reads the execution Plan", async () => {
     const projectRoot = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir({ prefix: "runwield-primary-plan-malformed-" });
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "runwield-primary-plan-malformed-"));
     const planName = "repair-malformed";
     const planId = "repair-malformed-id";
     let worktree: Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined;
@@ -62,14 +72,14 @@ Deno.test("load-plan leaves a malformed primary Plan untouched and reads the exe
             worktreeBranch: worktree.branch,
             worktreeBaseBranch: worktree.baseBranch,
         });
-        await Deno.mkdir(`${projectRoot}/docs/plans`, { recursive: true });
+        await fsMkdir(`${projectRoot}/docs/plans`, { recursive: true });
         const malformed = '---\nstatus: "unterminated\n---\n# Broken\n';
-        await Deno.writeTextFile(`${projectRoot}/docs/plans/${planName}.md`, malformed);
+        await fsWriteFile(`${projectRoot}/docs/plans/${planName}.md`, malformed);
 
         const result = await resolvePlanWithPrimaryRecovery(projectRoot, planName);
 
         assertEquals(
-            await Deno.readTextFile(`${projectRoot}/docs/plans/${planName}.md`),
+            await fsReadFile(`${projectRoot}/docs/plans/${planName}.md`, "utf8"),
             malformed,
         );
         assertStringIncludes(result.plan.markdown, "# Recovered");
@@ -77,12 +87,12 @@ Deno.test("load-plan leaves a malformed primary Plan untouched and reads the exe
         if (worktree) {
             await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true }).catch(() => {});
         }
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("load-plan resolves an active Plan by durable planId", async () => {
+test("load-plan resolves an active Plan by durable planId", async () => {
     const projectRoot = await makeRepo();
     const planName = "resolve-by-id";
     const planId = "123e4567-e89b-12d3-a456-426614174000";
@@ -101,11 +111,11 @@ Deno.test("load-plan resolves an active Plan by durable planId", async () => {
         assertEquals(result.plan.planName, planName);
         assertEquals(result.plan.attrs.planId, planId);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("load-plan repairs retired ready_for_review status to implemented", async () => {
+test("load-plan repairs retired ready_for_review status to implemented", async () => {
     const projectRoot = await makeRepo();
     const planName = "retired-review-status";
     try {
@@ -118,15 +128,15 @@ Deno.test("load-plan repairs retired ready_for_review status to implemented", as
             planId: "retired-review-status-id",
         });
         const path = `${projectRoot}/docs/plans/${planName}.md`;
-        const current = await Deno.readTextFile(path);
-        await Deno.writeTextFile(path, current.replace('status: "implemented"', 'status: "ready_for_review"'));
+        const current = await fsReadFile(path, "utf8");
+        await fsWriteFile(path, current.replace('status: "implemented"', 'status: "ready_for_review"'));
 
         const result = await resolvePlanWithPrimaryRecovery(projectRoot, planName);
 
         assertEquals(result.recoveredStatus, { from: "ready_for_review", to: "implemented" });
         assertEquals(result.plan.attrs.status, "implemented");
-        assertEquals(getDeclaredPlanStatus(await Deno.readTextFile(path)), "implemented");
+        assertEquals(getDeclaredPlanStatus(await fsReadFile(path, "utf8")), "implemented");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });

@@ -1,26 +1,42 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { delimiter } from "node:path";
+import { spawn } from "node:child_process";
+import { waitForScriptExit } from "./script-process.ts";
+import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
+import { test } from "node:test";
+import { getCwd } from "../src/constants.js";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 
 // The command intentionally refuses to run off macOS.
-Deno.test("package:homebrew:check registers a tap when brew reports a missing conventional path", {
-    ignore: Deno.build.os !== "darwin",
+test("package:homebrew:check registers a tap when brew reports a missing conventional path", {
+    skip: process.platform !== "darwin",
 }, async () => {
-    const root = await Deno.makeTempDir();
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     const tap = join(root, "rendered-tap");
     const bin = join(root, "bin");
     const log = join(root, "brew.log");
     const missingTap = join(root, "missing-homebrew-tap");
     try {
-        await Deno.mkdir(join(tap, "Formula"), { recursive: true });
-        await Deno.mkdir(bin);
-        await Deno.writeTextFile(join(tap, "Formula", "wld.rb"), "class Wld < Formula\nend\n");
-        await Deno.writeTextFile(join(tap, "Formula", "mnemoteca.rb"), "class Mnemoteca < Formula\nend\n");
-        await Deno.writeTextFile(
+        await fsMkdir(join(tap, "Formula"), { recursive: true });
+        await fsMkdir(bin);
+        await fsWriteFile(join(tap, "Formula", "wld.rb"), "class Wld < Formula\nend\n");
+        await fsWriteFile(join(tap, "Formula", "mnemoteca.rb"), "class Mnemoteca < Formula\nend\n");
+        await fsWriteFile(
             join(tap, "runwield-homebrew-package.json"),
             `${JSON.stringify({ wldTag: "v1.2.3", mnemotecaTag: "v0.3.3" })}\n`,
         );
         const brew = join(bin, "brew");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             brew,
             `#!/bin/sh
 printf '%s\\n' "$*" >> "$BREW_LOG"
@@ -37,20 +53,24 @@ printf 'intentional stop after tap registration\\n' >&2
 exit 42
 `,
         );
-        await Deno.chmod(brew, 0o755);
+        await fsChmod(brew, 0o755);
 
-        const child = new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "scripts/package-homebrew-check.js", "--tap", tap],
-            cwd: Deno.cwd(),
-            env: {
-                PATH: `${bin}:${Deno.env.get("PATH") || ""}`,
-                BREW_LOG: log,
-                MISSING_TAP: missingTap,
-                BREW_RELEASE: join(root, "release"),
+        const child = spawn(
+            process.execPath,
+            runtimeSourceArgs(["run", "-A", "scripts/package-homebrew-check.js", "--tap", tap]),
+            {
+                cwd: getCwd(),
+                env: {
+                    ...process.env,
+                    PATH: `${bin}${delimiter}${process.env["PATH"] || ""}`,
+                    BREW_LOG: log,
+                    MISSING_TAP: missingTap,
+                    BREW_RELEASE: join(root, "release"),
+                },
+                stdio: ["ignore", "pipe", "pipe"],
             },
-            stdout: "piped",
-            stderr: "piped",
-        }).spawn();
+        );
+        const status = waitForScriptExit(child);
         let stdout = "";
         let stderr = "";
         const readStdout = (async () => {
@@ -69,12 +89,12 @@ exit 42
                 await new Promise((resolve) => setTimeout(resolve, 50));
             }
         } finally {
-            await Deno.writeTextFile(join(root, "release"), "");
+            await fsWriteFile(join(root, "release"), "");
         }
-        const output = await child.status;
+        const output = await status;
         await Promise.all([readStdout, readStderr]);
         assertEquals(streamed, true, "Both streams must be visible before brew exits");
-        const calls = (await Deno.readTextFile(log)).trim().split("\n");
+        const calls = (await fsReadFile(log, "utf8")).trim().split("\n");
 
         assertEquals(output.success, false);
         assertStringIncludes(stderr, "intentional stop after tap registration");
@@ -86,6 +106,6 @@ exit 42
             `tap gandazgul/tap file://${tap}`,
         ]);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

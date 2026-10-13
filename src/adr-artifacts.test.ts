@@ -1,6 +1,9 @@
-import { assert, assertEquals } from "@std/assert";
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
-import { join } from "@std/path";
+import { assertEquals } from "./testing/assertions.ts";
+import { test } from "node:test";
+import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
+import { join } from "node:path";
 
 interface AdrFrontMatter {
     status: string;
@@ -10,13 +13,13 @@ const ADR_DIR = "docs/adr";
 const ALLOWED_ADR_STATUSES = new Set(["proposed", "accepted"]);
 
 async function* walkMarkdownFiles(dir: string): AsyncGenerator<string> {
-    for await (const entry of Deno.readDir(dir)) {
+    for await (const entry of await fsReaddir(dir, { withFileTypes: true })) {
         const path = join(dir, entry.name);
-        if (entry.isDirectory) {
+        if (entry.isDirectory()) {
             yield* walkMarkdownFiles(path);
             continue;
         }
-        if (entry.isFile && entry.name.endsWith(".md")) yield path;
+        if (entry.isFile() && entry.name.endsWith(".md")) yield path;
     }
 }
 
@@ -25,11 +28,11 @@ function frontMatterText(markdown: string): string {
     return match?.[1] || "";
 }
 
-Deno.test("ADR artifacts use required machine-readable status front matter", async () => {
+test("ADR artifacts use required machine-readable status front matter", async () => {
     const checkedPaths = [];
     for await (const path of walkMarkdownFiles(ADR_DIR)) {
         checkedPaths.push(path);
-        const markdown = await Deno.readTextFile(path);
+        const markdown = await fsReadFile(path, "utf8");
         assert(hasFrontMatter(markdown), `${path} must start with YAML front matter`);
 
         const statusFields = frontMatterText(markdown).split("\n").filter((line) => /^status\s*:/.test(line));

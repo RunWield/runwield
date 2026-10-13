@@ -1,3 +1,6 @@
+import { serveHttp } from "../../shared/http-server.ts";
+import process from "node:process";
+import { mkdir as fsMkdir } from "node:fs/promises";
 /**
  * Self-hosted remote Workspace Plan Server entry point.
  *
@@ -5,7 +8,7 @@
  * Plan Board authority and stores remote Shared Space state in SQLite.
  */
 
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { DEFAULT_REMOTE_MAX_REQUEST_BYTES } from "./routes/remote-api.js";
 import { createRemoteWorkspaceApp } from "./server.js";
 
@@ -64,7 +67,11 @@ export function parseRetentionDays(value: string | undefined): number | undefine
     return days;
 }
 
-export function readRemoteServerConfig(env: Deno.Env): RemoteServerConfig {
+interface ServerEnvironment {
+    get(name: string): string | undefined;
+}
+
+export function readRemoteServerConfig(env: ServerEnvironment): RemoteServerConfig {
     return {
         host: env.get("RUNWIELD_REMOTE_HOST") || env.get("HOST") || DEFAULT_REMOTE_HOST,
         port: parsePort(env.get("RUNWIELD_REMOTE_PORT") || env.get("PORT"), DEFAULT_REMOTE_PORT),
@@ -77,10 +84,10 @@ export function readRemoteServerConfig(env: Deno.Env): RemoteServerConfig {
 
 function installShutdownHandlers(controller: AbortController): () => void {
     const handler = () => controller.abort();
-    const signals: Deno.Signal[] = ["SIGINT", "SIGTERM"];
-    for (const signal of signals) Deno.addSignalListener(signal, handler);
+    const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+    for (const signal of signals) process.on(signal, handler);
     return () => {
-        for (const signal of signals) Deno.removeSignalListener(signal, handler);
+        for (const signal of signals) process.off(signal, handler);
     };
 }
 
@@ -99,7 +106,7 @@ export async function runRemoteWorkspaceServer(
     let adapter: ReturnType<typeof createRemoteWorkspaceApp>["adapter"] | undefined;
 
     try {
-        await Deno.mkdir(dirname(config.dbPath), { recursive: true });
+        await fsMkdir(dirname(config.dbPath), { recursive: true });
         const app = createRemoteWorkspaceApp({
             mode: "remote",
             dbPath: config.dbPath,
@@ -124,7 +131,7 @@ export async function runRemoteWorkspaceServer(
                 }
             }, REMOTE_CLEANUP_INTERVAL_MS);
         }
-        const server = Deno.serve({
+        const server = serveHttp({
             hostname: config.host,
             port: config.port,
             signal,
@@ -148,7 +155,7 @@ export async function main(): Promise<void> {
     const removeShutdownHandlers = installShutdownHandlers(controller);
     try {
         await runRemoteWorkspaceServer(
-            readRemoteServerConfig(Deno.env),
+            readRemoteServerConfig({ get: (name) => process.env[name] }),
             controller.signal,
             SYSTEM_REMOTE_SERVER_CLOCK,
             console.log,

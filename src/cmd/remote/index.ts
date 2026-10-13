@@ -1,6 +1,11 @@
+import process from "node:process";
+import { getCwd } from "../../constants.js";
+import { type NativeProcess, spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { readableStdin } from "../../shared/stdin-stream.ts";
+import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 /* CLI-only remote connection. SSH supplies authentication, host verification and
  * terminal transport. No project or personal context is opened on the laptop. */
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { linuxTarget, prepareRemoteRuntime } from "../../shared/remote/runtime.js";
 import { fixedPythonCommand, resolveRemoteTarget } from "../../shared/remote/target.ts";
 import { type MountHeader, startLaptopSftp } from "../../shared/remote/sftp-mount.ts";
@@ -8,7 +13,8 @@ import { VERSION } from "../../shared/version.js";
 import { downloadReleaseRuntime } from "../../shared/remote/release-artifact.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "../../shared/remote/model-proof-config.ts";
 
-export const REMOTE_USAGE = "Usage: wld remote <ssh-host>[:<remote-directory>]\n" +
+export const REMOTE_USAGE =
+    "Usage: wld remote <ssh-host>[:<remote-directory>]\n" +
     "Open an existing remote Linux directory (defaults to the remote home). Laptop ~/.wld is mounted at remote ~/.wld.\n" +
     "Released launchers use their exact VERSION-tagged GNU/Linux asset; development builds require a matching local artifact.\n" +
     "This connection cannot accept a user turn or open a saved Session.";
@@ -41,7 +47,8 @@ export function parseRemoteDestination(value: string): { host: string; path: str
 /** Never join or resolve a remote locator through laptop path functions. */
 function remoteExecutable(buildId: string, target: string, checksum: string): string {
     if (
-        !/^[a-f0-9]{64}$/.test(buildId) || !/^[a-f0-9]{64}$/.test(checksum) ||
+        !/^[a-f0-9]{64}$/.test(buildId) ||
+        !/^[a-f0-9]{64}$/.test(checksum) ||
         !["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"].includes(target)
     ) {
         throw new Error("Invalid remote runtime identity");
@@ -49,7 +56,13 @@ function remoteExecutable(buildId: string, target: string, checksum: string): st
     return `"$HOME/.cache/runwield/runtime/${buildId}/${target}/${checksum}/wld"`;
 }
 
-async function stopOwnedSsh(child: Deno.ChildProcess, settled: () => boolean): Promise<void> {
+async function writeTerminal(bytes: Uint8Array): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+        process.stdout.write(bytes, (error) => (error ? reject(error) : resolve()));
+    });
+}
+
+async function stopOwnedSsh(child: NativeProcess, settled: () => boolean): Promise<void> {
     if (settled()) return;
     const graceful = await Promise.race([
         child.status.then(() => true),
@@ -59,11 +72,13 @@ async function stopOwnedSsh(child: Deno.ChildProcess, settled: () => boolean): P
         // Only our detached SSH group is eligible; its remote peer also has
         // independent health and terminal-closure monitoring.
         try {
-            Deno.kill(-child.pid, "SIGKILL");
+            process.kill(-child.pid, "SIGKILL");
         } catch {
             try {
                 child.kill("SIGKILL");
-            } catch { /* Exited. */ }
+            } catch {
+                /* Exited. */
+            }
         }
     }
     await child.status;
@@ -115,23 +130,29 @@ async function waitForReady(
     throw new Error("Remote supervisor did not reach readiness");
 }
 
-async function sendPrivateHeader(host: string, socket: string, signal: AbortSignal, header: {
-    credential: string;
-    port: number;
-    buildId: string;
-    protocol: number;
-    view: { host: string; cwd: string; status: string; trust: string; readiness: string };
-    mount: MountHeader;
-    remoteHome: string;
-    modelProof?: RemoteModelProof;
-}): Promise<void> {
-    const child = new Deno.Command("ssh", {
+async function sendPrivateHeader(
+    host: string,
+    socket: string,
+    signal: AbortSignal,
+    header: {
+        credential: string;
+        port: number;
+        buildId: string;
+        protocol: number;
+        view: { host: string; cwd: string; status: string; trust: string; readiness: string };
+        mount: MountHeader;
+        remoteHome: string;
+        modelProof?: RemoteModelProof;
+    },
+): Promise<void> {
+    const child = spawnNativeProcess("ssh", {
+        cwd: getCwd(),
         args: ["-T", "--", host, DELIVER_HEADER],
         signal,
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const output = Promise.all([child.status, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     try {
         const writer = child.stdin.getWriter();
@@ -148,7 +169,9 @@ async function sendPrivateHeader(host: string, socket: string, signal: AbortSign
     } catch (error) {
         try {
             child.kill();
-        } catch { /* Already exited. */ }
+        } catch {
+            /* Already exited. */
+        }
         await output.catch(() => undefined);
         throw error;
     }
@@ -162,22 +185,27 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     }
     if (args.length !== 1) throw new Error(REMOTE_USAGE);
     const { host, path } = parseRemoteDestination(args[0]);
-    const proofEnv = Deno.env.get("WLD_REMOTE_MODEL_PROOF");
+    const proofEnv = process.env.WLD_REMOTE_MODEL_PROOF;
     const modelProof = proofEnv === undefined ? undefined : parseRemoteModelProof(proofEnv);
     let identity: { BUILD_ID: string; REMOTE_PROTOCOL_VERSION: number };
     try {
         identity = await import("../../shared/build-identity.js");
     } catch (error) {
-        if (!(error instanceof TypeError && error.message.includes("build-identity.js"))) throw error;
+        const missingIdentity =
+            error instanceof Error &&
+            error.message.includes("build-identity.js") &&
+            (error instanceof TypeError ||
+                ("code" in error && ["ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND"].includes(String(error.code))));
+        if (!missingIdentity) throw error;
         throw new Error(
-            "No launcher build identity. Build the launcher and matching Linux artifact explicitly with deno run -A scripts/compile.js --output bin/wld.",
+            "No launcher build identity. Build the launcher and matching Linux artifact explicitly with bun run compile --output bin/wld.",
         );
     }
     const { BUILD_ID, REMOTE_PROTOCOL_VERSION } = identity;
     const setupAbort = new AbortController();
     const cancelSetup = () => setupAbort.abort();
-    Deno.addSignalListener("SIGINT", cancelSetup);
-    Deno.addSignalListener("SIGTERM", cancelSetup);
+    process.on("SIGINT", cancelSetup);
+    process.on("SIGTERM", cancelSetup);
     let target: Awaited<ReturnType<typeof resolveRemoteTarget>>;
     let triple: string;
     let executable: string;
@@ -188,23 +216,28 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         const suffix = triple === "x86_64-unknown-linux-gnu" ? "linux-x64" : "linux-arm64";
         // Released launchers never substitute a development or latest asset.
         const release = VERSION.startsWith("v")
-            ? await downloadReleaseRuntime(VERSION, suffix, {
-                buildId: BUILD_ID,
-                protocol: REMOTE_PROTOCOL_VERSION,
-                version: VERSION,
-            }, setupAbort.signal)
+            ? await downloadReleaseRuntime(
+                  VERSION,
+                  suffix,
+                  {
+                      buildId: BUILD_ID,
+                      protocol: REMOTE_PROTOCOL_VERSION,
+                      version: VERSION,
+                  },
+                  setupAbort.signal,
+              )
             : null;
-        const artifact = release?.artifact ?? join(dirname(Deno.execPath()), `wld-${triple}`);
+        const artifact = release?.artifact ?? join(dirname(process.execPath), `wld-${triple}`);
         try {
             ({ path: executable } = await prepareRemoteRuntime(host, target, artifact, "ssh", setupAbort.signal));
-            metadata = JSON.parse(await Deno.readTextFile(`${artifact}.build.json`));
+            metadata = JSON.parse(await fsReadFile(`${artifact}.build.json`, "utf8"));
         } finally {
-            if (release) await Deno.remove(release.directory, { recursive: true });
+            if (release) await fsRm(release.directory, { recursive: true });
         }
         if (setupAbort.signal.aborted) throw new Error("Remote connection canceled");
     } finally {
-        Deno.removeSignalListener("SIGINT", cancelSetup);
-        Deno.removeSignalListener("SIGTERM", cancelSetup);
+        process.off("SIGINT", cancelSetup);
+        process.off("SIGTERM", cancelSetup);
     }
     // An untrusted SSH reply is never executed. Compare the exact private cache
     // path generated from the known identity and the local verified checksum.
@@ -219,10 +252,10 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         await sftp.close();
         throw error;
     }
-    let child: Deno.ChildProcess | undefined;
+    let child: NativeProcess | undefined;
     let exited = false;
     let raw = false;
-    let inputStarted = false;
+    let inputReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let interrupted = false;
     const connectionAbort = new AbortController();
     const onInterrupt = () => {
@@ -231,15 +264,20 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         service.requestShutdown();
         try {
             child?.kill("SIGTERM");
-        } catch { /* Already exited. */ }
+        } catch {
+            /* Already exited. */
+        }
     };
-    Deno.addSignalListener("SIGINT", onInterrupt);
-    Deno.addSignalListener("SIGTERM", onInterrupt);
+    process.on("SIGINT", onInterrupt);
+    process.on("SIGTERM", onInterrupt);
     try {
-        const command = `exec ${
-            remoteExecutable(BUILD_ID, triple, metadata.sha256)
-        } --remote-supervisor ${service.port}`;
-        child = new Deno.Command("ssh", {
+        const command = `exec ${remoteExecutable(
+            BUILD_ID,
+            triple,
+            metadata.sha256,
+        )} --remote-supervisor ${service.port}`;
+        child = spawnNativeProcess("ssh", {
+            cwd: getCwd(),
             args: [
                 "-tt",
                 "-o",
@@ -255,8 +293,8 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
             stdin: "piped",
             stdout: "piped",
             stderr: "piped",
-            ...(Deno.build.os === "windows" ? {} : { detached: true }),
-        }).spawn();
+            ...(process.platform === "win32" ? {} : { detached: true }),
+        });
         const ssh = child;
         const status = ssh.status.then((result) => {
             exited = true;
@@ -301,25 +339,29 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
                 outputDetail += new TextDecoder().decode(value);
             }
             output.releaseLock();
-            const detail = `${outputDetail}\n${await stderr}`.trim().replaceAll(service.credential, "[redacted]")
+            const detail = `${outputDetail}\n${await stderr}`
+                .trim()
+                .replaceAll(service.credential, "[redacted]")
                 .replaceAll(sftp.header.sftpSecret, "[redacted]");
             throw new Error(`Remote connection did not become ready: ${detail || "remote supervisor exited"}`);
         }
         // Only terminal bytes ever enter the interactive SSH channel.
-        if (Deno.stdin.isTerminal()) {
-            Deno.stdin.setRaw(true);
+        if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
             raw = true;
         }
-        inputStarted = true;
+        const terminalInput = readableStdin().getReader();
+        inputReader = terminalInput;
         const input = (async () => {
             try {
                 while (!exited && !interrupted) {
-                    const bytes = new Uint8Array(4096);
-                    const count = await Deno.stdin.read(bytes);
-                    if (count === null) break;
-                    await writer.write(bytes.subarray(0, count));
+                    const { done, value } = await terminalInput.read();
+                    if (done) break;
+                    await writer.write(value);
                 }
-            } catch { /* Terminal or SSH closed. */ }
+            } catch {
+                /* Terminal or SSH closed. */
+            }
             if (!exited) {
                 interrupted = true;
                 service.requestShutdown();
@@ -328,11 +370,11 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         void input.catch(() => undefined);
         const terminalOutput = (async () => {
             try {
-                if (ready.remainder.length) await Deno.stdout.write(ready.remainder);
+                if (ready.remainder.length) await writeTerminal(ready.remainder);
                 while (true) {
                     const { done, value } = await output.read();
                     if (done) break;
-                    await Deno.stdout.write(value);
+                    await writeTerminal(value);
                 }
             } finally {
                 output.releaseLock();
@@ -351,19 +393,22 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         }
         if (service.status().shutdown && !exited) throw new Error("Remote control lost; termination uncertain");
     } finally {
-        Deno.removeSignalListener("SIGINT", onInterrupt);
-        Deno.removeSignalListener("SIGTERM", onInterrupt);
+        process.off("SIGINT", onInterrupt);
+        process.off("SIGTERM", onInterrupt);
         service.requestShutdown();
         if (child) {
             await stopOwnedSsh(child, () => exited).catch(() =>
-                console.error("Remote SSH exit could not be confirmed")
+                console.error("Remote SSH exit could not be confirmed"),
             );
         }
         await service.close();
         await sftp.close();
-        if (raw) Deno.stdin.setRaw(false);
+        if (raw) process.stdin.setRawMode(false);
         // A pending terminal read otherwise keeps the launcher alive after
         // SSH and the remote TUI have both exited.
-        if (inputStarted) Deno.stdin.close();
+        if (inputReader) {
+            await inputReader.cancel().catch(() => {});
+            inputReader.releaseLock();
+        }
     }
 }

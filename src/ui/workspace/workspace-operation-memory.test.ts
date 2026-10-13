@@ -1,4 +1,8 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { serveHttp } from "../../shared/http-server.ts";
+import { test } from "node:test";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import type { RuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import type { ManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -67,7 +71,7 @@ async function frame(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<O
     return JSON.parse(text.slice(6)) as OperationFrame;
 }
 
-Deno.test("completed create and continuation operations discard live payloads but keep retries", async () => {
+test("completed create and continuation operations discard live payloads but keep retries", async () => {
     await withWorkspace(async ({ fixture, service, environment }) => {
         let turn = 0;
         environment.setModelResponseFactory(() =>
@@ -130,7 +134,7 @@ Deno.test("completed create and continuation operations discard live payloads bu
     });
 });
 
-Deno.test("unread operation stream coalesces 500 KiB of updates and delivers the final state before EOF", async () => {
+test("unread operation stream coalesces 500 KiB of updates and delivers the final state before EOF", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
         const inModel = new Promise<void>((resolve) => {
@@ -158,7 +162,7 @@ Deno.test("unread operation stream coalesces 500 KiB of updates and delivers the
             const candidate: (() => void) | undefined = Reflect.get(globalThis, "gc");
             const gc = typeof candidate === "function" ? candidate : null;
             gc?.();
-            const baseline = gc ? Deno.memoryUsage().external : 0;
+            const baseline = gc ? process.memoryUsage().external : 0;
             // A real create owner remains active. Feed its live event path while the reader does not pull.
             for (let index = 0; index < 500; index++) {
                 service.appendOperationEvent(started.operationId, {
@@ -173,7 +177,7 @@ Deno.test("unread operation stream coalesces 500 KiB of updates and delivers the
             }
             assertEquals(service.operations.get(started.operationId)!.events.length >= 500, true);
             gc?.();
-            const observedExternal = gc ? Deno.memoryUsage().external - baseline : 0;
+            const observedExternal = gc ? process.memoryUsage().external - baseline : 0;
             release();
             const final = await completed(service, started.operationId);
             assertEquals(final.status, "completed");
@@ -198,7 +202,7 @@ Deno.test("unread operation stream coalesces 500 KiB of updates and delivers the
                     text: "Control.",
                 });
                 gc();
-                const controlBaseline = Deno.memoryUsage().external;
+                const controlBaseline = process.memoryUsage().external;
                 for (let index = 0; index < 500; index++) {
                     service.appendOperationEvent(control.operationId, {
                         type: "assistant_text_delta",
@@ -211,7 +215,7 @@ Deno.test("unread operation stream coalesces 500 KiB of updates and delivers the
                     });
                 }
                 gc();
-                const controlExternal = Deno.memoryUsage().external - controlBaseline;
+                const controlExternal = process.memoryUsage().external - controlBaseline;
                 assert(
                     observedExternal - controlExternal < 4 * 1024 * 1024,
                     `Unread observer added ${
@@ -230,7 +234,7 @@ Deno.test("unread operation stream coalesces 500 KiB of updates and delivers the
     });
 });
 
-Deno.test("abort, cancel and owner revocation release streams; late events do not reopen finished operations", async () => {
+test("abort, cancel and owner revocation release streams; late events do not reopen finished operations", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
         const inModel = new Promise<void>((resolve) => {
@@ -296,7 +300,7 @@ Deno.test("abort, cancel and owner revocation release streams; late events do no
     });
 });
 
-Deno.test("a loopback client disconnect releases the owner stream while its operation continues", async () => {
+test("a loopback client disconnect releases the owner stream while its operation continues", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
         const inModel = new Promise<void>((resolve) => entered = resolve);
@@ -312,7 +316,7 @@ Deno.test("a loopback client disconnect releases the owner stream while its oper
             requestId: "loopback-disconnect",
             text: "Start.",
         });
-        const server = Deno.serve(
+        const server = serveHttp(
             { hostname: "127.0.0.1", port: 0, onListen() {} },
             (req) =>
                 ownerSessionOperationStreamApi({
@@ -357,7 +361,7 @@ Deno.test("a loopback client disconnect releases the owner stream while its oper
     });
 });
 
-Deno.test("a slow loopback client receives completion and EOF after the owner turn", async () => {
+test("a slow loopback client receives completion and EOF after the owner turn", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
         const inModel = new Promise<void>((resolve) => entered = resolve);
@@ -373,7 +377,7 @@ Deno.test("a slow loopback client receives completion and EOF after the owner tu
             requestId: "loopback-slow",
             text: "Start.",
         });
-        const server = Deno.serve(
+        const server = serveHttp(
             { hostname: "127.0.0.1", port: 0, onListen() {} },
             (req) =>
                 ownerSessionOperationStreamApi({
@@ -429,7 +433,7 @@ Deno.test("a slow loopback client receives completion and EOF after the owner tu
     });
 });
 
-Deno.test("a subscribed operation stream reports a new owner turn without a polling delay", async () => {
+test("a subscribed operation stream reports a new owner turn without a polling delay", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
         const inModel = new Promise<void>((resolve) => {
@@ -482,7 +486,7 @@ Deno.test("a subscribed operation stream reports a new owner turn without a poll
     });
 });
 
-Deno.test("a completed owner subscription sends its final frame and detaches synchronously", async () => {
+test("a completed owner subscription sends its final frame and detaches synchronously", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         environment.setModelResponseFactory(() => fauxAssistantMessage(fauxText("done")));
         const started = await service.createSession({
@@ -506,7 +510,7 @@ Deno.test("a completed owner subscription sends its final frame and detaches syn
     });
 });
 
-Deno.test("a stopped agent retains one compact attention event after the owner turn", async () => {
+test("a stopped agent retains one compact attention event after the owner turn", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
         const inModel = new Promise<void>((resolve) => entered = resolve);
@@ -551,7 +555,7 @@ Deno.test("a stopped agent retains one compact attention event after the owner t
     });
 });
 
-Deno.test("three differently paced owner readers see bounded updates and the same final state", async () => {
+test("three differently paced owner readers see bounded updates and the same final state", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         let entered!: () => void;
         const inModel = new Promise<void>((resolve) => entered = resolve);
@@ -577,7 +581,7 @@ Deno.test("three differently paced owner readers see bounded updates and the sam
             const candidate: (() => void) | undefined = Reflect.get(globalThis, "gc");
             const gc = typeof candidate === "function" ? candidate : null;
             gc?.();
-            const baseline = gc ? Deno.memoryUsage().external : 0;
+            const baseline = gc ? process.memoryUsage().external : 0;
             for (let index = 0; index < 500; index++) {
                 service.appendOperationEvent(started.operationId, {
                     type: "assistant_text_delta",
@@ -596,8 +600,8 @@ Deno.test("three differently paced owner readers see bounded updates and the sam
             gc?.();
             if (gc) {
                 assert(
-                    Deno.memoryUsage().external - baseline < 8 * 1024 * 1024,
-                    `Three-reader external buffers grew by ${Deno.memoryUsage().external - baseline} bytes`,
+                    process.memoryUsage().external - baseline < 8 * 1024 * 1024,
+                    `Three-reader external buffers grew by ${process.memoryUsage().external - baseline} bytes`,
                 );
             }
             release();
@@ -619,7 +623,7 @@ Deno.test("three differently paced owner readers see bounded updates and the sam
     });
 });
 
-Deno.test("a request rejected before Session creation does not retain a stream or reuse a changed request id", async () => {
+test("a request rejected before Session creation does not retain a stream or reuse a changed request id", async () => {
     await withWorkspace(async ({ fixture, service, connections, environment }) => {
         environment.setModelResponseFactory(() => fauxAssistantMessage(fauxText("done")));
         const options = { projectId: fixture.project.projectId, requestId: "create-id", text: "Start." };

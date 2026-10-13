@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { serveHttp } from "../http-server.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     type AssistantMessage,
@@ -97,7 +100,7 @@ async function fixture() {
     );
     await source.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(source);
-    const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) => {
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) => {
         if (request.headers.get("Authorization") !== "Bearer test-secret") return new Response(null, { status: 401 });
         return handleModelRequest(bridge, request, new URL(request.url).pathname);
     });
@@ -119,7 +122,7 @@ async function fixture() {
     };
 }
 
-Deno.test("model bridge does not offer or execute external CLI provider models", async () => {
+test("model bridge does not offer or execute external CLI provider models", async () => {
     const source = await ModelRuntime.create({
         credentials: new InMemoryCredentialStore(),
         modelsPath: null,
@@ -169,7 +172,7 @@ Deno.test("model bridge does not offer or execute external CLI provider models",
     }
 });
 
-Deno.test("remote model catalog omits endpoints and headers while projecting Pi availability", async () => {
+test("remote model catalog omits endpoints and headers while projecting Pi availability", async () => {
     const test = await fixture();
     try {
         const catalog = await fetchRemoteModelCatalog(test.connection);
@@ -184,7 +187,7 @@ Deno.test("remote model catalog omits endpoints and headers while projecting Pi 
     }
 });
 
-Deno.test("providers missing from laptop catalog cannot use remote ambient credentials", async () => {
+test("providers missing from laptop catalog cannot use remote ambient credentials", async () => {
     const test = await fixture();
     try {
         const catalog = await fetchRemoteModelCatalog(test.connection);
@@ -201,7 +204,7 @@ Deno.test("providers missing from laptop catalog cannot use remote ambient crede
     }
 });
 
-Deno.test("remote Pi stream and simple stream preserve terminal result", async () => {
+test("remote Pi stream and simple stream preserve terminal result", async () => {
     const test = await fixture();
     try {
         const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));
@@ -220,7 +223,7 @@ Deno.test("remote Pi stream and simple stream preserve terminal result", async (
     }
 });
 
-Deno.test("laptop provider error settles without exporting sensitive diagnostic text", async () => {
+test("laptop provider error settles without exporting sensitive diagnostic text", async () => {
     const test = await fixture();
     try {
         test.setProviderError();
@@ -232,7 +235,7 @@ Deno.test("laptop provider error settles without exporting sensitive diagnostic 
     }
 });
 
-Deno.test("laptop transient provider errors retain a safe Pi retry category", async () => {
+test("laptop transient provider errors retain a safe Pi retry category", async () => {
     const test = await fixture();
     try {
         test.setProviderError("Unexpected EOF at https://private.invalid?token=secret");
@@ -244,9 +247,9 @@ Deno.test("laptop transient provider errors retain a safe Pi retry category", as
     }
 });
 
-Deno.test("remote transport loss settles a stream result as an error", async () => {
+test("remote transport loss settles a stream result as an error", async () => {
     const test = await fixture();
-    const interrupted = Deno.serve(
+    const interrupted = serveHttp(
         { hostname: "127.0.0.1", port: 0, onListen() {} },
         () =>
             new Response(
@@ -269,7 +272,7 @@ Deno.test("remote transport loss settles a stream result as an error", async () 
     }
 });
 
-Deno.test("remote cancellation settles result and aborts laptop provider", async () => {
+test("remote cancellation settles result and aborts laptop provider", async () => {
     const test = await fixture();
     try {
         test.setPending();
@@ -288,7 +291,7 @@ Deno.test("remote cancellation settles result and aborts laptop provider", async
     }
 });
 
-Deno.test("cancel before start prevents a late paid request and duplicate IDs cannot replay", async () => {
+test("cancel before start prevents a late paid request and duplicate IDs cannot replay", async () => {
     const test = await fixture();
     try {
         test.bridge.cancel("late-request");
@@ -313,7 +316,7 @@ Deno.test("cancel before start prevents a late paid request and duplicate IDs ca
     }
 });
 
-Deno.test("remote stream rejects unsupported hooks before provider execution", async () => {
+test("remote stream rejects unsupported hooks before provider execution", async () => {
     const test = await fixture();
     try {
         const runtime = await createRemoteModelRuntime(test.connection, await fetchRemoteModelCatalog(test.connection));

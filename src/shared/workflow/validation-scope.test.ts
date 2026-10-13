@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     extractDiffPaths,
     hasImplementationDiff,
@@ -16,7 +17,7 @@ const meta = (classification: TriageMeta["classification"], extra: Partial<Triag
 // One rule, two names. Asserting through both names is what keeps the alias honest:
 // if someone gives `requiresImplementationDiff` its own body, this is where the two
 // have to be pulled apart deliberately.
-Deno.test("routing and evidence read through one rule", () => {
+test("routing and evidence read through one rule", () => {
     // FEATURE is a legacy alias for PLANNED_CHANGE, not a third behavior. Pinned here
     // because "FEATURE is excluded" is the natural wrong guess from the name alone.
     for (const classification of ["PLANNED_CHANGE", "PROJECT", "FEATURE"] as const) {
@@ -29,7 +30,7 @@ Deno.test("routing and evidence read through one rule", () => {
     assertEquals(requiresImplementationDiff(undefined), false);
 });
 
-Deno.test("only a child Plan with a parent hands back to its Epic", () => {
+test("only a child Plan with a parent hands back to its Epic", () => {
     assertEquals(shouldContinueParentEpicAfterValidation(meta("PLANNED_CHANGE", { parentPlan: "epic" })), true);
     assertEquals(shouldContinueParentEpicAfterValidation(meta("PLANNED_CHANGE")), false);
     assertEquals(shouldContinueParentEpicAfterValidation(meta("PLANNED_CHANGE", { parentPlan: "   " })), false);
@@ -37,7 +38,7 @@ Deno.test("only a child Plan with a parent hands back to its Epic", () => {
     assertEquals(shouldContinueParentEpicAfterValidation(meta("PROJECT", { parentPlan: "epic" })), false);
 });
 
-Deno.test("implementation diffs are distinguished from Plan-only edits", () => {
+test("implementation diffs are distinguished from Plan-only edits", () => {
     const planOnly = "diff --git a/docs/plans/demo.md b/docs/plans/demo.md\n";
     const withCode = `${planOnly}diff --git a/src/thing.ts b/src/thing.ts\n`;
 

@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     buildNativeNotificationSequence,
     createSystemNotificationNotifier,
@@ -72,7 +75,7 @@ function makeNotificationFixture(options: NotificationFixtureOptions = {}): Noti
     return { notify, terminal };
 }
 
-Deno.test("resolveNotificationSettings defaults on and normalizes malformed values", () => {
+test("resolveNotificationSettings defaults on and normalizes malformed values", () => {
     assertEquals(resolveNotificationSettings(undefined), {
         enabled: true,
         activation: "tab",
@@ -109,7 +112,7 @@ Deno.test("resolveNotificationSettings defaults on and normalizes malformed valu
     );
 });
 
-Deno.test("detectTerminalIdentity captures terminal environment without subprocess tty lookup", () => {
+test("detectTerminalIdentity captures terminal environment without subprocess tty lookup", () => {
     const identity = detectTerminalIdentity("demo", {
         env: {
             TERM_PROGRAM: "iTerm.app",
@@ -126,7 +129,7 @@ Deno.test("detectTerminalIdentity captures terminal environment without subproce
     assertEquals(identity.pid, 42);
 });
 
-Deno.test("selectNativeNotificationProtocol maps supported terminal families conservatively", () => {
+test("selectNativeNotificationProtocol maps supported terminal families conservatively", () => {
     assertEquals(
         selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. - s", term: "xterm-kitty" }),
         "osc99",
@@ -154,14 +157,14 @@ Deno.test("selectNativeNotificationProtocol maps supported terminal families con
     assertEquals(selectNativeNotificationProtocol({ sessionLabel: "s", terminalTitle: "W. - s" }), "unsupported");
 });
 
-Deno.test("shouldSuppressAttentionNotification suppresses only known focused terminals by default", () => {
+test("shouldSuppressAttentionNotification suppresses only known focused terminals by default", () => {
     assertEquals(shouldSuppressAttentionNotification({ suppressWhenFocused: true }, "focused"), true);
     assertEquals(shouldSuppressAttentionNotification({ suppressWhenFocused: true }, "unfocused"), false);
     assertEquals(shouldSuppressAttentionNotification({ suppressWhenFocused: true }, "unknown"), false);
     assertEquals(shouldSuppressAttentionNotification({ suppressWhenFocused: false }, "focused"), false);
 });
 
-Deno.test("buildNativeNotificationSequence emits iTerm2 OSC 9 safely", () => {
+test("buildNativeNotificationSequence emits iTerm2 OSC 9 safely", () => {
     const sequence = buildNativeNotificationSequence("osc9", "Hello\x1b]bad\x07;title", "Line\nmessage");
     assert(sequence);
     assertStringIncludes(sequence, "\x1b]9;");
@@ -170,12 +173,12 @@ Deno.test("buildNativeNotificationSequence emits iTerm2 OSC 9 safely", () => {
     assertEquals(sequence.includes(";title"), false);
 });
 
-Deno.test("buildNativeNotificationSequence emits WezTerm and Ghostty OSC 777 safely", () => {
+test("buildNativeNotificationSequence emits WezTerm and Ghostty OSC 777 safely", () => {
     const sequence = buildNativeNotificationSequence("osc777", "Title;part", "Message\x07part");
     assertEquals(sequence, "\x1b]777;notify;Title part;Message part\x07");
 });
 
-Deno.test("buildNativeNotificationSequence emits Kitty OSC 99 with unfocused option and encoded text", () => {
+test("buildNativeNotificationSequence emits Kitty OSC 99 with unfocused option and encoded text", () => {
     const sequence = buildNativeNotificationSequence("osc99", "Title;\x1b", "Message\x07\x1b\\done");
     assertEquals(
         sequence,
@@ -184,7 +187,7 @@ Deno.test("buildNativeNotificationSequence emits Kitty OSC 99 with unfocused opt
     );
 });
 
-Deno.test("notifyRunWieldEvent never reaches notifications from a Golden TUI run", async () => {
+test("notifyRunWieldEvent never reaches notifications from a Golden TUI run", async () => {
     const { notify, terminal } = makeNotificationFixture({
         env: { WLD_GOLDEN_TUI: "1", TERM_PROGRAM: "iTerm.app" },
     });
@@ -198,7 +201,7 @@ Deno.test("notifyRunWieldEvent never reaches notifications from a Golden TUI run
     assertEquals(terminal.writes, []);
 });
 
-Deno.test("notifyRunWieldEvent emits unsupported-terminal BEL fallback when enabled", async () => {
+test("notifyRunWieldEvent emits unsupported-terminal BEL fallback when enabled", async () => {
     const { notify, terminal } = makeNotificationFixture({
         env: { TERM_PROGRAM: "Apple_Terminal" },
         pid: 0,
@@ -215,7 +218,7 @@ Deno.test("notifyRunWieldEvent emits unsupported-terminal BEL fallback when enab
     assertEquals(terminal.writes, [[7]]);
 });
 
-Deno.test("notifyRunWieldEvent respects terminalBell false while preserving OSC delivery", async () => {
+test("notifyRunWieldEvent respects terminalBell false while preserving OSC delivery", async () => {
     const { notify, terminal } = makeNotificationFixture({
         env: { TERM_PROGRAM: "iTerm.app" },
         setting: { terminalBell: false },
@@ -232,7 +235,7 @@ Deno.test("notifyRunWieldEvent respects terminalBell false while preserving OSC 
     assertStringIncludes(terminal.strings[0], "\x1b]9;");
 });
 
-Deno.test("notifyRunWieldEvent suppresses focused terminals before BEL or OSC emission", async () => {
+test("notifyRunWieldEvent suppresses focused terminals before BEL or OSC emission", async () => {
     const focusOwner = installReportedFocusState("\x1b[I");
     const { notify, terminal } = makeNotificationFixture({
         env: { TERM_PROGRAM: "WezTerm" },
@@ -252,7 +255,7 @@ Deno.test("notifyRunWieldEvent suppresses focused terminals before BEL or OSC em
     }
 });
 
-Deno.test("notifyRunWieldEvent suppressWhenFocused false restores always-emit behavior", async () => {
+test("notifyRunWieldEvent suppressWhenFocused false restores always-emit behavior", async () => {
     const focusOwner = installReportedFocusState("\x1b[I");
     const { notify, terminal } = makeNotificationFixture({
         env: { TERM_PROGRAM: "WezTerm" },
@@ -273,7 +276,7 @@ Deno.test("notifyRunWieldEvent suppressWhenFocused false restores always-emit be
     }
 });
 
-Deno.test("notifyRunWieldEvent preserves per-event settings and compaction finished text", async () => {
+test("notifyRunWieldEvent preserves per-event settings and compaction finished text", async () => {
     const disabledFixture = makeNotificationFixture({
         env: { TERM_PROGRAM: "Ghostty" },
         setting: { events: { compactionFinished: false } },
@@ -298,7 +301,7 @@ Deno.test("notifyRunWieldEvent preserves per-event settings and compaction finis
     assertStringIncludes(sent.message, "W. - compact session");
 });
 
-Deno.test("notifyRunWieldEvent skips bell and OSC for disabled or unknown events", async () => {
+test("notifyRunWieldEvent skips bell and OSC for disabled or unknown events", async () => {
     const disabledFixture = makeNotificationFixture({
         env: { TERM_PROGRAM: "iTerm.app" },
         setting: { enabled: false },
@@ -321,7 +324,7 @@ Deno.test("notifyRunWieldEvent skips bell and OSC for disabled or unknown events
     assertEquals(unknownFixture.terminal.writes, []);
 });
 
-Deno.test("notifyRunWieldEvent isolates terminal write failures", async () => {
+test("notifyRunWieldEvent isolates terminal write failures", async () => {
     const { notify } = makeNotificationFixture({
         env: { TERM_PROGRAM: "iTerm.app" },
         throwOnWrite: true,
@@ -335,8 +338,8 @@ Deno.test("notifyRunWieldEvent isolates terminal write failures", async () => {
     assertEquals(result.terminalBellEmitted, false);
 });
 
-Deno.test("command-based notification helpers are removed from active source", async () => {
-    const source = await Deno.readTextFile(new URL("./system-notifications.ts", import.meta.url));
+test("command-based notification helpers are removed from active source", async () => {
+    const source = await fsReadFile(new URL("./system-notifications.ts", import.meta.url), "utf8");
     const removedTerms = [
         "CommandSpec",
         "run" + "Command",

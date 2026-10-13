@@ -577,12 +577,12 @@ export class SystemMessageBlock {
 }
 
 export class ManagedSyncStatusBlock {
-    /** @param {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent} state */
+    /** @param {import('./types.js').ManagedSyncStatus} state */
     constructor(state) {
         this.state = { ...state };
     }
 
-    /** @param {import('../../shared/session/session-runtime-events.js').RuntimeManagedSyncStateEvent} state */
+    /** @param {import('./types.js').ManagedSyncStatus} state */
     setState(state) {
         this.state = { ...state };
     }

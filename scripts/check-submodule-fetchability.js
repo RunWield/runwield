@@ -1,3 +1,7 @@
+import { captureScriptProcess } from "./script-process.ts";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
 /**
  * Verify that every submodule commit pinned by the superproject can be fetched
  * from the submodule's configured remote.
@@ -33,13 +37,12 @@
  * @returns {Promise<CommandResult>}
  */
 async function run(command, args, options = {}) {
-    const child = new Deno.Command(command, {
+    const output = await captureScriptProcess(command, {
         args,
         cwd: options.cwd,
         stdout: "piped",
         stderr: "piped",
     });
-    const output = await child.output();
     const decoder = new TextDecoder();
     return {
         success: output.success,
@@ -54,10 +57,10 @@ async function run(command, args, options = {}) {
  */
 async function hasGitmodules() {
     try {
-        const stat = await Deno.stat(".gitmodules");
-        return stat.isFile;
+        const stat = await fsStat(".gitmodules");
+        return stat.isFile();
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
         throw error;
     }
 }
@@ -130,7 +133,7 @@ async function readPinnedSubmoduleCommit(submodule) {
  * @returns {Promise<CommandResult>}
  */
 async function fetchPinnedCommit(submodule, workDir) {
-    const repoDir = await Deno.makeTempDir({ dir: workDir, prefix: "submodule-fetch-" });
+    const repoDir = await fsMkdtemp(join(workDir ?? tmpdir(), "submodule-fetch-"));
     const initResult = await run("git", ["init", "--bare", repoDir]);
     if (!initResult.success) return initResult;
 
@@ -153,7 +156,7 @@ async function main() {
     }
 
     const submodules = await Promise.all(configs.map(readPinnedSubmoduleCommit));
-    const tempDir = await Deno.makeTempDir({ prefix: "wld-submodule-check-" });
+    const tempDir = await fsMkdtemp(join(tmpdir(), "wld-submodule-check-"));
     let failed = false;
 
     try {
@@ -167,8 +170,8 @@ async function main() {
             }
         }
     } finally {
-        await Deno.remove(tempDir, { recursive: true }).catch((error) => {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+        await fsRm(tempDir, { recursive: true }).catch((error) => {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         });
     }
 

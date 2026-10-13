@@ -1,13 +1,19 @@
-import { spawnForegroundProcess } from "../../../foreground-process.ts";
+import { isMissingExecutableError, spawnForegroundProcess } from "../../../foreground-process.ts";
 import type { PreparedClaudeCliCommand } from "./command.ts";
 import { ClaudeCliBackendError } from "./failure.ts";
+
+export interface ClaudeCliProcessStatus {
+    success: boolean;
+    code: number;
+    signal: null;
+}
 
 export interface ClaudeCliProcessResult {
     success: boolean;
     code: number;
     stdout: ReadableStream<Uint8Array>;
     stderrText: Promise<string>;
-    completed: Promise<Deno.CommandStatus>;
+    completed: Promise<ClaudeCliProcessStatus>;
     kill(): void;
 }
 
@@ -29,7 +35,7 @@ export class DenoClaudeCliProcessPort {
                 signal,
             });
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) {
+            if (error instanceof Error && isMissingExecutableError(error)) {
                 throw new ClaudeCliBackendError("missing_executable");
             }
             throw error;

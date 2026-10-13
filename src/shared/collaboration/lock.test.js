@@ -1,4 +1,5 @@
-import { assertEquals, assertInstanceOf, assertStringIncludes, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertInstanceOf, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
     assertSharedPlanWriteAllowed,
     COLLABORATION_LOCK_BYPASS,
@@ -19,13 +20,13 @@ const lockedAttrs = {
     collaborationSyncedAt: "2026-07-04T00:00:00.000Z",
 };
 
-Deno.test("shared plan lock detects only remote-canonical state", () => {
+test("shared plan lock detects only remote-canonical state", () => {
     assertEquals(isSharedPlanLocked(lockedAttrs), true);
     assertEquals(isSharedPlanLocked({ collaborationState: "local" }), false);
     assertEquals(isSharedPlanLocked({}), false);
 });
 
-Deno.test("shared plan lock fails closed for partial remote-canonical metadata", () => {
+test("shared plan lock fails closed for partial remote-canonical metadata", () => {
     const error = assertThrows(
         () => assertSharedPlanWriteAllowed({ collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL }),
         SharedPlanLockError,
@@ -38,7 +39,7 @@ Deno.test("shared plan lock fails closed for partial remote-canonical metadata",
     assertStringIncludes(error.message, "wld plans unshare");
 });
 
-Deno.test("shared plan lock accepts only exported exact bypass values", () => {
+test("shared plan lock accepts only exported exact bypass values", () => {
     assertSharedPlanWriteAllowed(lockedAttrs, { collaborationLockBypass: COLLABORATION_LOCK_BYPASS.pull });
     assertEquals(isCollaborationLockBypass(COLLABORATION_LOCK_BYPASS.push), true);
     assertEquals(isCollaborationLockBypass(true), false);
@@ -48,7 +49,7 @@ Deno.test("shared plan lock accepts only exported exact bypass values", () => {
     );
 });
 
-Deno.test("shared plan lock messages redact accidental URL fragments", () => {
+test("shared plan lock messages redact accidental URL fragments", () => {
     const error = assertThrows(
         () =>
             assertSharedPlanWriteAllowed({
@@ -63,7 +64,7 @@ Deno.test("shared plan lock messages redact accidental URL fragments", () => {
     assertInstanceOf(error, SharedPlanLockError);
 });
 
-Deno.test("collaboration metadata normalizes non-secret front matter values", () => {
+test("collaboration metadata normalizes non-secret front matter values", () => {
     const attrs = normalizeCollaborationFrontMatter({
         collaborationState: COLLABORATION_STATE_REMOTE_CANONICAL,
         collaborationServerUrl: " https://plans.example.test/base/ ",
@@ -78,7 +79,7 @@ Deno.test("collaboration metadata normalizes non-secret front matter values", ()
     assertEquals(attrs.collaborationBodyHash, "hash");
 });
 
-Deno.test("collaboration metadata omits invalid server URLs instead of preserving secret fragments", () => {
+test("collaboration metadata omits invalid server URLs instead of preserving secret fragments", () => {
     const attrs = normalizeCollaborationFrontMatter({
         collaborationServerUrl: "https://plans.example.test/base#contentKey=secret",
         collaborationSpaceId: "space-1",

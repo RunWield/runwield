@@ -1,34 +1,40 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { type CapturedProcessOutput } from "../../shared/captured-process.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { test } from "node:test";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { printCommandHelp, printGlobalHelp, runHelpCommand } from "./index.ts";
 
 const decoder = new TextDecoder();
 
-async function runHelpChild(argv: string[]): Promise<Deno.CommandOutput> {
-    const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-help-command-" });
+async function runHelpChild(argv: string[]): Promise<CapturedProcessOutput> {
+    const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-help-command-"));
     const homeDir = join(fixtureRoot, "home");
     const projectRoot = join(fixtureRoot, "project");
     await Promise.all([
-        Deno.mkdir(homeDir, { recursive: true }),
-        Deno.mkdir(projectRoot, { recursive: true }),
+        fsMkdir(homeDir, { recursive: true }),
+        fsMkdir(projectRoot, { recursive: true }),
     ]);
     const moduleUrl = import.meta.resolve("./index.ts");
     const configPath = fromFileUrl(new URL("../../../deno.json", import.meta.url));
     const source = `import { runHelpCommand } from ${JSON.stringify(moduleUrl)};\n` +
         `await runHelpCommand(${JSON.stringify(argv)});\n`;
     try {
-        return await new Deno.Command(Deno.execPath(), {
-            args: ["eval", "--config", configPath, source],
+        return await captureForegroundProcess(process.execPath, {
+            args: runtimeSourceArgs(["eval", "--config", configPath, source]),
             cwd: projectRoot,
             env: {
                 HOME: homeDir,
                 WLD_TEST_SANDBOX_HOME: homeDir,
             },
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
     } finally {
-        await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+        await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
     }
 }
 
@@ -40,7 +46,7 @@ function decodeCommandStderr(output: Uint8Array): string {
     }).join("\n");
 }
 
-Deno.test("help stderr normalization handles colored and plain Deno lock notices without hiding command errors", () => {
+test("help stderr normalization handles colored and plain Deno lock notices without hiding command errors", () => {
     const encoder = new TextEncoder();
     for (
         const notice of [
@@ -65,7 +71,7 @@ async function captureLogs(run: () => void | Promise<void>): Promise<string[]> {
     return logs;
 }
 
-Deno.test("help formatters read the real command registry", async () => {
+test("help formatters read the real command registry", async () => {
     assertEquals(printCommandHelp("does-not-exist"), false);
 
     const globalLogs = await captureLogs(() => printGlobalHelp());
@@ -76,7 +82,7 @@ Deno.test("help formatters read the real command registry", async () => {
     assertStringIncludes(commandLogs.join("\n"), "Usage (model):");
 });
 
-Deno.test("help command renders through the passed-in TUI surface", async () => {
+test("help command renders through the passed-in TUI surface", async () => {
     const messages: Array<{ message: string; isError: boolean }> = [];
     const uiAPI = {
         appendSystemMessage(message: string, isError = false): void {
@@ -95,7 +101,7 @@ Deno.test("help command renders through the passed-in TUI surface", async () => 
     });
 });
 
-Deno.test("unknown CLI help exits the isolated process with status one", async () => {
+test("unknown CLI help exits the isolated process with status one", async () => {
     const result = await runHelpChild(["does-not-exist"]);
 
     assertEquals(result.code, 1);
@@ -103,7 +109,7 @@ Deno.test("unknown CLI help exits the isolated process with status one", async (
     assertEquals(decoder.decode(result.stdout), "\n");
 });
 
-Deno.test("help flags use real argument parsing in an isolated project", async () => {
+test("help flags use real argument parsing in an isolated project", async () => {
     const result = await runHelpChild(["--help"]);
 
     assertEquals(result.code, 0);

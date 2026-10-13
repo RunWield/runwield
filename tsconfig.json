@@ -1,0 +1,61 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "Preserve",
+        "moduleResolution": "Bundler",
+        "allowImportingTsExtensions": true,
+        "noEmit": true,
+        "strict": true,
+        "allowJs": true,
+        "checkJs": true,
+        "jsx": "react-jsx",
+        "jsxImportSource": "react",
+        "types": [
+            "bun"
+        ],
+        "paths": {
+            "@modelcontextprotocol/sdk/client/streamableHttp": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js"
+            ],
+            "@modelcontextprotocol/sdk/server/webStandardStreamableHttp": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/server/webStandardStreamableHttp.js"
+            ],
+            "@modelcontextprotocol/sdk/server/stdio": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js"
+            ],
+            "@modelcontextprotocol/sdk/types": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/types.js"
+            ],
+            "@plannotator/ui/*": [
+                "./third_party/plannotator/packages/ui/*"
+            ],
+            "@plannotator/guide-viewer/*": [
+                "./third_party/plannotator/packages/guide-viewer/*"
+            ],
+            "@plannotator/core/*": [
+                "./third_party/plannotator/packages/core/*"
+            ],
+            "@plannotator/core/code-file": [
+                "./third_party/plannotator/packages/core/code-file.ts"
+            ],
+            "@plannotator/core/extract-code-paths": [
+                "./third_party/plannotator/packages/core/extract-code-paths.ts"
+            ],
+            "@plannotator/core/feedback-templates": [
+                "./third_party/plannotator/packages/core/feedback-templates.ts"
+            ],
+            "@plannotator/shared/*": [
+                "./third_party/plannotator/packages/shared/*"
+            ],
+            "@plannotator/ai/*": [
+                "./third_party/plannotator/packages/ai/*"
+            ],
+            "@pierre/diffs/worker/worker.js": [
+                "./src/ui/workspace/react/pierre-diffs-worker-shim.ts"
+            ],
+            "@modelcontextprotocol/sdk/client/stdio": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js"
+            ]
+        }
+    }
+}

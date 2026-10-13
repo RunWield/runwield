@@ -1,3 +1,13 @@
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { retryWorkRecordForPlan } from "../work-records/auto-generation.ts";
 import { listWorkRecords } from "../work-records/index.ts";
@@ -15,7 +25,8 @@ import { createProgressRecord } from "./validation-emit.ts";
 import { createGitPort } from "../git-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { buildVerifiedResult } from "./validation-publication.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, PlanLockTimeoutError, savePlan } from "../../plan-store.js";
 
 import { classifyValidationOperationalError, type GitPublicationErrorKind } from "./validation-operational-errors.ts";
@@ -44,7 +55,7 @@ function decidePublicationFailure(kind: GitPublicationErrorKind) {
     });
 }
 
-Deno.test("publication dispatches merge repair only for a content conflict", () => {
+test("publication dispatches merge repair only for a content conflict", () => {
     const cases: Array<{ kind: GitPublicationErrorKind; action: "retry" | "correct" | "pause" | "halt" }> = [
         { kind: "target_reference_race", action: "retry" },
         { kind: "remote_unavailable", action: "retry" },
@@ -61,7 +72,7 @@ Deno.test("publication dispatches merge repair only for a content conflict", () 
     }
 });
 
-Deno.test("permission and branch-policy failures halt publication", () => {
+test("permission and branch-policy failures halt publication", () => {
     const permissionDenied = decidePublicationFailure("permission_denied");
     assertEquals(permissionDenied.action, "halt");
     assertEquals(permissionDenied.result.kind, "terminal");
@@ -71,7 +82,7 @@ Deno.test("permission and branch-policy failures halt publication", () => {
     assertEquals(policyViolation.result.kind, "terminal");
 });
 
-Deno.test("publication maps local merge conflicts to correction and protected-branch rejection to fatal", () => {
+test("publication maps local merge conflicts to correction and protected-branch rejection to fatal", () => {
     assertEquals(publicationFailureKindFromMergeKind("local_publication_conflict"), "content_conflict");
     assertEquals(
         decidePublicationFailure(publicationFailureKindFromMergeKind("local_publication_conflict")).action,
@@ -82,7 +93,7 @@ Deno.test("publication maps local merge conflicts to correction and protected-br
     assertEquals(decidePublicationFailure(publicationFailureKindFromMergeKind("policy_violation")).action, "halt");
 });
 
-Deno.test("publication offers Retry only when the user can change the outcome", () => {
+test("publication offers Retry only when the user can change the outcome", () => {
     assertEquals(
         publicationFailureNeedsUserAction(normalizePublicationFailure(new Error("internal publication failure"))),
         false,
@@ -105,14 +116,14 @@ Deno.test("publication offers Retry only when the user can change the outcome", 
     );
 });
 
-Deno.test("publication failures retain the stage that actually failed", () => {
+test("publication failures retain the stage that actually failed", () => {
     const error = annotatePublicationStage(new Error("pre-commit hook failed"), "candidate_checkpoint");
     const failure = normalizePublicationFailure(error);
     assertEquals(failure.reason, "pre-commit hook failed");
     assertEquals(failure.publicationStage, "candidate_checkpoint");
 });
 
-Deno.test("a checkpoint failure does not claim the saved publication copy is incomplete", () => {
+test("a checkpoint failure does not claim the saved publication copy is incomplete", () => {
     const message = buildValidationUserMessage({
         kind: "publication_blocked",
         planName: "demo",
@@ -123,7 +134,7 @@ Deno.test("a checkpoint failure does not claim the saved publication copy is inc
     assertEquals(message.includes("Git could not save the final validation files"), true);
 });
 
-Deno.test("publication explains a busy Plan operation without prescribing a failed reload", () => {
+test("publication explains a busy Plan operation without prescribing a failed reload", () => {
     const failure = normalizePublicationFailure(
         annotatePublicationStage(new PlanLockTimeoutError("/private/project/catalog.lock"), "lifecycle_staging"),
     );
@@ -144,7 +155,7 @@ for (const primaryCopy of ["stale", "missing"] as const) {
     for (const remote of [false, true]) {
         if (!remote && primaryCopy === "missing") continue;
         for (const epic of [false, true]) {
-            Deno.test(`verified ${epic ? "Epic child" : "standalone"} completion retains preflight recording failure after ${remote ? "remote" : "local"} delivery (${primaryCopy} primary)`, async () => {
+            test(`verified ${epic ? "Epic child" : "standalone"} completion retains preflight recording failure after ${remote ? "remote" : "local"} delivery (${primaryCopy} primary)`, async () => {
                 await withRuntimeCommandFixture(
                     "record-completion-",
                     async ({ projectRoot: fixtureRoot, setModelMessages }) => {
@@ -170,7 +181,7 @@ for (const primaryCopy of ["stale", "missing"] as const) {
                             await git(projectRoot, ["commit", "-m", "Save source Plan"]);
                         }
                         const worktreeRoot = remote
-                            ? await Deno.makeTempDir({ prefix: "record-outcome-worktree-" })
+                            ? await fsMkdtemp(join(tmpdir(), "record-outcome-worktree-"))
                             : undefined;
                         const worktree = worktreeRoot
                             ? await createTestWorktreeAttempt({
@@ -181,7 +192,7 @@ for (const primaryCopy of ["stale", "missing"] as const) {
                             })
                             : undefined;
                         const remoteRoot = remote
-                            ? await Deno.makeTempDir({ prefix: "record-outcome-remote-" })
+                            ? await fsMkdtemp(join(tmpdir(), "record-outcome-remote-"))
                             : undefined;
                         const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
                         const events: RuntimeSystemStatusEvent[] = [];
@@ -235,9 +246,9 @@ for (const primaryCopy of ["stale", "missing"] as const) {
                                 );
                                 assertEquals((await loadPlan(sourceRoot, planName))?.attrs.workRecord, undefined);
                             }
-                            await Deno.mkdir(`${sourceRoot}/docs/work-records`, { recursive: true });
+                            await fsMkdir(`${sourceRoot}/docs/work-records`, { recursive: true });
                             const invalidRecord = "# Existing invalid record without front matter\n";
-                            await Deno.writeTextFile(`${sourceRoot}/docs/work-records/invalid.md`, invalidRecord);
+                            await fsWriteFile(`${sourceRoot}/docs/work-records/invalid.md`, invalidRecord);
                             const recording = await autoGenerateWorkRecordForCompletedPlan({
                                 cwd: sourceRoot,
                                 planName,
@@ -252,7 +263,7 @@ for (const primaryCopy of ["stale", "missing"] as const) {
                             assertEquals(saved?.attrs.workRecord?.status, "failed");
                             assertStringIncludes(saved?.attrs.workRecord?.error || "", "invalid.md");
                             assertEquals(
-                                await Deno.readTextFile(`${sourceRoot}/docs/work-records/invalid.md`),
+                                await fsReadFile(`${sourceRoot}/docs/work-records/invalid.md`, "utf8"),
                                 invalidRecord,
                             );
                             let publication;
@@ -344,8 +355,8 @@ for (const primaryCopy of ["stale", "missing"] as const) {
                                 const remoteHead = await git(remoteRoot, ["rev-parse", "main"]);
                                 const originalBody = (await loadPlan(projectRoot, ownerName))?.body;
                                 if (primaryCopy === "missing") {
-                                    await Deno.remove(`${projectRoot}/docs/plans/${planName}.md`);
-                                    if (epic) await Deno.remove(`${projectRoot}/docs/plans/${ownerName}.md`);
+                                    await fsRm(`${projectRoot}/docs/plans/${planName}.md`);
+                                    if (epic) await fsRm(`${projectRoot}/docs/plans/${ownerName}.md`);
                                 }
                                 setModelMessages([fauxAssistantMessage(fauxToolCall("work_record_completed", {
                                     title: "Recovered delivered record",
@@ -375,9 +386,9 @@ for (const primaryCopy of ["stale", "missing"] as const) {
                             }
                         } finally {
                             hostedSession.dispose();
-                            if (remote) await Deno.remove(projectRoot, { recursive: true });
-                            if (worktreeRoot) await Deno.remove(worktreeRoot, { recursive: true });
-                            if (remoteRoot) await Deno.remove(remoteRoot, { recursive: true });
+                            if (remote) await fsRm(projectRoot, { recursive: true });
+                            if (worktreeRoot) await fsRm(worktreeRoot, { recursive: true });
+                            if (remoteRoot) await fsRm(remoteRoot, { recursive: true });
                         }
                     },
                 );

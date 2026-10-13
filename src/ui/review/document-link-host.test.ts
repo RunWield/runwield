@@ -1,5 +1,10 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { test } from "node:test";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { DocumentLinkHost } from "./document-link-host.ts";
 import { reviewImageApi, reviewImageUploadApi } from "../workspace/routes/api/review-image-handlers.ts";
 
@@ -15,18 +20,18 @@ interface ReaderPayload {
 }
 
 async function write(root: string, path: string, contents: string): Promise<void> {
-    await Deno.mkdir(dirname(join(root, path)), { recursive: true });
-    await Deno.writeTextFile(join(root, path), contents);
+    await mkdir(dirname(join(root, path)), { recursive: true });
+    await writeFile(join(root, path), contents);
 }
 
 async function withProject(run: (root: string, host: DocumentLinkHost) => Promise<void>): Promise<void> {
-    const root = await Deno.makeTempDir({ prefix: "document-link-host-" });
+    const root = await mkdtemp(join(tmpdir(), "document-link-host-"));
     const host = new DocumentLinkHost(root);
     try {
         await run(root, host);
     } finally {
         await host.dispose();
-        await Deno.remove(root, { recursive: true });
+        await rm(root, { recursive: true });
     }
 }
 
@@ -55,7 +60,7 @@ async function expectStatus(url: URL | string, status: number, init?: RequestIni
     return await response.text();
 }
 
-Deno.test("document host resolves Unicode and encoded names with fragments to a shared loopback reader", async () => {
+test("document host resolves Unicode and encoded names with fragments to a shared loopback reader", async () => {
     await withProject(async (root, host) => {
         await write(root, "docs/café notes %.md", "# Café\n");
         await write(root, "README.md", "# Home\n");
@@ -72,11 +77,11 @@ Deno.test("document host resolves Unicode and encoded names with fragments to a 
     });
 });
 
-Deno.test("document host returns plain-text fallback for missing, malformed, non-Markdown and directory mentions", async () => {
+test("document host returns plain-text fallback for missing, malformed, non-Markdown and directory mentions", async () => {
     await withProject(async (root, host) => {
         await write(root, "README.md", "# Read me");
         await write(root, "text.txt", "secret");
-        await Deno.mkdir(join(root, "directory.md"));
+        await mkdir(join(root, "directory.md"));
         for (
             const path of [
                 "",
@@ -101,7 +106,7 @@ Deno.test("document host returns plain-text fallback for missing, malformed, non
     });
 });
 
-Deno.test("concurrent document tabs and refresh read each current file without leaking the Project root", async () => {
+test("concurrent document tabs and refresh read each current file without leaking the Project root", async () => {
     await withProject(async (root, host) => {
         await write(root, "docs/a.md", "# Alpha\nfirst");
         await write(root, "docs/b.md", "No heading");
@@ -118,17 +123,17 @@ Deno.test("concurrent document tabs and refresh read each current file without l
         assertEquals(first.imageBaseDir, "docs");
         const html = await expectStatus(a, 200);
         assertEquals(html.includes(root), false);
-        assertEquals(html.includes(Deno.realPathSync(root)), false);
+        assertEquals(html.includes(realpathSync(root)), false);
         await write(root, "docs/a.md", "# Updated\ncurrent");
         assertEquals((await readPage(a)).markdown, "# Updated\ncurrent");
         assertEquals((await readPage(b)).markdown, "No heading");
-        await Deno.remove(join(root, "docs/a.md"));
+        await rm(join(root, "docs/a.md"));
         await expectStatus(a, 404);
         assertEquals((await readPage(b)).markdown, "No heading");
     });
 });
 
-Deno.test("linked reader authenticates tokens and does not expose review actions or uploads", async () => {
+test("linked reader authenticates tokens and does not expose review actions or uploads", async () => {
     await withProject(async (root, host) => {
         await write(root, "README.md", "# Secret document");
         const url = new URL(resolved(host, "README.md"));
@@ -150,9 +155,9 @@ Deno.test("linked reader authenticates tokens and does not expose review actions
     });
 });
 
-Deno.test("root rebinding revokes prior links even when the relative filename exists in both Projects", async () => {
+test("root rebinding revokes prior links even when the relative filename exists in both Projects", async () => {
     await withProject(async (root, host) => {
-        const second = await Deno.makeTempDir({ prefix: "document-link-second-" });
+        const second = await mkdtemp(join(tmpdir(), "document-link-second-"));
         try {
             await write(root, "README.md", "# First");
             await write(second, "README.md", "# Second");
@@ -166,15 +171,15 @@ Deno.test("root rebinding revokes prior links even when the relative filename ex
             await expectStatus(current, 401);
             assertEquals((await readPage(resolved(host, "README.md"))).title, "Second");
         } finally {
-            await Deno.remove(second, { recursive: true });
+            await rm(second, { recursive: true });
         }
     });
 });
 
-Deno.test("linked page requests reject malformed and unsafe paths without filesystem details", async () => {
+test("linked page requests reject malformed and unsafe paths without filesystem details", async () => {
     await withProject(async (root, host) => {
         await write(root, "README.md", "# Safe");
-        await Deno.mkdir(join(root, "directory.md"));
+        await mkdir(join(root, "directory.md"));
         const url = new URL(resolved(host, "README.md"));
         const cases: [string, number][] = [
             ["", 400],
@@ -202,15 +207,15 @@ Deno.test("linked page requests reject malformed and unsafe paths without filesy
     });
 });
 
-Deno.test("canonical Markdown resolution rejects symlink escapes and non-Markdown targets on every request", async () => {
+test("canonical Markdown resolution rejects symlink escapes and non-Markdown targets on every request", async () => {
     await withProject(async (root, host) => {
-        const outside = await Deno.makeTempDir({ prefix: "document-link-outside-" });
+        const outside = await mkdtemp(join(tmpdir(), "document-link-outside-"));
         try {
             await write(outside, "secret.md", "# Outside secret");
             await write(root, "inside.txt", "# Not Markdown");
-            await Deno.symlink(join(outside, "secret.md"), join(root, "escape.md"));
-            await Deno.symlink(join(root, "inside.txt"), join(root, "alias.md"));
-            await Deno.symlink(outside, join(root, "escape-dir"));
+            await symlink(join(outside, "secret.md"), join(root, "escape.md"));
+            await symlink(join(root, "inside.txt"), join(root, "alias.md"));
+            await symlink(outside, join(root, "escape-dir"));
             assertEquals(host.resolve("escape.md"), null);
             assertEquals(host.resolve("escape-dir/secret.md"), null);
             assertEquals(host.resolve("alias.md"), null);
@@ -219,18 +224,18 @@ Deno.test("canonical Markdown resolution rejects symlink escapes and non-Markdow
             const alias = new URL(url);
             alias.searchParams.set("path", "alias.md");
             await expectStatus(alias, 404);
-            await Deno.remove(join(root, "current.md"));
-            await Deno.symlink(join(outside, "secret.md"), join(root, "current.md"));
+            await rm(join(root, "current.md"));
+            await symlink(join(outside, "secret.md"), join(root, "current.md"));
             const body = await expectStatus(url, 403);
             assertEquals(body.includes("Outside secret"), false);
             assertEquals(body.includes(outside), false);
         } finally {
-            await Deno.remove(outside, { recursive: true });
+            await rm(outside, { recursive: true });
         }
     });
 });
 
-Deno.test("known canonical artifact locations keep labels while other documents remain generic", async () => {
+test("known canonical artifact locations keep labels while other documents remain generic", async () => {
     await withProject(async (root, host) => {
         const cases = [
             ["docs/plans/change.md", "plan"],
@@ -245,14 +250,14 @@ Deno.test("known canonical artifact locations keep labels while other documents 
             await write(root, path, "# Example");
             assertEquals((await readPage(resolved(host, path))).artifactKind, kind);
         }
-        await Deno.symlink(join(root, "docs/prd/product.md"), join(root, "alias.md"));
+        await symlink(join(root, "docs/prd/product.md"), join(root, "alias.md"));
         const payload = await readPage(resolved(host, "alias.md"));
         assertEquals(payload.artifactKind, "prd");
         assertEquals(payload.artifactPath, "docs/prd/product.md");
     });
 });
 
-Deno.test("linked Work Records retain verification and lifecycle notices", async () => {
+test("linked Work Records retain verification and lifecycle notices", async () => {
     await withProject(async (root, host) => {
         await write(
             root,
@@ -285,17 +290,17 @@ Completed.
     });
 });
 
-Deno.test("linked images allow current Project files but reject symlink escapes, uploads and unsafe paths", async () => {
+test("linked images allow current Project files but reject symlink escapes, uploads and unsafe paths", async () => {
     await withProject(async (root, host) => {
-        const outside = await Deno.makeTempDir({ prefix: "document-image-outside-" });
+        const outside = await mkdtemp(join(tmpdir(), "document-image-outside-"));
         try {
             await write(root, "docs/read.md", "# Images");
             await write(root, "docs/image.png", "image bytes");
             await write(root, "root-image.png", "root image bytes");
             await write(root, "root image.png", "encoded image bytes");
             await write(outside, "secret.png", "outside image secret");
-            await Deno.symlink(join(outside, "secret.png"), join(root, "docs/escape.png"));
-            await Deno.symlink(outside, join(root, "outside-images"));
+            await symlink(join(outside, "secret.png"), join(root, "docs/escape.png"));
+            await symlink(outside, join(root, "outside-images"));
             const page = new URL(resolved(host, "docs/read.md"));
             const image = new URL("/api/image?path=image.png&base=docs", page);
             const referer = { headers: { referer: page.href } };
@@ -308,8 +313,8 @@ Deno.test("linked images allow current Project files but reject symlink escapes,
             await expectStatus(parentImage, 403, referer);
             await write(root, "docs/image.png", "current image");
             assertEquals(await expectStatus(image, 200, referer), "current image");
-            await Deno.remove(join(root, "docs/image.png"));
-            await Deno.symlink(join(outside, "secret.png"), join(root, "docs/image.png"));
+            await rm(join(root, "docs/image.png"));
+            await symlink(join(outside, "secret.png"), join(root, "docs/image.png"));
             await expectStatus(image, 403, referer);
             await expectStatus(image, 401);
             await expectStatus(image, 401, {
@@ -338,12 +343,12 @@ Deno.test("linked images allow current Project files but reject symlink escapes,
             host.rebind(root);
             await expectStatus(image, 401, referer);
         } finally {
-            await Deno.remove(outside, { recursive: true });
+            await rm(outside, { recursive: true });
         }
     });
 });
 
-Deno.test("existing valid review image uploads stay readable but upload symlinks cannot escape", async () => {
+test("existing valid review image uploads stay readable but upload symlinks cannot escape", async () => {
     await withProject(async (root, host) => {
         const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
         const data = new FormData();
@@ -364,19 +369,19 @@ Deno.test("existing valid review image uploads stay readable but upload symlinks
             const linked = new URL(image.pathname + image.search, page);
             linked.searchParams.set("token", page.searchParams.get("token")!);
             await expectStatus(linked, 403);
-            await Deno.remove(uploaded.path);
+            await rm(uploaded.path);
             await write(root, "outside-upload.png", "not an upload");
-            await Deno.symlink(join(root, "outside-upload.png"), uploaded.path);
+            await symlink(join(root, "outside-upload.png"), uploaded.path);
             const escaped = await reviewImageApi(new Request(image), { cwd: root });
             assertEquals(escaped.status, 403);
             await escaped.text();
         } finally {
-            await Deno.remove(uploaded.path).catch(() => {});
+            await rm(uploaded.path).catch(() => {});
         }
     });
 });
 
-Deno.test("host disposal stops the listener and cannot be reversed by rebind", async () => {
+test("host disposal stops the listener and cannot be reversed by rebind", async () => {
     await withProject(async (root, host) => {
         await write(root, "README.md", "# Reader");
         const url = resolved(host, "README.md");
@@ -390,7 +395,7 @@ Deno.test("host disposal stops the listener and cannot be reversed by rebind", a
     });
 });
 
-Deno.test("unstarted and invalid-root hosts can be disposed safely", async () => {
+test("unstarted and invalid-root hosts can be disposed safely", async () => {
     await withProject(async (root, host) => {
         assertEquals(host.resolve("missing.md"), null);
         host.rebind(join(root, "missing-project"));

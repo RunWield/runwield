@@ -209,7 +209,7 @@ their final paths:
 ```sh
 deno run -A scripts/run-tests.js src/cmd/plan-review src/shared/session/file-session-store.test.js src/shared/session/file-session-store-owner.test.ts src/shared/session/session-runtime.test.js
 deno run -A scripts/run-tests.js src/cmd/load-plan/index.integration.test.ts src/shared/workflow/sequence-review.test.ts src/shared/workflow/plan-review-recovery.test.js src/ui/review/plan-review.test.ts src/ui/review/review-launcher.test.ts
-deno run -A scripts/run-tests.js src/cmd/__tests__/registry.test.js src/ui/tui/slash-dispatch.test.ts src/ui/tui/chat-input-controller.test.ts src/acp/server.test.js
+deno run -A scripts/run-tests.js src/cmd/__tests__/registry.test.ts src/ui/tui/slash-dispatch.test.ts src/ui/tui/chat-input-controller.test.ts src/acp/server.test.js
 deno run -A scripts/run-tests.js src/ui/workspace/owner-workspace.test.js src/ui/workspace/browser/session-commands.test.ts src/ui/workspace/workspace-session-ux.test.tsx
 deno run -A scripts/run-tests.js src/ui/tui/golden-scenarios/slash-command-coverage.test.ts src/ui/tui/golden-scenarios/slash-command-terminal.test.ts
 ```

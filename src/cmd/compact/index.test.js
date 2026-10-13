@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { runCompactCommand } from "./index.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
 
@@ -35,7 +36,7 @@ function makeRuntimeContext(options = {}) {
     };
 }
 
-Deno.test("runCompactCommand requires a Runtime session id", async () => {
+test("runCompactCommand requires a Runtime session id", async () => {
     const { uiAPI, messages } = makeUi();
     const { notifyRunWieldEvent, notifications } = makeNotifier();
     assertEquals(await runCompactCommand([], { uiAPI, notifyRunWieldEvent }), "failed");
@@ -43,7 +44,7 @@ Deno.test("runCompactCommand requires a Runtime session id", async () => {
     assertEquals(notifications, []);
 });
 
-Deno.test("runCompactCommand delegates compaction to SessionRuntime and notifies on success", async () => {
+test("runCompactCommand delegates compaction to SessionRuntime and notifies on success", async () => {
     const { uiAPI, messages } = makeUi();
     const { notifyRunWieldEvent, notifications } = makeNotifier();
     let instructions = "";
@@ -70,7 +71,7 @@ Deno.test("runCompactCommand delegates compaction to SessionRuntime and notifies
     }]);
 });
 
-Deno.test("runCompactCommand reports Runtime compaction outcomes and notifies", async () => {
+test("runCompactCommand reports Runtime compaction outcomes and notifies", async () => {
     for (
         const [errorMessage, expected] of [
             ["Compaction cancelled", "Compaction cancelled."],
@@ -94,7 +95,7 @@ Deno.test("runCompactCommand reports Runtime compaction outcomes and notifies", 
     }
 });
 
-Deno.test("runCompactCommand treats an incomplete Runtime compaction result as empty context", async () => {
+test("runCompactCommand treats an incomplete Runtime compaction result as empty context", async () => {
     const { uiAPI, messages } = makeUi();
     const { notifications, notifyRunWieldEvent } = makeNotifier();
 

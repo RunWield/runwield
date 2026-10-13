@@ -1,5 +1,9 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { serveHttp } from "../http-server.ts";
+import { mkdir as fsMkdir, rm as fsRm, symlink as fsSymlink, writeFile as fsWriteFile } from "node:fs/promises";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     createAssistantMessageEventStream,
@@ -15,16 +19,16 @@ import { runRemoteModelProof } from "./model-proof.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 
 export async function exerciseProof(validReply: boolean): Promise<void> {
-    const root = await Deno.makeTempDir();
+    const root = await mkdtemp(join(tmpdir(), "remote-proof-"));
     const project = join(root, "project");
     const outside = join(root, "outside");
-    await Deno.mkdir(project);
-    await Deno.mkdir(outside);
-    await Deno.writeTextFile(join(outside, "settings.json"), "{}");
+    await fsMkdir(project);
+    await fsMkdir(outside);
+    await fsWriteFile(join(outside, "settings.json"), "{}");
     const sentinel = `remote-${crypto.randomUUID()}`;
-    await Deno.writeTextFile(join(project, "sentinel.txt"), sentinel);
-    await Deno.writeTextFile(join(outside, "secret.txt"), "laptop-private");
-    await Deno.symlink(join(outside, "secret.txt"), join(project, "linked.txt"));
+    await fsWriteFile(join(project, "sentinel.txt"), sentinel);
+    await fsWriteFile(join(outside, "secret.txt"), "laptop-private");
+    await fsSymlink(join(outside, "secret.txt"), join(project, "linked.txt"));
     const contexts: string[] = [];
     const stream: ProviderStreams["streamSimple"] = (_model, context) => {
         const result = createAssistantMessageEventStream();
@@ -74,7 +78,7 @@ export async function exerciseProof(validReply: boolean): Promise<void> {
     await runtime.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(runtime);
     const credential = "a".repeat(64);
-    const server = Deno.serve(
+    const server = serveHttp(
         { hostname: "127.0.0.1", port: 0, onListen() {} },
         (request) =>
             request.headers.get("Authorization") === `Bearer ${credential}`
@@ -113,6 +117,6 @@ export async function exerciseProof(validReply: boolean): Promise<void> {
     } finally {
         bridge.close();
         await server.shutdown();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 }

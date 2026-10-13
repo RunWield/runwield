@@ -4,9 +4,12 @@
  * single-writer coordination for every local RunWield runtime.
  */
 
+import { readFileSync, statSync } from "node:fs";
+import { stat, unlink } from "node:fs/promises";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
-import { resolve } from "@std/path";
+import { resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { openNativeFileLock } from "../native-file-lock.ts";
 import { createFileSessionControl } from "./file-session-control.ts";
 import {
     getRunWieldSessionsBaseDir,
@@ -70,12 +73,7 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             sessionDir,
             sessionPath: locator.transcriptPath,
         });
-        const catalogLock = Deno.openSync(catalogLockPath(sessionDir, safe.sessionPath), {
-            create: true,
-            read: true,
-            write: true,
-            mode: 0o600,
-        });
+        const catalogLock = openNativeFileLock(catalogLockPath(sessionDir, safe.sessionPath));
         if (!catalogLock.tryLockSync(true)) {
             catalogLock.close();
             throw new Error("Session migration is already running in another RunWield surface");
@@ -211,8 +209,8 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
         requireSessionProjectRoot(projectId) {
             const project = findProject(baseDir, projectId);
             if (!project) throw new Error("Session project is unavailable");
-            const stat = Deno.statSync(project.registeredRoot);
-            if (!stat.isDirectory) throw new Error("Session project root is unavailable");
+            const info = statSync(project.registeredRoot);
+            if (!info.isDirectory()) throw new Error("Session project root is unavailable");
             return project.registeredRoot;
         },
         findSessionByLocator(locator) {
@@ -438,12 +436,7 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
                 projectId: found.manifest.projectId,
             });
             const sessionDir = sessionDirForManifestPath(found.path);
-            const file = Deno.openSync(lockPath(sessionDir, found.manifest.runwieldSessionId), {
-                create: true,
-                read: true,
-                write: true,
-                mode: 0o600,
-            });
+            const file = openNativeFileLock(lockPath(sessionDir, found.manifest.runwieldSessionId));
             if (!file.tryLockSync(true)) {
                 file.close();
                 throw new Error("Session is open in another RunWield surface");
@@ -488,12 +481,7 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             const found = manifests.resolve(sealOptions.runwieldSessionId);
             if (!found) throw new Error("Session identity is unavailable");
             const sessionDir = sessionDirForManifestPath(found.path);
-            const file = Deno.openSync(lockPath(sessionDir, found.manifest.runwieldSessionId), {
-                create: true,
-                read: true,
-                write: true,
-                mode: 0o600,
-            });
+            const file = openNativeFileLock(lockPath(sessionDir, found.manifest.runwieldSessionId));
             if (!file.tryLockSync(true)) {
                 file.close();
                 throw new Error("Session is open in another RunWield surface");
@@ -506,7 +494,7 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
                 }
                 const evidence = sealOptions.evidence;
                 if (!evidence) throw new Error("Sealed segment evidence is required");
-                const bytes = Deno.readFileSync(current.transcriptPath);
+                const bytes = readFileSync(current.transcriptPath);
                 if (
                     bytes.byteLength !== evidence.byteLength ||
                     createHash("sha256").update(bytes).digest("hex") !== evidence.digestHex
@@ -567,10 +555,10 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             let successorExists = false;
             if (path) {
                 try {
-                    await Deno.stat(path);
+                    await stat(path);
                     successorExists = true;
                 } catch (error) {
-                    if (!(error instanceof Deno.errors.NotFound)) throw error;
+                    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                 }
             }
             if (!path || !successorExists) {
@@ -615,11 +603,11 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             ) {
                 throw new Error("Rollover candidate lineage changed");
             }
-            await Deno.remove(path);
+            await unlink(path);
             try {
-                await Deno.remove(recoveryDescriptorPath(path));
+                await unlink(recoveryDescriptorPath(path));
             } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             }
         },
         async validateSuccessorSegmentLocator(locator) {

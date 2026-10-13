@@ -1,33 +1,47 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { runtimeSourceArgs } from "./testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "./shared/captured-process.ts";
+import { test } from "node:test";
+import {
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
 
 async function makeTempDir(prefix: string): Promise<string> {
-    return await Deno.makeTempDir({ prefix });
+    return await fsMkdtemp(join(tmpdir(), prefix));
 }
 
 async function removeTempDir(path: string): Promise<void> {
     try {
-        await Deno.remove(path, { recursive: true });
+        await fsRm(path, { recursive: true });
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
 }
 
 async function pathExists(path: string): Promise<boolean> {
     try {
-        await Deno.lstat(path);
+        await fsLstat(path);
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
         throw error;
     }
 }
 
 async function writePlan(projectRoot: string): Promise<void> {
-    await Deno.mkdir(join(projectRoot, "docs", "plans"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
+    await fsWriteFile(
         join(projectRoot, "docs", "plans", "context-preservation.md"),
         [
             "---",
@@ -46,7 +60,7 @@ async function writePlan(projectRoot: string): Promise<void> {
     );
 }
 
-Deno.test("CLI commands leave repository CONTEXT files untouched", async () => {
+test("CLI commands leave repository CONTEXT files untouched", async () => {
     const projectRoot = await makeTempDir("runwield-cli-context-files-");
     const homeDir = await makeTempDir("runwield-cli-context-home-");
     const rootContext = "Root CONTEXT content owned by another tool.\n";
@@ -55,21 +69,19 @@ Deno.test("CLI commands leave repository CONTEXT files untouched", async () => {
 
     try {
         await writePlan(projectRoot);
-        await Deno.mkdir(join(projectRoot, "nested"), { recursive: true });
-        await Deno.writeTextFile(join(projectRoot, "CONTEXT.md"), rootContext);
-        await Deno.writeTextFile(join(projectRoot, "CONTEXT-MAP.md"), rootMap);
-        await Deno.writeTextFile(join(projectRoot, "nested", "CONTEXT.md"), nestedContext);
+        await fsMkdir(join(projectRoot, "nested"), { recursive: true });
+        await fsWriteFile(join(projectRoot, "CONTEXT.md"), rootContext);
+        await fsWriteFile(join(projectRoot, "CONTEXT-MAP.md"), rootMap);
+        await fsWriteFile(join(projectRoot, "nested", "CONTEXT.md"), nestedContext);
 
-        const output = await new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", join(REPO_ROOT, "src", "cli.ts"), "plans"],
+        const output = await captureForegroundProcess(process.execPath, {
+            args: runtimeSourceArgs(["run", "-A", join(REPO_ROOT, "src", "cli.ts"), "plans"]),
             cwd: projectRoot,
             env: {
                 HOME: homeDir,
                 MNEMOTECA_DB_PATH: join(homeDir, "m.db"),
             },
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
         const stdout = new TextDecoder().decode(output.stdout);
         const stderr = new TextDecoder().decode(output.stderr);
 
@@ -77,9 +89,9 @@ Deno.test("CLI commands leave repository CONTEXT files untouched", async () => {
         assertStringIncludes(stdout, "context-preservation");
         assertEquals(stderr.includes("domain-language migration"), false);
         assertEquals(stderr.includes("Migrated legacy domain"), false);
-        assertEquals(await Deno.readTextFile(join(projectRoot, "CONTEXT.md")), rootContext);
-        assertEquals(await Deno.readTextFile(join(projectRoot, "CONTEXT-MAP.md")), rootMap);
-        assertEquals(await Deno.readTextFile(join(projectRoot, "nested", "CONTEXT.md")), nestedContext);
+        assertEquals(await fsReadFile(join(projectRoot, "CONTEXT.md"), "utf8"), rootContext);
+        assertEquals(await fsReadFile(join(projectRoot, "CONTEXT-MAP.md"), "utf8"), rootMap);
+        assertEquals(await fsReadFile(join(projectRoot, "nested", "CONTEXT.md"), "utf8"), nestedContext);
         assertEquals(await pathExists(join(projectRoot, "docs", "domain-language.md")), false);
         assertEquals(await pathExists(join(projectRoot, "docs", "domain-language-map.md")), false);
         assertEquals(await pathExists(join(projectRoot, "nested", "domain-language.md")), false);

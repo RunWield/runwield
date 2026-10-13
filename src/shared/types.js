@@ -95,29 +95,7 @@
  * @property {boolean | null} autoCompactionEnabled
  */
 
-/**
- * @typedef {Object} SessionTranscriptSegment
- * @property {string} segmentId
- * @property {string} runwieldSessionId
- * @property {string} projectId
- * @property {string} piSessionId
- * @property {string} transcriptPath
- * @property {string} transcriptCwd
- * @property {number} ordinal
- * @property {string} kind
- * @property {string | null} sealedAt
- * @property {number | null} headerVersion
- * @property {string | null} headerTimestamp
- * @property {string} firstCatalogedAt
- * @property {string} lastCatalogedAt
- * @property {string | null} lineageParentSegmentId
- * @property {string | null} lineageParentPiSessionId
- * @property {string | null} lineageGroupKey
- * @property {string | null} lineageRecordedAt
- * @property {number | null} sealedByteLength
- * @property {string | null} sealedDigestHex
- * @property {string | null} sealedTerminalEntryId
- */
+/** @typedef {import("./session/file-session-store-types.ts").SessionTranscriptSegment} SessionTranscriptSegment */
 
 /**
  * @typedef {Object} SessionSegmentState
@@ -127,15 +105,7 @@
  * @property {string} updatedAt
  */
 
-/**
- * @typedef {Object} SessionSegmentLineageEvidence
- * @property {string} segmentId
- * @property {string} runwieldSessionId
- * @property {string | null} [parentSegmentId]
- * @property {string | null} [parentPiSessionId]
- * @property {string | null} [lineageGroupKey]
- * @property {'planning' | 'execution' | 'semantic_repair'} [kind]
- */
+/** @typedef {import("./session/file-session-store-types.ts").SessionSegmentLineageEvidence} SessionSegmentLineageEvidence */
 
 /**
  * @typedef {Object} SessionLineageDiagnostic

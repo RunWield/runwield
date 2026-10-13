@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, getCurrentTools, getSystemMessageText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -28,7 +33,7 @@ function makeSession(projectRoot) {
     return { hostedSession, sessionManager };
 }
 
-Deno.test("Agent switches replace provider system instructions while retaining conversation history", async () => {
+test("Agent switches replace provider system instructions while retaining conversation history", async () => {
     await withRuntimeCommandFixture(
         "agent-switch-provider-prompt-",
         async ({ projectRoot, setModelResponseFactory }) => {
@@ -96,9 +101,9 @@ Deno.test("Agent switches replace provider system instructions while retaining c
     );
 });
 
-Deno.test("switchActiveAgent rebuilds same Agent roots when cwd changes", async () => {
+test("switchActiveAgent rebuilds same Agent roots when cwd changes", async () => {
     await withRuntimeCommandFixture("agent-switch-cwd-rebuild-", async ({ projectRoot }) => {
-        const nextRoot = await Deno.makeTempDir({ prefix: "runwield-agent-switch-next-" });
+        const nextRoot = await fsMkdtemp(join(tmpdir(), "runwield-agent-switch-next-"));
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         await switchActiveAgent(hostedSession, { agentName: "guide", sessionManager });
         const firstRoot = hostedSession.getRootAgentSession();
@@ -117,7 +122,7 @@ Deno.test("switchActiveAgent rebuilds same Agent roots when cwd changes", async 
     });
 });
 
-Deno.test("switchActiveAgent installs a real matching Agent root and handler", async () => {
+test("switchActiveAgent installs a real matching Agent root and handler", async () => {
     await withRuntimeCommandFixture("agent-switch-install-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         /** @type {Array<{ type?: string, agentName?: string }>} */
@@ -146,7 +151,7 @@ Deno.test("switchActiveAgent installs a real matching Agent root and handler", a
     });
 });
 
-Deno.test("switchActiveAgent reports a user switch from the unpersisted prompt-ready Agent", async () => {
+test("switchActiveAgent reports a user switch from the unpersisted prompt-ready Agent", async () => {
     await withRuntimeCommandFixture("agent-switch-prompt-ready-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         hostedSession.resetAgentInfoStack("Guide", "", "", "guide");
@@ -160,7 +165,7 @@ Deno.test("switchActiveAgent reports a user switch from the unpersisted prompt-r
     });
 });
 
-Deno.test("switchActiveAgent marks only successful different root switches as handoffs", async () => {
+test("switchActiveAgent marks only successful different root switches as handoffs", async () => {
     await withRuntimeCommandFixture("agent-switch-handoff-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         /** @type {Array<Record<string, unknown>>} */
@@ -183,7 +188,7 @@ Deno.test("switchActiveAgent marks only successful different root switches as ha
     });
 });
 
-Deno.test("switchActiveAgent marks a presented Agent change while replay keeps the first marker silent", async () => {
+test("switchActiveAgent marks a presented Agent change while replay keeps the first marker silent", async () => {
     await withRuntimeCommandFixture("agent-switch-presented-baseline-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         hostedSession.pushAgentInfo("Guide", "", "", "guide");
@@ -210,7 +215,7 @@ Deno.test("switchActiveAgent marks a presented Agent change while replay keeps t
     });
 });
 
-Deno.test("switchActiveAgent leaves the previous real root transaction intact when replacement construction fails", async () => {
+test("switchActiveAgent leaves the previous real root transaction intact when replacement construction fails", async () => {
     await withRuntimeCommandFixture("agent-switch-rollback-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         await switchActiveAgent(hostedSession, {
@@ -246,7 +251,7 @@ Deno.test("switchActiveAgent leaves the previous real root transaction intact wh
     });
 });
 
-Deno.test("runActiveAgentTurn switches and completes a real root turn through the faux model boundary", async () => {
+test("runActiveAgentTurn switches and completes a real root turn through the faux model boundary", async () => {
     await withRuntimeCommandFixture(
         "active-agent-turn-",
         async ({ projectRoot, setModelResponse }) => {
@@ -267,12 +272,12 @@ Deno.test("runActiveAgentTurn switches and completes a real root turn through th
     );
 });
 
-Deno.test("switchActiveAgent resolves the active preset model when Router dispatches QUICK_FIX to Engineer", async () => {
+test("switchActiveAgent resolves the active preset model when Router dispatches QUICK_FIX to Engineer", async () => {
     await withRuntimeCommandFixture(
         "agent-switch-quick-fix-preset-",
         async ({ homeDir, projectRoot, settingsPath }) => {
             const { hostedSession, sessionManager } = makeSession(projectRoot);
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 settingsPath,
                 JSON.stringify({
                     activeModelPreset: "split-agents",
@@ -293,7 +298,7 @@ Deno.test("switchActiveAgent resolves the active preset model when Router dispat
                     notifications: { enabled: false },
                 }),
             );
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 `${homeDir}/.wld/models.json`,
                 JSON.stringify({
                     providers: {
@@ -384,9 +389,9 @@ Deno.test("switchActiveAgent resolves the active preset model when Router dispat
                 },
             );
 
-            const alternateSettings = JSON.parse(await Deno.readTextFile(settingsPath));
+            const alternateSettings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
             alternateSettings.activeModelPreset = "alternate-agents";
-            await Deno.writeTextFile(settingsPath, JSON.stringify(alternateSettings));
+            await fsWriteFile(settingsPath, JSON.stringify(alternateSettings));
             await switchActiveAgent(hostedSession, { agentName: "engineer", sessionManager });
 
             const alternateEngineerRoot = hostedSession.getRootAgentSession();
@@ -403,7 +408,7 @@ Deno.test("switchActiveAgent resolves the active preset model when Router dispat
     );
 });
 
-Deno.test("switchActiveAgent reuses an unchanged real root and handler", async () => {
+test("switchActiveAgent reuses an unchanged real root and handler", async () => {
     await withRuntimeCommandFixture("agent-switch-reuse-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         await switchActiveAgent(hostedSession, {
@@ -424,7 +429,7 @@ Deno.test("switchActiveAgent reuses an unchanged real root and handler", async (
     });
 });
 
-Deno.test("switchActiveAgent replaces a stale handler without rebuilding the matching real root", async () => {
+test("switchActiveAgent replaces a stale handler without rebuilding the matching real root", async () => {
     await withRuntimeCommandFixture("agent-switch-stale-handler-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         await switchActiveAgent(hostedSession, { agentName: "guide", sessionManager });
@@ -441,7 +446,7 @@ Deno.test("switchActiveAgent replaces a stale handler without rebuilding the mat
     });
 });
 
-Deno.test("switchActiveAgent rebuilds a real same-Agent root when forceRebuild is set", async () => {
+test("switchActiveAgent rebuilds a real same-Agent root when forceRebuild is set", async () => {
     await withRuntimeCommandFixture("agent-switch-policy-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         await switchActiveAgent(hostedSession, {
@@ -462,7 +467,7 @@ Deno.test("switchActiveAgent rebuilds a real same-Agent root when forceRebuild i
     });
 });
 
-Deno.test("provider switch continues a failed request without changing execution ownership or worktree", async () => {
+test("provider switch continues a failed request without changing execution ownership or worktree", async () => {
     await withRuntimeCommandFixture(
         "agent-switch-backend-continuation-",
         async ({ projectRoot, setModelResponse }) => {
@@ -532,7 +537,7 @@ Deno.test("provider switch continues a failed request without changing execution
     );
 });
 
-Deno.test("switchActiveAgent releases planned workflow only when user authorized", async () => {
+test("switchActiveAgent releases planned workflow only when user authorized", async () => {
     await withRuntimeCommandFixture("agent-switch-release-planned-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         /** @type {Array<{ type?: string, message?: string }>} */
@@ -564,7 +569,7 @@ Deno.test("switchActiveAgent releases planned workflow only when user authorized
     });
 });
 
-Deno.test("switchActiveAgent releases QUICK_FIX workflow with no-plan notice", async () => {
+test("switchActiveAgent releases QUICK_FIX workflow with no-plan notice", async () => {
     await withRuntimeCommandFixture("agent-switch-release-quick-fix-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         /** @type {Array<{ type?: string, message?: string }>} */
@@ -593,7 +598,7 @@ Deno.test("switchActiveAgent releases QUICK_FIX workflow with no-plan notice", a
     });
 });
 
-Deno.test("switchActiveAgent same-Agent user switch still releases workflow", async () => {
+test("switchActiveAgent same-Agent user switch still releases workflow", async () => {
     await withRuntimeCommandFixture("agent-switch-release-same-agent-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         await switchActiveAgent(hostedSession, { agentName: "engineer", sessionManager });
@@ -613,7 +618,7 @@ Deno.test("switchActiveAgent same-Agent user switch still releases workflow", as
     });
 });
 
-Deno.test("switchActiveAgent failed user-authorized switch preserves workflow", async () => {
+test("switchActiveAgent failed user-authorized switch preserves workflow", async () => {
     await withRuntimeCommandFixture("agent-switch-release-failure-", async ({ projectRoot }) => {
         const { hostedSession, sessionManager } = makeSession(projectRoot);
         await switchActiveAgent(hostedSession, { agentName: "engineer", sessionManager });

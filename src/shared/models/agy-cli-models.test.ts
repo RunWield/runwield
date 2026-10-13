@@ -1,5 +1,9 @@
-import { assert, assertEquals, assertObjectMatch, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { assertModelExecutionBackendSupported, UnsupportedModelExecutionBackendError } from "./model-execution.ts";
 import { discoverProviderModel, RunWieldCredentialStore, RunWieldModelRegistry } from "./model-registry.ts";
 import { resolveTemplateModel } from "./model-validation.ts";
@@ -7,7 +11,7 @@ import { resolveTemplateModel } from "./model-validation.ts";
 const AGY_MODELS = ["gemini-3.8-flash", "gemini-3.1-pro"];
 
 async function makeRegistry(): Promise<{ registry: RunWieldModelRegistry; tempDir: string }> {
-    const tempDir = await Deno.makeTempDir({ prefix: "runwield-agy-cli-models-" });
+    const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-agy-cli-models-"));
     return {
         tempDir,
         registry: new RunWieldModelRegistry({
@@ -17,7 +21,7 @@ async function makeRegistry(): Promise<{ registry: RunWieldModelRegistry; tempDi
     };
 }
 
-Deno.test("Agy CLI exposes exactly the supported selectable base models", async () => {
+test("Agy CLI exposes exactly the supported selectable base models", async () => {
     const { registry, tempDir } = await makeRegistry();
     try {
         const selectable = registry.getSelectable().filter((model) => model.provider === "agy-cli");
@@ -35,8 +39,8 @@ Deno.test("Agy CLI exposes exactly the supported selectable base models", async 
                 healthCheck: "execution-preflight",
                 contextWindow: 128000,
                 maxTokens: 16384,
-                input: ["text"],
             });
+            assertEquals(model.input, ["text"]);
             assertEquals(registry.isSelectable(model), true);
             assertEquals(registry.hasConfiguredAuth(model), false);
             assertEquals(registry.getProviderAuthStatus("agy-cli"), { configured: false });
@@ -50,11 +54,11 @@ Deno.test("Agy CLI exposes exactly the supported selectable base models", async 
             assertModelExecutionBackendSupported(model);
         }
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("Agy CLI lookup accepts only the supported base models", async () => {
+test("Agy CLI lookup accepts only the supported base models", async () => {
     const { registry, tempDir } = await makeRegistry();
     try {
         for (const modelId of AGY_MODELS) {
@@ -84,15 +88,15 @@ Deno.test("Agy CLI lookup accepts only the supported base models", async () => {
         assertEquals(resolveTemplateModel("agy-cli/gemini-3.8-flash-low", registry), { ok: false });
         assertEquals(resolveTemplateModel("missing-provider/future-model", registry), { ok: false });
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("Agy CLI ignores misleading configured providers and live discovery", async () => {
+test("Agy CLI ignores misleading configured providers and live discovery", async () => {
     const { registry, tempDir } = await makeRegistry();
     try {
         const store = new RunWieldCredentialStore(join(tempDir, "auth.json"));
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "auth.json"),
             JSON.stringify({
                 "agy-cli": { type: "api_key", key: "fake" },
@@ -100,7 +104,7 @@ Deno.test("Agy CLI ignores misleading configured providers and live discovery", 
                 openai: { type: "api_key", key: "real" },
             }),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(tempDir, "models.json"),
             JSON.stringify({
                 providers: {
@@ -135,11 +139,11 @@ Deno.test("Agy CLI ignores misleading configured providers and live discovery", 
         assertEquals(registry.getConfiguredModels().some((entry) => entry.provider === "agy-cli"), false);
         assertEquals(registry.find("local", "configured")?.provider, "local");
     } finally {
-        await Deno.remove(tempDir, { recursive: true });
+        await fsRm(tempDir, { recursive: true });
     }
 });
 
-Deno.test("unknown execution backends still receive the typed support rejection", () => {
+test("unknown execution backends still receive the typed support rejection", () => {
     const baseModel = {
         provider: "fixture",
         id: "model",

@@ -3,8 +3,8 @@
  * Archive, list, and restore saved Plans.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { relative } from "@std/path";
+import { parseArgs } from "../../shared/cli-args.ts";
+import { relative } from "node:path";
 import { CLI_BIN, getCwd } from "../../constants.js";
 import {
     archivePlan,

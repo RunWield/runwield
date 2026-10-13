@@ -1,5 +1,14 @@
+import { mkdtemp as fsMkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { AGENTS } from "../constants.js";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.js";
 import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.js";
@@ -41,7 +50,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 }
 
 export async function readTranscriptEvidence(transcriptPath: string) {
-    const bytes = await Deno.readFile(transcriptPath);
+    const bytes = await fsReadFile(transcriptPath);
     const lines = new TextDecoder().decode(bytes).trim().split("\n").filter(Boolean);
     const last = lines.length > 0 ? JSON.parse(lines.at(-1) ?? "{}") as { id?: string } : {};
     return {
@@ -58,7 +67,7 @@ export async function appendTranscriptEntry(transcriptPath: string, entryId: str
         timestamp: "2026-01-01T00:00:01.000Z",
         message: { role: "assistant", content: [{ type: "text", text: content }] },
     };
-    await Deno.writeTextFile(transcriptPath, `${JSON.stringify(entry)}\n`, { append: true });
+    await fsWriteFile(transcriptPath, `${JSON.stringify(entry)}\n`, { flag: "a" });
 }
 
 async function writeManagedTranscript(
@@ -68,9 +77,9 @@ async function writeManagedTranscript(
     assistantMessages: string[] = [],
     workflowContext?: WorkflowContext,
 ): Promise<string> {
-    const canonicalRoot = await Deno.realPath(root);
+    const canonicalRoot = await fsRealpath(root);
     const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalRoot));
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     const timestamp = "2026-01-01T00:00:00.000Z";
     const transcriptPath = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
     const entries = [
@@ -114,18 +123,18 @@ async function writeManagedTranscript(
             })),
         ]
         : entries;
-    await Deno.writeTextFile(transcriptPath, `${savedEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    await fsWriteFile(transcriptPath, `${savedEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
     return transcriptPath;
 }
 
 export async function makeManagedSessionFixture(options: ManagedSessionFixtureOptions = {}) {
-    const createdHome = options.home ? null : await Deno.makeTempDir({ prefix: "runwield-managed-session-fixture-" });
+    const createdHome = options.home ? null : await fsMkdtemp(join(tmpdir(), "runwield-managed-session-fixture-"));
     const home = options.home ?? createdHome ?? "";
     const projectRoot = options.projectRoot ?? join(home, "project");
     const dbPath = options.dbPath ?? join(home, ".wld", "owner-coordination.sqlite3");
     const sessionBaseDir = join(home, ".wld", "sessions");
-    await Deno.mkdir(projectRoot, { recursive: true });
-    const canonicalProjectRoot = await Deno.realPath(projectRoot);
+    await fsMkdir(projectRoot, { recursive: true });
+    const canonicalProjectRoot = await fsRealpath(projectRoot);
     const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
     const modelRequests: RecordedModelRequest[] = [];
     const store = openOwnerCoordinationStore({ dbPath, sessionBaseDir });
@@ -252,7 +261,7 @@ export async function makeManagedSessionFixture(options: ManagedSessionFixtureOp
         },
         async cleanup() {
             store.close();
-            if (createdHome) await Deno.remove(createdHome, { recursive: true });
+            if (createdHome) await fsRm(createdHome, { recursive: true });
         },
     };
 }

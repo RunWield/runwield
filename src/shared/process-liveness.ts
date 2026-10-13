@@ -13,10 +13,13 @@
  * Plan locks waited on file age.
  */
 
+import { hostname } from "node:os";
+import { kill } from "node:process";
+
 /** Host identity recorded in a lock, so a pid is only trusted on the machine that wrote it. */
 export function getLockHostname(): string {
     try {
-        return Deno.hostname();
+        return hostname();
     } catch {
         return "";
     }
@@ -28,17 +31,15 @@ export function getLockHostname(): string {
  * Answers false for a pid this process cannot ask about, because an unknown holder
  * must never be assumed alive — that is what strands a Plan.
  */
-export async function isPidAlive(pid: number): Promise<boolean> {
-    if (!Number.isInteger(pid) || pid <= 0) return false;
+export function isPidAlive(pid: number): Promise<boolean> {
+    if (!Number.isInteger(pid) || pid <= 0) return Promise.resolve(false);
     try {
-        const { code } = await new Deno.Command("kill", {
-            args: ["-0", String(pid)],
-            stdout: "null",
-            stderr: "null",
-        }).output();
-        return code === 0;
+        // Signal zero probes existence without signaling the holder. Preserve the
+        // previous external `kill -0` contract: an unqueryable pid returns false.
+        kill(pid, 0);
+        return Promise.resolve(true);
     } catch {
-        return false;
+        return Promise.resolve(false);
     }
 }
 
@@ -82,8 +83,8 @@ export function isLockHolderUnattributable(contents: string): boolean {
         return true;
     }
     if (!parsed || typeof parsed !== "object") return true;
-    const pid = Number((parsed as { pid?: unknown }).pid);
-    const hostname = (parsed as { hostname?: unknown }).hostname;
+    const pid = Number(parsed.pid);
+    const hostname = parsed.hostname;
     if (!Number.isInteger(pid) || pid <= 0) return true;
     return typeof hostname !== "string" || hostname.length === 0;
 }

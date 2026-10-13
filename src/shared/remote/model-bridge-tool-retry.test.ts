@@ -1,5 +1,15 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../http-server.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     type Context,
@@ -15,17 +25,17 @@ import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 import type { RemoteMount } from "./sftp-mount.ts";
 
-Deno.test("remote Pi retries a laptop EOF after a committed project tool without replaying the tool", async () => {
+test("remote Pi retries a laptop EOF after a committed project tool without replaying the tool", async () => {
     // Remote personal resources are process-wide. Keep this test in its own runner process.
-    const root = await Deno.makeTempDir();
+    const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const project = join(root, "remote-project");
-    await Deno.mkdir(join(project, ".wld"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(join(project, ".wld"), { recursive: true });
+    await fsWriteFile(
         join(project, ".wld", "settings.json"),
         JSON.stringify({ retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } }),
     );
     const sentinel = `committed-${crypto.randomUUID()}`;
-    await Deno.writeTextFile(join(project, "sentinel.txt"), sentinel);
+    await fsWriteFile(join(project, "sentinel.txt"), sentinel);
     const laptopSecret = `laptop-only-${crypto.randomUUID()}`;
     const requests: Context[] = [];
     const stream: ProviderStreams["streamSimple"] = (_model, context, options) => {
@@ -81,7 +91,7 @@ Deno.test("remote Pi retries a laptop EOF after a committed project tool without
     await runtime.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(runtime);
     const credential = "a".repeat(64);
-    const server = Deno.serve(
+    const server = serveHttp(
         { hostname: "127.0.0.1", port: 0, onListen() {} },
         (request) =>
             request.headers.get("Authorization") === `Bearer ${credential}`
@@ -99,7 +109,7 @@ Deno.test("remote Pi retries a laptop EOF after a committed project tool without
             execute: async () => {
                 executions++;
                 return {
-                    content: [{ type: "text" as const, text: await Deno.readTextFile(join(project, "sentinel.txt")) }],
+                    content: [{ type: "text" as const, text: await fsReadFile(join(project, "sentinel.txt"), "utf8") }],
                     details: null,
                 };
             },
@@ -144,6 +154,6 @@ Deno.test("remote Pi retries a laptop EOF after a committed project tool without
     } finally {
         bridge.close();
         await server.shutdown();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

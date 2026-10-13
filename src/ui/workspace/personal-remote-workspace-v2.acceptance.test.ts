@@ -1,4 +1,17 @@
-import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rename as fsRename,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { savePlan } from "../../plan-store.js";
@@ -38,25 +51,19 @@ function pairedApp(dir: string) {
     };
 }
 
-Deno.test("unified Workspace search ranks canonical sources and opens Project artifacts", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-workspace-search-" });
+test("unified Workspace search ranks canonical sources and opens Project artifacts", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-workspace-search-"));
     const root = `${dir}/project`;
-    await Deno.mkdir(`${root}/docs/prd`, { recursive: true });
-    await Deno.mkdir(`${root}/docs/adr`, { recursive: true });
-    await Deno.writeTextFile(`${root}/docs/prd/exact.md`, "# Searchable Compass\n\nProduct body needle.\n");
-    await Deno.writeTextFile(
+    await fsMkdir(`${root}/docs/prd`, { recursive: true });
+    await fsMkdir(`${root}/docs/adr`, { recursive: true });
+    await fsWriteFile(`${root}/docs/prd/exact.md`, "# Searchable Compass\n\nProduct body needle.\n");
+    await fsWriteFile(
         `${root}/docs/adr/heading.md`,
         "# Architecture note\n\n## Searchable Compass\n\nDecision body.\n",
     );
-    await Deno.writeTextFile(
-        `${root}/docs/design-system.md`,
-        "# Design System\n\nSearchable Compass appears in the body.\n",
-    );
-    await Deno.writeTextFile(
-        `${root}/docs/domain-language.md`,
-        "# Domain Language\n\nWorkspace Search is owner retrieval.\n",
-    );
-    await Deno.writeTextFile(`${root}/source.ts`, "export const forbidden = 'Searchable Compass';\n");
+    await fsWriteFile(`${root}/docs/design-system.md`, "# Design System\n\nSearchable Compass appears in the body.\n");
+    await fsWriteFile(`${root}/docs/domain-language.md`, "# Domain Language\n\nWorkspace Search is owner retrieval.\n");
+    await fsWriteFile(`${root}/source.ts`, "export const forbidden = 'Searchable Compass';\n");
     await savePlan(root, "compass-plan", "# Plan heading\n\nSearchable Compass in the body.\n", {
         planId: "compass-plan-id",
         title: "Compass Plan",
@@ -95,7 +102,7 @@ Deno.test("unified Workspace search ranks canonical sources and opens Project ar
         assertEquals(html.includes(root), false);
         assertEquals(html.includes("imageBaseDir"), false);
 
-        await Deno.writeTextFile(`${root}/docs/prd/exact.md`, "# Replaced content\n\nThe old query is gone.\n");
+        await fsWriteFile(`${root}/docs/prd/exact.md`, "# Replaced content\n\nThe old query is gone.\n");
         const changedResponse = await app(
             new Request("http://127.0.0.1:8787/api/owner/search?q=Searchable%20Compass", { headers }),
         );
@@ -113,22 +120,19 @@ Deno.test("unified Workspace search ranks canonical sources and opens Project ar
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("every Workspace search result type opens its built destination", async () => {
+test("every Workspace search result type opens its built destination", async () => {
     const fixture = await makeManagedSessionFixture();
     const root = fixture.projectRoot;
-    await Deno.mkdir(`${root}/docs/prd`, { recursive: true });
-    await Deno.mkdir(`${root}/docs/adr`, { recursive: true });
-    await Deno.writeTextFile(`${root}/docs/prd/destination.md`, "# PRD destination\n\nUniversal destination token.\n");
-    await Deno.writeTextFile(`${root}/docs/adr/destination.md`, "# ADR destination\n\nUniversal destination token.\n");
-    await Deno.writeTextFile(
-        `${root}/docs/design-system.md`,
-        "# Design System destination\n\nUniversal destination token.\n",
-    );
-    await Deno.writeTextFile(
+    await fsMkdir(`${root}/docs/prd`, { recursive: true });
+    await fsMkdir(`${root}/docs/adr`, { recursive: true });
+    await fsWriteFile(`${root}/docs/prd/destination.md`, "# PRD destination\n\nUniversal destination token.\n");
+    await fsWriteFile(`${root}/docs/adr/destination.md`, "# ADR destination\n\nUniversal destination token.\n");
+    await fsWriteFile(`${root}/docs/design-system.md`, "# Design System destination\n\nUniversal destination token.\n");
+    await fsWriteFile(
         `${root}/docs/domain-language.md`,
         "# Domain Language destination\n\nUniversal destination token.\n",
     );
@@ -215,15 +219,15 @@ Deno.test("every Workspace search result type opens its built destination", asyn
     }
 });
 
-Deno.test("Project settings stays accessible when its root disappears or its registration is disabled", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-project-settings-recovery-" });
+test("Project settings stays accessible when its root disappears or its registration is disabled", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-settings-recovery-"));
     const root = `${dir}/original`;
     const movedRoot = `${dir}/moved`;
-    await Deno.mkdir(root);
+    await fsMkdir(root);
     const { store, ownerApp, app } = pairedApp(dir);
     try {
         const project = store.registerProject({ root, displayName: "Moved Project" });
-        await Deno.rename(root, movedRoot);
+        await fsRename(root, movedRoot);
         const settingsUrl = `http://127.0.0.1:8787/projects/${project.projectId}/settings`;
         const headers = { cookie: cookiePair("credential-secret") };
         const missing = await app(new Request(settingsUrl, { headers }));
@@ -260,7 +264,7 @@ Deno.test("Project settings stays accessible when its root disappears or its reg
         assertEquals(repaired.status, 200);
         assertStringIncludes(await repaired.text(), "available");
         assertEquals((await action({ action: "remove" })).status, 200);
-        assertEquals((await Deno.stat(movedRoot)).isDirectory, true);
+        assertEquals((await fsStat(movedRoot)).isDirectory(), true);
         assertEquals(store.listProjects(), []);
         assertEquals((await app(new Request(settingsUrl, { headers }))).status, 404);
         const projectsPage = await app(new Request("http://127.0.0.1:8787/projects", { headers }));
@@ -271,31 +275,31 @@ Deno.test("Project settings stays accessible when its root disappears or its reg
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Removing and re-adding a Project preserves file-authoritative Session history", async () => {
+test("Removing and re-adding a Project preserves file-authoritative Session history", async () => {
     const fixture = await makeManagedSessionFixture();
     try {
         const { store, project, projectRoot, transcriptPath, session } = fixture;
-        const transcript = await Deno.readTextFile(transcriptPath);
+        const transcript = await fsReadFile(transcriptPath, "utf8");
         store.removeProject(project.projectId);
         assertEquals(store.getProjectById(project.projectId), null);
-        assertEquals(await Deno.readTextFile(transcriptPath), transcript);
+        assertEquals(await fsReadFile(transcriptPath, "utf8"), transcript);
         const added = store.registerProject({ root: projectRoot });
         assertEquals(added.projectId === project.projectId, false);
         await store.catalogProjectSessions(added.projectId, { fullRescan: true });
         const rediscovered = await store.listProjectSessions(added.projectId);
         assertEquals(rediscovered.sessions.some((item) => item.runwieldSessionId === session.runwieldSessionId), true);
-        assertEquals(await Deno.readTextFile(transcriptPath), transcript);
+        assertEquals(await fsReadFile(transcriptPath, "utf8"), transcript);
     } finally {
         await fixture.cleanup();
     }
 });
 
-Deno.test("Dashboard uses the persistent Workspace shell", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-dashboard-shell-" });
+test("Dashboard uses the persistent Workspace shell", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-dashboard-shell-"));
     const { store, ownerApp, app } = pairedApp(dir);
     try {
         const response = await app(
@@ -310,12 +314,12 @@ Deno.test("Dashboard uses the persistent Workspace shell", async () => {
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("unassociated live Plan reviews use Plan names and ordinary questions use Session names", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-dashboard-review-names-" });
+test("unassociated live Plan reviews use Plan names and ordinary questions use Session names", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-dashboard-review-names-"));
     const { store, ownerApp } = pairedApp(dir);
     try {
         const project = store.registerProject({ root: dir });
@@ -372,14 +376,14 @@ Deno.test("unassociated live Plan reviews use Plan names and ordinary questions 
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Dashboard shares concurrent reads but refreshes evidence after they finish", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-dashboard-concurrent-" });
+test("Dashboard shares concurrent reads but refreshes evidence after they finish", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-dashboard-concurrent-"));
     const projectRoot = `${dir}/project`;
-    await Deno.mkdir(projectRoot);
+    await fsMkdir(projectRoot);
     const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
     const sessions = createWorkspaceSessionContinuationService({ store });
     try {
@@ -405,16 +409,16 @@ Deno.test("Dashboard shares concurrent reads but refreshes evidence after they f
     } finally {
         await sessions.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("personal remote Workspace v2 Dashboard returns eligible completions for client expansion", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-dashboard-acceptance-" });
+test("personal remote Workspace v2 Dashboard returns eligible completions for client expansion", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-dashboard-acceptance-"));
     const projectOne = `${dir}/one`;
     const projectTwo = `${dir}/two`;
-    await Deno.mkdir(projectOne);
-    await Deno.mkdir(projectTwo);
+    await fsMkdir(projectOne);
+    await fsMkdir(projectTwo);
     for (let index = 0; index < 6; index += 1) {
         await savePlan(projectOne, `done-${index}`, `# Done ${index}\n`, {
             planId: `one-done-${index}`,
@@ -464,11 +468,11 @@ Deno.test("personal remote Workspace v2 Dashboard returns eligible completions f
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("personal remote Workspace v2 workflow presentation exposes connected actions without fabricated reviews", () => {
+test("personal remote Workspace v2 workflow presentation exposes connected actions without fabricated reviews", () => {
     const presentation = buildWorkflowPresentation({
         planName: "Feature Plan",
         classification: "PLANNED_CHANGE",
@@ -495,10 +499,10 @@ Deno.test("personal remote Workspace v2 workflow presentation exposes connected 
     assertEquals(missingLiveFacts.action?.kind, "open_plan");
 });
 
-Deno.test("Dashboard ignores historical attention flags and sorts all ready Plans by updated time", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-dashboard-attention-" });
+test("Dashboard ignores historical attention flags and sorts all ready Plans by updated time", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-dashboard-attention-"));
     const root = `${dir}/project`;
-    await Deno.mkdir(root);
+    await fsMkdir(root);
     const { store, ownerApp, app } = pairedApp(dir);
     try {
         store.registerProject({ root, displayName: "Project" });
@@ -553,11 +557,11 @@ Deno.test("Dashboard ignores historical attention flags and sorts all ready Plan
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Dashboard distinguishes stopped execution from an active Agent and an ordinary idle Session", async () => {
+test("Dashboard distinguishes stopped execution from an active Agent and an ordinary idle Session", async () => {
     const fixture = await makeManagedSessionFixture();
     const { store, session, project } = fixture;
     const service = createWorkspaceSessionContinuationService({ store });
@@ -619,8 +623,8 @@ Deno.test("Dashboard distinguishes stopped execution from an active Agent and an
     }
 });
 
-Deno.test("personal remote Workspace v2 owner home has bounded refresh and visible failure handling", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-refresh-acceptance-" });
+test("personal remote Workspace v2 owner home has bounded refresh and visible failure handling", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-refresh-acceptance-"));
     const { store, ownerApp, app } = pairedApp(dir);
     try {
         const response = await app(
@@ -637,14 +641,14 @@ Deno.test("personal remote Workspace v2 owner home has bounded refresh and visib
     } finally {
         await ownerApp.close();
         store.close();
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("personal remote Workspace v2 Dashboard promotes associated live questions and keeps terminal Session history", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-dashboard-live-" });
+test("personal remote Workspace v2 Dashboard promotes associated live questions and keeps terminal Session history", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-dashboard-live-"));
     const projectRoot = `${dir}/project`;
-    await Deno.mkdir(projectRoot);
+    await fsMkdir(projectRoot);
     await savePlan(projectRoot, "active", "# Active\n", {
         planId: "active-plan",
         classification: "FEATURE",
@@ -723,13 +727,14 @@ Deno.test("personal remote Workspace v2 Dashboard promotes associated live quest
             false,
         );
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("personal remote Workspace v2 Plan home keeps document rendering ahead of workflow reads", async () => {
-    const route = await Deno.readTextFile(
+test("personal remote Workspace v2 Plan home keeps document rendering ahead of workflow reads", async () => {
+    const route = await fsReadFile(
         new URL("./pages/projects/[projectId]/plans/[planId].astro", import.meta.url),
+        "utf8",
     );
     assertEquals(route.includes("await loadOwnerPlanProgress"), false);
     assertEquals(route.includes("discoverProvenSessionId"), false);
@@ -738,10 +743,10 @@ Deno.test("personal remote Workspace v2 Plan home keeps document rendering ahead
     assertStringIncludes(route, "expectedGeneration");
 });
 
-Deno.test("personal remote Workspace v2 Dashboard uses live evidence for active work and retained completion proof", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-dashboard-evidence-" });
+test("personal remote Workspace v2 Dashboard uses live evidence for active work and retained completion proof", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-dashboard-evidence-"));
     const projectRoot = `${dir}/project`;
-    await Deno.mkdir(projectRoot);
+    await fsMkdir(projectRoot);
     await savePlan(projectRoot, "inactive", "# Inactive\n", {
         planId: "inactive-plan",
         classification: "FEATURE",
@@ -773,20 +778,20 @@ Deno.test("personal remote Workspace v2 Dashboard uses live evidence for active 
         ).items;
         assertEquals(recentlyFinished.some((item: { planId: string }) => item.planId === "published-plan"), true);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("personal remote Workspace v2 Dashboard does not mark READY status ready when readiness evidence is broken", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-dashboard-readiness-" });
+test("personal remote Workspace v2 Dashboard does not mark READY status ready when readiness evidence is broken", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-dashboard-readiness-"));
     const projectRoot = `${dir}/project`;
-    await Deno.mkdir(`${projectRoot}/.wld`, { recursive: true });
+    await fsMkdir(`${projectRoot}/.wld`, { recursive: true });
     await savePlan(projectRoot, "ready", "# Ready\n", {
         planId: "ready-plan",
         classification: "FEATURE",
         status: "ready_for_work",
     });
-    await Deno.writeTextFile(resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath, "{ broken");
+    await fsWriteFile(resolveProjectRuntimeLayout(projectRoot).primary.worktreeRegistryPath, "{ broken");
     const store = {
         listProjects: () => [{ projectId: "project-1", displayName: "Project", lifecycle: "enabled" }],
         getProjectHealth: () => ({ status: "available", evidence: [] }),
@@ -808,11 +813,11 @@ Deno.test("personal remote Workspace v2 Dashboard does not mark READY status rea
         assertEquals(needsYou.length, 0);
         assertEquals(payload.projects[0].diagnostics.some((item) => item.source === "registry-reader"), true);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("personal remote Workspace v2 Session API filters committed Plan associations before pagination", async () => {
+test("personal remote Workspace v2 Session API filters committed Plan associations before pagination", async () => {
     const calls: number[] = [];
     const ctx = {
         params: { projectId: "project-1" },
@@ -845,7 +850,7 @@ Deno.test("personal remote Workspace v2 Session API filters committed Plan assoc
     assertEquals(payload.sessions.map((session: { runwieldSessionId: string }) => session.runwieldSessionId), ["late"]);
 });
 
-Deno.test("personal remote Workspace v2 standalone Session expansion excludes only rendered Plan associations", async () => {
+test("personal remote Workspace v2 standalone Session expansion excludes only rendered Plan associations", async () => {
     const ctx = {
         params: { projectId: "project-1" },
         url: new URL(
@@ -882,7 +887,7 @@ Deno.test("personal remote Workspace v2 standalone Session expansion excludes on
     );
 });
 
-Deno.test("personal remote Workspace v2 standalone Session expansion keeps terminal-only associations when no Plans render", async () => {
+test("personal remote Workspace v2 standalone Session expansion keeps terminal-only associations when no Plans render", async () => {
     const ctx = {
         params: { projectId: "project-1" },
         url: new URL("http://workspace.local/api/owner/projects/project-1/sessions?excludeAssociated=true"),
@@ -911,10 +916,10 @@ Deno.test("personal remote Workspace v2 standalone Session expansion keeps termi
     );
 });
 
-Deno.test("personal remote Workspace v2 Plan workflow API dispatches checked resume and reports result errors", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-owner-workflow-action-" });
+test("personal remote Workspace v2 Plan workflow API dispatches checked resume and reports result errors", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-owner-workflow-action-"));
     const projectRoot = `${dir}/project`;
-    await Deno.mkdir(projectRoot, { recursive: true });
+    await fsMkdir(projectRoot, { recursive: true });
     await savePlan(projectRoot, "validate", "# Validate\n\nBody\n", {
         planId: "validate-plan",
         classification: "FEATURE",
@@ -951,11 +956,11 @@ Deno.test("personal remote Workspace v2 Plan workflow API dispatches checked res
         assertEquals(received?.planName, "validate");
         assertStringIncludes(String(received?.planContent || ""), "# Validate");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("personal remote Workspace v2 live workflow evidence ignores historical interactions", () => {
+test("personal remote Workspace v2 live workflow evidence ignores historical interactions", () => {
     const live = latestLiveWorkflowInteraction([
         { kind: "code-review", interactionId: "old", source: "committed", reviewUrl: "/old" },
         { kind: "interaction", interactionId: "current", source: "transient" },

@@ -1,4 +1,10 @@
-import { assert, assertEquals, assertNotEquals, assertStringIncludes } from "@std/assert";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import { mkdtemp as fsMkdtemp, readdir as fsReaddir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import process from "node:process";
+import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
 import {
     AGENT_DEFS_DIR,
     CATPPUCCIN_MOCHA_THEME_PATH,
@@ -16,13 +22,13 @@ import {
 import { getWorkflowMetricsFilePath } from "./shared/workflow/metrics.js";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 
-Deno.test("bundled resource constants point to file-readable assets", async () => {
-    assertStringIncludes(await Deno.readTextFile(CATPPUCCIN_MOCHA_THEME_PATH), "catppuccin-mocha");
-    assertStringIncludes(await Deno.readTextFile(SYSTEM_PROMPT_TEMPLATE_PATH), "{{AGENT_PROMPT}}");
+test("bundled resource constants point to file-readable assets", async () => {
+    assertStringIncludes(await fsReadFile(CATPPUCCIN_MOCHA_THEME_PATH, "utf8"), "catppuccin-mocha");
+    assertStringIncludes(await fsReadFile(SYSTEM_PROMPT_TEMPLATE_PATH, "utf8"), "{{AGENT_PROMPT}}");
 
     for (const dir of [AGENT_DEFS_DIR, PROMPT_TEMPLATES_DIR, SKILLS_DIR, SNIP_FILTERS_DIR]) {
         const entries = [];
-        for await (const entry of Deno.readDir(dir)) entries.push(entry.name);
+        for await (const entry of await fsReaddir(dir, { withFileTypes: true })) entries.push(entry.name);
         assert(entries.length > 0);
     }
 });
@@ -33,35 +39,35 @@ Deno.test("bundled resource constants point to file-readable assets", async () =
 // — which is how test runs rewrote the developer's ~/.wld settings, sessions
 // and workflow metrics. Home-derived paths must be resolved per call.
 
-Deno.test("getHomeDir observes HOME changes made after module load", async () => {
+test("getHomeDir observes HOME changes made after module load", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalHome = Deno.env.get("HOME");
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-home-dir-" });
+        const originalHome = process.env["HOME"];
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-home-dir-"));
         try {
-            Deno.env.set("HOME", tempHome);
+            process.env["HOME"] = tempHome;
             assertEquals(getHomeDir(), tempHome);
             assertNotEquals(getHomeDir(), originalHome);
         } finally {
-            if (originalHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", originalHome);
-            await Deno.remove(tempHome, { recursive: true });
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            await fsRm(tempHome, { recursive: true });
         }
         assertEquals(getHomeDir(), originalHome ?? "");
     });
 });
 
-Deno.test("project internal runtime directory name stays below the project RunWield base", () => {
+test("project internal runtime directory name stays below the project RunWield base", () => {
     assertEquals(PROJECT_INTERNAL_RUNTIME_DIR_NAME, "internal");
 });
 
-Deno.test("documentation Work Kind normalizes and labels planned documentation", () => {
+test("documentation Work Kind normalizes and labels planned documentation", () => {
     assertEquals(normalizeWorkKind("DOCUMENTATION"), "DOCUMENTATION");
     assertEquals(normalizeWorkKind("DOCS"), undefined);
     assertEquals(normalizeWorkKind(null), undefined);
     assertEquals(formatPlannedWorkLabel("DOCUMENTATION"), "Planned documentation");
 });
 
-Deno.test("test-module detection covers every convention deno test collects", () => {
+test("test-module detection covers every convention deno test collects", () => {
     // A convention missing here is a test realm where the real-home guard is
     // inert. src/cmd/init/*_test.js slipped past an `.endsWith(".test.js")`
     // check and wrote into a real ~/.wld.
@@ -83,7 +89,7 @@ Deno.test("test-module detection covers every convention deno test collects", ()
     }
 });
 
-Deno.test("home resolution is refused only for an unsandboxed test run", () => {
+test("home resolution is refused only for an unsandboxed test run", () => {
     // Asserted as a pure rule: deleting WLD_TEST_SANDBOX_HOME for real would
     // make every concurrent test's getHomeDir() throw.
     const message = describeUnsandboxedTestRun({ isTestRealm: true, sandboxHome: "", homeDir: "/Users/someone" });
@@ -101,24 +107,24 @@ Deno.test("home resolution is refused only for an unsandboxed test run", () => {
     assertEquals(describeUnsandboxedTestRun({ isTestRealm: false, sandboxHome: "", homeDir: "/Users/someone" }), null);
 
     // And the suite it is running in really is sandboxed.
-    assert(Deno.env.get("WLD_TEST_SANDBOX_HOME"), "Expected the suite itself to be sandboxed.");
-    assertEquals(getHomeDir(), Deno.env.get("HOME"));
+    assert(process.env["WLD_TEST_SANDBOX_HOME"], "Expected the suite itself to be sandboxed.");
+    assertEquals(getHomeDir(), process.env["HOME"]);
 });
 
-Deno.test("home-derived paths follow a swapped HOME rather than a stale snapshot", async () => {
+test("home-derived paths follow a swapped HOME rather than a stale snapshot", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalHome = Deno.env.get("HOME");
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-home-derived-" });
+        const originalHome = process.env["HOME"];
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-home-derived-"));
         try {
-            Deno.env.set("HOME", tempHome);
+            process.env["HOME"] = tempHome;
             // Workflow metrics leaked into the real ~/.wld, so assert it concretely.
             const metricsPath = getWorkflowMetricsFilePath("/some/project");
             assertEquals(metricsPath.startsWith(tempHome), true, `Expected ${metricsPath} under ${tempHome}.`);
-            if (originalHome) assertEquals(metricsPath.startsWith(originalHome), false);
+            if (originalHome) assertEquals(metricsPath.startsWith(join(originalHome, ".wld")), false);
         } finally {
-            if (originalHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", originalHome);
-            await Deno.remove(tempHome, { recursive: true });
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            await fsRm(tempHome, { recursive: true });
         }
     });
 });

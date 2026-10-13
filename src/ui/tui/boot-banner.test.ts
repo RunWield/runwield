@@ -1,5 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import process from "node:process";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { Container, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getCwdInitState } from "../../cmd/init/init-state.ts";
@@ -52,11 +55,11 @@ async function createRuntimeSession(projectRoot: string): Promise<{ runtime: Ses
     return { runtime, sessionId: created.sessionId };
 }
 
-Deno.test("renderBootBanner reports fixture prompts, skills, settings, context, and blocked prompts", async () => {
+test("renderBootBanner reports fixture prompts, skills, settings, context, and blocked prompts", async () => {
     await withRuntimeCommandFixture("boot-banner-full-", async ({ projectRoot }) => {
-        await Deno.mkdir(join(projectRoot, ".wld", "skills", "fixture-diagnose"), { recursive: true });
-        await Deno.writeTextFile(join(projectRoot, "RUNWIELD.md"), "# Fixture context\n");
-        await Deno.writeTextFile(
+        await fsMkdir(join(projectRoot, ".wld", "skills", "fixture-diagnose"), { recursive: true });
+        await fsWriteFile(join(projectRoot, "RUNWIELD.md"), "# Fixture context\n");
+        await fsWriteFile(
             join(projectRoot, ".wld", "skills", "fixture-diagnose", "SKILL.md"),
             "---\nname: fixture-diagnose\ndescription: Fixture skill\n---\n",
         );
@@ -93,7 +96,7 @@ Deno.test("renderBootBanner reports fixture prompts, skills, settings, context, 
             assertStringIncludes(output, "Theme: fixture-theme");
             assertStringIncludes(output, "Runtime Optimizers: Snip");
             assertStringIncludes(output, "Context:");
-            assertStringIncludes(output, "./RUNWIELD.md");
+            assertStringIncludes(output.replaceAll("\\", "/"), "./RUNWIELD.md");
             assertStringIncludes(output, "./.wld/prompts/help.md command can't be invoked");
             assertStringIncludes(output, "package prompt /theme from npm:@example/prompts");
         } finally {
@@ -103,7 +106,7 @@ Deno.test("renderBootBanner reports fixture prompts, skills, settings, context, 
     });
 });
 
-Deno.test("renderBootBanner reports an empty prompt-template registry", async () => {
+test("renderBootBanner reports an empty prompt-template registry", async () => {
     await withRuntimeCommandFixture("boot-banner-empty-", async ({ projectRoot }) => {
         const { runtime, sessionId } = await createRuntimeSession(projectRoot);
         const harness = makeBannerHarness();
@@ -126,9 +129,9 @@ Deno.test("renderBootBanner reports an empty prompt-template registry", async ()
     });
 });
 
-Deno.test("renderBootBanner persists and caps missing-Snip warnings in fixture init state", async () => {
+test("renderBootBanner persists and caps missing-Snip warnings in fixture init state", async () => {
     await withRuntimeCommandFixture("boot-banner-snip-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const { runtime, sessionId } = await createRuntimeSession(projectRoot);
         const harness = makeBannerHarness();
         try {

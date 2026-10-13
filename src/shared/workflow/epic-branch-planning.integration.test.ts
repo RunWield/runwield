@@ -1,5 +1,14 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { listPlans, loadPlan, updatePlanCollaborationMetadata } from "../../plan-store.js";
 import { runLoadPlanCommand } from "../../cmd/load-plan/index.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -19,7 +28,7 @@ type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
 
 async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes, body: string) {
     const path = join(cwd, "docs", "plans", `${name}.md`);
-    await Deno.mkdir(dirname(path), { recursive: true });
+    await fsMkdir(dirname(path), { recursive: true });
     const lines = ["---"];
     for (const [key, value] of Object.entries(attrs)) {
         if (Array.isArray(value)) {
@@ -30,7 +39,7 @@ async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes
         }
     }
     lines.push("---", "", body);
-    await Deno.writeTextFile(path, lines.join("\n"));
+    await fsWriteFile(path, lines.join("\n"));
 }
 
 function makeLoadUi(selections: Array<string | null>) {
@@ -96,13 +105,13 @@ const journeyFixture = defineGitFixture(async (repo) => {
         affectedPaths: ["next.js"],
         createdAt: "2026-01-01T00:00:00.000Z",
     }, "# Next child\n\nTARGET NEXT BODY\n");
-    await Deno.writeTextFile(join(repo, "target-only.js"), "target only\n");
+    await fsWriteFile(join(repo, "target-only.js"), "target only\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "target child family"]);
     await git(repo, ["switch", "main"]);
 });
 
-Deno.test("Epic branch target child actions select a delivered document after cleanup", async () => {
+test("Epic branch target child actions select a delivered document after cleanup", async () => {
     const repo = await journeyFixture.checkout();
 
     const updated = await updatePlanCollaborationMetadata(
@@ -121,8 +130,8 @@ Deno.test("Epic branch target child actions select a delivered document after cl
     assertEquals(loaded.plan?.attrs.collaborationRevision, 7);
 });
 
-Deno.test("Epic branch target lookup preserves non-Git child Plan loading", async () => {
-    const repo = await Deno.makeTempDir();
+test("Epic branch target lookup preserves non-Git child Plan loading", async () => {
+    const repo = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     await writePlan(repo, "epic/02-next", {
         planId: "plain-child",
         classification: "FEATURE",
@@ -140,7 +149,7 @@ Deno.test("Epic branch target lookup preserves non-Git child Plan loading", asyn
     assertEquals(loaded.plan?.attrs.planId, "plain-child");
 });
 
-Deno.test("Epic branch manual load command binds the Session to the target child document", async () => {
+test("Epic branch manual load command binds the Session to the target child document", async () => {
     await withRuntimeCommandFixture("epic-branch-manual-load-", async () => {
         const repo = await journeyFixture.checkout();
         const runtime = createSessionRuntime();
@@ -165,7 +174,7 @@ Deno.test("Epic branch manual load command binds the Session to the target child
     });
 });
 
-Deno.test("Epic branch manual load uses target child documents and saved planning edits", async () => {
+test("Epic branch manual load uses target child documents and saved planning edits", async () => {
     const repo = await journeyFixture.checkout();
     const plansBefore = await listPlans(repo);
     assert(plansBefore.some((plan) => plan.name === "epic/02-next"));
@@ -175,9 +184,9 @@ Deno.test("Epic branch manual load uses target child documents and saved plannin
         targetBranch: "epic-target",
     });
     const planPath = join(planning.entry.path, "docs", "plans", "epic", "02-next.md");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         planPath,
-        (await Deno.readTextFile(planPath)).replace("TARGET NEXT BODY", "SAVED PLANNER BODY"),
+        (await fsReadFile(planPath, "utf8")).replace("TARGET NEXT BODY", "SAVED PLANNER BODY"),
     );
 
     const loaded = await resolveWorkflowPlanLocation(repo, "epic/02-next");
@@ -189,16 +198,16 @@ Deno.test("Epic branch manual load uses target child documents and saved plannin
     assertEquals(listed?.path, planPath);
 });
 
-Deno.test("Epic branch execution promotion rollback restores planning state", async () => {
+test("Epic branch execution promotion rollback restores planning state", async () => {
     const repo = await journeyFixture.checkout();
     const planning = await preparePlanningWorktreeForPlan(repo, "epic/02-next", {
         planId: "plan-child-02",
         targetBranch: "epic-target",
     });
     const planPath = join(planning.entry.path, "docs", "plans", "epic", "02-next.md");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         planPath,
-        (await Deno.readTextFile(planPath)).replace('status: "ready_for_work"', 'status: "approved"'),
+        (await fsReadFile(planPath, "utf8")).replace('status: "ready_for_work"', 'status: "approved"'),
     );
     const plan = await loadPlan(planning.entry.path, "epic/02-next");
     assert(plan);
@@ -219,7 +228,7 @@ Deno.test("Epic branch execution promotion rollback restores planning state", as
     assertEquals(entries[0].executionBaselineTree, undefined);
 });
 
-Deno.test("Epic branch execution promotes the saved planning worktree", async () => {
+test("Epic branch execution promotes the saved planning worktree", async () => {
     const repo = await journeyFixture.checkout();
     const planning = await preparePlanningWorktreeForPlan(repo, "epic/02-next", {
         planId: "plan-child-02",
@@ -245,7 +254,7 @@ Deno.test("Epic branch execution promotes the saved planning worktree", async ()
     assertEquals(entries[0].status, "active");
 });
 
-Deno.test("A published sequence keeps its parent open while a target-only child remains", async () => {
+test("A published sequence keeps its parent open while a target-only child remains", async () => {
     const repo = await journeyFixture.checkout();
     await writePlan(repo, "epic", {
         planId: "plan-epic",
@@ -290,7 +299,7 @@ Deno.test("A published sequence keeps its parent open while a target-only child 
     assertEquals(result.childPlanName, "epic/02-next");
 });
 
-Deno.test("Sequence continuation follows the ready target parent when the primary copy is stale", async () => {
+test("Sequence continuation follows the ready target parent when the primary copy is stale", async () => {
     const repo = await journeyFixture.checkout();
     const parent = await loadPlan(repo, "epic");
     assert(parent);
@@ -325,7 +334,7 @@ Deno.test("Sequence continuation follows the ready target parent when the primar
     assertEquals(result.childPlanName, "epic/02-next");
 });
 
-Deno.test("Epic branch continuation selects the next child from target state", async () => {
+test("Epic branch continuation selects the next child from target state", async () => {
     const repo = await journeyFixture.checkout();
 
     const resolution = await resolveEpicContinuation({ cwd: repo, completedPlanName: "epic/01-done" });
@@ -337,9 +346,9 @@ Deno.test("Epic branch continuation selects the next child from target state", a
     assertEquals(await listEntries(repo), [], "reading the completed child must not create a planning worktree");
 });
 
-Deno.test("Epic continuation refreshes a preplanned child before execution promotion", async () => {
+test("Epic continuation refreshes a preplanned child before execution promotion", async () => {
     const repo = await journeyFixture.checkout();
-    const remote = await Deno.makeTempDir();
+    const remote = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     await git(remote, ["init", "--bare", "--initial-branch=main"]);
     await git(repo, ["remote", "add", "origin", remote]);
     await git(repo, ["push", "origin", "main", "epic-target"]);
@@ -350,7 +359,7 @@ Deno.test("Epic continuation refreshes a preplanned child before execution promo
     const publisher = await journeyFixture.checkout();
     await git(publisher, ["remote", "add", "origin", remote]);
     await git(publisher, ["switch", "epic-target"]);
-    await Deno.writeTextFile(join(publisher, "first-child.js"), "published implementation\n");
+    await fsWriteFile(join(publisher, "first-child.js"), "published implementation\n");
     await git(publisher, ["add", "."]);
     await git(publisher, ["commit", "-m", "publish first child from isolated checkout"]);
     await git(publisher, ["push", "origin", "epic-target"]);
@@ -373,11 +382,11 @@ Deno.test("Epic continuation refreshes a preplanned child before execution promo
     assertEquals(workflow?.worktreeId, first.entry.id);
     assertEquals((await listEntries(repo))[0].baseCommit, published);
     assertEquals((await listEntries(repo))[0].status, "active");
-    assertEquals(await Deno.readTextFile(join(first.entry.path, "first-child.js")), "published implementation\n");
+    assertEquals(await fsReadFile(join(first.entry.path, "first-child.js"), "utf8"), "published implementation\n");
     assertEquals((await loadPlan(first.entry.path, "epic/02-next"))?.attrs.status, "in_progress");
 });
 
-Deno.test("Epic branch continuation ignores stale primary completed child status", async () => {
+test("Epic branch continuation ignores stale primary completed child status", async () => {
     const repo = await journeyFixture.checkout();
     await writePlan(repo, "epic/01-done", {
         planId: "plan-child-01",

@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "./captured-process.ts";
+import { writeFile as fsWriteFile } from "node:fs/promises";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "./worktree.js";
 import { defineGitFixture } from "./git-test-fixture.ts";
 import type { WorktreeRegistryEntry } from "./worktree-registry.js";
@@ -26,9 +28,8 @@ export const TEST_DELIVERY_DETAILS: PlanEventDetails = {
 };
 
 export async function git(cwd: string, args: string[]): Promise<string> {
-    const command = new Deno.Command("git", { args, cwd, stdout: "piped", stderr: "piped" });
-    const output = await command.output();
-    if (!output.success) {
+    const output = await captureForegroundProcess("git", { args, cwd });
+    if (output.code !== 0) {
         throw new Error(new TextDecoder().decode(output.stderr));
     }
     return new TextDecoder().decode(output.stdout).trim();
@@ -37,7 +38,7 @@ export async function git(cwd: string, args: string[]): Promise<string> {
 const baseRepository = defineGitFixture(async (cwd) => {
     await git(cwd, ["config", "user.email", "runwield@example.com"]);
     await git(cwd, ["config", "user.name", "RunWield Test"]);
-    await Deno.writeTextFile(`${cwd}/README.md`, "base\n");
+    await fsWriteFile(`${cwd}/README.md`, "base\n");
     await git(cwd, ["add", "."]);
     await git(cwd, ["commit", "-m", "base"]);
 });

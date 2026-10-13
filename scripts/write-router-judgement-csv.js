@@ -1,11 +1,13 @@
+import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
 /**
  * @module scripts/write-router-judgement-csv
  *
  * Generate a human-reviewable Router judgement CSV from extracted Router decisions.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { dirname, join } from "@std/path";
+import { parseArgs } from "../src/shared/cli-args.ts";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../src/constants.js";
 import {
     indexRowsByDecisionId,
@@ -78,9 +80,9 @@ export function buildJudgementCsv(reviewedRows, existingRows = []) {
  */
 async function readExistingCsv(path) {
     try {
-        return parseCsv(await Deno.readTextFile(path));
+        return parseCsv(await fsReadFile(path, "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return [];
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
         throw error;
     }
 }
@@ -97,7 +99,7 @@ export async function main(argv) {
 
     if (args.help) {
         console.log([
-            "Usage: deno run -A scripts/write-router-judgement-csv.js --in router-decisions.jsonl --out router-judgements.csv",
+            "Usage: bun scripts/write-router-judgement-csv.js --in router-decisions.jsonl --out router-judgements.csv",
             "",
             "Options:",
             `  --in, -i <path>       Extracted Router decisions JSONL (default: ${DEFAULT_INPUT})`,
@@ -109,13 +111,13 @@ export async function main(argv) {
 
     const inputPath = args.in || DEFAULT_INPUT;
     const outputPath = args.out || getDefaultRouterJudgementCsvPath();
-    const reviewedRows = parseJsonlRows(await Deno.readTextFile(inputPath));
+    const reviewedRows = parseJsonlRows(await fsReadFile(inputPath, "utf8"));
     const existingRows = args["no-preserve"] ? [] : await readExistingCsv(outputPath);
-    await Deno.mkdir(dirname(outputPath), { recursive: true });
-    await Deno.writeTextFile(outputPath, buildJudgementCsv(reviewedRows, existingRows));
+    await fsMkdir(dirname(outputPath), { recursive: true });
+    await fsWriteFile(outputPath, buildJudgementCsv(reviewedRows, existingRows));
     console.log(`Wrote ${reviewedRows.length} row(s) to ${outputPath}.`);
 }
 
 if (import.meta.main) {
-    await main(Deno.args);
+    await main(process.argv.slice(2));
 }

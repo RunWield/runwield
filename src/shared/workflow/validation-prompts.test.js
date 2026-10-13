@@ -1,11 +1,13 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { SUBAGENTS } from "../../constants.js";
 import { loadSubAgentDefinition } from "../session/subagent-definitions.ts";
 import { buildSemanticReviewAttempt } from "./validation-semantic.ts";
 import { loadManualQaPrompt, loadReviewerPrompt } from "./validation.ts";
 
-Deno.test("loadManualQaPrompt returns a bare tool-free prompt", async () => {
+test("loadManualQaPrompt returns a bare tool-free prompt", async () => {
     const promptDef = await loadManualQaPrompt();
     assertEquals(promptDef.name, "operator");
     assertEquals(promptDef.displayName, "Manual QA");
@@ -13,9 +15,10 @@ Deno.test("loadManualQaPrompt returns a bare tool-free prompt", async () => {
     assertStringIncludes(promptDef.systemPrompt, "Manual verification steps for <plan name>");
 });
 
-Deno.test("bundled Manual QA prompt requires the user checklist shape", async () => {
-    const prompt = await Deno.readTextFile(
+test("bundled Manual QA prompt requires the user checklist shape", async () => {
+    const prompt = await fsReadFile(
         new URL("../../agent-definitions/subagent-definitions/manual-qa-prompt.md", import.meta.url),
+        "utf8",
     );
 
     assertStringIncludes(prompt, "Manual verification steps for <plan name>");
@@ -23,7 +26,7 @@ Deno.test("bundled Manual QA prompt requires the user checklist shape", async ()
     assertStringIncludes(prompt, "automated verification has already passed");
 });
 
-Deno.test("loadReviewerPrompt returns a bare prompt with canonical review tools", async () => {
+test("loadReviewerPrompt returns a bare prompt with canonical review tools", async () => {
     const reviewerDef = await loadReviewerPrompt("discovery");
     assertEquals(reviewerDef.name, "reviewer");
     assertEquals(reviewerDef.displayName, "Reviewer");
@@ -33,7 +36,7 @@ Deno.test("loadReviewerPrompt returns a bare prompt with canonical review tools"
     assertEquals(reviewerDef.systemPrompt.includes("Available tools"), false);
 });
 
-Deno.test("loadReviewerPrompt loads the verification prompt for later rounds", async () => {
+test("loadReviewerPrompt loads the verification prompt for later rounds", async () => {
     const reviewerDef = await loadReviewerPrompt("verify");
     assertStringIncludes(reviewerDef.systemPrompt, "Do Not Re-Derive the Plan");
 });
@@ -51,10 +54,10 @@ async function readBundledPrompt(name) {
         const definition = await loadReviewerPrompt(name === "reviewer-verify-prompt.md" ? "verify" : "discovery");
         return definition.systemPrompt;
     }
-    return await Deno.readTextFile(new URL(`../../agent-definitions/subagent-definitions/${name}`, import.meta.url));
+    return await fsReadFile(new URL(`../../agent-definitions/subagent-definitions/${name}`, import.meta.url), "utf8");
 }
 
-Deno.test("Semantic review prompt includes the canonical effective Plan projection", () => {
+test("Semantic review prompt includes the canonical effective Plan projection", () => {
     const config = buildSemanticReviewAttempt(
         1,
         undefined,
@@ -82,7 +85,7 @@ Implement the screen.
     assertEquals(config.prompt.includes("Plan content is supplied by the validation request"), false);
 });
 
-Deno.test("bundled discovery reviewer prompt states an approval default", async () => {
+test("bundled discovery reviewer prompt states an approval default", async () => {
     const prompt = await readBundledPrompt("reviewer-prompt.md");
 
     // Without an explicit default, the prompt's exhaustiveness pressure resolves
@@ -97,7 +100,7 @@ Deno.test("bundled discovery reviewer prompt states an approval default", async 
     assertStringIncludes(prompt, "This does not lower the bar for adherence");
 });
 
-Deno.test("bundled discovery reviewer prompt keeps code smells non-blocking", async () => {
+test("bundled discovery reviewer prompt keeps code smells non-blocking", async () => {
     const prompt = await readBundledPrompt("reviewer-prompt.md");
 
     // Smells scale with diff size, which grows with every repair — leaving them
@@ -111,7 +114,7 @@ Deno.test("bundled discovery reviewer prompt keeps code smells non-blocking", as
     );
 });
 
-Deno.test("bundled discovery reviewer blocks new seams over product-owned machinery", async () => {
+test("bundled discovery reviewer blocks new seams over product-owned machinery", async () => {
     const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
 
     assertStringIncludes(prompt, "A new injection seam that lets tests or callers replace product-owned machinery");
@@ -120,7 +123,7 @@ Deno.test("bundled discovery reviewer blocks new seams over product-owned machin
     assertStringIncludes(prompt, "Scan production changes for new injection seams");
 });
 
-Deno.test("bundled discovery reviewer prompt requires reading the diff before deciding", async () => {
+test("bundled discovery reviewer prompt requires reading the diff before deciding", async () => {
     const prompt = await readBundledPrompt("reviewer-prompt.md");
 
     // The diff is never inlined, so a verdict without a review_diff call is a
@@ -129,7 +132,7 @@ Deno.test("bundled discovery reviewer prompt requires reading the diff before de
     assertStringIncludes(prompt, "You cannot review what you have not read");
 });
 
-Deno.test("bundled reviewer prompts exclude verification-completion auditing", async () => {
+test("bundled reviewer prompts exclude verification-completion auditing", async () => {
     for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md"]) {
         // Collapse wrapping so these assert on wording, not on where the
         // formatter happened to break the line.
@@ -143,7 +146,7 @@ Deno.test("bundled reviewer prompts exclude verification-completion auditing", a
     }
 });
 
-Deno.test("bundled reviewer prompts treat work in progress as normal, not as a finding", async () => {
+test("bundled reviewer prompts treat work in progress as normal, not as a finding", async () => {
     for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md"]) {
         const prompt = (await readBundledPrompt(name)).replace(/\s+/g, " ");
 
@@ -154,7 +157,7 @@ Deno.test("bundled reviewer prompts treat work in progress as normal, not as a f
     }
 });
 
-Deno.test("bundled discovery reviewer prompt scopes Epic children to their own correctness", async () => {
+test("bundled discovery reviewer prompt scopes Epic children to their own correctness", async () => {
     const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
 
     assertStringIncludes(prompt, "### Epic Context");
@@ -163,7 +166,7 @@ Deno.test("bundled discovery reviewer prompt scopes Epic children to their own c
     assertStringIncludes(prompt, "when there is nothing to note, leave `integrationNotes` out");
 });
 
-Deno.test("Semantic review request carries the Epic context before the Plan", () => {
+test("Semantic review request carries the Epic context before the Plan", () => {
     const config = buildSemanticReviewAttempt(
         1,
         undefined,
@@ -181,7 +184,7 @@ Deno.test("Semantic review request carries the Epic context before the Plan", ()
     assertEquals(epicIndex < config.prompt.indexOf("### Approved Plan"), true);
 });
 
-Deno.test("bundled discovery reviewer prompt attacks tests with a plausible wrong implementation", async () => {
+test("bundled discovery reviewer prompt attacks tests with a plausible wrong implementation", async () => {
     const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
 
     // A test that passes on a counterfeit implementation is a defect the Plan-adherence
@@ -197,7 +200,7 @@ Deno.test("bundled discovery reviewer prompt attacks tests with a plausible wron
     );
 });
 
-Deno.test("bundled discovery reviewer prompt requires all findings in one pass", async () => {
+test("bundled discovery reviewer prompt requires all findings in one pass", async () => {
     const prompt = (await readBundledPrompt("reviewer-prompt.md")).replace(/\s+/g, " ");
 
     // Later rounds are narrower and will not rediscover what a discovery round
@@ -207,7 +210,7 @@ Deno.test("bundled discovery reviewer prompt requires all findings in one pass",
     assertStringIncludes(prompt, "Report the complete set now, not one representative issue");
 });
 
-Deno.test("bundled verification reviewer prompt refuses to re-derive the Plan", async () => {
+test("bundled verification reviewer prompt refuses to re-derive the Plan", async () => {
     const prompt = (await readBundledPrompt("reviewer-verify-prompt.md")).replace(/\s+/g, " ");
 
     assertStringIncludes(prompt, "Do Not Re-Derive the Plan");
@@ -222,7 +225,7 @@ Deno.test("bundled verification reviewer prompt refuses to re-derive the Plan", 
     assertStringIncludes(prompt, "substituting a fake for the real behavior so the test passes");
 });
 
-Deno.test("bundled verification reviewer prompt treats repair claims as evidence, not resolution", async () => {
+test("bundled verification reviewer prompt treats repair claims as evidence, not resolution", async () => {
     const prompt = await readBundledPrompt("reviewer-verify-prompt.md");
 
     assertStringIncludes(prompt, "never proof");
@@ -238,7 +241,7 @@ Deno.test("bundled verification reviewer prompt treats repair claims as evidence
     assertStringIncludes(prompt.replace(/\s+/g, " "), "otherwise reject the fix with a reason");
 });
 
-Deno.test("bundled validation repair engineer prompt is repair-scoped without Plan content or general Engineer context", async () => {
+test("bundled validation repair engineer prompt is repair-scoped without Plan content or general Engineer context", async () => {
     const prompt = await readBundledPrompt("reviewer-feedback-engineer.md");
     const compact = prompt.replace(/\s+/g, " ");
 
@@ -254,7 +257,7 @@ Deno.test("bundled validation repair engineer prompt is repair-scoped without Pl
     assertStringIncludes(prompt, "**Your claims are evidence, not resolution.**");
 });
 
-Deno.test("validation repair engineer keeps working-tree safety and engineering practice, but not user authority", async () => {
+test("validation repair engineer keeps working-tree safety and engineering practice, but not user authority", async () => {
     // These rules arrive through `sharedPractice`, so the assertion follows them to
     // the composed prompt — this agent cannot rely on a skill being loaded at the
     // model's discretion, and a fragment that stops composing would be invisible.
@@ -275,7 +278,7 @@ Deno.test("validation repair engineer keeps working-tree safety and engineering 
     assertStringIncludes(systemPrompt, "report the test-count delta");
 });
 
-Deno.test("bundled workflow-only agents cannot name the removed router handoff tool", async () => {
+test("bundled workflow-only agents cannot name the removed router handoff tool", async () => {
     const removedToolName = ["return", "to", "router"].join("_");
     for (const name of ["reviewer-prompt.md", "reviewer-verify-prompt.md", "reviewer-feedback-engineer.md"]) {
         const prompt = await readBundledPrompt(name);
@@ -290,7 +293,7 @@ Deno.test("bundled workflow-only agents cannot name the removed router handoff t
     );
 });
 
-Deno.test("bundled reviewer-feedback engineer stops in prose on an unreachable finding", async () => {
+test("bundled reviewer-feedback engineer stops in prose on an unreachable finding", async () => {
     const prompt = (await readBundledPrompt("reviewer-feedback-engineer.md")).replace(/\s+/g, " ");
 
     assertStringIncludes(prompt, "do not route around them");

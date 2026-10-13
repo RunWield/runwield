@@ -3,7 +3,7 @@
  * Golden TUI scenario coverage inventory and meta-test helpers.
  */
 
-import { assert } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { VALIDATION_WORKFLOW_BRANCHES } from "./validation-workflow-coverage.ts";
 
 import type { GoldenScenario } from "./scenario-runner.js";

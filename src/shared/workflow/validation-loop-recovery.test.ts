@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlan } from "../../plan-store.js";
 import {
@@ -14,7 +15,7 @@ function makeValidationUi() {
     return { uiAPI, hostedSession: makeRecordedSession("validation-recovery-test", uiAPI) };
 }
 
-Deno.test("runValidationLoop fails closed when worktree validation context is missing target branch metadata", async () => {
+test("runValidationLoop fails closed when worktree validation context is missing target branch metadata", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "FEATURE",
         status: "implemented",

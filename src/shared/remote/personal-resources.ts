@@ -1,4 +1,8 @@
-import { dirname, isAbsolute, join, normalize, relative } from "@std/path";
+import { lstatSync } from "node:fs";
+import { realpathSync as fsRealpathSync, type BigIntStats, statSync as fsStatSync } from "node:fs";
+import { lstat as fsLstat, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
+import { platform } from "node:process";
+import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { getHomeDir } from "../../constants.js";
 
 /** Resource roots for one explicitly activated remote connection. Never set during connection-only startup. */
@@ -12,25 +16,22 @@ export interface RemotePersonalResources {
 let active: Readonly<RemotePersonalResources> | undefined;
 
 interface RootIdentity {
-    dev: number;
-    ino: number;
+    dev: bigint;
+    ino: bigint;
 }
 
 let activeRootIdentities: ReadonlyMap<string, RootIdentity> | undefined;
 
-function rootIdentity(root: string, info: Deno.FileInfo): RootIdentity {
+function rootIdentity(root: string, info: BigIntStats): RootIdentity {
     // A device alone cannot distinguish a detached mount from its local
-    // directory. Reject platforms that cannot identify both parts safely.
-    if (
-        !info.isDirectory || typeof info.dev !== "number" || !Number.isSafeInteger(info.dev) ||
-        typeof info.ino !== "number" || !Number.isSafeInteger(info.ino)
-    ) {
+    // directory. Keep both identifiers exact: NTFS file IDs can exceed 2^53.
+    if (!info.isDirectory() || typeof info.dev !== "bigint" || typeof info.ino !== "bigint") {
         throw new PersonalResourcePathError("Personal root", root, "directory identity is unavailable");
     }
     return { dev: info.dev, ino: info.ino };
 }
 
-function assertRootIdentity(root: string, resource: string, path: string, info: Deno.FileInfo): void {
+function assertRootIdentity(root: string, resource: string, path: string, info: BigIntStats): void {
     const expected = activeRootIdentities?.get(root);
     if (!expected) throw new PersonalResourcePathError(resource, path, `root "${root}" was not activated`);
     const current = rootIdentity(root, info);
@@ -42,7 +43,7 @@ function assertRootIdentity(root: string, resource: string, path: string, info: 
 function assertRootIdentitiesSync(roots: string[], resource: string, path: string): void {
     for (const root of roots) {
         try {
-            assertRootIdentity(root, resource, path, Deno.statSync(root));
+            assertRootIdentity(root, resource, path, fsStatSync(root, { bigint: true }));
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
             throw new PersonalResourcePathError(
@@ -57,7 +58,7 @@ function assertRootIdentitiesSync(roots: string[], resource: string, path: strin
 async function assertRootIdentities(roots: string[], resource: string, path: string): Promise<void> {
     for (const root of roots) {
         try {
-            assertRootIdentity(root, resource, path, await Deno.stat(root));
+            assertRootIdentity(root, resource, path, await fsStat(root, { bigint: true }));
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
             throw new PersonalResourcePathError(
@@ -98,7 +99,7 @@ export function configureRemotePersonalResources(roots: RemotePersonalResources)
         ]
     ) {
         try {
-            identities.set(root, rootIdentity(root, Deno.statSync(root)));
+            identities.set(root, rootIdentity(root, fsStatSync(root, { bigint: true })));
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
             throw new PersonalResourcePathError("Personal root", root, String(error));
@@ -135,7 +136,7 @@ export class PersonalResourcePathError extends Error {
 function within(path: string, root: string): boolean {
     const remainder = relative(root, path);
     return remainder === "" ||
-        (remainder !== ".." && !remainder.startsWith(`..${Deno.build.os === "windows" ? "\\" : "/"}`) &&
+        (remainder !== ".." && !remainder.startsWith(`..${platform === "win32" ? "\\" : "/"}`) &&
             !isAbsolute(remainder));
 }
 
@@ -167,26 +168,28 @@ export async function assertPersonalResourcePath(
     if (!roots.length) return;
     await assertRootIdentities(roots, resource, path);
     try {
-        const target = await Deno.realPath(path);
-        const realRoots = await Promise.all(roots.map((root) => Deno.realPath(root)));
+        const target = await fsRealpath(path);
+        const realRoots = await Promise.all(roots.map((root) => fsRealpath(root)));
         if (!realRoots.some((root) => within(target, root))) {
             throw new PersonalResourcePathError(resource, path, `resolved outside mounted roots to "${target}"`);
         }
     } catch (error) {
         if (error instanceof PersonalResourcePathError) throw error;
-        if (!(error instanceof Deno.errors.NotFound)) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
             throw new PersonalResourcePathError(resource, path, String(error));
         }
         // Missing ordinary files are optional. A broken symlink is not: it may
         // point at a laptop absolute path which exists on another remote account.
         for (let current = path; roots.some((root) => within(current, root)); current = dirname(current)) {
             try {
-                if ((await Deno.lstat(current)).isSymlink) {
+                if ((await fsLstat(current)).isSymbolicLink()) {
                     throw new PersonalResourcePathError(resource, path, `unresolved symlink at "${current}"`);
                 }
             } catch (linkError) {
                 if (linkError instanceof PersonalResourcePathError) throw linkError;
-                if (!(linkError instanceof Deno.errors.NotFound)) throw linkError;
+                if (!(linkError instanceof Error && "code" in linkError && linkError.code === "ENOENT")) {
+                    throw linkError;
+                }
             }
         }
     }
@@ -198,23 +201,25 @@ export function assertPersonalResourcePathSync(path: string, resource: string): 
     if (!roots.length) return;
     assertRootIdentitiesSync(roots, resource, path);
     try {
-        const target = Deno.realPathSync(path);
-        if (!roots.map((root) => Deno.realPathSync(root)).some((root) => within(target, root))) {
+        const target = fsRealpathSync(path);
+        if (!roots.map((root) => fsRealpathSync(root)).some((root) => within(target, root))) {
             throw new PersonalResourcePathError(resource, path, `resolved outside mounted roots to "${target}"`);
         }
     } catch (error) {
         if (error instanceof PersonalResourcePathError) throw error;
-        if (!(error instanceof Deno.errors.NotFound)) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
             throw new PersonalResourcePathError(resource, path, String(error));
         }
         for (let current = path; roots.some((root) => within(current, root)); current = dirname(current)) {
             try {
-                if (Deno.lstatSync(current).isSymlink) {
+                if (lstatSync(current).isSymbolicLink()) {
                     throw new PersonalResourcePathError(resource, path, `unresolved symlink at "${current}"`);
                 }
             } catch (linkError) {
                 if (linkError instanceof PersonalResourcePathError) throw linkError;
-                if (!(linkError instanceof Deno.errors.NotFound)) throw linkError;
+                if (!(linkError instanceof Error && "code" in linkError && linkError.code === "ENOENT")) {
+                    throw linkError;
+                }
             }
         }
     }

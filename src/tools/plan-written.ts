@@ -1,3 +1,4 @@
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
 import { isSequencePlan, projectPlanType } from "../shared/project-plan.ts";
 import { applySequenceReviewDecision, prepareSequenceReview } from "../shared/workflow/sequence-review.ts";
 import type { SequenceReviewDecision, SequenceReviewDocument } from "../shared/workflow/sequence-review.ts";
@@ -16,7 +17,8 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../shared/w
  */
 
 import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-verification-command.ts";
-import { join, toFileUrl } from "@std/path";
+import { join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { CLI_BIN, normalizePlanClassification, normalizeWorkKind, PLANS_DIR_NAME } from "../constants.js";
@@ -388,8 +390,8 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
             const reviewCwd = location.plan ? location.documentRoot : cwd;
             const planPath = location.plan?.path || join(reviewCwd, PLANS_DIR_NAME, `${planName}.md`);
             try {
-                const stat = await Deno.stat(planPath);
-                if (!stat.isFile) {
+                const stat = await fsStat(planPath);
+                if (!stat.isFile()) {
                     return textResult(
                         `plan_written: docs/plans/${planName}.md is not a file. Write the plan markdown first, then call plan_written again.`,
                     );
@@ -553,7 +555,7 @@ export function createPlanWrittenTool({ triageMeta, agentName = "planner", hoste
             const canonicalReviewEvidence = initialReviewEvidence.kind === "success"
                 ? initialReviewEvidence.evidence
                 : null;
-            const currentReviewPlan = await Deno.readTextFile(planPath);
+            const currentReviewPlan = await fsReadFile(planPath, "utf8");
             const planVersions = reviewPlanVersions.get(planName) ?? [];
             if (planVersions.at(-1)?.plan !== currentReviewPlan) {
                 planVersions.push({ plan: currentReviewPlan, timestamp: new Date().toISOString() });

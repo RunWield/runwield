@@ -55,9 +55,24 @@ bash install.sh vX.Y.Z-rc.N
 Release operators need:
 
 - `git` with push access to this repository.
-- `deno` matching the repository toolchain.
+- Bun matching `.bun-version` (1.4.3) for source, Golden, executable and package qualification;
+  run `bun run install:locked` first.
 - `gh` authenticated to GitHub with permission to read releases before tagging, verify Candidate releases during
   promotion, and edit release notes after CI publishes assets (`gh auth status` should pass for the target account).
+
+## Binary runtime
+
+Release binaries use pinned Bun, frozen root/docs dependency graphs, and the Bun Workspace build.
+All five existing release targets and archive names remain supported. Artifact metadata uses the
+existing platform triples; the embedded build identity includes the Bun compiler and dependency graph.
+`--remote-preflight` reports the executing runtime and its version so qualification rejects a Deno binary
+or an unexpected Bun version. Bun runs the source and Golden regression gates and the
+native package verification tooling. Legacy Deno lock compatibility runs in a separate qualification lane.
+Remote container and historical documentation publishing conversion remain tracked transition work.
+
+The Bun binary gate retains bundled-reference extraction, image resizing, Plans UI, and Plan/code
+review checks. Native Windows ZIP and Homebrew checks still gate publication. This compiler change
+does not publish to Stable channels during a Candidate release or restore automatic WinGet submission.
 
 ## Release source
 
@@ -100,16 +115,16 @@ publishes release bytes.
 Use these repository-owned commands instead of hand-writing tag or build commands:
 
 ```bash
-deno task release:candidate --tag vX.Y.Z-rc.N [--dry-run]
-deno task release:promote --candidate vX.Y.Z-rc.N [--dry-run]
-deno task release:stable --tag vX.Y.Z [--dry-run]
-deno task release:metadata --tag vX.Y.Z[-rc.N]
-deno task release:check --build-version vX.Y.Z[-rc.N]
-deno task package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag vA.B.C --output <dir>
-deno task package:homebrew:check --tap <dir>
-deno task package:windows --tag vX.Y.Z --binary <path-to-wld.exe> --output <dir>
-deno task package:windows:check --package <dir>/wld-vX.Y.Z-windows-x64.zip
-deno task package:winget --tag vX.Y.Z --output <dir>
+bun run release:candidate --tag vX.Y.Z-rc.N [--dry-run]
+bun run release:promote --candidate vX.Y.Z-rc.N [--dry-run]
+bun run release:stable --tag vX.Y.Z [--dry-run]
+bun run release:metadata --tag vX.Y.Z[-rc.N]
+bun run release:check --build-version vX.Y.Z[-rc.N]
+bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag vA.B.C --output <dir>
+bun run package:homebrew:check --tap <dir>
+bun run package:windows --tag vX.Y.Z --binary <path-to-wld.exe> --output <dir>
+bun run package:windows:check --package <dir>/wld-vX.Y.Z-windows-x64.zip
+bun run package:winget --tag vX.Y.Z --output <dir>
 ```
 
 Dry runs perform read-only tag, version, and source preflight and print the proposed tag target and tag push. They must
@@ -122,10 +137,10 @@ releases, or leave repository files behind.
 2. Generate cumulative release notes from the previous Stable tag to the policy-selected source commit. Later Candidates
    keep the cumulative upgrade notes and add validation-relevant changes since the previous Candidate when useful. Do
    not derive notes from unrelated current `HEAD` changes.
-3. Run `deno task release:candidate --tag <candidate-tag> --dry-run`. Inspect the source branch, source commit, target
+3. Run `bun run release:candidate --tag <candidate-tag> --dry-run`. Inspect the source branch, source commit, target
    tag, and planned remote changes.
 4. Confirm the branch and tag push. The tag remains a retryable release attempt until its GitHub Release is created.
-5. Run `deno task release:candidate --tag <candidate-tag>`.
+5. Run `bun run release:candidate --tag <candidate-tag>`.
 6. Wait for the tag-triggered GitHub workflow to publish the prerelease assets.
 7. Edit the published Candidate release with the curated temporary notes and verify they landed.
 
@@ -147,10 +162,10 @@ active. After Stable publication, merge its final tip into `main` and delete the
 2. Verify the Candidate GitHub release is published as a prerelease and includes every expected wld asset.
 3. Generate Stable release notes cumulative from the previous Stable. Remove Candidate-specific warnings, but do not
    treat promotion as an empty release merely because the source commit is unchanged from the Candidate.
-4. Run `deno task release:promote --candidate <candidate-tag> --dry-run` and inspect the Candidate source commit and
+4. Run `bun run release:promote --candidate <candidate-tag> --dry-run` and inspect the Candidate source commit and
    target Stable tag.
 5. Confirm the tag push. The tag becomes immutable when its GitHub Release is created.
-6. Run `deno task release:promote --candidate <candidate-tag>`.
+6. Run `bun run release:promote --candidate <candidate-tag>`.
 7. Wait for the Stable tag-triggered GitHub workflow to publish Stable assets.
 8. Edit the published Stable release with the curated temporary notes and verify they landed.
 9. For a branch-based series, fetch the Release Branch and merge its final remote tip into `main`. Resolve conflicts
@@ -189,8 +204,8 @@ The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with writ
 Publication stops if the credential is absent or any package check fails. To reproduce the check locally, use:
 
 ```bash
-deno task package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag v0.3.3 --output /tmp/runwield-tap
-deno task package:homebrew:check --tap /tmp/runwield-tap
+bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag v0.3.3 --output /tmp/runwield-tap
+bun run package:homebrew:check --tap /tmp/runwield-tap
 ```
 
 The checked formula installs metadata beside `libexec/wld`; a Homebrew-owned `wld update` prints
@@ -213,7 +228,7 @@ Stable releases also render a `runwield-winget-manifests-vX.Y.Z` artifact. You c
 bytes with:
 
 ```bash
-deno task package:winget --tag vX.Y.Z --output /tmp/runwield-winget
+bun run package:winget --tag vX.Y.Z --output /tmp/runwield-winget
 ```
 
 Candidate tags are rejected. Automatic WinGet PR submission is disabled until the owner directs its restoration. Stable

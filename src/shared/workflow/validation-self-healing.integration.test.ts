@@ -1,5 +1,14 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     injectFrontMatter,
     loadPlan,
@@ -16,7 +25,7 @@ import { continueWorkflowValidation } from "./validation-supervisor.ts";
 import { attachRecorder, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.js";
 import { getCurrentValidationProgress } from "./validation-progress.ts";
 
-Deno.test("an interrupted validation clears running progress while retaining a resumable Plan", async () => {
+test("an interrupted validation clears running progress while retaining a resumable Plan", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "PLANNED_CHANGE",
         status: "implemented",
@@ -40,12 +49,12 @@ Deno.test("an interrupted validation clears running progress while retaining a r
         assertEquals((await loadPlan(projectRoot, "p"))?.attrs.status, "implemented");
     } finally {
         hostedSession.dispose();
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
 const fixture = defineGitFixture(async (repoPath) => {
-    await Deno.writeTextFile(join(repoPath, "README.md"), "# Validation fixture\n");
+    await fsWriteFile(join(repoPath, "README.md"), "# Validation fixture\n");
     await git(repoPath, ["add", "."]);
     await git(repoPath, ["commit", "-m", "fixture base"]);
 });
@@ -69,11 +78,11 @@ async function makeReportedMismatchFixture() {
 
     const baseCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
     const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
-    const worktreeParent = await Deno.makeTempDir({ prefix: "runwield-validation-self-heal-worktrees-" });
+    const worktreeParent = await fsMkdtemp(join(tmpdir(), "runwield-validation-self-heal-worktrees-"));
     const executionCwd = join(worktreeParent, "demo");
     const branch = "runwield/worktree/demo-wt-demo";
     await git(projectRoot, ["worktree", "add", "-b", branch, executionCwd, "HEAD"]);
-    await Deno.writeTextFile(join(executionCwd, "README.md"), "# Validation fixture\n\nImplemented change.\n");
+    await fsWriteFile(join(executionCwd, "README.md"), "# Validation fixture\n\nImplemented change.\n");
 
     // Reproduce stale RunWield-owned identity while keeping the execution Plan's
     // user-owned definition and lifecycle authoritative.
@@ -90,8 +99,8 @@ async function makeReportedMismatchFixture() {
         collaborationRecommendation: "autonomous",
         executionMode: "worktree",
     });
-    await Deno.writeTextFile(executionPath, staleExecution);
-    const staleAttrs = parsePlanFrontMatter(await Deno.readTextFile(executionPath)).attrs;
+    await fsWriteFile(executionPath, staleExecution);
+    const staleAttrs = parsePlanFrontMatter(await fsReadFile(executionPath, "utf8")).attrs;
     assertEquals(staleAttrs.planId, "plan-stale-copy");
     assertEquals(staleAttrs.collaborationRecommendation, "autonomous");
 
@@ -131,11 +140,11 @@ async function makeReportedMismatchFixture() {
 async function removeFixture(fixturePaths: { projectRoot: string; worktreeParent: string }) {
     await git(fixturePaths.projectRoot, ["worktree", "remove", "--force", join(fixturePaths.worktreeParent, "demo")])
         .catch(() => {});
-    await Deno.remove(fixturePaths.worktreeParent, { recursive: true }).catch(() => {});
-    await Deno.remove(fixturePaths.projectRoot, { recursive: true }).catch(() => {});
+    await fsRm(fixturePaths.worktreeParent, { recursive: true }).catch(() => {});
+    await fsRm(fixturePaths.projectRoot, { recursive: true }).catch(() => {});
 }
 
-Deno.test("stale RunWield state self-heals and validation continues", async () => {
+test("stale RunWield state self-heals and validation continues", async () => {
     const testFixture = await makeReportedMismatchFixture();
     try {
         let ciRuns = 0;
@@ -188,7 +197,7 @@ Deno.test("stale RunWield state self-heals and validation continues", async () =
             localCI: {
                 run: async ({ cwd }) => {
                     ciRuns += 1;
-                    assertEquals(cwd, await Deno.realPath(testFixture.executionCwd));
+                    assertEquals(cwd, await fsRealpath(testFixture.executionCwd));
                     return { kind: "completed", exitCode: 0, output: "ok" };
                 },
             },
@@ -202,7 +211,7 @@ Deno.test("stale RunWield state self-heals and validation continues", async () =
 
         assertEquals(result.kind, "failed", result.reason || "the fake semantic boundary must stop validation");
         assertEquals(ciRuns, 1, `fresh Mechanical Validation must run once: ${JSON.stringify(result)}`);
-        const executionAfter = parsePlanFrontMatter(await Deno.readTextFile(testFixture.executionPath));
+        const executionAfter = parsePlanFrontMatter(await fsReadFile(testFixture.executionPath, "utf8"));
         assertEquals(executionAfter.attrs.planId, "plan-demo");
         assertEquals(executionAfter.attrs.collaborationRecommendation, "autonomous");
         assertEquals(executionAfter.attrs.status, "implemented");
@@ -212,7 +221,7 @@ Deno.test("stale RunWield state self-heals and validation continues", async () =
         assertEquals(primaryAfter.attrs.status, "implemented");
         const savedWorktree = await findById(testFixture.projectRoot, "wt-demo");
         assertExists(savedWorktree);
-        assertEquals(await Deno.realPath(savedWorktree.path), await Deno.realPath(testFixture.executionCwd));
+        assertEquals(await fsRealpath(savedWorktree.path), await fsRealpath(testFixture.executionCwd));
 
         const shown = recorder.messages.join("\n");
         assertEquals(shown.includes("fresh Plan review"), false);
@@ -225,7 +234,7 @@ Deno.test("stale RunWield state self-heals and validation continues", async () =
     }
 });
 
-Deno.test("body-only Plan amendment no longer prompts before Mechanical Validation", async () => {
+test("body-only Plan amendment no longer prompts before Mechanical Validation", async () => {
     const testFixture = await makeReportedMismatchFixture();
     try {
         const primary = await loadPlan(testFixture.projectRoot, "demo");
@@ -301,7 +310,7 @@ Deno.test("body-only Plan amendment no longer prompts before Mechanical Validati
     }
 });
 
-Deno.test("durable registry recovery returns the worktree base commit", async () => {
+test("durable registry recovery returns the worktree base commit", async () => {
     const testFixture = await makeReportedMismatchFixture();
     try {
         const resolution = await resolveValidationExecutionContext({
@@ -318,12 +327,12 @@ Deno.test("durable registry recovery returns the worktree base commit", async ()
     }
 });
 
-Deno.test("a missing worktree is restored from its branch", async () => {
+test("a missing worktree is restored from its branch", async () => {
     const testFixture = await makeReportedMismatchFixture();
     try {
         await git(testFixture.executionCwd, ["add", "."]);
         await git(testFixture.executionCwd, ["commit", "-m", "save implementation"]);
-        await Deno.remove(testFixture.executionCwd, { recursive: true });
+        await fsRm(testFixture.executionCwd, { recursive: true });
         await git(testFixture.projectRoot, ["worktree", "prune"]);
 
         const plan = await loadPlan(testFixture.projectRoot, "demo");
@@ -338,8 +347,8 @@ Deno.test("a missing worktree is restored from its branch", async () => {
         if (resolution.kind === "ok") {
             assertEquals(resolution.context.executionMode, "worktree");
             assertEquals(
-                await Deno.realPath(resolution.context.executionCwd),
-                await Deno.realPath(testFixture.executionCwd),
+                await fsRealpath(resolution.context.executionCwd),
+                await fsRealpath(testFixture.executionCwd),
             );
             assertEquals(
                 resolution.selfHealNotices?.some((notice) => notice.kind === "worktree_restored"),
@@ -348,7 +357,7 @@ Deno.test("a missing worktree is restored from its branch", async () => {
         }
         assertEquals(await git(testFixture.executionCwd, ["branch", "--show-current"]), testFixture.branch);
         assertStringIncludes(
-            await Deno.readTextFile(join(testFixture.executionCwd, "README.md")),
+            await fsReadFile(join(testFixture.executionCwd, "README.md"), "utf8"),
             "Implemented change",
         );
     } finally {
@@ -356,7 +365,7 @@ Deno.test("a missing worktree is restored from its branch", async () => {
     }
 });
 
-Deno.test("a durable validation field survives a fresh project read", async () => {
+test("a durable validation field survives a fresh project read", async () => {
     const projectRoot = await makeValidationProjectRoot("resume-demo", {
         classification: "PLANNED_CHANGE",
         status: "implemented",
@@ -387,6 +396,6 @@ Deno.test("a durable validation field survives a fresh project read", async () =
         assertEquals(reopened.attrs.validationCheckpoint?.generation, "saved-generation");
         assertEquals(reopened.attrs.status, "implemented");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });

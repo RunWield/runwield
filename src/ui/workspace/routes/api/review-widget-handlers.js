@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Sandboxed Guided Review widget serving helpers. */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 
 /**
  * @typedef {{ dir: string, assets: Map<string, string>, contentTypes: Map<string, string> }} StoredWidget
@@ -21,7 +25,7 @@ export function createReviewWidgetStore() {
         widgets,
         registerGuideWidgets: (guide, jobId) => registerGuideWidgets(widgets, guide, String(jobId || "guide")),
         cleanup: async () => {
-            for (const widget of widgets.values()) await Deno.remove(widget.dir, { recursive: true }).catch(() => {});
+            for (const widget of widgets.values()) await fsRm(widget.dir, { recursive: true }).catch(() => {});
             widgets.clear();
         },
     };
@@ -66,7 +70,7 @@ async function registerGuideWidgets(widgets, guide, jobId) {
             const widget = /** @type {Record<string, unknown>} */ (block);
             const rawId = String(widget.id || widget.widgetId || "widget");
             const id = `${jobId}-${rawId}-${crypto.randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 140);
-            const dir = await Deno.makeTempDir({ prefix: "runwield-guide-widget-" });
+            const dir = await mkdtemp(join(tmpdir(), "runwield-guide-widget-"));
             /** @type {StoredWidget} */
             const stored = { dir, assets: new Map(), contentTypes: new Map() };
             await writeAsset(
@@ -120,7 +124,7 @@ function collectWidgetAssets(rawId, widget, topAssets) {
 async function writeAsset(stored, assetName, content, contentType) {
     if (!/^[A-Za-z0-9._-]{1,120}$/.test(assetName)) throw new Error(`Unsafe widget asset name: ${assetName}`);
     const path = join(stored.dir, assetName);
-    await Deno.writeTextFile(path, content);
+    await fsWriteFile(path, content);
     stored.assets.set(assetName, path);
     stored.contentTypes.set(assetName, contentType);
 }
@@ -130,7 +134,7 @@ function serveStoredWidget(widget, origin, widgetId, assetName) {
     const path = widget.assets.get(assetName);
     if (!path) return Response.json({ error: "Widget asset not allowed" }, { status: 404 });
     const contentType = widget.contentTypes.get(assetName) || "application/octet-stream";
-    return new Response(Deno.readFileSync(path), {
+    return new Response(readFileSync(path), {
         headers: {
             "content-type": contentType,
             "cache-control": "no-store",

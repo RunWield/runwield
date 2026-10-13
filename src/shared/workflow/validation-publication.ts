@@ -1,3 +1,4 @@
+import { stat as fsStat } from "node:fs/promises";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     readDeliveryEvidence,
@@ -5,7 +6,7 @@ import {
     saveDeliveredWorkRecordEvidence,
     savePublicationEvidence,
 } from "./delivery-evidence.ts";
-import { relative } from "@std/path";
+import { relative } from "node:path";
 import { buildDeliveryReport } from "./delivery-report.ts";
 import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
 import {
@@ -361,7 +362,7 @@ async function runLockedPublicationPhase(
     let epicResolution: EpicContinuationResolution | undefined;
     let repairMergeWorktreePath = publicationAttempt?.failure?.repairRoot;
     if (repairMergeWorktreePath) {
-        const exists = await Deno.stat(repairMergeWorktreePath).then((value) => value.isDirectory).catch(() => false);
+        const exists = await fsStat(repairMergeWorktreePath).then((value) => value.isDirectory()).catch(() => false);
         if (!exists) repairMergeWorktreePath = undefined;
     }
     let agentRepairs = 0;

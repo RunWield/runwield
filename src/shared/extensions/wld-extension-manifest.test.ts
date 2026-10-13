@@ -1,5 +1,8 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ResolvedResource } from "../package-resources.ts";
 import {
     filterWldCompatibleExtensionResources,
@@ -8,7 +11,7 @@ import {
     isWldCompatibleExtensionManifest,
 } from "./wld-extension-manifest.js";
 
-Deno.test("isWldCompatibleExtensionManifest recognizes the WLD code-extension marker", () => {
+test("isWldCompatibleExtensionManifest recognizes the WLD code-extension marker", () => {
     assertEquals(
         isWldCompatibleExtensionManifest({
             pi: {
@@ -25,14 +28,14 @@ Deno.test("isWldCompatibleExtensionManifest recognizes the WLD code-extension ma
     assertEquals(isWldCompatibleExtensionManifest({ pi: { wld: { compatible: true } } }), false);
 });
 
-Deno.test("filterWldCompatibleExtensionResources returns enabled package resources with compatible package metadata", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-wld-extension-" });
+test("filterWldCompatibleExtensionResources returns enabled package resources with compatible package metadata", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-wld-extension-"));
     const compatiblePath = join(root, "compatible.js");
     const incompatibleRoot = join(root, "incompatible");
     const incompatiblePath = join(incompatibleRoot, "index.js");
 
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(root, "package.json"),
             JSON.stringify({
                 pi: {
@@ -45,10 +48,10 @@ Deno.test("filterWldCompatibleExtensionResources returns enabled package resourc
                 },
             }),
         );
-        await Deno.writeTextFile(compatiblePath, "export default () => ({});\n");
-        await Deno.mkdir(incompatibleRoot);
-        await Deno.writeTextFile(join(incompatibleRoot, "package.json"), JSON.stringify({ pi: {} }));
-        await Deno.writeTextFile(incompatiblePath, "export default () => ({});\n");
+        await fsWriteFile(compatiblePath, "export default () => ({});\n");
+        await fsMkdir(incompatibleRoot);
+        await fsWriteFile(join(incompatibleRoot, "package.json"), JSON.stringify({ pi: {} }));
+        await fsWriteFile(incompatiblePath, "export default () => ({});\n");
 
         const resources: ResolvedResource[] = [
             {
@@ -76,19 +79,19 @@ Deno.test("filterWldCompatibleExtensionResources returns enabled package resourc
         const compatible = await filterWldCompatibleExtensionResources(resources);
         assertEquals(getWldExtensionPaths(compatible), [compatiblePath]);
     } finally {
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("findPackageRootForExtensionResource ascends from nested extension files", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-wld-extension-root-" });
+test("findPackageRootForExtensionResource ascends from nested extension files", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-wld-extension-root-"));
     const nested = join(root, "src", "extensions");
     const extensionPath = join(nested, "index.js");
 
     try {
-        await Deno.mkdir(nested, { recursive: true });
-        await Deno.writeTextFile(join(root, "package.json"), JSON.stringify({ pi: { wld: {} } }));
-        await Deno.writeTextFile(extensionPath, "export default () => ({});\n");
+        await fsMkdir(nested, { recursive: true });
+        await fsWriteFile(join(root, "package.json"), JSON.stringify({ pi: { wld: {} } }));
+        await fsWriteFile(extensionPath, "export default () => ({});\n");
 
         const resource: ResolvedResource = {
             path: extensionPath,
@@ -99,6 +102,6 @@ Deno.test("findPackageRootForExtensionResource ascends from nested extension fil
 
         assertEquals(packageRoot, root);
     } finally {
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });

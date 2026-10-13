@@ -45,13 +45,7 @@ interface RuntimeSemanticRepairOptions {
     planContent?: string;
     triageMeta?: import("../../../tools/plan-written.ts").TriageMeta;
 }
-interface SemanticRepairOutcome {
-    kind: string;
-    planName: string;
-    projectRoot: string;
-    reason?: string;
-}
-type PlanExecutionResult = Awaited<ReturnType<typeof import("../../workflow/workflow.js").executePlan>>;
+
 export interface RuntimeValidationResult {
     kind?: string;
     ok?: boolean;

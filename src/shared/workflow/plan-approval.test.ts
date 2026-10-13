@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     normalizePlanApprovalAction,
     PLAN_APPROVAL_ACTIONS,
@@ -6,7 +7,7 @@ import {
     readPlanApprovalAction,
 } from "./plan-approval.ts";
 
-Deno.test("normalizes FEATURE approval actions", () => {
+test("normalizes FEATURE approval actions", () => {
     assertEquals(
         normalizePlanApprovalAction({ classification: "FEATURE", action: "run" }),
         PLAN_APPROVAL_ACTIONS.RUN,
@@ -21,7 +22,7 @@ Deno.test("normalizes FEATURE approval actions", () => {
     );
 });
 
-Deno.test("normalizes PROJECT approval actions", () => {
+test("normalizes PROJECT approval actions", () => {
     assertEquals(
         normalizePlanApprovalAction({ classification: "PROJECT", action: "decompose" }),
         PLAN_APPROVAL_ACTIONS.DECOMPOSE,
@@ -36,7 +37,7 @@ Deno.test("normalizes PROJECT approval actions", () => {
     );
 });
 
-Deno.test("missing, unknown, and untrusted approval actions are deferred", () => {
+test("missing, unknown, and untrusted approval actions are deferred", () => {
     assertEquals(normalizePlanApprovalAction({ classification: "FEATURE" }), PLAN_APPROVAL_ACTIONS.LATER);
     assertEquals(
         normalizePlanApprovalAction({ classification: "PROJECT", action: "execute" }),
@@ -48,13 +49,13 @@ Deno.test("missing, unknown, and untrusted approval actions are deferred", () =>
     );
 });
 
-Deno.test("classification primary actions are explicit", () => {
+test("classification primary actions are explicit", () => {
     assertEquals(primaryPlanApprovalActionForClassification("PROJECT"), PLAN_APPROVAL_ACTIONS.DECOMPOSE);
     assertEquals(primaryPlanApprovalActionForClassification("FEATURE"), PLAN_APPROVAL_ACTIONS.RUN);
     assertEquals(primaryPlanApprovalActionForClassification(undefined), PLAN_APPROVAL_ACTIONS.RUN);
 });
 
-Deno.test("transport action reader only accepts known approval actions", () => {
+test("transport action reader only accepts known approval actions", () => {
     assertEquals(readPlanApprovalAction("run"), PLAN_APPROVAL_ACTIONS.RUN);
     assertEquals(readPlanApprovalAction("decompose"), PLAN_APPROVAL_ACTIONS.DECOMPOSE);
     assertEquals(readPlanApprovalAction("later"), PLAN_APPROVAL_ACTIONS.LATER);

@@ -1,4 +1,7 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { validationWorkflowTreeScenarios } from "../golden-scenarios/validation-workflow-tree.ts";
 import {
     assertValidationBranchInventory,
@@ -95,21 +98,21 @@ function fullEvidenceResult(id: ValidationWorkflowBranchId): ValidationWorkflowR
     };
 }
 
-Deno.test("validation workflow inventory is independent, owned, and assertion-tagged", () => {
+test("validation workflow inventory is independent, owned, and assertion-tagged", () => {
     assertValidationBranchInventory(validationWorkflowTreeScenarios);
     const declared = validationWorkflowTreeScenarios.flatMap((scenario) => scenario.validationBranches || []);
     assertEquals(new Set(declared).size, EXPECTED_VALIDATION_WORKFLOW_BRANCH_IDS.length);
 });
 
-Deno.test("every validation workflow scenario is registered in a concern test file", async () => {
-    const scenarioIndex = await Deno.readTextFile("src/ui/tui/golden-scenarios/validation-workflow-tree.ts");
+test("every validation workflow scenario is registered in a concern test file", async () => {
+    const scenarioIndex = await fsReadFile("src/ui/tui/golden-scenarios/validation-workflow-tree.ts", "utf8");
     const expected = [...scenarioIndex.matchAll(/\b(validationTree\w+Scenario),/g)]
         .map((match) => match[1])
         .sort();
     const registered: string[] = [];
-    for await (const entry of Deno.readDir("src/ui/tui/golden-scenarios")) {
-        if (!entry.isFile || !/^validation-workflow-.+\.test\.ts$/.test(entry.name)) continue;
-        const source = await Deno.readTextFile(`src/ui/tui/golden-scenarios/${entry.name}`);
+    for await (const entry of await fsReaddir("src/ui/tui/golden-scenarios", { withFileTypes: true })) {
+        if (!entry.isFile() || !/^validation-workflow-.+\.test\.ts$/.test(entry.name)) continue;
+        const source = await fsReadFile(`src/ui/tui/golden-scenarios/${entry.name}`, "utf8");
         for (const match of source.matchAll(/exportName:\s*"(validationTree\w+Scenario)"/g)) {
             registered.push(match[1]);
         }
@@ -117,7 +120,7 @@ Deno.test("every validation workflow scenario is registered in a concern test fi
     assertEquals(registered.sort(), expected, "Every indexed scenario must be registered exactly once.");
 });
 
-Deno.test("validation workflow inventory represents production interaction option values", async () => {
+test("validation workflow inventory represents production interaction option values", async () => {
     const sourceFiles = [
         "src/shared/workflow/validation-interactions.ts",
         "src/shared/workflow/validation-mechanical.ts",
@@ -127,7 +130,7 @@ Deno.test("validation workflow inventory represents production interaction optio
     ];
     const found = new Set<string>();
     for (const path of sourceFiles) {
-        const source = await Deno.readTextFile(path);
+        const source = await fsReadFile(path, "utf8");
         for (const match of source.matchAll(/value:\s*["']([a-z_]+)["']/g)) found.add(match[1]);
     }
     const represented = Object.keys(VALIDATION_INTERACTION_OPTION_BRANCHES).sort();
@@ -143,7 +146,7 @@ Deno.test("validation workflow inventory represents production interaction optio
     }
 });
 
-Deno.test("validation workflow evidence checks reject metadata-only coverage", () => {
+test("validation workflow evidence checks reject metadata-only coverage", () => {
     for (const id of EXPECTED_VALIDATION_WORKFLOW_BRANCH_IDS) {
         assertValidationEvidenceRejectsCounterfeits(id, fullEvidenceResult(id));
     }

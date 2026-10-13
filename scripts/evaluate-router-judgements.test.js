@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../src/testing/assertions.ts";
+import { test } from "node:test";
 import { buildBaseline, checkThresholds, summarizeJudgements } from "./evaluate-router-judgements.js";
 
-Deno.test("summarizeJudgements compares router against human labels", () => {
+test("summarizeJudgements compares router against human labels", () => {
     const summary = summarizeJudgements([
         {
             humanJudgement: "FEATURE",
@@ -24,7 +25,7 @@ Deno.test("summarizeJudgements compares router against human labels", () => {
     assertEquals(summary.router.corrections, { "QUICK_FIX->PLANNED_CHANGE": 1 });
 });
 
-Deno.test("checkThresholds reports threshold failures", () => {
+test("checkThresholds reports threshold failures", () => {
     const summary = /** @type {any} */ ({
         router: {
             agreementRate: 0.7,
@@ -44,7 +45,7 @@ Deno.test("checkThresholds reports threshold failures", () => {
     );
 });
 
-Deno.test("buildBaseline creates suggested Router thresholds", () => {
+test("buildBaseline creates suggested Router thresholds", () => {
     const baseline = buildBaseline(
         /** @type {any} */ ({
             labelledRows: 10,

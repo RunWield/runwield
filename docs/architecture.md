@@ -588,7 +588,7 @@ Agent definitions are loaded from bundled defaults, then home overrides, then pr
 scalar front matter. Prompt bodies append unless a higher layer sets `promptOverride: true`. A higher-layer `tools`
 array replaces the lower one, but protected workflow/code/memory tools present in the lowest existing definition are
 re-added so an override cannot silently remove a Core invariant. Optional `bashAllowedCommands` front matter follows its
-own layered rule: omission inherits the lower layer, a list replaces it, `[]` denies all commands, and `null` resets
+own layered rule: omission inherits the lower layer, non-empty lists merge without duplicate entries, `[]` denies all commands, and `null` resets
 that definition's inherited list to unrestricted. No list at any layer means unrestricted bash. The field never grants
 bash access. A Delegated Agent Session intersects its definition policy with its effective parent's limit; neither an
 omitted child list nor `null` can remove a parent limit. Role ceilings select the read definition when write authority

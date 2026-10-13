@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     buildSessionContextReport,
     createSessionContextProjection,
@@ -13,12 +14,12 @@ function makeProjection() {
     ]);
 }
 
-Deno.test("estimateContextTextTokens follows chars over four convention", () => {
+test("estimateContextTextTokens follows chars over four convention", () => {
     assertEquals(estimateContextTextTokens("12345"), 2);
     assertEquals(estimateContextTextTokens(""), 0);
 });
 
-Deno.test("buildSessionContextReport uses local estimates before provider usage exists", () => {
+test("buildSessionContextReport uses local estimates before provider usage exists", () => {
     const report = buildSessionContextReport({
         agentName: "engineer",
         agentDisplayName: "Engineer",
@@ -36,7 +37,7 @@ Deno.test("buildSessionContextReport uses local estimates before provider usage 
     assertEquals(report?.categories.at(-1)?.tokens, 15);
 });
 
-Deno.test("buildSessionContextReport reconciles provider remainder into conversation overhead", () => {
+test("buildSessionContextReport reconciles provider remainder into conversation overhead", () => {
     const report = buildSessionContextReport({
         projection: makeProjection(),
         contextUsage: { tokens: 80, contextWindow: 100, percent: 80 },
@@ -50,7 +51,7 @@ Deno.test("buildSessionContextReport reconciles provider remainder into conversa
     assertEquals(report?.categories.find((category) => category.id === "conversation_overhead")?.tokens, 45);
 });
 
-Deno.test("buildSessionContextReport marks local total as estimated when provider total is lower", () => {
+test("buildSessionContextReport marks local total as estimated when provider total is lower", () => {
     const report = buildSessionContextReport({
         projection: makeProjection(),
         contextUsage: { tokens: 10, contextWindow: 40, percent: 25 },
@@ -63,7 +64,7 @@ Deno.test("buildSessionContextReport marks local total as estimated when provide
     assertEquals(report?.percent, 112.5);
 });
 
-Deno.test("buildSessionContextReport preserves post-compaction unknown usage", () => {
+test("buildSessionContextReport preserves post-compaction unknown usage", () => {
     const report = buildSessionContextReport({
         projection: makeProjection(),
         contextUsage: { tokens: null, contextWindow: 100, percent: null },
@@ -76,7 +77,7 @@ Deno.test("buildSessionContextReport preserves post-compaction unknown usage", (
     assertEquals(report?.percent, null);
 });
 
-Deno.test("buildSessionContextReport handles missing context window", () => {
+test("buildSessionContextReport handles missing context window", () => {
     const report = buildSessionContextReport({
         projection: makeProjection(),
         contextUsage: null,
@@ -89,6 +90,6 @@ Deno.test("buildSessionContextReport handles missing context window", () => {
     assertEquals(report?.freeTokens, null);
 });
 
-Deno.test("buildSessionContextReport returns null without an active projection", () => {
+test("buildSessionContextReport returns null without an active projection", () => {
     assertEquals(buildSessionContextReport({ projection: null, contextUsage: null }), null);
 });

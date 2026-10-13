@@ -1,11 +1,13 @@
+import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: owner Workspace app and managed fixture expose JavaScript records.
-import { assert, assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { ensurePlanIdentity, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 
-Deno.test("owner Plan review command opens a saved review through the authorized route without a user turn", async () => {
+test("owner Plan review command opens a saved review through the authorized route without a user turn", async () => {
     await withRuntimeCommandFixture(
         "workspace-reopen-plan-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -48,15 +50,16 @@ Deno.test("owner Plan review command opens a saved review through the authorized
                 app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
                 const options = await app.sessionContinuation.listSessionOptions(fixture.project.projectId);
                 assertEquals(options.commands.find((command) => command.name === "plan-review")?.kind, "action");
-                const base =
-                    `http://127.0.0.1:8787/api/owner/projects/${fixture.project.projectId}/sessions/${fixture.session.runwieldSessionId}`;
+                const base = `http://127.0.0.1:8787/api/owner/projects/${fixture.project.projectId}/sessions/${fixture.session.runwieldSessionId}`;
                 const cookie = `rw_owner_device=${device.credential}; rw_owner_csrf=review-csrf`;
                 const get = async (path) =>
-                    (await app.handler()(
-                        new Request(`${base}/${path}`, {
-                            headers: { cookie },
-                        }),
-                    )).json();
+                    (
+                        await app.handler()(
+                            new Request(`${base}/${path}`, {
+                                headers: { cookie },
+                            }),
+                        )
+                    ).json();
                 const post = (requestId) =>
                     app.handler()(
                         new Request(`${base}/plan-review`, {
@@ -119,9 +122,32 @@ Deno.test("owner Plan review command opens a saved review through the authorized
                     ),
                 );
                 assertEquals(answer.status, 202, JSON.stringify(await answer.clone().json()));
-                for (let index = 0; index < 300; index++) {
-                    if (app.sessionContinuation.getOperation(accepted.operationId).status !== "running") break;
-                    await new Promise((resolve) => setTimeout(resolve, 10));
+                const settled = Promise.withResolvers<void>();
+                const unsubscribe = app.sessionContinuation.subscribeOperationChanges(
+                    accepted.operationId,
+                    (status) => {
+                        if (status !== "running" && status !== "accepted") settled.resolve();
+                    },
+                );
+                let timeout;
+                try {
+                    await Promise.race([
+                        settled.promise,
+                        new Promise((_, reject) => {
+                            timeout = setTimeout(() => {
+                                reject(
+                                    new Error(
+                                        `Plan review did not settle: ${JSON.stringify(
+                                            app.sessionContinuation.getOperation(accepted.operationId),
+                                        )}`,
+                                    ),
+                                );
+                            }, 60_000);
+                        }),
+                    ]);
+                } finally {
+                    clearTimeout(timeout);
+                    unsubscribe();
                 }
                 assertEquals(app.sessionContinuation.getOperation(accepted.operationId).status, "completed");
                 assertEquals(fixture.modelRequests.length, 0);

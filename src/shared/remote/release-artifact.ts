@@ -1,4 +1,10 @@
-import { join } from "@std/path";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { platform } from "node:process";
+import { getCwd } from "../../constants.js";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { chmod as fsChmod, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { ArtifactMetadata } from "../../../scripts/build-metadata.js";
 import { sha256Bytes, verifyBuildArtifact } from "../../../scripts/build-metadata.js";
 
@@ -34,8 +40,10 @@ export function releaseRuntimeName(tag: string, suffix: string): string {
 }
 
 async function tar(args: string[]): Promise<Uint8Array> {
-    const result = await new Deno.Command("tar", { args, stdout: "piped", stderr: "piped" }).output();
-    if (!result.success) throw new Error(`Invalid release archive: ${new TextDecoder().decode(result.stderr).trim()}`);
+    const result = await captureForegroundProcess("tar", { args, cwd: getCwd() });
+    if (result.code !== 0) {
+        throw new Error(`Invalid release archive: ${new TextDecoder().decode(result.stderr).trim()}`);
+    }
     return result.stdout;
 }
 
@@ -56,8 +64,8 @@ export async function extractReleaseRuntime(
         throw new Error(`Release archive must contain only wld and wld.build.json: ${archive}`);
     }
     const artifact = join(directory, "wld");
-    await Deno.writeFile(artifact, await tar(["-xOzf", archive, "wld"]));
-    await Deno.writeFile(`${artifact}.build.json`, await tar(["-xOzf", archive, "wld.build.json"]));
+    await fsWriteFile(artifact, await tar(["-xOzf", archive, "wld"]));
+    await fsWriteFile(`${artifact}.build.json`, await tar(["-xOzf", archive, "wld.build.json"]));
     const metadata = await verifyBuildArtifact(artifact);
     if (
         metadata.target !== target || (launcher &&
@@ -66,7 +74,7 @@ export async function extractReleaseRuntime(
     ) {
         throw new Error(`Release runtime does not match launcher build, protocol, VERSION or ${target} target`);
     }
-    if (Deno.build.os !== "windows") await Deno.chmod(artifact, 0o700);
+    if (platform !== "win32") await fsChmod(artifact, 0o700);
     return { artifact, metadata };
 }
 
@@ -98,14 +106,14 @@ export async function downloadReleaseRuntime(
     if (checksum !== `${await sha256Bytes(archiveBytes)}  ${name}`) {
         throw new Error(`Release archive checksum mismatch: ${name}`);
     }
-    const directory = await Deno.makeTempDir({ prefix: "wld-remote-release-" });
+    const directory = await mkdtemp(join(tmpdir(), "wld-remote-release-"));
     try {
         const archive = join(directory, name);
-        await Deno.writeFile(archive, archiveBytes);
+        await fsWriteFile(archive, archiveBytes);
         const result = await extractReleaseRuntime(archive, suffix, launcher, directory);
         return { ...result, directory };
     } catch (error) {
-        await Deno.remove(directory, { recursive: true });
+        await fsRm(directory, { recursive: true });
         throw error;
     }
 }

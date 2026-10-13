@@ -1,24 +1,28 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { test } from "node:test";
+import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createRunWieldBashToolDefinition } from "../bash.ts";
 
-Deno.test("restricted Pi bash inspects real staged and unstaged Git state without starting denied writes", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-bash-git-inspection-" });
+test("restricted Pi bash inspects real staged and unstaged Git state without starting denied writes", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-bash-git-inspection-"));
     try {
         const git = async (...args: string[]) => {
-            const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+            const output = await captureForegroundProcess("git", { cwd, args });
             if (!output.success) throw new Error(new TextDecoder().decode(output.stderr));
         };
         await git("init", "-b", "main");
-        await Deno.writeTextFile(join(cwd, "file with spaces.txt"), "original marker\n");
+        await fsWriteFile(join(cwd, "file with spaces.txt"), "original marker\n");
         await git("add", ".");
         await git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "history marker");
-        await Deno.writeTextFile(join(cwd, "file with spaces.txt"), "staged marker\n");
+        await fsWriteFile(join(cwd, "file with spaces.txt"), "staged marker\n");
         await git("add", ".");
-        await Deno.writeTextFile(join(cwd, "file with spaces.txt"), "staged marker\nunstaged marker\n");
+        await fsWriteFile(join(cwd, "file with spaces.txt"), "staged marker\nunstaged marker\n");
         const fixture = join(cwd, "keep.txt");
-        await Deno.writeTextFile(fixture, "keep me\n");
+        await fsWriteFile(fixture, "keep me\n");
         const sentinel = join(cwd, "sentinel.txt");
         const policy = [
             "git status",
@@ -66,13 +70,13 @@ Deno.test("restricted Pi bash inspects real staged and unstaged Git state withou
         ) {
             await assertRejects(() => execute(command), Error, "Allowed commands:");
         }
-        assertEquals(await Deno.stat(fixture).then(() => true, () => false), true);
-        assertEquals(await Deno.stat(sentinel).then(() => true, () => false), false);
+        assertEquals(await fsStat(fixture).then(() => true, () => false), true);
+        assertEquals(await fsStat(sentinel).then(() => true, () => false), false);
         assertStringIncludes(await execute("git branch --list unwanted"), "(no output)");
         assertStringIncludes(await execute("git diff --cached"), "staged marker");
         assertStringIncludes(await execute("git status --short"), "keep.txt");
         // An approved command still reports Pi's real process error outside a repository.
-        const outside = await Deno.makeTempDir({ prefix: "runwield-bash-outside-git-" });
+        const outside = await fsMkdtemp(join(tmpdir(), "runwield-bash-outside-git-"));
         try {
             const outsideTool = createRunWieldBashToolDefinition(outside, ["git status"]);
             const result = await outsideTool.execute(
@@ -87,9 +91,9 @@ Deno.test("restricted Pi bash inspects real staged and unstaged Git state withou
             assertStringIncludes(output, "not a git repository");
             assertEquals(output.includes("Allowed commands:"), false);
         } finally {
-            await Deno.remove(outside, { recursive: true });
+            await fsRm(outside, { recursive: true });
         }
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });

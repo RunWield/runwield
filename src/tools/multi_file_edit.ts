@@ -1,3 +1,4 @@
+import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module tools/multi_file_edit
  *
@@ -9,7 +10,7 @@
 import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import { isAbsolute, join, relative } from "@std/path";
+import { isAbsolute, join, relative } from "node:path";
 import { getHomeDir } from "../constants.js";
 import {
     getPlanRevisionForText,
@@ -373,9 +374,9 @@ export function createMultiFileEditTool(cwd: string) {
                     const absolutePath = resolveToBaseDir(filePath, baseDir);
                     await withFileMutationQueue(absolutePath, async () => {
                         try {
-                            await Deno.stat(absolutePath);
+                            await fsStat(absolutePath);
                         } catch (err) {
-                            const msg = err instanceof Deno.errors.NotFound
+                            const msg = err instanceof Error && "code" in err && err.code === "ENOENT"
                                 ? `Could not find file: ${filePath}`
                                 : `Could not access file: ${filePath}. ${
                                     coerceErrorMessage(err instanceof Error ? err : String(err))
@@ -383,7 +384,7 @@ export function createMultiFileEditTool(cwd: string) {
                             throw new Error(msg);
                         }
 
-                        const rawContent = await Deno.readTextFile(absolutePath);
+                        const rawContent = await fsReadFile(absolutePath, "utf8");
                         const { bom, text: content } = stripBom(rawContent);
                         const originalEnding = detectLineEnding(content);
                         const normalizedContent = normalizeToLF(content);
@@ -405,7 +406,7 @@ export function createMultiFileEditTool(cwd: string) {
                             );
                         } else {
                             writtenSnapshots.push({ path: absolutePath, content: rawContent });
-                            await Deno.writeTextFile(absolutePath, finalContent);
+                            await fsWriteFile(absolutePath, finalContent);
                         }
 
                         const diffResult = generateDiffString(baseContent, newContent);
@@ -446,7 +447,7 @@ export function createMultiFileEditTool(cwd: string) {
                                 snapshot.writtenRevision,
                             );
                         } else {
-                            await Deno.writeTextFile(snapshot.path, snapshot.content);
+                            await fsWriteFile(snapshot.path, snapshot.content);
                         }
                     } catch {
                         // Preserve the original error; doctor surfaces stale partial Plan edits if rollback cannot finish.

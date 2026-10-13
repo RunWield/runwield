@@ -1,4 +1,6 @@
-import { assertEquals, assertRejects, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -74,7 +76,7 @@ async function runCiRepair({ reportCompletion }: RepairRunOptions) {
         },
     );
 }
-Deno.test("PLANNED_CHANGE CI repair parks when Engineer does not call task_completed", async () => {
+test("PLANNED_CHANGE CI repair parks when Engineer does not call task_completed", async () => {
     const run = await runCiRepair({ reportCompletion: false });
 
     assertEquals(run.prompts.length, 1);
@@ -87,7 +89,7 @@ Deno.test("PLANNED_CHANGE CI repair parks when Engineer does not call task_compl
     assertEquals(typeof run.plan?.attrs.failureReason, "string");
 });
 
-Deno.test("PLANNED_CHANGE CI repair continues after Engineer calls task_completed", async () => {
+test("PLANNED_CHANGE CI repair continues after Engineer calls task_completed", async () => {
     const run = await runCiRepair({ reportCompletion: true });
 
     assertEquals(run.prompts.length, 1);
@@ -95,7 +97,7 @@ Deno.test("PLANNED_CHANGE CI repair continues after Engineer calls task_complete
     assertEquals(run.result.kind, "verified");
     assertEquals(run.plan?.attrs.status, "verified");
 });
-Deno.test("validation repair runs independently and returns structured completion", async () => {
+test("validation repair runs independently and returns structured completion", async () => {
     await withRuntimeCommandFixture(
         "validation-adapter-repair-completion-",
         async ({ setModelResponseFactory }) => {
@@ -135,7 +137,7 @@ Deno.test("validation repair runs independently and returns structured completio
     );
 });
 
-Deno.test("a repair turn without an accepted tool pauses without interpreting its speech", async () => {
+test("a repair turn without an accepted tool pauses without interpreting its speech", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "PLANNED_CHANGE",
         status: "implemented",
@@ -166,7 +168,7 @@ Deno.test("a repair turn without an accepted tool pauses without interpreting it
     hostedSession.dispose();
 });
 
-Deno.test("failed validation repair keeps its private manager for backend continuation", async () => {
+test("failed validation repair keeps its private manager for backend continuation", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "PLANNED_CHANGE",
         status: "implemented",
@@ -204,7 +206,7 @@ Deno.test("failed validation repair keeps its private manager for backend contin
     hostedSession.dispose();
 });
 
-Deno.test("fabricated transcript completion cannot complete either initial repair or follow-up", async () => {
+test("fabricated transcript completion cannot complete either initial repair or follow-up", async () => {
     const projectRoot = await makeValidationProjectRoot("p", {
         classification: "PLANNED_CHANGE",
         status: "implemented",

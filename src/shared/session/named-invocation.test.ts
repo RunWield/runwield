@@ -1,5 +1,7 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -11,20 +13,20 @@ import { setCustomSetting } from "../settings.js";
 
 async function writePrompt(projectRoot: string, name: string, frontMatter: string[], body: string): Promise<void> {
     const promptDir = join(projectRoot, ".wld", "prompts");
-    await Deno.mkdir(promptDir, { recursive: true });
-    await Deno.writeTextFile(join(promptDir, `${name}.md`), ["---", ...frontMatter, "---", body].join("\n"));
+    await fsMkdir(promptDir, { recursive: true });
+    await fsWriteFile(join(promptDir, `${name}.md`), ["---", ...frontMatter, "---", body].join("\n"));
 }
 
 async function writeSkill(projectRoot: string, name: string): Promise<void> {
     const skillDir = join(projectRoot, ".wld", "skills", name);
-    await Deno.mkdir(skillDir, { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(skillDir, { recursive: true });
+    await fsWriteFile(
         join(skillDir, "SKILL.md"),
         ["---", `name: "${name}"`, "description: fixture skill", "---", "Use the fixture skill body."].join("\n"),
     );
 }
 
-Deno.test("resolveNamedInvocation resolves Prompt Template Front Matter and exact expansion", async () => {
+test("resolveNamedInvocation resolves Prompt Template Front Matter and exact expansion", async () => {
     await withRuntimeCommandFixture("named-invocation-resolve-template-", async ({ projectRoot }) => {
         await writePrompt(
             projectRoot,
@@ -48,7 +50,7 @@ Deno.test("resolveNamedInvocation resolves Prompt Template Front Matter and exac
     });
 });
 
-Deno.test("resolveNamedInvocation preserves an omitted Agent for runtime Session defaults", async () => {
+test("resolveNamedInvocation preserves an omitted Agent for runtime Session defaults", async () => {
     await withRuntimeCommandFixture("named-invocation-default-agent-", async ({ projectRoot }) => {
         await writePrompt(projectRoot, "commit-message", [], "Write a commit message for {{input}}");
 
@@ -60,7 +62,7 @@ Deno.test("resolveNamedInvocation preserves an omitted Agent for runtime Session
     });
 });
 
-Deno.test("resolveNamedInvocation resolves Skills without changing the Agent profile", async () => {
+test("resolveNamedInvocation resolves Skills without changing the Agent profile", async () => {
     await withRuntimeCommandFixture("named-invocation-resolve-skill-", async ({ projectRoot }) => {
         await writeSkill(projectRoot, "diagnose-fixture");
 
@@ -79,7 +81,7 @@ Deno.test("resolveNamedInvocation resolves Skills without changing the Agent pro
     });
 });
 
-Deno.test("resolveNamedInvocation rejects invalid Prompt Template execution Front Matter clearly", async () => {
+test("resolveNamedInvocation rejects invalid Prompt Template execution Front Matter clearly", async () => {
     await withRuntimeCommandFixture("named-invocation-invalid-profile-", async ({ projectRoot }) => {
         await writePrompt(projectRoot, "bad-agent", ["agent: definitely-not-an-agent"], "Bad agent.");
         await writePrompt(projectRoot, "bad-model", ["model: fixture-model"], "Bad model.");
@@ -115,10 +117,10 @@ Deno.test("resolveNamedInvocation rejects invalid Prompt Template execution Fron
     });
 });
 
-Deno.test("resolveNamedInvocation does not resolve Prompt Template names outside resource layers", async () => {
+test("resolveNamedInvocation does not resolve Prompt Template names outside resource layers", async () => {
     await withRuntimeCommandFixture("named-invocation-template-traversal-", async ({ projectRoot }) => {
-        await Deno.mkdir(join(projectRoot, ".wld"), { recursive: true });
-        await Deno.writeTextFile(join(projectRoot, ".wld", "secret.md"), "Secret outside prompt layers.");
+        await fsMkdir(join(projectRoot, ".wld"), { recursive: true });
+        await fsWriteFile(join(projectRoot, ".wld", "secret.md"), "Secret outside prompt layers.");
 
         const resolved = await resolveNamedInvocation({ cwd: projectRoot, text: "/../secret" });
 
@@ -126,11 +128,11 @@ Deno.test("resolveNamedInvocation does not resolve Prompt Template names outside
     });
 });
 
-Deno.test("resolveNamedInvocation obeys disabled external Skill discovery", async () => {
+test("resolveNamedInvocation obeys disabled external Skill discovery", async () => {
     await withRuntimeCommandFixture("named-invocation-external-skill-disabled-", async ({ projectRoot, homeDir }) => {
         const skillDir = join(homeDir, ".agents", "skills", "external-fixture");
-        await Deno.mkdir(skillDir, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(skillDir, { recursive: true });
+        await fsWriteFile(
             join(skillDir, "SKILL.md"),
             ["---", "name: external-fixture", "description: external fixture", "---", "External body."].join("\n"),
         );
@@ -142,7 +144,7 @@ Deno.test("resolveNamedInvocation obeys disabled external Skill discovery", asyn
     });
 });
 
-Deno.test("legacy Named Invocation repair preserves branch edits and omits summarized entries", async () => {
+test("legacy Named Invocation repair preserves branch edits and omits summarized entries", async () => {
     await withRuntimeCommandFixture("named-invocation-pi-repair-rules-", async ({ projectRoot }) => {
         const payload = await createPayload({
             kind: "prompt_template",
@@ -254,7 +256,7 @@ Deno.test("legacy Named Invocation repair preserves branch edits and omits summa
     });
 });
 
-Deno.test("Prompt Template expansion is restored for kept pre-compaction Pi entries", async () => {
+test("Prompt Template expansion is restored for kept pre-compaction Pi entries", async () => {
     await withRuntimeCommandFixture(
         "named-invocation-pi-restore-kept-",
         async ({ projectRoot, setModelResponseFactories }) => {

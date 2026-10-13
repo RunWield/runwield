@@ -1,55 +1,61 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { getCwd } from "../../constants.js";
+import process from "node:process";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { getAgentCompletions } from "../agents/getArgumentCompletions.ts";
 import { getModelCompletions } from "../models/getArgumentCompletions.ts";
 import { getLoadPlanCompletions } from "../load-plan/getArgumentCompletions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
-Deno.test("getAgentCompletions includes router", async () => {
+test("getAgentCompletions includes router", async () => {
     const items = await getAgentCompletions("ro");
     assertEquals(items.some((i) => i.value === "router"), true);
 });
 
-Deno.test("getModelCompletions can find by provider prefix", async () => {
+test("getModelCompletions can find by provider prefix", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalHome = Deno.env.get("HOME");
-        const originalOpenAiKey = Deno.env.get("OPENAI_API_KEY");
-        const tempHome = await Deno.makeTempDir({ prefix: "runwield-model-completions-" });
+        const originalHome = process.env["HOME"];
+        const originalOpenAiKey = process.env["OPENAI_API_KEY"];
+        const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-model-completions-"));
         try {
-            Deno.env.set("HOME", tempHome);
-            Deno.env.set("OPENAI_API_KEY", "test-key");
+            process.env["HOME"] = tempHome;
+            process.env["OPENAI_API_KEY"] = "test-key";
             const items = await getModelCompletions("open");
             assertEquals(items.length > 0, true);
         } finally {
-            if (originalHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", originalHome);
-            if (originalOpenAiKey === undefined) Deno.env.delete("OPENAI_API_KEY");
-            else Deno.env.set("OPENAI_API_KEY", originalOpenAiKey);
-            await Deno.remove(tempHome, { recursive: true });
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            if (originalOpenAiKey === undefined) delete process.env["OPENAI_API_KEY"];
+            else process.env["OPENAI_API_KEY"] = originalOpenAiKey;
+            await fsRm(tempHome, { recursive: true });
         }
     });
 });
 
-Deno.test("getLoadPlanCompletions handles missing plans dir", async () => {
+test("getLoadPlanCompletions handles missing plans dir", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalCwd = Deno.cwd();
-        const tempDir = await Deno.makeTempDir({ prefix: "runwield-missing-plan-completions-" });
+        const originalCwd = getCwd();
+        const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-missing-plan-completions-"));
         try {
-            Deno.chdir(tempDir);
+            process.chdir(tempDir);
             const items = await getLoadPlanCompletions("anything");
             assertEquals(Array.isArray(items), true);
         } finally {
-            Deno.chdir(originalCwd);
-            await Deno.remove(tempDir, { recursive: true });
+            process.chdir(originalCwd);
+            await fsRm(tempDir, { recursive: true });
         }
     });
 });
 
-Deno.test("getLoadPlanCompletions sorts loadable plans by workflow priority", async () => {
+test("getLoadPlanCompletions sorts loadable plans by workflow priority", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalCwd = Deno.cwd();
-        const tempDir = await Deno.makeTempDir({ prefix: "runwield-load-plan-completions-" });
+        const originalCwd = getCwd();
+        const tempDir = await fsMkdtemp(join(tmpdir(), "runwield-load-plan-completions-"));
         try {
-            await Deno.mkdir(`${tempDir}/docs/plans`, { recursive: true });
+            await fsMkdir(`${tempDir}/docs/plans`, { recursive: true });
             const plans = [
                 ["z-verified", "FEATURE", "verified"],
                 ["b-ready-epic", "PROJECT", "ready_for_work"],
@@ -62,13 +68,13 @@ Deno.test("getLoadPlanCompletions sorts loadable plans by workflow priority", as
                 ["decompose-epic", "PROJECT", "ready_for_decomposition"],
             ];
             for (const [name, classification, status] of plans) {
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     `${tempDir}/docs/plans/${name}.md`,
                     `---\nclassification: "${classification}"\nstatus: "${status}"\nsummary: "${name}"\ncreatedAt: "2026-01-01T00:00:00.000Z"\n---\n\n# ${name}\n`,
                 );
             }
 
-            Deno.chdir(tempDir);
+            process.chdir(tempDir);
             const items = await getLoadPlanCompletions("");
             assertEquals(items.map((item) => item.value), [
                 "failed-plan",
@@ -82,8 +88,8 @@ Deno.test("getLoadPlanCompletions sorts loadable plans by workflow priority", as
                 "held-plan",
             ]);
         } finally {
-            Deno.chdir(originalCwd);
-            await Deno.remove(tempDir, { recursive: true });
+            process.chdir(originalCwd);
+            await fsRm(tempDir, { recursive: true });
         }
     });
 });

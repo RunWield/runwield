@@ -1,5 +1,16 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { createDelegateAgentTool, diffDelegatedChangeSnapshot, resolveDelegatedToolNames } from "../delegate-agent.ts";
 import { loadSubAgentDefinition } from "../../shared/session/subagent-definitions.ts";
@@ -71,25 +82,24 @@ function assistantDone() {
  * @param {string[]} args
  */
 async function git(cwd, args) {
-    const command = new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" });
-    const output = await command.output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     if (!output.success) throw new Error(new TextDecoder().decode(output.stderr));
     return new TextDecoder().decode(output.stdout);
 }
 
 async function makeDelegateGitRepo() {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-delegate-agent-" });
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-delegate-agent-"));
     await git(cwd, ["init", "-b", "main"]);
     await git(cwd, ["config", "user.email", "test@example.com"]);
     await git(cwd, ["config", "user.name", "RunWield Test"]);
-    await Deno.mkdir(join(cwd, "src"), { recursive: true });
-    await Deno.writeTextFile(join(cwd, "src", "pre-existing.js"), "before\n");
+    await fsMkdir(join(cwd, "src"), { recursive: true });
+    await fsWriteFile(join(cwd, "src", "pre-existing.js"), "before\n");
     await git(cwd, ["add", "."]);
     await git(cwd, ["commit", "-m", "initial"]);
     return cwd;
 }
 
-Deno.test("resolveDelegatedToolNames intersects parent tools with mode policy", () => {
+test("resolveDelegatedToolNames intersects parent tools with mode policy", () => {
     const parentTools = [
         "read",
         "bash",
@@ -129,7 +139,7 @@ Deno.test("resolveDelegatedToolNames intersects parent tools with mode policy", 
     ]);
 });
 
-Deno.test("diffDelegatedChangeSnapshot compares the full pre/post workspace baseline", () => {
+test("diffDelegatedChangeSnapshot compares the full pre/post workspace baseline", () => {
     assertEquals(
         diffDelegatedChangeSnapshot(
             [
@@ -147,7 +157,7 @@ Deno.test("diffDelegatedChangeSnapshot compares the full pre/post workspace base
     );
 });
 
-Deno.test("diffDelegatedChangeSnapshot refuses attribution when HEAD changes", () => {
+test("diffDelegatedChangeSnapshot refuses attribution when HEAD changes", () => {
     assertEquals(
         diffDelegatedChangeSnapshot(
             { head: "before", entries: [] },
@@ -157,9 +167,9 @@ Deno.test("diffDelegatedChangeSnapshot refuses attribution when HEAD changes", (
     );
 });
 
-Deno.test("delegated agent prompt includes inherited repository context placeholders", async () => {
+test("delegated agent prompt includes inherited repository context placeholders", async () => {
     const promptPath = join(
-        import.meta.dirname ?? Deno.cwd(),
+        import.meta.dirname ?? getCwd(),
         "..",
         "..",
         "..",
@@ -168,7 +178,7 @@ Deno.test("delegated agent prompt includes inherited repository context placehol
         "subagent-definitions",
         "delegated-agent-prompt.md",
     );
-    const prompt = await Deno.readTextFile(promptPath);
+    const prompt = await fsReadFile(promptPath, "utf8");
     const delegated = await loadSubAgentDefinition(SUBAGENTS.DELEGATED);
     const readDelegate = await loadSubAgentDefinition(SUBAGENTS.DELEGATED_READ);
 
@@ -192,13 +202,13 @@ Deno.test("delegated agent prompt includes inherited repository context placehol
     assertEquals(delegated.tools.includes("web_docs_search"), true);
 });
 
-Deno.test("delegate_agent returns child output without inheriting workflow tools", async () => {
+test("delegate_agent returns child output without inheriting workflow tools", async () => {
     /** @type {Array<import('../delegate-agent.ts').DelegatedAgentSessionOptions>} */
     const calls = [];
-    const hostedSession = new HostedSession({ id: "delegate-read", cwd: Deno.cwd() });
+    const hostedSession = new HostedSession({ id: "delegate-read", cwd: getCwd() });
     const tool = createDelegateAgentTool({
         hostedSession,
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         parentTools: [
             "read",
             "web_search",
@@ -238,15 +248,15 @@ Deno.test("delegate_agent returns child output without inheriting workflow tools
     );
 });
 
-Deno.test("delegate_agent applies verification-adversary read-only role ceiling", async () => {
+test("delegate_agent applies verification-adversary read-only role ceiling", async () => {
     /** @type {Array<import('../delegate-agent.ts').DelegatedAgentSessionOptions>} */
     const calls = [];
-    const hostedSession = new HostedSession({ id: "delegate-adversary", cwd: Deno.cwd() });
+    const hostedSession = new HostedSession({ id: "delegate-adversary", cwd: getCwd() });
     /** @type {Array<{ readers: number, writer: boolean }>} */
     const leaseStates = [];
     const tool = createDelegateAgentTool({
         hostedSession,
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         parentTools: [
             "read",
             "grep",
@@ -296,12 +306,12 @@ Deno.test("delegate_agent applies verification-adversary read-only role ceiling"
     assertEquals(hostedSession.getDelegatedAgentLeaseState(), { readers: 0, writer: false });
 });
 
-Deno.test("delegate_agent rejects an unknown role before a child session starts", async () => {
+test("delegate_agent rejects an unknown role before a child session starts", async () => {
     let sessionStarts = 0;
-    const hostedSession = new HostedSession({ id: "delegate-unknown-role", cwd: Deno.cwd() });
+    const hostedSession = new HostedSession({ id: "delegate-unknown-role", cwd: getCwd() });
     const tool = createDelegateAgentTool({
         hostedSession,
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         parentTools: ["read"],
         runIsolatedAgentSession: () => {
             sessionStarts += 1;
@@ -320,16 +330,16 @@ Deno.test("delegate_agent rejects an unknown role before a child session starts"
     assertEquals(hostedSession.getDelegatedAgentLeaseState(), { readers: 0, writer: false });
 });
 
-Deno.test("delegate_agent propagates parent model and thinking state", async () => {
+test("delegate_agent propagates parent model and thinking state", async () => {
     /** @type {Array<import('../delegate-agent.ts').DelegatedAgentSessionOptions>} */
     const calls = [];
-    const hostedSession = new HostedSession({ id: "delegate-parent-state", cwd: Deno.cwd() });
+    const hostedSession = new HostedSession({ id: "delegate-parent-state", cwd: getCwd() });
     hostedSession.pushAgentInfo("Engineer", "anthropic/claude-sonnet-4", "anthropic", "engineer");
     hostedSession.setThinkingLevel("high");
     hostedSession.setProjectStateContext("Project state guidance");
     const tool = createDelegateAgentTool({
         hostedSession,
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         parentTools: ["read"],
         runIsolatedAgentSession: (opts) => {
             calls.push(opts);
@@ -344,11 +354,11 @@ Deno.test("delegate_agent propagates parent model and thinking state", async () 
     assertEquals(calls[0].projectStateContext, "Project state guidance");
 });
 
-Deno.test("delegate_agent preserves failed writer changes and releases lease", async () => {
+test("delegate_agent preserves failed writer changes and releases lease", async () => {
     const executionCwd = await makeDelegateGitRepo();
     try {
-        await Deno.writeTextFile(join(executionCwd, "src", "pre-existing.js"), "modified\n");
-        const hostedSession = new HostedSession({ id: "delegate-write-fail", cwd: Deno.cwd() });
+        await fsWriteFile(join(executionCwd, "src", "pre-existing.js"), "modified\n");
+        const hostedSession = new HostedSession({ id: "delegate-write-fail", cwd: getCwd() });
         /** @type {Array<import('../delegate-agent.ts').DelegatedAgentSessionOptions>} */
         const calls = [];
         const tool = createDelegateAgentTool({
@@ -357,7 +367,7 @@ Deno.test("delegate_agent preserves failed writer changes and releases lease", a
             parentTools: ["read", "write", "bash"],
             runIsolatedAgentSession: async (opts) => {
                 calls.push(opts);
-                await Deno.writeTextFile(join(executionCwd, "src", "changed.js"), "new\n");
+                await fsWriteFile(join(executionCwd, "src", "changed.js"), "new\n");
                 return Promise.reject(new Error("boom"));
             },
         });
@@ -372,20 +382,20 @@ Deno.test("delegate_agent preserves failed writer changes and releases lease", a
         assertEquals(calls[0].toolNames, ["read", "write", "bash"]);
         assertEquals(hostedSession.getDelegatedAgentLeaseState(), { readers: 0, writer: false });
     } finally {
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("delegate_agent flags writer attribution incomplete when HEAD changes", async () => {
+test("delegate_agent flags writer attribution incomplete when HEAD changes", async () => {
     const executionCwd = await makeDelegateGitRepo();
     try {
-        const hostedSession = new HostedSession({ id: "delegate-write-commit", cwd: Deno.cwd() });
+        const hostedSession = new HostedSession({ id: "delegate-write-commit", cwd: getCwd() });
         const tool = createDelegateAgentTool({
             hostedSession,
             cwd: executionCwd,
             parentTools: ["read", "write"],
             runIsolatedAgentSession: async () => {
-                await Deno.writeTextFile(join(executionCwd, "src", "committed.js"), "new\n");
+                await fsWriteFile(join(executionCwd, "src", "committed.js"), "new\n");
                 await git(executionCwd, ["add", "."]);
                 await git(executionCwd, ["commit", "-m", "delegate change"]);
                 return assistantDone();
@@ -399,17 +409,17 @@ Deno.test("delegate_agent flags writer attribution incomplete when HEAD changes"
         assertEquals(result.details.changeAttributionComplete, false);
         assertEquals(result.details.committedChangesDetected, true);
     } finally {
-        await Deno.remove(executionCwd, { recursive: true });
+        await fsRm(executionCwd, { recursive: true });
     }
 });
 
-Deno.test("delegate_agent returns structured failure when lease acquisition is rejected", async () => {
-    const hostedSession = new HostedSession({ id: "delegate-lease-conflict", cwd: Deno.cwd() });
+test("delegate_agent returns structured failure when lease acquisition is rejected", async () => {
+    const hostedSession = new HostedSession({ id: "delegate-lease-conflict", cwd: getCwd() });
     const release = hostedSession.acquireDelegatedAgentLease("write");
     try {
         const tool = createDelegateAgentTool({
             hostedSession,
-            cwd: Deno.cwd(),
+            cwd: getCwd(),
             parentTools: ["read"],
             runIsolatedAgentSession: () => assistantDone(),
         });
@@ -425,14 +435,14 @@ Deno.test("delegate_agent returns structured failure when lease acquisition is r
     }
 });
 
-Deno.test("delegate_agent forwards cancellation and releases its lease", async () => {
-    const hostedSession = new HostedSession({ id: "delegate-cancel", cwd: Deno.cwd() });
+test("delegate_agent forwards cancellation and releases its lease", async () => {
+    const hostedSession = new HostedSession({ id: "delegate-cancel", cwd: getCwd() });
     const controller = new AbortController();
     /** @type {AbortSignal | undefined} */
     let childSignal;
     const tool = createDelegateAgentTool({
         hostedSession,
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         parentTools: ["read"],
         runIsolatedAgentSession: (opts) => {
             childSignal = opts.signal;

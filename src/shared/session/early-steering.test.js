@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { installEarlySteeringInterruption } from "./early-steering.ts";
 
-Deno.test("installEarlySteeringInterruption allows current tool calls to complete when steering is pending", async () => {
+test("installEarlySteeringInterruption allows current tool calls to complete when steering is pending", async () => {
     const executed = /** @type {string[]} */ ([]);
     const providerCalls = /** @type {string[][]} */ ([]);
     const steering = /** @type {string[]} */ ([]);
@@ -43,7 +44,7 @@ Deno.test("installEarlySteeringInterruption allows current tool calls to complet
     assertEquals(providerCalls[1], ["Focus on the migration edge case first"]);
 });
 
-Deno.test("installEarlySteeringInterruption preserves existing blocking beforeToolCall and is idempotent", async () => {
+test("installEarlySteeringInterruption preserves existing blocking beforeToolCall and is idempotent", async () => {
     let existingCalls = 0;
     const session = /** @type {any} */ ({
         agent: {

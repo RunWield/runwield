@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
@@ -9,7 +10,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { readRequestAttemptEntries } from "./request-dispatch.ts";
 import { captureTranscriptEvidence } from "./session-transcript-projection.js";
 
-Deno.test("Operator accepts a follow-up after task_completed settles", async () => {
+test("Operator accepts a follow-up after task_completed settles", async () => {
     await withRuntimeCommandFixture("operator-follow-up-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         let followUpContext = "";
@@ -66,7 +67,7 @@ Deno.test("Operator accepts a follow-up after task_completed settles", async () 
     });
 });
 
-Deno.test("TUI sends the first follow-up after a skill routes to Operator completion", async () => {
+test("TUI sends the first follow-up after a skill routes to Operator completion", async () => {
     await withRuntimeCommandFixture("operator-tui-follow-up-", async ({ setModelResponseFactories }) => {
         let followUps = 0;
         setModelResponseFactories([

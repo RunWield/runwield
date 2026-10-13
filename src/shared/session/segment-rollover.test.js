@@ -1,5 +1,9 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import { HostedSession } from "./hosted-session.js";
@@ -22,9 +26,9 @@ function idFactory(prefix = "id") {
 
 /** @param {import('./tutorial-context-session.ts').TutorialContext | null} [tutorialContext] */
 async function createManagedFixture(tutorialContext = null) {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-segment-rollover-" });
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-segment-rollover-"));
     const root = join(dir, "repo");
-    await Deno.mkdir(root);
+    await fsMkdir(root);
     const store = openOwnerCoordinationStore({ dbPath: join(dir, "owner.sqlite3") });
     const project = store.registerProject({ root, idFactory: idFactory("project"), now: () => "t0" });
     const manager = await createRootSessionManager("new", root);
@@ -86,7 +90,7 @@ async function createManagedFixture(tutorialContext = null) {
 /** @param {Awaited<ReturnType<typeof createManagedFixture>>} fixture */
 async function cleanupFixture(fixture) {
     fixture.store.close();
-    await Deno.remove(fixture.dir, { recursive: true });
+    await fsRm(fixture.dir, { recursive: true });
 }
 
 /** @param {Awaited<ReturnType<typeof createManagedFixture>>} fixture */
@@ -102,7 +106,7 @@ async function readProjection(fixture) {
     });
 }
 
-Deno.test("a successor row without a committed generation degrades the aggregate projection", async () => {
+test("a successor row without a committed generation degrades the aggregate projection", async () => {
     await withProcessGlobalTestLock(async () => {
         const fixture = await createManagedFixture();
         try {
@@ -147,7 +151,7 @@ Deno.test("a successor row without a committed generation degrades the aggregate
     });
 });
 
-Deno.test("segment rollover keeps aggregate projection readable and rolls managed metadata atomically", async () => {
+test("segment rollover keeps aggregate projection readable and rolls managed metadata atomically", async () => {
     await withProcessGlobalTestLock(async () => {
         const tutorialContext = {
             version: 1,
@@ -213,7 +217,7 @@ Deno.test("segment rollover keeps aggregate projection readable and rolls manage
     });
 });
 
-Deno.test("segment rollover does not dehydrate a hosted manager when activation acquisition rejects", async () => {
+test("segment rollover does not dehydrate a hosted manager when activation acquisition rejects", async () => {
     await withProcessGlobalTestLock(async () => {
         const fixture = await createManagedFixture();
         try {
@@ -252,7 +256,7 @@ Deno.test("segment rollover does not dehydrate a hosted manager when activation 
     });
 });
 
-Deno.test("segment rollover uses one generic continuation path for execution and semantic repair", async () => {
+test("segment rollover uses one generic continuation path for execution and semantic repair", async () => {
     await withProcessGlobalTestLock(async () => {
         const tutorialContext = {
             version: 1,
@@ -311,7 +315,7 @@ Deno.test("segment rollover uses one generic continuation path for execution and
     });
 });
 
-Deno.test("consecutive rollovers preserve one unsealed current segment and continuous projection", async () => {
+test("consecutive rollovers preserve one unsealed current segment and continuous projection", async () => {
     await withProcessGlobalTestLock(async () => {
         const fixture = await createManagedFixture();
         try {
@@ -338,7 +342,7 @@ Deno.test("consecutive rollovers preserve one unsealed current segment and conti
     });
 });
 
-Deno.test("orphan rollover candidates are identifiable and discardable before any row exists", async () => {
+test("orphan rollover candidates are identifiable and discardable before any row exists", async () => {
     await withProcessGlobalTestLock(async () => {
         const fixture = await createManagedFixture();
         try {

@@ -1,11 +1,12 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { ensurePlanIdentity, savePlan } from "../../plan-store.js";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
 
-Deno.test("a failed review launch does not claim the review was completed", async () => {
+test("a failed review launch does not claim the review was completed", async () => {
     await withRuntimeCommandFixture("reopen-launch-", async ({ homeDir, projectRoot }) => {
         await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nReview this Plan.\n", {
             classification: "PLANNED_CHANGE",

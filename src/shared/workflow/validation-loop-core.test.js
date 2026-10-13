@@ -1,4 +1,17 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { hostname } from "node:os";
+import { test } from "node:test";
+import {
+    chmod as fsChmod,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    utimes as fsUtimes,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { setCustomSetting } from "../settings.js";
 import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
@@ -88,7 +101,7 @@ async function makePlannedReviewWorktree() {
     await git(projectRoot, ["add", "."]);
     await git(projectRoot, ["commit", "-m", "add validation plan"]);
 
-    const worktreeRoot = await Deno.makeTempDir({ prefix: "runwield-validation-worktree-" });
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "runwield-validation-worktree-"));
     const worktree = await createTestWorktreeAttempt({
         projectRoot,
         planName: "p",
@@ -119,108 +132,106 @@ async function makePlannedReviewWorktree() {
         uiAPI,
         cleanup: async () => {
             await removeWorktreeGitArtifacts({ projectRoot, path: worktree.path, force: true }).catch(() => {});
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-            await Deno.remove(worktreeRoot, { recursive: true }).catch(() => {});
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
+            await fsRm(worktreeRoot, { recursive: true }).catch(() => {});
         },
     };
 }
 
 for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
-    Deno.test({
-        name: `publication resumes reviewed work after ${interruption} and presents a pause only once`,
-        ignore: Deno.build.os === "windows",
-        async fn() {
-            const fixture = await makePlannedReviewWorktree();
-            let obstruction = "";
-            try {
-                const plan = await loadPlan(fixture.executionCwd, "p");
-                if (!plan) throw new Error("Missing execution Plan");
-                await savePlan(fixture.executionCwd, "p", plan.body, {
-                    ...plan.attrs,
-                    status: "reviewed",
-                    humanReviewMode: "none",
-                    humanReviewDecision: "not_required",
-                }, { expectedRevision: plan.revision });
-                await Deno.writeTextFile(`${fixture.executionCwd}/delivered.txt`, "reviewed implementation\n");
-                const mainBefore = await git(fixture.projectRoot, ["rev-parse", "main"]);
-                if (interruption === "abandoned catalog lock") {
-                    obstruction = resolveProjectRuntimeLayout(fixture.projectRoot).selected.planCatalogLockPath;
-                    const past = new Date(Date.now() - 60_000);
-                    await Deno.writeTextFile(
-                        obstruction,
-                        JSON.stringify({
-                            token: "abandoned-by-live-workspace",
-                            pid: Deno.pid,
-                            hostname: Deno.hostname(),
-                            updatedAtMs: past.getTime(),
-                        }),
-                    );
-                    await Deno.utime(obstruction, past, past);
-                } else {
-                    obstruction = `${fixture.projectRoot}/.git/hooks/pre-commit`;
-                    await Deno.writeTextFile(obstruction, "#!/bin/sh\necho 'commit hook rejected' >&2\nexit 1\n");
-                    await Deno.chmod(obstruction, 0o755);
-                }
-                setCurrentValidationProgress(
-                    fixture.hostedSession,
-                    createValidationProgress({
-                        kind: "workflow",
-                        outcome: "running",
-                        stage: "merge",
-                        cycle: 1,
-                        maxCycles: 3,
-                        checks: { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "running" },
+    test(`publication resumes reviewed work after ${interruption} and presents a pause only once`, {
+        skip: process.platform === "win32",
+    }, async function () {
+        const fixture = await makePlannedReviewWorktree();
+        let obstruction = "";
+        try {
+            const plan = await loadPlan(fixture.executionCwd, "p");
+            if (!plan) throw new Error("Missing execution Plan");
+            await savePlan(fixture.executionCwd, "p", plan.body, {
+                ...plan.attrs,
+                status: "reviewed",
+                humanReviewMode: "none",
+                humanReviewDecision: "not_required",
+            }, { expectedRevision: plan.revision });
+            await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "reviewed implementation\n");
+            const mainBefore = await git(fixture.projectRoot, ["rev-parse", "main"]);
+            if (interruption === "abandoned catalog lock") {
+                obstruction = resolveProjectRuntimeLayout(fixture.projectRoot).selected.planCatalogLockPath;
+                const past = new Date(Date.now() - 60_000);
+                await fsWriteFile(
+                    obstruction,
+                    JSON.stringify({
+                        token: "abandoned-by-live-workspace",
+                        pid: process.pid,
+                        hostname: hostname(),
+                        updatedAtMs: past.getTime(),
                     }),
                 );
-                const result = await continueWorkflowValidation({
-                    hostedSession: fixture.hostedSession,
-                    planName: "p",
-                    planContent: plan.body,
-                    triageMeta: { classification: "FEATURE", status: "reviewed" },
-                    git: createGitPort(),
-                    localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
-                    workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
-                    semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-                });
-                if (interruption === "abandoned catalog lock") {
-                    assertEquals(
-                        result.kind,
-                        "verified",
-                        JSON.stringify({
-                            result,
-                            publication: await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id),
-                        }),
-                    );
-                    assertEquals(
-                        await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
-                        "reviewed implementation",
-                    );
-                } else {
-                    assertEquals(result.kind, "paused", JSON.stringify(result));
-                    assertStringIncludes(result.reason || "", "Fix the Git hook or commit error");
-                    assertEquals(
-                        fixture.uiAPI.messages.filter((/** @type {string} */ message) => message === result.reason)
-                            .length,
-                        1,
-                    );
-                    assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "paused");
-                    assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
-                    assertEquals((await loadPlan(fixture.executionCwd, "p"))?.attrs.status, "reviewed");
-                    assertEquals(
-                        await Deno.readTextFile(`${fixture.executionCwd}/delivered.txt`),
-                        "reviewed implementation\n",
-                    );
-                }
-            } finally {
-                if (obstruction) await Deno.remove(obstruction).catch(() => {});
-                await fixture.cleanup();
+                await fsUtimes(obstruction, past, past);
+            } else {
+                obstruction = `${fixture.projectRoot}/.git/hooks/pre-commit`;
+                await fsWriteFile(obstruction, "#!/bin/sh\necho 'commit hook rejected' >&2\nexit 1\n");
+                await fsChmod(obstruction, 0o755);
             }
-        },
+            setCurrentValidationProgress(
+                fixture.hostedSession,
+                createValidationProgress({
+                    kind: "workflow",
+                    outcome: "running",
+                    stage: "merge",
+                    cycle: 1,
+                    maxCycles: 3,
+                    checks: { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "running" },
+                }),
+            );
+            const result = await continueWorkflowValidation({
+                hostedSession: fixture.hostedSession,
+                planName: "p",
+                planContent: plan.body,
+                triageMeta: { classification: "FEATURE", status: "reviewed" },
+                git: createGitPort(),
+                localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
+                workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+            });
+            if (interruption === "abandoned catalog lock") {
+                assertEquals(
+                    result.kind,
+                    "verified",
+                    JSON.stringify({
+                        result,
+                        publication: await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id),
+                    }),
+                );
+                assertEquals(
+                    await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
+                    "reviewed implementation",
+                );
+            } else {
+                assertEquals(result.kind, "paused", JSON.stringify(result));
+                assertStringIncludes(result.reason || "", "Fix the Git hook or commit error");
+                assertEquals(
+                    fixture.uiAPI.messages.filter((/** @type {string} */ message) => message === result.reason)
+                        .length,
+                    1,
+                );
+                assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "paused");
+                assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
+                assertEquals((await loadPlan(fixture.executionCwd, "p"))?.attrs.status, "reviewed");
+                assertEquals(
+                    await fsReadFile(`${fixture.executionCwd}/delivered.txt`, "utf8"),
+                    "reviewed implementation\n",
+                );
+            }
+        } finally {
+            if (obstruction) await fsRm(obstruction).catch(() => {});
+            await fixture.cleanup();
+        }
     });
 }
 
 for (const sealed of [false, true]) {
-    Deno.test(`publication rereads a target edited after phase resolution (sealed: ${sealed})`, async () => {
+    test(`publication rereads a target edited after phase resolution (sealed: ${sealed})`, async () => {
         const fixture = await makePlannedReviewWorktree();
         try {
             const { projectRoot, worktree } = fixture;
@@ -258,7 +269,7 @@ for (const sealed of [false, true]) {
                 status: "reviewed",
                 targetBranch: "release/next",
             }, { expectedRevision: plan.revision });
-            await Deno.writeTextFile(`${worktree.path}/delivered.txt`, "late target edit\n");
+            await fsWriteFile(`${worktree.path}/delivered.txt`, "late target edit\n");
             const result = await runPublicationPhase(args, phase.context, {
                 humanReviewMode: "none",
                 humanReviewDecision: "not_required",
@@ -270,7 +281,7 @@ for (const sealed of [false, true]) {
                 assertStringIncludes(result.result.reason || "", "Plan now targets release/next");
                 assertEquals(await git(projectRoot, ["rev-parse", "release/next"]), mainBefore);
                 assertEquals((await loadPublicationAttempt(projectRoot, worktree.id))?.targetBranch, "main");
-                assertEquals(await Deno.readTextFile(`${worktree.path}/delivered.txt`), "late target edit\n");
+                assertEquals(await fsReadFile(`${worktree.path}/delivered.txt`, "utf8"), "late target edit\n");
             } else {
                 assertEquals(result.result.kind, "verified", JSON.stringify(result));
                 assertEquals(await git(projectRoot, ["show", "release/next:delivered.txt"]), "late target edit");
@@ -282,7 +293,7 @@ for (const sealed of [false, true]) {
 }
 
 for (const targetBranch of ["release/next", " origin/release/next ", undefined]) {
-    Deno.test(`delivery rereads the execution Plan target: ${targetBranch ?? "recorded default"}`, async () => {
+    test(`delivery rereads the execution Plan target: ${targetBranch ?? "recorded default"}`, async () => {
         const fixture = await makePlannedReviewWorktree();
         try {
             await git(fixture.projectRoot, ["branch", "release/next"]);
@@ -298,7 +309,7 @@ for (const targetBranch of ["release/next", " origin/release/next ", undefined])
                 humanReviewMode: "none",
                 humanReviewDecision: "not_required",
             }, { expectedRevision: plan.revision });
-            await Deno.writeTextFile(`${fixture.executionCwd}/delivered.txt`, "selected target\n");
+            await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "selected target\n");
             setCurrentValidationProgress(
                 fixture.hostedSession,
                 createValidationProgress({
@@ -349,7 +360,7 @@ for (const targetBranch of ["release/next", " origin/release/next ", undefined])
     });
 }
 
-Deno.test("startActiveExecutionWorkflow seeds footer workflow context from Plan front matter", async () => {
+test("startActiveExecutionWorkflow seeds footer workflow context from Plan front matter", async () => {
     const projectRoot = await footerExecutionRepo.checkout({ prefix: "footer-context-start-" });
     const plan = await loadPlan(projectRoot, "footer-plan");
     const uiAPI = makeUi();
@@ -378,7 +389,7 @@ Deno.test("startActiveExecutionWorkflow seeds footer workflow context from Plan 
     assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
 });
 
-Deno.test("shouldContinueParentEpicAfterValidation detects parent epic linkage", () => {
+test("shouldContinueParentEpicAfterValidation detects parent epic linkage", () => {
     assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE" }), false);
     assertEquals(
         shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "" }),
@@ -390,7 +401,7 @@ Deno.test("shouldContinueParentEpicAfterValidation detects parent epic linkage",
     );
 });
 
-Deno.test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans", async () => {
+test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans", async () => {
     const { projectRoot, hostedSession } = await makeLifecycleRun("reviewed", {
         classification: "FEATURE",
         humanReviewMode: "none",
@@ -430,7 +441,7 @@ Deno.test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE pl
     assertEquals(plan?.attrs.deliveryEvidence, { version: 1, mode: "non_git_in_place" });
 });
 
-Deno.test("runValidationLoop shows why FEATURE validation fails when workflow diff is empty", async () => {
+test("runValidationLoop shows why FEATURE validation fails when workflow diff is empty", async () => {
     const { executionCwd, hostedSession, uiAPI, cleanup } = await makePlannedReviewWorktree();
     try {
         const result = await runValidationLoop({
@@ -455,7 +466,7 @@ Deno.test("runValidationLoop shows why FEATURE validation fails when workflow di
     }
 });
 
-Deno.test("runValidationLoop fails PROJECT validation when workflow diff only changes a plan document", async () => {
+test("runValidationLoop fails PROJECT validation when workflow diff only changes a plan document", async () => {
     const { projectRoot, hostedSession } = await makeLifecycleRun("validated_ci", { classification: "PROJECT" });
     await git(projectRoot, ["init", "-b", "main"]);
     await git(projectRoot, ["config", "user.email", "runwield@example.com"]);
@@ -497,7 +508,7 @@ Deno.test("runValidationLoop fails PROJECT validation when workflow diff only ch
     assertEquals(plan?.attrs.status, "implemented");
 });
 
-Deno.test("runValidationLoop starts at implemented and records only the mechanical pass boundary", async () => {
+test("runValidationLoop starts at implemented and records only the mechanical pass boundary", async () => {
     const expectedWorkflowContext = {
         routingIntent: "QUICK_FIX",
         complexity: "MEDIUM",

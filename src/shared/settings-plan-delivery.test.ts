@@ -1,8 +1,9 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../testing/assertions.ts";
+import { test } from "node:test";
 import { setCustomSetting, shouldAutoMergePlansIntoTargetBranch } from "./settings.js";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 
-Deno.test("Plan auto-merge defaults off and accepts only a literal true", async () => {
+test("Plan auto-merge defaults off and accepts only a literal true", async () => {
     await withRuntimeCommandFixture("plan-merge-setting-", async ({ projectRoot }) => {
         assertEquals(shouldAutoMergePlansIntoTargetBranch(projectRoot), false);
         for (
@@ -16,7 +17,7 @@ Deno.test("Plan auto-merge defaults off and accepts only a literal true", async 
     });
 });
 
-Deno.test("project Plan auto-merge overrides global while unrelated Plan keys inherit", async () => {
+test("project Plan auto-merge overrides global while unrelated Plan keys inherit", async () => {
     await withRuntimeCommandFixture("plan-merge-precedence-", async ({ projectRoot }) => {
         await setCustomSetting("plans", { autoMergeIntoTargetBranch: true }, "global", projectRoot);
         await setCustomSetting("plans", { archiveKeepLast: 4 }, "project", projectRoot);

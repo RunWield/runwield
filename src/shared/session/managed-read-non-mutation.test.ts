@@ -1,5 +1,16 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
+import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
@@ -29,10 +40,10 @@ function delay(ms: number): Promise<void> {
 async function removeTempDir(path: string): Promise<void> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
-            await Deno.remove(path, { recursive: true });
+            await fsRm(path, { recursive: true });
             return;
         } catch (error) {
-            if (error instanceof Deno.errors.NotFound) return;
+            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
             const isRetryable = error instanceof Error &&
                 /Directory not empty|resource busy|os error 66|os error 16/i.test(error.message);
             if (!isRetryable || attempt === 4) throw error;
@@ -42,13 +53,13 @@ async function removeTempDir(path: string): Promise<void> {
 }
 
 export async function sha256File(path: string): Promise<string> {
-    const bytes = await Deno.readFile(path);
+    const bytes = await fsReadFile(path);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function readTranscriptSnapshot(path: string): Promise<TranscriptSnapshot> {
-    const stat = await Deno.stat(path);
+    const stat = await fsStat(path);
     return { byteLength: stat.size, digestHex: await sha256File(path), mtimeMs: stat.mtime?.getTime() ?? 0 };
 }
 
@@ -94,7 +105,7 @@ function idFactory(prefix: string): () => string {
 
 async function writeManagedTranscript(cwd: string, piSessionId: string): Promise<string> {
     const sessionDir = getRunWieldSessionDir(cwd);
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     const timestamp = "2026-01-01T00:00:00.000Z";
     const transcriptPath = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
     const entries = [
@@ -107,17 +118,17 @@ async function writeManagedTranscript(cwd: string, piSessionId: string): Promise
             message: { role: "assistant", content: [{ type: "text", text: "Committed hello." }] },
         },
     ];
-    await Deno.writeTextFile(transcriptPath, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    await fsWriteFile(transcriptPath, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
     return transcriptPath;
 }
 
-Deno.test("managed read sweep drives read paths without writable Pi calls or transcript mutation", async () => {
+test("managed read sweep drives read paths without writable Pi calls or transcript mutation", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const home = await Deno.makeTempDir({ prefix: "managed-read-non-mutation-" });
-        Deno.env.set("HOME", home);
+        const previousHome = process.env["HOME"];
+        const home = await fsMkdtemp(join(tmpdir(), "managed-read-non-mutation-"));
+        process.env["HOME"] = home;
         const cwd = join(home, "project");
-        await Deno.mkdir(cwd, { recursive: true });
+        await fsMkdir(cwd, { recursive: true });
         const store = openOwnerCoordinationStore({ dbPath: join(home, "owner.sqlite3") });
         const instrumented = await instrumentRealPiWritableApis();
         try {
@@ -140,7 +151,7 @@ Deno.test("managed read sweep drives read paths without writable Pi calls or tra
                 phase: "bootstrap",
             });
             proof = store.changeSessionActivationPhase(proof, "checkpointing");
-            const bytes = await Deno.readFile(transcriptPath);
+            const bytes = await fsReadFile(transcriptPath);
             const digest = await crypto.subtle.digest("SHA-256", bytes);
             store.publishGenerationAndRelease(proof, {
                 generation: 0,
@@ -165,7 +176,7 @@ Deno.test("managed read sweep drives read paths without writable Pi calls or tra
                 });
             };
             const promptTemplatePath = join(home, "prompt.md");
-            await Deno.writeTextFile(promptTemplatePath, "Hello {{instructions}}");
+            await fsWriteFile(promptTemplatePath, "Hello {{instructions}}");
             await run("expandSessionPromptTemplate", async () => {
                 await runtime.expandSessionPromptTemplate(promptTemplatePath, "read");
             });
@@ -290,14 +301,14 @@ Deno.test("managed read sweep drives read paths without writable Pi calls or tra
         } finally {
             instrumented.restore();
             store.close();
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
             await removeTempDir(home);
         }
     });
 });
 
-Deno.test("writable Pi API instrumentation reports a negative control call", async () => {
+test("writable Pi API instrumentation reports a negative control call", async () => {
     const instrumented = await instrumentRealPiWritableApis();
     try {
         const pi = await import("@earendil-works/pi-coding-agent");

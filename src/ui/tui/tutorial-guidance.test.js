@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { savePlan } from "../../plan-store.js";
@@ -12,7 +13,7 @@ const CHECKS = { ci: "passed", semanticReview: "passed", humanReview: "skipped",
 
 /** @typedef {{ shownExplanationIds?: string[], recapShown?: boolean }} TutorialUpdate */
 
-Deno.test("tutorial explanations follow semantic workflow events", () => {
+test("tutorial explanations follow semantic workflow events", () => {
     assertEquals(
         getTutorialExplanation(
             /** @type {any} */ ({
@@ -73,7 +74,7 @@ Deno.test("tutorial explanations follow semantic workflow events", () => {
     );
 });
 
-Deno.test("tutorial verified recap requires exact verified status", async () => {
+test("tutorial verified recap requires exact verified status", async () => {
     await withRuntimeCommandFixture("tutorial-manual-status-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Choose a small change.");
         for (
@@ -136,7 +137,7 @@ Deno.test("tutorial verified recap requires exact verified status", async () => 
     });
 });
 
-Deno.test("verified tutorial recap links available review and QA artifacts", async () => {
+test("verified tutorial recap links available review and QA artifacts", async () => {
     await withRuntimeCommandFixture("tutorial-recap-artifacts-", async ({ projectRoot }) => {
         const planId = "verified-plan-id";
         const planName = "verified-plan";
@@ -192,7 +193,7 @@ Deno.test("verified tutorial recap links available review and QA artifacts", asy
     });
 });
 
-Deno.test("tutorial pause before Plan approval settles cancellation and reloads saved context", async () => {
+test("tutorial pause before Plan approval settles cancellation and reloads saved context", async () => {
     await withRuntimeCommandFixture("tutorial-pause-plan-review-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Choose a small change.");
         const runtime = createSessionRuntime();
@@ -294,7 +295,7 @@ Deno.test("tutorial pause before Plan approval settles cancellation and reloads 
     });
 });
 
-Deno.test("tutorial does not infer AI repair from implementation repeats or recovery associations", async () => {
+test("tutorial does not infer AI repair from implementation repeats or recovery associations", async () => {
     const snapshot = {
         cwd: "/project",
         activeAgent: "plan-engineer",
@@ -330,7 +331,7 @@ Deno.test("tutorial does not infer AI repair from implementation repeats or reco
     assertEquals(snapshot.tutorialContext.shownExplanationIds.includes("ai-repair"), false);
 });
 
-Deno.test("tutorial discloses Init placeholder verification", async () => {
+test("tutorial discloses Init placeholder verification", async () => {
     await withRuntimeCommandFixture("tutorial-placeholder-checks-", async ({ projectRoot }) => {
         await setCustomSetting("verification_command", INIT_VERIFICATION_COMMAND_PLACEHOLDER, "project", projectRoot);
         const snapshot = {
@@ -372,7 +373,7 @@ Deno.test("tutorial discloses Init placeholder verification", async () => {
     });
 });
 
-Deno.test("tutorial guidance persists deduplication and requires an associated Plan for verified recap", async () => {
+test("tutorial guidance persists deduplication and requires an associated Plan for verified recap", async () => {
     await withRuntimeCommandFixture("tutorial-guidance-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Choose a small change.");
         const runtime = createSessionRuntime();
@@ -439,7 +440,7 @@ Deno.test("tutorial guidance persists deduplication and requires an associated P
     });
 });
 
-Deno.test("completed tutorial recap restores after reload without changing saved progress and requires current proof", async () => {
+test("completed tutorial recap restores after reload without changing saved progress and requires current proof", async () => {
     await withRuntimeCommandFixture("tutorial-recap-reload-", async ({ projectRoot, setModelResponse }) => {
         setModelResponse("Choose a small change.");
         const runtime = createSessionRuntime();

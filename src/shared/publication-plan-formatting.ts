@@ -1,5 +1,6 @@
+import { captureForegroundProcess } from "./captured-process.ts";
 /** Recover formatting-only drift left by older controller writes after sealing. */
-import { extractYaml } from "@std/front-matter";
+import { extractYaml } from "./front-matter.ts";
 import { isDeepStrictEqual } from "node:util";
 import {
     loadPlanStrict,
@@ -35,12 +36,7 @@ export async function recoverSealedPlanFormatting(args: FormattingRecovery): Pro
         const planName = path.slice("docs/plans/".length, -3);
         await withPlanLock(args.executionCwd, planName, async () => {
             const git = (command: string[]) =>
-                new Deno.Command("git", {
-                    cwd: args.executionCwd,
-                    args: command,
-                    stdout: "piped",
-                    stderr: "piped",
-                }).output();
+                captureForegroundProcess("git", { cwd: args.executionCwd, args: command });
             // Never rewrite commits or the user's staged changes. The only repair
             // here is an unstaged serialization change to the exact sealed Plan.
             if (!(await git(["diff", "--quiet", args.sealedExecutionCommit, "HEAD", "--", path])).success) return;

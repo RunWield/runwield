@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
@@ -6,7 +7,7 @@ import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
 
 for (const classification of ["PLANNED_CHANGE", "PROJECT"] as const) {
-    Deno.test(`an idle Session opens the current ${classification} Plan and cancellation leaves its status unchanged`, async () => {
+    test(`an idle Session opens the current ${classification} Plan and cancellation leaves its status unchanged`, async () => {
         await withRuntimeCommandFixture(`reopen-${classification}-`, async ({ homeDir, projectRoot }) => {
             await savePlan(projectRoot, "target", "# Target\n\n## Context\n\nCurrent text.", {
                 classification,

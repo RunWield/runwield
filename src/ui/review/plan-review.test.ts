@@ -1,5 +1,12 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { fileURLToPath } from "node:url";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { getStoredPlanPath, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { BrowserPort } from "../../shared/browser-port.ts";
@@ -22,7 +29,7 @@ interface ExecutedPlanReviewFixture extends PlanReviewFixture {
 const gitFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\nwt-prior/\n" });
 
 async function makePlanFile(): Promise<PlanReviewFixture> {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-plan-review-" });
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-plan-review-"));
     await savePlan(dir, "plan", "# Plan\n\nDo the thing.\n", {
         classification: "PLANNED_CHANGE",
         status: "draft",
@@ -47,10 +54,7 @@ function approvedDecision(overrides: ReviewDecisionBody = {}): ReviewDecisionBod
     };
 }
 
-function decisionBrowserAfter(
-    beforeDecision: () => Promise<void>,
-    body: ReviewDecisionBody,
-): BrowserPort {
+function decisionBrowserAfter(beforeDecision: () => Promise<void>, body: ReviewDecisionBody): BrowserPort {
     return {
         async open(url: string): Promise<boolean> {
             await beforeDecision();
@@ -74,8 +78,8 @@ function decisionBrowserAfter(
     };
 }
 
-Deno.test("grouped Sequence chat preserves intermediate-round intent with its decision", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-sequence-chat-" });
+test("grouped Sequence chat preserves intermediate-round intent with its decision", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-sequence-chat-"));
     try {
         await savePlan(dir, "sequence", "# Sequence\n", {
             classification: "PROJECT",
@@ -106,11 +110,11 @@ Deno.test("grouped Sequence chat preserves intermediate-round intent with its de
         assertEquals(result.sequenceDecision?.feedback, "Revise the group.");
         assertEquals((await loadPlan(dir, "sequence"))?.attrs.status, "draft");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview serves a real review and records approval metadata", async () => {
+test("submitPlanForReview serves a real review and records approval metadata", async () => {
     const { dir, planPath } = await makePlanFile();
     const scriptedBrowser = createScriptedReviewBrowser("decision", approvedDecision());
     try {
@@ -138,17 +142,17 @@ Deno.test("submitPlanForReview serves a real review and records approval metadat
         assertEquals(savedPlan?.attrs.workKind, "DOCUMENTATION");
         assertStringIncludes(scriptedBrowser.urls[0], "/review/plan?token=");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview accepts approval after a formatting-only Plan rewrite", async () => {
+test("submitPlanForReview accepts approval after a formatting-only Plan rewrite", async () => {
     const { dir, planPath } = await makePlanFile();
     const browser = decisionBrowserAfter(async () => {
-        const before = await Deno.readTextFile(planPath);
+        const before = await fsReadFile(planPath, "utf8");
         const reformatted = before.replace('status: "draft"', "status: draft");
         if (reformatted === before) throw new Error("Fixture did not contain quoted draft status.");
-        await Deno.writeTextFile(planPath, reformatted);
+        await fsWriteFile(planPath, reformatted);
     }, approvedDecision());
     try {
         const result = await submitPlanForReview({ cwd: dir, planName: "plan", planPath, browser });
@@ -157,27 +161,38 @@ Deno.test("submitPlanForReview accepts approval after a formatting-only Plan rew
         assertEquals(result.cancellationReason, undefined);
         assertEquals((await loadPlan(dir, "plan"))?.attrs.status, "approved");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview accepts approval after Markdown body formatting", async () => {
+test("submitPlanForReview accepts approval after Markdown body formatting", async () => {
     const { dir, planPath } = await makePlanFile();
-    const before = (await Deno.readTextFile(planPath)).replace(
+    const before = (await fsReadFile(planPath, "utf8")).replace(
         "Do the thing.",
         "Load every dashboard card independently while retaining verified rows and showing clear loading states.\n\n" +
             "- Keep the existing dashboard rows visible while unrelated projects are still loading their data.\n\n" +
             "| State | Display |\n| --- | --- |\n| Pending | Loading |\n",
     );
-    await Deno.writeTextFile(planPath, before);
+    await fsWriteFile(planPath, before);
     const browser = decisionBrowserAfter(async () => {
-        const formatted = await new Deno.Command(Deno.execPath(), {
-            args: ["fmt", "--quiet", "--line-width", "50", planPath],
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        const formatted = await captureForegroundProcess(process.execPath, {
+            args: [
+                "run",
+                "--no-install",
+                fileURLToPath(new URL("../../../node_modules/prettier/bin/prettier.cjs", import.meta.url)),
+                "--parser",
+                "markdown",
+                "--prose-wrap",
+                "always",
+                "--print-width",
+                "50",
+                "--write",
+                planPath,
+            ],
+            cwd: getCwd(),
+        });
         assertEquals(formatted.success, true);
-        assertEquals(await Deno.readTextFile(planPath) === before, false);
+        assertEquals((await fsReadFile(planPath, "utf8")) === before, false);
     }, approvedDecision());
     try {
         const result = await submitPlanForReview({ cwd: dir, planName: "plan", planPath, browser });
@@ -186,15 +201,15 @@ Deno.test("submitPlanForReview accepts approval after Markdown body formatting",
         assertEquals(result.cancellationReason, undefined);
         assertEquals((await loadPlan(dir, "plan"))?.attrs.status, "approved");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview still rejects a substantive Plan edit made during review", async () => {
+test("submitPlanForReview still rejects a substantive Plan edit made during review", async () => {
     const { dir, planPath } = await makePlanFile();
     const browser = decisionBrowserAfter(async () => {
-        const before = await Deno.readTextFile(planPath);
-        await Deno.writeTextFile(planPath, before.replace("Do the thing.", "Do a different thing."));
+        const before = await fsReadFile(planPath, "utf8");
+        await fsWriteFile(planPath, before.replace("Do the thing.", "Do a different thing."));
     }, approvedDecision());
     try {
         const result = await submitPlanForReview({ cwd: dir, planName: "plan", planPath, browser });
@@ -202,15 +217,15 @@ Deno.test("submitPlanForReview still rejects a substantive Plan edit made during
         assertEquals(result.approved, false);
         assertEquals(result.cancellationReason, "stale_plan_review");
         assertEquals((await loadPlan(dir, "plan"))?.attrs.status, "draft");
-        assertStringIncludes(await Deno.readTextFile(planPath), "Do a different thing.");
+        assertStringIncludes(await fsReadFile(planPath, "utf8"), "Do a different thing.");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview persists approved execution policy and preserves custom front matter", async () => {
+test("submitPlanForReview persists approved execution policy and preserves custom front matter", async () => {
     const { dir, planPath } = await makePlanFile();
-    await Deno.writeTextFile(
+    await fsWriteFile(
         planPath,
         `---
 classification: FEATURE
@@ -228,7 +243,7 @@ customField: keep-me
             planPath,
             browser: scriptedBrowser.browser,
         });
-        const markdown = await Deno.readTextFile(planPath);
+        const markdown = await fsReadFile(planPath, "utf8");
         const parsed = parsePlanFrontMatter(markdown);
 
         assertEquals(parsed.attrs.executionAgent, "engineer");
@@ -237,11 +252,11 @@ customField: keep-me
         assertStringIncludes(markdown, 'customField: "keep-me"');
         assertEquals(result.approvalAction, "later");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview restores trusted PROJECT policy boundaries", async () => {
+test("submitPlanForReview restores trusted PROJECT policy boundaries", async () => {
     const { dir, planPath } = await makePlanFile();
     const scriptedBrowser = createScriptedReviewBrowser("decision", {
         approved: true,
@@ -270,11 +285,11 @@ collaborationRecommendation: pair
         assertEquals(attrs?.executionAgent, undefined);
         assertEquals(attrs?.collaborationRecommendation, undefined);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview restores trusted planned-change classification before approved policy", async () => {
+test("submitPlanForReview restores trusted planned-change classification before approved policy", async () => {
     const { dir, planPath } = await makePlanFile();
     const scriptedBrowser = createScriptedReviewBrowser(
         "decision",
@@ -302,11 +317,11 @@ classification: PROJECT
         assertEquals(attrs?.executionAgent, "frontend-engineer");
         assertEquals(attrs?.collaborationRecommendation, "pair");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview feedback writes the edited Plan without applying approval policy", async () => {
+test("submitPlanForReview feedback writes the edited Plan without applying approval policy", async () => {
     const { dir, planPath } = await makePlanFile();
     const scriptedBrowser = createScriptedReviewBrowser("deny", {
         feedback: "revise",
@@ -332,13 +347,13 @@ collaborationRecommendation: pair
         assertEquals(attrs?.collaborationRecommendation, "pair");
         assertEquals(attrs?.status, "feedback");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview rejects malformed empty feedback without writing the Plan", async () => {
+test("submitPlanForReview rejects malformed empty feedback without writing the Plan", async () => {
     const { dir, planPath } = await makePlanFile();
-    const originalPlan = await Deno.readTextFile(planPath);
+    const originalPlan = await fsReadFile(planPath, "utf8");
     const scriptedBrowser = createScriptedReviewBrowser("deny", { feedback: "" });
     try {
         const result = await submitPlanForReview({
@@ -349,17 +364,17 @@ Deno.test("submitPlanForReview rejects malformed empty feedback without writing 
         });
 
         assertEquals(result.cancellationReason, "malformed_review_response");
-        assertEquals(await Deno.readTextFile(planPath), originalPlan);
+        assertEquals(await fsReadFile(planPath, "utf8"), originalPlan);
         assertEquals(await planStatus(dir), "draft");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview loads image bytes from real feedback transport", async () => {
+test("submitPlanForReview loads image bytes from real feedback transport", async () => {
     const { dir, planPath } = await makePlanFile();
     const imagePath = join(dir, "reference.png");
-    await Deno.writeFile(imagePath, new Uint8Array([137, 80, 78, 71]));
+    await fsWriteFile(imagePath, new Uint8Array([137, 80, 78, 71]));
     const scriptedBrowser = createScriptedReviewBrowser("deny", {
         feedback: "change this",
         globalAttachments: [{ path: imagePath, name: "reference" }],
@@ -375,13 +390,13 @@ Deno.test("submitPlanForReview loads image bytes from real feedback transport", 
         assertEquals(result.images, [{ base64: "iVBORw==", mimeType: "image/png", name: "reference" }]);
         assertEquals(await planStatus(dir), "feedback");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview exit does not write the Plan", async () => {
+test("submitPlanForReview exit does not write the Plan", async () => {
     const { dir, planPath } = await makePlanFile();
-    const originalPlan = await Deno.readTextFile(planPath);
+    const originalPlan = await fsReadFile(planPath, "utf8");
     const scriptedBrowser = createScriptedReviewBrowser("exit", { reviewType: "plan" });
     try {
         const result = await submitPlanForReview({
@@ -393,20 +408,20 @@ Deno.test("submitPlanForReview exit does not write the Plan", async () => {
 
         assertEquals(result.canceled, true);
         assertEquals(result.cancellationReason, "review_exit");
-        assertEquals(await Deno.readTextFile(planPath), originalPlan);
+        assertEquals(await fsReadFile(planPath, "utf8"), originalPlan);
         assertEquals(await planStatus(dir), "draft");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview cancellation stops the real review surface without writing", async () => {
+test("submitPlanForReview cancellation stops the real review surface without writing", async () => {
     const { dir, planPath } = await makePlanFile();
-    const originalPlan = await Deno.readTextFile(planPath);
+    const originalPlan = await fsReadFile(planPath, "utf8");
     const controller = new AbortController();
     let openedUrl = "";
     let markOpened: () => void = () => {};
-    const opened = new Promise<void>((resolveOpened) => markOpened = resolveOpened);
+    const opened = new Promise<void>((resolveOpened) => (markOpened = resolveOpened));
     const browser: BrowserPort = {
         open: (url: string) => {
             openedUrl = url;
@@ -432,10 +447,10 @@ Deno.test("submitPlanForReview cancellation stops the real review surface withou
             cancellationReason: "abort_signal",
         });
         assertStringIncludes(openedUrl, "/review/plan?token=");
-        assertEquals(await Deno.readTextFile(planPath), originalPlan);
+        assertEquals(await fsReadFile(planPath, "utf8"), originalPlan);
         await assertRejects(() => fetch(openedUrl));
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
@@ -474,11 +489,11 @@ async function makeExecutedPlanWithWorktree(status: PlanFrontMatter["status"]): 
         dir,
         executionDir,
         planPath: getStoredPlanPath(executionDir, "plan"),
-        primaryMarkdown: await Deno.readTextFile(getStoredPlanPath(dir, "plan")),
+        primaryMarkdown: await fsReadFile(getStoredPlanPath(dir, "plan"), "utf8"),
     };
 }
 
-Deno.test("submitPlanForReview approval preserves the prior execution attempt", async () => {
+test("submitPlanForReview approval preserves the prior execution attempt", async () => {
     const { dir, executionDir, planPath, primaryMarkdown } = await makeExecutedPlanWithWorktree("ready_for_work");
     const scriptedBrowser = createScriptedReviewBrowser("decision", approvedDecision());
     try {
@@ -492,20 +507,16 @@ Deno.test("submitPlanForReview approval preserves the prior execution attempt", 
         assertEquals(result.approved, true);
         const savedPlan = await loadPlan(executionDir, "plan");
         assertEquals(savedPlan?.attrs.status, "approved");
-        assertEquals(
-            savedPlan?.attrs.worktreeId,
-            "wt-prior",
-            "review must retain the implementation attempt",
-        );
+        assertEquals(savedPlan?.attrs.worktreeId, "wt-prior", "review must retain the implementation attempt");
         assertEquals(savedPlan?.attrs.worktreeStatus, "active");
         assertEquals((await findRegistryEntryById(dir, "wt-prior"))?.status, "active");
-        assertEquals(await Deno.readTextFile(getStoredPlanPath(dir, "plan")), primaryMarkdown);
+        assertEquals(await fsReadFile(getStoredPlanPath(dir, "plan"), "utf8"), primaryMarkdown);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("submitPlanForReview leaves the execution generation alone when no reopen is needed", async () => {
+test("submitPlanForReview leaves the execution generation alone when no reopen is needed", async () => {
     const { dir, executionDir, planPath, primaryMarkdown } = await makeExecutedPlanWithWorktree("draft");
     const scriptedBrowser = createScriptedReviewBrowser("decision", approvedDecision());
     try {
@@ -516,8 +527,8 @@ Deno.test("submitPlanForReview leaves the execution generation alone when no reo
         assertEquals(await planStatus(executionDir), "approved");
         assertEquals((await findRegistryEntryById(dir, "wt-prior"))?.status, "active");
         assertEquals((await loadPlan(executionDir, "plan"))?.attrs.worktreeId, "wt-prior");
-        assertEquals(await Deno.readTextFile(getStoredPlanPath(dir, "plan")), primaryMarkdown);
+        assertEquals(await fsReadFile(getStoredPlanPath(dir, "plan"), "utf8"), primaryMarkdown);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

@@ -1,3 +1,8 @@
+import { join } from "node:path";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { getCwd } from "../../constants.js";
+import { mkdtemp as fsMkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { HostedSession } from "../session/hosted-session.js";
 import { createSessionRuntimeEvent } from "../session/session-runtime-events.js";
 import {
@@ -11,7 +16,7 @@ import {
  * @returns {Promise<string>}
  */
 export async function git(cwd, args) {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     const text = new TextDecoder().decode(output.stdout);
     if (!output.success) throw new Error(new TextDecoder().decode(output.stderr));
     return text.trim();
@@ -149,7 +154,7 @@ export function attachRecorder(session, recorder) {
  * @returns {HostedSession}
  */
 export function makeRecordedSession(id, recorder) {
-    return attachRecorder(new HostedSession({ id, cwd: Deno.cwd() }), recorder);
+    return attachRecorder(new HostedSession({ id, cwd: getCwd() }), recorder);
 }
 
 export function noOpRecordPlanEvent() {
@@ -183,7 +188,7 @@ export const NO_ISOLATED_AGENT_PORT = Object.freeze({
  * @returns {Promise<string>}
  */
 export async function makeValidationProjectRoot(planName = "p", attrs = {}) {
-    const root = await Deno.makeTempDir({ prefix: "runwield-validation-root-" });
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-root-"));
     const { savePlan } = await import("../../plan-store.js");
     await savePlan(root, planName, `# ${planName}\n\nvalidation fixture\n`, {
         classification: "FEATURE",

@@ -45,6 +45,7 @@ export function displayAgentName(agentName) {
         "frontend-engineer": "Frontend Engineer",
         "plan-engineer": "Plan Engineer",
         "reviewer-feedback-engineer": "Validation Repair Engineer",
+        "record-plan-deviation": "Plan Deviation",
     }[trimmed];
     if (pinned) return pinned;
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmed)) return trimmed;
@@ -437,6 +438,97 @@ export function mergeSessionTimelineItems(committed, transient) {
     return compactCompletedActivity(ordered);
 }
 
+/** @param {string} content @param {Record<string, any>} [details] */
+export function formatPlanDeviationMarkdown(content, details = {}) {
+    const entry = asRecord(details.entry);
+    const superseded = text(entry.supersededRequirement || details.supersededRequirement);
+    const replacement = text(entry.replacementRequirement || details.replacementRequirement);
+    const reason = text(entry.reason || details.reason);
+    const approvedAt = text(entry.approvedAt || details.approvedAt);
+    if (superseded || replacement) {
+        return [
+            "**Plan Deviation recorded in the execution Plan.**",
+            superseded ? `**Superseded requirement:**\n\n${superseded}` : "",
+            replacement ? `**Replacement requirement:**\n\n${replacement}` : "",
+            reason ? `**Reason:**\n\n${reason}` : "",
+            approvedAt ? `*Approved at:* ${approvedAt}` : "",
+        ].filter(Boolean).join("\n\n");
+    }
+    let body = text(content);
+    if (body) {
+        body = body
+            .replace(/(?:^|\n)\s*(?:1\.\s*)?Superseded requirement:\s*/g, "\n\n**Superseded requirement:**\n\n")
+            .replace(/(?:^|\n)\s*Replacement requirement:\s*/g, "\n\n**Replacement requirement:**\n\n")
+            .replace(/(?:^|\n)\s*Reason:\s*/g, "\n\n**Reason:**\n\n")
+            .replace(/(?:^|\n)\s*Approved at:\s*/g, "\n\n*Approved at:* ")
+            .trim();
+    }
+    return body;
+}
+
+/** @param {string} content @param {Record<string, any>} [details] */
+export function formatPairCheckpointMarkdown(content, details = {}) {
+    if (details.summary) {
+        return [
+            `**Pair checkpoint ${details.checkpointNumber || 1}${details.final ? " — final" : ""}.**`,
+            "**Summary**",
+            text(details.summary),
+            details.route ? `**Route**\n\n${text(details.route)}` : "",
+            details.state ? `**State**\n\n${text(details.state)}` : "",
+            details.viewport ? `**Viewport**\n\n${text(details.viewport)}` : "",
+            Array.isArray(details.evidence) && details.evidence.length
+                ? `**Evidence**\n\n${details.evidence.map((item) => `- ${text(item)}`).join("\n")}`
+                : "",
+            details.diagnostics ? `**Diagnostics**\n\n${text(details.diagnostics)}` : "",
+            details.nextIncrement ? `**Next increment:**\n\n${text(details.nextIncrement)}` : "",
+            "Reply normally to ask a question, request a change, continue, stop, or switch to autonomous work.",
+        ].filter(Boolean).join("\n\n");
+    }
+    let body = text(content);
+    if (body) {
+        body = body
+            .replace(/(?:^|\n)\s*(?:Next increment:|\*\*Next increment\*\*:?)\s*/g, "\n\n**Next increment:**\n\n")
+            .replace(/(?:^|\n)\s*(?:Summary:|\*\*Summary\*\*:?)\s*/g, "\n\n**Summary:**\n\n")
+            .replace(/(?:^|\n)\s*(?:Route:|\*\*Route\*\*:?)\s*/g, "\n\n**Route:**\n\n")
+            .replace(/(?:^|\n)\s*(?:State:|\*\*State\*\*:?)\s*/g, "\n\n**State:**\n\n")
+            .replace(/(?:^|\n)\s*(?:Viewport:|\*\*Viewport\*\*:?)\s*/g, "\n\n**Viewport:**\n\n")
+            .replace(/(?:^|\n)\s*(?:Evidence:|\*\*Evidence\*\*:?)\s*/g, "\n\n**Evidence:**\n\n")
+            .replace(/(?:^|\n)\s*(?:Diagnostics:|\*\*Diagnostics\*\*:?)\s*/g, "\n\n**Diagnostics:**\n\n")
+            .replace(
+                /(?:^|\n)\s*Reply normally to ask a question[^\n]*/g,
+                "\n\nReply normally to ask a question, request a change, continue, stop, or switch to autonomous work.",
+            )
+            .trim();
+    }
+    return body;
+}
+
+/** @param {string} requestType @param {string} promptText */
+export function formatInteractionPromptMarkdown(requestType, promptText) {
+    let prompt = text(promptText);
+    if (!prompt) return "The agent is waiting for your answer.";
+    if (
+        requestType === RuntimeInteractionTypes.PLAN_DEVIATION_CONFIRMATION ||
+        requestType === "plan_deviation_confirmation"
+    ) {
+        prompt = prompt
+            .replace(/(?:^|\n)\s*(?:1\.\s*)?Superseded requirement:\s*/g, "\n\n**Superseded requirement:**\n\n")
+            .replace(/(?:^|\n)\s*Replacement requirement:\s*/g, "\n\n**Replacement requirement:**\n\n")
+            .replace(/(?:^|\n)\s*Reason:\s*/g, "\n\n**Reason:**\n\n")
+            .replace(
+                /(?:^|\n)\s*Confirmed text will be saved in the Plan and Work Record\.\s*/g,
+                "\n\nConfirmed text will be saved in the Plan and Work Record.",
+            )
+            .trim();
+    } else if (
+        requestType === RuntimeInteractionTypes.PAIR_CHECKPOINT ||
+        requestType === "pair_checkpoint"
+    ) {
+        prompt = formatPairCheckpointMarkdown(prompt);
+    }
+    return prompt;
+}
+
 /** Full workflow output is never truncated or folded into routine tool activity. */
 export function workflowToolMarkdown(item) {
     const details = asRecord(item.details);
@@ -461,6 +553,10 @@ export function workflowToolMarkdown(item) {
         ].filter(Boolean).join("\n\n");
     } else if (details.checklistMarkdown) {
         body = text(details.checklistMarkdown);
+    } else if (toolName === "record_plan_deviation" || toolName === "plan_deviation") {
+        body = formatPlanDeviationMarkdown(body, details);
+    } else if (toolName === "pair_checkpoint" || toolName === "pair_programming") {
+        body = formatPairCheckpointMarkdown(body, details);
     } else if (!body) {
         body = [
             details.planName ? `**Plan:** ${text(details.planName)}` : "",
@@ -603,13 +699,21 @@ function SessionInteractionCard({ item }) {
             setSubmitting(false);
         }
     };
+    const title = requestType === "approval"
+        ? "Approval needed"
+        : requestType === RuntimeInteractionTypes.PLAN_DEVIATION_CONFIRMATION ||
+                requestType === "plan_deviation_confirmation"
+        ? "Plan Deviation confirmation"
+        : requestType === RuntimeInteractionTypes.PAIR_CHECKPOINT || requestType === "pair_checkpoint"
+        ? "Pair checkpoint"
+        : "Agent needs input";
     return (
         <article
             className="session-live-interaction"
             id={item.interactionId ? `interaction-${item.interactionId}` : undefined}
         >
-            <strong>{requestType === "approval" ? "Approval needed" : "Agent needs input"}</strong>
-            <p>{item.request?.prompt || "The agent is waiting for your answer."}</p>
+            <strong>{title}</strong>
+            <MarkdownView markdown={formatInteractionPromptMarkdown(requestType, item.request?.prompt)} />
             {item.request?.artifactReview && item.reviewUrl
                 ? (
                     <RunWieldLink

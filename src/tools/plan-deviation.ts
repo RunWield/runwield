@@ -138,13 +138,11 @@ export function createPlanDeviationTool({ hostedSession }: PlanDeviationToolOpti
                     type: RuntimeInteractionTypes.PLAN_DEVIATION_CONFIRMATION,
                     prompt: [
                         "Confirm this Plan Deviation before I treat it as authority.",
-                        "",
                         `Superseded requirement: ${supersededRequirement}`,
                         `Replacement requirement: ${replacementRequirement}`,
                         reason ? `Reason: ${reason}` : "",
-                        "",
                         "Confirmed text will be saved in the Plan and Work Record.",
-                    ].filter(Boolean).join("\n"),
+                    ].filter(Boolean).join("\n\n"),
                     options: [
                         { value: "confirm", label: "Confirm Plan Deviation" },
                         { value: "cancel", label: "Cancel; keep the original Plan requirement" },

@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import {
     decryptJsonPayload,
     encryptJsonPayload,
@@ -8,7 +9,7 @@ import {
 } from "./crypto.ts";
 import { decodeBase64Url, encodeBase64Url } from "./base64url.ts";
 
-Deno.test("content encryption keys export, import, and round trip JSON payloads", async () => {
+test("content encryption keys export, import, and round trip JSON payloads", async () => {
     const key = await generateContentKey();
     const exported = await exportContentKey(key);
     const imported = await importContentKey(exported);
@@ -16,14 +17,14 @@ Deno.test("content encryption keys export, import, and round trip JSON payloads"
     assertEquals(await decryptJsonPayload(encrypted, key), { planId: "plan-1", text: "secret" });
 });
 
-Deno.test("decrypt fails closed for wrong keys", async () => {
+test("decrypt fails closed for wrong keys", async () => {
     const key = await generateContentKey();
     const wrongKey = await generateContentKey();
     const encrypted = await encryptJsonPayload({ ok: true }, key);
     await assertRejects(() => decryptJsonPayload(encrypted, wrongKey));
 });
 
-Deno.test("decrypt fails closed for tampered and truncated ciphertext", async () => {
+test("decrypt fails closed for tampered and truncated ciphertext", async () => {
     const key = await generateContentKey();
     const encrypted = await encryptJsonPayload({ ok: true }, key);
     const bytes = decodeBase64Url(encrypted);
@@ -32,6 +33,6 @@ Deno.test("decrypt fails closed for tampered and truncated ciphertext", async ()
     await assertRejects(() => decryptJsonPayload(encodeBase64Url(bytes.slice(0, 12)), key));
 });
 
-Deno.test("importContentKey rejects malformed key material", async () => {
+test("importContentKey rejects malformed key material", async () => {
     await assertRejects(() => importContentKey("abc"));
 });

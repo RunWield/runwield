@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { archivePlan, loadArchivedPlan, savePlan } from "../../plan-store.js";
 import { runPlansReadCommand } from "./read.ts";
 import { type PlanCommandFixture, withPlanCommandFixture } from "./plans-command-test-fixture.ts";
@@ -10,7 +11,7 @@ interface ReadSurfaceResult {
 }
 
 function readTest(name: string, run: (fixture: PlanCommandFixture) => Promise<void>): void {
-    Deno.test(name, () => withPlanCommandFixture("runwield-plans-read-command-", run));
+    test(name, () => withPlanCommandFixture("runwield-plans-read-command-", run));
 }
 
 async function runReadAndClose(argv: string[]): Promise<ReadSurfaceResult> {

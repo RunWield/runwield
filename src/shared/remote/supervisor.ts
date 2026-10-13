@@ -1,3 +1,13 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
+import type { Socket } from "node:net";
+import { getCwd } from "../../constants.js";
+import { isStandaloneExecutable } from "../runtime-identity.ts";
+import { listenSocket, readStreamInto, type SocketListener } from "../socket-listener.ts";
+import { type NativeProcess, spawnNativeProcess } from "../foreground-process.ts";
+import { realpath as fsRealpath, rm as fsRm } from "node:fs/promises";
 /* Runs in the remote executable, independently of the TUI process. The
  * launcher delivers the private header through a separate non-terminal SSH
  * channel into an owned Unix socket, never through the terminal or a file. */
@@ -22,21 +32,23 @@ const encoder = new TextEncoder();
 const PERIOD_MS = 5_000;
 
 async function stty(...args: string[]): Promise<string> {
-    const result = await new Deno.Command("stty", {
+    const child = spawnNativeProcess("stty", {
+        cwd: getCwd(),
         args,
         stdin: "inherit",
         stdout: "piped",
         stderr: "null",
-    }).output();
+    });
+    const [result, stdout] = await Promise.all([child.status, new Response(child.stdout).text()]);
     if (!result.success) throw new Error("Remote supervisor requires a private SSH terminal");
-    return new TextDecoder().decode(result.stdout).trim();
+    return stdout.trim();
 }
 
-async function readHeader(connection: Deno.Conn): Promise<RemoteSupervisorHeader> {
+async function readHeader(connection: Socket): Promise<RemoteSupervisorHeader> {
     const bytes: number[] = [];
     const buffer = new Uint8Array(1);
     while (bytes.length < 16 * 1024) {
-        if (await connection.read(buffer) === null) throw new Error("Missing remote supervisor header");
+        if (await readStreamInto(connection, buffer) === null) throw new Error("Missing remote supervisor header");
         if (buffer[0] === 10) {
             let header: RemoteSupervisorHeader;
             try {
@@ -91,7 +103,7 @@ async function control(
     return answer.shutdown;
 }
 
-async function stopChild(child: Deno.ChildProcess, label: string): Promise<void> {
+async function stopChild(child: NativeProcess, label: string): Promise<void> {
     try {
         if (!await terminateOwnedLinuxGroup(child)) {
             console.error(`Remote ${label} termination is unconfirmed; no stale group was signalled.`);
@@ -106,14 +118,14 @@ async function runOwnedModelProof(
     mount: RemoteMount,
     signal: AbortSignal,
 ): Promise<void> {
-    const child = new Deno.Command(Deno.execPath(), {
+    const child = spawnNativeProcess(process.execPath, {
         args: ["--remote-model-proof"],
         cwd: header.view.cwd,
         stdin: "piped",
         stdout: "null",
         stderr: "null",
         detached: true,
-    }).spawn();
+    });
     let resolveAbort = () => {};
     const aborted = new Promise<undefined>((resolve) => {
         resolveAbort = () => resolve(undefined);
@@ -161,35 +173,38 @@ async function runOwnedModelProof(
  * 127.0.0.1:<header.port>:127.0.0.1:<service.port>.
  */
 export async function runRemoteSupervisor(): Promise<void> {
-    if (!Deno.build.standalone || Deno.args.length !== 2 || Deno.args[0] !== "--remote-supervisor") {
+    if (
+        !isStandaloneExecutable() || process.argv.slice(2).length !== 2 ||
+        process.argv.slice(2)[0] !== "--remote-supervisor"
+    ) {
         throw new Error("Remote supervisor requires its own compiled executable");
     }
-    const setupPort = Number(Deno.args[1]);
-    if (!/^[1-9]\d*$/.test(Deno.args[1]) || setupPort > 65535) {
+    const setupPort = Number(process.argv.slice(2)[1]);
+    if (!/^[1-9]\d*$/.test(process.argv.slice(2)[1]) || setupPort > 65535) {
         throw new Error("Invalid remote supervisor control port");
     }
-    if (Deno.build.os !== "linux") throw new Error("Remote supervisor requires Linux");
+    if (process.platform !== "linux") throw new Error("Remote supervisor requires Linux");
     const originalMode = await stty("-g");
     await stty("-echo");
-    const socketDirectory = await Deno.makeTempDir({ prefix: "wld-remote-" });
+    const socketDirectory = await mkdtemp(join(tmpdir(), "wld-remote-"));
     const socketPath = `${socketDirectory}/control.sock`;
-    let listener: Deno.Listener;
+    let listener: SocketListener;
     try {
-        listener = Deno.listen({ transport: "unix", path: socketPath });
+        listener = await listenSocket({ path: socketPath });
     } catch (error) {
-        await Deno.remove(socketDirectory, { recursive: true });
+        await fsRm(socketDirectory, { recursive: true });
         await stty(originalMode).catch(() => undefined);
         throw error;
     }
-    let child: Deno.ChildProcess | undefined;
+    let child: NativeProcess | undefined;
     let personalMount: RemoteMount | undefined;
     let mountLost = false;
-    let inputPump: Deno.ChildProcess | undefined;
+    let inputPump: NativeProcess | undefined;
     let inputPumpStopped = false;
     let childStopped = false;
     let stopActive: (() => void) | undefined;
     let childExited = false;
-    let connection: Deno.Conn | undefined;
+    let connection: Socket | undefined;
     const setupHealthAbort = new AbortController();
     // Owned by this connection, including the bootstrap proof before the view exists.
     const proofAbort = new AbortController();
@@ -199,7 +214,7 @@ export async function runRemoteSupervisor(): Promise<void> {
         interrupted = true;
         proofAbort.abort();
         try {
-            connection?.close();
+            connection?.destroy();
         } catch { /* Read already settled. */ }
         try {
             listener.close();
@@ -207,7 +222,7 @@ export async function runRemoteSupervisor(): Promise<void> {
         stopActive?.();
     };
     for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-        Deno.addSignalListener(signal, onEarlyClosure);
+        process.on(signal, onEarlyClosure);
     }
     try {
         // The marker contains only a locator in a mode-0700 temporary folder.
@@ -216,12 +231,14 @@ export async function runRemoteSupervisor(): Promise<void> {
         console.log(`REMOTE_SUPERVISOR_READY:${socketPath}`);
         // Monitor the SSH terminal before waiting on the separate header channel.
         // A dead launcher cannot strand the supervisor in accept/readHeader.
-        inputPump = new Deno.Command("cat", {
+        inputPump = spawnNativeProcess("cat", {
+            cwd: getCwd(),
+            args: [],
             stdin: "inherit",
             stdout: "piped",
             stderr: "null",
             detached: true,
-        }).spawn();
+        });
         const pump = inputPump;
         // The detached SSH peer can keep the PTY open after its laptop launcher
         // dies. Probe the forwarded laptop service before the private header
@@ -271,12 +288,12 @@ export async function runRemoteSupervisor(): Promise<void> {
             setupHealthAbort.abort();
             if (setupHealthTimer !== undefined) clearInterval(setupHealthTimer);
             try {
-                connection?.close();
+                connection?.destroy();
             } catch { /* Already closed. */ }
             try {
                 listener.close();
             } catch { /* Already closed. */ }
-            await Deno.remove(socketDirectory, { recursive: true });
+            await fsRm(socketDirectory, { recursive: true });
         }
         if (interrupted) return;
         const { BUILD_ID, REMOTE_PROTOCOL_VERSION } = await import("../build-identity.js");
@@ -293,7 +310,7 @@ export async function runRemoteSupervisor(): Promise<void> {
             return;
         }
         // A missing mount or failed fresh read/write must never reach readiness.
-        const accountHome = await Deno.realPath((await import("../../constants.js")).getHomeDir());
+        const accountHome = await fsRealpath((await import("../../constants.js")).getHomeDir());
         if (accountHome !== header.remoteHome) throw new Error("Remote account home changed before mount");
         personalMount = await mountLaptopHome(header.remoteHome, header.mount);
         // personalMount.globalRoot and personalMount.agentsRoot are private to this
@@ -356,14 +373,14 @@ export async function runRemoteSupervisor(): Promise<void> {
         // one configuration line followed by live input. This preserves a
         // separate bootstrap channel and leaves the TUI free to consume input.
         await stty("raw", "-echo");
-        child = new Deno.Command(Deno.execPath(), {
+        child = spawnNativeProcess(process.execPath, {
             args: ["--remote-view"],
             cwd: header.view.cwd,
             stdin: "piped",
             stdout: "inherit",
             stderr: "inherit",
             detached: true,
-        }).spawn();
+        });
         const view = child;
         void view.status.then(() => {
             childExited = true;
@@ -385,9 +402,9 @@ export async function runRemoteSupervisor(): Promise<void> {
         stopActive = stop;
         if (mountLost) stop();
         const onSignal = () => stop();
-        Deno.addSignalListener("SIGINT", onSignal);
-        Deno.addSignalListener("SIGTERM", onSignal);
-        Deno.addSignalListener("SIGHUP", onSignal);
+        process.on("SIGINT", onSignal);
+        process.on("SIGTERM", onSignal);
+        process.on("SIGHUP", onSignal);
         // Admit terminal input only after the pump is running. The launcher
         // waits for readiness before showing the view or forwarding input.
         if (
@@ -400,10 +417,17 @@ export async function runRemoteSupervisor(): Promise<void> {
             let misses = 0;
             let nextCheck = Date.now() + PERIOD_MS;
             while (!stopped) {
-                await Promise.race([
-                    new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, nextCheck - Date.now()))),
-                    ending,
-                ]);
+                let checkTimer: ReturnType<typeof setTimeout> | undefined;
+                try {
+                    await Promise.race([
+                        new Promise<void>((resolve) => {
+                            checkTimer = setTimeout(resolve, Math.max(0, nextCheck - Date.now()));
+                        }),
+                        ending,
+                    ]);
+                } finally {
+                    if (checkTimer !== undefined) clearTimeout(checkTimer);
+                }
                 if (stopped) break;
                 nextCheck += PERIOD_MS;
                 try {
@@ -436,9 +460,9 @@ export async function runRemoteSupervisor(): Promise<void> {
             inputPumpStopped = true;
             void writer.abort().catch(() => undefined);
             void input;
-            Deno.removeSignalListener("SIGINT", onSignal);
-            Deno.removeSignalListener("SIGTERM", onSignal);
-            Deno.removeSignalListener("SIGHUP", onSignal);
+            process.off("SIGINT", onSignal);
+            process.off("SIGTERM", onSignal);
+            process.off("SIGHUP", onSignal);
             await control(header, "shutdown").catch(() => undefined);
         }
         if (mountLost) throw new Error("Laptop personal mount lost; remote work stopped");
@@ -449,12 +473,12 @@ export async function runRemoteSupervisor(): Promise<void> {
         if (child && !childStopped && !childExited) await stopChild(child, "TUI").catch(() => undefined);
         if (inputPump && !inputPumpStopped) await stopChild(inputPump, "terminal input").catch(() => undefined);
         for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-            Deno.removeSignalListener(signal, onEarlyClosure);
+            process.off(signal, onEarlyClosure);
         }
         try {
             listener.close();
         } catch { /* Already closed after admission. */ }
-        await Deno.remove(socketDirectory, { recursive: true }).catch(() => undefined);
+        await fsRm(socketDirectory, { recursive: true }).catch(() => undefined);
         if (personalMount) {
             await personalMount.close().catch((error) => console.error("Remote mount cleanup failed:", error));
         }

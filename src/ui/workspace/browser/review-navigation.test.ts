@@ -1,8 +1,9 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { test } from "node:test";
 import { Window } from "happy-dom";
 import { updateReviewInteractionUrl } from "./review-navigation.ts";
 
-Deno.test("revised reviews reload the new interaction while retaining operation and return context", async () => {
+test("revised reviews reload the new interaction while retaining operation and return context", async () => {
     const browser = new Window({
         url: "http://localhost/projects/project/plans/plan?session=session&operation=operation&interaction=old&return=%2Fsearch#section",
     });

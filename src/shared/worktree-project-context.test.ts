@@ -1,18 +1,29 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    symlink as fsSymlink,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { git, makeRepo } from "./worktree-test-helpers.ts";
 import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts } from "./worktree.js";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
 
 async function write(root: string, path: string, content: string) {
     const fullPath = join(root, path);
-    await Deno.mkdir(join(fullPath, ".."), { recursive: true });
-    await Deno.writeTextFile(fullPath, content);
+    await fsMkdir(join(fullPath, ".."), { recursive: true });
+    await fsWriteFile(fullPath, content);
 }
 
-Deno.test("new worktrees carry only setup context, preserve staging, and recreate the managed ignore block", async () => {
+test("new worktrees carry only setup context, preserve staging, and recreate the managed ignore block", async () => {
     const root = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await write(root, ".wld/settings.json", '{"verification_command":"printf verified"}\n');
         await write(root, "docs/domain-language.md", "# Domain Language\n\nInitial glossary.\n");
@@ -32,25 +43,25 @@ Deno.test("new worktrees carry only setup context, preserve staging, and recreat
             worktreeRoot,
         });
         for (const path of [".wld/settings.json", "docs/domain-language.md"]) {
-            assertEquals(await Deno.readTextFile(join(entry.path, path)), await Deno.readTextFile(join(root, path)));
+            assertEquals(await fsReadFile(join(entry.path, path), "utf8"), await fsReadFile(join(root, path), "utf8"));
         }
-        assertEquals(await Deno.readTextFile(join(entry.path, ".gitignore")), RUNWIELD_GITIGNORE_BLOCK);
-        assertEquals(await Deno.readTextFile(join(entry.path, "README.md")), "base\n");
-        await assertRejects(() => Deno.stat(join(entry.path, "unrelated.txt")), Deno.errors.NotFound);
+        assertEquals(await fsReadFile(join(entry.path, ".gitignore"), "utf8"), RUNWIELD_GITIGNORE_BLOCK);
+        assertEquals(await fsReadFile(join(entry.path, "README.md"), "utf8"), "base\n");
+        await assertRejects(() => fsStat(join(entry.path, "unrelated.txt")), Error, "ENOENT");
         assertEquals(await git(root, ["status", "--porcelain"]), status);
         assertEquals(await git(root, ["diff", "--cached"]), staged);
         assertEquals(await git(root, ["rev-parse", "HEAD"]), head);
         assertEquals(await git(entry.path, ["rev-parse", "HEAD"]), head);
         await removeWorktreeGitArtifacts({ projectRoot: root, path: entry.path, force: true });
     } finally {
-        await Deno.remove(root, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true });
+        await fsRm(root, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true });
     }
 });
 
-Deno.test("context transfer merges compatible target changes and rejects conflicts before creating a worktree", async () => {
+test("context transfer merges compatible target changes and rejects conflicts before creating a worktree", async () => {
     const root = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         const base = "# Domain Language\n\nFirst: original.\n\nMiddle paragraph.\n\nLast: original.\n";
         await write(root, "docs/domain-language.md", base);
@@ -68,7 +79,7 @@ Deno.test("context transfer merges compatible target changes and rejects conflic
             worktreeRoot,
             baseRef: "target",
         });
-        const merged = await Deno.readTextFile(join(entry.path, "docs/domain-language.md"));
+        const merged = await fsReadFile(join(entry.path, "docs/domain-language.md"), "utf8");
         assertStringIncludes(merged, "First: target");
         assertStringIncludes(merged, "Last: init");
         await removeWorktreeGitArtifacts({ projectRoot: root, path: entry.path, force: true });
@@ -89,16 +100,19 @@ Deno.test("context transfer merges compatible target changes and rejects conflic
         );
         assertEquals(await git(root, ["worktree", "list", "--porcelain"]), worktrees);
         assertEquals(await git(root, ["branch", "--list"]), branches);
-        assertStringIncludes(await Deno.readTextFile(join(root, "docs/domain-language.md")), "First: conflicting init");
+        assertStringIncludes(
+            await fsReadFile(join(root, "docs/domain-language.md"), "utf8"),
+            "First: conflicting init",
+        );
     } finally {
-        await Deno.remove(root, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true });
+        await fsRm(root, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true });
     }
 });
 
-Deno.test("ignored setup files are carried but committed branch-specific context is not transplanted", async () => {
+test("ignored setup files are carried but committed branch-specific context is not transplanted", async () => {
     const root = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await git(root, ["branch", "target"]);
         await write(root, "docs/domain-language.md", "Committed only on main\n");
@@ -114,24 +128,24 @@ Deno.test("ignored setup files are carried but committed branch-specific context
             baseRef: "target",
         });
         assertEquals(
-            await Deno.readTextFile(join(entry.path, ".wld/settings.json")),
+            await fsReadFile(join(entry.path, ".wld/settings.json"), "utf8"),
             '{"verification_command":"printf ignored"}\n',
         );
-        await assertRejects(() => Deno.stat(join(entry.path, "docs/domain-language.md")), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(join(entry.path, "docs/domain-language.md")), Error, "ENOENT");
         await removeWorktreeGitArtifacts({ projectRoot: root, path: entry.path, force: true });
     } finally {
-        await Deno.remove(root, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true });
+        await fsRm(root, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true });
     }
 });
 
-Deno.test("context transfer refuses symlink destinations and removes only its newly created checkout", async () => {
+test("context transfer refuses symlink destinations and removes only its newly created checkout", async () => {
     const root = await makeRepo();
-    const worktreeRoot = await Deno.makeTempDir();
-    const outside = await Deno.makeTempDir();
+    const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+    const outside = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         await git(root, ["checkout", "-b", "symlink-target"]);
-        await Deno.symlink(outside, join(root, "docs"));
+        await fsSymlink(outside, join(root, "docs"));
         await git(root, ["add", "docs"]);
         await git(root, ["commit", "-m", "symlink docs"]);
         await git(root, ["checkout", "main"]);
@@ -152,10 +166,10 @@ Deno.test("context transfer refuses symlink destinations and removes only its ne
         );
         assertEquals(await git(root, ["worktree", "list", "--porcelain"]), worktrees);
         assertEquals(await git(root, ["branch", "--list"]), branches);
-        await assertRejects(() => Deno.stat(join(outside, "domain-language.md")), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(join(outside, "domain-language.md")), Error, "ENOENT");
     } finally {
-        await Deno.remove(root, { recursive: true });
-        await Deno.remove(worktreeRoot, { recursive: true });
-        await Deno.remove(outside, { recursive: true });
+        await fsRm(root, { recursive: true });
+        await fsRm(worktreeRoot, { recursive: true });
+        await fsRm(outside, { recursive: true });
     }
 });

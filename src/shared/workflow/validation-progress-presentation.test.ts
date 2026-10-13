@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     validationCheckLabel,
     validationProgressCheckSummary,
@@ -28,7 +29,7 @@ function progress(
     };
 }
 
-Deno.test("validation progress labels use owner terms", () => {
+test("validation progress labels use owner terms", () => {
     assertEquals(validationStageLabel("ci"), "Verification Command");
     assertEquals(validationStageLabel("semantic_review"), "AI review");
     assertEquals(validationStageLabel("human_review"), "Code review");
@@ -41,7 +42,7 @@ Deno.test("validation progress labels use owner terms", () => {
     assertEquals(validationCheckLabel("merge"), "Merge worktree");
 });
 
-Deno.test("validation progress headings hide raw stages and counters", () => {
+test("validation progress headings hide raw stages and counters", () => {
     const cases: RuntimeValidationProgress[] = [
         progress({ kind: "mechanical", outcome: "running", stage: "ci" }),
         progress({ kind: "workflow", outcome: "running", stage: "semantic_review" }),
@@ -80,7 +81,7 @@ Deno.test("validation progress headings hide raw stages and counters", () => {
     }
 });
 
-Deno.test("validation check summary uses shared labels without raw check names", () => {
+test("validation check summary uses shared labels without raw check names", () => {
     const summary = validationProgressCheckSummary(progress({
         kind: "workflow",
         outcome: "running",

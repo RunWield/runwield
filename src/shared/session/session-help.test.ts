@@ -1,7 +1,9 @@
-import { assertEquals, assertNotStrictEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { notStrictEqual as assertNotStrictEquals } from "node:assert/strict";
 import { getSessionKeyboardHelp } from "./session-help.ts";
 
-Deno.test("Session keyboard help preserves current shortcut order and copy", () => {
+test("Session keyboard help preserves current shortcut order and copy", () => {
     assertEquals(getSessionKeyboardHelp(), {
         title: "Keyboard shortcuts",
         items: [
@@ -24,7 +26,7 @@ Deno.test("Session keyboard help preserves current shortcut order and copy", () 
     });
 });
 
-Deno.test("Session keyboard help returns mutation-safe clones", () => {
+test("Session keyboard help returns mutation-safe clones", () => {
     const first = getSessionKeyboardHelp();
     const second = getSessionKeyboardHelp();
 

@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module cmd/snip-filters
  * Install or clean up RunWield-managed Snip filters.
@@ -64,10 +65,10 @@ export async function runSnipFiltersCommand(argv: string[]): Promise<void> {
         }
 
         console.error("Usage: wld snip-filters [install|cleanup|status]");
-        Deno.exitCode = 1;
+        process.exitCode = 1;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`Snip filter command failed: ${message}`);
-        Deno.exitCode = 1;
+        process.exitCode = 1;
     }
 }

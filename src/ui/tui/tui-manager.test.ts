@@ -1,9 +1,11 @@
-import { assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { createTuiManager } from "./tui-manager.ts";
 
 type InputHandler = (data: string) => void;
 
-Deno.test("createTuiManager initializes once and returns the same running TUI", () => {
+test("createTuiManager initializes once and returns the same running TUI", () => {
     const events: string[] = [];
 
     class FakeTerminal {
@@ -49,7 +51,7 @@ Deno.test("createTuiManager initializes once and returns the same running TUI", 
     assertEquals(events, ["terminal", "tui", "start", "install"]);
 });
 
-Deno.test("createTuiManager throws before initialization and clears state on stop", () => {
+test("createTuiManager throws before initialization and clears state on stop", () => {
     const events: string[] = [];
 
     class FakeTerminal {
@@ -92,7 +94,7 @@ Deno.test("createTuiManager throws before initialization and clears state on sto
     assertEquals(events, ["start", "install", "restoreTitle", "uninstall", "stop"]);
 });
 
-Deno.test("createTuiManager stop is safe before init and with TUI lacking stop", () => {
+test("createTuiManager stop is safe before init and with TUI lacking stop", () => {
     const events: string[] = [];
 
     class FakeTerminal {
@@ -121,7 +123,7 @@ Deno.test("createTuiManager stop is safe before init and with TUI lacking stop",
     assertEquals(events, ["restoreTitle", "start", "install", "restoreTitle", "uninstall"]);
 });
 
-Deno.test("createTuiManager clears partial state when TUI start fails", () => {
+test("createTuiManager clears partial state when TUI start fails", () => {
     const events: string[] = [];
 
     class FakeTerminal {
@@ -154,7 +156,7 @@ Deno.test("createTuiManager clears partial state when TUI start fails", () => {
     assertEquals(events, ["start", "stop", "restoreTitle"]);
 });
 
-Deno.test("createTuiManager enables and disables production terminal focus reporting", () => {
+test("createTuiManager enables and disables production terminal focus reporting", () => {
     const writes: string[] = [];
 
     class FakeTerminal {
@@ -184,7 +186,7 @@ Deno.test("createTuiManager enables and disables production terminal focus repor
     assertEquals(writes, ["\x1b[?1004h", "\x1b[?1004l"]);
 });
 
-Deno.test("createTuiManager disables focus reporting when crash-guard cleanup fails", () => {
+test("createTuiManager disables focus reporting when crash-guard cleanup fails", () => {
     const writes: string[] = [];
 
     class FakeTerminal {

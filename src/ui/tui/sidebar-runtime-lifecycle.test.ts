@@ -1,4 +1,10 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { mkdtempSync, rmSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { env } from "node:process";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
@@ -18,8 +24,8 @@ import { tuiSessionSidebarProjection } from "./session-sidebar.ts";
 
 type HostedManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;
 
-Deno.test("accepted validation progress survives a cold Session and clears for a new workflow", () => {
-    const root = Deno.makeTempDirSync({ prefix: "sidebar-cold-" });
+test("accepted validation progress survives a cold Session and clears for a new workflow", () => {
+    const root = mkdtempSync(join(tmpdir(), "sidebar-cold-"));
     try {
         const manager = SessionManager.create(root);
         manager.appendMessage(fauxAssistantMessage(fauxText("Started sample.")));
@@ -56,12 +62,12 @@ Deno.test("accepted validation progress survives a cold Session and clears for a
             "execution",
         );
     } finally {
-        Deno.removeSync(root, { recursive: true });
+        rmSync(root, { recursive: true });
     }
 });
 
 for (const legacy of [false, true]) {
-    Deno.test(`runtime completion survives panel clearing (legacy event: ${legacy})`, async () => {
+    test(`runtime completion survives panel clearing (legacy event: ${legacy})`, async () => {
         await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
             session.setWorkflowExecutionContext({ planName: "sample", triageMeta: { status: "implemented" } });
             const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
@@ -104,9 +110,9 @@ for (const legacy of [false, true]) {
                 assertStringIncludes(screen, "✓ Planning");
                 assertStringIncludes(screen, "✓ Publication");
                 assertEquals(screen.includes("ctrl+enter"), false);
-                const capture = Deno.env.get("WLD_SIDEBAR_CAPTURE");
+                const capture = env.WLD_SIDEBAR_CAPTURE;
                 if (capture) {
-                    await Deno.writeTextFile(
+                    await writeFile(
                         capture,
                         JSON.stringify({
                             columns: 150,
@@ -125,7 +131,7 @@ for (const legacy of [false, true]) {
     });
 }
 
-Deno.test("runtime resumes saved Code Review from its name without stale Plan content", async () => {
+test("runtime resumes saved Code Review from its name without stale Plan content", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
         const { savePlan } = await import("../../plan-store.js");
         await savePlan(projectRoot, "resume-review", "# Saved Code Review", {

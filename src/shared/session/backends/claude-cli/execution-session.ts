@@ -18,7 +18,7 @@ import {
     emitBackendStatus,
     sanitizeStderrForDisplay,
 } from "./failure.ts";
-import { type ClaudeCliProcessResult, DenoClaudeCliProcessPort } from "./process.ts";
+import { type ClaudeCliProcessResult, type ClaudeCliProcessStatus, DenoClaudeCliProcessPort } from "./process.ts";
 import { type ClaudeCliUsage, parseClaudeCliStream } from "./stream-parser.ts";
 import {
     CLAUDE_CLI_MCP_PROVENANCE,
@@ -453,7 +453,7 @@ export class ClaudeCliExecutionSession {
             }
             flushRuntimeDeltas();
 
-            let status: Deno.CommandStatus;
+            let status: ClaudeCliProcessStatus;
             try {
                 status = await process.completed;
             } catch {

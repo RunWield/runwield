@@ -1,5 +1,9 @@
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../http-server.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     createAssistantMessageEventStream,
@@ -25,14 +29,14 @@ async function within<T>(promise: Promise<T>, label: string): Promise<T> {
     }
 }
 
-Deno.test("LIVE proof cancels a pending provider turn when its connection closes", async () => {
-    const root = await Deno.makeTempDir();
+test("LIVE proof cancels a pending provider turn when its connection closes", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const project = join(root, "project");
     const personal = join(root, "personal");
-    await Deno.mkdir(project);
-    await Deno.mkdir(personal);
-    await Deno.writeTextFile(join(personal, "settings.json"), "{}");
-    await Deno.writeTextFile(join(project, "sentinel.txt"), "remote-test");
+    await fsMkdir(project);
+    await fsMkdir(personal);
+    await fsWriteFile(join(personal, "settings.json"), "{}");
+    await fsWriteFile(join(project, "sentinel.txt"), "remote-test");
     let started = () => {};
     const providerStarted = new Promise<void>((resolve) => started = resolve);
     let upstreamAborts = 0;
@@ -86,7 +90,7 @@ Deno.test("LIVE proof cancels a pending provider turn when its connection closes
     await runtime.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(runtime);
     const credential = "a".repeat(64);
-    const server = Deno.serve(
+    const server = serveHttp(
         { hostname: "127.0.0.1", port: 0, onListen() {} },
         (request) =>
             request.headers.get("Authorization") === `Bearer ${credential}`
@@ -111,6 +115,6 @@ Deno.test("LIVE proof cancels a pending provider turn when its connection closes
         controller.abort();
         bridge.close();
         await server.shutdown();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

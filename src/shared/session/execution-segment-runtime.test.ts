@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -27,8 +30,8 @@ function executionSeedCount(transcript: string): number {
     ).length;
 }
 
-Deno.test("preparation failure leaves the planning segment current", async () => {
-    const source = await Deno.readTextFile(new URL("./runtime/workflows.ts", import.meta.url));
+test("preparation failure leaves the planning segment current", async () => {
+    const source = await fsReadFile(new URL("./runtime/workflows.ts", import.meta.url), "utf8");
     assertStringIncludes(source, "prepareSegmentHandoff: !interrupted");
     assertStringIncludes(source, "await this.turns.rollManagedSessionSegment");
     assert(
@@ -37,8 +40,8 @@ Deno.test("preparation failure leaves the planning segment current", async () =>
     );
 });
 
-Deno.test("execution handoff revalidates the approved Plan snapshot before preparation", async () => {
-    const source = await Deno.readTextFile(new URL("../workflow/plan-executor.ts", import.meta.url));
+test("execution handoff revalidates the approved Plan snapshot before preparation", async () => {
+    const source = await fsReadFile(new URL("../workflow/plan-executor.ts", import.meta.url), "utf8");
     assertStringIncludes(source, "validateApprovedPlanSnapshotForHandoff");
     assertStringIncludes(source, "Plan revision changed after approval");
     assertStringIncludes(source, "Plan status changed after approval");
@@ -51,7 +54,7 @@ Deno.test("execution handoff revalidates the approved Plan snapshot before prepa
     );
 });
 
-Deno.test("managed execution rollover writes one fresh successor and rejects stale Plan evidence before another roll", async () => {
+test("managed execution rollover writes one fresh successor and rejects stale Plan evidence before another roll", async () => {
     await withRuntimeCommandFixture(
         "execution-segment-runtime-",
         async ({ homeDir, projectRoot, setModelResponseFactory }) => {
@@ -65,7 +68,7 @@ Deno.test("managed execution rollover writes one fresh successor and rejects sta
                 await git(fixture.projectRoot, ["init", "-b", "main"]);
                 await git(fixture.projectRoot, ["config", "user.email", "test@example.com"]);
                 await git(fixture.projectRoot, ["config", "user.name", "RunWield Test"]);
-                await Deno.writeTextFile(`${fixture.projectRoot}/README.md`, "fixture\n");
+                await fsWriteFile(`${fixture.projectRoot}/README.md`, "fixture\n");
                 await git(fixture.projectRoot, ["add", "."]);
                 await git(fixture.projectRoot, ["commit", "-m", "fixture: initial project"]);
                 await savePlan(fixture.projectRoot, "execution-handoff", "# Execution Handoff\n\nApproved", {
@@ -132,7 +135,7 @@ Deno.test("managed execution rollover writes one fresh successor and rejects sta
                 assertEquals(after[1].segmentId, rolled.successorSegmentId);
                 assertEquals(after[1].sealedAt, null);
                 assertEquals(typeof after[0].sealedAt, "string");
-                const successorText = await Deno.readTextFile(rolled.transcriptPath);
+                const successorText = await fsReadFile(rolled.transcriptPath, "utf8");
                 assertEquals(successorText.includes("Committed hello."), false);
 
                 const { sessionManager } = await openPersistedRootSession({
@@ -161,7 +164,7 @@ Deno.test("managed execution rollover writes one fresh successor and rejects sta
     );
 });
 
-Deno.test("committed execution continuation reloads in one successor and writes one seed turn", async () => {
+test("committed execution continuation reloads in one successor and writes one seed turn", async () => {
     await withRuntimeCommandFixture(
         "execution-segment-resume-",
         async ({ homeDir, projectRoot, setModelResponseFactories }) => {
@@ -175,7 +178,7 @@ Deno.test("committed execution continuation reloads in one successor and writes 
                 await git(fixture.projectRoot, ["init", "-b", "main"]);
                 await git(fixture.projectRoot, ["config", "user.email", "test@example.com"]);
                 await git(fixture.projectRoot, ["config", "user.name", "RunWield Test"]);
-                await Deno.writeTextFile(`${fixture.projectRoot}/README.md`, "fixture\n");
+                await fsWriteFile(`${fixture.projectRoot}/README.md`, "fixture\n");
                 await git(fixture.projectRoot, ["add", "."]);
                 await git(fixture.projectRoot, ["commit", "-m", "fixture: initial project"]);
                 await savePlan(fixture.projectRoot, "execution-resume", "# Execution Resume\n\nApproved", {
@@ -258,13 +261,13 @@ Deno.test("committed execution continuation reloads in one successor and writes 
                 const resumedSegments = handle.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId);
                 assertEquals(resumedSegments.length, 2);
                 assertEquals(resumedSegments[1].segmentId, rolled.successorSegmentId);
-                assertEquals(executionSeedCount(await Deno.readTextFile(rolled.transcriptPath)), 1);
+                assertEquals(executionSeedCount(await fsReadFile(rolled.transcriptPath, "utf8")), 1);
 
                 handle = await fixture.restartRuntime(handle, "execution-resume-consumed-owner");
                 const segments = handle.store.listSessionTranscriptSegments(fixture.session.runwieldSessionId);
                 assertEquals(segments.length, 2);
                 assertEquals(segments[1].segmentId, rolled.successorSegmentId);
-                assertEquals(executionSeedCount(await Deno.readTextFile(rolled.transcriptPath)), 1);
+                assertEquals(executionSeedCount(await fsReadFile(rolled.transcriptPath, "utf8")), 1);
                 assertEquals(
                     handle.store.inspectSessionActivation(fixture.session.runwieldSessionId).activation?.state,
                     "idle",
@@ -277,8 +280,8 @@ Deno.test("committed execution continuation reloads in one successor and writes 
     );
 });
 
-Deno.test("legacy Session load acquires its writer lock before opening Pi", async () => {
-    const source = await Deno.readTextFile(new URL("./runtime/lifecycle-loading.ts", import.meta.url));
+test("legacy Session load acquires its writer lock before opening Pi", async () => {
+    const source = await fsReadFile(new URL("./runtime/lifecycle-loading.ts", import.meta.url), "utf8");
     const loadStart = source.indexOf("async loadSession(");
     const loadSource = source.slice(loadStart);
     assert(loadStart >= 0);
@@ -288,14 +291,14 @@ Deno.test("legacy Session load acquires its writer lock before opening Pi", asyn
     );
 });
 
-Deno.test("managed operations rely on the OS lock without a heartbeat timer", async () => {
-    const source = await Deno.readTextFile(new URL("./runtime/managed-operations.ts", import.meta.url));
+test("managed operations rely on the OS lock without a heartbeat timer", async () => {
+    const source = await fsReadFile(new URL("./runtime/managed-operations.ts", import.meta.url), "utf8");
     assert(!source.includes("setInterval(heartbeat"));
     assert(!source.includes("heartbeatFailureReason"));
 });
 
-Deno.test("semantic repair rolls managed Sessions and continues uncataloged Sessions", async () => {
-    const source = await Deno.readTextFile(new URL("./runtime/workflows.ts", import.meta.url));
+test("semantic repair rolls managed Sessions and continues uncataloged Sessions", async () => {
+    const source = await fsReadFile(new URL("./runtime/workflows.ts", import.meta.url), "utf8");
     assert(!source.includes("if (!managed) return validationResult"));
     assertStringIncludes(source, "runwieldSessionId: managed?.runwieldSessionId || session.id");
     assertStringIncludes(source, "if (managed) {");
@@ -304,8 +307,8 @@ Deno.test("semantic repair rolls managed Sessions and continues uncataloged Sess
     assertStringIncludes(source, "return await this.runSemanticRepairContinuation");
 });
 
-Deno.test("execution seed excludes Planner history and carries approval images", async () => {
-    const runner = await Deno.readTextFile(new URL("../workflow/engineer-runner.ts", import.meta.url));
+test("execution seed excludes Planner history and carries approval images", async () => {
+    const runner = await fsReadFile(new URL("../workflow/engineer-runner.ts", import.meta.url), "utf8");
     assertStringIncludes(runner, "runEngineerWithSegmentHandoff");
     assertStringIncludes(runner, "images: continuation.approval?.images");
     assert(

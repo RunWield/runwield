@@ -1,5 +1,14 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { removeExecutableFixtureDirectory, writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
+import { delimiter } from "node:path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import process from "node:process";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { encodeGuidedReviewMetadata } from "../../cmd/guided-review/protocol.ts";
 
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";
@@ -40,11 +49,13 @@ function makeGuideJson(title = "Fixture guide") {
     return JSON.stringify({
         schemaVersion: "1.0",
         title,
-        sections: [{
-            title: "Core",
-            role: "core",
-            blocks: [{ type: "diff", file: "src/a.js", summary: "Review the changed export." }],
-        }],
+        sections: [
+            {
+                title: "Core",
+                role: "core",
+                blocks: [{ type: "diff", file: "src/a.js", summary: "Review the changed export." }],
+            },
+        ],
         everythingElse: [],
     });
 }
@@ -57,7 +68,32 @@ function makeGuideReviewPayload() {
 }
 
 function shellQuote(value) {
-    return `'${value.replaceAll("'", "'\\''")}'`;
+    return process.platform === "win32" ? `"${value}"` : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * @typedef {Object} GuideCommandFixture
+ * @property {string} stdout
+ * @property {string[]} [stderr]
+ * @property {string} [gatePath]
+ * @property {number} [exitCode]
+ */
+/** @param {string} path @param {GuideCommandFixture} fixture */
+async function writeGuideCommandFixture(path, fixture) {
+    const source = `${path}.mjs`;
+    await fsWriteFile(
+        source,
+        `
+import { existsSync } from "node:fs";
+const fixture = ${JSON.stringify(fixture)};
+for await (const chunk of process.stdin) { void chunk; }
+for (const line of fixture.stderr || []) process.stderr.write(line + "\\n");
+while (fixture.gatePath && !existsSync(fixture.gatePath)) await new Promise(resolve => setTimeout(resolve, 20));
+process.stdout.write(fixture.stdout + "\\n");
+process.exitCode = fixture.exitCode || 0;
+`,
+    );
+    return await writeRuntimeExecutableFixture(path, source);
 }
 
 async function runReviewGuideJob(state) {
@@ -76,7 +112,7 @@ async function runReviewGuideJob(state) {
     return state.jobs.get(job.id)?.info;
 }
 
-Deno.test("workspace token accepts query or header and rejects missing tokens", () => {
+test("workspace token accepts query or header and rejects missing tokens", () => {
     assertEquals(hasWorkspaceToken(new Request("http://localhost/?token=abc"), "abc"), true);
     assertEquals(
         hasWorkspaceToken(new Request("http://localhost/", { headers: { [PLAN_UI_TOKEN_HEADER]: "abc" } }), "abc"),
@@ -85,44 +121,47 @@ Deno.test("workspace token accepts query or header and rejects missing tokens", 
     assertEquals(hasWorkspaceToken(new Request("http://localhost/"), "abc"), false);
 });
 
-Deno.test("workspace static assets bypass token checks for tokenized pages", async () => {
-    const app = createWorkspaceApp({ cwd: Deno.cwd(), token: "secret" }).handler();
+test("workspace static assets bypass token checks for tokenized pages", async () => {
+    const app = createWorkspaceApp({ cwd: getCwd(), token: "secret" }).handler();
     for (const path of ["/tokens.css", "/components.css", "/workspace.css", "/theme.css", "/brand/logo.svg"]) {
         const response = await app(new Request(`http://localhost${path}`));
         assertEquals(response.status, 200);
     }
 });
 
-Deno.test("review request forwarding does not inherit Deno.serve's legacy abort signal", async () => {
+test("review request forwarding does not inherit Deno.serve's legacy abort signal", async () => {
     const script = `
+        import { serveHttp } from "./src/shared/http-server.ts";
         import { rebuildRequestWithHeaders } from "./src/ui/workspace/server.js";
-        const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) => {
+        const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) => {
             rebuildRequestWithHeaders(request, new Headers(request.headers));
             return new Response("ok");
         });
         await fetch(\`http://127.0.0.1:\${server.addr.port}\`);
         await server.shutdown();
     `;
-    const output = await new Deno.Command(Deno.execPath(), {
-        args: ["eval", script],
+    const output = await captureForegroundProcess(process.execPath, {
+        args: runtimeSourceArgs(["eval", script]),
         cwd: TEST_PROJECT_ROOT,
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    });
 
     assertEquals(output.success, true);
-    const stderr = new TextDecoder().decode(output.stderr).split("\n").filter((line) => {
-        if (line.includes("Download")) return false;
-        return !line.includes("Blocking") || !line.includes("waiting for file lock on node_modules directory");
-    }).join("\n");
+    const stderr = new TextDecoder()
+        .decode(output.stderr)
+        .split("\n")
+        .filter((line) => {
+            if (line.includes("Download")) return false;
+            return !line.includes("Blocking") || !line.includes("waiting for file lock on node_modules directory");
+        })
+        .join("\n");
     assertEquals(stderr, "");
 });
 
-Deno.test("review server reports stdout through its output callback", async () => {
+test("review server reports stdout through its output callback", async () => {
     /** @type {Array<{ stream: "stdout" | "stderr", text: string }>} */
     const output = [];
     const server = startReviewWorkspaceServer({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         token: "review-output",
         reviewPayload: { plan: "# Plan" },
         reviewType: "plan",
@@ -136,10 +175,10 @@ Deno.test("review server reports stdout through its output callback", async () =
     assertStringIncludes(output[0].text, "Listening on http://127.0.0.1:");
 });
 
-Deno.test("review page accepts Unicode Plan payloads", async () => {
+test("review page accepts Unicode Plan payloads", async () => {
     const token = "review-secret";
     const app = createReviewWorkspaceApp({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         token,
         reviewPayload: { plan: "# Café 🚀\n", planPath: "docs/plans/café.md" },
         reviewType: "plan",
@@ -149,10 +188,10 @@ Deno.test("review page accepts Unicode Plan payloads", async () => {
     assertEquals(response.status < 500, true);
 });
 
-Deno.test("artifact read page receives authenticated read-only payload", async () => {
+test("artifact read page receives authenticated read-only payload", async () => {
     const token = "read-secret";
     const app = createReviewWorkspaceApp({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         token,
         reviewPayload: {
             surface: "artifact-read",
@@ -175,10 +214,10 @@ Deno.test("artifact read page receives authenticated read-only payload", async (
     assertStringIncludes(html, "NOTICE: superseded");
 });
 
-Deno.test("artifact read Close resolves review exit without approval", async () => {
+test("artifact read Close resolves review exit without approval", async () => {
     const token = "read-close-secret";
     const app = createReviewWorkspaceApp({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         token,
         reviewPayload: { surface: "artifact-read", markdown: "# Plan", artifactKind: "plan", title: "Plan" },
         reviewType: "plan",
@@ -198,10 +237,10 @@ Deno.test("artifact read Close resolves review exit without approval", async () 
     unregisterReviewDecision(token);
 });
 
-Deno.test("Plan review surfaces do not expose Guided Review APIs", async () => {
+test("Plan review surfaces do not expose Guided Review APIs", async () => {
     const token = "plan-review-secret";
     const reviewApp = createReviewWorkspaceApp({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         token,
         reviewPayload: { plan: "# Plan" },
         reviewType: "plan",
@@ -231,10 +270,10 @@ Deno.test("Plan review surfaces do not expose Guided Review APIs", async () => {
     await reviewApp.cleanup();
 });
 
-Deno.test("review guide and widget APIs require token and serve explainer state", async () => {
+test("review guide and widget APIs require token and serve explainer state", async () => {
     const token = "guide-secret";
     const reviewApp = createReviewWorkspaceApp({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         token,
         reviewType: "code",
         reviewPayload: {
@@ -243,38 +282,39 @@ Deno.test("review guide and widget APIs require token and serve explainer state"
             guidedReviewFixture: {
                 schemaVersion: "1.0",
                 title: "Fixture guide",
-                sections: [{
-                    title: "Fixture",
-                    role: "core",
-                    blocks: [
-                        { type: "diff", file: "src/a.js", summary: "Check the fixture diff." },
-                        {
-                            type: "widget",
-                            id: "fixture",
-                            entry: "index.html",
-                            title: "Fixture",
-                            html:
-                                '<!doctype html><link rel="stylesheet" href="widget.css"><img src="asset.svg" alt="fixture"><script src="widget.js"></script>',
-                            assets: [
-                                {
-                                    name: "asset.svg",
-                                    contentType: "image/svg+xml",
-                                    content: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
-                                },
-                                {
-                                    name: "widget.css",
-                                    contentType: "text/css",
-                                    content: "img{width:16px}",
-                                },
-                                {
-                                    name: "widget.js",
-                                    contentType: "application/javascript",
-                                    content: "document.body.dataset.ready = 'true';",
-                                },
-                            ],
-                        },
-                    ],
-                }],
+                sections: [
+                    {
+                        title: "Fixture",
+                        role: "core",
+                        blocks: [
+                            { type: "diff", file: "src/a.js", summary: "Check the fixture diff." },
+                            {
+                                type: "widget",
+                                id: "fixture",
+                                entry: "index.html",
+                                title: "Fixture",
+                                html: '<!doctype html><link rel="stylesheet" href="widget.css"><img src="asset.svg" alt="fixture"><script src="widget.js"></script>',
+                                assets: [
+                                    {
+                                        name: "asset.svg",
+                                        contentType: "image/svg+xml",
+                                        content: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+                                    },
+                                    {
+                                        name: "widget.css",
+                                        contentType: "text/css",
+                                        content: "img{width:16px}",
+                                    },
+                                    {
+                                        name: "widget.js",
+                                        contentType: "application/javascript",
+                                        content: "document.body.dataset.ready = 'true';",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
                 everythingElse: [],
             },
         },
@@ -295,7 +335,7 @@ Deno.test("review guide and widget APIs require token and serve explainer state"
     const { job } = await launch.json();
 
     let guide;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 500; attempt += 1) {
         guide = await app(
             new Request(`http://localhost/api/guide/${job.id}`, {
                 headers: { "x-runwield-review-token": token },
@@ -347,22 +387,21 @@ Deno.test("review guide and widget APIs require token and serve explainer state"
     await reviewApp.cleanup();
 });
 
-Deno.test("review guide jobs prefer WLD over external agent host CLIs", async () => {
+test("review guide jobs prefer WLD over external agent host CLIs", async () => {
     // Mutates PATH, which every concurrently-running test's subprocesses inherit.
     await withProcessGlobalTestLock(async () => {
-        const previousPath = Deno.env.get("PATH");
-        const previousCommand = Deno.env.get("RUNWIELD_GUIDED_REVIEW_COMMAND");
-        const previousModel = Deno.env.get("RUNWIELD_GUIDED_REVIEW_MODEL");
-        const binDir = await Deno.makeTempDir();
+        const previousPath = process.env["PATH"];
+        const previousCommand = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+        const previousModel = process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
+        const binDir = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
         try {
             for (const command of ["wld", "claude"]) {
                 const commandPath = `${binDir}/${command}`;
-                await Deno.writeTextFile(commandPath, "#!/bin/sh\necho '{}'\n");
-                await Deno.chmod(commandPath, 0o755);
+                await writeGuideCommandFixture(commandPath, { stdout: "{}" });
             }
-            Deno.env.set("PATH", previousPath ? `${binDir}:${previousPath}` : binDir);
-            Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            Deno.env.delete("RUNWIELD_GUIDED_REVIEW_MODEL");
+            process.env["PATH"] = previousPath ? `${binDir}${delimiter}${previousPath}` : binDir;
+            delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
 
             const state = createReviewAgentState({
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
@@ -373,11 +412,13 @@ Deno.test("review guide jobs prefer WLD over external agent host CLIs", async ()
                     guidedReviewFixture: {
                         schemaVersion: "1.0",
                         title: "WLD guide",
-                        sections: [{
-                            title: "Core",
-                            role: "core",
-                            blocks: [{ type: "diff", file: "src/a.js" }],
-                        }],
+                        sections: [
+                            {
+                                title: "Core",
+                                role: "core",
+                                blocks: [{ type: "diff", file: "src/a.js" }],
+                            },
+                        ],
                         everythingElse: [],
                     },
                 },
@@ -403,79 +444,67 @@ Deno.test("review guide jobs prefer WLD over external agent host CLIs", async ()
             assertEquals(job.model, "wld");
             await state.widgets.cleanup();
         } finally {
-            if (previousPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", previousPath);
-            if (previousCommand === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_COMMAND", previousCommand);
-            if (previousModel === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_MODEL");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_MODEL", previousModel);
-            await Deno.remove(binDir, { recursive: true });
+            if (previousPath === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = previousPath;
+            if (previousCommand === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = previousCommand;
+            if (previousModel === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_MODEL"] = previousModel;
+            await removeExecutableFixtureDirectory(binDir);
         }
     });
 });
 
-Deno.test("default review guide usage frames update a running job and remain after completion", async () => {
+test("default review guide usage frames update a running job and remain after completion", async () => {
     // Mutates PATH, which every concurrently-running test's subprocesses inherit.
     await withProcessGlobalTestLock(async () => {
-        const previousPath = Deno.env.get("PATH");
-        const previousCommand = Deno.env.get("RUNWIELD_GUIDED_REVIEW_COMMAND");
-        const previousModel = Deno.env.get("RUNWIELD_GUIDED_REVIEW_MODEL");
-        const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-guide-usage-route-" });
+        const previousPath = process.env["PATH"];
+        const previousCommand = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+        const previousModel = process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-guide-usage-route-"));
         const binDir = join(fixtureRoot, "bin");
         const gatePath = join(fixtureRoot, "release");
         const commandPath = join(binDir, "wld");
         try {
-            await Deno.mkdir(binDir, { recursive: true });
-            const firstFrame = `${GUIDE_EVENT_PREFIX}${
-                JSON.stringify({
-                    version: 1,
-                    type: "usage",
-                    usage: {
-                        inputTokens: 1200,
-                        outputTokens: 200,
-                        cacheReadTokens: 30,
-                        cacheWriteTokens: 4,
-                        costUsd: 0.1,
-                    },
-                })
-            }`;
-            const secondFrame = `${GUIDE_EVENT_PREFIX}${
-                JSON.stringify({
-                    version: 1,
-                    type: "usage",
-                    usage: {
-                        inputTokens: 40,
-                        outputTokens: 50,
-                        cacheReadTokens: 70,
-                        cacheWriteTokens: 6,
-                        costUsd: 0.025,
-                    },
-                })
-            }`;
-            await Deno.writeTextFile(
-                commandPath,
-                [
-                    "#!/bin/sh",
-                    `echo '${firstFrame}' >&2`,
-                    `echo '${secondFrame}' >&2`,
-                    `echo '${
-                        encodeGuidedReviewMetadata({
-                            provider: "test-provider",
-                            model: "test-model",
-                            thinkingLevel: "high",
-                        }).trim()
-                    }' >&2`,
-                    `while [ ! -f '${gatePath}' ]; do sleep 0.05; done`,
-                    `cat <<'JSON'`,
-                    makeGuideJson("Usage guide"),
-                    "JSON",
-                    "",
-                ].join("\n"),
-            );
-            await Deno.chmod(commandPath, 0o755);
-            Deno.env.set("PATH", previousPath ? `${binDir}:${previousPath}` : binDir);
-            Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            Deno.env.delete("RUNWIELD_GUIDED_REVIEW_MODEL");
+            await fsMkdir(binDir, { recursive: true });
+            const firstFrame = `${GUIDE_EVENT_PREFIX}${JSON.stringify({
+                version: 1,
+                type: "usage",
+                usage: {
+                    inputTokens: 1200,
+                    outputTokens: 200,
+                    cacheReadTokens: 30,
+                    cacheWriteTokens: 4,
+                    costUsd: 0.1,
+                },
+            })}`;
+            const secondFrame = `${GUIDE_EVENT_PREFIX}${JSON.stringify({
+                version: 1,
+                type: "usage",
+                usage: {
+                    inputTokens: 40,
+                    outputTokens: 50,
+                    cacheReadTokens: 70,
+                    cacheWriteTokens: 6,
+                    costUsd: 0.025,
+                },
+            })}`;
+            await writeGuideCommandFixture(commandPath, {
+                stdout: makeGuideJson("Usage guide"),
+                stderr: [
+                    firstFrame,
+                    secondFrame,
+                    encodeGuidedReviewMetadata({
+                        provider: "test-provider",
+                        model: "test-model",
+                        thinkingLevel: "high",
+                    }).trim(),
+                ],
+                gatePath,
+            });
+            process.env["PATH"] = previousPath ? `${binDir}${delimiter}${previousPath}` : binDir;
+            delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
 
             const state = createReviewAgentState({
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
@@ -497,7 +526,7 @@ Deno.test("default review guide usage frames update a running job and remain aft
             const { job } = await launch.json();
 
             let runningJob = null;
-            for (let attempt = 0; attempt < 100; attempt += 1) {
+            for (let attempt = 0; attempt < 500; attempt += 1) {
                 const jobsResponse = await reviewAgentApi(
                     new Request("http://localhost/api/agents/jobs"),
                     new URL("http://localhost/api/agents/jobs"),
@@ -519,7 +548,7 @@ Deno.test("default review guide usage frames update a running job and remain aft
             });
             assertEquals(runningJob?.cost, { usd: 0.125 });
 
-            await Deno.writeTextFile(gatePath, "ok");
+            await fsWriteFile(gatePath, "ok");
             await state.jobs.get(job.id)?.done;
             const doneJob = state.jobs.get(job.id)?.info;
             assertEquals(doneJob?.status, "done");
@@ -530,18 +559,18 @@ Deno.test("default review guide usage frames update a running job and remain aft
             assertEquals(doneJob?.thinkingLevel, "high");
             await state.widgets.cleanup();
         } finally {
-            if (previousPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", previousPath);
-            if (previousCommand === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_COMMAND", previousCommand);
-            if (previousModel === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_MODEL");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_MODEL", previousModel);
-            await Deno.remove(fixtureRoot, { recursive: true });
+            if (previousPath === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = previousPath;
+            if (previousCommand === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = previousCommand;
+            if (previousModel === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_MODEL"] = previousModel;
+            await removeExecutableFixtureDirectory(fixtureRoot);
         }
     });
 });
 
-Deno.test("review guide jobs keep reported zero usage available", async () => {
+test("review guide jobs keep reported zero usage available", async () => {
     const state = createReviewAgentState({
         cwd: REVIEW_AGENT_PROJECT_ROOT,
         token: "zero-usage-token",
@@ -583,26 +612,17 @@ Deno.test("review guide jobs keep reported zero usage available", async () => {
     await state.widgets.cleanup();
 });
 
-Deno.test("custom review guide commands do not interpret stderr usage-like text", async () => {
+test("custom review guide commands do not interpret stderr usage-like text", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousCommand = Deno.env.get("RUNWIELD_GUIDED_REVIEW_COMMAND");
-        const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-custom-guide-route-" });
-        const commandPath = join(fixtureRoot, "custom-guide");
+        const previousCommand = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-custom-guide-route-"));
+        const commandPath = join(fixtureRoot, "custom guide");
         try {
-            await Deno.writeTextFile(
-                commandPath,
-                [
-                    "#!/bin/sh",
-                    "cat >/dev/null",
-                    `echo '${GUIDE_EVENT_PREFIX}{"version":1,"type":"usage","usage":{"inputTokens":999}}' >&2`,
-                    "cat <<'JSON'",
-                    makeGuideJson("Custom guide"),
-                    "JSON",
-                    "",
-                ].join("\n"),
-            );
-            await Deno.chmod(commandPath, 0o755);
-            Deno.env.set("RUNWIELD_GUIDED_REVIEW_COMMAND", shellQuote(commandPath));
+            const executable = await writeGuideCommandFixture(commandPath, {
+                stdout: makeGuideJson("Custom guide"),
+                stderr: [`${GUIDE_EVENT_PREFIX}{"version":1,"type":"usage","usage":{"inputTokens":999}}`],
+            });
+            process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = shellQuote(executable);
 
             const state = createReviewAgentState({
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
@@ -618,51 +638,42 @@ Deno.test("custom review guide commands do not interpret stderr usage-like text"
             assertEquals(doneJob?.cost, null);
             await state.widgets.cleanup();
         } finally {
-            if (previousCommand === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_COMMAND", previousCommand);
-            await Deno.remove(fixtureRoot, { recursive: true });
+            if (previousCommand === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = previousCommand;
+            await removeExecutableFixtureDirectory(fixtureRoot);
         }
     });
 });
 
-Deno.test("failed default review guide commands report subprocess stderr and keep partial usage", async () => {
+test("failed default review guide commands report subprocess stderr and keep partial usage", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousPath = Deno.env.get("PATH");
-        const previousCommand = Deno.env.get("RUNWIELD_GUIDED_REVIEW_COMMAND");
-        const previousModel = Deno.env.get("RUNWIELD_GUIDED_REVIEW_MODEL");
-        const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-failed-guide-route-" });
+        const previousPath = process.env["PATH"];
+        const previousCommand = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+        const previousModel = process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-failed-guide-route-"));
         const binDir = join(fixtureRoot, "bin");
         const commandPath = join(binDir, "wld");
         try {
-            await Deno.mkdir(binDir, { recursive: true });
-            const usageFrame = `${GUIDE_EVENT_PREFIX}${
-                JSON.stringify({
-                    version: 1,
-                    type: "usage",
-                    usage: {
-                        inputTokens: 5,
-                        outputTokens: 6,
-                        cacheReadTokens: 7,
-                        cacheWriteTokens: 8,
-                        costUsd: 0.009,
-                    },
-                })
-            }`;
-            await Deno.writeTextFile(
-                commandPath,
-                [
-                    "#!/bin/sh",
-                    "cat >/dev/null",
-                    `echo '${usageFrame}' >&2`,
-                    "echo 'plain provider failure' >&2",
-                    "exit 9",
-                    "",
-                ].join("\n"),
-            );
-            await Deno.chmod(commandPath, 0o755);
-            Deno.env.set("PATH", previousPath ? `${binDir}:${previousPath}` : binDir);
-            Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            Deno.env.delete("RUNWIELD_GUIDED_REVIEW_MODEL");
+            await fsMkdir(binDir, { recursive: true });
+            const usageFrame = `${GUIDE_EVENT_PREFIX}${JSON.stringify({
+                version: 1,
+                type: "usage",
+                usage: {
+                    inputTokens: 5,
+                    outputTokens: 6,
+                    cacheReadTokens: 7,
+                    cacheWriteTokens: 8,
+                    costUsd: 0.009,
+                },
+            })}`;
+            await writeGuideCommandFixture(commandPath, {
+                stdout: "",
+                stderr: [usageFrame, "plain provider failure"],
+                exitCode: 9,
+            });
+            process.env["PATH"] = previousPath ? `${binDir}${delimiter}${previousPath}` : binDir;
+            delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
 
             const state = createReviewAgentState({
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
@@ -684,43 +695,34 @@ Deno.test("failed default review guide commands report subprocess stderr and kee
             assertEquals(failedJob?.cost, { usd: 0.009 });
             await state.widgets.cleanup();
         } finally {
-            if (previousPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", previousPath);
-            if (previousCommand === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_COMMAND", previousCommand);
-            if (previousModel === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_MODEL");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_MODEL", previousModel);
-            await Deno.remove(fixtureRoot, { recursive: true });
+            if (previousPath === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = previousPath;
+            if (previousCommand === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = previousCommand;
+            if (previousModel === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_MODEL"] = previousModel;
+            await removeExecutableFixtureDirectory(fixtureRoot);
         }
     });
 });
 
-Deno.test("default review guide commands fail clearly on malformed usage frames", async () => {
+test("default review guide commands fail clearly on malformed usage frames", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previousPath = Deno.env.get("PATH");
-        const previousCommand = Deno.env.get("RUNWIELD_GUIDED_REVIEW_COMMAND");
-        const previousModel = Deno.env.get("RUNWIELD_GUIDED_REVIEW_MODEL");
-        const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-malformed-guide-route-" });
+        const previousPath = process.env["PATH"];
+        const previousCommand = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+        const previousModel = process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-malformed-guide-route-"));
         const binDir = join(fixtureRoot, "bin");
         const commandPath = join(binDir, "wld");
         try {
-            await Deno.mkdir(binDir, { recursive: true });
-            await Deno.writeTextFile(
-                commandPath,
-                [
-                    "#!/bin/sh",
-                    "cat >/dev/null",
-                    `echo '${GUIDE_EVENT_PREFIX}{"version":1,"type":"usage","usage":{"inputTokens":999}}' >&2`,
-                    "cat <<'JSON'",
-                    makeGuideJson("Malformed frame guide"),
-                    "JSON",
-                    "",
-                ].join("\n"),
-            );
-            await Deno.chmod(commandPath, 0o755);
-            Deno.env.set("PATH", previousPath ? `${binDir}:${previousPath}` : binDir);
-            Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            Deno.env.delete("RUNWIELD_GUIDED_REVIEW_MODEL");
+            await fsMkdir(binDir, { recursive: true });
+            await writeGuideCommandFixture(commandPath, {
+                stdout: makeGuideJson("Malformed frame guide"),
+                stderr: [`${GUIDE_EVENT_PREFIX}{"version":1,"type":"usage","usage":{"inputTokens":999}}`],
+            });
+            process.env["PATH"] = previousPath ? `${binDir}${delimiter}${previousPath}` : binDir;
+            delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
 
             const state = createReviewAgentState({
                 cwd: REVIEW_AGENT_PROJECT_ROOT,
@@ -736,20 +738,20 @@ Deno.test("default review guide commands fail clearly on malformed usage frames"
             assertEquals(failedJob?.tokens, null);
             await state.widgets.cleanup();
         } finally {
-            if (previousPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", previousPath);
-            if (previousCommand === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_COMMAND", previousCommand);
-            if (previousModel === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_MODEL");
-            else Deno.env.set("RUNWIELD_GUIDED_REVIEW_MODEL", previousModel);
-            await Deno.remove(fixtureRoot, { recursive: true });
+            if (previousPath === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = previousPath;
+            if (previousCommand === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = previousCommand;
+            if (previousModel === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_MODEL"];
+            else process.env["RUNWIELD_GUIDED_REVIEW_MODEL"] = previousModel;
+            await removeExecutableFixtureDirectory(fixtureRoot);
         }
     });
 });
 
-Deno.test("review guide jobs ground provider prompt in Plan payload", async () => {
-    const previousCommand = Deno.env.get("RUNWIELD_GUIDED_REVIEW_COMMAND");
-    Deno.env.set("RUNWIELD_GUIDED_REVIEW_COMMAND", "test-guide-command");
+test("review guide jobs ground provider prompt in Plan payload", async () => {
+    const previousCommand = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+    process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = "test-guide-command";
     try {
         let capturedPrompt = "";
         const state = createReviewAgentState({
@@ -768,11 +770,13 @@ Deno.test("review guide jobs ground provider prompt in Plan payload", async () =
                     stdout: JSON.stringify({
                         schemaVersion: "1.0",
                         title: "Prompt guide",
-                        sections: [{
-                            title: "Core",
-                            role: "core",
-                            blocks: [{ type: "diff", file: "src/a.js" }],
-                        }],
+                        sections: [
+                            {
+                                title: "Core",
+                                role: "core",
+                                blocks: [{ type: "diff", file: "src/a.js" }],
+                            },
+                        ],
                         everythingElse: [],
                     }),
                     provider: "test-provider",
@@ -800,12 +804,12 @@ Deno.test("review guide jobs ground provider prompt in Plan payload", async () =
         assertStringIncludes(capturedPrompt, '"classification": "FEATURE"');
         await state.widgets.cleanup();
     } finally {
-        if (previousCommand === undefined) Deno.env.delete("RUNWIELD_GUIDED_REVIEW_COMMAND");
-        else Deno.env.set("RUNWIELD_GUIDED_REVIEW_COMMAND", previousCommand);
+        if (previousCommand === undefined) delete process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
+        else process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = previousCommand;
     }
 });
 
-Deno.test("review guide jobs record generation result metrics", async () => {
+test("review guide jobs record generation result metrics", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const state = createReviewAgentState({
             cwd: projectRoot,
@@ -816,11 +820,13 @@ Deno.test("review guide jobs record generation result metrics", async () => {
                 guidedReviewFixture: {
                     schemaVersion: "1.0",
                     title: "Metric guide",
-                    sections: [{
-                        title: "Core",
-                        role: "core",
-                        blocks: [{ type: "diff", file: "src/a.js" }],
-                    }],
+                    sections: [
+                        {
+                            title: "Core",
+                            role: "core",
+                            blocks: [{ type: "diff", file: "src/a.js" }],
+                        },
+                    ],
                     everythingElse: [],
                 },
             },
@@ -851,7 +857,7 @@ Deno.test("review guide jobs record generation result metrics", async () => {
     });
 });
 
-Deno.test("review guide failure metrics redact provider error details", async () => {
+test("review guide failure metrics redact provider error details", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const state = createReviewAgentState({
             cwd: projectRoot,
@@ -862,11 +868,13 @@ Deno.test("review guide failure metrics redact provider error details", async ()
                 guidedReviewFixture: {
                     schemaVersion: "1.0",
                     title: "Bad guide",
-                    sections: [{
-                        title: "Core",
-                        role: "core",
-                        blocks: [{ type: "diff", file: "/Users/example/secret.js" }],
-                    }],
+                    sections: [
+                        {
+                            title: "Core",
+                            role: "core",
+                            blocks: [{ type: "diff", file: "/Users/example/secret.js" }],
+                        },
+                    ],
                     everythingElse: [],
                 },
             },
@@ -898,7 +906,7 @@ Deno.test("review guide failure metrics redact provider error details", async ()
     });
 });
 
-Deno.test("review decisions wait until a user decision or explicit cancellation", async () => {
+test("review decisions wait until a user decision or explicit cancellation", async () => {
     const token = "review-no-timeout-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
@@ -915,12 +923,12 @@ Deno.test("review decisions wait until a user decision or explicit cancellation"
     }
 });
 
-Deno.test("review API accepts review token header before workspace app token gate", async () => {
+test("review API accepts review token header before workspace app token gate", async () => {
     const token = "review-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
         const app = createReviewWorkspaceApp({
-            cwd: Deno.cwd(),
+            cwd: getCwd(),
             token,
             reviewPayload: {},
             reviewType: "code",
@@ -949,27 +957,29 @@ Deno.test("review API accepts review token header before workspace app token gat
     }
 });
 
-Deno.test("Code review approval preserves comments and attached images", async () => {
+test("Code review approval preserves comments and attached images", async () => {
     const token = "code-approval-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
         const app = createReviewWorkspaceApp({
-            cwd: Deno.cwd(),
+            cwd: getCwd(),
             token,
             reviewPayload: {},
             reviewType: "code",
         }).handler();
-        const annotations = [{
-            id: "code-approval-comment",
-            type: "comment",
-            scope: "general",
-            filePath: "",
-            lineStart: 0,
-            lineEnd: 0,
-            side: "new",
-            text: "Keep this implementation detail.",
-            images: [{ path: "/tmp/code-approval.png", name: "code-approval" }],
-        }];
+        const annotations = [
+            {
+                id: "code-approval-comment",
+                type: "comment",
+                scope: "general",
+                filePath: "",
+                lineStart: 0,
+                lineEnd: 0,
+                side: "new",
+                text: "Keep this implementation detail.",
+                images: [{ path: "/tmp/code-approval.png", name: "code-approval" }],
+            },
+        ];
 
         const response = await app(
             new Request("http://localhost/api/review/feedback", {
@@ -999,12 +1009,12 @@ Deno.test("Code review approval preserves comments and attached images", async (
     }
 });
 
-Deno.test("Plan review feedback preserves all annotations and the edited Plan", async () => {
+test("Plan review feedback preserves all annotations and the edited Plan", async () => {
     const token = "plan-feedback-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
         const app = createReviewWorkspaceApp({
-            cwd: Deno.cwd(),
+            cwd: getCwd(),
             token,
             reviewPayload: {},
             reviewType: "plan",
@@ -1055,22 +1065,24 @@ Deno.test("Plan review feedback preserves all annotations and the edited Plan", 
     }
 });
 
-Deno.test("Plan approval preserves annotations, global images, and the edited Plan", async () => {
+test("Plan approval preserves annotations, global images, and the edited Plan", async () => {
     const token = "plan-approval-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
         const app = createReviewWorkspaceApp({
-            cwd: Deno.cwd(),
+            cwd: getCwd(),
             token,
             reviewPayload: {},
             reviewType: "plan",
         }).handler();
-        const annotations = [{
-            id: "approval-annotation",
-            type: "COMMENT",
-            text: "Keep the command wording.",
-            images: [{ path: "/tmp/approval-inline.png", name: "approval-inline" }],
-        }];
+        const annotations = [
+            {
+                id: "approval-annotation",
+                type: "COMMENT",
+                text: "Keep the command wording.",
+                images: [{ path: "/tmp/approval-inline.png", name: "approval-inline" }],
+            },
+        ];
         const globalAttachments = [{ path: "/tmp/approval-global.png", name: "approval-global" }];
 
         const response = await app(
@@ -1113,12 +1125,12 @@ Deno.test("Plan approval preserves annotations, global images, and the edited Pl
     }
 });
 
-Deno.test("Plan approval transports canonical FEATURE execution policy", async () => {
+test("Plan approval transports canonical FEATURE execution policy", async () => {
     const token = "plan-policy-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
         const app = createReviewWorkspaceApp({
-            cwd: Deno.cwd(),
+            cwd: getCwd(),
             token,
             reviewPayload: { classification: "FEATURE", frontmatter: { classification: "FEATURE" } },
             reviewType: "plan",
@@ -1157,12 +1169,12 @@ Deno.test("Plan approval transports canonical FEATURE execution policy", async (
     }
 });
 
-Deno.test("invalid Plan approval execution policy leaves review open for retry", async () => {
+test("invalid Plan approval execution policy leaves review open for retry", async () => {
     const token = "plan-policy-retry-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
         const app = createReviewWorkspaceApp({
-            cwd: Deno.cwd(),
+            cwd: getCwd(),
             token,
             reviewPayload: { classification: "FEATURE", frontmatter: { classification: "FEATURE" } },
             reviewType: "plan",
@@ -1217,12 +1229,12 @@ Deno.test("invalid Plan approval execution policy leaves review open for retry",
     }
 });
 
-Deno.test("PROJECT Plan approval rejects execution policy fields without consuming the review", async () => {
+test("PROJECT Plan approval rejects execution policy fields without consuming the review", async () => {
     const token = "project-policy-secret";
     const { promise } = registerReviewDecisionPromise(token);
     try {
         const app = createReviewWorkspaceApp({
-            cwd: Deno.cwd(),
+            cwd: getCwd(),
             token,
             reviewPayload: { classification: "PROJECT", frontmatter: { classification: "PROJECT" } },
             reviewType: "plan",
@@ -1271,10 +1283,10 @@ Deno.test("PROJECT Plan approval rejects execution policy fields without consumi
     }
 });
 
-Deno.test("review image endpoints upload and serve an annotated image", async () => {
+test("review image endpoints upload and serve an annotated image", async () => {
     const token = "review-image-secret";
     const app = createReviewWorkspaceApp({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         token,
         reviewPayload: {},
         reviewType: "plan",
@@ -1300,15 +1312,15 @@ Deno.test("review image endpoints upload and serve an annotated image", async ()
         assertEquals(image.headers.get("content-type"), "image/png");
         assertEquals(new Uint8Array(await image.arrayBuffer()), bytes);
     } finally {
-        await Deno.remove(uploaded.path).catch(() => {});
+        await fsRm(uploaded.path).catch(() => {});
     }
 });
 
-Deno.test("code review host serves safe file content and disables unsupported open-in actions", async () => {
+test("code review host serves safe file content and disables unsupported open-in actions", async () => {
     const token = "review-file-secret";
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-review-files-" });
-    await Deno.mkdir(`${cwd}/src`);
-    await Deno.writeTextFile(`${cwd}/src/example.js`, "export const fixture = true;\n");
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-review-files-"));
+    await fsMkdir(`${cwd}/src`);
+    await fsWriteFile(`${cwd}/src/example.js`, "export const fixture = true;\n");
     const app = createReviewWorkspaceApp({
         cwd,
         token,
@@ -1318,9 +1330,7 @@ Deno.test("code review host serves safe file content and disables unsupported op
     const headers = { referer: `http://localhost/review/code?token=${token}` };
 
     try {
-        const content = await app(
-            new Request("http://localhost/api/file-content?path=src%2Fexample.js", { headers }),
-        );
+        const content = await app(new Request("http://localhost/api/file-content?path=src%2Fexample.js", { headers }));
         assertEquals(content.status, 200);
         assertEquals(await content.json(), {
             oldContent: null,
@@ -1331,17 +1341,14 @@ Deno.test("code review host serves safe file content and disables unsupported op
         });
 
         const relativeContent = await app(
-            new Request(
-                "http://localhost/api/file-content?path=..%2F..%2Fsrc%2Fexample.js&base=docs%2Fplans",
-                { headers },
-            ),
+            new Request("http://localhost/api/file-content?path=..%2F..%2Fsrc%2Fexample.js&base=docs%2Fplans", {
+                headers,
+            }),
         );
         assertEquals(relativeContent.status, 200);
         assertEquals((await relativeContent.json()).filepath, "src/example.js");
 
-        const traversal = await app(
-            new Request("http://localhost/api/file-content?path=..%2Foutside.js", { headers }),
-        );
+        const traversal = await app(new Request("http://localhost/api/file-content?path=..%2Foutside.js", { headers }));
         assertEquals(traversal.status, 403);
 
         const apps = await app(new Request("http://localhost/api/open-in/apps", { headers }));
@@ -1352,13 +1359,13 @@ Deno.test("code review host serves safe file content and disables unsupported op
         assertEquals(config.status, 200);
         assertEquals(await config.json(), { ok: true });
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("review API returns 401 for invalid token and 404 for expired matching token", async () => {
+test("review API returns 401 for invalid token and 404 for expired matching token", async () => {
     const app = createReviewWorkspaceApp({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         token: "expected-review-token",
         reviewPayload: {},
         reviewType: "plan",

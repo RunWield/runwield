@@ -1,4 +1,6 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import process from "node:process";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runRouterCommand } from "./index.ts";
 
@@ -14,9 +16,9 @@ async function captureLogs(run: () => void | Promise<void>): Promise<string[]> {
     return logs;
 }
 
-Deno.test("router help uses the real command registry without starting a session", async () => {
+test("router help uses the real command registry without starting a session", async () => {
     await withRuntimeCommandFixture("router-help-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         let started = false;
         const logs = await captureLogs(() =>
             runRouterCommand(["help"], {
@@ -35,9 +37,9 @@ Deno.test("router help uses the real command registry without starting a session
     });
 });
 
-Deno.test("router starts the external session with the complete request and requested mode", async () => {
+test("router starts the external session with the complete request and requested mode", async () => {
     await withRuntimeCommandFixture("router-request-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         let receivedRequest: string | null = null;
         let receivedMode: "new" | "continue" | undefined;
 
@@ -57,9 +59,9 @@ Deno.test("router starts the external session with the complete request and requ
     });
 });
 
-Deno.test("router starts an empty external session when no request is supplied", async () => {
+test("router starts an empty external session when no request is supplied", async () => {
     await withRuntimeCommandFixture("router-empty-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         let receivedRequest: string | null = "sentinel";
 
         await runRouterCommand([], {

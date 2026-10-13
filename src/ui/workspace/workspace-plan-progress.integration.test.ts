@@ -1,5 +1,15 @@
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { savePlan } from "../../plan-store.js";
 import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.js";
 import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";
@@ -37,22 +47,22 @@ function makeStore(projectRoot: string) {
 
 async function readIfExists(path: string) {
     try {
-        return await Deno.readTextFile(path);
+        return await fsReadFile(path, "utf8");
     } catch {
         return "";
     }
 }
 
-Deno.test("Workspace progress recognizes publication with an unchanged local checkout and no worktree", async () => {
+test("Workspace progress recognizes publication with an unchanged local checkout and no worktree", async () => {
     const projectRoot = await publicationFixture.checkout();
-    const remoteRoot = await Deno.makeTempDir({ prefix: "workspace-progress-upstream-" });
+    const remoteRoot = await fsMkdtemp(join(tmpdir(), "workspace-progress-upstream-"));
     try {
         await git(remoteRoot, ["init", "--bare"]);
         await git(projectRoot, ["remote", "add", "origin", remoteRoot]);
         await git(projectRoot, ["push", "-u", "origin", "main"]);
         const originalHead = await git(projectRoot, ["rev-parse", "HEAD"]);
         await git(projectRoot, ["switch", "-c", "candidate"]);
-        await Deno.writeTextFile(`${projectRoot}/README.md`, "Published wording\n");
+        await fsWriteFile(`${projectRoot}/README.md`, "Published wording\n");
         await git(projectRoot, ["commit", "-am", "Update wording"]);
         const candidate = await git(projectRoot, ["rev-parse", "HEAD"]);
         await git(projectRoot, ["switch", "main"]);
@@ -73,7 +83,7 @@ Deno.test("Workspace progress recognizes publication with an unchanged local che
         const before = await loadOwnerPlanProgress(makeStore(projectRoot), options);
         assertEquals(before.overall.settled, false);
         const planPath = `${projectRoot}/docs/plans/wording.md`;
-        const originalPlan = await Deno.readTextFile(planPath);
+        const originalPlan = await fsReadFile(planPath, "utf8");
         await git(projectRoot, ["push", "origin", "candidate:main"]);
 
         const after = await loadOwnerPlanProgress(makeStore(projectRoot), options);
@@ -83,15 +93,15 @@ Deno.test("Workspace progress recognizes publication with an unchanged local che
         assertEquals(after.stages.find((stage) => stage.id === "delivery")?.state, "completed");
         assertEquals(after.stages.find((stage) => stage.id === "mechanical")?.state, "passed");
         assertEquals(await git(projectRoot, ["rev-parse", "HEAD"]), originalHead);
-        assertEquals(await Deno.readTextFile(`${projectRoot}/README.md`), "Before publication\n");
-        assertEquals(await Deno.readTextFile(planPath), originalPlan);
+        assertEquals(await fsReadFile(`${projectRoot}/README.md`, "utf8"), "Before publication\n");
+        assertEquals(await fsReadFile(planPath, "utf8"), originalPlan);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
-        await Deno.remove(remoteRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
+        await fsRm(remoteRoot, { recursive: true });
     }
 });
 
-Deno.test("Workspace progress accepts a Session whose workflow stores the Plan name", async () => {
+test("Workspace progress accepts a Session whose workflow stores the Plan name", async () => {
     await withRuntimeCommandFixture("workspace-progress-session-", async ({ homeDir, projectRoot }) => {
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot });
         try {
@@ -108,7 +118,7 @@ Deno.test("Workspace progress accepts a Session whose workflow stores the Plan n
                 expectedGeneration: 0,
                 phase: "bootstrap",
             });
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 fixture.transcriptPath,
                 JSON.stringify({
                     type: "custom",
@@ -118,7 +128,7 @@ Deno.test("Workspace progress accepts a Session whose workflow stores the Plan n
                     customType: "runwield.workflow_context",
                     data: { planName: "readme-wording", routingIntent: "PLANNED_CHANGE" },
                 }) + "\n",
-                { append: true },
+                { flag: "a" },
             );
             proof = fixture.store.changeSessionActivationPhase(proof, "checkpointing");
             fixture.store.publishGenerationAndRelease(proof, {
@@ -140,12 +150,12 @@ Deno.test("Workspace progress accepts a Session whose workflow stores the Plan n
     });
 });
 
-Deno.test("Workspace progress uses the authoritative execution Plan and never mutates workflow state", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-progress-" });
+test("Workspace progress uses the authoritative execution Plan and never mutates workflow state", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-progress-"));
     const projectRoot = `${dir}/project`;
     const worktreeRoot = `${dir}/worktree`;
-    await Deno.mkdir(projectRoot);
-    await Deno.mkdir(worktreeRoot);
+    await fsMkdir(projectRoot);
+    await fsMkdir(worktreeRoot);
     await savePlan(projectRoot, "feature-a", "# Feature A\n\nPrimary copy", {
         planId: "feature-a-id",
         classification: "PLANNED_CHANGE",
@@ -218,16 +228,16 @@ Deno.test("Workspace progress uses the authoritative execution Plan and never mu
         assertEquals(await readIfExists(worktreePath), before.worktree);
         assertEquals(await readIfExists(registryPath), before.registry);
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });
 
-Deno.test("Workspace progress shows publication states without treating reviewed work as complete", async () => {
-    const dir = await Deno.makeTempDir({ prefix: "runwield-progress-publication-" });
+test("Workspace progress shows publication states without treating reviewed work as complete", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "runwield-progress-publication-"));
     const projectRoot = `${dir}/project`;
     const worktreeRoot = `${dir}/worktree`;
-    await Deno.mkdir(projectRoot);
-    await Deno.mkdir(worktreeRoot);
+    await fsMkdir(projectRoot);
+    await fsMkdir(worktreeRoot);
     await savePlan(projectRoot, "feature-b", "# Feature B\n\nBody", {
         planId: "feature-b-id",
         classification: "PLANNED_CHANGE",
@@ -285,6 +295,6 @@ Deno.test("Workspace progress shows publication states without treating reviewed
         assertEquals(progress.stages.find((stage) => stage.id === "delivery")?.state, "needs_attention");
         assertEquals(progress.stages.find((stage) => stage.id === "completion")?.state, "pending");
     } finally {
-        await Deno.remove(dir, { recursive: true });
+        await fsRm(dir, { recursive: true });
     }
 });

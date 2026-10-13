@@ -1,5 +1,8 @@
-import { assertEquals } from "@std/assert";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const REPO_ROOT = join(dirname(fromFileUrl(import.meta.url)), "../../..");
 
@@ -43,10 +46,10 @@ function isInsideSemanticTransitionApply(text: string, index: number): boolean {
         );
 }
 
-Deno.test("high-level lifecycle callers use Plan Lifecycle APIs instead of raw Plan status writes", async () => {
+test("high-level lifecycle callers use Plan Lifecycle APIs instead of raw Plan status writes", async () => {
     const offenders: string[] = [];
     for (const file of HIGH_LEVEL_FILES) {
-        const text = await Deno.readTextFile(repoPath(file));
+        const text = await fsReadFile(repoPath(file), "utf8");
         for (const [label, pattern] of RAW_LIFECYCLE_PATTERNS) {
             for (const match of text.matchAll(new RegExp(pattern.source, "g"))) {
                 const index = match.index ?? 0;
@@ -62,9 +65,9 @@ Deno.test("high-level lifecycle callers use Plan Lifecycle APIs instead of raw P
     assertEquals(offenders, []);
 });
 
-Deno.test("Git publication uses the durable publication machine instead of recovery actions", async () => {
-    const publication = await Deno.readTextFile(repoPath("src/shared/workflow/validation-publication.ts"));
-    const recovery = (await Promise.all(PLAN_RECOVERY_FILES.map((file) => Deno.readTextFile(repoPath(file))))).join(
+test("Git publication uses the durable publication machine instead of recovery actions", async () => {
+    const publication = await fsReadFile(repoPath("src/shared/workflow/validation-publication.ts"), "utf8");
+    const recovery = (await Promise.all(PLAN_RECOVERY_FILES.map((file) => fsReadFile(repoPath(file), "utf8")))).join(
         "\n",
     );
     assertEquals(publication.includes("startPublicationAttempt"), true);
@@ -73,8 +76,8 @@ Deno.test("Git publication uses the durable publication machine instead of recov
     assertEquals(recovery.includes("mergeExecutionWorktree("), false);
 });
 
-Deno.test("transition wrappers expose expected revision preconditions for lifecycle writers", async () => {
-    const text = await Deno.readTextFile(repoPath("src/shared/workflow/state-transition.ts"));
+test("transition wrappers expose expected revision preconditions for lifecycle writers", async () => {
+    const text = await fsReadFile(repoPath("src/shared/workflow/state-transition.ts"), "utf8");
     const wrappers = [
         "runPlanLifecycleEventTransition",
         "runPlanReviewDecisionTransition",
@@ -94,8 +97,8 @@ Deno.test("transition wrappers expose expected revision preconditions for lifecy
     assertEquals(offenders, []);
 });
 
-Deno.test("Agent Plan creation uses create-if-absent instead of rename-over writes", async () => {
-    const text = await Deno.readTextFile(repoPath("src/tools/plan-safe-file-tools.ts"));
+test("Agent Plan creation uses create-if-absent instead of rename-over writes", async () => {
+    const text = await fsReadFile(repoPath("src/tools/plan-safe-file-tools.ts"), "utf8");
     assertEquals(/atomicWriteTextFileIfAbsent\s*\(/.test(text), true);
     assertEquals(/atomicWriteTextFile\s*\(/.test(text), false);
 });

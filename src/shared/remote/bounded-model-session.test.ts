@@ -1,5 +1,18 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { bashFixtureExecutable, bashFixturePath } from "../../../scripts/bash-fixture.ts";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { serveHttp } from "../http-server.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     createAssistantMessageEventStream,
@@ -21,8 +34,8 @@ interface TestSettingsObject {
     [key: string]: string | TestSettingsObject;
 }
 
-Deno.test("bounded remote session refuses saved CLI identity before connecting", async () => {
-    const root = await Deno.makeTempDir();
+test("bounded remote session refuses saved CLI identity before connecting", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     try {
         for (const provider of ["claude-cli", "agy-cli"]) {
             await assertRejects(
@@ -50,46 +63,46 @@ Deno.test("bounded remote session refuses saved CLI identity before connecting",
             );
         }
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("bounded remote Pi session reads its project through a tool and sends the result to the laptop model", async () => {
-    const root = await Deno.makeTempDir();
+test("bounded remote Pi session reads its project through a tool and sends the result to the laptop model", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const project = join(root, "remote-project");
-    await Deno.mkdir(project);
+    await fsMkdir(project);
     const sentinel = `remote-only-${crypto.randomUUID()}`;
-    await Deno.writeTextFile(join(project, "sentinel.txt"), sentinel);
-    await Deno.writeFile(join(project, "shot.png"), new Uint8Array([1, 2, 3]));
+    await fsWriteFile(join(project, "sentinel.txt"), sentinel);
+    await fsWriteFile(join(project, "shot.png"), new Uint8Array([1, 2, 3]));
     const skillDir = join(root, "skills", "remote-sentinel");
     const scriptDir = join(skillDir, "scripts", "nested");
-    await Deno.mkdir(scriptDir, { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(scriptDir, { recursive: true });
+    await fsWriteFile(
         join(skillDir, "SKILL.md"),
         "---\nname: remote-sentinel\ndescription: Read the remote project sentinel\n---\n" +
             "Run scripts/nested/read-sentinel.sh from this Skill directory to read the remote project sentinel. " +
             "The script uses its sibling format-result.sh.\n",
     );
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(scriptDir, "read-sentinel.sh"),
         '#!/bin/sh\nset -eu\n. ./scripts/nested/format-result.sh\nprintf "%s:%s\\n" "$RESULT_PREFIX" "$(cat "$1")"\n',
     );
-    await Deno.writeTextFile(join(scriptDir, "format-result.sh"), 'RESULT_PREFIX="skill-sibling-result"\n');
+    await fsWriteFile(join(scriptDir, "format-result.sh"), 'RESULT_PREFIX="skill-sibling-result"\n');
     const scriptResult = `skill-sibling-result:${sentinel}`;
-    await Deno.mkdir(join(root, "prompts"));
-    await Deno.writeTextFile(
+    await fsMkdir(join(root, "prompts"));
+    await fsWriteFile(
         join(root, "prompts", "remote-report.md"),
         "---\ndescription: Report the remote project sentinel\n---\n" +
             "Use the remote-sentinel Skill and report the result from its nested script.\n",
     );
-    await Deno.mkdir(join(project, ".wld", "agents"), { recursive: true });
-    await Deno.writeTextFile(join(root, "RUNWIELD.md"), "mounted-laptop-instructions");
-    await Deno.writeTextFile(join(project, "RUNWIELD.md"), "remote-project-instructions");
-    await Deno.writeTextFile(
+    await fsMkdir(join(project, ".wld", "agents"), { recursive: true });
+    await fsWriteFile(join(root, "RUNWIELD.md"), "mounted-laptop-instructions");
+    await fsWriteFile(join(project, "RUNWIELD.md"), "remote-project-instructions");
+    await fsWriteFile(
         join(project, ".wld", "agents", "engineer.md"),
         "---\nname: Project Engineer\n---\nremote-project-agent-instructions\n",
     );
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(project, ".wld", "settings.json"),
         JSON.stringify({
             visionFallback: { model: "laptop-only/vision" },
@@ -107,19 +120,20 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
         const result = createAssistantMessageEventStream();
         contexts.push(JSON.stringify(context));
         modelRequests.push(model.id);
-        const reply = contexts.length === 1
-            ? fauxAssistantMessage(fauxToolCall("read_remote_sentinel", {}))
-            : contexts.length === 2
-            ? fauxAssistantMessage(fauxText(`Received ${scriptResult}`))
-            : contexts.length === 3
-            ? fauxAssistantMessage(fauxToolCall("see_image", { imageRef: "shot.png" }))
-            : contexts.length === 4
-            ? fauxAssistantMessage(fauxText("remote vision description"))
-            : contexts.length === 5
-            ? fauxAssistantMessage(fauxText("Vision completed"))
-            : contexts.length === 6
-            ? fauxAssistantMessage(fauxText(summary))
-            : fauxAssistantMessage(fauxText(turnSummary));
+        const reply =
+            contexts.length === 1
+                ? fauxAssistantMessage(fauxToolCall("read_remote_sentinel", {}))
+                : contexts.length === 2
+                  ? fauxAssistantMessage(fauxText(`Received ${scriptResult}`))
+                  : contexts.length === 3
+                    ? fauxAssistantMessage(fauxToolCall("see_image", { imageRef: "shot.png" }))
+                    : contexts.length === 4
+                      ? fauxAssistantMessage(fauxText("remote vision description"))
+                      : contexts.length === 5
+                        ? fauxAssistantMessage(fauxText("Vision completed"))
+                        : contexts.length === 6
+                          ? fauxAssistantMessage(fauxText(summary))
+                          : fauxAssistantMessage(fauxText(turnSummary));
         queueMicrotask(() => {
             if (options?.signal?.aborted) return;
             result.push({ type: "done", reason: "stop", message: reply });
@@ -133,51 +147,54 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
         allowModelNetwork: false,
         refreshOnCreate: false,
     });
-    runtime.registerNativeProvider(createProvider({
-        id: "laptop-only",
-        name: "Laptop",
-        models: [{
-            provider: "laptop-only",
-            id: "vision",
-            name: "Vision",
-            api: "openai-completions",
-            baseUrl: `https://${laptopSecret}.invalid`,
-            reasoning: false,
-            input: ["text", "image"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 1000,
-            maxTokens: 100,
-        }, {
-            provider: "laptop-only",
-            id: "allowed",
-            name: "Allowed",
-            api: "openai-completions",
-            baseUrl: `https://${laptopSecret}.invalid`,
-            headers: { Authorization: laptopSecret },
-            reasoning: false,
-            input: ["text"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 128000,
-            maxTokens: 100,
-        }],
-        auth: {
-            apiKey: {
-                name: "Local",
-                check: () => Promise.resolve({ type: "api_key" }),
-                resolve: () => Promise.resolve({ auth: {} }),
+    runtime.registerNativeProvider(
+        createProvider({
+            id: "laptop-only",
+            name: "Laptop",
+            models: [
+                {
+                    provider: "laptop-only",
+                    id: "vision",
+                    name: "Vision",
+                    api: "openai-completions",
+                    baseUrl: `https://${laptopSecret}.invalid`,
+                    reasoning: false,
+                    input: ["text", "image"],
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: 1000,
+                    maxTokens: 100,
+                },
+                {
+                    provider: "laptop-only",
+                    id: "allowed",
+                    name: "Allowed",
+                    api: "openai-completions",
+                    baseUrl: `https://${laptopSecret}.invalid`,
+                    headers: { Authorization: laptopSecret },
+                    reasoning: false,
+                    input: ["text"],
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: 128000,
+                    maxTokens: 100,
+                },
+            ],
+            auth: {
+                apiKey: {
+                    name: "Local",
+                    check: () => Promise.resolve({ type: "api_key" }),
+                    resolve: () => Promise.resolve({ auth: {} }),
+                },
             },
-        },
-        api: { stream, streamSimple: stream },
-    }));
+            api: { stream, streamSimple: stream },
+        }),
+    );
     await runtime.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(runtime);
     const credential = "a".repeat(64);
-    const server = Deno.serve(
-        { hostname: "127.0.0.1", port: 0, onListen() {} },
-        (request) =>
-            request.headers.get("Authorization") === `Bearer ${credential}`
-                ? handleModelRequest(bridge, request, new URL(request.url).pathname)
-                : new Response(null, { status: 401 }),
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) =>
+        request.headers.get("Authorization") === `Bearer ${credential}`
+            ? handleModelRequest(bridge, request, new URL(request.url).pathname)
+            : new Response(null, { status: 401 }),
     );
     const mount: RemoteMount = { globalRoot: root, lost: new Promise<void>(() => {}), close: () => Promise.resolve() };
     try {
@@ -188,13 +205,11 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
             description: "Run the nested Skill script against a file in the remote project",
             parameters: { type: "object", properties: {} },
             execute: async () => {
-                const output = await new Deno.Command("sh", {
-                    args: ["scripts/nested/read-sentinel.sh", join(project, "sentinel.txt")],
+                const output = await captureForegroundProcess(bashFixtureExecutable(), {
+                    args: ["scripts/nested/read-sentinel.sh", bashFixturePath(join(project, "sentinel.txt"))],
                     cwd: skillDir,
-                    stdout: "piped",
-                    stderr: "piped",
-                }).output();
-                if (!output.success) throw new Error(new TextDecoder().decode(output.stderr));
+                });
+                if (output.code !== 0) throw new Error(new TextDecoder().decode(output.stderr));
                 return {
                     content: [{ type: "text" as const, text: new TextDecoder().decode(output.stdout).trimEnd() }],
                     details: null,
@@ -212,7 +227,13 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
         try {
             assertEquals(session.model?.id, "allowed");
             assert(session.promptTemplates.some((template) => template.name === "remote-report"));
-            assertEquals(registry.getSelectable().map((item) => item.id).sort(), ["allowed", "vision"]);
+            assertEquals(
+                registry
+                    .getSelectable()
+                    .map((item) => item.id)
+                    .sort(),
+                ["allowed", "vision"],
+            );
             assertEquals(registry.find("anthropic", "claude-sonnet-4-5"), undefined);
             assertEquals((await registry.getApiKeyAndHeaders(registry.find("laptop-only", "allowed")!)).ok, false);
             assertThrows(() => getModelRegistry(), Error, "explicit control connection");
@@ -264,9 +285,9 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
                 expectedError = "Unsupported model execution backend",
             ) => {
                 const caseRoot = join(project, label);
-                await Deno.mkdir(join(caseRoot, ".wld"), { recursive: true });
-                await Deno.writeTextFile(join(root, "settings.json"), JSON.stringify(globalSettings));
-                await Deno.writeTextFile(join(caseRoot, ".wld", "settings.json"), JSON.stringify(projectSettings));
+                await fsMkdir(join(caseRoot, ".wld"), { recursive: true });
+                await fsWriteFile(join(root, "settings.json"), JSON.stringify(globalSettings));
+                await fsWriteFile(join(caseRoot, ".wld", "settings.json"), JSON.stringify(projectSettings));
                 const resolve = () =>
                     resolveBoundedRemoteModelSelection(registry, { cwd: caseRoot, agentDef, ...selection });
                 if (expectedError) await assertRejects(resolve, Error, expectedError);
@@ -293,26 +314,47 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
                 {},
                 {},
             );
-            await check("project-preset", piDefault, {
-                activeModelPreset: "remote",
-                modelPresets: { remote: { agents: { engineer: { model: "agy-cli/gemini-3.1-pro" } } } },
-            }, {});
+            await check(
+                "project-preset",
+                piDefault,
+                {
+                    activeModelPreset: "remote",
+                    modelPresets: { remote: { agents: { engineer: { model: "agy-cli/gemini-3.1-pro" } } } },
+                },
+                {},
+            );
             for (const name of ["delegated", "plan-engineer", "reviewer-feedback-engineer", "guide"]) {
-                await check(name, piDefault, { agents: { [name]: { model: "claude-cli/sonnet" } } }, {
-                    agentName: name,
-                    agentDef: { ...agentDef, name, displayName: name },
-                });
+                await check(
+                    name,
+                    piDefault,
+                    { agents: { [name]: { model: "claude-cli/sonnet" } } },
+                    {
+                        agentName: name,
+                        agentDef: { ...agentDef, name, displayName: name },
+                    },
+                );
             }
-            await check("repair-engineer-fallback", piDefault, {
-                agents: { engineer: { model: "agy-cli/gemini-3.1-pro" } },
-            }, {
-                agentName: "reviewer-feedback-engineer",
-                agentDef: { ...agentDef, name: "reviewer-feedback-engineer" },
-            });
+            await check(
+                "repair-engineer-fallback",
+                piDefault,
+                {
+                    agents: { engineer: { model: "agy-cli/gemini-3.1-pro" } },
+                },
+                {
+                    agentName: "reviewer-feedback-engineer",
+                    agentDef: { ...agentDef, name: "reviewer-feedback-engineer" },
+                },
+            );
             await check("definition", {}, {}, { agentDef: { ...agentDef, model: "agy-cli/gemini-3.1-pro" } });
-            await check("catalog-explicit", { defaultProvider: "claude-cli", defaultModel: "sonnet" }, {}, {
-                modelOverride: "laptop-only/allowed",
-            }, "");
+            await check(
+                "catalog-explicit",
+                { defaultProvider: "claude-cli", defaultModel: "sonnet" },
+                {},
+                {
+                    modelOverride: "laptop-only/allowed",
+                },
+                "",
+            );
             await check("catalog-saved", piDefault, {}, { provider: "laptop-only", modelId: "allowed" }, "");
             await check("catalog-agent", piDefault, { agents: { engineer: { model: "laptop-only/allowed" } } }, {}, "");
             await check(
@@ -333,8 +375,8 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
                 "Unknown invocation model override",
             );
             const skill = (await listSkills({ cwd: project })).find((entry) => entry.name === "remote-sentinel");
-            const template = (await listPromptTemplates({ cwd: project })).find((entry) =>
-                entry.name === "remote-report"
+            const template = (await listPromptTemplates({ cwd: project })).find(
+                (entry) => entry.name === "remote-report",
             );
             assertEquals(skill?.source, "home");
             assertEquals(skill?.path, join(skillDir, "SKILL.md"));
@@ -350,7 +392,7 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
             assertStringIncludes(contexts[0], "mounted-laptop-instructions");
             assertStringIncludes(contexts[0], "remote-project-instructions");
             assertStringIncludes(contexts[0], "remote-project-agent-instructions");
-            assertStringIncludes(contexts[0], join(skillDir, "SKILL.md"));
+            assertStringIncludes(contexts[0], JSON.stringify(join(skillDir, "SKILL.md")).slice(1, -1));
             assertStringIncludes(contexts[0], "Run scripts/nested/read-sentinel.sh from this Skill directory");
             assertStringIncludes(contexts[0], "Use the remote-sentinel Skill and report the result");
             assertStringIncludes(contexts[0], "Read the remote project sentinel and report it.");
@@ -362,8 +404,8 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
             assertStringIncludes(contexts[3], btoa(String.fromCharCode(1, 2, 3)));
             assertStringIncludes(contexts[4], "remote vision description");
 
-            const globalSettingsBefore = await Deno.readTextFile(join(root, "settings.json"));
-            const projectSettingsBefore = await Deno.readTextFile(join(project, ".wld", "settings.json"));
+            const globalSettingsBefore = await fsReadFile(join(root, "settings.json"), "utf8");
+            const projectSettingsBefore = await fsReadFile(join(project, ".wld", "settings.json"), "utf8");
             assertEquals(session.sessionFile, undefined);
             const next = await session.cycleModel("forward");
             assertEquals(next?.isScoped, false);
@@ -373,8 +415,8 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
             const previous = await session.cycleModel("forward");
             assertEquals(previous?.model.id, "allowed");
             assertEquals(session.model?.id, "allowed");
-            assertEquals(await Deno.readTextFile(join(root, "settings.json")), globalSettingsBefore);
-            assertEquals(await Deno.readTextFile(join(project, ".wld", "settings.json")), projectSettingsBefore);
+            assertEquals(await fsReadFile(join(root, "settings.json"), "utf8"), globalSettingsBefore);
+            assertEquals(await fsReadFile(join(project, ".wld", "settings.json"), "utf8"), projectSettingsBefore);
 
             const result = await session.compact();
             assertStringIncludes(result.summary, summary);
@@ -389,8 +431,8 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
             assertEquals(compactions[0].summary, result.summary);
             assertStringIncludes(JSON.stringify(session.messages), summary);
             assertEquals(session.sessionFile, undefined);
-            assertEquals(await Deno.readTextFile(join(root, "settings.json")), globalSettingsBefore);
-            assertEquals(await Deno.readTextFile(join(project, ".wld", "settings.json")), projectSettingsBefore);
+            assertEquals(await fsReadFile(join(root, "settings.json"), "utf8"), globalSettingsBefore);
+            assertEquals(await fsReadFile(join(project, ".wld", "settings.json"), "utf8"), projectSettingsBefore);
             assert(
                 !JSON.stringify({ contexts, messages: session.messages, catalog: await bridge.catalog() }).includes(
                     laptopSecret,
@@ -402,6 +444,6 @@ Deno.test("bounded remote Pi session reads its project through a tool and sends 
     } finally {
         bridge.close();
         await server.shutdown();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
