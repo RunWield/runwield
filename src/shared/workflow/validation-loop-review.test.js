@@ -1,17 +1,11 @@
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import {
-    assertEquals,
-    assertExists,
-    assertNotEquals,
-    assertObjectMatch,
-    assertRejects,
-    assertStringIncludes,
-} from "@std/assert";
+import { notDeepStrictEqual as assertNotEquals, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlan } from "../../plan-store.js";
 import { getHomeDir } from "../../constants.js";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { setCustomSetting } from "../settings.js";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { captureWorktreeTree, getWorktreeReviewDiff } from "./git-snapshot.ts";

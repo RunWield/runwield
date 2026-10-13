@@ -1,8 +1,8 @@
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertExists } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";

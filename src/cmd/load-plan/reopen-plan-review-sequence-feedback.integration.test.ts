@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, type TranscriptContext } from "@earendil-works/pi-ai";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";

@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals, assertStrictEquals } from "@std/assert";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { createTuiCrashGuards } from "./tui-crash-guards.ts";
 
 function createFakeEventTarget() {

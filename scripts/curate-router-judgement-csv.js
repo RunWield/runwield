@@ -6,8 +6,8 @@ import process from "node:process";
  * Apply deterministic fixture-curation rules to Router judgement CSV files.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { dirname, join } from "@std/path";
+import { parseArgs } from "../src/shared/cli-args.ts";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../src/constants.js";
 import { parseCsv, toCsv } from "./router-eval-utils.js";
 import { JUDGEMENT_COLUMNS } from "./write-router-judgement-csv.js";
@@ -132,7 +132,7 @@ export async function main(argv) {
 
     if (args.help) {
         console.log([
-            "Usage: deno run -A scripts/curate-router-judgement-csv.js [options]",
+            "Usage: bun scripts/curate-router-judgement-csv.js [options]",
             "",
             "Options:",
             `  --in, -i <path>   CSV to curate (default: ${getDefaultRouterJudgementCsvPath()})`,

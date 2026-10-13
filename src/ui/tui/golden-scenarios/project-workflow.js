@@ -3,7 +3,7 @@
  * Composed Golden PROJECT workflow scenarios.
  */
 
-import { assert } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
 

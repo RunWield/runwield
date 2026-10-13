@@ -1,10 +1,10 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { classifyRootSessionLocator, getRunWieldSessionDir } from "./root-session.js";

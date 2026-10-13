@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env bun
 import { captureScriptProcess } from "./script-process.ts";
 import { getCwd } from "../src/constants.js";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
@@ -9,7 +9,7 @@ import process from "node:process";
  * @module run-prototype
  */
 
-import { join, normalize, relative, resolve } from "@std/path";
+import { join, normalize, relative, resolve } from "node:path";
 
 const SAFE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const THROWAWAY_MARKER = ["THROWAWAY", "PROTOTYPE"].join(" ");
@@ -60,20 +60,20 @@ export async function validatePrototypeSetup(cwd, slug) {
     try {
         stat = await fsStat(dir);
     } catch {
-        throw new Error(`Prototype not found: ${relativeDir}/. Create it with README.md and deno.json first.`);
+        throw new Error(`Prototype not found: ${relativeDir}/. Create it with README.md and package.json first.`);
     }
     if (!stat.isDirectory()) throw new Error(`Prototype path is not a directory: ${relativeDir}/`);
 
-    const configPath = join(dir, "deno.json");
+    const configPath = join(dir, "package.json");
     let config;
     try {
         config = JSON.parse(await fsReadFile(configPath, "utf8"));
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Prototype ${relativeDir}/deno.json is missing or invalid: ${message}`);
+        throw new Error(`Prototype ${relativeDir}/package.json is missing or invalid: ${message}`);
     }
-    if (!config || typeof config !== "object" || typeof config.tasks?.dev !== "string") {
-        throw new Error(`Prototype ${relativeDir}/deno.json must define a local tasks.dev command.`);
+    if (!config || typeof config !== "object" || typeof config.scripts?.dev !== "string") {
+        throw new Error(`Prototype ${relativeDir}/package.json must define a local scripts.dev command.`);
     }
     return { dir, configPath, relativeConfigPath: repoRelative(cwd, configPath) };
 }
@@ -97,8 +97,8 @@ export async function isGitIgnored(cwd, relativePath) {
 export async function runPrototype(opts, processPort) {
     const cwd = opts.cwd || getCwd();
     const setup = await validatePrototypeSetup(cwd, opts.slug);
-    const args = ["task", "-c", setup.relativeConfigPath, "dev"];
-    const child = processPort.spawn(process.versions.deno ? process.execPath : "deno", {
+    const args = ["run", "--cwd", setup.dir, "dev"];
+    const child = processPort.spawn(process.execPath, {
         args,
         cwd,
         stdin: "inherit",
@@ -161,7 +161,7 @@ function isAllowedPrototypeConventionFile(file) {
 if (import.meta.main) {
     const [slug, ...extra] = process.argv.slice(2);
     if (!slug || extra.length > 0) {
-        console.error("Usage: deno task prototype <kebab-case-slug>");
+        console.error("Usage: bun run prototype <kebab-case-slug>");
         process.exit(2);
     }
     try {

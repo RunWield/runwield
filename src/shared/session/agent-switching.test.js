@@ -2,7 +2,8 @@ import { mkdtemp as fsMkdtemp, readFile as fsReadFile, writeFile as fsWriteFile 
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, getCurrentTools, getSystemMessageText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

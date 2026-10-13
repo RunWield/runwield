@@ -1,9 +1,9 @@
+import { assertEquals } from "../testing/assertions.ts";
 import fsPromises from "node:fs/promises";
 import { test } from "node:test";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { isEmptyProjectDirectory } from "./project-state.ts";
 
 type TempProjectCheck = (dir: string) => Promise<void>;

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { parse as parseJsonc } from "@std/jsonc";
-import { join } from "@std/path";
+import { parse as parseJsonc } from "../jsonc.ts";
+import { join } from "node:path";
 import { personalGlobalRoot } from "./personal-resources.ts";
 
 export interface RemoteSettingsConnection {

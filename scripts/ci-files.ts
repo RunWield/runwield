@@ -1,6 +1,6 @@
 import { captureScriptProcess } from "./script-process.ts";
 import { lstat as fsLstat } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 
 /**
  * List repository files that CI owns: tracked files plus untracked files that Git does not ignore.

@@ -13,8 +13,8 @@ import {
 import { tmpdir } from "node:os";
 import { getCwd } from "../../constants.js";
 import process from "node:process";
-import { assertEquals, assertRejects } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { injectFrontMatter, listPlans, savePlan } from "../../plan-store.js";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
 import { addEntry, findById, getWorktreeRegistryPath, listEntries } from "../../shared/worktree-registry.js";
@@ -765,7 +765,7 @@ test("plans doctor --repair fixes provable registry drift without touching Git a
         });
         await fsWriteFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
 
-        await assertRejects(() => listPlans(cwd), Error, "execution Plan is missing");
+        assertEquals((await listPlans(cwd)).map((plan) => plan.name), ["legacy-plan"]);
 
         const report = await runPlansDoctor(cwd, true);
         assertEquals(report.repaired >= 2, true, `expected both drifts repaired, got ${report.repaired}`);

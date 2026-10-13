@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assert, assertEquals, assertMatch } from "@std/assert";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
 import {
     generateBearerCapability,
     hashCapability,

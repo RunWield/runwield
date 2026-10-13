@@ -185,7 +185,7 @@ built next.
 
 RunWield is built on [Pi](https://pi.dev) and ships as a single compiled binary.
 
-- **CLI + TUI** — Deno, pure JavaScript with JSDoc typing -> Moving to TypeScript.
+- **CLI + TUI** — Bun 1.4.3, TypeScript and JavaScript with JSDoc typing.
 - **Plan review** — a browser UI powered by [Plannotator](https://plannotator.ai).
 - **Code intelligence** — [Cymbal](https://github.com/1broseidon/cymbal).
 - **Memory** — [Mnemoteca](https://github.com/gandazgul/mnemoteca) for project and global memory.
@@ -220,13 +220,16 @@ database, all greppable.
 
 ### Contributing
 
+Use Bun 1.4.3 (pinned in `.bun-version`).
+
 ```bash
-deno task cli "your request"   # run from source
-deno task ci                   # check, lint, format, tests
-deno task compile              # build the binary
+bun run install:locked       # frozen root and docs graphs; no lifecycle scripts
+bun run cli "your request"   # run from source
+bun run ci                   # static gates, source and Golden tests
+bun run compile              # build the binary
 ```
 
-Branch, keep changes focused, run `deno task ci`, and open a PR with a summary and validation notes. See
+Branch, keep changes focused, run `bun run ci`, and open a PR with a summary and validation notes. See
 [contributing](docs/contributing.md) and [releasing](docs/releasing.md).
 
 ---

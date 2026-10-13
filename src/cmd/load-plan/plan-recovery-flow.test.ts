@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { rmdir as fsRmdir } from "node:fs/promises";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { test } from "node:test";
@@ -12,11 +13,10 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
 import { resetHeldPlanToDraft } from "./plan-hold.ts";
 import { resetRecoveryPlan } from "./plan-recovery-reset.ts";
 import { resolveRecoveryWorktree } from "./plan-recovery-worktree.ts";
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { handlePlanRecovery } from "./plan-recovery-flow.ts";
 import {
     abandonRecoveryPlan,

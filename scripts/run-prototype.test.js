@@ -12,8 +12,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import {
     findTrackedPrototypeArtifacts,
     isSafePrototypeSlug,
@@ -29,11 +29,11 @@ async function makeGitFixture() {
 }
 
 /** @param {string} dir @param {string} slug @param {string} [task] */
-async function makePrototype(dir, slug, task = "deno eval 'console.log(1)'") {
+async function makePrototype(dir, slug, task = "bun -e 'console.log(1)'") {
     const root = join(dir, "prototypes", slug);
     await fsMkdir(root, { recursive: true });
     await fsWriteFile(join(root, "README.md"), `# ${slug}\n`);
-    await fsWriteFile(join(root, "deno.json"), JSON.stringify({ tasks: { dev: task } }, null, 4));
+    await fsWriteFile(join(root, "package.json"), JSON.stringify({ scripts: { dev: task } }, null, 4));
     return root;
 }
 
@@ -46,19 +46,19 @@ test("prototype launcher accepts safe kebab-case slugs only", () => {
     assertEquals(isSafePrototypeSlug("plan_review"), false);
 });
 
-test("prototype setup requires ignored prototypes root, local deno config, and dev task", async () => {
+test("prototype setup requires ignored prototypes root, local Bun config, and dev task", async () => {
     const dir = await makeGitFixture();
     try {
         await makePrototype(dir, "happy-path");
         const setup = await validatePrototypeSetup(dir, "happy-path");
-        assertEquals(setup.relativeConfigPath, "prototypes/happy-path/deno.json");
+        assertEquals(setup.relativeConfigPath, "prototypes/happy-path/package.json");
 
         await fsMkdir(join(dir, "prototypes", "missing-dev"), { recursive: true });
-        await fsWriteFile(join(dir, "prototypes", "missing-dev", "deno.json"), JSON.stringify({ tasks: {} }));
+        await fsWriteFile(join(dir, "prototypes", "missing-dev", "package.json"), JSON.stringify({ scripts: {} }));
         await assertRejects(
             () => validatePrototypeSetup(dir, "missing-dev"),
             Error,
-            "must define a local tasks.dev command",
+            "must define a local scripts.dev command",
         );
     } finally {
         await fsRm(dir, { recursive: true });
@@ -70,35 +70,34 @@ test("prototype setup fails when the root is not ignored", async () => {
     try {
         await captureScriptProcess("git", { args: ["init"], cwd: dir, stdout: "null", stderr: "null" });
         await makePrototype(dir, "not-ignored");
-        await assertRejects(
-            () => validatePrototypeSetup(dir, "not-ignored"),
-            Error,
-            "must be gitignored",
-        );
+        await assertRejects(() => validatePrototypeSetup(dir, "not-ignored"), Error, "must be gitignored");
     } finally {
         await fsRm(dir, { recursive: true });
     }
 });
 
-test("prototype runner constructs a local deno dev task command with inherited I/O", async () => {
+test("prototype runner constructs a local Bun dev task command with inherited I/O", async () => {
     const dir = await makeGitFixture();
     try {
         await makePrototype(dir, "command-check");
         /** @type {Array<{ command: string, options: import("./script-process.ts").ScriptProcessOptions }>} */
         const calls = [];
-        const code = await runPrototype({
-            cwd: dir,
-            slug: "command-check",
-        }, {
-            spawn: (command, options) => {
-                calls.push({ command, options });
-                return { status: Promise.resolve({ success: true, code: 0, signal: null }) };
+        const code = await runPrototype(
+            {
+                cwd: dir,
+                slug: "command-check",
             },
-        });
+            {
+                spawn: (command, options) => {
+                    calls.push({ command, options });
+                    return { status: Promise.resolve({ success: true, code: 0, signal: null }) };
+                },
+            },
+        );
         assertEquals(code, 0);
         assertEquals(calls.length, 1);
-        assertEquals(calls[0].command, process.versions.deno ? process.execPath : "deno");
-        assertEquals(calls[0].options.args, ["task", "-c", "prototypes/command-check/deno.json", "dev"]);
+        assertEquals(calls[0].command, process.execPath);
+        assertEquals(calls[0].options.args, ["run", "--cwd", join(dir, "prototypes", "command-check"), "dev"]);
         assertEquals(calls[0].options.stdin, "inherit");
         assertEquals(calls[0].options.stdout, "inherit");
         assertEquals(calls[0].options.stderr, "inherit");
@@ -111,10 +110,10 @@ test("repository has no tracked executable prototype artifacts", async () => {
     assertEquals(await findTrackedPrototypeArtifacts({ cwd: getCwd() }), []);
 });
 
-test("prototype launcher executes the configured Deno task and preserves its exit code", async () => {
+test("prototype launcher executes the configured Bun script and preserves its exit code", async () => {
     const dir = await makeGitFixture();
     try {
-        const root = await makePrototype(dir, "real-launch", "deno run -A dev.js");
+        const root = await makePrototype(dir, "real-launch", "bun dev.js");
         await fsWriteFile(
             join(root, "dev.js"),
             'import {writeFile} from "node:fs/promises"; await writeFile("ran.txt", "configured dev task"); process.exit(7);',

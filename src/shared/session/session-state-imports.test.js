@@ -1,8 +1,8 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { getCwd } from "../../constants.js";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 
 /**
  * @param {string} dir

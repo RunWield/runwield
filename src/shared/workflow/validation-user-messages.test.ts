@@ -1,7 +1,8 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import {
     buildPlanRecoveryUserMessage,
     buildValidationRecoveryNotice,

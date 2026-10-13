@@ -1,12 +1,11 @@
-/** Materialize the frozen docs dependency closure inside each real-build fixture. */
+/** Materialize the frozen docs dependency closure inside a separate documentation source tree. */
 import { constants } from "node:fs";
 import { cp, lstat, mkdir, readdir, realpath, stat, symlink, unlink } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { platform, versions } from "node:process";
+import { platform } from "node:process";
 
-export async function prepareDocsFixtureDependencies(root: string): Promise<void> {
-    if (!versions.bun) return;
+export async function prepareDocsDependencies(root: string): Promise<void> {
     const repository = fileURLToPath(new URL("../", import.meta.url));
     const modules = join(repository, "docs-site", "node_modules");
     const store = await realpath(join(modules, ".bun"));

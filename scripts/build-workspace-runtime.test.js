@@ -1,3 +1,4 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -7,15 +8,12 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     buildWorkspaceRuntime,
     getOpaqueWorkspaceAssetName,
     getServerEntryImportPaths,
     normalizeCompiledNodeChildProcessImports,
-    normalizeDenoAdapterShimImport,
-    normalizeDenoRuntimeSpecifiers,
     unrefBundledMessageChannels,
     waitForStableWorkspaceClientAssets,
 } from "./build-workspace-runtime.js";
@@ -41,24 +39,6 @@ const typed = route;
         join("dist", "workspace", "server", "chunks", "setup.mjs"),
         join("dist", "workspace", "server", "chunks", "page.mjs"),
     ]);
-});
-
-test("normalizeDenoAdapterShimImport replaces entrypoint adapter shims", () => {
-    const source = 'import { fromFileUrl, serveFile } from "@deno/astro-adapter/__deno_imports.ts";\n';
-
-    assertEquals(
-        normalizeDenoAdapterShimImport(source),
-        'import { serveFile } from "jsr:@std/http@1.0/file-server";\nimport { fromFileUrl } from "jsr:@std/path@1.0";\n',
-    );
-});
-
-test("normalizeDenoRuntimeSpecifiers rewrites deno JSR imports for bundling", () => {
-    const source = 'import { serveFile } from "deno:jsr:@std/http@^1.1.1/file-server";\n';
-
-    assertEquals(
-        normalizeDenoRuntimeSpecifiers(source),
-        'import { serveFile } from "jsr:@std/http@^1.1.1/file-server";\n',
-    );
 });
 
 test("waitForStableWorkspaceClientAssets waits for delayed generated files", async () => {

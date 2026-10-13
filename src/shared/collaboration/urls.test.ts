@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { buildApiUrl, buildCollaborationUrl, parseCollaborationUrl, redactCollaborationUrl } from "./urls.ts";
 
 test("collaboration URLs keep key and capability in distinct fragment fields", () => {

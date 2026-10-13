@@ -5,8 +5,8 @@ import { readFile as fsReadFile } from "node:fs/promises";
  * Typed loader for hidden workflow-dispatched subagent definitions.
  */
 
-import { extractYaml } from "@std/front-matter";
-import { join } from "@std/path";
+import { extractYaml } from "../front-matter.ts";
+import { join } from "node:path";
 import { AGENT_DEFS_DIR, AGENTS, SUBAGENTS } from "../../constants.js";
 import { ensureBundledAgentDefFile } from "./agent-assets.ts";
 import { composeSharedPracticePrompt, loadAgentDefFromPath } from "./agents.js";

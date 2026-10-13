@@ -13,7 +13,7 @@ import {
  * Git worktree helpers for isolated plan execution.
  */
 
-import { basename, dirname, join, resolve } from "@std/path";
+import { basename, dirname, join, resolve } from "node:path";
 import { getHomeDir, RUNWIELD_DIR_NAME, WORKTREE_BRANCH_PREFIX } from "../constants.js";
 import { encodeCwdForSessionDir } from "./session/root-session.js";
 import {

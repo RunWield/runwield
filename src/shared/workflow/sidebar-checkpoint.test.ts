@@ -1,6 +1,6 @@
 import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertExists } from "@std/assert";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { createGitPort } from "../git-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { loadPlan } from "../../plan-store.js";

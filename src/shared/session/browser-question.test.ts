@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
 import { getCwd } from "../../constants.js";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";

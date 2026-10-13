@@ -2,7 +2,7 @@ import { readFile as fsReadFile, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as 
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import {
     fetchLatestRunWieldRcRelease,
     fetchLatestRunWieldRelease,

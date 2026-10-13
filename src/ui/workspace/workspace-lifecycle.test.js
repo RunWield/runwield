@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlanBodyById, savePlan } from "../../plan-store.js";
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";

@@ -1,6 +1,6 @@
 import { statSync, writeFileSync } from "node:fs";
 import process from "node:process";
-import { FakeTime } from "@std/testing/time";
+import { install } from "@sinonjs/fake-timers";
 import { runRunWieldMcpStdioTransport } from "../stdio-transport.ts";
 
 // Advance only this subprocess's clock while the real HTTP/stdio tool call waits.
@@ -9,7 +9,7 @@ const advancePath = process.argv[2];
 const advancedPath = process.argv[3];
 const realSetInterval = globalThis.setInterval;
 const realClearInterval = globalThis.clearInterval;
-using time = new FakeTime();
+const time = install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
 const timer = realSetInterval(() => {
     try {
         statSync(advancePath);
@@ -24,5 +24,6 @@ const timer = realSetInterval(() => {
 try {
     await runRunWieldMcpStdioTransport();
 } finally {
+    time.uninstall();
     realClearInterval(timer);
 }

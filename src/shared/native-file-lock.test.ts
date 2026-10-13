@@ -120,7 +120,7 @@ if (!lock.tryLockSync(true)) throw new Error("Failed to own lock");
 console.log("held");
 ${termination === "close" ? 'process.stdin.once("data", () => { lock.close(); console.log("released"); });' : ""}
 setInterval(() => {}, 1000);`;
-        const child = spawn(execPath, versions.deno ? ["eval", source] : ["--eval", source], {
+        const child = spawn(execPath, ["--eval", source], {
             stdio: ["pipe", "pipe", "pipe"],
         });
         const closed = once(child, "close");

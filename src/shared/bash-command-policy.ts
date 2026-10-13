@@ -91,7 +91,7 @@ function commandWords(input: string): string[] {
     return words;
 }
 
-export function normalizeBashAllowedCommands(value: string[] | null | undefined, source: string): BashAllowedCommands {
+export function normalizeBashAllowedCommands(value: readonly string[] | null | undefined, source: string): BashAllowedCommands {
     if (value === undefined || value === null) return undefined;
     if (!Array.isArray(value)) throw new Error(`${source}: bashAllowedCommands must be a list or null`);
     return value.map((selector) => {

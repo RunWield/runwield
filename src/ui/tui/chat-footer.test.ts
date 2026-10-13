@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { emitHostedSessionRuntimeEvent } from "../../shared/session/session-runtime-events.js";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { initRunWieldTheme } from "../theme/theme.js";
 import {
     buildFooterContextStat,

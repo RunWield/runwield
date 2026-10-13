@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { markup, mountDashboard, newDashboardWindow } from "./dashboard-test-dom.ts";
 
 const labels = ["Needs You", "Ready to Continue", "In Progress", "Recently Finished"];

@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { mkdir as fsMkdir, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     canonicalizeStoredPlanName,

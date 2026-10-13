@@ -9,8 +9,9 @@ import { test } from "node:test";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { parseWorkspaceServeArgs } from "./serve.ts";
 

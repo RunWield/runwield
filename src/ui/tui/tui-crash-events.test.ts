@@ -1,6 +1,6 @@
 import { equal, match, ok } from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { execPath, versions } from "node:process";
+import { execPath } from "node:process";
 import { test } from "node:test";
 
 const guardsURL = new URL("./tui-crash-guards.ts", import.meta.url).href;
@@ -15,14 +15,12 @@ const guards = createTuiCrashGuards({
  os: "linux", exit,
 }); guards.install();`;
 
-for (
-    const source of [
-        'setTimeout(() => { throw new Error("fatal fixture"); }, 0);',
-        'Promise.reject(new Error("fatal fixture"));',
-    ]
-) {
+for (const source of [
+    'setTimeout(() => { throw new Error("fatal fixture"); }, 0);',
+    'Promise.reject(new Error("fatal fixture"));',
+]) {
     test(`fatal event restores terminal and retains fatal exit: ${source}`, () => {
-        const result = spawnSync(execPath, [versions.deno ? "eval" : "--eval", `${setup}\n${source}`], {
+        const result = spawnSync(execPath, ["--eval", `${setup}\n${source}`], {
             encoding: "utf8",
             timeout: 10_000,
         });
@@ -35,14 +33,18 @@ for (
 }
 
 test("uninstall removes fatal-event listeners without suppressing the default error", () => {
-    const result = spawnSync(execPath, [
-        versions.deno ? "eval" : "--eval",
-        `${setup}
+    const result = spawnSync(
+        execPath,
+        [
+            "--eval",
+            `${setup}
 guards.uninstall(); guards.uninstall(); setTimeout(() => { throw new Error("fatal fixture"); }, 0);`,
-    ], {
-        encoding: "utf8",
-        timeout: 10_000,
-    });
+        ],
+        {
+            encoding: "utf8",
+            timeout: 10_000,
+        },
+    );
     if (result.error) throw result.error;
     equal(result.signal, null);
     ok(result.status && result.status !== 0);

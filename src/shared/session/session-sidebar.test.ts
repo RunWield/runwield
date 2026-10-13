@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { buildSessionSidebarProjection, sessionSidebarFields } from "./session-sidebar.ts";
 
 test("Session tab fields share counts and context percentages across surfaces", () => {

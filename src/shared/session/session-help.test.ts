@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals, assertNotStrictEquals } from "@std/assert";
+import { notStrictEqual as assertNotStrictEquals } from "node:assert/strict";
 import { getSessionKeyboardHelp } from "./session-help.ts";
 
 test("Session keyboard help preserves current shortcut order and copy", () => {

@@ -1,8 +1,8 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { assertEquals } from "@std/assert";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../src/cmd/testing/runtime-command-fixture.ts";
 import { main } from "./run-router-golden-set.js";
 

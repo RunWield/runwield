@@ -3,7 +3,7 @@ import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { setCustomSetting } from "../shared/settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";

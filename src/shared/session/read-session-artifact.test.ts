@@ -9,7 +9,7 @@ import {
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { readSessionArtifact } from "./read-session-artifact.ts";
 import type { SessionArtifactReference } from "./file-session-store-types.ts";
 

@@ -15,8 +15,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { __resetSettingsForTests, getCustomSetting, getSettingsManager, setCustomSetting } from "../settings.js";
 import { configureRemotePersonalResources, PersonalResourcePathError } from "./personal-resources.ts";
@@ -42,11 +42,7 @@ test("remote synchronous settings refresh after a lost acknowledgement and an un
         );
         const service = spawnNativeProcess(process.execPath, {
             cwd: getCwd(),
-            args: [
-                "run",
-                ...(process.versions.deno ? ["-A", "--no-check"] : []),
-                fileURLToPath(new URL("./settings-service-fixture.ts", import.meta.url)),
-            ],
+            args: ["run", ...[], fileURLToPath(new URL("./settings-service-fixture.ts", import.meta.url))],
             env: { HOME: home },
             stdin: "piped",
             stdout: "piped",
@@ -67,12 +63,7 @@ test("remote synchronous settings refresh after a lost acknowledgement and an un
         const writeOnLaptop = async () => {
             const result = await captureForegroundProcess(process.execPath, {
                 cwd: getCwd(),
-                args: [
-                    "run",
-                    ...(process.versions.deno ? ["-A", "--no-check"] : []),
-                    fileURLToPath(new URL("./settings-service-fixture.ts", import.meta.url)),
-                    "write",
-                ],
+                args: ["run", ...[], fileURLToPath(new URL("./settings-service-fixture.ts", import.meta.url)), "write"],
                 env: { HOME: home },
             });
             if (result.code !== 0) throw new Error(new TextDecoder().decode(result.stderr));
@@ -94,11 +85,13 @@ test("remote synchronous settings refresh after a lost acknowledgement and an un
         try {
             const identity = { buildId: "b".repeat(64), protocol: 1 };
             assertEquals(
-                (await fetch(`${address}/handshake`, {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify(identity),
-                })).status,
+                (
+                    await fetch(`${address}/handshake`, {
+                        method: "POST",
+                        headers,
+                        body: JSON.stringify(identity),
+                    })
+                ).status,
                 200,
             );
             assertEquals((await fetch(`${address}/readiness`, { method: "POST", headers })).status, 200);

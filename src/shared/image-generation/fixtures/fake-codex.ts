@@ -1,4 +1,4 @@
-import { utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
+import { readFile as fsReadFile, utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 import { getCwd } from "../../../constants.js";
 
@@ -12,6 +12,9 @@ const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR4nGP4z8AARwz
 async function main() {
     const mode = process.env["RUNWIELD_CODEX_IMAGE_MODE"] || "success";
     const log = process.env["RUNWIELD_CODEX_IMAGE_LOG"];
+    const startGate = process.env["RUNWIELD_CODEX_IMAGE_START_GATE"];
+    const pidPath = process.env["RUNWIELD_CODEX_IMAGE_PID"];
+    if (pidPath) await fsWriteFile(pidPath, String(process.pid));
     const decoder = new TextDecoder();
     let buffer = "";
     for await (const chunk of process.stdin) {
@@ -34,11 +37,13 @@ async function main() {
                     break;
                 case "model/list":
                     respond({
-                        data: [{
-                            id: "fixture-model",
-                            model: "fixture-model",
-                            supportedReasoningEfforts: [{ reasoningEffort: "low" }],
-                        }],
+                        data: [
+                            {
+                                id: "fixture-model",
+                                model: "fixture-model",
+                                supportedReasoningEfforts: [{ reasoningEffort: "low" }],
+                            },
+                        ],
                         nextCursor: null,
                     });
                     break;
@@ -46,6 +51,12 @@ async function main() {
                     respond({ thread: { id: "thread-fixture" } });
                     break;
                 case "turn/start": {
+                    if (mode === "unacknowledged") break;
+                    if (startGate) {
+                        while (!(await fsReadFile(startGate, "utf8").catch(() => ""))) {
+                            await new Promise((resolve) => setTimeout(resolve, 10));
+                        }
+                    }
                     respond({ turn: { id: "turn-fixture", status: "inProgress" } });
                     if (mode === "wait") break;
                     if (mode === "approval") {
@@ -60,7 +71,10 @@ async function main() {
                     }
                     if (mode === "exit") process.exit(1);
                     const path = `${getCwd()}/image.png`;
-                    await fsWriteFile(path, Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)));
+                    await fsWriteFile(
+                        path,
+                        Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
+                    );
                     if (mode === "stale") await fsUtimes(path, 1, 1);
                     const item = {
                         id: "image-fixture",
@@ -70,32 +84,33 @@ async function main() {
                         failure: null,
                         result: "fixture",
                     };
-                    const items = mode === "no-image"
-                        ? []
-                        : mode === "multiple"
-                        ? [item, { ...item, id: "image-two" }]
-                        : [item];
+                    const items =
+                        mode === "no-image" ? [] : mode === "multiple" ? [item, { ...item, id: "image-two" }] : [item];
                     for (const image of items) {
-                        console.log(JSON.stringify({
-                            method: "item/completed",
+                        console.log(
+                            JSON.stringify({
+                                method: "item/completed",
+                                params: {
+                                    threadId: "thread-fixture",
+                                    turnId: mode === "wrong-turn" ? "other-turn" : "turn-fixture",
+                                    item: image,
+                                },
+                            }),
+                        );
+                    }
+                    console.log(
+                        JSON.stringify({
+                            method: "turn/completed",
                             params: {
                                 threadId: "thread-fixture",
-                                turnId: mode === "wrong-turn" ? "other-turn" : "turn-fixture",
-                                item: image,
+                                turn: {
+                                    id: "turn-fixture",
+                                    status: mode === "failed-turn" ? "failed" : "completed",
+                                    items: [],
+                                },
                             },
-                        }));
-                    }
-                    console.log(JSON.stringify({
-                        method: "turn/completed",
-                        params: {
-                            threadId: "thread-fixture",
-                            turn: {
-                                id: "turn-fixture",
-                                status: mode === "failed-turn" ? "failed" : "completed",
-                                items: [],
-                            },
-                        },
-                    }));
+                        }),
+                    );
                     break;
                 }
                 case "turn/interrupt":

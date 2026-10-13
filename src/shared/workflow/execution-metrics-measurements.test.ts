@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 

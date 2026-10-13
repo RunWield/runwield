@@ -1,7 +1,7 @@
 import { RuntimeEventTypes } from ".././session-runtime-events.js";
 import { captureTranscriptEvidence, toProjectionFailure } from ".././session-transcript-projection.js";
 import { projectAggregateTranscript } from ".././session-transcript-manifest.ts";
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { normalizeTutorialContext } from "../tutorial-context-session.ts";
 import { normalizeWorkflowContext, type WorkflowContext } from "../workflow-context-session.js";
 import { loadPlanActionEvidence } from "../../workflow/plan-actions.ts";

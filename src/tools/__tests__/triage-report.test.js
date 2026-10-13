@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertMatch, assertRejects } from "@std/assert";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { createTriageReportTool } from "../triage-report.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";

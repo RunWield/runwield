@@ -1,7 +1,7 @@
 import process from "node:process";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { git } from "../git-test-fixture.ts";
 import { addEntry } from "../worktree-registry.js";

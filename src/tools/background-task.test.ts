@@ -1,4 +1,4 @@
-import { execPath, platform, versions } from "node:process";
+import { execPath, platform } from "node:process";
 import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -9,7 +9,7 @@ import {
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { HostedSession } from "../shared/session/hosted-session.js";
 import { createBackgroundTaskTool } from "./background-task.ts";
 
@@ -35,7 +35,7 @@ writeFileSync(${JSON.stringify(marker)}, "complete");
 process.stdout.write("complete");
 `,
         );
-        const command = [execPath, ...(versions.deno ? ["run", "-A"] : ["--no-env-file", "--no-install"]), script]
+        const command = [execPath, ...["--no-env-file", "--no-install"], script]
             .map((value) => (platform === "win32" ? `"${value}"` : `'${value.replaceAll("'", "'\"'\"'")}'`))
             .join(" ");
         const start = await tool.execute(

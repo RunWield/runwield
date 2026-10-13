@@ -10,8 +10,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

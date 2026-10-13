@@ -1,8 +1,8 @@
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { formatCodeReviewAnnotations, normalizeCodeReviewDecision, runCodeReview } from "./code-review.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { createScriptedReviewBrowser } from "./review-test-fixture.ts";
@@ -64,12 +64,14 @@ test("runCodeReview serves the real review surface and loads submitted image byt
     const scriptedBrowser = createScriptedReviewBrowser("feedback", {
         approved: false,
         feedback: "Use the attached reference.",
-        annotations: [{
-            filePath: "src/a.js",
-            lineStart: 1,
-            text: "Compare with the fixture.",
-            images: [{ path: imagePath, name: "review" }],
-        }],
+        annotations: [
+            {
+                filePath: "src/a.js",
+                lineStart: 1,
+                text: "Compare with the fixture.",
+                images: [{ path: imagePath, name: "review" }],
+            },
+        ],
     });
     try {
         let reviewUrl = "";
@@ -78,7 +80,7 @@ test("runCodeReview serves the real review surface and loads submitted image byt
             diffText: "diff --git a/src/a.js b/src/a.js\n+change",
             executionCwd: projectRoot,
             browser: scriptedBrowser.browser,
-            onSurfaceReady: (surface) => reviewUrl = surface.url,
+            onSurfaceReady: (surface) => (reviewUrl = surface.url),
         });
 
         assertEquals(result.feedback, "Use the attached reference.");
@@ -95,7 +97,7 @@ test("runCodeReview cancellation stops the real review server", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-code-review-cancel-"));
     const controller = new AbortController();
     let markOpened: () => void = () => {};
-    const opened = new Promise<void>((resolveOpened) => markOpened = resolveOpened);
+    const opened = new Promise<void>((resolveOpened) => (markOpened = resolveOpened));
     const browser: BrowserPort = {
         open: (_url: string) => {
             markOpened();
@@ -123,4 +125,13 @@ test("runCodeReview cancellation stops the real review server", async () => {
     } finally {
         await fsRm(projectRoot, { recursive: true });
     }
+});
+
+test("standalone actions survive normalization even without feedback or approval", () => {
+    for (const reviewAction of ["post_comments", "approve_pr", "approve_commit"]) {
+        const decision = normalizeCodeReviewDecision({ reviewAction });
+        assertEquals(decision.reviewAction, reviewAction);
+        assertEquals(decision.exit, false);
+    }
+    assertEquals(normalizeCodeReviewDecision({ reviewAction: "request_changes" }).reviewAction, undefined);
 });

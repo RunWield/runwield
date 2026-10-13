@@ -6,7 +6,7 @@ import {
     DefaultResourceLoader,
     SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import { isAbsolute, join } from "@std/path";
+import { isAbsolute, join } from "node:path";
 import { type RunWieldModel, RunWieldModelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK } from "../models/model-registry.ts";
 import {
     applySessionTemperature,

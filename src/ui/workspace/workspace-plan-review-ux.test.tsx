@@ -1,7 +1,8 @@
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 const ROUTE_PATH = "src/ui/workspace/pages/projects/[projectId]/plans/[planId].astro";
 const SURFACE_PATH = "src/ui/workspace/react/PlanReviewSurface.tsx";
@@ -178,11 +179,11 @@ test("Plan review offers a reusable Planner conversation without replacing Send 
 test("Code feedback action matches the Plan annotation sidebar treatment", async () => {
     const surface = await fsReadFile(CODE_SURFACE_PATH, "utf8");
     const sidebarIndex = surface.indexOf('className="rw-code-review-annotation-sidebar"');
-    const actionIndex = surface.indexOf('label="Send Annotations"');
+    const actionIndex = surface.indexOf(': "Send Annotations"');
     const listIndex = surface.indexOf("<ReviewSidebar", sidebarIndex);
 
     assertStringIncludes(surface, 'className="rw-review-feedback-action rw-review-action');
-    assertStringIncludes(surface, 'label="Send Annotations"');
+    assertStringIncludes(surface, ': "Send Annotations"');
     if (sidebarIndex < 0 || actionIndex < sidebarIndex || listIndex < actionIndex) {
         throw new Error("Code Review's Send Annotations action must sit above the annotation list");
     }
@@ -204,7 +205,7 @@ test("Code Review reuses artifact chat and reloads the republished file diff", a
     assertStringIncludes(surface, "waitForWorkspaceCodeReview");
     assertStringIncludes(surface, "setActiveRawPatch(options.rawPatch)");
     assertStringIncludes(surface, "conversationTurn: true");
-    assertStringIncludes(surface, 'label="Send Annotations"');
+    assertStringIncludes(surface, ': "Send Annotations"');
 });
 
 test("Code Review uses the Workspace header when embedded and preserves standalone controls", async () => {

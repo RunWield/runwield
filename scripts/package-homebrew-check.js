@@ -5,7 +5,7 @@ import process from "node:process";
  * Run local Homebrew checks for a rendered tap.
  */
 
-import { resolve } from "@std/path";
+import { resolve } from "node:path";
 
 const TAP_NAME = "gandazgul/tap";
 

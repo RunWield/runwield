@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { runOnboardCommand } from "./index.ts";
 
 test("wld onboard refuses a non-interactive terminal without starting a Session", async () => {

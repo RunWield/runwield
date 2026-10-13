@@ -6,8 +6,8 @@ import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:f
  * Sleep command: back up and conservatively optimize project memory.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { basename, dirname, join, resolve } from "@std/path";
+import { parseArgs } from "../../shared/cli-args.ts";
+import { basename, dirname, join, resolve } from "node:path";
 import { AGENTS, SLEEP_PROMPT_PATH } from "../../constants.js";
 import { ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";
 import { printCommandHelp } from "../help/index.ts";

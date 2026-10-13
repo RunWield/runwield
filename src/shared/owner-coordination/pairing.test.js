@@ -2,7 +2,8 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertMatch, assertThrows } from "@std/assert";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
 import { hashSecret, randomHumanCode } from "./crypto.ts";
 import {

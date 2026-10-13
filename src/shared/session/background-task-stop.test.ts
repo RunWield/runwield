@@ -1,8 +1,9 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { execPath, platform, versions } from "node:process";
-import { assert, assertEquals } from "@std/assert";
+import { execPath, platform } from "node:process";
+import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
@@ -20,7 +21,7 @@ while (!existsSync(${JSON.stringify(release)})) await new Promise(resolve => set
 process.stdout.write("must not run\\n");
 `,
         );
-        const command = [execPath, ...(versions.deno ? ["run", "-A"] : ["--no-env-file", "--no-install"]), script]
+        const command = [execPath, ...["--no-env-file", "--no-install"], script]
             .map((value) => (platform === "win32" ? `"${value}"` : `'${value.replaceAll("'", "'\"'\"'")}'`))
             .join(" ");
         let modelCalls = 0;

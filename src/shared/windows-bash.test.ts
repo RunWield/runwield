@@ -1,9 +1,9 @@
+import { assertEquals } from "../testing/assertions.ts";
 import process from "node:process";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { findWindowsBashPath } from "./windows-bash.ts";
 

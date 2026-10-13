@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { concurrentPlansIdentityScenario, concurrentWorkflowScenarios } from "./concurrent-workflow.ts";
 
 const scenarioExportNames = new Map<object, string>([

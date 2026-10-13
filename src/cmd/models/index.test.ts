@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getSettingsManager, setCustomSetting } from "../../shared/settings.js";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";

@@ -2,7 +2,7 @@
  * Composed Golden /resume journeys for persisted, corrupt, and interrupted Sessions.
  */
 
-import { assert } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 
 type GoldenResult = Parameters<typeof assertEventIncludes>[0];

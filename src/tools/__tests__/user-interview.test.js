@@ -1,6 +1,7 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assert, assertEquals, assertMatch } from "@std/assert";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { createUserInterviewTool } from "../user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 

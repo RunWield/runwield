@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -9,8 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";
@@ -20,7 +20,9 @@ function digestHex(bytes: Uint8Array): Promise<string> {
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
     return crypto.subtle.digest("SHA-256", buffer).then((digest) =>
-        Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("")
+        Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join(""),
     );
 }
 
@@ -90,7 +92,7 @@ async function countImageFiles(imageDir: string): Promise<number> {
         }
         return count;
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return 0;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return 0;
         throw error;
     }
 }
@@ -100,8 +102,8 @@ test("blocked managed local shell creates zero native processes for both persist
         const previousHome = process.env["HOME"];
         const fixture = await createDormantManagedSession("fenced-shell-blocked-");
         process.env["HOME"] = fixture.home;
-        const boundary = Reflect.get(globalThis, process.versions.deno ? "Deno" : "Bun");
-        const key = process.versions.deno ? "Command" : "spawn";
+        const boundary = Reflect.get(globalThis, "Bun");
+        const key = "spawn";
         const originalCommand = Reflect.get(boundary, key);
         let processCreations = 0;
         class CountingCommand {
@@ -111,7 +113,7 @@ test("blocked managed local shell creates zero native processes for both persist
             }
         }
         assertEquals(
-            Reflect.set(boundary, key, process.versions.deno ? CountingCommand : () => new CountingCommand()),
+            Reflect.set(boundary, key, () => new CountingCommand()),
             true,
         );
         const holder = fixture.store.acquireSessionActivation({

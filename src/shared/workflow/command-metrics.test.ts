@@ -1,9 +1,10 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { test } from "node:test";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { recordSlashCommandMetric, SlashCommandMetricsTracker } from "./command-metrics.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";

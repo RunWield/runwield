@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { realpathSync as fsRealpathSync } from "node:fs";
 import {
@@ -10,8 +11,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assert, assertEquals } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import {

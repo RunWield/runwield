@@ -8,7 +8,7 @@ import {
     type Message,
     type TranscriptContext,
 } from "@earendil-works/pi-ai";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import {

@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { projectRoutingWorkflowScenarios, routerArchitectSlicerScenario } from "./project-routing-workflow.ts";
 
 const scenarioExportNames = new Map([

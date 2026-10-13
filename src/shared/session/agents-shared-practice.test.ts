@@ -8,8 +8,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { assertEquals, assertMatch, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { _AGENT_ATTENTION_NUDGES, listAgentDefNames, loadAgentDef } from "./agents.js";
 
 const BUNDLED_AGENT_DEFS = join("src", "agent-definitions");

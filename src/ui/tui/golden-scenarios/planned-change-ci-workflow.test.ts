@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { plannedChangeCiRepairReentryScenario, plannedChangeNonGitInPlaceScenario } from "./planned-change-workflow.js";
 
 const scenarios = {

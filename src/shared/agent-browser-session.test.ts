@@ -1,5 +1,6 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals, assertMatch, assertNotEquals } from "@std/assert";
+import { match as assertMatch, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { createAgentBrowserSessionCleanup } from "./agent-browser-session.ts";
 
 test("agent-browser cleanup uses a unique wld namespace and runs once", () => {

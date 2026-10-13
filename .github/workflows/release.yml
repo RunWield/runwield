@@ -34,22 +34,25 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v5
               with:
-                  ref: ${{ inputs.tag || github.ref }}
+                  ref: ${{ github.sha }}
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Validate release metadata
               id: metadata
               env:
                   RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
               run: |
-                  deno task release:metadata --tag "$RELEASE_TAG" > metadata.json
-                  deno eval '
-                    const metadata = JSON.parse(await Deno.readTextFile("metadata.json"));
-                    if (metadata.tag !== Deno.env.get("RELEASE_TAG")) throw new Error("metadata tag mismatch");
+                  bun run release:metadata --tag "$RELEASE_TAG" > metadata.json
+                  bun -e '
+                    const metadata = JSON.parse(await Bun.file("metadata.json").text());
+                    if (metadata.tag !== process.env.RELEASE_TAG) throw new Error("metadata tag mismatch");
                     const lines = [
                       `tag=${metadata.tag}`,
                       `kind=${metadata.kind}`,
@@ -57,7 +60,7 @@ jobs:
                       `prerelease=${metadata.prerelease}`,
                       `make_latest=${metadata.makeLatest}`,
                     ];
-                    await Deno.writeTextFile(Deno.env.get("GITHUB_OUTPUT"), lines.join("\n") + "\n", { append: true });
+                    await (await import("node:fs/promises")).appendFile(process.env.GITHUB_OUTPUT, lines.join("\n") + "\n");
                   '
 
             - name: Generate one workspace encryption key for all release targets
@@ -86,8 +89,6 @@ jobs:
             matrix:
                 shard: [1, 2, 3, 4]
         env:
-            DENO_DIR: /tmp/runwield-deno-dir
-            WLD_TEST_DENO_DIR: /tmp/runwield-deno-dir
             WLD_TEST_SHARD: ${{ matrix.shard }}/4
             WLD_TEST_CONCURRENCY: "4"
 
@@ -97,10 +98,13 @@ jobs:
               with:
                   submodules: recursive
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Restore Snip binary
               id: snip-cache
@@ -115,12 +119,6 @@ jobs:
               with:
                   go-version: "1.25.x"
                   cache: false
-
-            - name: Restore Deno dependency cache
-              uses: actions/cache@v4
-              with:
-                  path: /tmp/runwield-deno-dir
-                  key: deno-tests-${{ runner.os }}-${{ hashFiles('deno.lock') }}
 
             - name: Restore source timing history
               uses: actions/cache/restore@v4
@@ -151,7 +149,7 @@ jobs:
 
             - name: Run source-quality gate
               timeout-minutes: 15
-              run: deno task ci --source-only
+              run: bun run ci --source-only
 
             - name: Save source timing history
               if: always() && hashFiles('.ci-cache/tests-*-timings.json') != ''
@@ -198,9 +196,7 @@ jobs:
             matrix:
                 shard: [1, 2, 3, 4]
         env:
-            DENO_DIR: /tmp/runwield-deno-dir
             WLD_TEST_SHARD: ${{ matrix.shard }}/4
-            WLD_TEST_DENO_DIR: /tmp/runwield-deno-dir
 
         steps:
             - name: Checkout
@@ -209,10 +205,13 @@ jobs:
                   ref: ${{ needs.metadata.outputs.tag }}
                   submodules: recursive
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Restore Snip binary
               id: snip-cache
@@ -227,12 +226,6 @@ jobs:
               with:
                   go-version: "1.25.x"
                   cache: false
-
-            - name: Restore Deno dependency cache
-              uses: actions/cache@v4
-              with:
-                  path: /tmp/runwield-deno-dir
-                  key: deno-tests-${{ runner.os }}-${{ hashFiles('deno.lock') }}
 
             - name: Restore Golden timing history
               uses: actions/cache/restore@v4
@@ -263,7 +256,7 @@ jobs:
             - name: Run Golden TUI release gate
               env:
                   WLD_TEST_CONCURRENCY: "3"
-              run: deno task test:golden-tui:extensive --fail-fast --timings-file .ci-cache/golden-timings.json
+              run: bun scripts/write-version.js && bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios --fail-fast --timings-file .ci-cache/golden-timings.json
 
             - name: Save Golden timing history
               if: always() && hashFiles('.ci-cache/golden-timings.json') != ''
@@ -284,7 +277,7 @@ jobs:
             - name: Print Golden failure logs
               if: failure()
               run: |
-                  for log in /tmp/tests-failure-*.log; do
+                  for log in /tmp/*-failure-*.log; do
                     if [[ -f "$log" ]]; then
                       echo "::group::$log"
                       cat "$log"
@@ -299,15 +292,12 @@ jobs:
                   name: golden-failure-${{ matrix.shard }}-${{ github.run_attempt }}
                   include-hidden-files: true
                   path: |
-                      /tmp/tests-failure-*.log
+                      /tmp/*-failure-*.log
                       /tmp/runwield-test-sandboxes-*-evidence/**
 
     release-check:
         runs-on: ubuntu-latest
         needs: metadata
-        env:
-            WLD_TEST_DENO_DIR: /tmp/runwield-deno-dir
-
         steps:
             - name: Checkout
               uses: actions/checkout@v5
@@ -379,7 +369,13 @@ jobs:
               env:
                   WLD_BUILD_VERSION: ${{ needs.metadata.outputs.build_version }}
                   ASTRO_KEY: ${{ needs.metadata.outputs.astro_key }}
-              run: bun run compile:bun "${{ matrix.binary_name }}" "${{ matrix.bun_target }}"
+              run: |
+                  if [ -f scripts/compile-command.ts ]; then
+                    bun run compile --output "${{ matrix.binary_name }}" --target "${{ matrix.target }}"
+                  else
+                    # Immutable RC1 checkouts predate the Bun implementation of `compile`.
+                    bun run compile:bun "${{ matrix.binary_name }}" "${{ matrix.bun_target }}"
+                  fi
 
             - name: Smoke test native binary
               if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -442,10 +438,13 @@ jobs:
                   ref: ${{ needs.metadata.outputs.tag }}
                   path: release-source
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Download matrix artifacts
               if: needs.metadata.outputs.published != 'true'
@@ -461,7 +460,7 @@ jobs:
                   RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
               run: |
                   cp release-source/config.schema.json release-artifacts/config.schema.json
-                  deno run -A scripts/release-assets.js release-artifacts release-upload "$RELEASE_TAG"
+                  bun scripts/release-assets.js release-artifacts release-upload "$RELEASE_TAG"
 
             - name: Reuse and verify published assets
               if: needs.metadata.outputs.published == 'true'
@@ -471,7 +470,7 @@ jobs:
               run: |
                   gh release download "$RELEASE_TAG" --dir release-artifacts
                   gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > published-release.json
-                  deno run -A scripts/release-assets.js release-artifacts release-upload "$RELEASE_TAG" published published-release.json
+                  bun scripts/release-assets.js release-artifacts release-upload "$RELEASE_TAG" published published-release.json
 
             - name: Retain checked release bytes
               uses: actions/upload-artifact@v5
@@ -489,10 +488,13 @@ jobs:
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Download Windows package artifact
               uses: actions/download-artifact@v5
@@ -505,7 +507,7 @@ jobs:
               run: |
                   $zip = Get-ChildItem windows-package -Filter "wld-*-windows-x64.zip" | Select-Object -First 1
                   if (-not $zip) { throw "Windows package ZIP not found" }
-                  deno task package:windows:check --package $zip.FullName
+                  bun run package:windows:check --package $zip.FullName
 
     homebrew-check:
         if: ${{ !cancelled() && needs.assets.result == 'success' }}
@@ -518,10 +520,13 @@ jobs:
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Verify Stable package credentials
               if: needs.metadata.outputs.kind == 'stable'
@@ -560,9 +565,9 @@ jobs:
                     if curl --fail --silent http://127.0.0.1:8765/SHA256SUMS > /dev/null; then break; fi
                     sleep 1
                   done
-                  deno task package:homebrew --wld-tag "$RELEASE_TAG" --mnemoteca-tag v0.3.3 \
+                  bun run package:homebrew --wld-tag "$RELEASE_TAG" --mnemoteca-tag v0.3.3 \
                     --output homebrew-check --test-only --wld-base-url http://127.0.0.1:8765
-                  deno task package:homebrew:check --tap homebrew-check
+                  bun run package:homebrew:check --tap homebrew-check
 
     release:
         if: ${{ !cancelled() && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.windows-package-check.result == 'success' && needs.homebrew-check.result == 'success' }}
@@ -613,14 +618,17 @@ jobs:
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Render WinGet manifest artifact
               run: |
-                  deno task package:winget --tag "${{ needs.metadata.outputs.tag }}" --output winget-manifests
+                  bun run package:winget --tag "${{ needs.metadata.outputs.tag }}" --output winget-manifests
                   tar -czf "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz" -C winget-manifests .
                   shasum -a 256 "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz" > "runwield-winget-manifests-${{ needs.metadata.outputs.tag }}.tar.gz.sha256"
 
@@ -726,10 +734,13 @@ jobs:
               with:
                   ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Verify Homebrew tap credential
               env:
@@ -742,7 +753,7 @@ jobs:
 
             - name: Render Homebrew tap
               run: |
-                  deno task package:homebrew \
+                  bun run package:homebrew \
                     --wld-tag "${{ needs.metadata.outputs.tag }}" \
                     --mnemoteca-tag "v0.3.3" \
                     --output homebrew-tap
@@ -762,7 +773,7 @@ jobs:
                   if [[ -L "$openssl_link" && "$(readlink "$openssl_link")" == "$brew_prefix/opt/openssl@1.1/bin/openssl" ]]; then
                     unlink "$openssl_link"
                   fi
-                  deno task package:homebrew:check --tap homebrew-tap
+                  bun run package:homebrew:check --tap homebrew-tap
 
             - name: Archive verified Homebrew tap
               run: |

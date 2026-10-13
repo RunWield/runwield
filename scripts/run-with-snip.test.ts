@@ -12,8 +12,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { runBoundedTest, runWithSnip } from "./run-with-snip.ts";
 
 async function writeSnipFixture(root: string, stdout: string, stderr: string, code = 0): Promise<void> {

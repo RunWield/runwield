@@ -1,6 +1,6 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../../testing/assertions.ts";
 import { reviewCollapseStatePlugin } from "./review-collapse-state.ts";
 
 const component = new URL(

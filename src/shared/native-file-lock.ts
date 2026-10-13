@@ -20,29 +20,6 @@ export interface NativeLockSnapshot {
     size: number;
     mtime: number;
 }
-interface DenoLockFile {
-    tryLockSync(exclusive?: boolean): boolean;
-    lockSync(exclusive?: boolean): void;
-    lock(exclusive?: boolean): Promise<void>;
-    unlockSync(): void;
-    close(): void;
-    seekSync(offset: number, whence: number): number;
-    readSync(buffer: Uint8Array): number | null;
-    writeSync(buffer: Uint8Array): number;
-    truncateSync(length: number): void;
-    syncSync(): void;
-    statSync(): { size: number; mtime: Date | null };
-}
-interface DenoLockRuntime {
-    openSync(path: string, options: DenoLockOpenOptions): DenoLockFile;
-}
-interface DenoLockOpenOptions {
-    read: boolean;
-    write: boolean;
-    create: boolean;
-    createNew: boolean;
-    mode: number;
-}
 interface NativeFunction {
     args: string[];
     returns: string;
@@ -68,10 +45,9 @@ let posixAPI: PosixLockAPI | undefined;
 function getPosixLockAPI(): PosixLockAPI {
     if (posixAPI) return posixAPI;
     if (!versions.bun || (platform !== "darwin" && platform !== "linux")) {
-        throw new Error("Native file locks require Deno or Bun on macOS/Linux");
+        throw new Error("Native file locks require Bun on macOS/Linux");
     }
-    // Load the runtime capability only in Bun; the Deno transition path keeps its
-    // native implementation. This also keeps bun:ffi out of Deno's module graph.
+    // Load the native Bun capability only when a POSIX lock is requested.
     const ffi: BunLockFFI = createRequire(import.meta.url)("bun:ffi");
     const errnoSymbol = platform === "darwin" ? "__error" : "__errno_location";
     const library = ffi.dlopen(platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6", {
@@ -94,66 +70,6 @@ function lockError(errno: number): NodeJS.ErrnoException {
 
 /** Opening does not acquire a lock or truncate an existing lock file. */
 export function openNativeFileLock(path: string, create: boolean | "exclusive" = true): NativeFileLock {
-    if (versions.deno) {
-        const deno: DenoLockRuntime = Reflect.get(globalThis, String("Deno"));
-        let file: DenoLockFile;
-        try {
-            file = deno.openSync(path, {
-                read: true,
-                write: true,
-                create: create === true,
-                createNew: create === "exclusive",
-                mode: 0o600,
-            });
-        } catch (error) {
-            if (error instanceof Error) {
-                const codes: Record<string, string> = {
-                    AlreadyExists: "EEXIST",
-                    NotFound: "ENOENT",
-                    PermissionDenied: "EACCES",
-                    NotADirectory: "ENOTDIR",
-                };
-                const code = codes[error.name];
-                if (code) Object.assign(error, { code });
-            }
-            throw error;
-        }
-        return {
-            tryLockSync: (exclusive) => file.tryLockSync(exclusive),
-            lockSync: (exclusive) => file.lockSync(exclusive),
-            lock: (exclusive) => file.lock(exclusive),
-            unlockSync: () => file.unlockSync(),
-            close: () => file.close(),
-            readSnapshotSync() {
-                const stat = file.statSync();
-                file.seekSync(0, 0);
-                const bytes = new Uint8Array(stat.size);
-                let offset = 0;
-                while (offset < bytes.length) {
-                    const count = file.readSync(bytes.subarray(offset));
-                    if (count === null || count === 0) break;
-                    offset += count;
-                }
-                return {
-                    text: new TextDecoder().decode(bytes.subarray(0, offset)),
-                    size: stat.size,
-                    mtime: stat.mtime?.getTime() ?? Date.now(),
-                };
-            },
-            replaceTextSync(text) {
-                file.truncateSync(0);
-                file.seekSync(0, 0);
-                const bytes = new TextEncoder().encode(text);
-                let offset = 0;
-                while (offset < bytes.length) {
-                    const count = file.writeSync(bytes.subarray(offset));
-                    if (count === 0) throw new Error("Lock metadata write made no progress");
-                    offset += count;
-                }
-                file.syncSync();
-            },
-        };
-    }
     if (versions.bun && platform === "win32") return openWindowsFileLock(path, create);
     const api = getPosixLockAPI();
     let fd = openSync(

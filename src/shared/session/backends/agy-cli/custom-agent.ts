@@ -8,7 +8,7 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getHomeDir } from "../../../../constants.js";
 
 export interface AgyCustomAgentPaths {

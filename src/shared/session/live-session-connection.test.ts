@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { createHash } from "node:crypto";
 import { Agent, request } from "node:http";
 import { platform } from "node:process";
@@ -6,7 +7,6 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { mock, test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
 import { HostedSession } from "./hosted-session.js";
 import {
     type LiveSessionRuntime,

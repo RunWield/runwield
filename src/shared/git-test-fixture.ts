@@ -26,7 +26,7 @@ import { copyFile, mkdir, mkdtemp, readdir, readlink, symlink, writeFile } from 
  * the production code it is meant to check.
  */
 
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 
 /**
  * Copy a directory tree.

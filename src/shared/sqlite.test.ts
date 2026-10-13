@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "../testing/assertions.ts";
 import { DatabaseSync } from "./sqlite.ts";
 
 test("SQLite closes prepared statements before a database file is recreated", async () => {

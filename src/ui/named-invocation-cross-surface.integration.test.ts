@@ -1,8 +1,9 @@
 // @ts-nocheck: cross-surface protocol payloads are checked by runtime assertions.
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";

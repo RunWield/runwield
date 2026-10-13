@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "../src/testing/assertions.ts";
 import { bunArtifactTarget } from "./compile-bun.ts";
 import bunAdapter from "../src/ui/workspace/integrations/bun-adapter.ts";
 

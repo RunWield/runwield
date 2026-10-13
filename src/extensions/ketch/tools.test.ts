@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { createKetchTools, type KetchToolHost, MAX_WEB_FETCH_CHARS } from "./tools.ts";
 import type { HelperBinaryExecResult } from "../helper-binary-exec.ts";

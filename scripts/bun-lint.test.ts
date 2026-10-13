@@ -1,5 +1,6 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { lintSource } from "./bun-lint.ts";
 import mapping from "./bun-lint-rules.json" with { type: "json" };
 

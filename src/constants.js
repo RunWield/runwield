@@ -12,7 +12,7 @@ import { RUNWIELD_SOURCE_ROOT } from "../runtime-root.js";
 export const CLI_BIN = "wld";
 
 /** Fallback source-run invocation used in contributor docs and local dev. */
-export const DEV_CLI_RUN = "deno run -A --unstable-no-legacy-abort src/cli.ts";
+export const DEV_CLI_RUN = "bun src/cli.ts";
 
 /** Legacy project-local collaboration secret path, retained for migration and Git hazard checks. */
 export const PROJECT_SECRET_STORE_RELATIVE_PATH = ".wld/collaboration-secrets.json";
@@ -201,8 +201,11 @@ export function getRunWieldRuntimeDir(projectRoot) {
     if (!sandboxHome) return join(projectRoot, RUNWIELD_DIR_NAME);
     // Keyed by project root so a test that does use its own project still gets its
     // own lock namespace, and readable so a stray file can be traced back.
-    const slug = String(projectRoot).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(-80) ||
-        "project";
+    const slug =
+        String(projectRoot)
+            .replace(/[^a-zA-Z0-9._-]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(-80) || "project";
     return join(sandboxHome, "project-runtime", slug, RUNWIELD_DIR_NAME);
 }
 
@@ -258,25 +261,15 @@ export function isTestModulePath(path) {
     return TEST_MODULE_PATTERN.test(path);
 }
 
-// Under `deno test`, Deno.mainModule is the test file for each realm, and it is
-// never a test module under the wld binary or `deno run`. Evaluated once: a
-// realm's main module cannot change.
-const IS_TEST_REALM = (() => {
-    try {
-        // Keep Deno's per-realm main module during the transition. Bun's test
-        // preload supplies the stronger before-import sandbox check as well.
-        /** @type {{ mainModule?: string } | undefined} */
-        const deno = Reflect.get(globalThis, String("Deno"));
-        if (deno?.mainModule) return isTestModulePath(new URL(deno.mainModule).pathname);
-        return isTestModulePath(argv[1] || "") || Boolean(versions.bun && argv[1] === "test") ||
-            Boolean(readOptionalEnv("NODE_TEST_CONTEXT"));
-    } catch {
-        return false;
-    }
-})();
+// Bun's preload enforces the sandbox before imports; keep the module-level guard
+// for subprocesses that enter through a test file or Node's test context.
+const IS_TEST_REALM =
+    isTestModulePath(argv[1] || "") ||
+    Boolean(versions.bun && argv[1] === "test") ||
+    Boolean(readOptionalEnv("NODE_TEST_CONTEXT"));
 
 const UNSANDBOXED_TEST_RUN_MESSAGE =
-    "Run the suite with `deno task test` or `bun run test:bun`, whose isolated runners point HOME and " +
+    "Run the suite with `bun run test`, whose isolated runners point HOME and " +
     "MNEMOTECA_DB_PATH at a sandbox. Direct test commands can overwrite real ~/.wld and memory databases.";
 
 // Fail the moment a test realm loads this module without the sandbox marker
@@ -305,8 +298,10 @@ if (IS_TEST_REALM && !readOptionalEnv("WLD_TEST_SANDBOX_HOME")) {
  */
 export function describeUnsandboxedTestRun({ isTestRealm, sandboxHome, homeDir }) {
     if (!isTestRealm || !homeDir || sandboxHome || isTempTestHome(homeDir)) return null;
-    return `Refusing to resolve a home directory (${homeDir}) during an unsandboxed test run. ` +
-        UNSANDBOXED_TEST_RUN_MESSAGE;
+    return (
+        `Refusing to resolve a home directory (${homeDir}) during an unsandboxed test run. ` +
+        UNSANDBOXED_TEST_RUN_MESSAGE
+    );
 }
 
 /**

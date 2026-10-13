@@ -1,5 +1,5 @@
 /** Runtime fatal-error events used to restore the terminal before termination. */
-import process, { versions } from "node:process";
+import process from "node:process";
 
 interface CrashEventRuntime {
     addEventListener(type: string, handler: () => void): void;
@@ -8,7 +8,7 @@ interface CrashEventRuntime {
 
 const rejectionListeners = new WeakMap<() => void, (reason: Error) => void>();
 
-export const SYSTEM_TUI_CRASH_EVENTS: CrashEventRuntime = versions.deno ? globalThis : {
+export const SYSTEM_TUI_CRASH_EVENTS: CrashEventRuntime = {
     addEventListener(type, handler) {
         if (type === "error") {
             // Monitoring must not consume the exception or suppress termination.

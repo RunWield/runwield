@@ -6,8 +6,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { loadPlan, updatePlanStatus } from "../../plan-store.js";
 import { presentEpicChildPlan, resolveEpicContinuation } from "./epic-continuation.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";

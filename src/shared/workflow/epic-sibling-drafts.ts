@@ -24,7 +24,7 @@ import {
     withPlanCatalogLock,
     withPlanLock,
 } from "../../plan-store.js";
-import { join } from "@std/path";
+import { join } from "node:path";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../epic-artifacts.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";

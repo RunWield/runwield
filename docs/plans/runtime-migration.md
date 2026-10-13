@@ -20,6 +20,11 @@ status: "draft"
 
 # Migrate RunWield's runtime without weakening storage or isolation
 
+Current contributor commands retain the original task names; use `bun run compile --output <path>` and `bun run ci`.
+Dated checkpoints below record the transitional names used at the time. See [the task compatibility audit](bun-task-compatibility.md).
+Carlos subsequently approved Bun-only test container definitions without equivalent Deno permissions; see
+[the phase-2 plan](bun-only-toolchain.md) for the current container scope.
+
 ## Context and recovered decisions
 
 Carlos requested continued migration work while away. The October 10 runtime discussion selected a Bun proof of concept

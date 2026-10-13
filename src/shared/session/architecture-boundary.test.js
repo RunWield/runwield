@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import { readdir as fsReaddir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
-import { assertEquals, assertRejects } from "@std/assert";
-import { dirname, fromFileUrl, join, relative, resolve } from "@std/path";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { createSessionRuntime, SessionRuntime } from "./session-runtime.ts";
 
 const REPO_ROOT = resolve(dirname(fromFileUrl(import.meta.url)), "../../..");

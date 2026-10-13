@@ -4,7 +4,8 @@ import process from "node:process";
  * Composed Golden PLANNED_CHANGE workflow scenarios.
  */
 
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
 
@@ -809,8 +810,8 @@ export const plannedChangeNonGitInPlaceScenario = {
             promptIncludes: "Enter the command that runs this project's tests",
             value:
                 process.platform === "win32"
-                    ? `"${process.execPath}" ${process.versions.deno ? "eval" : "-e"} "true"`
-                    : `'${process.execPath.replaceAll("'", "'\\''")}' ${process.versions.deno ? "eval" : "-e"} 'true'`,
+                    ? `"${process.execPath}" ${"-e"} "true"`
+                    : `'${process.execPath.replaceAll("'", "'\\''")}' ${"-e"} 'true'`,
         },
     ],
     script: [
@@ -918,7 +919,7 @@ export const plannedChangeValidationFailureRetryScenario = {
                 {
                     verification_command:
                         process.platform === "win32"
-                            ? `"${process.execPath}" ${process.versions.deno ? "eval" : "-e"} "import fs from 'node:fs'; import process from 'node:process'; if (fs.readFileSync('golden-validation-retry.txt', 'utf8') !== 'repaired') process.exit(1);"`
+                            ? `"${process.execPath}" ${"-e"} "import fs from 'node:fs'; import process from 'node:process'; if (fs.readFileSync('golden-validation-retry.txt', 'utf8') !== 'repaired') process.exit(1);"`
                             : 'test "$(cat golden-validation-retry.txt)" = repaired',
                 },
                 null,

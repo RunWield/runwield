@@ -1,6 +1,7 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";

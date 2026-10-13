@@ -1,6 +1,6 @@
 import process from "node:process";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeLongReplayFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";

@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertStringIncludes } from "../../testing/assertions.ts";
 import stripAnsi from "strip-ansi";
 import { getMarkdownTheme, initRunWieldTheme } from "../theme/theme.js";
 import { MermaidMarkdown } from "./mermaid-markdown.js";

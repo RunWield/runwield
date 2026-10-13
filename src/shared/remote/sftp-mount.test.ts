@@ -16,8 +16,9 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { installedLaptopPackageRoots, mountLaptopHome, startLaptopSftp, validateMountHeader } from "./sftp-mount.ts";

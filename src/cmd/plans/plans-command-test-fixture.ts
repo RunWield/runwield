@@ -3,7 +3,7 @@ import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
 import { mkdir as fsMkdir, realpath as fsRealpath, rm as fsRm } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 export interface PlanCommandFixture {

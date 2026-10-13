@@ -12,8 +12,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { resolveProjectRuntimeLayout } from "../../shared/project-runtime-layout.ts";

@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "../shared/session/hosted-session.js";
 import { runIsolatedAgentSession } from "../shared/session/session.js";

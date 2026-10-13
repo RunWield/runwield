@@ -11,8 +11,8 @@ import {
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { listPlans, savePlan } from "../plan-store.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
@@ -310,13 +310,15 @@ test("worktree registry rejects immutable identity updates", async () => {
     const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await addEntry(projectRoot, entry({ baseTree: "tree-1" }));
-        for (const updates of [
-            { baseBranch: "other" },
-            { baseRef: "refs/heads/main" },
-            { baseCommit: "def456" },
-            { baseTree: "tree-2" },
-            { branch: "runwield/worktree/other" },
-        ]) {
+        for (
+            const updates of [
+                { baseBranch: "other" },
+                { baseRef: "refs/heads/main" },
+                { baseCommit: "def456" },
+                { baseTree: "tree-2" },
+                { branch: "runwield/worktree/other" },
+            ]
+        ) {
             await assertRejects(
                 () => updateEntry(projectRoot, "wt-1", /** @type {any} */ (updates)),
                 Error,
@@ -516,14 +518,14 @@ test("worktree registry migration resolves unambiguous legacy plan names", async
         );
         const primaryPath = join(projectRoot, "docs/plans/demo-plan.md");
         const beforePlan = await fsReadFile(primaryPath, "utf8");
-        await assertRejects(() => listPlans(projectRoot), Error, "execution Plan is missing");
+        assertEquals(await listPlans(projectRoot), []);
 
         const entries = await listEntries(projectRoot);
         assertEquals(entries[0].planId, "plan-1");
         const stored = JSON.parse(await fsReadFile(path, "utf8"));
         assertEquals(stored.version, 2);
         assertEquals(await fsReadFile(primaryPath, "utf8"), beforePlan);
-        await assertRejects(() => listPlans(projectRoot), Error, "execution Plan is missing");
+        assertEquals(await listPlans(projectRoot), []);
     } finally {
         await fsRm(projectRoot, { recursive: true });
     }

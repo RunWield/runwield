@@ -4,7 +4,7 @@ import fsPromises from "node:fs/promises";
  * Shared project-state detection and user-facing text.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 
 export const EMPTY_PROJECT_DIRECTORY_HEADER = "Empty directory detected";
 export const EMPTY_PROJECT_DIRECTORY_WELCOME_BODY =

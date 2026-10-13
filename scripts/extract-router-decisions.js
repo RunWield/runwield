@@ -7,8 +7,8 @@ import process from "node:process";
  * Extract Router triage decisions from persisted RunWield session JSONL files.
  */
 
-import { basename, join } from "@std/path";
-import { parseArgs } from "@std/cli/parse-args";
+import { basename, join } from "node:path";
+import { parseArgs } from "../src/shared/cli-args.ts";
 import { ROUTING_INTENTS } from "../src/constants.js";
 
 const PLAN_ROUTING_INTENTS = ["FEATURE", "PROJECT"];
@@ -324,7 +324,7 @@ export async function main(argv) {
 
     if (args.help) {
         console.log([
-            "Usage: deno run -A scripts/extract-router-decisions.js [options]",
+            "Usage: bun scripts/extract-router-decisions.js [options]",
             "",
             "Options:",
             "  --sessions-dir <dir>  Session directory to read",

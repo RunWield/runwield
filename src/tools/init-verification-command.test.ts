@@ -7,9 +7,9 @@ import {
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
-import { parse as parseJsonc } from "@std/jsonc";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
+import { join } from "node:path";
+import { parse as parseJsonc } from "../shared/jsonc.ts";
 import type { AgentToolResult, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import {
     createInitVerificationCommandOperation,

@@ -8,8 +8,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { checkpointExecutionWorktree, removeWorktreeGitArtifacts } from "./worktree.js";
 import { HostedSession } from "./session/hosted-session.js";

@@ -7,8 +7,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { assertEquals, assertMatch, assertNotMatch, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { match as assertMatch, doesNotMatch as assertNotMatch } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../docs-file-tools.js";
 
 /**

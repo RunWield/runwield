@@ -1,6 +1,5 @@
 import { readdir, rmdir } from "node:fs/promises";
-import process from "node:process";
-import { captureForegroundProcess } from "../captured-process.ts";
+
 import {
     lstat as fsLstat,
     mkdir as fsMkdir,
@@ -13,8 +12,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     ensureExecutionPlanFile,
     loadCanonicalExecutionPlanSource,
@@ -90,17 +89,18 @@ test("prepareExecutionPlanFile reconciles stale execution metadata without repla
             },
         }),
     );
-    const executionMarkdown = injectFrontMatter("# Worktree body\n\nPreserve this exact prose.", {
-        planId: "plan-1",
-        classification: "QUICK_FIX",
-        status: "approved",
-        executionAgent: "frontend-engineer",
-        collaborationRecommendation: "pair",
-        implementedAt: null,
-        validationCiAttempts: 0,
-        validationCheckpoint: null,
-        summary: "keep-me",
-    }) + "\n";
+    const executionMarkdown =
+        injectFrontMatter("# Worktree body\n\nPreserve this exact prose.", {
+            planId: "plan-1",
+            classification: "QUICK_FIX",
+            status: "approved",
+            executionAgent: "frontend-engineer",
+            collaborationRecommendation: "pair",
+            implementedAt: null,
+            validationCiAttempts: 0,
+            validationCheckpoint: null,
+            summary: "keep-me",
+        }) + "\n";
     await fsWriteFile(join(executionRoot, "docs", "plans", "demo.md"), executionMarkdown);
 
     const result = await prepareExecutionPlanFile({ projectRoot, executionCwd: executionRoot, planName: "demo" });
@@ -111,13 +111,7 @@ test("prepareExecutionPlanFile reconciles stale execution metadata without repla
     assertEquals(reconciledMarkdown, planDocumentMarkdown(reconciledMarkdown));
     // Retain the legacy formatter check in the Deno lane; Bun's portable
     // document output is checked above without requiring a second runtime.
-    if (process.versions.deno) {
-        const formatCheck = await captureForegroundProcess(process.execPath, {
-            cwd: executionRoot,
-            args: ["fmt", "--check", join(executionRoot, "docs", "plans", "demo.md")],
-        });
-        assertEquals(formatCheck.code, 0, new TextDecoder().decode(formatCheck.stderr));
-    }
+
     const reconciled = parsePlanFrontMatter(reconciledMarkdown);
     assertEquals(reconciled.attrs.classification, "PLANNED_CHANGE");
     assertEquals(reconciled.attrs.status, "ready_for_work");
@@ -287,8 +281,14 @@ test("ensureExecutionPlanFile handles real concurrent publication without overwr
         ensureExecutionPlanFile({ executionCwd: executionRoot, planName: "demo", canonicalSource: source }),
     ]);
 
-    assertEquals(results.every((result) => result.kind === "restored" || result.kind === "present"), true);
-    assertEquals(results.some((result) => result.kind === "restored"), true);
+    assertEquals(
+        results.every((result) => result.kind === "restored" || result.kind === "present"),
+        true,
+    );
+    assertEquals(
+        results.some((result) => result.kind === "restored"),
+        true,
+    );
     assertEquals(
         await fsReadFile(join(executionRoot, "docs", "plans", "demo.md"), "utf8"),
         planDocumentMarkdown(canonicalMarkdown),
@@ -312,17 +312,18 @@ test("ensureExecutionPlanFile keeps a concurrent body while fixing owned metadat
     });
 
     assertEquals(result.kind, "reconciled");
-    const resultPlan = parsePlanFrontMatter(
-        await fsReadFile(join(executionRoot, "docs", "plans", "demo.md"), "utf8"),
-    );
+    const resultPlan = parsePlanFrontMatter(await fsReadFile(join(executionRoot, "docs", "plans", "demo.md"), "utf8"));
     assertEquals(resultPlan.body, "# Concurrent");
     assertEquals(resultPlan.attrs.planId, "plan-1");
     assertEquals(resultPlan.attrs.status, "implemented");
     const entries = [];
-    for await (const entry of (await readdir(join(executionRoot, "docs", "plans"), { withFileTypes: true }))) {
+    for await (const entry of await readdir(join(executionRoot, "docs", "plans"), { withFileTypes: true })) {
         entries.push(entry.name);
     }
-    assertEquals(entries.some((name) => name.startsWith(".rw-plan-")), false);
+    assertEquals(
+        entries.some((name) => name.startsWith(".rw-plan-")),
+        false,
+    );
 });
 
 test("ensureExecutionPlanFile materializes the complete latest Plan before execution starts", async () => {

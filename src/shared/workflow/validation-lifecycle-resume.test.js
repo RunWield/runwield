@@ -1,6 +1,6 @@
 import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.js";
 
 /** @param {string} projectRoot */

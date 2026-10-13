@@ -13,8 +13,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { basename, dirname, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { basename, dirname, join } from "node:path";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";

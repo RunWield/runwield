@@ -2,7 +2,7 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createTuiInteractionAdapter as createAdapter } from "./runtime-interaction-adapter.js";
 import { getStoredPlanPath, savePlan } from "../../plan-store.js";

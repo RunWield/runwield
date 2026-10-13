@@ -10,7 +10,7 @@ import { rm as fsRm, stat as fsStat } from "node:fs/promises";
  * used to prove each transition.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT, type WorkRecordMnemotecaPort } from "../work-records/mnemoteca-port.ts";
 import { hasFinalizedPublicationLifecycle, indexPublishedWorkRecords } from "../publication-lifecycle.ts";
 import { canonicalizeStoredPlanName, isChildFeaturePlan, parsePlanFrontMatter } from "../../plan-store.js";

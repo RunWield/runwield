@@ -22,8 +22,8 @@ import process from "node:process";
 import { createSessionRuntime } from "./session-runtime.ts";
 import { RuntimeEventTypes } from "./session-runtime-events.js";
 import type { SessionRuntimeEvent } from "./session-runtime-events.js";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { AGENTS, SUBAGENTS } from "../../constants.js";
 import { loadPlan } from "../../plan-store.js";
@@ -113,9 +113,7 @@ await Promise.all(streams);
 process.exit(code ?? 1);
 `,
     );
-    const compileArgs = process.versions.deno
-        ? ["compile", "--output", outputPath, "-A", "--no-check", sourcePath]
-        : ["build", "--compile", "--outfile", outputPath, sourcePath];
+    const compileArgs = ["build", "--compile", "--outfile", outputPath, sourcePath];
     const output = await captureForegroundProcess(process.execPath, { args: compileArgs, cwd: getCwd() });
     if (!output.success) throw new Error(new TextDecoder().decode(output.stderr));
     return outputPath;

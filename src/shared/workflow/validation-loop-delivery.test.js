@@ -1,6 +1,6 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { loadPlan, savePlan } from "../../plan-store.js";
 import {

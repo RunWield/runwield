@@ -21,26 +21,29 @@ jobs:
                   ref: ${{ inputs.ref }}
                   submodules: recursive
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Generate version file
               env:
                   WLD_BUILD_VERSION: v0.10.1-rc.9
-              run: deno run -A scripts/write-version.js
+              run: bun scripts/write-version.js
 
             - name: Cache dependencies
-              run: deno cache scripts/compile.js src/cli.ts
+              run: bun run install:locked
 
             - name: Compile Windows binary
               env:
                   WLD_BUILD_VERSION: v0.10.1-rc.9
-              run: deno run -A scripts/compile.js --target x86_64-pc-windows-msvc --output wld.exe
+              run: bun run compile --output wld.exe --target bun-windows-x64
 
             - name: Package Windows artifact
-              run: deno task package:windows --tag v0.10.1-rc.9 --binary wld.exe --output .
+              run: bun run package:windows --tag v0.10.1-rc.9 --binary wld.exe --output .
 
             - name: Upload Windows artifact
               uses: actions/upload-artifact@v5
@@ -60,10 +63,13 @@ jobs:
               with:
                   ref: ${{ inputs.ref }}
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Download Windows artifact
               uses: actions/download-artifact@v5
@@ -76,4 +82,4 @@ jobs:
               run: |
                   $zip = Get-ChildItem windows-package -Filter "wld-*-windows-x64.zip" | Select-Object -First 1
                   if (-not $zip) { throw "Windows package ZIP not found" }
-                  deno task package:windows:check --package $zip.FullName
+                  bun run package:windows:check --package $zip.FullName

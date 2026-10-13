@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { test } from "node:test";
@@ -5,7 +6,6 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
 import { fileURLToPath } from "node:url";
 
 test("Astro dev toolbar remains loadable after Workspace navigation modules load", async () => {
@@ -13,7 +13,7 @@ test("Astro dev toolbar remains loadable after Workspace navigation modules load
     const repoRoot = new URL("../../../", import.meta.url);
     const script = `
         import { dev } from ${JSON.stringify(import.meta.resolve("astro"))};
-        import { assertEquals, assertExists } from ${JSON.stringify(import.meta.resolve("@std/assert"))};
+        import { assertEquals, assertExists } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};
         const server = await dev({
             root: ${JSON.stringify(fileURLToPath(new URL("src/ui/workspace/", repoRoot)))},
             configFile: "astro.config.mjs",

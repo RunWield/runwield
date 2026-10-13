@@ -1,6 +1,6 @@
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { buildPlanEventUpdates, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
 import { buildPlanRecoveryUserMessage, planRecoveryMessage } from "../../shared/workflow/validation-user-messages.ts";

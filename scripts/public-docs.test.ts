@@ -1,4 +1,4 @@
-import { prepareDocsFixtureDependencies } from "./docs-fixture-dependencies.ts";
+import { prepareDocsDependencies } from "./docs-dependencies.ts";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { readdirSync as fsReaddirSync } from "node:fs";
@@ -15,8 +15,10 @@ import {
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import process from "node:process";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join, resolve } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { PUBLIC_DOCS, renderPublicDocument, stagePublicDocs } from "./public-docs.ts";
 
 const RELEASE = {
@@ -41,19 +43,14 @@ test("public docs render their source heading and release-pinned links", () => {
         'editUrl: "https://github.com/gandazgul/runwield/edit/docs/stable/docs/user-documentation/quickstart.md"',
     );
     assertStringIncludes(rendered, "[Pi](https://pi.dev)");
-    assertStringIncludes(
-        rendered,
-        "/docs-assets/brand/logo.svg",
-    );
+    assertStringIncludes(rendered, "/docs-assets/brand/logo.svg");
     assertEquals(rendered.includes("# Example"), false);
 });
 
 test("public docs reject source without a page title", () => {
     assertRejects(
         async () =>
-            await Promise.resolve(
-                renderPublicDocument("No heading", "user-documentation/quickstart.md", RELEASE),
-            ),
+            await Promise.resolve(renderPublicDocument("No heading", "user-documentation/quickstart.md", RELEASE)),
         Error,
         "needs one H1",
     );
@@ -78,7 +75,9 @@ test("public docs stage only the publication manifest", async () => {
         await fsWriteFile(`${root}/docs/prd/secret.md`, "# INTERNAL-PRD-MARKER\n");
         const output = `${root}/generated`;
         await stagePublicDocs(root, output);
-        const paths = Array.from(fsReaddirSync(output, { withFileTypes: true })).map((entry) => entry.name).sort();
+        const paths = Array.from(fsReaddirSync(output, { withFileTypes: true }))
+            .map((entry) => entry.name)
+            .sort();
         assertEquals(paths.includes("prd"), false);
         assertEquals(paths.includes("index.md"), true);
         assertEquals(paths.includes("contributing"), true);
@@ -87,32 +86,18 @@ test("public docs stage only the publication manifest", async () => {
             await fsReadFile(`${output}/contributing/prd/runwield-core-prd.md`, "utf8"),
             "MARKER-prd/runwield-core-prd.md",
         );
-        assertStringIncludes(
-            await fsReadFile(`${output}/quickstart.md`, "utf8"),
-            "MARKER-quickstart",
-        );
-        assertEquals(
-            await fsReadFile(`${root}/docs-site/public/docs-assets/brand/logo.svg`, "utf8"),
-            "<svg></svg>",
-        );
+        assertStringIncludes(await fsReadFile(`${output}/quickstart.md`, "utf8"), "MARKER-quickstart");
+        assertEquals(await fsReadFile(`${root}/docs-site/public/docs-assets/brand/logo.svg`, "utf8"), "<svg></svg>");
         await fsWriteFile(
             `${root}/docs/user-documentation/quickstart.md`,
             "# quickstart\n\n[missing](does-not-exist.md)\n",
         );
-        await assertRejects(
-            () => stagePublicDocs(root, output),
-            Error,
-            "missing local target",
-        );
+        await assertRejects(() => stagePublicDocs(root, output), Error, "missing local target");
         await fsWriteFile(
             `${root}/docs/user-documentation/quickstart.md`,
             "# quickstart\n\n[Broken section](#missing-section)\n",
         );
-        await assertRejects(
-            () => stagePublicDocs(root, output),
-            Error,
-            "missing fragment",
-        );
+        await assertRejects(() => stagePublicDocs(root, output), Error, "missing fragment");
     } finally {
         await fsRm(root, { recursive: true });
     }
@@ -143,7 +128,7 @@ test("production docs build publishes and indexes only fixture manual pages", as
     try {
         await copyTree(join(repositoryRoot, "docs-site", "src"), join(root, "docs-site", "src"));
         await copyTree(join(repositoryRoot, "docs-site", "public"), join(root, "docs-site", "public"));
-        for (const name of ["astro.config.mjs", "deno.json", "package.json", "release.json", "tsconfig.json"]) {
+        for (const name of ["astro.config.mjs", "package.json", "release.json", "tsconfig.json"]) {
             await fsCopyFile(join(repositoryRoot, "docs-site", name), join(root, "docs-site", name));
         }
         await fsMkdir(join(root, "docs"), { recursive: true });
@@ -169,11 +154,9 @@ test("production docs build publishes and indexes only fixture manual pages", as
         await fsWriteFile(join(root, "unrelated-media.txt"), "EXCLUDED-MEDIA-MARKER");
 
         await stagePublicDocs(root, join(root, "docs-site", "src", "content", "docs"));
-        await prepareDocsFixtureDependencies(root);
+        await prepareDocsDependencies(root);
         const build = await captureScriptProcess(process.execPath, {
-            args: process.versions.deno
-                ? ["run", "-A", "npm:astro@7.3.3", "build"]
-                : [join(root, "docs-site", "node_modules", "astro", "bin", "astro.mjs"), "build"],
+            args: [join(root, "docs-site", "node_modules", "astro", "bin", "astro.mjs"), "build"],
             cwd: join(root, "docs-site"),
             stdout: "piped",
             stderr: "piped",

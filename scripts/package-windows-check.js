@@ -15,7 +15,7 @@ import process from "node:process";
  * Native Windows package smoke checks for a built RunWield ZIP.
  */
 
-import { basename, join } from "@std/path";
+import { basename, join } from "node:path";
 import { makeManagedSessionFixture } from "../src/testing/managed-session-fixture.ts";
 
 function usage() {

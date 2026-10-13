@@ -14,8 +14,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import nodeProcess from "node:process";
-import { assert, assertEquals, assertExists, assertRejects, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import {
     ensurePlanIdentity,
     injectFrontMatter,
@@ -32,7 +34,7 @@ import { loadPlanActionEvidence } from "./plan-actions.ts";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { PLAN_RUNTIME_FIELDS } from "./controller-state.ts";
 import { controllerRecordPath, readControllerRecord, StaleControllerWriteError } from "./controller-registry.ts";
-import { extractYaml } from "@std/front-matter";
+import { extractYaml } from "../front-matter.ts";
 import { runValidationOutcomeTransition } from "./state-transition.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "export const ready = false;\n" });

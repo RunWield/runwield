@@ -4,7 +4,12 @@ import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
  * Launches the browser code-review surface for a completed workflow diff.
  */
 
-import { type ReviewConversation, type ReviewDecisionValue, startCodeReviewSurface } from "./review-launcher.ts";
+import {
+    type ReviewConversation,
+    type ReviewDecisionValue,
+    type StandaloneReviewPayload,
+    startCodeReviewSurface,
+} from "./review-launcher.ts";
 import { isAbsolute, resolve } from "node:path";
 import { mimeTypeForImagePath } from "../../shared/session/image-attachments.ts";
 import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.js";
@@ -55,6 +60,8 @@ interface CodeReviewSurfaceReady {
 }
 
 interface RunCodeReviewOptions {
+    standaloneReview?: StandaloneReviewPayload;
+    gitRef?: string;
     planName: string;
     planTitle?: string;
     diffText: string;
@@ -101,10 +108,15 @@ export function normalizeCodeReviewDecision(decision: ReviewData): CodeReviewDec
     const images = normalizeImageAttachments(decision.images);
     const canceled = decision.canceled === true || decision.cancelled === true;
     const explicitlyExited = decision.exit === true || canceled;
-    const noDecision = !approved && !feedback.trim() && annotations.length === 0 && images.length === 0;
+    const reviewAction = ["post_comments", "approve_pr", "approve_commit"].includes(String(decision.reviewAction))
+        ? decision.reviewAction
+        : undefined;
+    const noDecision = !reviewAction && !approved && !feedback.trim() && annotations.length === 0 &&
+        images.length === 0;
 
     return {
         approved,
+        ...(reviewAction && { reviewAction }),
         feedback,
         annotations,
         exit: explicitlyExited || noDecision,
@@ -166,6 +178,8 @@ export function formatCodeReviewAnnotations(annotations: CodeReviewAnnotation[])
  * Launch the browser code-review surface for the supplied diff.
  */
 export async function runCodeReview({
+    standaloneReview,
+    gitRef,
     planName,
     planTitle,
     diffText,
@@ -181,8 +195,9 @@ export async function runCodeReview({
     onSurfaceReady,
 }: RunCodeReviewOptions): Promise<CodeReviewDecision> {
     const server = await startCodeReviewSurface<ReviewData>({
+        standaloneReview,
         rawPatch: diffText,
-        gitRef: `RunWield workflow diff: ${planName}`,
+        gitRef: gitRef || `RunWield workflow diff: ${planName}`,
         agentCwd: executionCwd,
         targetBranch,
         planName,
@@ -197,13 +212,15 @@ export async function runCodeReview({
     });
 
     let keepSurfaceOpen = false;
+    let cancelListener: (() => void) | undefined;
     try {
         const canceled = new Promise<ReviewDataRecord>((resolveCanceled) => {
             if (signal?.aborted) {
                 resolveCanceled({ canceled: true });
                 return;
             }
-            signal?.addEventListener("abort", () => resolveCanceled({ canceled: true }), { once: true });
+            cancelListener = () => resolveCanceled({ canceled: true });
+            signal?.addEventListener("abort", cancelListener, { once: true });
         });
         const rawDecision: ReviewData = await (
             signal ? Promise.race([server.waitForDecision(), canceled]) : server.waitForDecision()
@@ -211,12 +228,13 @@ export async function runCodeReview({
         const decision = normalizeCodeReviewDecision(
             rawDecision,
         );
-        keepSurfaceOpen = decision.conversationTurn === true;
+        keepSurfaceOpen = decision.conversationTurn === true || Boolean(standaloneReview && decision.reviewAction);
         if (!decision.images?.length) return decision;
         const attachments = decision.images.filter((image): image is ReviewImageAttachment => "path" in image);
         const images = await loadCodeReviewImages(attachments, executionCwd);
         return { ...decision, images };
     } finally {
+        if (cancelListener) signal?.removeEventListener("abort", cancelListener);
         // Conversation turns keep the token page alive until the refreshed diff is published.
         if (!keepSurfaceOpen) await server.stop();
     }

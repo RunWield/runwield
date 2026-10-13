@@ -1,9 +1,9 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
 /**
  * @module acp/interaction-mapper.test
  */
 
-import { assertEquals } from "@std/assert";
 import { createAcpInteractionAdapter } from "./interaction-mapper.js";
 
 test("ACP interaction adapter does not expose the obsolete Pair form", async () => {

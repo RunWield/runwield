@@ -1,3 +1,4 @@
+import process from "node:process";
 import { captureScriptProcess } from "./script-process.ts";
 import {
     copyFile as fsCopyFile,
@@ -15,7 +16,7 @@ import {
  * repository's executable source tree.
  */
 
-import { basename, dirname, join } from "@std/path";
+import { basename, dirname, join } from "node:path";
 import { readWorkspaceStyles } from "../src/ui/workspace/workspace-styles.ts";
 
 const DEFAULT_REMOTE_ENTRY = "src/ui/workspace/remote-server.ts";
@@ -23,9 +24,7 @@ const DEFAULT_WORKSPACE_RUNTIME_DIR = "dist/workspace-runtime";
 const DEFAULT_PLAN_SERVER_RUNTIME_DIR = "dist/plan-server";
 const DEFAULT_BUNDLE_PATH = "remote-server.js";
 
-export const REQUIRED_WORKSPACE_RUNTIME_FILES = Object.freeze([
-    "server.mjs",
-]);
+export const REQUIRED_WORKSPACE_RUNTIME_FILES = Object.freeze(["server.mjs"]);
 
 /**
  * @typedef {Object} RuntimeAssetCopy
@@ -72,7 +71,7 @@ export const DEFAULT_PLAN_SERVER_RUNTIME_ASSETS = [
  */
 async function assertFile(path) {
     const info = await fsStat(path).catch((error) => {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     });
     if (!info?.isFile()) throw new Error(`Required Plan Server runtime file is missing: ${path}`);
@@ -84,7 +83,7 @@ async function assertFile(path) {
  */
 async function assertDirectory(path) {
     const info = await fsStat(path).catch((error) => {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     });
     if (!info?.isDirectory()) throw new Error(`Required Plan Server runtime directory is missing: ${path}`);
@@ -183,10 +182,19 @@ export function findProhibitedRuntimeFiles(files) {
         if (file === DEFAULT_BUNDLE_PATH) return false;
         if (file.startsWith("dist/workspace-runtime/")) return false;
         if (listRuntimeAssetDestinations().includes(file)) return false;
-        return file.endsWith(".js") || file.endsWith(".jsx") || file.endsWith(".ts") || file.endsWith(".tsx") ||
-            file.startsWith("docs/plans/") || file.startsWith(".wld/") || file.startsWith(".git/") ||
-            file.includes("collaboration-secrets") || file.endsWith(".sqlite") || file.includes("/sessions/") ||
-            file.includes(".test.");
+        return (
+            file.endsWith(".js") ||
+            file.endsWith(".jsx") ||
+            file.endsWith(".ts") ||
+            file.endsWith(".tsx") ||
+            file.startsWith("docs/plans/") ||
+            file.startsWith(".wld/") ||
+            file.startsWith(".git/") ||
+            file.includes("collaboration-secrets") ||
+            file.endsWith(".sqlite") ||
+            file.includes("/sessions/") ||
+            file.includes(".test.")
+        );
     });
 }
 
@@ -212,17 +220,7 @@ export async function buildPlanServerRuntime(options, port) {
     });
     await fsMkdir(dirname(bundleOutput), { recursive: true });
 
-    await port.run("deno", [
-        "bundle",
-        "--platform",
-        "deno",
-        "--packages",
-        "bundle",
-        "--minify",
-        "--output",
-        bundleOutput,
-        remoteEntry,
-    ]);
+    await port.run(process.execPath, ["build", "--target", "bun", "--minify", "--outfile", bundleOutput, remoteEntry]);
 
     await assertFile(bundleOutput);
     await copyDirectory(workspaceRuntimeDir, join(runtimeDir, "dist", "workspace-runtime"));

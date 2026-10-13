@@ -3,9 +3,9 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import { chdir, cwd, env, execPath, versions } from "node:process";
+import { chdir, cwd, env, execPath } from "node:process";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
+
 import { CATPPUCCIN_MOCHA_THEME_PATH, getCwd, getHomeDir, getRunWieldRuntimeDir } from "./constants.js";
 import { withProcessGlobalTestLock } from "./testing/process-global-lock.ts";
 
@@ -47,16 +47,10 @@ test("portable constants reject a test entrypoint before unsandboxed code can ru
                 new URL("./constants.js", import.meta.url).href,
             )}); console.log("BODY_RAN");`,
         );
-        const child = spawn(
-            execPath,
-            versions.deno
-                ? ["run", "-A", "--config", fileURLToPath(new URL("../deno.json", import.meta.url)), path]
-                : [path],
-            {
-                env: { ...env, WLD_TEST_SANDBOX_HOME: "" },
-                stdio: ["ignore", "pipe", "pipe"],
-            },
-        );
+        const child = spawn(execPath, [path], {
+            env: { ...env, WLD_TEST_SANDBOX_HOME: "" },
+            stdio: ["ignore", "pipe", "pipe"],
+        });
         let output = "";
         child.stdout.on("data", (chunk) => (output += chunk.toString()));
         child.stderr.on("data", (chunk) => (output += chunk.toString()));

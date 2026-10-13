@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
 import { injectFrontMatter, parsePlanFrontMatter } from "./plan-store.js";
 
 test("Plan Front Matter safely round-trips ANSI control characters", () => {

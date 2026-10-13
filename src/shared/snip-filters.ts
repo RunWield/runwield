@@ -5,7 +5,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWr
  * Installs RunWield-bundled Snip filters into Snip's user filter directory.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getCwd, getHomeDir, SNIP_FILTERS_DIR } from "../constants.js";
 
 export interface SnipFilterOptions {

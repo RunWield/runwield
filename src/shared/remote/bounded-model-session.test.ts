@@ -10,8 +10,9 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     createAssistantMessageEventStream,

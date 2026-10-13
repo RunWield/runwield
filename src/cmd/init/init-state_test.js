@@ -11,8 +11,9 @@ import { tmpdir } from "node:os";
  * to avoid polluting the user's real ~/.wld/init-state.json.
  */
 
-import { assertEquals, assertExists, assertObjectMatch } from "@std/assert";
-import { join } from "@std/path";
+import { partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { _setTestStatePath } from "./init-state.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {

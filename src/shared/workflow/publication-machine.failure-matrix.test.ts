@@ -17,8 +17,10 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertExists } from "@std/assert";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { getRunWieldRuntimeDir, PLAN_STAGING_DIR_NAME } from "../../constants.js";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { addEntry, findById, updatePublication } from "../worktree-registry.js";

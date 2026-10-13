@@ -1,6 +1,6 @@
 import { captureForegroundProcess } from "./captured-process.ts";
 /** Recover formatting-only drift left by older controller writes after sealing. */
-import { extractYaml } from "@std/front-matter";
+import { extractYaml } from "./front-matter.ts";
 import { isDeepStrictEqual } from "node:util";
 import {
     loadPlanStrict,

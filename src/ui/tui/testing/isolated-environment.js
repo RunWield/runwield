@@ -17,7 +17,7 @@ import process from "node:process";
  * Isolated filesystem fixture setup for Golden TUI scenarios.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { git } from "../../../shared/git-test-fixture.ts";
 import {
     assertWorkflowBinaryCallsSupported,

@@ -11,7 +11,7 @@ import {
  * Public, session-independent access to bundled agent prompt assets.
  */
 
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { AGENT_DEFS_DIR, getHomeDir, SKILLS_DIR } from "../../constants.js";
 import { directoryExists, fileExists } from "../helpers.ts";
 

@@ -14,8 +14,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { resolveRemoteTarget, REMOTE_RESOLVE_COMMAND } from "./target.ts";
 
 /** @param {(home: string, ssh: string) => Promise<void>} fn */

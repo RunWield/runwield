@@ -2,7 +2,7 @@ import { versions } from "node:process";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";

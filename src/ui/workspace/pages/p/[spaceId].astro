@@ -1,15 +1,15 @@
 ---
+import process from "node:process";
 import LoadingSurface from "../../components/LoadingSurface.astro";
 import ReviewLayout from "../../layouts/ReviewLayout.astro";
 import { RemotePlanReview } from "../../react/RemotePlanReview.tsx";
 import { isRemoteDevelopmentModeEnabled } from "../../server/remote-mode.ts";
 
-const runtime = globalThis as any;
 if (
     import.meta.env.DEV &&
     !isRemoteDevelopmentModeEnabled({
         isDevelopment: import.meta.env.DEV,
-        workspaceMode: runtime.Deno?.env?.get?.("RUNWIELD_WORKSPACE_MODE"),
+        workspaceMode: process.env.RUNWIELD_WORKSPACE_MODE,
     })
 ) {
     return new Response("Not found", { status: 404 });

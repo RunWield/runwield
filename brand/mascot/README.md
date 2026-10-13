@@ -9,7 +9,7 @@ historical references.
 The main README has two small animated SVG companions in `readme/`: Base greets the reader near installation, and
 Reviewer reads along near the technical overview. They adapt to light/dark backgrounds and show a still pose for reduced
 motion. Regenerate them from the production frames with
-`deno run --allow-write=brand/mascot/readme brand/mascot/readme/build.ts`.
+`bun brand/mascot/readme/build.ts`.
 
 Compact angular creature with white body, black face, square eyes, split feet, and an armless W silhouette. The same
 anatomy carries every role. The companion is separate from the existing logo.

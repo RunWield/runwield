@@ -1,6 +1,6 @@
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { defaultPlanBranchName, ensurePlanBranch, shouldAdoptPlanBranch } from "./plan-branch.ts";
 import { setCustomSetting } from "../settings.js";

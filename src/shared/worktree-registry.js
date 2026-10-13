@@ -17,7 +17,7 @@ import { pid, platform } from "node:process";
  * Durable registry for RunWield execution worktrees.
  */
 
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./lock-file-snapshot.ts";
 import { getLockHostname, isPidAlive } from "./process-liveness.ts";
 import { CLI_BIN } from "../constants.js";

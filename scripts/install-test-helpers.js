@@ -11,7 +11,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { join } from "@std/path";
+import { join } from "node:path";
 
 import { RUNWIELD_ROOT } from "../runtime-root.js";
 

@@ -2,13 +2,14 @@ import { test } from "node:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import reAnchorExtension from "./index.ts";
 import type { ReAnchorOptions } from "./index.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import type { ReviewLedger } from "../../shared/workflow/review-ledger.ts";
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { getStoredPlanPath } from "../../plan-store.js";
 
 type Handler = (event: Record<string, unknown>, ctx: unknown) => unknown;

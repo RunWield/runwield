@@ -1,6 +1,6 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertFalse, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertFalse, assertStringIncludes } from "../../testing/assertions.ts";
 import { actionClassName } from "./components/Button.tsx";
 import { Dialog } from "./components/Dialog.jsx";
 import { RunWieldButton, RunWieldLink } from "./components/react/RunWieldPrimitives.tsx";

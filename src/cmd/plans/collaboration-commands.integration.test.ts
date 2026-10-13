@@ -13,8 +13,9 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import {
     hashPlanBody,
     injectFrontMatter,

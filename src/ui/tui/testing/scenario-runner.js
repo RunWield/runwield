@@ -17,12 +17,12 @@ import process from "node:process";
  * Golden TUI scenario action runner and diagnostics helpers.
  */
 
-import { dirname, join, relative } from "@std/path";
+import { dirname, join, relative } from "node:path";
 import { createSessionRuntime } from "../../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../../shared/session/session-runtime-events.js";
 import { openFileSessionStore } from "../../../shared/session/file-session-store.ts";
-import { assert } from "@std/assert";
-import { extractYaml } from "@std/front-matter";
+import { ok as assert } from "node:assert/strict";
+import { extractYaml } from "../../../shared/front-matter.ts";
 import { PLAN_RUNTIME_FIELDS } from "../../../shared/workflow/controller-state.ts";
 import { readControllerRecord } from "../../../shared/workflow/controller-registry.ts";
 import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
@@ -460,10 +460,10 @@ export async function runGoldenScenario(scenario, options = {}) {
     let artifactDir = null;
     const timeoutMs = scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
     options.onReady?.();
-    const startedAt = Date.now();
+    const startedAt = performance.now();
     try {
         for (const action of scenario.actions || []) {
-            if (Date.now() - startedAt > timeoutMs) throw new Error(`Scenario timed out after ${timeoutMs}ms.`);
+            if (performance.now() - startedAt > timeoutMs) throw new Error(`Scenario timed out after ${timeoutMs}ms.`);
             if (!isObject(action)) continue;
             const typed = /** @type {any} */ (action);
             if (typed.type === "modelTurn" || typed.type === "modelProviderTurn") {
@@ -1223,9 +1223,9 @@ async function runComposedTuiScenario(scenario, options) {
             const startupInputPromise = (async () => {
                 for (const step of startupInputSteps) {
                     const marker = String(step.marker || "");
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let markerObserved = false;
-                    while (Date.now() - startedAt < (scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS)) {
+                    while (performance.now() - startedAt < (scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS)) {
                         await terminal.flush();
                         const screen = terminal.getScreenText();
                         if (screen.includes(marker)) {
@@ -2445,9 +2445,9 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "waitForEvent") {
                     const expected = String(typed.event || "");
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     while (!events.includes(expected)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(`Timed out waiting for event: ${expected}`);
                         }
                         await terminal.flush();
@@ -2457,9 +2457,9 @@ async function runComposedTuiScenario(scenario, options) {
                     const expected = String(typed.event || "");
                     const expectedCount = Number(typed.count || 1);
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     while (events.filter((event) => event === expected).length < expectedCount) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for ${expectedCount} occurrences of event: ${expected}; got ${
                                     events.filter((event) => event === expected).length
@@ -2481,11 +2481,11 @@ async function runComposedTuiScenario(scenario, options) {
                           )
                         : "origin";
                     const remotePath = await runGoldenGit(["remote", "get-url", remoteName], getCwd()).catch(() => "");
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     let matchedStatus = false;
                     while (!matchedStatus) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for Plan ${planName} status ${[...expectedStatuses].join(
                                     " or ",
@@ -2541,10 +2541,10 @@ async function runComposedTuiScenario(scenario, options) {
                     const planName = String(typed.planName || "");
                     const expectedStatuses = new Set((Array.isArray(typed.statuses) ? typed.statuses : []).map(String));
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     while (!expectedStatuses.has(latestStatus)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for execution Plan ${planName} status ${[...expectedStatuses].join(
                                     " or ",
@@ -2602,10 +2602,10 @@ async function runComposedTuiScenario(scenario, options) {
                     const planName = String(typed.planName || "");
                     const expectedStatuses = new Set((Array.isArray(typed.statuses) ? typed.statuses : []).map(String));
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     while (!expectedStatuses.has(latestStatus)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for ${planName} worktree status ${[...expectedStatuses].join(
                                     " or ",
@@ -2666,10 +2666,10 @@ async function runComposedTuiScenario(scenario, options) {
                         "origin";
                     const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
                     const planPath = `docs/plans/${planName}.md`;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     while (!expectedStatuses.has(latestStatus)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for published Plan ${planName} status ${[...expectedStatuses].join(
                                     " or ",
@@ -2823,13 +2823,13 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "waitForPlanAbsent") {
                     const planName = String(typed.planName || "");
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestAttrs = null;
                     while (true) {
                         const loaded = await loadPlan(getCwd(), planName).catch(() => null);
                         latestAttrs = loaded?.attrs || null;
                         if (!latestAttrs) break;
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for Plan ${planName} to leave active storage; latest=${JSON.stringify(
                                     latestAttrs,
@@ -2845,9 +2845,9 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "waitForScriptedInteractions") {
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
                     const expectedRemaining = Number(typed.remaining || 0);
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     while ((interactionSurface?.interactions.length || 0) > expectedRemaining) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for scripted Runtime interactions; remaining=${
                                     interactionSurface?.interactions.length || 0
@@ -2873,9 +2873,9 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "waitForScreen") {
                     const expected = String(typed.text || "");
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     while (!terminal.getScreenText().includes(expected)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(`Timed out waiting for screen marker: ${JSON.stringify(expected)}`);
                         }
                         await terminal.flush();

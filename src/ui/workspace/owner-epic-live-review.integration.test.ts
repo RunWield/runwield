@@ -1,6 +1,7 @@
 // @ts-nocheck: Owner Workspace routes and projected operations are JavaScript.
 import { test } from "node:test";
-import { assert, assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";

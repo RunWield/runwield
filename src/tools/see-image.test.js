@@ -1,9 +1,9 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { env } from "node:process";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getHomeDir } from "../constants.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { persistImageAttachment } from "../shared/session/image-attachments.ts";

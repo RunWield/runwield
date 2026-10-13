@@ -9,7 +9,7 @@ import {
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { savePlan } from "../../plan-store.js";
 import { addEntry, getWorktreeRegistryPath } from "../../shared/worktree-registry.js";
 import { createPublicationAttempt, recordPublicationFailure } from "../../shared/workflow/publication-attempt.ts";

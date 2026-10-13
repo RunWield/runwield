@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { readdir as fsReaddir } from "node:fs/promises";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { getRunWieldSessionDir } from "../../shared/session/root-session.js";

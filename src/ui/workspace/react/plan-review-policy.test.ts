@@ -1,7 +1,7 @@
 // @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import {
     buildPlanReviewExecutionPolicyPayload,
     readPlanReviewExecutionPolicy,

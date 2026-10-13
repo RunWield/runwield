@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: browser test sets happy-dom globals.
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { Window } from "happy-dom";
 import { requestWorkspacePlanReview } from "./islands/SessionSurface.jsx";
 

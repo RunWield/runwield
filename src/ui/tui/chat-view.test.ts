@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Spacer, StdinBuffer, Text, TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView, findVisibleToolBlocks } from "./chat-view.ts";
 import { ToolExecutionBlock, ToolExecutionGroupBlock, UserPromptBlock } from "./blocks.js";

@@ -5,7 +5,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
  * Context-isolated foreground Delegated Agent Session tool.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";

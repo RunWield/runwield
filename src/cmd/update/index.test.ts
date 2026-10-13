@@ -15,8 +15,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process, { platform } from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { VERSION } from "../../shared/version.js";
 import { parseRunWieldReleaseVersion } from "../../shared/update-check.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -478,7 +478,7 @@ test(
             await fsWriteFile(
                 child,
                 `import { assertEquals, assertStringIncludes } from ${JSON.stringify(
-                    import.meta.resolve("@std/assert"),
+                    import.meta.resolve("../../testing/assertions.ts"),
                 )};\n` +
                     `import { runUpdateCommand } from ${JSON.stringify(new URL("./index.ts", import.meta.url).href)};\n` +
                     `const calls = [];\n` +

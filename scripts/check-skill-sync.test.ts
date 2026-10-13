@@ -1,7 +1,7 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
-import { fromFileUrl } from "@std/path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import {
     collectPublishedSkillFiles,
     discoverSkillsInContainers,

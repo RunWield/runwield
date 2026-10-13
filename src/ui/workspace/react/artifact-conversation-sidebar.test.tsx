@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { Window } from "happy-dom";
 import { act } from "react";
 import { ArtifactConversationSidebar } from "./ArtifactConversationSidebar.tsx";

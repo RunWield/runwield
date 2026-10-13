@@ -1,3 +1,4 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { test } from "node:test";
 import {
@@ -8,8 +9,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.js";
 import { sha256File } from "./build-metadata.js";
 

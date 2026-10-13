@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assertEquals, assertNotEquals, assertStringIncludes } from "@std/assert";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../../../testing/assertions.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RunWieldMascot } from "./RunWieldMascot.tsx";

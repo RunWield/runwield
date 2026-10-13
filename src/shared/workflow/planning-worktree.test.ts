@@ -8,8 +8,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js";
 import { listEntries, updateEntry } from "../worktree-registry.js";

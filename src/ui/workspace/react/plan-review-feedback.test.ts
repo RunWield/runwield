@@ -1,6 +1,6 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertStringIncludes } from "@std/assert";
+import { assertStringIncludes } from "../../../testing/assertions.ts";
 
 test("complete Plan feedback includes direct edits and referenced-file comments", async () => {
     const source = await fsReadFile("src/ui/workspace/react/plan-review-feedback.ts", "utf8");
