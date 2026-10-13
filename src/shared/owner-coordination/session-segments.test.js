@@ -9,7 +9,8 @@ import {
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { DatabaseSync } from "../sqlite.ts";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { captureTranscriptEvidence } from "../session/session-transcript-projection.js";

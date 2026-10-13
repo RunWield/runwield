@@ -1,4 +1,5 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { ok as assert } from "node:assert/strict";
 import { terminateOwnedLinuxGroup } from "../linux-process-group.ts";
 import { spawn } from "node:child_process";
 import { once } from "node:events";

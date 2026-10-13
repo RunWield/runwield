@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertExists } from "@std/assert";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";

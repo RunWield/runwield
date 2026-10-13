@@ -1,9 +1,10 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { kill, platform } from "node:process";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { HostedSession } from "./hosted-session.js";
 
 test("cancelling a shell background task stops its descendant", { skip: platform === "win32" }, async () => {

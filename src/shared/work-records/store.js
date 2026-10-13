@@ -7,7 +7,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, stat as fsStat } 
  * Canonical Work Record filesystem store.
  */
 
-import { basename, dirname, join, relative, resolve } from "@std/path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { WORK_RECORDS_DIR_NAME } from "../../constants.js";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.js";
 import { requestWorkspaceSearchRefresh } from "../workspace-search-refresh.ts";

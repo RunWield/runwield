@@ -73,6 +73,7 @@ Other surfaces reference these requirements and add only their own user experien
 - [Plan lifecycle](#plan-lifecycle)
 - [Epic decomposition and hold](#epic-decomposition-and-hold)
 - [Execution, validation, and recovery](#execution-validation-and-recovery)
+- [Standalone code review](#standalone-code-review)
 - [Semantic review and repair](#semantic-review-and-repair)
 - [Frontend engineering and pair execution](#frontend-engineering-and-pair-execution)
 - [Theme selection](#theme-selection)
@@ -470,6 +471,9 @@ does not reset its lifecycle or decisions.
 - Given recreated empty or stale runtime registry files, migration reports, or debug files, selecting a Plan recovers
   them automatically without replacing current attempts. Distinct valid attempts remain available; originals remain
   recoverable. Registry recovery and ordinary writers cannot overwrite each other or wait on their own locks.
+- Given an adopted worktree is removed or its former path is reused, its historical adoption record does not block
+  entry into the primary Project. Historical paths remain absolute, normalized, sorted, and unique; history alone
+  never authorizes recovery or file movement. Current checkout, registry, journal, and symlink safety checks still apply.
 - Given a Plan listing or a grouped evidence read, nested reads of the same checkout share runtime-layout verification
   for that operation. Later reads and writes revalidate changed evidence; background work cannot retain verification
   after its initiating read ends. Plan contents, controller state, and publication evidence remain freshly read.
@@ -1073,6 +1077,63 @@ global edit does not replace an explicit project override.
   classifies them as implementation rather than silently committing them. Ordinary and Tutorial execution share this
   rule.
 
+### Standalone code review
+
+**Scope: Current local CLI behavior.** Standalone Code Review does not require a Plan and does not write Plan lifecycle
+or Delivery Evidence. The validation gate remains owned by
+[Execution, validation, and recovery](#execution-validation-and-recovery).
+
+**Requirement: Review three local sources.** `wld review` compares HEAD with staged, unstaged, and untracked changes.
+`wld review <branch>` compares the named local branch with its merge base against the current checkout. A PR/MR URL
+compares the fetched head with the merge base of its target branch. Its host and repository path must match a remote of
+the current checkout. RunWield never clones another repository. Missing or unauthenticated Forge CLIs stop PR resolution
+with the required `gh auth login` or `glab auth login` command.
+
+**Requirement: Discuss and edit without a Plan.** The shared Code Review page provides Guided Review and chat with the
+normal Engineer. One saved Engineer Session serves the review and can be resumed. PR and branch reviews use refs until
+the first Engineer request. Only then does RunWield create or reuse a review worktree, outside the Plan registry.
+Uncommitted review uses the current checkout. Users direct Engineer commits and pushes.
+
+**Requirement: Explicit source-specific actions.** PR review offers Post to PR and Engineer destinations. Post comments
+submits a neutral review; Approve submits annotations and approval. Global notes and feedback become the review body.
+File and line comments retain their scope and side. Request changes is not offered. Posting is disabled when local edits
+no longer match the PR head. A moved remote head refuses posting and refreshes the review, clears old annotations, and
+marks retained Guided Review prose as stale. Users select current lines to add annotations again. An unchanged clean
+review worktree advances only by fast-forward from the previously reviewed head; local work and rewritten history are
+preserved with a recovery reason. Branch review offers Engineer feedback only. Uncommitted review offers Approve &
+Commit: the Operator follows the bundled commit rules, commits, and pushes, setting `origin HEAD` as upstream when
+needed. RunWield checks a clean tree, changed HEAD, and upstream equality. Detached HEAD disables that action. Failed
+pushes keep commits and leave the review usable. A retry keeps the original approval baseline and publishes an existing
+commit without creating another commit when the tree is clean. Partial GitLab submissions report failed comments without
+replaying mutations.
+
+**Requirement: Protect review work.** Closing the review makes no Forge or Git publication. On completion, cancellation,
+or interruption, RunWield closes its Sessions and removes only its own clean worktrees whose HEAD equals upstream. It
+also removes unchanged unused worktrees after checkout setup fails. Incomplete checkout setup cannot start the Engineer;
+a later request retries setup when no local work needs protection. RunWield keeps dirty or unpushed work, reports the
+path and branch, and never removes reused or primary checkouts. The terminal prints the review link, progress, result,
+cleanup outcome, and Engineer Session id.
+
+**Acceptance scenarios**
+
+- Given staged, unstaged, and untracked edits, no-target review shows all three and Guided Review explains the diff.
+- Given a different local branch, review initially creates no worktree; an Engineer request creates or reuses one and
+  the next diff includes its edits. No Approve or Open PR action appears.
+- Given a PR in a matching remote, review works before workspace creation; Post comments and Approve have real Forge
+  effects. A foreign repository is rejected without fetching or cloning.
+- Given missing or signed-out `gh` or `glab`, PR resolution names that CLI and its sign-in command.
+- Given a remote head change, posting refuses and refreshes, removes old annotation anchors, and marks the retained
+  Guide stale. A clean unchanged worktree advances to a descendant head; local edits, local commits, and rewritten
+  history remain protected. Local Engineer changes disable posting until pushed.
+- Given checkout setup failure, an unchanged unused worktree is removed and the next Engineer request retries checkout.
+  Changes made during failed setup remain protected; no Engineer starts in an incomplete checkout.
+- Given a lazy worktree created after the review page opened, subsequent Guided Review jobs use that worktree directory.
+- Given uncommitted work, Approve & Commit succeeds only after the commit and upstream checks pass. A failed push keeps
+  the commit and reports the failed check. A successful push retry completes approval without a second commit; detached
+  HEAD starts no Operator.
+- Given review exit during PR metadata lookup, no Forge submission starts. A clean created checkout at upstream is
+  removed; dirty, unpushed, reused, and primary checkouts remain accessible.
+
 ### Semantic review and repair
 
 **Scope and maturity:** Current baseline.
@@ -1531,7 +1592,9 @@ does not retry ambiguous generations automatically or change host-global configu
 - Given an existing, escaping or symlinked destination, generation is rejected without modifying existing files. If a
   destination appears while generation is in flight, it is preserved and the tool reports failure.
 - Given a cancelled in-flight request, HTTP requests receive cancellation or the owned CLI helper terminates, and no
-  output file is published. No implicit generation retry occurs.
+  output file is published. If Codex turn startup is still being acknowledged, cleanup waits briefly for its identity
+  so it can interrupt that turn before terminating the helper. An unresponsive helper still terminates within a bounded
+  cleanup interval. No implicit generation retry occurs.
 - Given a model preset switches from Pi to Agy, incompatible inherited image options are dropped. Explicit unsupported
   settings fail clearly; disabling image generation removes automatic registration in newly built Sessions.
 
@@ -1664,7 +1727,7 @@ does not grant authority to change workflow-owned Plans, ADRs, or Work Records. 
 
 Optional Agent and delegated-definition `bashAllowedCommands` front matter limits RunWield-managed shell starts without
 granting the bash tool. Omission inherits a lower definition layer; absent from all layers means unrestricted bash. A
-list replaces the lower list, `[]` denies every command, and `null` resets the definition's inherited list to
+non-empty list adds to the lower list and removes duplicate entries, `[]` denies every command, and `null` resets the definition's inherited list to
 unrestricted. The child delegate's effective list intersects its parent's limit, so neither omission nor `null` can
 remove a parent's restriction. Guide and read delegates have inspection defaults. Read delegates also allow selected
 `gh` and `glab` commands for PR/MR, issue, and repository inspection, not forge mutation or arbitrary API calls. Write
@@ -1680,7 +1743,7 @@ boundary and does not control external CLI Execution Backends' native shells. Se
 - Given `planner.md` with the effective front matter name `Plan Designer`, when any Execution Backend emits Agent
   messages, the message headers and footer show `Plan Designer`; routing and saved Agent identity remain `planner`.
 - Given layered Agent definitions, when a higher layer omits `bashAllowedCommands`, its lower list remains; when it
-  supplies a list it replaces the lower list, `[]` denies all commands, and `null` resets the definition to unrestricted
+  supplies a non-empty list it adds to the lower list without duplicate entries, `[]` denies all commands, and `null` resets the definition to unrestricted
   bash. Invalid values fail with source-specific guidance instead of removing a limit silently.
 - Given Guide or a read-only delegate with effective bash access, when it runs an allowed Git or file inspection
   command, it can inspect the repository; an unapproved or compound command does not start and the denial lists allowed

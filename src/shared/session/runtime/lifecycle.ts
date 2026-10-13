@@ -10,7 +10,7 @@ import {
 import { RuntimeEventTypes } from ".././session-runtime-events.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from ".././session-transcript-projection.js";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
-import { isAbsolute } from "@std/path";
+import { isAbsolute } from "node:path";
 import type { PromptReadySessionOptions } from "./types.ts";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";

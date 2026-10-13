@@ -7,7 +7,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
     buildPlanEventUpdates,
     getAllowedManualPlanStatuses,

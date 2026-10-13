@@ -1,3 +1,4 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { fileURLToPath } from "node:url";
 import { spawnForegroundProcess } from "../../foreground-process.ts";
 import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
@@ -6,7 +7,6 @@ import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteF
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";
@@ -44,13 +44,7 @@ test("wld mcp agy-cli forwards tools/list and tools/call over stdio to the paren
     });
     const transport = new StdioClientTransport({
         command: process.execPath,
-        args: [
-            "run",
-            ...(process.versions.deno ? ["-A", "--unstable-no-legacy-abort"] : []),
-            `${getCwd()}/src/cli.ts`,
-            "mcp",
-            "agy-cli",
-        ],
+        args: ["run", ...[], `${getCwd()}/src/cli.ts`, "mcp", "agy-cli"],
         env: {
             [RUNWIELD_MCP_BRIDGE_URL_ENV]: bridge.url,
             [RUNWIELD_MCP_BRIDGE_TOKEN_ENV]: bridge.token,
@@ -61,13 +55,20 @@ test("wld mcp agy-cli forwards tools/list and tools/call over stdio to the paren
     try {
         await client.connect(transport);
         const listed = await client.listTools();
-        assertEquals(listed.tools.map((entry) => entry.name), ["runwield_task_completed"]);
+        assertEquals(
+            listed.tools.map((entry) => entry.name),
+            ["runwield_task_completed"],
+        );
         const result = await client.callTool({ name: "runwield_task_completed", arguments: { message: "stdio-ok" } });
         assertEquals(result.isError, false);
         assertEquals(calls, [{ message: "stdio-ok" }]);
-        const toolResult = manager.getBranch().find((entry) =>
-            entry.type === "message" && (entry as { message?: { role?: string } }).message?.role === "toolResult"
-        ) as { message?: { details?: { provenance?: string } } } | undefined;
+        const toolResult = manager
+            .getBranch()
+            .find(
+                (entry) =>
+                    entry.type === "message" &&
+                    (entry as { message?: { role?: string } }).message?.role === "toolResult",
+            ) as { message?: { details?: { provenance?: string } } } | undefined;
         assertEquals(toolResult?.message?.details?.provenance, AGY_CLI_MCP_PROVENANCE);
     } finally {
         await client.close().catch(() => undefined);
@@ -92,7 +93,7 @@ test("Agy stdio review calls survive sixty elapsed seconds and preserve structur
         parameters: Type.Object({}),
         outputSchema,
         async execute(_id, _params, signal) {
-            signal?.addEventListener("abort", () => cancelled = true, { once: true });
+            signal?.addEventListener("abort", () => (cancelled = true), { once: true });
             started.resolve();
             await decision.promise;
             return {
@@ -112,7 +113,7 @@ test("Agy stdio review calls survive sixty elapsed seconds and preserve structur
     const fixture = fileURLToPath(new URL("./testing/stdio-clock-fixture.ts", import.meta.url));
     const transport = new StdioClientTransport({
         command: process.execPath,
-        args: ["run", ...(process.versions.deno ? ["-A"] : []), fixture, advancePath, advancedPath],
+        args: ["run", ...[], fixture, advancePath, advancedPath],
         env: { [RUNWIELD_MCP_BRIDGE_URL_ENV]: bridge.url, [RUNWIELD_MCP_BRIDGE_TOKEN_ENV]: bridge.token },
         stderr: "pipe",
     });
@@ -122,13 +123,19 @@ test("Agy stdio review calls survive sixty elapsed seconds and preserve structur
         assertEquals((await client.listTools()).tools[0].outputSchema, JSON.parse(JSON.stringify(outputSchema)));
         const pending = client.callTool({ name: "runwield_plan_written", arguments: {} });
         // Attach the rejection handler immediately so a regressed timeout is a test failure.
-        const settled = pending.then((result) => ({ result }), (error: Error) => ({ error }));
+        const settled = pending.then(
+            (result) => ({ result }),
+            (error: Error) => ({ error }),
+        );
         await started.promise;
         await fsWriteFile(advancePath, "advance");
         const deadline = Date.now() + 5_000;
         let advanced = false;
         while (!advanced && Date.now() < deadline) {
-            advanced = await fsStat(advancedPath).then(() => true, () => false);
+            advanced = await fsStat(advancedPath).then(
+                () => true,
+                () => false,
+            );
             if (!advanced) await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assertEquals(advanced, true);
@@ -146,31 +153,58 @@ test("Agy stdio review calls survive sixty elapsed seconds and preserve structur
     }
 });
 
-
 test("stdio EOF releases the upstream bridge and exits without a host termination signal", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-stdio-eof-"));
     const bridge = await startRunWieldMcpBridge({
-        tools: [defineTool({
-            name: "task_completed", label: "Completion", description: "Report completion.", parameters: Type.Object({}),
-            execute() { return Promise.resolve({ content: [{ type: "text", text: "done" }], details: {} }); },
-        })], cwd, sessionManager: SessionManager.inMemory(cwd),
+        tools: [
+            defineTool({
+                name: "task_completed",
+                label: "Completion",
+                description: "Report completion.",
+                parameters: Type.Object({}),
+                execute() {
+                    return Promise.resolve({ content: [{ type: "text", text: "done" }], details: {} });
+                },
+            }),
+        ],
+        cwd,
+        sessionManager: SessionManager.inMemory(cwd),
         assistantBase: { api: "agy-cli", provider: "agy-cli", model: "fixture-model" },
         provenance: AGY_CLI_MCP_PROVENANCE,
     });
     const child = spawnForegroundProcess({
         command: process.execPath,
-        args: runtimeSourceArgs(["run", "-A", "--unstable-no-legacy-abort", `${getCwd()}/src/cli.ts`, "mcp", "agy-cli"]),
-        cwd: getCwd(), stdin: "piped", timeoutMs: 10_000,
+        args: runtimeSourceArgs([
+            "run",
+            "-A",
+            "--unstable-no-legacy-abort",
+            `${getCwd()}/src/cli.ts`,
+            "mcp",
+            "agy-cli",
+        ]),
+        cwd: getCwd(),
+        stdin: "piped",
+        timeoutMs: 10_000,
         env: { [RUNWIELD_MCP_BRIDGE_URL_ENV]: bridge.url, [RUNWIELD_MCP_BRIDGE_TOKEN_ENV]: bridge.token },
     });
     const writer = child.stdin!.getWriter();
     const reader = child.stdout.getReader();
     const stderr = new Response(child.stderr).text();
     try {
-        await writer.write(new TextEncoder().encode(JSON.stringify({
-            jsonrpc: "2.0", id: 1, method: "initialize",
-            params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "eof-regression", version: "1" } },
-        }) + "\n"));
+        await writer.write(
+            new TextEncoder().encode(
+                JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: 1,
+                    method: "initialize",
+                    params: {
+                        protocolVersion: "2024-11-05",
+                        capabilities: {},
+                        clientInfo: { name: "eof-regression", version: "1" },
+                    },
+                }) + "\n",
+            ),
+        );
         let response = "";
         while (!response.includes("\n")) {
             const chunk = await reader.read();
@@ -179,7 +213,9 @@ test("stdio EOF releases the upstream bridge and exits without a host terminatio
         }
         assertEquals(JSON.parse(response.split("\n")[0]).id, 1);
         await writer.close();
-        while (!(await reader.read()).done) { /* Drain until natural exit. */ }
+        while (!(await reader.read()).done) {
+            /* Drain until natural exit. */
+        }
         assertEquals(await child.done, { exitCode: 0, terminatedBy: null }, await stderr);
     } finally {
         child.kill();

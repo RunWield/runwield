@@ -11,8 +11,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
 

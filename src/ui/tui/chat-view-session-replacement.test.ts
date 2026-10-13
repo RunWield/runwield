@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertStringIncludes } from "@std/assert";
+import { assertStringIncludes } from "../../testing/assertions.ts";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView } from "./chat-view.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";

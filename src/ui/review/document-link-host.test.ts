@@ -2,8 +2,9 @@ import { test } from "node:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { DocumentLinkHost } from "./document-link-host.ts";
 import { reviewImageApi, reviewImageUploadApi } from "../workspace/routes/api/review-image-handlers.ts";
 

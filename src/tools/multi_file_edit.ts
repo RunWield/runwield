@@ -10,7 +10,7 @@ import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from
 import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import { isAbsolute, join, relative } from "@std/path";
+import { isAbsolute, join, relative } from "node:path";
 import { getHomeDir } from "../constants.js";
 import {
     getPlanRevisionForText,

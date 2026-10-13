@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { equal } from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { execPath, platform, versions } from "node:process";
+import { execPath, platform } from "node:process";
 import { fileURLToPath } from "node:url";
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -10,7 +10,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         { skip: platform === "win32" },
         async () => {
             const entry = fileURLToPath(new URL("../../cli.ts", import.meta.url));
-            const args = versions.deno ? ["run", "--no-check", "-A", entry, "acp"] : ["run", entry, "acp"];
+            const args = ["run", entry, "acp"];
             const child = spawn(execPath, args, { stdio: ["pipe", "pipe", "pipe"] });
             let output = "";
             let diagnostics = "";
@@ -20,7 +20,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
                 child.once("error", reject);
                 child.once("exit", resolve);
             });
-            child.stderr.on("data", (chunk) => diagnostics += String(chunk));
+            child.stderr.on("data", (chunk) => (diagnostics += String(chunk)));
             try {
                 const initialized = new Promise<void>((resolve, reject) => {
                     startupTimer = setTimeout(
@@ -33,7 +33,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
                             try {
                                 const response = JSON.parse(line);
                                 if (response.id === 1 && response.result?.protocolVersion === 1) resolve();
-                            } catch { /* Wait for the complete protocol frame. */ }
+                            } catch {
+                                /* Wait for the complete protocol frame. */
+                            }
                         }
                     });
                     exited.then(

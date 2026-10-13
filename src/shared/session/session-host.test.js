@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { McpIntegration } from "../mcp/integration.ts";
 import { HostedSession } from "./hosted-session.js";
 import { SessionHost } from "./session-host.ts";

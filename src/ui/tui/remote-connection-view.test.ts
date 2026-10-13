@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { parseRemoteConnectionViewConfig, showRemoteConnectionView } from "./remote-connection-view.ts";

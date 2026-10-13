@@ -2,7 +2,7 @@ import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWrit
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { getPlanRevisionForText, injectFrontMatter, loadPlan, savePlan } from "../../plan-store.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createOwnerWorkspaceApp, startWorkspaceServer } from "./server.js";

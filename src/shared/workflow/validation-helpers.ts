@@ -7,7 +7,8 @@
  * the pieces it calls out to.
  */
 
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";
 import { loadPlan } from "../../plan-store.js";
 

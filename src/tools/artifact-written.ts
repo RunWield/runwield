@@ -4,7 +4,7 @@ import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "
  * Register a durable Markdown artifact with the active umbrella RunWield Session.
  */
 
-import { isAbsolute, relative, resolve, SEPARATOR } from "@std/path";
+import { isAbsolute, relative, resolve, sep as SEPARATOR } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import type { HostedSession } from "../shared/session/hosted-session.js";

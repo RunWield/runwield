@@ -1,11 +1,9 @@
 import { readdir as fsReaddir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
-import process from "node:process";
 import { PUBLIC_DOCS, routeFor } from "./public-docs.ts";
 import { getCwd } from "../src/constants.js";
-import { join } from "@std/path";
+import { join } from "node:path";
 
-async function checkPublicDocs(): Promise<void> {
-    const root = getCwd();
+export async function checkPublicDocs(root = getCwd()): Promise<void> {
     const output = join(root, "dist", "docs");
     const failures: string[] = [];
 
@@ -18,27 +16,25 @@ async function checkPublicDocs(): Promise<void> {
         }
     }
 
-    const htmlRoutes = [
-        "index.html",
-        "404.html",
-        ...routes.filter((route) => route !== "index.html"),
-    ];
+    const htmlRoutes = ["index.html", "404.html", ...routes.filter((route) => route !== "index.html")];
     for (const route of htmlRoutes) {
         const html = await fsReadFile(join(output, route), "utf8");
         for (const match of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
             const value = match[1];
             if (value.startsWith("data:")) continue;
-            const pageUrl = route === "index.html"
-                ? "https://docs.runwield.dev/"
-                : `https://docs.runwield.dev/${route.replace(/index\.html$/, "")}`;
+            const pageUrl =
+                route === "index.html"
+                    ? "https://docs.runwield.dev/"
+                    : `https://docs.runwield.dev/${route.replace(/index\.html$/, "")}`;
             const url = new URL(value, pageUrl);
             if (url.origin !== "https://docs.runwield.dev") continue;
             const pathname = decodeURIComponent(url.pathname);
-            const target = pathname === "/404/"
-                ? join(output, "404.html")
-                : pathname.endsWith("/")
-                ? join(output, pathname.slice(1), "index.html")
-                : join(output, pathname.slice(1));
+            const target =
+                pathname === "/404/"
+                    ? join(output, "404.html")
+                    : pathname.endsWith("/")
+                      ? join(output, pathname.slice(1), "index.html")
+                      : join(output, pathname.slice(1));
             let targetHtml = "";
             try {
                 const info = await fsStat(target);
@@ -54,16 +50,7 @@ async function checkPublicDocs(): Promise<void> {
         }
     }
 
-    for (
-        const excluded of [
-            "prd",
-            "plans",
-            "research",
-            "audits",
-            "work-records",
-            "vision",
-        ]
-    ) {
+    for (const excluded of ["prd", "plans", "research", "audits", "work-records", "vision"]) {
         try {
             await fsStat(join(output, excluded));
             failures.push(`excluded docs directory was published: ${excluded}`);
@@ -96,20 +83,12 @@ async function checkPublicDocs(): Promise<void> {
     }
 
     const index = await fsReadFile(join(output, "index.html"), "utf8");
-    for (
-        const text of ["RunWield Documentation", "Quickstart", "Configure RunWield"]
-    ) {
+    for (const text of ["RunWield Documentation", "Quickstart", "Configure RunWield"]) {
         if (!index.includes(text)) {
             failures.push(`home page does not include ${JSON.stringify(text)}`);
         }
     }
-    for (
-        const text of [
-            "Living central PRDs",
-            "Active product direction",
-            "RunWield vision",
-        ]
-    ) {
+    for (const text of ["Living central PRDs", "Active product direction", "RunWield vision"]) {
         if (index.includes(text)) {
             failures.push(`home page exposes internal section ${JSON.stringify(text)}`);
         }
@@ -117,7 +96,7 @@ async function checkPublicDocs(): Promise<void> {
 
     if (failures.length > 0) {
         for (const failure of failures) console.error(`- ${failure}`);
-        process.exit(1);
+        throw new Error(`Public documentation check failed: ${failures.length} error(s)`);
     }
     console.log(`Verified ${PUBLIC_DOCS.length} public documentation routes`);
 }

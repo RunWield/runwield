@@ -1,14 +1,15 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import process from "node:process";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStrictEquals } from "@std/assert";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { getHomeDir } from "../../constants.js";
-import { dirname } from "@std/path";
-import { getWorktreeRegistryPath } from "../../shared/worktree-registry.js";
+import { dirname } from "node:path";
+import { getWorktreeRegistryPath, withWorktreeRegistryLock } from "../../shared/worktree-registry.js";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 import { savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";
@@ -53,16 +54,21 @@ test("owner dashboard stream authenticates and completes with verified rows", as
         assertEquals(response.status, 200);
         assertEquals(response.headers.get("cache-control"), "no-store");
         assertEquals(response.headers.get("content-type"), "application/x-ndjson; charset=utf-8");
-        const frames = (await response.text()).trim().split("\n").map((line: string) => JSON.parse(line));
+        const frames = (await response.text())
+            .trim()
+            .split("\n")
+            .map((line: string) => JSON.parse(line));
         assertEquals(frames[0].type, "snapshot");
         assertEquals(frames.at(-1).type, "complete");
         assertEquals(frames.at(-1).progress.pending, false);
         assertEquals(
-            frames.some((frame: StreamFrame) =>
-                frame.type === "snapshot" && frame.progress.pending &&
-                frame.sections.some((section: { items: Array<{ planId: string }> }) =>
-                    section.items.some((item) => item.planId === "stream-plan")
-                )
+            frames.some(
+                (frame: StreamFrame) =>
+                    frame.type === "snapshot" &&
+                    frame.progress.pending &&
+                    frame.sections.some((section: { items: Array<{ planId: string }> }) =>
+                        section.items.some((item) => item.planId === "stream-plan"),
+                    ),
             ),
             true,
         );
@@ -135,13 +141,72 @@ test("dashboard keeps Promise identity and publishes later Project while first w
     }
 });
 
+test("dashboard completion waits for an empty Project's registry read", async () => {
+    const dir = await fsMkdtemp(join(tmpdir(), "rw-dashboard-empty-"));
+    const root = join(dir, "project");
+    const store = openOwnerCoordinationStore({ dbPath: `${dir}/owner.sqlite3` });
+    let dashboardRead: ReturnType<typeof loadOwnerDashboard> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+        await fsMkdir(root);
+        await enterProjectRuntime(root);
+        const registryPath = getWorktreeRegistryPath(root);
+        await fsMkdir(dirname(registryPath), { recursive: true });
+        await fsWriteFile(registryPath, JSON.stringify({ version: 2, entries: [] }));
+        store.registerProject({ root, displayName: "Empty" });
+        let sessionsRead = () => {};
+        const sessionsReached = new Promise<void>((resolve) => {
+            sessionsRead = resolve;
+        });
+        const continuation = {
+            listSessions() {
+                sessionsRead();
+                return Promise.resolve({ sessions: [] });
+            },
+        };
+        // Hold the real registry lock so unfinished filesystem work cannot win a timing race.
+        await withWorktreeRegistryLock(root, async () => {
+            dashboardRead = loadOwnerDashboard(store, continuation);
+            await sessionsReached;
+            assertEquals(
+                await Promise.race([
+                    dashboardRead.then(() => "completed"),
+                    new Promise<string>((resolve) => {
+                        timeout = setTimeout(() => resolve("waiting for registry"), 100);
+                    }),
+                ]),
+                "waiting for registry",
+            );
+        });
+        const payload = await dashboardRead!;
+        assertEquals(payload.projects.length, 1);
+        assertEquals(payload.projects[0].plans, []);
+        assertEquals(
+            payload.dashboard.sections.every((section) => section.items.length === 0),
+            true,
+        );
+        // Completion must leave no registry reader racing immediate teardown on Windows.
+        await fsRm(root, { recursive: true });
+    } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+        try {
+            await dashboardRead;
+        } finally {
+            store.close();
+            await fsRm(dir, { recursive: true });
+        }
+    }
+});
+
 test("one Project streams a finished row and registry failure before its unrelated live socket responds", async () => {
     if (process.platform === "win32") return; // The live connection uses a named pipe there.
     const fixture = await makeManagedSessionFixture();
     const { store, session, project } = fixture;
     const operationId = "dashboard-blocked-operation";
     const socketKey = createHash("sha256")
-        .update(`${getHomeDir()}:${session.runwieldSessionId}:${operationId}`).digest("hex").slice(0, 40);
+        .update(`${getHomeDir()}:${session.runwieldSessionId}:${operationId}`)
+        .digest("hex")
+        .slice(0, 40);
     const socketPath = `/tmp/runwield-${socketKey}.sock`;
     let releaseSocket = () => {};
     const socketGate = new Promise<void>((resolve) => {
@@ -216,7 +281,7 @@ test("one Project streams a finished row and registry failure before its unrelat
         store.publishGenerationAndRelease(proof, {
             generation: 1,
             currentSegmentId: segment.segmentId,
-            ...await readTranscriptEvidence(fixture.transcriptPath),
+            ...(await readTranscriptEvidence(fixture.transcriptPath)),
         });
         store.acquireSessionActivation({
             runwieldSessionId: session.runwieldSessionId,
@@ -270,9 +335,9 @@ test("one Project streams a finished row and registry failure before its unrelat
                     assertEquals(frame.sectionProgress["recently-finished"], { pending: false, failed: true });
                     assertEquals(frame.progress, { pending: true, completedProjects: 0, totalProjects: 1 });
                     assertEquals(
-                        frame.sections.flatMap((section) => section.items).some((item) =>
-                            item.planId === "blocked-plan"
-                        ),
+                        frame.sections
+                            .flatMap((section) => section.items)
+                            .some((item) => item.planId === "blocked-plan"),
                         false,
                     );
                     return frame;
@@ -295,16 +360,20 @@ test("one Project streams a finished row and registry failure before its unrelat
         const sidebar = await Promise.race([
             app(new Request(url.replace("/dashboard/stream", "/sidebar"), { headers })),
             new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("Sidebar waited for dashboard live connection")), 2500)
+                setTimeout(() => reject(new Error("Sidebar waited for dashboard live connection")), 2500),
             ),
         ]);
         assertEquals(sidebar.status, 200);
         const sidebarProjects = (await sidebar.json()).projects;
-        assertEquals(sidebarProjects[0].plans.some((plan: { planId: string }) => plan.planId === "blocked-plan"), true);
         assertEquals(
-            sidebarProjects[0].plans.find((plan: { planId: string }) => plan.planId === "blocked-plan")
-                .sessions.some((listed: { runwieldSessionId: string }) =>
-                    listed.runwieldSessionId === session.runwieldSessionId
+            sidebarProjects[0].plans.some((plan: { planId: string }) => plan.planId === "blocked-plan"),
+            true,
+        );
+        assertEquals(
+            sidebarProjects[0].plans
+                .find((plan: { planId: string }) => plan.planId === "blocked-plan")
+                .sessions.some(
+                    (listed: { runwieldSessionId: string }) => listed.runwieldSessionId === session.runwieldSessionId,
                 ),
             true,
         );
@@ -332,7 +401,10 @@ test("one Project streams a finished row and registry failure before its unrelat
         reader = undefined;
         // A new request after settlement must start a fresh read, not replay the completed stream.
         const fresh = await app(new Request(url, { headers }));
-        const freshFrames = (await fresh.text()).trim().split("\n").map((line: string) => JSON.parse(line));
+        const freshFrames = (await fresh.text())
+            .trim()
+            .split("\n")
+            .map((line: string) => JSON.parse(line));
         assertEquals(freshFrames[0].type, "snapshot");
         assertEquals(freshFrames[0].progress.pending, true);
         assertEquals(freshFrames.at(-1).type, "complete");
@@ -387,13 +459,11 @@ test("unreadable publication registry fails the finished card before unrelated P
             },
         };
         const seen = Promise.withResolvers<void>();
-        const frames: Array<
-            {
-                type: string;
-                progress: { pending: boolean };
-                sectionProgress: Record<string, { pending: boolean; failed: boolean }>;
-            }
-        > = [];
+        const frames: Array<{
+            type: string;
+            progress: { pending: boolean };
+            sectionProgress: Record<string, { pending: boolean; failed: boolean }>;
+        }> = [];
         const unsubscribe = subscribeOwnerDashboard(store, continuation, (frame) => {
             frames.push(frame);
             if (frame.sectionProgress["recently-finished"].failed) seen.resolve();
@@ -402,7 +472,7 @@ test("unreadable publication registry fails the finished card before unrelated P
             await Promise.race([
                 seen.promise,
                 new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error("Registry error did not reach finished card")), 5000)
+                    setTimeout(() => reject(new Error("Registry error did not reach finished card")), 5000),
                 ),
             ]);
             const progress = frames.at(-1)!;
@@ -439,7 +509,10 @@ test("standalone Sessions linked to one on-hold Plan remain distinct", async () 
             },
         });
         const continuation = {
-            operations: new Map([["one", operation("session-one")], ["two", operation("session-two")]]),
+            operations: new Map([
+                ["one", operation("session-one")],
+                ["two", operation("session-two")],
+            ]),
             listSessions() {
                 return Promise.resolve({ sessions: [] });
             },
@@ -464,7 +537,9 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
         const { store, session, project } = fixture;
         const operationId = "dashboard-scope-operation";
         const socketKey = createHash("sha256")
-            .update(`${getHomeDir()}:${session.runwieldSessionId}:${operationId}`).digest("hex").slice(0, 40);
+            .update(`${getHomeDir()}:${session.runwieldSessionId}:${operationId}`)
+            .digest("hex")
+            .slice(0, 40);
         const socketPath = `/tmp/runwield-${socketKey}.sock`;
         const gate = Promise.withResolvers<void>();
         const entered = Promise.withResolvers<void>();
@@ -517,9 +592,10 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
                 new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Live socket not reached")), 5000)),
             ]);
             gate.resolve();
-            const frames: StreamFrame[] = (await response.text()).trim().split("\n").map((line: string): StreamFrame =>
-                JSON.parse(line)
-            );
+            const frames: StreamFrame[] = (await response.text())
+                .trim()
+                .split("\n")
+                .map((line: string): StreamFrame => JSON.parse(line));
             assertEquals(frames.at(-1)?.type, "complete");
             assertEquals(
                 frames.at(-1)?.sections.some((section) => section.items.some((item) => item.planId === "scope-plan")),
@@ -533,16 +609,17 @@ test("HTTP dashboard stream completes its producer and starts a fresh read after
                 userVerifiedAt: new Date().toISOString(),
             });
             const fresh = await app(new Request(url, { headers }));
-            const freshFrames: StreamFrame[] = (await fresh.text()).trim().split("\n").map((
-                line: string,
-            ): StreamFrame => JSON.parse(line));
+            const freshFrames: StreamFrame[] = (await fresh.text())
+                .trim()
+                .split("\n")
+                .map((line: string): StreamFrame => JSON.parse(line));
             assertEquals(freshFrames[0].type, "snapshot");
             assertEquals(freshFrames[0].progress.pending, true);
             assertEquals(freshFrames.at(-1)?.type, "complete");
             assertEquals(
-                freshFrames.at(-1)?.sections.some((section) =>
-                    section.items.some((item) => item.planId === "fresh-scope-plan")
-                ),
+                freshFrames
+                    .at(-1)
+                    ?.sections.some((section) => section.items.some((item) => item.planId === "fresh-scope-plan")),
                 true,
             );
         } finally {
@@ -587,31 +664,27 @@ test("archived Sessions stay under Plans in dashboard and sidebar but leave stan
         store.publishGenerationAndRelease(proof, {
             generation: 1,
             currentSegmentId: segment.segmentId,
-            ...await readTranscriptEvidence(fixture.transcriptPath),
+            ...(await readTranscriptEvidence(fixture.transcriptPath)),
         });
         const path = `${fixture.sessionDir}/2026-01-02T00-00-00-000Z_standalone-archive.jsonl`;
         await fsWriteFile(
             path,
-            `${
-                JSON.stringify({
-                    type: "session",
-                    version: 3,
-                    id: "standalone-archive",
-                    timestamp: "2026-01-02T00:00:00.000Z",
-                    cwd: fixture.projectRoot,
-                })
-            }\n`,
+            `${JSON.stringify({
+                type: "session",
+                version: 3,
+                id: "standalone-archive",
+                timestamp: "2026-01-02T00:00:00.000Z",
+                cwd: fixture.projectRoot,
+            })}\n`,
         );
         await fsWriteFile(
             path,
-            `${
-                JSON.stringify({
-                    type: "message",
-                    id: "standalone-user",
-                    timestamp: "2026-01-02T00:00:01.000Z",
-                    message: { role: "user", content: [{ type: "text", text: "Standalone conversation" }] },
-                })
-            }\n`,
+            `${JSON.stringify({
+                type: "message",
+                id: "standalone-user",
+                timestamp: "2026-01-02T00:00:01.000Z",
+                message: { role: "user", content: [{ type: "text", text: "Standalone conversation" }] },
+            })}\n`,
             { flag: "a" },
         );
         const standalone = await store.ensureSessionCatalogRecord({
@@ -629,9 +702,9 @@ test("archived Sessions stay under Plans in dashboard and sidebar but leave stan
         for (const projects of [dashboard.projects, sidebar]) {
             const row = projects.find((item) => item.projectId === project.projectId)!;
             assertEquals(
-                row.plans.find((plan) => plan.planId === "archive-plan")?.sessions.map((item) =>
-                    item.runwieldSessionId
-                ),
+                row.plans
+                    .find((plan) => plan.planId === "archive-plan")
+                    ?.sessions.map((item) => item.runwieldSessionId),
                 [session.runwieldSessionId],
             );
             assertEquals(

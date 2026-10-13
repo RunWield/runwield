@@ -4,7 +4,7 @@ import { captureForegroundProcess } from "../captured-process.ts";
  * Derived Mnemoteca index for canonical Work Records.
  */
 
-import { basename, dirname } from "@std/path";
+import { basename, dirname } from "node:path";
 import { listWorkRecords } from "./store.js";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
 import type { WorkRecordResource } from "./schema.ts";

@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { getCwd } from "../../constants.js";
@@ -13,8 +14,9 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
 import {
     listPlans,

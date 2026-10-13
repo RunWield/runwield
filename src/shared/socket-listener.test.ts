@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { connect } from "node:net";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
 import { listenSocket, readStreamInto } from "./socket-listener.ts";
 
 test("socket reads deliver a single byte promptly and preserve pipelined protocol bytes", async () => {

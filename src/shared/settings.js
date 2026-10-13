@@ -1,7 +1,7 @@
 import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
-import { dirname, join } from "@std/path";
-import { parse as parseJsonc } from "@std/jsonc";
+import { dirname, join } from "node:path";
+import { parse as parseJsonc } from "./jsonc.ts";
 import lockfile from "proper-lockfile";
 import { normalizePlanServerUrl } from "./collaboration/urls.ts";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
@@ -495,7 +495,7 @@ export function __resetSettingsForTests() {
 
 /**
  * Strip JSONC comments/trailing commas from a raw string, producing valid JSON.
- * Uses @std/jsonc parse then re-serializes for callers that expect clean JSON.
+ * Uses the shared JSONC parser then re-serializes for callers that expect clean JSON.
  *
  * @param {string} raw
  * @returns {string}

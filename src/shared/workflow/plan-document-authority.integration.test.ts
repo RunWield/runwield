@@ -6,8 +6,10 @@ import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import nodeProcess from "node:process";
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import {
     archivePlan,
     hashPlanBody,

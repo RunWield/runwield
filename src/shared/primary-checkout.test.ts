@@ -1,8 +1,8 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 

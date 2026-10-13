@@ -1,9 +1,10 @@
 import process from "node:process";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals, assertNotEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { getCapabilities, setCapabilities } from "@earendil-works/pi-tui";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { type RuntimeCommandFixture, withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";

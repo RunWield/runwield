@@ -6,7 +6,7 @@ import {
     saveDeliveredWorkRecordEvidence,
     savePublicationEvidence,
 } from "./delivery-evidence.ts";
-import { relative } from "@std/path";
+import { relative } from "node:path";
 import { buildDeliveryReport } from "./delivery-report.ts";
 import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
 import {

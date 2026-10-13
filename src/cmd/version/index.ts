@@ -3,7 +3,7 @@
  * Print runwield version and architecture.
  */
 
-import { arch, platform, versions } from "node:process";
+import { arch, platform } from "node:process";
 import { VERSION } from "../../shared/version.js";
 import type { UiAPI } from "../../ui/tui/types.js";
 
@@ -11,9 +11,7 @@ export interface VersionCommandOptions {
     uiAPI?: UiAPI;
 }
 
-const TARGET_ARCH: string = versions.deno
-    ? Reflect.get(globalThis, String("Deno")).build.target
-    : `${arch}-${platform}`;
+const TARGET_ARCH: string = `${arch}-${platform}`;
 
 /**
  * Run the version command — prints "runwield <version> (<target-triple>)" to stdout,

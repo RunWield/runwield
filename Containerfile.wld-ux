@@ -9,7 +9,7 @@
 #   podman build --target wld-ux-latest --build-arg WLD_INSTALL_REFRESH=$(date +%s) -f Containerfile.wld-ux -t runwield-wld-ux:local .
 #
 # Build current checkout binary:
-#   deno task compile --target aarch64-unknown-linux-gnu
+#   bun run compile --target aarch64-unknown-linux-gnu
 #   podman build --target wld-ux-current --build-arg WLD_INSTALL_REFRESH=$(date +%s) -f Containerfile.wld-ux -t runwield-wld-ux-current:local .
 #
 # Start wld in a fresh disposable project:
@@ -21,7 +21,10 @@
 # Test Antigravity's first-run login with an isolated home:
 #   podman run --rm -it --entrypoint agy runwield-wld-ux:local
 
-FROM denoland/deno:2.9.3 AS wld-ux-base
+FROM debian:trixie-slim AS wld-ux-base
+
+# Keep the existing UID/home so persistent Workspace mounts retain ownership.
+RUN useradd --uid 1993 --user-group --create-home --home-dir /home/deno deno
 
 USER root
 RUN apt-get update \

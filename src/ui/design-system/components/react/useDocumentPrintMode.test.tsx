@@ -1,7 +1,7 @@
 // @ts-nocheck: happy-dom browser globals are installed for this test.
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../../../testing/assertions.ts";
 import { Window } from "happy-dom";
 
 test("printing splits oversized callouts and keeps short callouts together", async () => {

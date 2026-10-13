@@ -2,10 +2,10 @@ import { readdirSync as fsReaddirSync, readFileSync as fsReadFileSync } from "no
 import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import fs from "node:fs/promises";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getTransitionJournalPath } from "./state-transition.ts";
-import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../session/hosted-session.js";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";

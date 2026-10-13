@@ -2,7 +2,8 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promis
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { AGENTS } from "../../constants.js";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";

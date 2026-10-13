@@ -10,7 +10,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { openOwnerCoordinationDatabase } from "./database.js";

@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { deriveManagedSessionContinuationDecision } from "../../shared/session/session-runtime.ts";
 import { reduceSessionEvents } from "./components/SessionTimeline.jsx";
 

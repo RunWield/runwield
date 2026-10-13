@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { runReloadCommand } from "./index.ts";
 
 test("runReloadCommand reloads only through SessionRuntime", async () => {

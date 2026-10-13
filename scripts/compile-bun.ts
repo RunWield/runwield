@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { argv, versions } from "node:process";
 import { fileURLToPath } from "node:url";
 import { requirePinnedBun } from "./check-bun-runtime.ts";
@@ -50,7 +50,7 @@ interface BunBuildRuntime {
 }
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const PASSIVE_PATHS = [
+export const PASSIVE_PATHS = [
     "src/ui/workspace/static",
     "src/ui/design-system/tokens.css",
     "src/ui/design-system/components.css",
@@ -98,8 +98,19 @@ export function bunArtifactTarget(target: string): string {
     return canonical;
 }
 
-export async function compileBun(output: string, target?: string, runtime?: string): Promise<void> {
+export async function compileBun(
+    output: string,
+    target?: string,
+    runtime?: string,
+    expectedBuildId?: string,
+    entrypoint = "src/cli.ts",
+): Promise<void> {
     requirePinnedBun();
+    const entry = resolve(ROOT, entrypoint);
+    const relativeEntry = relative(ROOT, entry);
+    if (relativeEntry.startsWith("..") || !relativeEntry)
+        throw new Error("Compile entrypoint must be inside the repository");
+    await stat(entry);
     const compileTarget =
         target || `bun-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
     const artifactTarget = bunArtifactTarget(compileTarget);
@@ -181,6 +192,8 @@ export async function compileBun(output: string, target?: string, runtime?: stri
             `bun:${versions.bun}`,
             [
                 "bun-compile-v1",
+                `entry:${relativeEntry.replaceAll("\\", "/")}`,
+                `entry-sha256:${await sha256File(entry)}`,
                 `lock:${await sha256File(join(ROOT, "bun.lock"))}`,
                 `package:${await sha256File(join(ROOT, "package.json"))}`,
                 `payload:${await stagedPayloadIdentity(staging)}`,
@@ -188,12 +201,15 @@ export async function compileBun(output: string, target?: string, runtime?: stri
             ],
             false,
         );
+        if (expectedBuildId && buildId !== expectedBuildId) {
+            throw new Error(`Build identity mismatch: expected ${expectedBuildId}, got ${buildId}`);
+        }
         // Bun directory assets retain their top directory name. Staging only
         // approved passive paths preserves src/ and dist/ without embedding tests.
         // https://bun.com/docs/bundler/executables#embed-directories
         await mkdir(dirname(outfile), { recursive: true });
         await build({
-            entrypoints: [join(ROOT, "src/cli.ts"), join(ROOT, "src/utils/image-resize-worker.ts")],
+            entrypoints: [entry, join(ROOT, "src/utils/image-resize-worker.ts")],
             root: ROOT,
             target: "bun",
             format: "esm",
@@ -232,7 +248,7 @@ export async function compileBun(output: string, target?: string, runtime?: stri
 }
 
 if (import.meta.main) {
-    const [output = process.platform === "win32" ? "bin/wld-bun.exe" : "bin/wld-bun", target, runtime, ...extra] =
+    const [output = process.platform === "win32" ? "bin/wld.exe" : "bin/wld", target, runtime, ...extra] =
         argv.slice(2);
     if (extra.length) {
         throw new Error(

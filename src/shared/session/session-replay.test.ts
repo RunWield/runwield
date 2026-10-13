@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { makeLongReplayFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 

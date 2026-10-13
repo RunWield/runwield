@@ -1,8 +1,9 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStrictEquals } from "@std/assert";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
 import { HostedSession } from "./hosted-session.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "./session-runtime-interactions.js";
 import { emitHostedSessionRuntimeEvent, RuntimeEventTypes } from "./session-runtime-events.js";

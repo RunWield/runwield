@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { normalizePlanReviewVersions } from "./plan-review-versions.ts";
 
 test("Plan review versions preserve every distinct review round", () => {

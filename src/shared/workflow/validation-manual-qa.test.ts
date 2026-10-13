@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertMatch, assertObjectMatch, assertStringIncludes } from "@std/assert";
+import { ok as assert, match as assertMatch, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

@@ -9,7 +9,8 @@ import { test } from "node:test";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 import fs from "node:fs/promises";
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import {
     ownerNotificationsStreamApi,

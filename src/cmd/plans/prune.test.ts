@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { archivePlan, loadArchivedPlan, savePlan } from "../../plan-store.js";
 import { setCustomSetting } from "../../shared/settings.js";
 import { writeWorkRecord } from "../../shared/work-records/store.js";

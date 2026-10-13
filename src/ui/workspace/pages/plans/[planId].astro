@@ -1,10 +1,10 @@
 ---
+import { getCwd } from "../../../../constants.js";
 import ReviewLayout from "../../layouts/ReviewLayout.astro";
 import { PlanDetail } from "../../components/PlanDetail.jsx";
 import { loadCanonicalWorkspaceDetail, serializeCanonicalPlanError } from "../../server/astro-canonical-data.js";
 
-const runtime = globalThis as any;
-const workspaceCwd = Astro.request.headers.get("x-runwield-workspace-cwd") || runtime.Deno?.cwd?.() || ".";
+const workspaceCwd = Astro.request.headers.get("x-runwield-workspace-cwd") || getCwd();
 const planId = Astro.params.planId ?? "";
 const editIntent = Astro.url.searchParams.get("edit") === "body";
 let plan = null;

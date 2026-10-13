@@ -2,7 +2,7 @@ import { platform } from "node:process";
 import { clearInterval, setInterval } from "node:timers";
 import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
 import { mkdir as fsMkdir } from "node:fs/promises";
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { type LockFileSnapshot, readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.js";

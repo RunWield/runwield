@@ -13,8 +13,9 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 
 interface ReleaseState {
     cancelled: boolean;
@@ -54,7 +55,11 @@ function stepRun(job: string, name: string): string {
     const step = next < 0 ? block : block.slice(0, next);
     const run = step.match(/^ {14}run:\s*\|\n([\s\S]*)$/m);
     if (!run) throw new Error(`Step ${name} has no multiline command`);
-    return run[1].split("\n").map((line) => line.slice(18)).join("\n").trim();
+    return run[1]
+        .split("\n")
+        .map((line) => line.slice(18))
+        .join("\n")
+        .trim();
 }
 
 function evaluateReleaseCondition(condition: string, state: ReleaseState): boolean {
@@ -155,16 +160,14 @@ test("fresh and existing releases traverse the actual qualification conditions",
     assertStringIncludes(release, "needs.golden.result == 'success'");
     assertStringIncludes(release, "needs.release-check.result == 'success'");
     assertStringIncludes(release, "needs.assets.result == 'success'");
-    for (
-        const key of [
-            "ciResult",
-            "goldenResult",
-            "releaseCheckResult",
-            "assetsResult",
-            "windowsResult",
-            "homebrewResult",
-        ]
-    ) {
+    for (const key of [
+        "ciResult",
+        "goldenResult",
+        "releaseCheckResult",
+        "assetsResult",
+        "windowsResult",
+        "homebrewResult",
+    ]) {
         for (const status of ["failure", "cancelled", "skipped"]) {
             assertEquals(
                 evaluateReleaseCondition(jobCondition(release), { ...successfulRelease, [key]: status }),
@@ -275,4 +278,25 @@ test("docs workflow validates release assets and exact source before deployment"
     assertStringIncludes(workflow, "cancel-in-progress: false");
     assertStringIncludes(workflow, "sha=$(git rev-parse HEAD)");
     assertStringIncludes(workflow, "ref: ${{ needs.sync.outputs.sha || github.sha }}");
+});
+
+test("docs deployment separates historical source from frozen Bun tooling", async () => {
+    const workflow = await fsReadFile(".github/workflows/docs.yml", "utf8");
+    const deploy = jobBlock(workflow, "deploy");
+    assertEquals(deploy.includes("deno"), false);
+    assertStringIncludes(deploy, "path: source");
+    assertStringIncludes(deploy, "path: tooling");
+    assertStringIncludes(deploy, "needs.sync.outputs.tooling_sha || github.event.repository.default_branch");
+    assertStringIncludes(deploy, "working-directory: tooling");
+    assertStringIncludes(deploy, "bun run install:locked");
+    assertStringIncludes(deploy, "bun tooling/scripts/build-stable-docs.ts source");
+    assertStringIncludes(deploy, "path: source/dist/docs");
+    for (const step of ["Verify documentation source and qualified release", "Reject stale build before deployment"]) {
+        const stepStart = deploy.indexOf(`            - name: ${step}\n`);
+        const stepBody = deploy.slice(stepStart).split(/\n {12}- name:/)[0];
+        assertStringIncludes(stepBody, "working-directory: source");
+        const command = stepRun(deploy, step);
+        assertStringIncludes(command, "bun ../tooling/scripts/verify-docs-source.ts");
+        assertStringIncludes(command, "git rev-parse HEAD");
+    }
 });

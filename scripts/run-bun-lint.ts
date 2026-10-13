@@ -5,13 +5,17 @@ import process from "node:process";
 import { listCiFiles } from "./ci-files.ts";
 import { lintSource } from "./bun-lint.ts";
 import { requirePinnedBun } from "./check-bun-runtime.ts";
+import { checkOwnedRuntime } from "./check-owned-runtime.ts";
 
 requirePinnedBun();
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const files = (await listCiFiles(root)).filter((file) =>
-    /\.(?:jsx?|tsx?|mjs|mts)$/.test(file) && !file.split("/").includes(".astro")
+const files = (await listCiFiles(root)).filter(
+    (file) => /\.(?:jsx?|tsx?|mjs|mts)$/.test(file) && !file.split("/").includes(".astro"),
 );
-let failures = 0;
+const runtimeDiagnostics = await checkOwnedRuntime(root);
+for (const diagnostic of runtimeDiagnostics)
+    console.error(`${diagnostic.file}:${diagnostic.line}: ${diagnostic.message}`);
+let failures = runtimeDiagnostics.length;
 for (const file of files) {
     const messages = lintSource(await readFile(join(root, file), "utf8"), file);
     for (const message of messages) {

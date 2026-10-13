@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { DARK_BROWSER_THEME } from "./themes/dark.ts";
 import type { BrowserThemeColors } from "./themes/dark.ts";
 import { renderRunWieldThemeCss } from "./theme-bridge.ts";

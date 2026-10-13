@@ -19,8 +19,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
-import { fromFileUrl, join, toFileUrl } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
+import { join } from "node:path";
 import { parseRemoteDestination } from "./index.ts";
 
 const cli = fromFileUrl(new URL("../../cli.ts", import.meta.url));
@@ -172,38 +173,14 @@ tee "$SSH_LOG.json" | /bin/sh -c "$4"
         // A development launcher requires a local Linux artifact, regardless of the release build version.
         const version = join(root, "version.js");
         await fsWriteFile(version, 'export const VERSION = "development";\n');
-        const config = join(root, "deno.json");
-        const projectConfig = new URL("../../../deno.json", import.meta.url);
-        const { imports } = JSON.parse(await fsReadFile(projectConfig, "utf8"));
-        await fsWriteFile(
-            config,
-            JSON.stringify({
-                extends: fromFileUrl(projectConfig),
-                // The isolated CLI config has no project lockfile; resolve the just-upgraded Pi packages.
-                minimumDependencyAge: 0,
-                imports: {
-                    ...Object.fromEntries(
-                        Object.entries(imports).map(([key, value]) => [
-                            key,
-                            typeof value === "string" && value.startsWith("./")
-                                ? new URL(value, projectConfig).href
-                                : value,
-                        ]),
-                    ),
-                    [new URL("../../shared/build-identity.js", import.meta.url).href]: toFileUrl(identity).href,
-                    [new URL("../../shared/version.js", import.meta.url).href]: toFileUrl(version).href,
-                },
-            }),
-        );
         const preload = join(root, "build-boundary.ts");
-        if (!process.versions.deno) {
-            const replacements = {
-                [fromFileUrl(new URL("../../shared/build-identity.js", import.meta.url))]: identity,
-                [fromFileUrl(new URL("../../shared/version.js", import.meta.url))]: version,
-            };
-            await fsWriteFile(
-                preload,
-                `import { plugin } from "bun";
+        const replacements = {
+            [fromFileUrl(new URL("../../shared/build-identity.js", import.meta.url))]: identity,
+            [fromFileUrl(new URL("../../shared/version.js", import.meta.url))]: version,
+        };
+        await fsWriteFile(
+            preload,
+            `import { plugin } from "bun";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 const replacements = ${JSON.stringify(replacements)};
@@ -215,12 +192,13 @@ plugin({ name: "fixture-build-boundary", setup(build) {
     });
 }});
 `,
-            );
-        }
-        const cliArgs = (args: string[]) =>
-            process.versions.deno
-                ? runtimeSourceArgs(["run", "-A", "--quiet", "--config", config, cli, "remote", ...args])
-                : ["run", "--preload", preload, ...runtimeSourceArgs(["run", "-A", cli, "remote", ...args]).slice(1)];
+        );
+        const cliArgs = (args: string[]) => [
+            "run",
+            "--preload",
+            preload,
+            ...runtimeSourceArgs(["run", "-A", cli, "remote", ...args]).slice(1),
+        ];
         const cliEnv = (proof?: string) => ({
             ...process.env,
             HOME: local,
@@ -352,6 +330,7 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/captured-process.ts",
             "src/shared/socket-listener.ts",
             "src/shared/stdin-stream.ts",
+            "src/shared/jsonc.ts",
             "src/shared/remote/runtime.js",
             "src/shared/remote/target.ts",
             "src/shared/remote/control.ts",
@@ -364,13 +343,13 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/version.js",
         ])
             await fsCopyFile(path, join(root, path));
-        if (!process.versions.deno) {
-            await fsSymlink(
-                fromFileUrl(new URL("../../../node_modules", import.meta.url)),
-                join(root, "node_modules"),
-                "dir",
-            );
-        }
+
+        await fsSymlink(
+            fromFileUrl(new URL("../../../node_modules", import.meta.url)),
+            join(root, "node_modules"),
+            "dir",
+        );
+
         const module = await import(toFileUrl(join(root, "src/cmd/remote/index.ts")).href);
         const originalLog = console.log;
         let help = "";
@@ -383,7 +362,7 @@ test("source remote help works without a generated identity and connection expla
             console.log = originalLog;
         }
         assertStringIncludes(help, "Usage: wld remote");
-        await assertRejects(() => module.runRemoteCommand(["example"]), Error, "scripts/compile.js --output bin/wld");
+        await assertRejects(() => module.runRemoteCommand(["example"]), Error, "bun run compile --output bin/wld");
     } finally {
         await fsRm(root, { recursive: true });
     }
@@ -420,7 +399,7 @@ test("remote CLI resolves a host home without initializing a local project and r
         const result = await run(["remote-alias"]);
         assertEquals(result.code, 1);
         assertStringIncludes(result.stderr, "Missing x86_64-unknown-linux-gnu artifact");
-        assertStringIncludes(result.stderr, "scripts/compile.js --target x86_64-unknown-linux-gnu");
+        assertStringIncludes(result.stderr, "bun run compile --target x86_64-unknown-linux-gnu");
         assertEquals((await fsReadFile(sshLog, "utf8")).split("\n").slice(0, 3), ["-T", "--", "remote-alias"]);
         assertEquals(await exists(join(local, ".wld")), false);
         assertEquals(await exists(join(local, ".git")), false);

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, readdir as fsReaddir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertNotEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "./testing/assertions.ts";
 import {
     AGENT_DEFS_DIR,
     CATPPUCCIN_MOCHA_THEME_PATH,

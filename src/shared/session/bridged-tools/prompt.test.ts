@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { getCwd } from "../../../constants.js";
 import { createMultiFileEditTool } from "../../../tools/multi_file_edit.ts";
 import { buildBridgedToolPromptAppendix } from "./prompt.ts";

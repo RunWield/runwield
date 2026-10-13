@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import { loadPhoton } from "./photon-loader.ts";
 import { Buffer } from "node:buffer";
-import { dirname, extname, isAbsolute, join, relative, resolve } from "@std/path";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { getImageDimensions } from "@earendil-works/pi-tui";
 import { resizeImage } from "@earendil-works/pi-coding-agent";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";

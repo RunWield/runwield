@@ -9,7 +9,8 @@ import {
 } from "node:fs/promises";
 import { statSync as fsStatSync } from "node:fs";
 import process from "node:process";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

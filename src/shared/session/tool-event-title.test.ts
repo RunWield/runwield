@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { describeRuntimeTool } from "./tool-event-title.js";
 
 test("Runtime provides one stable tool descriptor for live, replay, TUI, ACP, and future consumers", () => {

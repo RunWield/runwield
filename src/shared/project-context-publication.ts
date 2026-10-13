@@ -10,7 +10,7 @@ import {
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { isRunWieldOwnedGitignoreChange } from "./runwield-owned-paths.ts";
 import {

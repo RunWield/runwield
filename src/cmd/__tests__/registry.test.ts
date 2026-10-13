@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { fileURLToPath } from "node:url";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
@@ -5,8 +6,7 @@ import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     getCliCommandDefinitions,
     getCommandDefinition,
@@ -45,7 +45,10 @@ test("importing the registry does not initialize the TUI", async () => {
 
 test("plan-review help explains Session restart and saved content", () => {
     const command = getSlashCommandDefinition("plan-review");
-    assertEquals(command?.notes?.some((note) => note.includes("current Session") && note.includes("restart")), true);
+    assertEquals(
+        command?.notes?.some((note) => note.includes("current Session") && note.includes("restart")),
+        true,
+    );
     assertEquals(
         command?.notes?.some((note) => note.includes("current saved Plan") && note.includes("lost review page")),
         true,
@@ -59,21 +62,54 @@ test("getCommandDefinition resolves alias", () => {
 
 test("getCliCommandDefinitions excludes slash-only commands", () => {
     const commands = getCliCommandDefinitions();
-    assertEquals(commands.some((command) => command.name === "export"), false);
-    assertEquals(commands.some((command) => command.name === "settings"), false);
-    assertEquals(commands.some((command) => command.name === "router"), true);
-    assertEquals(commands.some((command) => command.name === "acp"), true);
-    assertEquals(commands.some((command) => command.name === "workspace"), true);
-    assertEquals(commands.some((command) => command.name === "login"), true);
+    assertEquals(
+        commands.some((command) => command.name === "export"),
+        false,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "settings"),
+        false,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "router"),
+        true,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "acp"),
+        true,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "workspace"),
+        true,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "login"),
+        true,
+    );
 });
 
 test("getSlashCommandDefinitions excludes cli-only commands", () => {
     const commands = getSlashCommandDefinitions();
-    assertEquals(commands.some((command) => command.name === "plans"), false);
-    assertEquals(commands.some((command) => command.name === "acp"), false);
-    assertEquals(commands.some((command) => command.name === "theme"), true);
-    assertEquals(commands.some((command) => command.name === "settings"), true);
-    assertEquals(commands.some((command) => command.name === "login"), true);
+    assertEquals(
+        commands.some((command) => command.name === "plans"),
+        false,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "acp"),
+        false,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "theme"),
+        true,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "settings"),
+        true,
+    );
+    assertEquals(
+        commands.some((command) => command.name === "login"),
+        true,
+    );
 });
 
 test("registry surfaces capture theme, model, and login CLI support", () => {
@@ -101,7 +137,10 @@ test("update command is CLI-only and upgrade resolves to update", () => {
     assertEquals(command ? hasCommandSurface(command, "slash") : true, false);
     assertEquals(getSlashCommandDefinition("update"), undefined);
     assertEquals(getSlashCommandDefinition("upgrade"), undefined);
-    assertEquals(getSlashCommandDefinitions().some((definition) => definition.name === "update"), false);
+    assertEquals(
+        getSlashCommandDefinitions().some((definition) => definition.name === "update"),
+        false,
+    );
 });
 
 test("onboard is a CLI command and a TUI-only slash command", () => {
@@ -126,13 +165,21 @@ test("context command is a slash-only built-in", () => {
     assertEquals(command?.name, "context");
     assertEquals(command ? hasCommandSurface(command, "cli") : true, false);
     assertEquals(command ? hasCommandSurface(command, "slash") : false, true);
-    assertEquals(getCliCommandDefinitions().some((definition) => definition.name === "context"), false);
+    assertEquals(
+        getCliCommandDefinitions().some((definition) => definition.name === "context"),
+        false,
+    );
     assertEquals(getSlashCommandDefinition("context")?.name, "context");
-    assertEquals(getSlashCommandDefinitions().some((definition) => definition.name === "context"), true);
+    assertEquals(
+        getSlashCommandDefinitions().some((definition) => definition.name === "context"),
+        true,
+    );
 });
 
 test("ACP slash surface exposes TUI built-ins except approved exclusions", () => {
-    const names = getSlashCommandDefinitions("acp").map((command) => command.name).sort();
+    const names = getSlashCommandDefinitions("acp")
+        .map((command) => command.name)
+        .sort();
     assertEquals(names.includes("agent"), true);
     assertEquals(names.includes("model"), true);
     assertEquals(names.includes("load-plan"), true);
@@ -147,18 +194,10 @@ test("ACP slash surface exposes TUI built-ins except approved exclusions", () =>
 });
 
 test("Workspace slash surface comes from the registry and keeps current coverage", () => {
-    assertEquals(getSlashCommandDefinitions("workspace").map((command) => command.name), [
-        "agent",
-        "model",
-        "plan-review",
-        "resume",
-        "new",
-        "session",
-        "context",
-        "plans",
-        "help",
-        "settings",
-    ]);
+    assertEquals(
+        getSlashCommandDefinitions("workspace").map((command) => command.name),
+        ["agent", "model", "plan-review", "resume", "new", "session", "context", "plans", "help", "settings"],
+    );
     for (const excluded of ["theme", "quit", "exit"]) {
         assertEquals(getSlashCommandDefinition(excluded, "workspace"), undefined, excluded);
     }

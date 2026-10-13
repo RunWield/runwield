@@ -1,7 +1,8 @@
 // @ts-nocheck: Deno test imports browser-shell helpers with a small fake DOM.
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     applyActiveRoute,
     applySessionName,

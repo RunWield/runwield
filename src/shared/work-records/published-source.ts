@@ -1,7 +1,7 @@
 import { captureForegroundProcess } from "../captured-process.ts";
 import { effectiveDeliveryBranch } from "../workflow/plan-branch.ts";
 /** Immutable recording input retained after delivery removes the execution worktree. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     canonicalizeStoredPlanName,
     isChildFeaturePlan,

@@ -1,7 +1,8 @@
 import { readFile as fsReadFile, realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals, assertExists } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { setCustomSetting } from "../settings.js";
 import { git } from "../git-test-fixture.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";

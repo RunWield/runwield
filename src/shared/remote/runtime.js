@@ -36,7 +36,7 @@ export async function verifyRemoteRuntimeArtifact(artifact, platform) {
     } catch (error) {
         if (error instanceof Error && Reflect.get(error, "code") === "ENOENT") {
             throw new Error(
-                `Missing ${target} artifact: build it with deno run -A scripts/compile.js --target ${target} --output ${artifact}`,
+                `Missing ${target} artifact: build it with bun run compile --target ${target} --output ${artifact}`,
             );
         }
         throw error;
@@ -186,7 +186,8 @@ export async function prepareRemoteRuntime(host, platform, artifact, sshExecutab
     const metadata = await verifyRemoteRuntimeArtifact(artifact, platform);
     const bytes = await fsReadFile(artifact);
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
-        .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
     if (digest !== metadata.sha256) throw new Error("Build artifact changed during transfer");
     const process = spawnNativeProcess(sshExecutable, {
         cwd: getCwd(),
@@ -248,7 +249,9 @@ export async function prepareRemoteRuntime(host, platform, artifact, sshExecutab
     } catch (error) {
         try {
             process.kill();
-        } catch { /* Already exited. */ }
+        } catch {
+            /* Already exited. */
+        }
         await output.catch(() => undefined);
         throw error;
     } finally {

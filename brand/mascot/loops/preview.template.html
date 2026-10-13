@@ -394,7 +394,7 @@
             document.querySelectorAll("[data-role]").forEach((el) =>
                 el.setAttribute("aria-pressed", String(el.dataset.role === role))
             );
-            $("command").textContent = "deno run brand/mascot/loops/terminal.ts " + role;
+            $("command").textContent = "bun brand/mascot/loops/terminal.ts " + role;
             const a = animations.find((a) => a.role === role);
             $("speed").options[0].textContent = "Normal · " + (a.frames.reduce((sum, f) => sum + f.duration, 0) / 1000) +
                 " s loop";

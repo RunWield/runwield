@@ -1,6 +1,6 @@
 import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";

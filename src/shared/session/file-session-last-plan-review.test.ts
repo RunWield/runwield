@@ -14,8 +14,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { encodeCwdForSessionDir } from "./root-session.js";
 

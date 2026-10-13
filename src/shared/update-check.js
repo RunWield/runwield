@@ -5,7 +5,8 @@ import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } fr
  * Stable-channel update discovery and installer helpers.
  */
 
-import { dirname, fromFileUrl, join } from "@std/path";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { getSettingsDir } from "./settings.js";
 
 export const RUNWIELD_REPO = "gandazgul/runwield";

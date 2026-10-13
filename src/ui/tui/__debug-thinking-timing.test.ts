@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 // THROWAWAY timing harness for the Shift+Tab thinking-level latency. Deleted after diagnosis.
-import { assertEquals } from "@std/assert";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

@@ -1,7 +1,8 @@
 import { serveHttp } from "../../shared/http-server.ts";
 import { test } from "node:test";
 import process from "node:process";
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import type { RuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import type { ManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";

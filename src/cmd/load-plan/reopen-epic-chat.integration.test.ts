@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";

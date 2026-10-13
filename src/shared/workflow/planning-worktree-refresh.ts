@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Import published code before resuming an unstarted child's planning checkout. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";

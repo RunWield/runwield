@@ -1,8 +1,9 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertMatch, assertStrictEquals } from "@std/assert";
-import { join } from "@std/path";
+import { match as assertMatch, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { join } from "node:path";
 import { createMultiFileEditTool } from "../multi_file_edit.ts";
 
 /**

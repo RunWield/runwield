@@ -14,8 +14,8 @@ import type {
     Model,
     Provider,
 } from "@earendil-works/pi-ai";
-import { dirname, join } from "@std/path";
-import { parse as parseJsonc } from "@std/jsonc";
+import { dirname, join } from "node:path";
+import { parse as parseJsonc } from "../jsonc.ts";
 import { getSettingsDir } from "../settings.js";
 import { getHomeDir } from "../../constants.js";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";

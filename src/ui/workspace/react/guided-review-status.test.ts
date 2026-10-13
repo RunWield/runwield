@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { formatGuidedReviewGenerator, formatGuidedReviewUsageStatus } from "./guided-review-status.ts";
 
 test("Guided Review usage status distinguishes pending from unavailable", () => {

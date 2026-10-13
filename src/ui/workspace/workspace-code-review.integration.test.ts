@@ -12,7 +12,7 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { assertEquals, assertFalse, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertFalse, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { WorkspaceSessionContinuationService } from "./server/session-continuation.js";
 import { getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";
 

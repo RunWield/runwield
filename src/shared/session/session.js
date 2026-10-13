@@ -32,8 +32,8 @@ import { createRunWieldGrepToolDefinition } from "../../tools/grep.js";
 import { createRunWieldReadToolDefinition } from "../../tools/read.js";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
 import { intersectBashAllowedCommands } from "../bash-command-policy.ts";
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
-import { basename, dirname, isAbsolute, join, relative } from "@std/path";
+import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { AGENTS, getCwd, getHomeDir, PROMPT_TEMPLATES_DIR } from "../../constants.js";
 import {
     emitHostedSessionRuntimeEvent,

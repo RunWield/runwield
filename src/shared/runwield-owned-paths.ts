@@ -1,5 +1,5 @@
 import { lstat as fsLstat, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     PLAN_BACKUPS_DIR_NAME,
     PLAN_LOCKS_DIR_NAME,

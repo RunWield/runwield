@@ -6,8 +6,8 @@ import process from "node:process";
  * Score human-filled Router judgement CSV files.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { dirname, join } from "@std/path";
+import { parseArgs } from "../src/shared/cli-args.ts";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../src/constants.js";
 import { parseCsv, scoreAgainstHuman } from "./router-eval-utils.js";
 
@@ -101,7 +101,7 @@ export async function main(argv) {
 
     if (args.help) {
         console.log([
-            "Usage: deno run -A scripts/evaluate-router-judgements.js [options]",
+            "Usage: bun scripts/evaluate-router-judgements.js [options]",
             "",
             "Fill humanJudgement in router-judgements.csv with one of:",
             "  INQUIRY, IDEATION, OPERATION, QUICK_FIX, FEATURE, PROJECT",

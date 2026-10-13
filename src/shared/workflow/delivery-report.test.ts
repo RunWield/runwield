@@ -2,7 +2,7 @@ import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:f
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { buildDeliveryReport, type DeliveryReportInput } from "./delivery-report.ts";
 import { deliveryReportText } from "../../ui/tui/delivery-report-text.ts";
 import { readDeliveryEvidence, recordDeliveryEvidence, savePublicationEvidence } from "./delivery-evidence.ts";

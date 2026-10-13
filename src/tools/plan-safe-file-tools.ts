@@ -4,7 +4,7 @@ import { mkdir as fsMkdir, readFile as fsReadFile, stat as fsStat } from "node:f
  * Safety wrappers for Agent file tools that touch canonical Plan markdown.
  */
 
-import { dirname, isAbsolute, join, relative } from "@std/path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import {
     atomicWriteTextFileIfAbsent,
     getPlanRevisionForText,

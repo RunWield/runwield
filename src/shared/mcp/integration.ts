@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { StdioTransport } from "@earendil-works/pi-mcp";
 import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getSettingsDir, getSettingsManager } from "../settings.js";
 import { getModelRegistry } from "../models/model-registry.ts";
 import type { McpServerDefinition, McpWarning } from "./config.ts";

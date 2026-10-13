@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
 import { buildJudgementCsv, buildJudgementCsvRow, parseJsonlRows } from "./write-router-judgement-csv.js";
 import { parseCsv } from "./router-eval-utils.js";
 

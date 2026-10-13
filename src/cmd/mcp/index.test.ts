@@ -14,8 +14,8 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { getCwd } from "../../constants.js";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 
 async function runCli(args: string[], env: Record<string, string> = {}, stdinText = "") {

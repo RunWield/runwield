@@ -1,3 +1,4 @@
+import process from "node:process";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -7,8 +8,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { readWorkspaceStyles } from "../src/ui/workspace/workspace-styles.ts";
 import {
     buildPlanServerRuntime,
@@ -77,32 +78,35 @@ test("buildPlanServerRuntime creates a minimal runtime root", async () => {
         await writeRuntimeInputs(root);
         /** @type {Array<{ command: string, args: string[] }>} */
         const commands = [];
-        await buildPlanServerRuntime({
-            remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),
-            workspaceRuntimeDir: join(root, "dist/workspace-runtime"),
-            runtimeDir: join(root, "dist/plan-server"),
-        }, {
-            run: async (command, args) => {
-                commands.push({ command, args });
-                const outputIndex = args.indexOf("--output");
-                await writeFile(args[outputIndex + 1], "// bundled remote server\n");
+        await buildPlanServerRuntime(
+            {
+                remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),
+                workspaceRuntimeDir: join(root, "dist/workspace-runtime"),
+                runtimeDir: join(root, "dist/plan-server"),
             },
-        });
+            {
+                run: async (command, args) => {
+                    commands.push({ command, args });
+                    const outputIndex = args.indexOf("--outfile");
+                    await writeFile(args[outputIndex + 1], "// bundled remote server\n");
+                },
+            },
+        );
 
-        assertEquals(commands, [{
-            command: "deno",
-            args: [
-                "bundle",
-                "--platform",
-                "deno",
-                "--packages",
-                "bundle",
-                "--minify",
-                "--output",
-                join(root, "dist/plan-server/remote-server.js"),
-                join(root, "src/ui/workspace/remote-server.ts"),
-            ],
-        }]);
+        assertEquals(commands, [
+            {
+                command: process.execPath,
+                args: [
+                    "build",
+                    "--target",
+                    "bun",
+                    "--minify",
+                    "--outfile",
+                    join(root, "dist/plan-server/remote-server.js"),
+                    join(root, "src/ui/workspace/remote-server.ts"),
+                ],
+            },
+        ]);
 
         const packagedCss = await fsReadFile(
             join(root, "dist/plan-server/src/ui/workspace/static/workspace.css"),
@@ -137,15 +141,18 @@ test("buildPlanServerRuntime removes stale output", async () => {
             join(root, "dist/plan-server/src/agent-definitions/subagent-definitions/reviewer-prompt.md"),
             "stale",
         );
-        await buildPlanServerRuntime({
-            remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),
-            workspaceRuntimeDir: join(root, "dist/workspace-runtime"),
-            runtimeDir: join(root, "dist/plan-server"),
-        }, {
-            run: async (_command, args) => {
-                await writeFile(args[args.indexOf("--output") + 1], "// bundled remote server\n");
+        await buildPlanServerRuntime(
+            {
+                remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),
+                workspaceRuntimeDir: join(root, "dist/workspace-runtime"),
+                runtimeDir: join(root, "dist/plan-server"),
             },
-        });
+            {
+                run: async (_command, args) => {
+                    await writeFile(args[args.indexOf("--outfile") + 1], "// bundled remote server\n");
+                },
+            },
+        );
 
         const files = await listRuntimeFiles(join(root, "dist/plan-server"));
         assertEquals(files.includes("src/cli.ts"), false);
@@ -160,13 +167,16 @@ test("buildPlanServerRuntime fails when required inputs are missing", async () =
     try {
         await assertRejects(
             () =>
-                buildPlanServerRuntime({
-                    remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),
-                    workspaceRuntimeDir: join(root, "dist/workspace-runtime"),
-                    runtimeDir: join(root, "dist/plan-server"),
-                }, {
-                    run: async () => {},
-                }),
+                buildPlanServerRuntime(
+                    {
+                        remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),
+                        workspaceRuntimeDir: join(root, "dist/workspace-runtime"),
+                        runtimeDir: join(root, "dist/plan-server"),
+                    },
+                    {
+                        run: async () => {},
+                    },
+                ),
             Error,
             "Required Plan Server runtime file is missing",
         );
@@ -184,16 +194,19 @@ test("buildPlanServerRuntime fails clearly when Workspace runtime output lacks s
 
         await assertRejects(
             () =>
-                buildPlanServerRuntime({
-                    remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),
-                    workspaceRuntimeDir: join(root, "dist/workspace-runtime"),
-                    runtimeDir: join(root, "dist/plan-server"),
-                }, {
-                    run: () => {
-                        didRunBundle = true;
-                        return Promise.resolve();
+                buildPlanServerRuntime(
+                    {
+                        remoteEntry: join(root, "src/ui/workspace/remote-server.ts"),
+                        workspaceRuntimeDir: join(root, "dist/workspace-runtime"),
+                        runtimeDir: join(root, "dist/plan-server"),
                     },
-                }),
+                    {
+                        run: () => {
+                            didRunBundle = true;
+                            return Promise.resolve();
+                        },
+                    },
+                ),
             Error,
             `Required Plan Server runtime file is missing: ${join(root, "dist/workspace-runtime/server.mjs")}`,
         );

@@ -4,7 +4,7 @@
  */
 
 import { setCurrentValidationProgress } from "../workflow/validation-progress.ts";
-import { isAbsolute } from "@std/path";
+import { isAbsolute } from "node:path";
 import { MAX_DELEGATED_READERS } from "../../constants.js";
 import { normalizePlanAssociation, PLAN_ASSOCIATION_CUSTOM_TYPE } from "./plan-association.ts";
 import {

@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertFalse } from "@std/assert";
+import { assertEquals, assertFalse } from "../../../testing/assertions.ts";
 import { escapeReviewPayloadJson } from "./review-payload-json.ts";
 
 test("embedded review JSON cannot close its script element", () => {

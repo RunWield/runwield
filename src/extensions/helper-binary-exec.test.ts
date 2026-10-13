@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { kill, platform } from "node:process";
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "../testing/assertions.ts";
 import { getCwd } from "../constants.js";
 import { denoHelperBinaryExec } from "./helper-binary-exec.ts";
 

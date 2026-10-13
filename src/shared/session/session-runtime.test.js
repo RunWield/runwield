@@ -18,14 +18,8 @@ import {
 } from "node:fs/promises";
 import { mkdirSync as fsMkdirSync, statSync as fsStatSync, writeFileSync as fsWriteFileSync } from "node:fs";
 import process from "node:process";
-import {
-    assert,
-    assertEquals,
-    assertExists,
-    assertRejects,
-    assertStrictEquals,
-    assertStringIncludes,
-} from "@std/assert";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     fauxAssistantMessage,
     fauxText,
@@ -35,7 +29,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../settings.js";
 import { SessionHost } from "./session-host.ts";

@@ -1,7 +1,7 @@
 import { recoverWindowsRename } from "./native-file-replace-windows.ts";
 import { rename as fsRename } from "node:fs/promises";
 import { mkdir as fsMkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
-import { dirname, join, relative } from "@std/path";
+import { dirname, join, relative } from "node:path";
 import { loadPlan } from "../plan-store.js";
 
 export const EPIC_MANUAL_QA_FILE_NAME = "manual-qa.md";

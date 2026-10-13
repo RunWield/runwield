@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertRejects } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { assertReviewAssetsAvailableInRuntime } from "./assert-workspace-review-runtime.js";
 
 test("Workspace review runtime asset gate follows nested JS and CSS references", async () => {

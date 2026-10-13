@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assertEquals, assertInstanceOf, assertNotEquals } from "@std/assert";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertInstanceOf } from "../../testing/assertions.ts";
 import { Spacer } from "@earendil-works/pi-tui";
 import { createFooterOnlyUiApi, createSilentUiApi, createUiApi } from "./api.js";
 import {

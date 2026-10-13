@@ -1,5 +1,5 @@
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getCwd } from "../../constants.js";
 import { isInitDone } from "./init-state.ts";
 

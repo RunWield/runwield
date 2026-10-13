@@ -1,5 +1,5 @@
 import process from "node:process";
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { COMMAND_NAMES } from "../registry.js";
 import { printCommandHelp } from "../help/index.ts";
 import type { UiAPI } from "../../ui/tui/types.js";

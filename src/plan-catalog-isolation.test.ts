@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { mkdir, readFile, rm } from "node:fs/promises";
-import { join } from "@std/path";
-import { assertEquals, assertRejects } from "@std/assert";
+import { join } from "node:path";
+import { assertEquals, assertRejects } from "./testing/assertions.ts";
 import { ensurePlanIdentity, listPlans, savePlan } from "./plan-store.js";
 import { addEntry, listEntries } from "./shared/worktree-registry.js";
 import { defineCommittedGitFixture } from "./shared/git-test-fixture.ts";

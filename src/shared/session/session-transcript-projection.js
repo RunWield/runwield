@@ -6,7 +6,7 @@ import { mkdir as fsMkdir, stat as fsStat, writeFile as fsWriteFile } from "node
  * Non-mutating committed-prefix Session Transcript reader and semantic projector.
  */
 
-import { dirname, resolve } from "@std/path";
+import { dirname, resolve } from "node:path";
 import { ACTIVE_AGENT_CUSTOM_TYPE, readActiveAgentFromEntry } from "./active-agent-session.js";
 import { readPersistedWorkflowContext } from "./workflow-context-session.js";
 import { readPersistedTutorialContext } from "./tutorial-context-session.ts";

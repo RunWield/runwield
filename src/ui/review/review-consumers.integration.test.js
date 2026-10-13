@@ -1,7 +1,7 @@
 import process from "node:process";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { captureWorktreeTree, diffTrees, getWorktreeReviewDiff } from "../../shared/workflow/git-snapshot.ts";

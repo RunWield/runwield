@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { mountDashboard, newDashboardWindow } from "./dashboard-test-dom.ts";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));

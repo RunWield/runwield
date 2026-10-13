@@ -1,9 +1,10 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
 /**
  * @module acp/session-map.test
  */
 
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { AcpSessionMap } from "./session-map.ts";
 
 test("AcpSessionMap correlates runtime-owned turns without enforcing exclusion", () => {

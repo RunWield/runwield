@@ -2,7 +2,7 @@ import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/prom
 import { test } from "node:test";
 import { recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan, withPlanCatalogLock } from "../../plan-store.js";

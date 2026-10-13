@@ -1,6 +1,6 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { createThemeFromJson, mergeThemeJson, resolveThemeVars, splitFgBgColors } from "./theme-json.ts";
 
 test("resolveThemeVars resolves nested references and leaves literals intact", () => {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { readFile as fsReadFile, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../src/cmd/testing/runtime-command-fixture.ts";
 import { defineGitFixture, git } from "../src/shared/git-test-fixture.ts";

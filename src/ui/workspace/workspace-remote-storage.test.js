@@ -1,8 +1,8 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { DatabaseSync } from "../../shared/sqlite.ts";
 
 import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";

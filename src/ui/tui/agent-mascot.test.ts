@@ -1,6 +1,7 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { FakeTime } from "@std/testing/time";
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { install } from "@sinonjs/fake-timers";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { TuiAgentMascot, type TuiMascotState } from "./agent-mascot.ts";
 import { mascotForAgent } from "../mascot/mascot.ts";
 
@@ -29,7 +30,7 @@ test("mascot centers on its stable drawing width across poses and compact widths
 });
 
 test("base dot blinks without moving the W body", () => {
-    const clock = new FakeTime();
+    const clock = install({ now: Date.now(), toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
     const renderer = new TuiAgentMascot(() => {});
     const sprite = mascotForAgent("router")!;
     const state: TuiMascotState = { agentName: "router", sessionId: "one", pose: "thinking" };
@@ -45,7 +46,7 @@ test("base dot blinks without moving the W body", () => {
         assertEquals(dotOn[1], dotOff[1]);
     } finally {
         renderer.dispose();
-        clock.restore();
+        clock.uninstall();
     }
 });
 

@@ -7,8 +7,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { ProjectRuntimeEntryRefusedError, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { addEntry } from "../worktree-registry.js";
@@ -87,7 +87,7 @@ test("publication operations reject newly staged runtime state without changing 
         ];
         for (const operation of operations) {
             await test.test(operation.name, async () => {
-                await assertRejects(operation.run, ProjectRuntimeEntryRefusedError);
+                await assertRejects(() => operation.run(), ProjectRuntimeEntryRefusedError);
                 assertEquals(await fsReadFile(layout.primary.worktreeRegistryPath, "utf8"), before);
                 assertEquals(await fsReadFile(hazard, "utf8"), "{}\n");
             });

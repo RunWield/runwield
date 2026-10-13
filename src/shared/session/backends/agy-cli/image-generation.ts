@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { readFile as fsReadFile, realpath as fsRealpath, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { Buffer } from "node:buffer";
-import { isAbsolute, join, relative } from "@std/path";
+import { isAbsolute, join, relative } from "node:path";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { getHomeDir } from "../../../../constants.js";
 import { getModelRegistry } from "../../../models/model-registry.ts";

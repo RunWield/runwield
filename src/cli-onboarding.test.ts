@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { env, execPath, platform, versions } from "node:process";
+import { env, execPath, platform } from "node:process";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { assertWorkflowBinaryCallsSupported, writeWorkflowBinaryFixtures } from "./testing/workflow-binary-fixtures.ts";
@@ -22,7 +22,7 @@ test(
             const child = spawn(
                 execPath,
                 [
-                    ...(versions.deno ? ["run", "-A", "--node-modules-dir=manual"] : ["--no-env-file", "--no-install"]),
+                    ...["--no-env-file", "--no-install"],
                     fileURLToPath(new URL("./cli.ts", import.meta.url)),
                     "Runtime migration startup qualification",
                 ],

@@ -9,8 +9,8 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 import { getCwd, getHomeDir } from "../../constants.js";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     formatImageAttachmentMarker,

@@ -101,7 +101,8 @@ jobs:
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
                   & "$bin/bun.exe" -e 'if (process.arch !== "${{ matrix.arch }}" || process.versions.bun !== "1.4.3") throw new Error("Wrong native Bun runtime")'
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            - name: Install current production Deno for interoperability and tool fixtures
+            - name: Install legacy Deno only for release interoperability
+              if: matrix.phase == 'package'
               uses: denoland/setup-deno@v2
               with:
                   deno-version: v2.9.7
@@ -148,7 +149,7 @@ jobs:
               run: bun run check
             - name: Build embedded Workspace for source integration tests
               if: matrix.phase == 'source'
-              run: bun run workspace:build:bun
+              run: bun run workspace:build
             - name: Verify Bun and Deno share native lock ownership
               if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
               timeout-minutes: 2
@@ -191,7 +192,7 @@ jobs:
               id: compile
               if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
               timeout-minutes: 10
-              run: bun run compile:bun bin/wld-bun.exe bun-windows-${{ matrix.arch }}
+              run: bun run compile --output bin/wld-bun.exe --target bun-windows-${{ matrix.arch }}
             - name: Qualify relocated package
               if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
               timeout-minutes: 5

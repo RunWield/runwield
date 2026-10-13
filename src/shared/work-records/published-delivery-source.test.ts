@@ -1,6 +1,6 @@
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { readPublishedDeliverySources, readPublishedRecordMarkdown } from "./published-source.ts";
 import { advancePublicationAttempt, createPublicationAttempt } from "../workflow/publication-attempt.ts";

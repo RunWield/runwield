@@ -2,8 +2,8 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { serveHttp } from "../http-server.ts";
 import { mkdir as fsMkdir, rm as fsRm, symlink as fsSymlink, writeFile as fsWriteFile } from "node:fs/promises";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     createAssistantMessageEventStream,

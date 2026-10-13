@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertInstanceOf, assertStringIncludes, assertThrows } from "@std/assert";
+import { assertEquals, assertInstanceOf, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
     assertSharedPlanWriteAllowed,
     COLLABORATION_LOCK_BYPASS,

@@ -13,7 +13,7 @@ import { rm as fsRm } from "node:fs/promises";
  * compare-and-swap.
  */
 
-import { join, relative } from "@std/path";
+import { join, relative } from "node:path";
 import {
     ensurePlanIdentity,
     findPlansByParent,

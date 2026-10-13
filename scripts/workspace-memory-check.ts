@@ -1,3 +1,4 @@
+import { removeExecutableFixtureDirectory } from "../src/testing/runtime-executable-fixture.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { getCwd } from "../src/constants.js";
 import { type NativeProcess, spawnNativeProcess } from "../src/shared/foreground-process.ts";
@@ -5,8 +6,8 @@ import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat } fr
 import { tmpdir } from "node:os";
 import process from "node:process";
 // Run isolated source and standalone renderer, saved-operation, and combined workloads.
-import { join, resolve } from "@std/path";
-import { buildCompileArgs } from "./compile.js";
+import { join, resolve } from "node:path";
+import { compileBun } from "./compile-bun.ts";
 import { sha256File } from "./build-metadata.js";
 
 interface Sample {
@@ -29,8 +30,7 @@ interface Result {
 
 const decoder = new TextDecoder();
 const fixturePath = resolve("scripts/workspace-memory-fixture.ts");
-const artifactPath = resolve("dist/workspace-runtime/server.mjs");
-const sourcePath = resolve("dist/workspace/server/entry.mjs");
+const sourcePath = resolve("dist/workspace-bun/server/entry.mjs");
 const timeoutMs = 210_000;
 
 async function run(
@@ -56,9 +56,11 @@ async function run(
         }
         return {
             stdout,
-            samples: stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((entry) =>
-                entry.type === "sample"
-            ),
+            samples: stdout
+                .split("\n")
+                .filter(Boolean)
+                .map((line) => JSON.parse(line))
+                .filter((entry) => entry.type === "sample"),
         };
     } catch (error) {
         if (controller.signal.aborted) throw new Error(`INCOMPLETE: subprocess exceeded ${timeout} ms: ${command}`);
@@ -83,14 +85,13 @@ async function isolatedRoot(): Promise<{ root: string; env: Record<string, strin
     };
 }
 
-async function compiledBinary(root: string, gc = false): Promise<string> {
-    const output = join(root, gc ? "workspace-memory-fixture-gc" : "workspace-memory-fixture");
-    // Reuse the production compile inclusion list: the runtime entry must be
-    // embedded as a passive asset, not imported as a normal Deno module.
-    const args = buildCompileArgs({ output });
-    args.splice(args.length - 1, 1, ...(gc ? ["--v8-flags=--expose-gc"] : []), fixturePath);
-    const result = await run("deno", args, undefined, 600_000);
-    if (result.stdout) console.log(result.stdout);
+async function compiledBinary(root: string): Promise<string> {
+    const output = join(
+        root,
+        process.platform === "win32" ? "workspace-memory-fixture.exe" : "workspace-memory-fixture",
+    );
+    // Use the production payload builder with the real diagnostic entrypoint.
+    await compileBun(output, undefined, undefined, undefined, "scripts/workspace-memory-fixture.ts");
     return output;
 }
 
@@ -124,44 +125,32 @@ function assertSamples(result: Result, gc: boolean, standalone: boolean, scenari
 
 async function measure(scenario: "renderer" | "operations" | "combined"): Promise<void> {
     await fsStat(sourcePath);
-    await fsStat(artifactPath);
     const { root } = await isolatedRoot();
     try {
-        const hash = await sha256File(artifactPath);
+        const binary = await compiledBinary(root);
+        const hash = await sha256File(binary);
         console.log(
             JSON.stringify({
                 type: "artifact",
-                path: artifactPath,
+                path: binary,
                 sha256: hash,
                 source: sourcePath,
                 sourceSha256: await sha256File(sourcePath),
             }),
         );
-        const binary = await compiledBinary(root);
-        const binaryGc = await compiledBinary(root, true);
-        for (
-            const [label, command, standalone] of [
-                ["source", "deno", false],
-                ["compiled", binary, true],
-            ] as const
-        ) {
+        for (const [label, command, standalone] of [
+            ["source", process.execPath, false],
+            ["compiled", binary, true],
+        ] as const) {
             for (const gc of [true, false]) {
-                const workload = scenario === "renderer"
-                    ? []
-                    : [scenario === "combined" ? "--combined" : "--operations"];
-                const args = standalone ? ["--measure", ...workload, ...(gc ? ["--gc"] : [])] : [
-                    "run",
-                    "-A",
-                    ...(gc ? ["--v8-flags=--expose-gc"] : []),
-                    "--unstable-no-legacy-abort",
-                    fixturePath,
-                    "--measure",
-                    ...workload,
-                    ...(gc ? ["--gc"] : []),
-                ];
+                const workload =
+                    scenario === "renderer" ? [] : [scenario === "combined" ? "--combined" : "--operations"];
+                const args = standalone
+                    ? ["--measure", ...workload, ...(gc ? ["--gc"] : [])]
+                    : [fixturePath, "--measure", ...workload, ...(gc ? ["--gc"] : [])];
                 const isolated = await isolatedRoot();
                 try {
-                    const result = await run(standalone && gc ? binaryGc : command, args, isolated.env);
+                    const result = await run(command, args, isolated.env);
                     assertSamples(result, gc, standalone, scenario);
                     console.log(
                         JSON.stringify({
@@ -178,12 +167,11 @@ async function measure(scenario: "renderer" | "operations" | "combined"): Promis
             }
         }
     } finally {
-        await fsRm(root, { recursive: true });
+        await removeExecutableFixtureDirectory(root);
     }
 }
 
 async function serve(): Promise<void> {
-    await fsStat(artifactPath);
     const { root, env } = await isolatedRoot();
     let child: NativeProcess | undefined;
     try {
@@ -221,10 +209,12 @@ async function serve(): Promise<void> {
         if (child) {
             try {
                 child.kill("SIGTERM");
-            } catch { /* already exited */ }
+            } catch {
+                /* already exited */
+            }
             await child.status;
         }
-        await fsRm(root, { recursive: true });
+        await removeExecutableFixtureDirectory(root);
     }
 }
 

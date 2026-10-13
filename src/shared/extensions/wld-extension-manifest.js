@@ -5,7 +5,7 @@ import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
  * Helpers for allowing only WLD-compatible Pi package code extensions.
  */
 
-import { dirname, join, parse } from "@std/path";
+import { dirname, join, parse } from "node:path";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { getSettingsDir, getSettingsManager } from "../settings.js";
 import { isEnabledPackageResource } from "../package-resources.ts";

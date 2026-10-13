@@ -17,7 +17,8 @@ import type { SequenceReviewDecision, SequenceReviewDocument } from "../shared/w
  */
 
 import { rememberPlannedVerificationCommand } from "../shared/workflow/planned-verification-command.ts";
-import { join, toFileUrl } from "@std/path";
+import { join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import { type AgentToolResult, defineTool } from "@earendil-works/pi-coding-agent";
 import { CLI_BIN, normalizePlanClassification, normalizeWorkKind, PLANS_DIR_NAME } from "../constants.js";

@@ -1,5 +1,5 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import {
     extractRouterDecisionsFromEntries,
     extractToolCallNames,

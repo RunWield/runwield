@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { normalizePlanAssociation, PLAN_ASSOCIATION_CUSTOM_TYPE, readPlanAssociations } from "./plan-association.ts";
 
 test("normalizes valid Plan Association evidence", () => {

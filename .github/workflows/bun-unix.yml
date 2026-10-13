@@ -33,9 +33,6 @@ jobs:
             - uses: oven-sh/setup-bun@v2
               with:
                   bun-version-file: .bun-version
-            - uses: denoland/setup-deno@v2
-              with:
-                  deno-version: v2.9.7
             - uses: actions/setup-go@v6
               with:
                   go-version: "1.25.x"
@@ -58,7 +55,7 @@ jobs:
             - name: Check source and test types
               run: bun run check
             - name: Build embedded Workspace for source integration tests
-              run: bun run workspace:build:bun
+              run: bun run workspace:build
             - name: Run isolated Bun inventory shard
               env:
                   BUN_SHARD: ${{ matrix.shard }}

@@ -3,7 +3,7 @@ import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts"
 import { lstat as fsLstat, mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 import { setInterval } from "node:timers";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir } from "../../constants.js";
 import { getLockHostname } from "../process-liveness.ts";
 import { migrateLegacyProjectRuntimeState, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";

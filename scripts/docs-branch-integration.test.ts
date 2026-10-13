@@ -1,5 +1,5 @@
 import { bashFixtureExecutable, bashFixturePath, quoteBashFixture } from "./bash-fixture.ts";
-import { prepareDocsFixtureDependencies } from "./docs-fixture-dependencies.ts";
+import { buildStableDocs, prepareStableDocs } from "./build-stable-docs.ts";
 
 import { captureScriptProcess } from "./script-process.ts";
 import { test } from "node:test";
@@ -14,10 +14,10 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import process from "node:process";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join, resolve } from "@std/path";
-import { PUBLIC_DOCS, stagePublicDocs } from "./public-docs.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { PUBLIC_DOCS } from "./public-docs.ts";
 import { verifyDocsSource } from "./verify-docs-source.ts";
 
 const repositoryRoot = resolve(dirname(fromFileUrl(import.meta.url)), "..");
@@ -53,16 +53,7 @@ async function copyTree(source: string, destination: string): Promise<void> {
 }
 
 async function buildDocs(work: string): Promise<string> {
-    await stagePublicDocs(work, join(work, "docs-site", "src", "content", "docs"));
-    const output = await captureScriptProcess(process.execPath, {
-        args: process.versions.deno
-            ? ["run", "-A", "npm:astro@7.3.3", "build"]
-            : [join(work, "docs-site", "node_modules", "astro", "bin", "astro.mjs"), "build"],
-        cwd: join(work, "docs-site"),
-        stdout: "piped",
-        stderr: "piped",
-    });
-    assert(output.success, new TextDecoder().decode(output.stderr));
+    await buildStableDocs(work);
     return await fsReadFile(join(work, "dist", "docs", "quickstart", "index.html"), "utf8");
 }
 
@@ -138,7 +129,10 @@ test("docs branch publishes Stable content, preserves corrections, and stops on 
         await run(work, "git", "push", "origin", "main", "--tags");
 
         await write(join(work, "docs", "user-documentation", "quickstart.md"), "# Quickstart\n\nUNRELEASED-B\n");
-        await write(join(work, "docs", "user-documentation", "index.md"), "# Public home\n\nClean home\n");
+        await write(
+            join(work, "docs", "user-documentation", "index.md"),
+            "# RunWield Documentation\n\nClean home. Quickstart. Configure RunWield.\n",
+        );
         await write(join(work, "src", "product.ts"), "export const product = 'UNRELEASED-B';\n");
         await run(work, "git", "add", ".");
         await run(work, "git", "commit", "-m", "Unreleased B and site support");
@@ -166,7 +160,7 @@ test("docs branch publishes Stable content, preserves corrections, and stops on 
         await run(work, "git", "merge-base", "--is-ancestor", stableARelease.sourceRef, "HEAD");
         await run(work, "git", "merge-base", "--is-ancestor", "v1.0.0", "HEAD");
         // The fixture keeps the same frozen dependencies through every publication build.
-        await prepareDocsFixtureDependencies(work);
+        await prepareStableDocs(work);
         const stableAHtml = await buildDocs(work);
         assertStringIncludes(stableAHtml, "STABLE-A");
         assertStringIncludes(stableAHtml, "v1.0.0");

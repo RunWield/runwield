@@ -16,7 +16,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mergeFrontMatterText } from "../plan-store.js";
 import { normalizePublicationFailure } from "./workflow/validation-merge-repair.ts";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import {
     isExecutionCommitPublishedUpstream,
     IsolatedPublicationError,

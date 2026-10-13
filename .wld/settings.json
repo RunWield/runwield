@@ -1,5 +1,5 @@
 {
-    "verification_command": "deno task ci",
+    "verification_command": "bun run ci",
     "guidedReview": "ask",
     "imageGeneration": {
         "model": "codex-cli/gpt-6.1-sol",

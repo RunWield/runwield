@@ -1,5 +1,5 @@
 import { mkdir as fsMkdir, realpath as fsRealpath, writeFile as fsWriteFile } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { encodeCwdForSessionDir } from "../shared/session/root-session.js";
 
 /** Write a minimal Pi transcript in the Session store's project directory. */

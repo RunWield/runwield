@@ -1,6 +1,7 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assert, assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE } from "./workflow-context-session.js";
 import { TUTORIAL_CONTEXT_CUSTOM_TYPE } from "./tutorial-context-session.ts";

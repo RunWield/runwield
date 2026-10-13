@@ -1,6 +1,7 @@
 import { serveHttp } from "../http-server.ts";
 import { test } from "node:test";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     type AssistantMessage,

@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { type ExtensionToolContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan } from "../../plan-store.js";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";

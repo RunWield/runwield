@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { getSlashCommandDefinitions } from "../../../cmd/registry.js";
 import { goldenTuiPortfolioScenarios } from "./catalog.ts";
 

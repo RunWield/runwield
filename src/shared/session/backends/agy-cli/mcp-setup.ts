@@ -13,7 +13,7 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "@std/path";
+import { basename, dirname, join, resolve } from "node:path";
 import { CLI_BIN, getHomeDir } from "../../../../constants.js";
 import type { HostedSession } from "../../hosted-session.js";
 import {

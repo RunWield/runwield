@@ -2,7 +2,8 @@ import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";

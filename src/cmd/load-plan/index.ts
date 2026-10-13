@@ -7,7 +7,7 @@ import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
  * previous chat session.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { AGENTS, CLI_BIN, getCwd } from "../../constants.js";
 import {
     archivePlan,

@@ -1,5 +1,5 @@
 import { lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getHomeDir, MODEL_PRESETS_DIR } from "../constants.js";
 import type { ImageGenerationSettings } from "./image-generation-settings.ts";
 

@@ -1,8 +1,9 @@
 import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertObjectMatch, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { assertModelExecutionBackendSupported, UnsupportedModelExecutionBackendError } from "./model-execution.ts";
 import { discoverProviderModel, RunWieldCredentialStore, RunWieldModelRegistry } from "./model-registry.ts";
 import { resolveTemplateModel } from "./model-validation.ts";
@@ -38,8 +39,8 @@ test("Agy CLI exposes exactly the supported selectable base models", async () =>
                 healthCheck: "execution-preflight",
                 contextWindow: 128000,
                 maxTokens: 16384,
-                input: ["text"],
             });
+            assertEquals(model.input, ["text"]);
             assertEquals(registry.isSelectable(model), true);
             assertEquals(registry.hasConfiguredAuth(model), false);
             assertEquals(registry.getProviderAuthStatus("agy-cli"), { configured: false });

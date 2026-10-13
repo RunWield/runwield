@@ -6,7 +6,7 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
  * Internal package smoke checks that must execute inside the packaged CLI.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import process from "node:process";
 import { WORK_RECORDS_DIR_NAME } from "../../constants.js";
 import { publishExecutionWorktreeIsolated } from "../../shared/isolated-publication.ts";

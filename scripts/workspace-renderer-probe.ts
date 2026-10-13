@@ -11,7 +11,8 @@ import { tmpdir } from "node:os";
 import process from "node:process";
 // A disposable module layout tests the real Workspace server with both entry paths.
 // The synthetic entries count module evaluations; no loader or importer is injected.
-import { dirname, fromFileUrl, join, toFileUrl } from "@std/path";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
 
 const sourceRoot = dirname(dirname(fromFileUrl(import.meta.url)));
 const root = await fsMkdtemp(join(tmpdir(), "workspace-renderer-probe-"));

@@ -1,7 +1,7 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { makeManagedSessionFixture, readTranscriptEvidence } from "../../testing/managed-session-fixture.ts";
 
 async function writeRepairTranscript(

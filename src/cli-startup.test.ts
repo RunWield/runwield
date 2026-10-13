@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { env, execPath, versions } from "node:process";
+import { env, execPath } from "node:process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
@@ -12,11 +12,7 @@ function invoke(args: string[]) {
     try {
         const result = spawnSync(
             execPath,
-            [
-                ...(versions.deno ? ["run", "-A", "--node-modules-dir=manual"] : ["--no-env-file", "--no-install"]),
-                fileURLToPath(new URL("./cli.ts", import.meta.url)),
-                ...args,
-            ],
+            [...["--no-env-file", "--no-install"], fileURLToPath(new URL("./cli.ts", import.meta.url)), ...args],
             {
                 cwd: directory,
                 env: {

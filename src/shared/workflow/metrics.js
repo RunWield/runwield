@@ -4,7 +4,7 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
  * Local-only workflow metrics recording helpers.
  */
 
-import { dirname, isAbsolute, join } from "@std/path";
+import { dirname, isAbsolute, join } from "node:path";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { getHomeDir, RUNWIELD_DIR_NAME } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";

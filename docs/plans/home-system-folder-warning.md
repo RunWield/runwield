@@ -247,34 +247,34 @@ Use the sandboxed runner only. Wrap in-process home/cwd mutations in `withProces
 where listed as new below, or record the actual replacement names if implementation consolidates them.
 
 - `deno run -A scripts/run-tests.js src/shared/project-directory.test.ts src/shared/owner-coordination/projects.test.js`
-  - Cover the full directory table, home and root, trailing separators, `.`/`..` normalization, real symlink aliases,
-    Windows casing/drive/UNC roots, ordinary descendants, and paths such as `/binary`.
-  - Registration and relink without acknowledgement must leave both Project rows and root evidence unchanged. Correct
-    acknowledgement permits the operation. Wrong-root or stale-target acknowledgement does not.
-- `deno run -A scripts/run-tests.js src/cmd/__tests__/directory-warning.test.ts src/cmd/__tests__/registry.test.js src/ui/tui/chat-session.test.ts`
-  - In a sandbox whose cwd equals its fake home, exercise real CLI subprocess refusal for `init`, `plans`, `wr`, and
-    piped `guided-review`; assert nonzero status, stderr guidance, unconsumed request input where applicable, and no
-    project artifacts or saved Session.
-  - Prove the override reaches a real operation, for example `plans` listing in a sandbox home fixture with a real Plan.
-    Assert the normal Plan output, not merely an exit code.
-  - Exercise the actual pre-start terminal selector with `VirtualTerminal`: pending consent performs no project work;
-    Quit, Escape, and Ctrl-C restore the terminal and stop; Continue starts once. Cover startup with an initial request
-    and continuation as well as empty startup.
-  - In a continued classified folder with a configured model, verify both automatic offers are absent and their stored
-    markers are unchanged. Verify initial request delivery occurs only after Continue. In a normal nonempty and normal
-    empty project, preserve the existing offer/guidance tests. Verify explicit Init still shows its file consent and
-    explicit Onboard still shows its own consent.
-  - Cover aliases, every command classification, help/version, the global override prefix, `--continue`, `--`, and
-    flag-like text in a request. Check a CLI-to-TUI path asks once, not twice. A changed effective project root must be
-    classified before work there; prior consent for another root must not authorize it.
+    - Cover the full directory table, home and root, trailing separators, `.`/`..` normalization, real symlink aliases,
+      Windows casing/drive/UNC roots, ordinary descendants, and paths such as `/binary`.
+    - Registration and relink without acknowledgement must leave both Project rows and root evidence unchanged. Correct
+      acknowledgement permits the operation. Wrong-root or stale-target acknowledgement does not.
+- `deno run -A scripts/run-tests.js src/cmd/__tests__/directory-warning.test.ts src/cmd/__tests__/registry.test.ts src/ui/tui/chat-session.test.ts`
+    - In a sandbox whose cwd equals its fake home, exercise real CLI subprocess refusal for `init`, `plans`, `wr`, and
+      piped `guided-review`; assert nonzero status, stderr guidance, unconsumed request input where applicable, and no
+      project artifacts or saved Session.
+    - Prove the override reaches a real operation, for example `plans` listing in a sandbox home fixture with a real Plan.
+      Assert the normal Plan output, not merely an exit code.
+    - Exercise the actual pre-start terminal selector with `VirtualTerminal`: pending consent performs no project work;
+      Quit, Escape, and Ctrl-C restore the terminal and stop; Continue starts once. Cover startup with an initial request
+      and continuation as well as empty startup.
+    - In a continued classified folder with a configured model, verify both automatic offers are absent and their stored
+      markers are unchanged. Verify initial request delivery occurs only after Continue. In a normal nonempty and normal
+      empty project, preserve the existing offer/guidance tests. Verify explicit Init still shows its file consent and
+      explicit Onboard still shows its own consent.
+    - Cover aliases, every command classification, help/version, the global override prefix, `--continue`, `--`, and
+      flag-like text in a request. Check a CLI-to-TUI path asks once, not twice. A changed effective project root must be
+      classified before work there; prior consent for another root must not authorize it.
 - `deno task workspace:build && deno run -A scripts/run-tests.js src/ui/workspace/owner-workspace.test.js src/ui/workspace/project-root-form.test.tsx`
-  - Exercise authenticated add and relink requests through the real server/store. A bare matching-root request returns
-    409 and no writes; confirmation succeeds; ordinary roots retain their previous status/payload. Changed-root and
-    retargeted-symlink requests cannot reuse confirmation.
-  - Assert warning responses preserve absolute-path redaction and authentication protections. Check duplicate
-    registration and existing retarget-conflict regressions still hold.
-  - Form tests cover add/relink Continue, Quit, Escape, preserved input, root edits, pending-state duplicate prevention,
-    error display, and focus return.
+    - Exercise authenticated add and relink requests through the real server/store. A bare matching-root request returns
+      409 and no writes; confirmation succeeds; ordinary roots retain their previous status/payload. Changed-root and
+      retargeted-symlink requests cannot reuse confirmation.
+    - Assert warning responses preserve absolute-path redaction and authentication protections. Check duplicate
+      registration and existing retarget-conflict regressions still hold.
+    - Form tests cover add/relink Continue, Quit, Escape, preserved input, root edits, pending-state duplicate prevention,
+      error display, and focus return.
 
 The refusal/write assertions and continued-folder offer assertions must fail if the classifier is replaced with “always
 ordinary” or a guard becomes a pass-through. The confirmed-success and descendant tests must fail if the implementation

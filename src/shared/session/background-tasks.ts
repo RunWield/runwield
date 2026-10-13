@@ -1,6 +1,6 @@
 import { type FileHandle, open } from "node:fs/promises";
 import { mkdir as fsMkdir } from "node:fs/promises";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { spawnForegroundShell } from "../foreground-process.ts";
 import { extractAssistantOutput } from "../workflow/workflow-results.js";

@@ -16,8 +16,8 @@ import { normalizePlanServerUrl } from "./collaboration/urls.ts";
  * @module shared/settings.test
  */
 
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertThrows } from "../testing/assertions.ts";
+import { join } from "node:path";
 import {
     __resetSettingsForTests,
     getCodeReviewMode,
@@ -185,7 +185,7 @@ settingsTest({
 
         // Actually, the cleanest test: write to a temp dir and verify via
         // the module's helper by reading the file content directly.
-        const { parse: parseJsonc } = await import("@std/jsonc");
+        const { parse: parseJsonc } = await import("./jsonc.ts");
         const parsed = /** @type {Record<string, any>} */ (parseJsonc(jsoncContent));
         assertEquals(parsed.theme, "dark");
         assertEquals(parsed.agents.router.model, "provider/router-v2");

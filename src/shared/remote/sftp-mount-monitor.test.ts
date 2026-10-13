@@ -1,6 +1,6 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertMatch } from "@std/assert";
+import { match as assertMatch } from "node:assert/strict";
 
 // On hosts without Linux FUSE, these checks guard the independent monitor wiring.
 // The opt-in real SSHFS test in sftp-mount.test.ts verifies mount loss end to end.

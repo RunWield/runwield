@@ -6,7 +6,7 @@ import { readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/prom
  * Stable RunWield Session catalog APIs for owner coordination.
  */
 
-import { isAbsolute, join, resolve } from "@std/path";
+import { isAbsolute, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
     getRunWieldSessionDir,

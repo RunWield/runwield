@@ -8,11 +8,11 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { HostedSession } from "../shared/session/hosted-session.js";
 import { createPlanWrittenTool } from "./plan-written.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../plan-store.js";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../shared/project-runtime-layout.ts";
