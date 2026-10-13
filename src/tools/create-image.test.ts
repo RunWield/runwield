@@ -85,6 +85,8 @@ async function withFixture(run: (fixture: Fixture) => Promise<void>) {
             "RUNWIELD_CODEX_IMAGE_MODE",
             "RUNWIELD_CODEX_IMAGE_LOG",
             "RUNWIELD_CODEX_IMAGE_OUTSIDE",
+            "RUNWIELD_CODEX_IMAGE_START_GATE",
+            "RUNWIELD_CODEX_IMAGE_PID",
         ];
         const prior = envNames.map((key) => process.env[key]);
         const fixture: Fixture = {
@@ -790,12 +792,50 @@ test(
         }),
 );
 
-test("Codex adapter interrupts and terminates an in-flight owned helper on cancellation", () =>
+test("Codex adapter interrupts a late-acknowledged turn and terminates its helper on cancellation", () =>
     withFixture(async (f) => {
         await f.settings({ model: "codex-cli/fixture-model" });
         const log = join(f.cwd, "rpc.jsonl");
+        const startGate = join(f.cwd, "start-gate");
+        const pidPath = join(f.cwd, "helper.pid");
         process.env["RUNWIELD_CODEX_IMAGE_LOG"] = log;
+        process.env["RUNWIELD_CODEX_IMAGE_START_GATE"] = startGate;
+        process.env["RUNWIELD_CODEX_IMAGE_PID"] = pidPath;
         process.env["RUNWIELD_CODEX_IMAGE_MODE"] = "wait";
+        const abort = new AbortController();
+        const pending = assertRejects(() =>
+            createImage({ cwd: f.cwd, prompt: "red", outputPath: "cancelled.png", signal: abort.signal }),
+        );
+        try {
+            const deadline = Date.now() + 5000;
+            while (!(await fsReadFile(log, "utf8").catch(() => "")).includes("turn/start")) {
+                if (Date.now() > deadline) throw new Error("Codex fixture did not start its turn");
+                await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+        } finally {
+            abort.abort();
+            await fsWriteFile(startGate, "acknowledge");
+            await pending;
+        }
+        assertStringIncludes(
+            await fsReadFile(log, "utf8"),
+            '"method":"turn/interrupt","params":{"threadId":"thread-fixture","turnId":"turn-fixture"}',
+        );
+        const pid = Number(await fsReadFile(pidPath, "utf8"));
+        assert(pid > 0);
+        const gone = assertThrows(() => process.kill(pid, 0), Error);
+        assertEquals("code" in gone ? gone.code : "missing-code", "ESRCH");
+        await assertRejects(() => fsStat(join(f.cwd, "cancelled.png")), Error, "ENOENT");
+    }));
+
+test("Codex adapter terminates a helper that never acknowledges turn startup on cancellation", () =>
+    withFixture(async (f) => {
+        await f.settings({ model: "codex-cli/fixture-model" });
+        const log = join(f.cwd, "rpc.jsonl");
+        const pidPath = join(f.cwd, "helper.pid");
+        process.env["RUNWIELD_CODEX_IMAGE_LOG"] = log;
+        process.env["RUNWIELD_CODEX_IMAGE_PID"] = pidPath;
+        process.env["RUNWIELD_CODEX_IMAGE_MODE"] = "unacknowledged";
         const abort = new AbortController();
         const pending = assertRejects(() =>
             createImage({ cwd: f.cwd, prompt: "red", outputPath: "cancelled.png", signal: abort.signal }),
@@ -810,6 +850,9 @@ test("Codex adapter interrupts and terminates an in-flight owned helper on cance
             abort.abort();
             await pending;
         }
-        assertStringIncludes(await fsReadFile(log, "utf8"), "turn/interrupt");
+        const pid = Number(await fsReadFile(pidPath, "utf8"));
+        assert(pid > 0);
+        const gone = assertThrows(() => process.kill(pid, 0), Error);
+        assertEquals("code" in gone ? gone.code : "missing-code", "ESRCH");
         await assertRejects(() => fsStat(join(f.cwd, "cancelled.png")), Error, "ENOENT");
     }));
