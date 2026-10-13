@@ -419,7 +419,8 @@ Each dashboard read verifies runtime layout and migration evidence once per chec
 for every Plan and worktree lookup. Registry evidence for a Project is read once for its Plans, with duplicate live
 attempts still treated as errors. The next read verifies that evidence again; Plan and Session state remain fresh within
 the read. The visible page makes one finite shared dashboard request per refresh, waits five seconds after it settles
-before another automatic request, and pauses automatic requests while hidden.
+before another automatic request, and pauses automatic requests while hidden. Completion waits for all filesystem reads
+started for that request, including registry reads for Projects with no Plans.
 
 Each section defaults to most recently updated first, has a header button to reverse its sort, and initially shows five
 items. Rows show the relevant update time, and finished rows also show completion time when it differs. Row labels name
