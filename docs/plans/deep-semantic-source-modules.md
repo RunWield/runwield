@@ -536,7 +536,7 @@ module evaluation rather than at call time, the binary breaks and the source-run
 Every existing test is expected to survive this Plan. Nothing here removes a feature, so a test that no longer compiles
 must be rewritten against the new path or the new module shape — never deleted. Three areas need explicit care:
 
-- `src/ui/theme/theme-json.test.js` and `theme-registry.test.js` split along with their subjects. The JSON-policy cases
+- `src/ui/theme/theme-json.test.ts` and `theme-registry.test.js` split along with their subjects. The JSON-policy cases
   (`mergeThemeJson`, `resolveThemeVars`) follow Core; the Pi-`Theme` construction cases (`createThemeFromJson`,
   `splitFgBgColors`, `detectColorMode`) follow `consumers/cli/style/`. No case is dropped.
 - `src/cmd/plans/collaboration-commands.integration.test.ts` splits between the Core operation and the command. The

@@ -17,7 +17,12 @@ import {
     personalGlobalRoot,
     PersonalResourcePathError,
 } from "../remote/personal-resources.ts";
-import { AGENT_TOOL_SETS, PROTECTED_TOOL_NAMES, UNIVERSAL_AGENT_TOOL_NAMES } from "../../tools/registry.ts";
+import {
+    AGENT_TOOL_SETS,
+    DELEGATE_AGENT_MODE_TOOL_NAMES,
+    PROTECTED_TOOL_NAMES,
+    UNIVERSAL_AGENT_TOOL_NAMES,
+} from "../../tools/registry.ts";
 import { normalizeBashAllowedCommands } from "../bash-command-policy.ts";
 
 /** @returns {string | null} */
@@ -708,6 +713,8 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         if (!tools.includes(toolName)) tools.push(toolName);
     }
 
+    const { tools: resolvedTools, delegationModes } = resolveDelegationModes(tools);
+
     displayNameCache.set(displayNameCacheKey(projectRoot, agentName), displayName);
     if (busyLines) busyLinesCache.set(displayNameCacheKey(projectRoot, agentName), busyLines);
 
@@ -719,12 +726,43 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         contextContract,
         thinkingLevel,
         temperature,
-        tools,
+        tools: resolvedTools,
+        delegationModes,
         bashAllowedCommands,
         workflowOnly,
         busyLines,
         systemPrompt,
     };
+}
+
+/**
+ * @typedef {Object} ResolvedDelegationTools
+ * @property {string[]} tools - Tool names with mode-limited delegation names folded into `delegate_agent`
+ * @property {import('./types.js').DelegationMode[] | undefined} delegationModes - Allowed modes; absent allows all
+ */
+
+/**
+ * Fold `delegate_agent_read` and `delegate_agent_write` into the one `delegate_agent` tool and record which modes
+ * they allow. Plain `delegate_agent` keeps every mode.
+ *
+ * @param {string[]} tools
+ * @returns {ResolvedDelegationTools}
+ */
+function resolveDelegationModes(tools) {
+    /** @type {import('./types.js').DelegationMode[]} */
+    const modes = [];
+    /** @type {string[]} */
+    const resolved = [];
+    for (const toolName of tools) {
+        const mode = Object.hasOwn(DELEGATE_AGENT_MODE_TOOL_NAMES, toolName)
+            ? DELEGATE_AGENT_MODE_TOOL_NAMES[/** @type {keyof typeof DELEGATE_AGENT_MODE_TOOL_NAMES} */ (toolName)]
+            : undefined;
+        if (mode && !modes.includes(mode)) modes.push(mode);
+        const name = mode ? "delegate_agent" : toolName;
+        if (!resolved.includes(name)) resolved.push(name);
+    }
+    const unlimited = tools.includes("delegate_agent") || !modes.length;
+    return { tools: resolved, delegationModes: unlimited ? undefined : modes };
 }
 
 /**

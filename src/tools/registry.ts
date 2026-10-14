@@ -45,6 +45,14 @@ export const PROTECTED_TOOL_NAMES: readonly string[] = Object.freeze([
 ]);
 
 /**
+ * Agent-definition tool names that grant `delegate_agent` limited to one mode. Plain `delegate_agent` allows both.
+ */
+export const DELEGATE_AGENT_MODE_TOOL_NAMES = Object.freeze({
+    delegate_agent_read: "read",
+    delegate_agent_write: "write",
+} as const);
+
+/**
  * Named tool groups an Agent definition can request with `toolSets` instead of
  * listing each tool. Keep these in sync when a tool is added to a family.
  */
@@ -65,8 +73,13 @@ export const AGENT_TOOL_SETS: Readonly<Record<string, readonly string[]>> = Obje
         "code_structure",
         "code_impls",
         "code_importers",
+        "memory",
+        "user_interview",
+        "work_record_search",
+        "work_record_read",
+        "delegate_agent_read",
     ]),
-    write: Object.freeze(["edit", "write", "multi_file_edit"]),
+    write: Object.freeze(["edit", "write", "multi_file_edit", "delegate_agent_write"]),
     docs: Object.freeze(["write_docs", "edit_docs"]),
     shell: Object.freeze(["bash", "background_task"]),
     web: Object.freeze(["web_search", "web_fetch", "web_code_search", "web_docs_search"]),

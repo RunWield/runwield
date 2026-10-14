@@ -1721,7 +1721,12 @@ Execution Backends, live message headers, restored messages, and the TUI footer.
 **Required tools.**
 
 Users can customize Agent tools, while required workflow capabilities remain available so customization does not break
-planning or validation. Guide may save ordinary Markdown documents when explicitly requested in the conversation; this
+planning or validation. An Agent definition names tools individually with `tools`, by group with `toolSets` (`read`,
+`write`, `docs`, `shell`, `web`), or both. A layer that sets either key replaces the lower layer's tool list with its
+expanded sets followed by its individual tools. An unknown set name fails with source-specific guidance. An Agent with
+neither key in any layer is conversation-only. `delegate_agent_read` and `delegate_agent_write` grant `delegate_agent`
+limited to one mode; the `read` and `write` sets include them respectively, plain `delegate_agent` allows both, and the
+tool advertises only the allowed modes and refuses others, including a mode a Delegated Role's ceiling reduces to. Guide may save ordinary Markdown documents when explicitly requested in the conversation; this
 does not grant authority to change workflow-owned Plans, ADRs, or Work Records. Guide also supports requested
 [image generation](#image-generation) when configured, without gaining general file-editing tools.
 
@@ -1742,6 +1747,9 @@ boundary and does not control external CLI Execution Backends' native shells. Se
 
 - Given `planner.md` with the effective front matter name `Plan Designer`, when any Execution Backend emits Agent
   messages, the message headers and footer show `Plan Designer`; routing and saved Agent identity remain `planner`.
+- Given a project Agent definition with `toolSets: [read]` over bundled Operator, when the Agent loads, it has the read
+  set's tools plus Operator's protected workflow tools and none of its write or shell tools; given `toolSets: [reed]`, the
+  definition fails to load and names the valid sets.
 - Given layered Agent definitions, when a higher layer omits `bashAllowedCommands`, its lower list remains; when it
   supplies a non-empty list it adds to the lower list without duplicate entries, `[]` denies all commands, and `null` resets the definition to unrestricted
   bash. Invalid values fail with source-specific guidance instead of removing a limit silently.
@@ -1962,6 +1970,16 @@ RunWield remains the Session Transcript, workflow, resume, and replay authority.
 Code CLI and signing in with Claude Code; it does not require a RunWield API-key or subscription login. Missing
 executable or authentication state is reported by the first-turn backend preflight, not by provider credential
 onboarding.
+
+**Requirement: Deliver text steering during Claude CLI work.** Core sends text Steering Messages to the active Claude
+CLI turn, including turns that use only native tools or no tools. A message stays pending until Claude acknowledges
+receipt. Core then records it once in the Session Transcript. Lifecycle calls cannot accept completion while steering
+is pending. Up recalls the latest pending message to the input without removing earlier messages. Esc recalls pending
+messages and stops the turn. A late cancellation result must not replace the recalled input with the original request.
+
+**Acceptance scenario:** Given an active Claude CLI turn, when the user sends text steering during a native command,
+Claude receives it before its next model step. The queue removes the acknowledged message, and Session history contains
+that user message once. Delivery does not require a RunWield lifecycle call.
 
 Users need an honest account of what activity a backend can display and replay. Backend coverage and implementation gaps
 belong in its technical documentation and Plans. RunWield Connect is the separate mode where an external host, such as

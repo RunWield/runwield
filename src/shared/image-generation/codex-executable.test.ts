@@ -5,6 +5,7 @@ import {
     chmod as fsChmod,
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
+    realpath as fsRealpath,
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
@@ -87,7 +88,8 @@ test("Codex discovery fails without launching anything when no candidate is acce
         // A clean macOS runner may have no system app. Deny the known home-app
         // fixture as well so permission propagation never depends on host installs.
         if (process.platform !== "darwin") await fsRm(f.appExecutable);
-        const homeApplications = join(f.root, "Applications");
+        // Sandbox rules match canonical paths, including macOS's /var -> /private/var link.
+        const homeApplications = await fsRealpath(join(f.root, "Applications"));
         const probe = join(f.root, "probe.ts");
         await fsWriteFile(
             probe,

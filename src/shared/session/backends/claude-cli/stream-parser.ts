@@ -1,3 +1,5 @@
+import type { ClaudeCliControlReply } from "./process.ts";
+
 export interface ClaudeCliUsage {
     inputTokens: number | null;
     outputTokens: number | null;
@@ -37,6 +39,9 @@ export type ClaudeCliStreamEvent =
 
 export interface ClaudeCliStreamCallbacks {
     onDelta: (delta: ClaudeCliAssistantDelta) => void;
+    onUserReplay?: (id: string) => void;
+    onResult?: () => void;
+    onControlReply?: (reply: ClaudeCliControlReply) => void;
     /** Live thinking chunks from `stream_event` partial messages; display-only, never persisted as visible text. */
     onThinkingDelta?: (delta: ClaudeCliThinkingDelta) => void;
     /** Signals the current thinking block ended, either because visible text started or the turn finished. */
@@ -142,6 +147,16 @@ export function parseClaudeCliJsonLine(
     }
     if (!isJsonRecord(parsed)) return null;
     const eventType = asString(parsed.type);
+    if (eventType === "control_response" && isJsonRecord(parsed.response)) {
+        const response = parsed.response;
+        const payload = isJsonRecord(response.response) ? response.response : {};
+        callbacks?.onControlReply?.({
+            requestId: asString(response.request_id),
+            cancelled: payload.cancelled === true,
+            ...(response.subtype === "error" ? { error: asString(response.error) } : {}),
+        });
+        return null;
+    }
     if (eventType === "assistant") {
         const message = isJsonRecord(parsed.message) ? parsed.message : parsed;
         const messageId = asString(message.id);
@@ -174,6 +189,9 @@ export function parseClaudeCliJsonLine(
     }
     if (eventType === "user") {
         const message = isJsonRecord(parsed.message) ? parsed.message : parsed;
+        if (parsed.isReplay === true) {
+            callbacks?.onUserReplay?.(asString(parsed.uuid));
+        }
         if (Array.isArray(message.content)) {
             for (const item of message.content) {
                 if (!isJsonRecord(item) || item.type !== "tool_result") continue;
@@ -358,6 +376,7 @@ export async function parseClaudeCliStream(
         }
         endThinking();
         sawResult = true;
+        callbacks.onResult?.();
         resultText = event.text;
         metadata = {
             isError: event.isError,

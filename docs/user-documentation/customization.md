@@ -39,7 +39,7 @@ the bundled default up to your project, and merges them:
 | --------------------- | -------------------------------------------------------------------------------------------------------- |
 | Prompt (the body)     | Each layer's body is **added after** the one below it. Set `promptOverride: true` to discard lower ones. |
 | Most front matter     | A field set in a higher layer replaces it; a field you leave out comes from the layer below.             |
-| `tools`               | Replaces the whole list from the layer below. Protected tools can't be removed (see below).              |
+| `tools`, `toolSets`   | Together they replace the whole list from the layer below. Protected tools can't be removed (see below). |
 | `sharedPractice`      | Replaces the whole list from the layer below.                                                            |
 | `bashAllowedCommands` | A non-empty list adds to the list below. See [Limiting shell commands](#limiting-shell-commands).        |
 
@@ -49,7 +49,7 @@ still required, even if it's empty (`---` on two lines).
 `promptOverride` applies only to the layers below the file that sets it. If `~/.wld/agents/guide.md` sets it and
 `.wld/agents/guide.md` doesn't, the project body is added after your personal one, and the bundled body is dropped.
 
-Some tools are **protected**: if the bundled Agent has one, a narrower `tools` list in an override gets it back anyway.
+Some tools are **protected**: if the bundled Agent has one, a narrower tool list in an override gets it back anyway.
 They cover memory, code exploration (`code_*`), web access (`web_*`), and workflow tools such as `task_completed`,
 `plan_written`, and `user_interview`, which RunWield needs to move work forward.
 
@@ -58,22 +58,60 @@ Model, thinking level, and temperature in an Agent file are defaults. [`agents`]
 
 ### Front matter fields
 
-| Field                 | Use                                                                                       |
-| --------------------- | ----------------------------------------------------------------------------------------- |
-| `name`                | The name shown in the UI, such as `Code Reviewer`. Required for new Agents.               |
-| `description`         | One line shown in `wld agent` and the `/agent` picker.                                    |
-| `tools`               | The tools the Agent may use. Leave it out for a conversation-only Agent.                  |
-| `bashAllowedCommands` | Limit the shell to specific commands.                                                     |
-| `sharedPractice`      | Shared prompt fragments to add after the body. See [Shared practices](#shared-practices). |
-| `promptOverride`      | `true` discards the prompt from lower layers.                                             |
-| `model`               | A fallback `provider/model`, used only when settings don't choose one.                    |
-| `thinkingLevel`       | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`.                             |
-| `temperature`         | A sampling temperature, such as `0.4`.                                                    |
-| `busyLines`           | Status messages shown while the Agent works.                                              |
-| `workflowOnly`        | `true` hides the Agent from `/agent`; RunWield can still activate it in a workflow.       |
+| Field                 | Use                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| `name`                | The name shown in the UI, such as `Code Reviewer`. Required for new Agents.                 |
+| `description`         | One line shown in `wld agent` and the `/agent` picker.                                      |
+| `toolSets`            | Groups of tools to include. See [Tool sets](#tool-sets).                                    |
+| `tools`               | Individual tools, added after any `toolSets`. Leave both out for a conversation-only Agent. |
+| `bashAllowedCommands` | Limit the shell to specific commands.                                                       |
+| `sharedPractice`      | Shared prompt fragments to add after the body. See [Shared practices](#shared-practices).   |
+| `promptOverride`      | `true` discards the prompt from lower layers.                                               |
+| `model`               | A fallback `provider/model`, used only when settings don't choose one.                      |
+| `thinkingLevel`       | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`.                               |
+| `temperature`         | A sampling temperature, such as `0.4`.                                                      |
+| `busyLines`           | Status messages shown while the Agent works.                                                |
+| `workflowOnly`        | `true` hides the Agent from `/agent`; RunWield can still activate it in a workflow.         |
 
-To see what tools an Agent can use, open its bundled file in
-[`src/agent-definitions/`](https://github.com/gandazgul/runwield/tree/main/src/agent-definitions) and copy from its
+### Tool sets
+
+`toolSets` gives an Agent a group of related tools without listing each one:
+
+| Set     | Tools                                                                                                                                               |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read`  | `read`, `grep`, `find`, `ls`, the code exploration tools (`code_search`, ...), `memory`, `user_interview`, Work Record search, read-only delegation |
+| `write` | `edit`, `write`, `multi_file_edit`, write delegation                                                                                                |
+| `docs`  | `write_docs`, `edit_docs`: create and edit Markdown files only                                                                                      |
+| `shell` | `bash`, `background_task`                                                                                                                           |
+| `web`   | `web_search`, `web_fetch`, `web_code_search`, `web_docs_search`                                                                                     |
+
+Use `tools` alongside it for anything else, such as image generation:
+
+```yaml
+toolSets: [read, docs]
+tools: [create_image]
+```
+
+If a file sets either `toolSets` or `tools`, the two together make that layer's whole list, and it replaces the one
+below. An unknown set name is an error, so a typo can't quietly leave an Agent without tools.
+
+#### Limiting delegation
+
+`delegate_agent` lets an Agent hand a bounded task to a separate helper session, either to investigate (read) or to make
+changes (write). You choose which kinds an Agent may start:
+
+| In `tools`             | The Agent can delegate                 |
+| ---------------------- | -------------------------------------- |
+| `delegate_agent_read`  | Investigation only                     |
+| `delegate_agent_write` | Changes only                           |
+| `delegate_agent`       | Both, which is what bundled Agents use |
+
+The `read` set includes `delegate_agent_read` and the `write` set includes `delegate_agent_write`, so `[read]` gets
+investigation and `[read, write]` gets both. The Agent only sees the kinds it's allowed, and RunWield refuses any other.
+A helper never gets more tools than the Agent that started it.
+
+For the full list of tools, open any bundled Agent in
+[`src/agent-definitions/`](https://github.com/gandazgul/runwield/tree/main/src/agent-definitions) and look at its
 `tools` list.
 
 ### Examples
@@ -118,17 +156,12 @@ bashAllowedCommands:
 ---
 ```
 
-**Make Operator read-only.** A `tools` list replaces the bundled one, so you list only what you want to keep:
+**Make Operator read-only.** A tool list replaces the bundled one, so you list only what you want to keep:
 
 ```markdown
 ---
 description: "Read-only operations helper for this repo."
-tools:
-    - read
-    - grep
-    - find
-    - ls
-    - bash
+toolSets: [read, shell]
 bashAllowedCommands:
     - git status
     - git log
@@ -138,7 +171,7 @@ bashAllowedCommands:
 Don't change files. Explain the commands the user should run instead.
 ```
 
-Operator's protected tools, such as `memory`, `task_completed`, and `user_interview`, stay available.
+Operator's protected workflow tools, such as `task_completed`, stay available.
 
 **Replace an Agent's prompt entirely.** Use `promptOverride` when you want to write the prompt from scratch:
 
@@ -152,7 +185,7 @@ You are a careful test writer. Read the code under test, then add focused tests 
 
 RunWield's core system prompt and the Agent's shared practices are still included.
 
-**Add a new Agent.** Use a name no bundled Agent has, and give it a `name`, `description`, and `tools`:
+**Add a new Agent.** Use a name no bundled Agent has, and give it a `name`, `description`, and tools:
 
 ```markdown
 ---
@@ -162,15 +195,7 @@ temperature: 0.5
 sharedPractice:
     - user-authority
     - plain-language-dialogue
-tools:
-    - read
-    - grep
-    - find
-    - ls
-    - write_docs
-    - edit_docs
-    - user_interview
-    - memory
+toolSets: [read, docs]
 ---
 
 You write documentation for the people who use this project, not for its developers.
@@ -182,6 +207,19 @@ You write documentation for the people who use this project, not for its develop
 
 Save it as `.wld/agents/docs-writer.md` and start it with `/agent docs-writer`. The Router doesn't send requests to
 your own Agents; switch to them yourself.
+
+**Add a conversation-only Agent.** Leave out `toolSets` and `tools`, and the Agent can only talk. That's useful for
+brainstorming or rubber-ducking without it touching your files:
+
+```markdown
+---
+name: Sounding Board
+description: "Talks ideas through. Doesn't read or change files."
+temperature: 0.8
+---
+
+Ask one question at a time. Point out the weakest part of an idea before its strengths.
+```
 
 **Share a team Agent and keep personal tweaks.** Commit `.wld/agents/reviewer.md` to the repository so everyone gets
 it. A teammate's `~/.wld/agents/reviewer.md` still merges underneath it: their body comes first, then the project's.

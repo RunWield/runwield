@@ -364,7 +364,7 @@ Not changed: the validation Code Review loop, Plan lifecycle, `worktrees.json`, 
 **Automated:**
 
 - `deno run -A scripts/run-tests.js src/shared/standalone-review/ src/shared/workflow/git-snapshot.test.ts src/ui/review/ src/ui/workspace/routes/api/ src/cmd/review/`
-- `deno run -A scripts/run-tests.js src/shared/workflow/guided-review.test.js src/shared/workflow/validation-loop-human-review.test.js src/ui/workspace/workspace-code-review.integration.test.ts`
+- `deno run -A scripts/run-tests.js src/shared/workflow/guided-review.test.ts src/shared/workflow/validation-loop-human-review.test.js src/ui/workspace/workspace-code-review.integration.test.ts`
 
 **New tests.** Use a real Git repository through `defineGitFixture`. Fake only the `gh`/`glab` subprocess port and the
 agent turns.

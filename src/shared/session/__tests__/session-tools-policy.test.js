@@ -1665,6 +1665,35 @@ test("Agent toolSets expand into the layer's tool list and validate set names", 
             "set_session_name",
         ]);
 
+        await fsWriteFile(join(directory, "reader.md"), "---\nname: Reader\ntoolSets: [read]\n---\n");
+        const reader = await loadAgentDef("reader", cwd);
+        for (const toolName of [
+            "memory",
+            "user_interview",
+            "work_record_search",
+            "work_record_read",
+            "delegate_agent",
+        ]) {
+            assert(reader.tools.includes(toolName), toolName);
+        }
+        assert(!reader.tools.includes("delegate_agent_read"));
+        assertEquals(reader.delegationModes, ["read"]);
+
+        await fsWriteFile(join(directory, "builder.md"), "---\nname: Builder\ntoolSets: [read, write]\n---\n");
+        const builder = await loadAgentDef("builder", cwd);
+        assertEquals(builder.delegationModes, ["read", "write"]);
+        assertEquals(
+            builder.tools.filter((toolName) => toolName.startsWith("delegate_agent")),
+            ["delegate_agent"],
+        );
+
+        await fsWriteFile(
+            join(directory, "lead.md"),
+            "---\nname: Lead\ntoolSets: [read]\ntools: [delegate_agent]\n---\n",
+        );
+        assertEquals((await loadAgentDef("lead", cwd)).delegationModes, undefined);
+        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).delegationModes, undefined);
+
         await fsWriteFile(join(directory, "talker.md"), "---\nname: Talker\n---\nJust talk.\n");
         assertEquals((await loadAgentDef("talker", cwd)).tools, ["set_session_name"]);
 

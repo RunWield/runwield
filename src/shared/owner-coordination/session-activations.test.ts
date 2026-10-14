@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
+import type { OwnerCoordinationDatabase } from "./database.js";
 import { acknowledgeActivationProtocol, getActivationProtocolStatus } from "./activation-protocol.ts";
 import {
     acquireSessionActivation,
@@ -19,15 +20,18 @@ import {
     updateOperationReceipt,
 } from "./session-activations.js";
 
-/** @param {import('./database.js').OwnerCoordinationDatabase} database */
-function insertCatalogedSession(database) {
+function insertCatalogedSession(database: OwnerCoordinationDatabase) {
     database.transaction(() => {
-        database.handle.prepare(
-            "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('project-1', 'Project', '/tmp/project', '/tmp/project', 'enabled', 't0', 't0')",
-        ).run();
-        database.handle.prepare(
-            "INSERT INTO runwield_sessions(id, project_id, source, created_at, updated_at) VALUES ('session-1', 'project-1', 'catalog', 't0', 't0')",
-        ).run();
+        database.handle
+            .prepare(
+                "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('project-1', 'Project', '/tmp/project', '/tmp/project', 'enabled', 't0', 't0')",
+            )
+            .run();
+        database.handle
+            .prepare(
+                "INSERT INTO runwield_sessions(id, project_id, source, created_at, updated_at) VALUES ('session-1', 'project-1', 'catalog', 't0', 't0')",
+            )
+            .run();
     });
 }
 
@@ -68,12 +72,17 @@ test("activation state backfills and publishes generation zero through a fenced 
             const checkpointProof = changeSessionActivationPhase(database, proof, "checkpointing", {
                 now: () => "2026-01-01T00:00:00.500Z",
             });
-            publishGenerationAndRelease(database, checkpointProof, {
-                generation: 0,
-                byteLength: 42,
-                terminalEntryId: "entry-1",
-                digestHex: "a".repeat(64),
-            }, { now: () => "2026-01-01T00:00:01.000Z" });
+            publishGenerationAndRelease(
+                database,
+                checkpointProof,
+                {
+                    generation: 0,
+                    byteLength: 42,
+                    terminalEntryId: "entry-1",
+                    digestHex: "a".repeat(64),
+                },
+                { now: () => "2026-01-01T00:00:01.000Z" },
+            );
             const inspected = inspectSessionActivation(database, "session-1");
             assertEquals(inspected.activation?.state, "idle");
             assertEquals(inspected.generation?.generation, 0);
@@ -115,7 +124,7 @@ test("stale or expired activation proofs cannot publish or revive a session", as
                     ownerProcessKind: "test",
                     expectedGeneration: null,
                     phase: "bootstrap",
-                })
+                }),
             );
             markSessionReconcileRequired(database, { runwieldSessionId: "session-1", projectId: "project-1" });
             assertEquals(inspectSessionActivation(database, "session-1").activation?.state, "reconcile_required");
@@ -161,12 +170,17 @@ test("activation state enforces phase graph, exact proof, and no-change release 
             );
             assertThrows(
                 () =>
-                    publishGenerationAndRelease(database, hydrated, {
-                        generation: 0,
-                        byteLength: 0,
-                        terminalEntryId: null,
-                        digestHex: "b".repeat(64),
-                    }, { now: () => "2026-01-01T00:00:02.000Z" }),
+                    publishGenerationAndRelease(
+                        database,
+                        hydrated,
+                        {
+                            generation: 0,
+                            byteLength: 0,
+                            terminalEntryId: null,
+                            digestHex: "b".repeat(64),
+                        },
+                        { now: () => "2026-01-01T00:00:02.000Z" },
+                    ),
                 Error,
                 "checkpointing",
             );
@@ -197,12 +211,17 @@ test("proof-fenced unhealthy transitions reject a superseded activation", async 
             const checkpoint = changeSessionActivationPhase(database, first, "checkpointing", {
                 now: () => "2026-01-01T00:00:01.000Z",
             });
-            publishGenerationAndRelease(database, checkpoint, {
-                generation: 0,
-                byteLength: 1,
-                terminalEntryId: null,
-                digestHex: "c".repeat(64),
-            }, { now: () => "2026-01-01T00:00:02.000Z" });
+            publishGenerationAndRelease(
+                database,
+                checkpoint,
+                {
+                    generation: 0,
+                    byteLength: 1,
+                    terminalEntryId: null,
+                    digestHex: "c".repeat(64),
+                },
+                { now: () => "2026-01-01T00:00:02.000Z" },
+            );
             const second = acquireSessionActivation(database, {
                 runwieldSessionId: "session-1",
                 projectId: "project-1",
@@ -219,11 +238,7 @@ test("proof-fenced unhealthy transitions reject a superseded activation", async 
                 Error,
                 "proof",
             );
-            assertThrows(
-                () => markSessionUncertain(database, first, { reason: "stale" }),
-                Error,
-                "proof",
-            );
+            assertThrows(() => markSessionUncertain(database, first, { reason: "stale" }), Error, "proof");
             assertEquals(inspectSessionActivation(database, "session-1").activation?.operationId, second.operationId);
             assertEquals(inspectSessionActivation(database, "session-1").activation?.state, "active");
 
@@ -287,7 +302,7 @@ test("plan_action operation receipts preserve bounded results", async () => {
                     projectId: "project-1",
                     expectedGeneration: 0,
                     kind: "plan_action",
-                })
+                }),
             );
         } finally {
             database.close();
@@ -316,12 +331,17 @@ test("recoverExpiredSessionControl adopts exact or transcript-ahead evidence onl
             const checkpointProof = changeSessionActivationPhase(database, initialProof, "checkpointing", {
                 now: () => "2026-01-01T00:00:01.000Z",
             });
-            publishGenerationAndRelease(database, checkpointProof, {
-                generation: 0,
-                byteLength: 1,
-                terminalEntryId: "entry-0",
-                digestHex: "a".repeat(64),
-            }, { now: () => "2026-01-01T00:00:02.000Z" });
+            publishGenerationAndRelease(
+                database,
+                checkpointProof,
+                {
+                    generation: 0,
+                    byteLength: 1,
+                    terminalEntryId: "entry-0",
+                    digestHex: "a".repeat(64),
+                },
+                { now: () => "2026-01-01T00:00:02.000Z" },
+            );
             const staleProof = acquireSessionActivation(database, {
                 runwieldSessionId: "session-1",
                 projectId: "project-1",
@@ -351,13 +371,20 @@ test("recoverExpiredSessionControl adopts exact or transcript-ahead evidence onl
             const inspected = inspectSessionActivation(database, "session-1");
             assertEquals(inspected.activation?.state, "idle");
             assertEquals(inspected.generation?.generation, 1);
-            assertThrows(() =>
-                publishGenerationAndRelease(database, { ...staleProof, phase: "checkpointing" }, {
-                    generation: 1,
-                    byteLength: 2,
-                    terminalEntryId: "entry-1",
-                    digestHex: "c".repeat(64),
-                }), Error);
+            assertThrows(
+                () =>
+                    publishGenerationAndRelease(
+                        database,
+                        { ...staleProof, phase: "checkpointing" },
+                        {
+                            generation: 1,
+                            byteLength: 2,
+                            terminalEntryId: "entry-1",
+                            digestHex: "c".repeat(64),
+                        },
+                    ),
+                Error,
+            );
         } finally {
             database.close();
         }
