@@ -32,8 +32,8 @@ dependencies:
     - "05-validate-with-claude-owned-review-and-repair-workers"
 targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "587793ac598c510bce25701017e477041837bfbd"
+status: "verified"
 ---
 
 # Publish validated work and record the outcome
