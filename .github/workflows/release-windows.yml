@@ -1,25 +1,32 @@
-name: Bun Windows qualification
+name: Windows release checks
 
 on:
-    pull_request:
+    workflow_call:
+        inputs:
+            source_sha:
+                description: Exact product commit selected by release-gate
+                required: true
+                type: string
+            build_version:
+                description: Candidate or Stable identity
+                required: true
+                type: string
     workflow_dispatch:
+
+env:
+    WLD_BUILD_VERSION: ${{ inputs.build_version || 'v0.0.0-rc.1' }}
 
 permissions:
     contents: read
 
-concurrency:
-    group: bun-windows-${{ github.event.pull_request.number || github.ref }}
-    cancel-in-progress: true
-
 jobs:
     native:
-        name: Bun Windows ${{ matrix.arch }} ${{ matrix.phase }} ${{ matrix.shard || '' }}
-        # These exact labels are standard, free public-repository runners.
-        if: github.event.repository.private == false
+        name: Windows ${{ matrix.arch }} ${{ matrix.phase }} ${{ matrix.shard || '' }}
         runs-on: ${{ matrix.runner }}
         timeout-minutes: ${{ matrix.phase == 'source' && 60 || 20 }}
         strategy:
             fail-fast: false
+            max-parallel: 2
             matrix:
                 include:
                     - runner: windows-2025
@@ -84,6 +91,7 @@ jobs:
                   "TMPDIR=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
             - uses: actions/checkout@v5
               with:
+                  ref: ${{ inputs.source_sha || github.sha }}
                   submodules: recursive
                   persist-credentials: false
             - uses: actions/setup-node@v4
@@ -141,7 +149,7 @@ jobs:
             - name: Install separate frozen root and docs graphs
               id: install
               run: bun run install:locked
-            - name: Prepare generated source version for focused qualification
+            - name: Prepare generated source version for focused checks
               if: matrix.phase == 'package'
               run: bun scripts/write-version.js
             - name: Check all source and test types
@@ -173,34 +181,36 @@ jobs:
                   bun --eval $probe
                   deno eval $probe
                   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            - name: Run complete isolated Bun test inventory
+            - name: Run isolated source and Golden shard
               if: ${{ matrix.phase == 'source' && !cancelled() && steps.install.outcome == 'success' }}
               timeout-minutes: 40
-              run: |
-                  $files = Get-Content scripts/bun-test-files.json -Raw | ConvertFrom-Json
-                  $selected = for ($i = 0; $i -lt $files.Count; $i++) {
-                    if ($i % 4 -eq ${{ matrix.shard }} - 1) { $files[$i] }
-                  }
-                  Write-Host "Qualifying $($selected.Count) of $($files.Count) files in shard ${{ matrix.shard }}/4"
-                  bun scripts/run-bun-tests.ts @selected
-                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              env:
+                  WLD_TEST_SHARD: ${{ matrix.shard }}/4
+              run: bun scripts/run-tests.js
             - name: Qualify native locking, process trees and compiled identity
               if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
               timeout-minutes: 12
-              run: bun scripts/run-bun-tests.ts src/shared/native-file-lock.test.ts src/shared/foreground-process.test.ts src/shared/runtime-identity.test.ts src/shared/sqlite.test.ts src/shared/private-json-file.test.ts scripts/run-bun-tests.test.ts src/cmd/load-plan/reopen-plan-review-worktree.integration.test.ts src/shared/primary-checkout.test.ts src/cmd/load-plan/primary-plan-recovery.test.ts src/cmd/load-plan/plan-authority.integration.test.ts src/cmd/load-plan/legacy-validation.integration.test.ts scripts/install-platforms.test.js scripts/install-integrity.test.js scripts/install-interaction.test.js scripts/pre-commit-hook.test.ts scripts/docs-workflow.test.ts scripts/public-docs.test.ts src/shared/owner-coordination/database.test.js src/shared/session/live-session-connection.test.ts src/shared/session/live-session-events.test.ts src/testing/workflow-binary-fixtures.test.ts src/shared/remote/entry-isolation.test.ts
+              run: bun scripts/run-tests.js src/shared/native-file-lock.test.ts src/shared/foreground-process.test.ts src/shared/runtime-identity.test.ts src/shared/sqlite.test.ts src/shared/private-json-file.test.ts scripts/run-bun-tests.test.ts src/cmd/load-plan/reopen-plan-review-worktree.integration.test.ts src/shared/primary-checkout.test.ts src/cmd/load-plan/primary-plan-recovery.test.ts src/cmd/load-plan/plan-authority.integration.test.ts src/cmd/load-plan/legacy-validation.integration.test.ts scripts/install-platforms.test.js scripts/install-integrity.test.js scripts/install-interaction.test.js scripts/pre-commit-hook.test.ts scripts/docs-workflow.test.ts scripts/public-docs.test.ts src/shared/owner-coordination/database.test.js src/shared/session/live-session-connection.test.ts src/shared/session/live-session-events.test.ts src/testing/workflow-binary-fixtures.test.ts src/shared/remote/entry-isolation.test.ts
             - name: Compile native executable and embedded Workspace
               id: compile
               if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
               timeout-minutes: 10
-              run: bun run compile --output bin/wld-bun.exe --target bun-windows-${{ matrix.arch }}
+              run: |
+                  if (Test-Path scripts/compile-command.ts) {
+                    bun run compile --output bin/wld.exe --target bun-windows-${{ matrix.arch }}
+                  } else {
+                    # Immutable RC1 checkouts predate the unified compile command.
+                    bun run compile:bun bin/wld.exe bun-windows-${{ matrix.arch }}
+                  }
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             - name: Qualify relocated package
               if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
               timeout-minutes: 5
-              run: bun run check:package:bun bin/wld-bun.exe
+              run: bun run check:package:bun bin/wld.exe
             - name: Qualify local provider and terminal restoration
               if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
               timeout-minutes: 5
-              run: bun run check:provider:bun bin/wld-bun.exe
+              run: bun run check:provider:bun bin/wld.exe
             - name: Collect bounded Golden failure diagnostics
               if: ${{ always() && matrix.phase == 'source' }}
               run: |
@@ -223,15 +233,15 @@ jobs:
                     }
                   }
                   Write-Host "Retained $count Golden diagnostic files ($bytes bytes)"
-            - name: Retain bounded qualification evidence
+            - name: Retain bounded test evidence
               if: always()
               uses: actions/upload-artifact@v5
               with:
-                  name: bun-windows-${{ matrix.arch }}-${{ matrix.phase }}-${{ matrix.shard || 0 }}-${{ github.run_attempt }}
+                  name: windows-${{ matrix.arch }}-${{ matrix.phase }}-${{ matrix.shard || 0 }}-${{ github.run_attempt }}
                   retention-days: 3
                   include-hidden-files: true
                   if-no-files-found: warn
                   path: |
-                      .ci-cache/bun-report-*/
+                      .ci-cache/
                       .ci-cache/windows-golden-evidence/
                       bin/*.build.json

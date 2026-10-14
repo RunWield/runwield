@@ -62,9 +62,9 @@ test("release workflow keeps tag publication and manual recovery channel-safe", 
         workflow.slice(workflow.indexOf("    metadata:"), workflow.indexOf("    ci-shards:")),
         "ref: ${{ github.sha }}",
     );
-    assertMatch(workflow, /release-check:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.tag \}\}/);
-    assertMatch(workflow, /build:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.tag \}\}/);
-    assertMatch(workflow, /release:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.tag \}\}/);
+    assertMatch(workflow, /release-check:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.source_sha \}\}/);
+    assertMatch(workflow, /build:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.source_sha \}\}/);
+    assertMatch(workflow, /release:[\s\S]*ref: \$\{\{ needs\.metadata\.outputs\.source_sha \}\}/);
     assertStringIncludes(workflow, "bun run release:metadata --tag");
     assertStringIncludes(workflow, "WLD_BUILD_VERSION");
     assertStringIncludes(workflow, "prerelease: ${{ needs.metadata.outputs.prerelease }}");
@@ -105,7 +105,7 @@ test("WinGet submission stays disabled while Stable manifest preparation remains
     assertEquals(submitEnd > submitStart, true);
     assertStringIncludes(
         workflow,
-        "ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.tag }}",
+        "ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.metadata.outputs.source_sha }}",
     );
     assertMatch(submitJob, /\n {8}if: \$\{\{ false \}\}\n/);
     const packageJob = workflow.slice(workflow.indexOf("    winget-package:"), submitStart);
@@ -168,7 +168,18 @@ test("release workflow runs source, Golden, and binary qualification in parallel
     const assets = workflow.slice(workflow.indexOf("    assets:"), workflow.indexOf("    windows-package-check:"));
     assertStringIncludes(assets, "needs: [metadata, build]");
     const release = workflow.slice(workflow.indexOf("    release:"), workflow.indexOf("    winget-package:"));
-    for (const gate of ["ci", "golden", "release-check", "assets", "windows-package-check", "homebrew-check"]) {
+    for (const gate of [
+        "ci",
+        "golden",
+        "release-check",
+        "assets",
+        "windows-package-check",
+        "homebrew-check",
+        "native-package-check",
+        "unix-checks",
+        "windows-checks",
+        "containers-checks",
+    ]) {
         assertStringIncludes(release, `- ${gate}\n`);
         assertStringIncludes(release, `needs.${gate}.result == 'success'`);
     }
@@ -255,9 +266,9 @@ test("manual recovery preserves workflow source checks and tagged product qualif
     const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
     const ci = workflow.slice(workflow.indexOf("    ci-shards:"), workflow.indexOf("    golden-shards:"));
     assertStringIncludes(ci, 'git checkout -B main "$GITHUB_SHA"');
-    assertEquals(ci.includes("ref: ${{ needs.metadata.outputs.tag }}"), false);
+    assertEquals(ci.includes("ref: ${{ needs.metadata.outputs.source_sha }}"), false);
     const golden = workflow.slice(workflow.indexOf("    golden-shards:"), workflow.indexOf("    release-check:"));
-    assertStringIncludes(golden, "ref: ${{ needs.metadata.outputs.tag }}");
+    assertStringIncludes(golden, "ref: ${{ needs.metadata.outputs.source_sha }}");
     // Existing immutable RCs have the isolated runner but predate package Golden aliases.
     assertStringIncludes(golden, "bun scripts/run-tests.js --isolated src/ui/tui/testing src/ui/tui/golden-scenarios");
     assertEquals(golden.includes("bun run test:golden"), false);

@@ -1,26 +1,33 @@
-name: Bun Unix qualification
+name: Unix release checks
 
 on:
-    pull_request:
+    workflow_call:
+        inputs:
+            source_sha:
+                description: Exact product commit selected by release-gate
+                required: true
+                type: string
+            build_version:
+                description: Candidate or Stable identity
+                required: true
+                type: string
     workflow_dispatch:
+
+env:
+    WLD_BUILD_VERSION: ${{ inputs.build_version || 'v0.0.0-rc.1' }}
 
 permissions:
     contents: read
 
-concurrency:
-    group: bun-unix-${{ github.event.pull_request.number || github.ref }}
-    cancel-in-progress: true
-
 jobs:
     source:
-        name: Bun ${{ matrix.runner }} source ${{ matrix.shard }}
-        if: github.event.repository.private == false
+        name: ${{ matrix.runner }} source ${{ matrix.shard }}
         runs-on: ${{ matrix.runner }}
         timeout-minutes: 50
         strategy:
             fail-fast: false
             matrix:
-                runner: [ubuntu-latest, macos-latest]
+                runner: [macos-latest]
                 shard: [1, 2, 3, 4]
         env:
             WLD_TEST_CONCURRENCY: "4"
@@ -28,6 +35,7 @@ jobs:
         steps:
             - uses: actions/checkout@v5
               with:
+                  ref: ${{ inputs.source_sha || github.sha }}
                   submodules: recursive
                   persist-credentials: false
             - uses: oven-sh/setup-bun@v2
@@ -56,34 +64,22 @@ jobs:
               run: bun run check
             - name: Build embedded Workspace for source integration tests
               run: bun run workspace:build
-            - name: Run isolated Bun inventory shard
+            - name: Run isolated source and Golden shard
               env:
-                  BUN_SHARD: ${{ matrix.shard }}
-              run: |
-                  bun -e '
-                    const files = await Bun.file("scripts/bun-test-files.json").json();
-                    const shard = Number(process.env.BUN_SHARD);
-                    const selected = files.filter((_, index) => index % 4 === shard - 1);
-                    if (!selected.length) throw new Error("Empty Bun qualification shard");
-                    console.log(`Qualifying ${selected.length}/${files.length} files in shard ${shard}/4`);
-                    const child = Bun.spawn([process.execPath, "scripts/run-bun-tests.ts", ...selected], {
-                      stdin: "ignore", stdout: "inherit", stderr: "inherit",
-                    });
-                    process.exit(await child.exited);
-                  '
-            - name: Retain qualification reports
+                  WLD_TEST_SHARD: ${{ matrix.shard }}/4
+              run: bun scripts/run-tests.js
+            - name: Retain test reports
               if: always()
               uses: actions/upload-artifact@v5
               with:
-                  name: bun-unix-${{ matrix.runner }}-source-${{ matrix.shard }}-${{ github.run_attempt }}
+                  name: unix-${{ matrix.runner }}-source-${{ matrix.shard }}-${{ github.run_attempt }}
                   retention-days: 3
                   include-hidden-files: true
                   if-no-files-found: warn
-                  path: .ci-cache/bun-report-*/
+                  path: .ci-cache/
 
     package:
-        name: Bun ${{ matrix.runner }} package
-        if: github.event.repository.private == false
+        name: ${{ matrix.runner }} package
         runs-on: ${{ matrix.runner }}
         timeout-minutes: 20
         strategy:
@@ -93,6 +89,7 @@ jobs:
         steps:
             - uses: actions/checkout@v5
               with:
+                  ref: ${{ inputs.source_sha || github.sha }}
                   submodules: recursive
                   persist-credentials: false
             - uses: oven-sh/setup-bun@v2
@@ -105,6 +102,5 @@ jobs:
               run: bun run install:locked
             - name: Verify native lock interoperability
               run: bun scripts/check-lock-interoperability.ts "$(command -v deno)"
-            - name: Qualify compiled Bun release surfaces
-              # Exercise explicit Candidate identity without publishing this synthetic version.
-              run: bun scripts/release-check.js --runtime bun --binary-only --build-version v0.0.0-rc.1
+            - name: Check compiled release surfaces
+              run: bun scripts/release-check.js --runtime bun --binary-only --build-version "$WLD_BUILD_VERSION"
