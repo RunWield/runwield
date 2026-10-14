@@ -92,17 +92,21 @@ export async function reconcileConsumedHostResume(projectRoot: string, planName:
     const source = await resolveWorkflowPlanLocation(projectRoot, planName, { migrateRegistry: false, readOnly: true });
     const checkpoint = source.plan?.attrs.validationCheckpoint;
     if (
-        !checkpoint || checkpoint.attemptId !== resume.identity.attemptId ||
+        !checkpoint ||
+        checkpoint.attemptId !== resume.identity.attemptId ||
         checkpoint.generation !== resume.identity.generation
-    ) return resume;
+    )
+        return resume;
     if (source.plan?.attrs.status === "reviewed") return undefined;
     if (resume.kind === "reviewer") {
         const round = checkpoint.reviewState?.semanticRound || 0;
         if (
-            round >= resume.identity.semanticRound || checkpoint.state === "awaiting_repair" ||
+            round >= resume.identity.semanticRound ||
+            checkpoint.state === "awaiting_repair" ||
             (checkpoint.hostReview?.semanticRound === resume.identity.semanticRound &&
                 checkpoint.hostReview.correctionCount > resume.identity.correctionCount)
-        ) return undefined;
+        )
+            return undefined;
     }
     if (resume.kind === "task_completed" && checkpoint.lastSettledOperationId === resume.identity.repairGeneration) {
         return undefined;
@@ -110,6 +114,7 @@ export async function reconcileConsumedHostResume(projectRoot: string, planName:
     if (
         resume.kind === "decision" &&
         (!checkpoint.pendingHostDecision || !sameHostIdentity(checkpoint.pendingHostDecision.identity, resume.identity))
-    ) return undefined;
+    )
+        return undefined;
     return resume;
 }

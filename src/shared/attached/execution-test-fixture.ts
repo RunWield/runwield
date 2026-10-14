@@ -1,7 +1,7 @@
-import { assert } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import { EVIDENCE, runOperation, submitReview } from "./attached-test-fixture.ts";
-import type { AttachedJsonObject, AttachedWorkflowView } from "./operations.ts";
+import { type AttachedJsonObject, type AttachedWorkflowView } from "./operations.ts";
 
 export async function readyPlan(root: string): Promise<AttachedWorkflowView> {
     const submitted = await submitReview(root);

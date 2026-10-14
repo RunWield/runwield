@@ -1,5 +1,10 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { test } from "node:test";
+import { rm as fsRm, mkdtemp as fsMkdtemp, mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
 import {
@@ -14,14 +19,15 @@ import {
     spawnAttachedCli,
     triageReportInput,
 } from "../../shared/attached/attached-test-fixture.ts";
-import type {
-    AttachedJsonObject,
-    AttachedJsonValue,
-    AttachedOperationName,
-    AttachedOperationResult,
+import {
+    type AttachedJsonObject,
+    type AttachedJsonValue,
+    type AttachedOperationName,
+    type AttachedOperationResult,
 } from "../../shared/attached/operations.ts";
+import { type AttachedWorkflowRecord } from "../../shared/attached/record-store.ts";
 
-import type { AttachedWorkflowRecord } from "../../shared/attached/record-store.ts";
+import process from "node:process";
 
 type Carrier = (operation: AttachedOperationName, input: AttachedJsonObject) => Promise<AttachedOperationResult>;
 
@@ -90,32 +96,47 @@ async function runJourney(carrier: Carrier) {
     return withoutGeneratedIds(steps, ids.workflowId);
 }
 
-Deno.test("the CLI and the MCP server return equal result objects for the same inputs", async () => {
+test("the CLI and the MCP server return equal result objects for the same inputs", async () => {
     const cliProject = await projectFixture.checkout({ prefix: "runwield-attached-parity-cli-" });
     const mcpProject = await projectFixture.checkout({ prefix: "runwield-attached-parity-mcp-" });
     const transport = new StdioClientTransport({
-        command: Deno.execPath(),
-        args: ["run", "-A", "--quiet", "--no-check", "--config", DENO_CONFIG_PATH, CLI_PATH, "attached", "mcp"],
+        command: process.execPath,
+        args: runtimeSourceArgs([
+            "run",
+            "-A",
+            "--quiet",
+            "--no-check",
+            "--config",
+            DENO_CONFIG_PATH,
+            CLI_PATH,
+            "attached",
+            "mcp",
+        ]),
         cwd: mcpProject,
-        env: Deno.env.toObject(),
+        env: Object.fromEntries(
+            Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+        ),
         stderr: "pipe",
     });
     const client = new Client({ name: EVIDENCE.host, version: EVIDENCE.hostVersion });
     try {
         await client.connect(transport);
         const tools = await client.listTools();
-        assertEquals(tools.tools.map((tool) => tool.name), [
-            "activate",
-            "triage_report",
-            "status",
-            "plan_written",
-            "start_execution",
-            "task_completed",
-            "start_validation",
-            "review_diff",
-            "review_complete",
-            "validation_decision",
-        ]);
+        assertEquals(
+            tools.tools.map((tool) => tool.name),
+            [
+                "activate",
+                "triage_report",
+                "status",
+                "plan_written",
+                "start_execution",
+                "task_completed",
+                "start_validation",
+                "review_diff",
+                "review_complete",
+                "validation_decision",
+            ],
+        );
         for (const tool of tools.tools) {
             assertEquals(tool.inputSchema.required?.includes("evidence"), false);
             assertEquals(Object.hasOwn(tool.inputSchema.properties ?? {}, "evidence"), false);
@@ -131,8 +152,8 @@ Deno.test("the CLI and the MCP server return equal result objects for the same i
         const decisionPayload = schemaObject(schemaObject(decisionSchema.properties).payload);
         assertEquals(schemaObject(schemaObject(decisionPayload.properties).answer).additionalProperties, false);
 
-        const viaCli = await runJourney(async (operation, input) =>
-            (await spawnAttachedCli(operation, cliProject, input)).result
+        const viaCli = await runJourney(
+            async (operation, input) => (await spawnAttachedCli(operation, cliProject, input)).result,
         );
         const viaMcp = await runJourney(async (operation, input) => {
             const { evidence: _evidence, ...withoutEvidence } = input;
@@ -144,29 +165,39 @@ Deno.test("the CLI and the MCP server return equal result objects for the same i
     } finally {
         await client.close().catch(() => undefined);
         await transport.close().catch(() => undefined);
-        await Deno.remove(cliProject, { recursive: true }).catch(() => undefined);
-        await Deno.remove(mcpProject, { recursive: true }).catch(() => undefined);
+        await fsRm(cliProject, { recursive: true }).catch(() => undefined);
+        await fsRm(mcpProject, { recursive: true }).catch(() => undefined);
     }
 });
 
-Deno.test("MCP submits a Plan and records client and loaded plugin evidence without model-supplied versions", async () => {
+test("MCP submits a Plan and records client and loaded plugin evidence without model-supplied versions", async () => {
     const projectRoot = await projectFixture.checkout({ prefix: "runwield-attached-mcp-plan-" });
-    const pluginRoot = await Deno.makeTempDir({ prefix: "runwield-attached-plugin-" });
-    await Deno.mkdir(join(pluginRoot, ".claude-plugin"));
-    await Deno.writeTextFile(join(pluginRoot, ".claude-plugin", "plugin.json"), JSON.stringify({ version: "9.8.7" }));
+    const pluginRoot = await fsMkdtemp(join(tmpdir(), "runwield-attached-plugin-"));
+    await fsMkdir(join(pluginRoot, ".claude-plugin"));
+    await fsWriteFile(join(pluginRoot, ".claude-plugin", "plugin.json"), JSON.stringify({ version: "9.8.7" }));
     const bin = join(pluginRoot, "bin");
-    await Deno.mkdir(bin);
+    await fsMkdir(bin);
     for (const opener of ["open", "xdg-open"]) {
-        await Deno.writeTextFile(join(bin, opener), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+        await fsWriteFile(join(bin, opener), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     }
     const transport = new StdioClientTransport({
-        command: Deno.execPath(),
-        args: ["run", "-A", "--quiet", "--no-check", "--config", DENO_CONFIG_PATH, CLI_PATH, "attached", "mcp"],
+        command: process.execPath,
+        args: runtimeSourceArgs([
+            "run",
+            "-A",
+            "--quiet",
+            "--no-check",
+            "--config",
+            DENO_CONFIG_PATH,
+            CLI_PATH,
+            "attached",
+            "mcp",
+        ]),
         cwd: projectRoot,
         env: {
-            ...Deno.env.toObject(),
+            ...{ ...process.env },
             RUNWIELD_ATTACHED_PLUGIN_ROOT: pluginRoot,
-            PATH: `${bin}:${Deno.env.get("PATH")}`,
+            PATH: `${bin}:${process.env["PATH"]}`,
         },
         stderr: "pipe",
     });
@@ -181,8 +212,8 @@ Deno.test("MCP submits a Plan and records client and loaded plugin evidence with
         const ids = pendingTriage(await call("activate", activateInput()));
         const triaged = await call("triage_report", triageReportInput(ids));
         assert(triaged.ok && triaged.workflow.nextAction.kind === "plan");
-        await Deno.mkdir(join(projectRoot, "docs", "plans"), { recursive: true });
-        await Deno.writeTextFile(join(projectRoot, "docs", "plans", "dark-mode-toggle.md"), "# Toggle\n");
+        await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
+        await fsWriteFile(join(projectRoot, "docs", "plans", "dark-mode-toggle.md"), "# Toggle\n");
         const result = await call(
             "plan_written",
             planWrittenInput({
@@ -202,7 +233,7 @@ Deno.test("MCP submits a Plan and records client and loaded plugin evidence with
     } finally {
         await client.close().catch(() => undefined);
         await transport.close().catch(() => undefined);
-        await Deno.remove(pluginRoot, { recursive: true });
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(pluginRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });

@@ -1,7 +1,12 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { rm as fsRm, mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { git } from "../../shared/git-test-fixture.ts";
-import type { AttachedJsonObject } from "../../shared/attached/operations.ts";
+import { type AttachedJsonObject } from "../../shared/attached/operations.ts";
 import {
     activateInput,
     CLI_PATH,
@@ -15,17 +20,18 @@ import {
     spawnAttachedCli,
     triageReportInput,
 } from "../../shared/attached/attached-test-fixture.ts";
+import process from "node:process";
 
 async function withProject(fn: (projectRoot: string) => Promise<void>): Promise<void> {
     const projectRoot = await projectFixture.checkout({ prefix: "runwield-attached-cli-" });
     try {
         await fn(projectRoot);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 }
 
-Deno.test("separate Core processes activate, accept Triage once, and replay the saved result", async () => {
+test("separate Core processes activate, accept Triage once, and replay the saved result", async () => {
     await withProject(async (projectRoot) => {
         const a = await spawnAttachedCli("activate", projectRoot, activateInput());
         assertEquals(a.code, 0, a.stderr);
@@ -47,7 +53,7 @@ Deno.test("separate Core processes activate, accept Triage once, and replay the 
     });
 });
 
-Deno.test("two processes racing on one revision leave exactly one accepted outcome", async () => {
+test("two processes racing on one revision leave exactly one accepted outcome", async () => {
     await withProject(async (projectRoot) => {
         const triage = pendingTriage((await spawnAttachedCli("activate", projectRoot, activateInput())).result);
         const outcomes: AttachedJsonObject[] = [
@@ -60,7 +66,7 @@ Deno.test("two processes racing on one revision leave exactly one accepted outco
                     "triage_report",
                     projectRoot,
                     triageReportInput({ ...triage, operationId: `op-race-${index}`, outcome }),
-                )
+                ),
             ),
         );
 
@@ -77,11 +83,11 @@ Deno.test("two processes racing on one revision leave exactly one accepted outco
     });
 });
 
-Deno.test("CLI plan_written accepts the Plan and matches the coordinator replay", async () => {
+test("CLI plan_written accepts the Plan and matches the coordinator replay", async () => {
     await withProject(async (projectRoot) => {
         const { planning } = await reachPlanning(projectRoot);
-        await Deno.mkdir(join(projectRoot, "docs", "plans"), { recursive: true });
-        await Deno.writeTextFile(join(projectRoot, "docs", "plans", "dark-mode-toggle.md"), "# Toggle\n");
+        await fsMkdir(join(projectRoot, "docs", "plans"), { recursive: true });
+        await fsWriteFile(join(projectRoot, "docs", "plans", "dark-mode-toggle.md"), "# Toggle\n");
         const input = planWrittenInput(planning);
         const cli = await spawnAttachedCli("plan_written", projectRoot, input);
         assertEquals(cli.code, 0, cli.stderr);
@@ -90,20 +96,28 @@ Deno.test("CLI plan_written accepts the Plan and matches the coordinator replay"
     });
 });
 
-Deno.test("the removed submit CLI name prints a usage error", async () => {
+test("the removed submit CLI name prints a usage error", async () => {
     await withProject(async (projectRoot) => {
-        const result = await new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "--quiet", "--no-check", "--config", DENO_CONFIG_PATH, CLI_PATH, "attached", "submit"],
+        const result = await captureForegroundProcess(process.execPath, {
+            args: runtimeSourceArgs([
+                "run",
+                "-A",
+                "--quiet",
+                "--no-check",
+                "--config",
+                DENO_CONFIG_PATH,
+                CLI_PATH,
+                "attached",
+                "submit",
+            ]),
             cwd: projectRoot,
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
         assertEquals(result.code, 1);
         assert(new TextDecoder().decode(result.stderr).includes("Usage: wld attached"));
     });
 });
 
-Deno.test("CLI activation still requires host evidence", async () => {
+test("CLI activation still requires host evidence", async () => {
     await withProject(async (projectRoot) => {
         const { evidence: _evidence, ...input } = activateInput();
         const result = await spawnAttachedCli("activate", projectRoot, input);

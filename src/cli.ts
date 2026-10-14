@@ -45,8 +45,12 @@ const { cleanupAgentBrowserSessionSync, initializeAgentBrowserSession } =
 const { exposeBundledHelpersSync } = await import("./shared/package-install.ts");
 
 function isProtocolOnlyStartup(argv: string[]): boolean {
-    return argv[0] === "mcp" || argv[0] === "remote" || argv[0] === "attached" ||
-        (argv[0] === "--mode" && argv[1] === "acp");
+    return (
+        argv[0] === "mcp" ||
+        argv[0] === "remote" ||
+        argv[0] === "attached" ||
+        (argv[0] === "--mode" && argv[1] === "acp")
+    );
 }
 
 if (cliArgs[0] !== "remote") exposeBundledHelpersSync();

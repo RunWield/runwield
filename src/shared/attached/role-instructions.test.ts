@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { applyAttachedReviewDecision, openAttachedReviewRound } from "./coordinator.ts";
 import {
     activateInput,
@@ -17,14 +20,11 @@ const BUNDLED_PLANNER_TEXT = "You are the Planner — the Planned Change plannin
 const BUNDLED_ROUTER_TEXT = "Your ONLY job is to identify the Routing Intent and call `triage_report`.";
 
 async function writeProjectPlanner(projectRoot: string, body: string): Promise<void> {
-    await Deno.mkdir(join(projectRoot, ".wld", "agents"), { recursive: true });
-    await Deno.writeTextFile(
-        join(projectRoot, ".wld", "agents", "planner.md"),
-        `---\npromptOverride: true\n---\n\n${body}\n`,
-    );
+    await fsMkdir(join(projectRoot, ".wld", "agents"), { recursive: true });
+    await fsWriteFile(join(projectRoot, ".wld", "agents", "planner.md"), `---\npromptOverride: true\n---\n\n${body}\n`);
 }
 
-Deno.test("activate returns the Router instructions with the pending Triage action", async () => {
+test("activate returns the Router instructions with the pending Triage action", async () => {
     await withProject(async (projectRoot) => {
         const result = await runOperation("activate", projectRoot, activateInput());
         assert(result.ok && result.instructions, JSON.stringify(result));
@@ -34,7 +34,7 @@ Deno.test("activate returns the Router instructions with the pending Triage acti
     });
 });
 
-Deno.test("after a PLANNED_CHANGE Triage, status returns the Planner action and Planner instructions", async () => {
+test("after a PLANNED_CHANGE Triage, status returns the Planner action and Planner instructions", async () => {
     await withProject(async (projectRoot) => {
         const { planning } = await reachPlanning(projectRoot);
         const status = await runOperation("status", projectRoot, { workflowId: planning.workflowId });
@@ -48,13 +48,14 @@ Deno.test("after a PLANNED_CHANGE Triage, status returns the Planner action and 
     });
 });
 
-Deno.test("Planner instructions keep initial submission and feedback review in Claude Code and the browser", async () => {
+test("Planner instructions keep initial submission and feedback review in Claude Code and the browser", async () => {
     await withProject(async (projectRoot) => {
         const workflow = await submitReview(projectRoot);
         for (const round of [1, 2]) {
-            const handoff = round === 1
-                ? (await reachPlanning(projectRoot)).result
-                : await runOperation("status", projectRoot, { workflowId: workflow.workflowId });
+            const handoff =
+                round === 1
+                    ? (await reachPlanning(projectRoot)).result
+                    : await runOperation("status", projectRoot, { workflowId: workflow.workflowId });
             assert(handoff.ok && handoff.instructions, JSON.stringify(handoff));
             const text = handoff.instructions.text;
             assertStringIncludes(text, "even when the result has no `instructions`");
@@ -93,7 +94,7 @@ Deno.test("Planner instructions keep initial submission and feedback review in C
     });
 });
 
-Deno.test("a project planner definition replaces the bundled Planner instructions on the next response", async () => {
+test("a project planner definition replaces the bundled Planner instructions on the next response", async () => {
     await withProject(async (projectRoot) => {
         const { planning } = await reachPlanning(projectRoot);
         await writeProjectPlanner(projectRoot, "Project Planner: plan only in haiku.");
@@ -104,7 +105,7 @@ Deno.test("a project planner definition replaces the bundled Planner instruction
     });
 });
 
-Deno.test("a replayed operation returns the instructions in effect now, and the record saves none", async () => {
+test("a replayed operation returns the instructions in effect now, and the record saves none", async () => {
     await withProject(async (projectRoot) => {
         const triage = pendingTriage(await runOperation("activate", projectRoot, activateInput()));
         const first = await runOperation("triage_report", projectRoot, triageReportInput(triage));
@@ -120,7 +121,7 @@ Deno.test("a replayed operation returns the instructions in effect now, and the 
     });
 });
 
-Deno.test("a closed workflow result carries no role instructions", async () => {
+test("a closed workflow result carries no role instructions", async () => {
     await withProject(async (projectRoot) => {
         const triage = pendingTriage(await runOperation("activate", projectRoot, activateInput()));
         const outcome = { routingIntent: "INQUIRY", complexity: "LOW", summary: "question" };

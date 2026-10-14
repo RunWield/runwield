@@ -67,9 +67,15 @@ for (const event of ["manual_user_verified", "validation_passed"] as const) {
             await register(root, b, "b", "epic/b");
             const sibling = await loadPlan(b, "epic/b");
             assert(sibling);
-            await updatePlanFrontMatter(b, "epic/b", { status: "user_verified" }, {}, {
-                expectedRevision: sibling.revision,
-            });
+            await updatePlanFrontMatter(
+                b,
+                "epic/b",
+                { status: "user_verified" },
+                {},
+                {
+                    expectedRevision: sibling.revision,
+                },
+            );
             const primary = await loadPlan(root, "epic");
             assert(primary);
             assertEquals((await findPlansByParent(a, "epic")).map((plan) => plan.name).sort(), ["epic/a", "epic/b"]);
@@ -132,9 +138,15 @@ for (const surface of ["primary", "execution"]) {
             await register(root, current, "current", "demo");
             const plan = await loadPlan(current, "demo");
             assert(plan);
-            await updatePlanFrontMatter(current, "demo", { status: "implemented" }, {}, {
-                expectedRevision: plan.revision,
-            });
+            await updatePlanFrontMatter(
+                current,
+                "demo",
+                { status: "implemented" },
+                {},
+                {
+                    expectedRevision: plan.revision,
+                },
+            );
             await fsWriteFile(join(current, "app.ts"), "// implemented\n");
             const implemented = await loadPlan(current, "demo");
             assert(implemented);

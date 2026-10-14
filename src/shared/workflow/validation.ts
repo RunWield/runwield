@@ -17,6 +17,7 @@ import { findActiveByPlanName as findWorktreeByPlanName } from "../worktree-regi
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { emitProgress, emitStatus } from "./validation-emit.ts";
+import { getCurrentValidationProgress } from "./validation-progress.ts";
 import { validationUserMessage } from "./validation-user-messages.ts";
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createValidationSessionPort } from "./validation-session-adapter.ts";
@@ -196,11 +197,34 @@ export async function continueWorkflowValidation(
                 validationCheckpoint: claim.checkpoint,
             }),
     });
+    if (
+        result.recovery?.code !== "validation_owner_active" &&
+        result.recovery?.code !== "task_completion_already_settled"
+    ) {
+        const settledPlan = await loadPlan(await validationPlanCwd(args), args.planName);
+        if (settledPlan) {
+            const progress = getCurrentValidationProgress(args.hostedSession);
+            const active = args.hostedSession.getActiveExecutionWorkflow();
+            const triageMeta = settledPlan.attrs as TriageMeta;
+            if (active) args.hostedSession.setActiveExecutionWorkflow({ ...active, triageMeta });
+            args.hostedSession.setWorkflowExecutionContext?.({ planName: args.planName, triageMeta });
+            if (progress) {
+                args.hostedSession.replaceWorkflowContext?.(
+                    {
+                        ...args.hostedSession.getWorkflowContext(),
+                        validationProgress: progress,
+                    },
+                    { persist: true },
+                );
+            }
+        }
+    }
     if (result.kind === "verified") args.hostedSession.clearActiveExecutionWorkflow();
     if (
         result.recovery?.code !== "validation_owner_active" &&
         result.recovery?.code !== "task_completion_already_settled"
-    ) presentPausedProgress(args, result);
+    )
+        presentPausedProgress(args, result);
     return result;
 }
 
@@ -226,9 +250,11 @@ export async function runWorkflowValidationToStableBoundary(
         const status = String(plan?.attrs.status || "");
         if (!plan) break;
         if (
-            status !== "validated_ci" && status !== "reviewed" &&
+            status !== "validated_ci" &&
+            status !== "reviewed" &&
             !(status === "implemented" && plan.attrs.validationPhase === "semantic")
-        ) break;
+        )
+            break;
         args = {
             ...args,
             planContent: plan.markdown,

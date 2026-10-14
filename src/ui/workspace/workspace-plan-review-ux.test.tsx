@@ -378,15 +378,21 @@ test("Plan and Code review use shared toolbar structure with edge-aligned restor
         throw new Error("Code Review must not opt out of the shared review toolbar height and padding");
     }
     if (
-        surface.includes("rw-annotation-reopen") || surface.includes("<SidebarTabs") ||
+        surface.includes("rw-annotation-reopen") ||
+        surface.includes("<SidebarTabs") ||
         surface.includes("<ResizeHandle")
     ) {
         throw new Error("Plan Review must use one Code Review-style collapse and toolbar restore pattern");
     }
     if (
-        leftRestoreIndex < 0 || contentsIndex < leftRestoreIndex || modeActionsIndex < contentsIndex ||
-        rightRestoreIndex < modeActionsIndex || saveControlsIndex < rightRestoreIndex ||
-        annotationsIndex < rightRestoreIndex || sidebarIndex < 0 || collapseIndex < sidebarIndex
+        leftRestoreIndex < 0 ||
+        contentsIndex < leftRestoreIndex ||
+        modeActionsIndex < contentsIndex ||
+        rightRestoreIndex < modeActionsIndex ||
+        saveControlsIndex < rightRestoreIndex ||
+        annotationsIndex < rightRestoreIndex ||
+        sidebarIndex < 0 ||
+        collapseIndex < sidebarIndex
     ) {
         throw new Error(
             "Plan Review must align Contents left, edit Save controls right, and Annotations right in the toolbar",
@@ -469,18 +475,16 @@ test("Plan reviews recover unfinished work and send direct edits as feedback", a
     assertStringIncludes(surface, "Restore draft");
     assertStringIncludes(surface, "persistReviewDraftLocally");
     assertStringIncludes(surface, "directEdits={directEditPanel}");
-    assertStringIncludes(surface, "disabled={!hasGroupFeedback || submitting !== null ||");
-    assertMatch(surface, /plannerWorking \|\| waitingForRevision \|\|\s*reviewGroup\?\.busy\}/);
+    assertMatch(surface, /disabled=\{\s*!hasGroupFeedback \|\|\s*submitting !== null \|\|/);
+    assertMatch(surface, /plannerWorking \|\| waitingForRevision \|\|\s*reviewGroup\?\.busy\s*\}/);
     assertStringIncludes(surface, "buildPlanReviewFeedback");
 });
 
 test("Plan and Code annotation tabs occupy the shared header in every presentation", async () => {
-    for (
-        const [path, headingClass] of [
-            [SURFACE_PATH, "rw-plan-review-annotation-heading"],
-            [CODE_SURFACE_PATH, "rw-review-annotation-heading"],
-        ]
-    ) {
+    for (const [path, headingClass] of [
+        [SURFACE_PATH, "rw-plan-review-annotation-heading"],
+        [CODE_SURFACE_PATH, "rw-review-annotation-heading"],
+    ]) {
         const source = await fsReadFile(path, "utf8");
         const heading = source.indexOf(`className="${headingClass}`);
         const tabs = source.indexOf('role="tablist"', heading);

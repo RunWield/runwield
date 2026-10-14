@@ -143,14 +143,16 @@ test("semantic feedback commits open Review Issues with the lifecycle transition
                 semanticRound: 1,
                 reviewLedger: {
                     sequence: 1,
-                    items: [{
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        title: "Keep the saved candidate",
-                        requirement: "Non-success outcomes preserve work.",
-                        evidence: "The cleanup path removed it.",
-                    }],
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            title: "Keep the saved candidate",
+                            requirement: "Non-success outcomes preserve work.",
+                            evidence: "The cleanup path removed it.",
+                        },
+                    ],
                 },
                 repairBaselineTree: "tree-before-repair",
             },
@@ -200,15 +202,17 @@ test("semantic repair completion is an idempotent mechanical receipt", async () 
                 semanticRound: 1,
                 reviewLedger: {
                     sequence: 1,
-                    items: [{
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        status: "new",
-                        title: "Missing guard",
-                        requirement: "Step 1",
-                        evidence: "a.ts",
-                    }],
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            status: "new",
+                            title: "Missing guard",
+                            requirement: "Step 1",
+                            evidence: "a.ts",
+                        },
+                    ],
                 },
                 repairBaselineTree: "tree-before-repair",
             },

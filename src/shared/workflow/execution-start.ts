@@ -226,22 +226,29 @@ export async function reconcileExecutionPreparationLocation(
     const entries = await listWorktreeRegistryEntries(projectRoot, { migrate: false });
     // Only an interrupted first preparation can use the approved source when its
     // selected worktree has no document yet. A worker's later deletion cannot.
-    const unmaterialized = source?.attrs.status === "ready_for_work" && records.some((record) => {
-        if (record.operation !== "execution_preparation" || record.planName !== planName) return false;
-        const before = record.beforeFacts?.plan;
-        if (before?.revision !== source.revision || before?.status !== "ready_for_work") return false;
-        const effects = record.completedEffects || [];
-        if (
-            !effects.length ||
-            effects.some((effect) => !["git_worktree_created", "worktree_registry_settled"].includes(effect.effect))
-        ) return false;
-        return effects.some((effect) =>
-            entries.some((entry) =>
-                entry.planId === source.attrs.planId && entry.status === "active" && !entry.executionBaselineTree &&
-                entry.id === effect.proof?.worktreeId && entry.path === effect.proof?.path
+    const unmaterialized =
+        source?.attrs.status === "ready_for_work" &&
+        records.some((record) => {
+            if (record.operation !== "execution_preparation" || record.planName !== planName) return false;
+            const before = record.beforeFacts?.plan;
+            if (before?.revision !== source.revision || before?.status !== "ready_for_work") return false;
+            const effects = record.completedEffects || [];
+            if (
+                !effects.length ||
+                effects.some((effect) => !["git_worktree_created", "worktree_registry_settled"].includes(effect.effect))
             )
-        );
-    });
+                return false;
+            return effects.some((effect) =>
+                entries.some(
+                    (entry) =>
+                        entry.planId === source.attrs.planId &&
+                        entry.status === "active" &&
+                        !entry.executionBaselineTree &&
+                        entry.id === effect.proof?.worktreeId &&
+                        entry.path === effect.proof?.path,
+                ),
+            );
+        });
     const healed = await healSettledTransitionRecords(projectRoot, {
         planName,
         evidenceProjectRoot: projectRoot,
@@ -254,7 +261,7 @@ export async function reconcileExecutionPreparationLocation(
     }
     if (unmaterialized) {
         const selected = entries.find((entry) => entry.planId === source.attrs.planId && entry.status === "active");
-        if (selected && !await loadPlan(selected.path, planName)) {
+        if (selected && !(await loadPlan(selected.path, planName))) {
             return {
                 registryRoot: projectRoot,
                 documentRoot: projectRoot,
@@ -282,19 +289,17 @@ interface ExecutionStartOptions {
  * @param {ExecutionStartOptions} opts
  * @returns {Promise<import('../session/hosted-session.js').ActiveExecutionWorkflow>}
  */
-export async function startActiveExecutionWorkflow(
-    {
-        planName,
-        triageMeta,
-        currentStatus,
-        hostedSession,
-        cwd = hostedSession?.cwd,
-        existingExecution = hostedSession?.getActiveExecutionWorkflow?.(),
-        collaborationStyle = CollaborationStyles.AUTONOMOUS,
-        collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
-        ports,
-    }: ExecutionStartOptions,
-): Promise<import("../session/hosted-session.js").ActiveExecutionWorkflow> {
+export async function startActiveExecutionWorkflow({
+    planName,
+    triageMeta,
+    currentStatus,
+    hostedSession,
+    cwd = hostedSession?.cwd,
+    existingExecution = hostedSession?.getActiveExecutionWorkflow?.(),
+    collaborationStyle = CollaborationStyles.AUTONOMOUS,
+    collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
+    ports,
+}: ExecutionStartOptions): Promise<import("../session/hosted-session.js").ActiveExecutionWorkflow> {
     if (!cwd) throw new Error("startActiveExecutionWorkflow: cwd is required");
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     const sourceLocation = await reconcileExecutionPreparationLocation(projectRoot, planName);
@@ -425,7 +430,7 @@ export async function startActiveExecutionWorkflow(
             throw new Error(transition.message || `Non-Git execution preparation did not commit for ${planName}.`);
         }
         const activeWorkflow =
-            /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ (transition.value);
+            /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
         hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
         return activeWorkflow;
     }
@@ -439,10 +444,10 @@ export async function startActiveExecutionWorkflow(
     );
     const startsFresh = triageMeta.worktreeStatus === "abandoned" && !hasRecordedWorktree;
     const cachedWorkflow = existingExecution;
-    const existing = !startsFresh && cachedWorkflow?.planName === planName &&
-            cachedWorkflow.worktreeId === triageMeta.worktreeId
-        ? cachedWorkflow
-        : null;
+    const existing =
+        !startsFresh && cachedWorkflow?.planName === planName && cachedWorkflow.worktreeId === triageMeta.worktreeId
+            ? cachedWorkflow
+            : null;
     // The registry owns attempt identity. Review status or missing projected
     // metadata must not turn existing implementation into a fresh worktree.
     // Explicitly abandoned attempts are excluded by the registry lookup.
@@ -945,7 +950,7 @@ export async function startActiveExecutionWorkflow(
         throw new Error(transition.message || `Execution preparation did not commit for ${planName}.`);
     }
     const activeWorkflow =
-        /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ (transition.value);
+        /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
     hostedSession?.setActiveExecutionWorkflow(activeWorkflow);
     return activeWorkflow;
 }

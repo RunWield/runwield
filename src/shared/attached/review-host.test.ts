@@ -1,4 +1,7 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { NO_OPEN_BROWSER_PORT } from "../browser-port.ts";
 import { ensureReviewHosted, stopHostedAttachedReviews } from "./review-host.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
@@ -6,7 +9,7 @@ import { planWrittenInput, runOperation, submitReview, withProject } from "./att
 import { loadPlan } from "../../plan-store.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 
-Deno.test("the production decision route acknowledges only a committed Attached outcome and reuses its page", async () => {
+test("the production decision route acknowledges only a committed Attached outcome and reuses its page", async () => {
     await withProject(async (root) => {
         try {
             const workflow = await submitReview(root);
@@ -36,7 +39,7 @@ Deno.test("the production decision route acknowledges only a committed Attached 
             assertEquals(saved.record.review?.outcome?.feedback, "Revise the title.");
             const status = await runOperation("status", root, { workflowId: workflow.workflowId });
             assert(status.ok && status.workflow.nextAction.kind === "plan");
-            await Deno.writeTextFile(oldPlan.path, oldPlan.markdown.replace("Add a toggle.", "Add a selector."));
+            await fsWriteFile(oldPlan.path, oldPlan.markdown.replace("Add a toggle.", "Add a selector."));
             const next = await runOperation(
                 "plan_written",
                 root,
@@ -84,7 +87,7 @@ Deno.test("the production decision route acknowledges only a committed Attached 
     });
 });
 
-Deno.test("restoring hosting retains the durable round and does not invent cancellation", async () => {
+test("restoring hosting retains the durable round and does not invent cancellation", async () => {
     await withProject(async (root) => {
         try {
             const workflow = await submitReview(root);
@@ -115,7 +118,7 @@ Deno.test("restoring hosting retains the durable round and does not invent cance
     });
 });
 
-Deno.test("the production stale-review response preserves the pending durable round", async () => {
+test("the production stale-review response preserves the pending durable round", async () => {
     await withProject(async (root) => {
         try {
             const workflow = await submitReview(root);
@@ -123,7 +126,7 @@ Deno.test("the production stale-review response preserves the pending durable ro
             assert(hosted);
             const plan = await loadPlan(root, "dark-mode-toggle");
             assert(plan);
-            await Deno.writeTextFile(plan.path, plan.markdown.replace("Add a toggle.", "Delete the toggle."));
+            await fsWriteFile(plan.path, plan.markdown.replace("Add a toggle.", "Delete the toggle."));
             const url = new URL(hosted.url);
             const rejected = await fetch(new URL(`/api/review/decision${url.search}`, url), {
                 method: "POST",
@@ -161,7 +164,7 @@ Deno.test("the production stale-review response preserves the pending durable ro
     });
 });
 
-Deno.test("a Core-advanced browser reload returns its position without waiting on its own shutdown", async () => {
+test("a Core-advanced browser reload returns its position without waiting on its own shutdown", async () => {
     await withProject(async (root) => {
         try {
             const workflow = await submitReview(root);

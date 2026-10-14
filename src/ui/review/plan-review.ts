@@ -192,9 +192,9 @@ export async function submitPlanForReview({
             }
             signal?.addEventListener("abort", () => resolveCanceled({ _cancelled: true }), { once: true });
         });
-        const decision: PlanReviewDecision = await (
-            signal ? Promise.race([server.waitForDecision(), canceled]) : server.waitForDecision()
-        );
+        const decision: PlanReviewDecision = await (signal
+            ? Promise.race([server.waitForDecision(), canceled])
+            : server.waitForDecision());
         keepSurfaceOpen = decision.conversationTurn === true;
 
         // Handle cancellation triggered from the TUI or review timeout/exit before

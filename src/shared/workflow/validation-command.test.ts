@@ -1,11 +1,13 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
-
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile, stat as fsStat } from "node:fs/promises";
+import { join } from "node:path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { getExactProjectCustomSetting } from "../settings.js";
 import { resolveValidationCommand, runValidationCommand, saveValidationCommand } from "./validation-local-ci.ts";
 
-Deno.test("Session-free validation returns command_missing without prompting or starting a command", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-validation-command-" });
+test("Session-free validation returns command_missing without prompting or starting a command", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-validation-command-"));
     try {
         let starts = 0;
         for (const settingsPolicy of ["ordinary-project", "exact-project"] as const) {
@@ -18,12 +20,12 @@ Deno.test("Session-free validation returns command_missing without prompting or 
         }
         assertEquals(starts, 0);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Session-free validation saves an answer and runs it with ordinary or exact settings", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-validation-command-" });
+test("Session-free validation saves an answer and runs it with ordinary or exact settings", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-validation-command-"));
     try {
         await saveValidationCommand(cwd, "  printf ci-failed; exit 7  ", "exact-project");
         assertEquals(await resolveValidationCommand(cwd), "printf ci-failed; exit 7");
@@ -41,7 +43,7 @@ Deno.test("Session-free validation saves an answer and runs it with ordinary or 
             assertEquals(result.exitCode, 7);
             assertStringIncludes(result.output, "ci-failed");
         }
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(cwd, ".wld", "settings.json"),
             JSON.stringify({ verification_command: "printf reloaded" }),
         );
@@ -51,12 +53,12 @@ Deno.test("Session-free validation saves an answer and runs it with ordinary or 
         assertEquals(result.exitCode, 0);
         assertStringIncludes(result.output, "reloaded");
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });
 
-Deno.test("Session-free validation does not start a command with an aborted signal", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-validation-command-" });
+test("Session-free validation does not start a command with an aborted signal", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-validation-command-"));
     try {
         await saveValidationCommand(cwd, "touch should-not-run");
         const controller = new AbortController();
@@ -69,8 +71,8 @@ Deno.test("Session-free validation does not start a command with an aborted sign
         });
         assertEquals(result, { kind: "canceled", output: "Validation canceled." });
         assertEquals(starts, 0);
-        assertEquals(await Deno.stat(join(cwd, "should-not-run")).catch(() => null), null);
+        assertEquals(await fsStat(join(cwd, "should-not-run")).catch(() => null), null);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });

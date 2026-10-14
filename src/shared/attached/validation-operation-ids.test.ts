@@ -1,16 +1,24 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 
 for (const operationId of ["constructor", "toString", "valueOf"]) {
-    Deno.test(`validation treats ${operationId} as an identifier and replays only recorded results`, async () => {
+    test(`validation treats ${operationId} as an identifier and replays only recorded results`, async () => {
         const fixture = await attachedValidationFixture();
         try {
             const workflow = await fixture.status();
-            const premature = await fixture.call("task_completed", workflow, {
-                actionId: "not-pending",
-                message: "- No repair is pending.",
-            }, operationId);
+            const premature = await fixture.call(
+                "task_completed",
+                workflow,
+                {
+                    actionId: "not-pending",
+                    message: "- No repair is pending.",
+                },
+                operationId,
+            );
             assert(!premature.ok);
             assertEquals(premature.rejection.code, "action_superseded");
 
@@ -20,7 +28,7 @@ for (const operationId of ["constructor", "toString", "valueOf"]) {
             assertEquals(await fixture.call("start_validation", workflow, {}, operationId), started);
             assertEquals(await fixture.ciCount(), 1);
 
-            await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+            await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
             const payload = {
                 actionId: started.workflow.nextAction.actionId,
                 message: "- Fixed CI by adding the marker.",

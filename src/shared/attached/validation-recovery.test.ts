@@ -1,12 +1,15 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 
-Deno.test("a lost validation request write is recovered from Core without rerunning CI", async () => {
+test("a lost validation request write is recovered from Core without rerunning CI", async () => {
     const fixture = await attachedValidationFixture();
     try {
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "pass");
+        await fsWriteFile(join(fixture.cwd, "marker"), "pass");
         const result = await fixture.call("start_validation", await fixture.status());
         assert(result.ok && result.workflow.nextAction.kind === "validation");
         const expected = result.workflow.nextAction;
@@ -18,11 +21,17 @@ Deno.test("a lost validation request write is recovered from Core without rerunn
         const loaded = await loadAttachedWorkflowRecord(location, fixture.workflowId);
         assert(loaded.status === "found");
         assert(
-            (await writeAttachedWorkflowRecord(location, {
-                ...loaded.record,
-                revision: loaded.record.revision + 1,
-                validation: null,
-            }, loaded.record.revision)).status === "written",
+            (
+                await writeAttachedWorkflowRecord(
+                    location,
+                    {
+                        ...loaded.record,
+                        revision: loaded.record.revision + 1,
+                        validation: null,
+                    },
+                    loaded.record.revision,
+                )
+            ).status === "written",
         );
         const recovered = await fixture.call("start_validation", await fixture.status());
         assert(recovered.ok);
@@ -33,13 +42,14 @@ Deno.test("a lost validation request write is recovered from Core without rerunn
     }
 });
 
-Deno.test("a rejected validation decision remains recoverable and a later text answer runs Core CI", async () => {
+test("a rejected validation decision remains recoverable and a later text answer runs Core CI", async () => {
     const fixture = await attachedValidationFixture({ command: null });
     try {
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "pass");
+        await fsWriteFile(join(fixture.cwd, "marker"), "pass");
         const result = await fixture.call("start_validation", await fixture.status());
         assert(
-            result.ok && result.workflow.nextAction.kind === "validation" &&
+            result.ok &&
+                result.workflow.nextAction.kind === "validation" &&
                 result.workflow.nextAction.request.kind === "decision",
         );
         const canceled = await fixture.call("validation_decision", result.workflow, {
@@ -52,7 +62,8 @@ Deno.test("a rejected validation decision remains recoverable and a later text a
         assertEquals(await fixture.ciCount(), 0);
         const resumed = await fixture.call("start_validation", await fixture.status());
         assert(
-            resumed.ok && resumed.workflow.nextAction.kind === "validation" &&
+            resumed.ok &&
+                resumed.workflow.nextAction.kind === "validation" &&
                 resumed.workflow.nextAction.request.kind === "decision",
         );
         const answered = await fixture.call("validation_decision", resumed.workflow, {
@@ -60,7 +71,8 @@ Deno.test("a rejected validation decision remains recoverable and a later text a
             answer: { outcome: "text", value: "sh verify.sh" },
         });
         assert(
-            answered.ok && answered.workflow.nextAction.kind === "validation" &&
+            answered.ok &&
+                answered.workflow.nextAction.kind === "validation" &&
                 answered.workflow.nextAction.request.kind === "reviewer",
         );
         assertEquals(await fixture.ciCount(), 1);
@@ -69,7 +81,7 @@ Deno.test("a rejected validation decision remains recoverable and a later text a
     }
 });
 
-Deno.test("a Core round-limit pause keeps findings and resumes the same user decision", async () => {
+test("a Core round-limit pause keeps findings and resumes the same user decision", async () => {
     const fixture = await attachedValidationFixture();
     try {
         const { updatePlanFrontMatter } = await import("../../plan-store.js");
@@ -78,12 +90,18 @@ Deno.test("a Core round-limit pause keeps findings and resumes the same user dec
         const { SEMANTIC_REVIEW_CYCLES } = await import("../workflow/validation-types.ts");
         const { captureWorktreeTree } = await import("../workflow/git-snapshot.ts");
         const plan = await fixture.plan();
-        const ledger = applyRoundFindings(createLedger(), [{
-            title: "Value",
-            resolved: false,
-            requirement: "Value",
-            evidence: "Missing",
-        }], 1).ledger;
+        const ledger = applyRoundFindings(
+            createLedger(),
+            [
+                {
+                    title: "Value",
+                    resolved: false,
+                    requirement: "Value",
+                    evidence: "Missing",
+                },
+            ],
+            1,
+        ).ledger;
         await updatePlanFrontMatter(
             fixture.cwd,
             "p",
@@ -109,7 +127,8 @@ Deno.test("a Core round-limit pause keeps findings and resumes the same user dec
         );
         const result = await fixture.call("start_validation", await fixture.status());
         assert(
-            result.ok && result.workflow.nextAction.kind === "validation" &&
+            result.ok &&
+                result.workflow.nextAction.kind === "validation" &&
                 result.workflow.nextAction.request.kind === "decision",
         );
         const stopped = await fixture.call("validation_decision", result.workflow, {
@@ -122,7 +141,8 @@ Deno.test("a Core round-limit pause keeps findings and resumes the same user dec
         assertEquals((await fixture.plan()).attrs.validationCheckpoint?.reviewState?.reviewLedger, ledger);
         const resumed = await fixture.call("start_validation", await fixture.status());
         assert(
-            resumed.ok && resumed.workflow.nextAction.kind === "validation" &&
+            resumed.ok &&
+                resumed.workflow.nextAction.kind === "validation" &&
                 resumed.workflow.nextAction.request.kind === "decision",
         );
         assertEquals(resumed.workflow.nextAction.request.interaction, result.workflow.nextAction.request.interaction);

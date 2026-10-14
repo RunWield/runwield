@@ -172,12 +172,7 @@ export interface AttachedReviewRound {
 
 /** The RunWield roles a host plays in Attached Mode. */
 export type AttachedHostRole =
-    | "router"
-    | "planner"
-    | "engineer"
-    | "frontend-engineer"
-    | "reviewer"
-    | "reviewer-feedback-engineer";
+    "router" | "planner" | "engineer" | "frontend-engineer" | "reviewer" | "reviewer-feedback-engineer";
 
 export interface PendingHostAction {
     actionId: string;
@@ -195,26 +190,26 @@ export type AttachedNextAction =
     | { kind: "plan_ready"; planName: string; guidance: string }
     | { kind: "consent"; actionId: string; consentKind: "non_git_in_place"; disclosure: string }
     | ({
-        kind: "implementation";
-        planName: string;
-        planPath: string;
-        executionCwd: string;
-        executionMode: string;
-        worktreeBranch?: string;
-        disclosure: string;
-    } & PendingHostAction)
+          kind: "implementation";
+          planName: string;
+          planPath: string;
+          executionCwd: string;
+          executionMode: string;
+          worktreeBranch?: string;
+          disclosure: string;
+      } & PendingHostAction)
     | { kind: "implemented"; planName: string; guidance: string }
     | {
-        kind: "validation";
-        actionId: string;
-        request: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
-    }
+          kind: "validation";
+          actionId: string;
+          request: import("../workflow/validation-host-contract.ts").ValidationHostRequest;
+      }
     | {
-        kind: "validation_recovery";
-        guidance: string;
-        resultKind?: "paused" | "failed";
-        recovery?: import("../workflow/validation-recovery.ts").ValidationRecoveryResult;
-    }
+          kind: "validation_recovery";
+          guidance: string;
+          resultKind?: "paused" | "failed";
+          recovery?: import("../workflow/validation-recovery.ts").ValidationRecoveryResult;
+      }
     | { kind: "awaiting_delivery"; planName: string; guidance: string }
     | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string };
 
@@ -232,8 +227,7 @@ export interface AttachedRoleInstructions {
 }
 
 export type AttachedWorkflowClosure =
-    | { reason: "unsupported_in_preview"; routingIntent: string }
-    | { reason: "plan_advanced_in_core"; message: string };
+    { reason: "unsupported_in_preview"; routingIntent: string } | { reason: "plan_advanced_in_core"; message: string };
 
 export interface ProjectMovedRecovery {
     case: "project_moved";
@@ -257,20 +251,20 @@ export interface AttachedWorkflowView {
 
 export type AttachedOperationResult =
     | {
-        ok: true;
-        operation: AttachedOperationName;
-        workflow: AttachedWorkflowView;
-        instructions?: AttachedRoleInstructions;
-        diff?: import("../workflow/review-diff.ts").ReviewDiffRead;
-    }
+          ok: true;
+          operation: AttachedOperationName;
+          workflow: AttachedWorkflowView;
+          instructions?: AttachedRoleInstructions;
+          diff?: import("../workflow/review-diff.ts").ReviewDiffRead;
+      }
     | {
-        ok: false;
-        operation: AttachedOperationName;
-        rejection: AttachedRejection;
-        workflow?: AttachedWorkflowView;
-        instructions?: AttachedRoleInstructions;
-        diff?: import("../workflow/review-diff.ts").ReviewDiffRead;
-    };
+          ok: false;
+          operation: AttachedOperationName;
+          rejection: AttachedRejection;
+          workflow?: AttachedWorkflowView;
+          instructions?: AttachedRoleInstructions;
+          diff?: import("../workflow/review-diff.ts").ReviewDiffRead;
+      };
 
 export type ParsedInput<Envelope> = { ok: true; envelope: Envelope } | { ok: false; rejection: AttachedRejection };
 
@@ -415,13 +409,11 @@ function readWorkflowEnvelope<Payload>(
 }
 
 export function parseTriageReportInput(projectRoot: string, input: AttachedJsonValue | undefined) {
-    return parse(
-        input,
-        (): TriageReportEnvelope =>
-            readWorkflowEnvelope(projectRoot, input, ["actionId", "outcome"], (payload) => ({
-                actionId: readIdentifier(payload, "actionId", "payload.actionId"),
-                outcome: readOutcome(payload.outcome),
-            })),
+    return parse(input, (): TriageReportEnvelope =>
+        readWorkflowEnvelope(projectRoot, input, ["actionId", "outcome"], (payload) => ({
+            actionId: readIdentifier(payload, "actionId", "payload.actionId"),
+            outcome: readOutcome(payload.outcome),
+        })),
     );
 }
 
@@ -443,36 +435,33 @@ export function parsePlanWrittenInput(projectRoot: string, input: AttachedJsonVa
                 "payload.collaborationRecommendation",
                 MAX_SHORT_TEXT_LENGTH,
             ),
-        })));
+        })),
+    );
 }
 
 export function parseStartExecutionInput(projectRoot: string, input: AttachedJsonValue | undefined) {
-    return parse(
-        input,
-        (): StartExecutionEnvelope =>
-            readWorkflowEnvelope(projectRoot, input, ["actionId", "consent"], (payload) => {
-                if (payload.consent === undefined && payload.actionId === undefined) return {};
-                if (payload.consent !== "proceed" && payload.consent !== "decline") {
-                    reject("invalid_input", "payload.consent", "Consent must be proceed or decline.");
-                }
-                return { actionId: readIdentifier(payload, "actionId", "payload.actionId"), consent: payload.consent };
-            }),
+    return parse(input, (): StartExecutionEnvelope =>
+        readWorkflowEnvelope(projectRoot, input, ["actionId", "consent"], (payload) => {
+            if (payload.consent === undefined && payload.actionId === undefined) return {};
+            if (payload.consent !== "proceed" && payload.consent !== "decline") {
+                reject("invalid_input", "payload.consent", "Consent must be proceed or decline.");
+            }
+            return { actionId: readIdentifier(payload, "actionId", "payload.actionId"), consent: payload.consent };
+        }),
     );
 }
 
 export function parseTaskCompletedInput(projectRoot: string, input: AttachedJsonValue | undefined) {
-    return parse(
-        input,
-        (): TaskCompletedEnvelope =>
-            readWorkflowEnvelope(projectRoot, input, ["actionId", "message"], (payload) => {
-                if (typeof payload.message !== "string" || payload.message.length < IMPLEMENTATION_REPORT_MIN_LENGTH) {
-                    reject("invalid_input", "payload.message", "task_completed.message must be a non-empty string.");
-                }
-                return {
-                    actionId: readIdentifier(payload, "actionId", "payload.actionId"),
-                    message: normalizeImplementationReport(payload.message),
-                };
-            }),
+    return parse(input, (): TaskCompletedEnvelope =>
+        readWorkflowEnvelope(projectRoot, input, ["actionId", "message"], (payload) => {
+            if (typeof payload.message !== "string" || payload.message.length < IMPLEMENTATION_REPORT_MIN_LENGTH) {
+                reject("invalid_input", "payload.message", "task_completed.message must be a non-empty string.");
+            }
+            return {
+                actionId: readIdentifier(payload, "actionId", "payload.actionId"),
+                message: normalizeImplementationReport(payload.message),
+            };
+        }),
     );
 }
 
@@ -649,13 +638,14 @@ export function parseValidationInput(
     input: AttachedJsonValue | undefined,
     operation: AttachedOperationName,
 ) {
-    const keys = operation === "start_validation"
-        ? []
-        : operation === "review_diff"
-        ? ["actionId", "command", "scope", "path", "offsetBytes", "maxBytes"]
-        : operation === "review_complete"
-        ? ["actionId", "approved", "feedback", "findings", "advisories", "integrationNotes"]
-        : ["actionId", "answer"];
+    const keys =
+        operation === "start_validation"
+            ? []
+            : operation === "review_diff"
+              ? ["actionId", "command", "scope", "path", "offsetBytes", "maxBytes"]
+              : operation === "review_complete"
+                ? ["actionId", "approved", "feedback", "findings", "advisories", "integrationNotes"]
+                : ["actionId", "answer"];
     return parse(input, (): AttachedValidationEnvelope =>
         readWorkflowEnvelope(projectRoot, input, keys, (payload) => {
             if (operation === "start_validation") return {};
@@ -674,7 +664,8 @@ export function parseValidationInput(
                 for (const key of ["offsetBytes", "maxBytes"]) {
                     const value = payload[key];
                     if (
-                        value !== undefined && (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+                        value !== undefined &&
+                        (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
                     ) {
                         reject("invalid_input", key, "Byte ranges must be non-negative integers.");
                     }
@@ -696,7 +687,9 @@ export function parseValidationInput(
                     "message",
                 ]);
                 if (
-                    answer.value !== undefined && typeof answer.value !== "string" && typeof answer.value !== "boolean"
+                    answer.value !== undefined &&
+                    typeof answer.value !== "string" &&
+                    typeof answer.value !== "boolean"
                 ) {
                     reject("invalid_input", "payload.answer.value", "Answer must be text or boolean.");
                 }
@@ -704,9 +697,10 @@ export function parseValidationInput(
                     actionId,
                     answer: {
                         outcome: readText(answer, "outcome", "payload.answer.outcome", 200),
-                        value: typeof answer.value === "string" || typeof answer.value === "boolean"
-                            ? answer.value
-                            : undefined,
+                        value:
+                            typeof answer.value === "string" || typeof answer.value === "boolean"
+                                ? answer.value
+                                : undefined,
                         valueLabel: readOptionalText(answer, "valueLabel", "payload.answer.valueLabel", 200),
                         message: readOptionalText(answer, "message", "payload.answer.message", 4096),
                     },
@@ -716,64 +710,74 @@ export function parseValidationInput(
             if (typeof outcome.approved !== "boolean") {
                 reject("invalid_input", "payload.approved", "approved must be boolean.");
             }
-            const findings = outcome.findings === undefined ? undefined : readRows(
-                outcome.findings,
-                "findings",
-                (row): import("../workflow/review-outcome.ts").ReviewFindingInput => {
-                    readObject(row, "finding", [
-                        "id",
-                        "resolved",
-                        "title",
-                        "requirement",
-                        "evidence",
-                        "status",
-                        "rejectionReason",
-                        "origin",
-                    ]);
-                    if (row.resolved !== undefined && typeof row.resolved !== "boolean") {
-                        reject("invalid_input", "resolved", "resolved must be boolean.");
-                    }
-                    const status = row.status;
-                    if (
-                        status !== undefined && status !== "new" && status !== "fix_confirmed" &&
-                        status !== "fix_rejected"
-                    ) {
-                        reject("invalid_input", "status", "Invalid finding status.");
-                    }
-                    const origin = row.origin;
-                    if (
-                        origin !== undefined && origin !== "missed_original" && origin !== "repair_regression"
-                    ) reject("invalid_input", "origin", "Invalid finding origin.");
-                    return {
-                        title: readText(row, "title", "title", 4096),
-                        id: readOptionalText(row, "id", "id", 200),
-                        resolved: typeof row.resolved === "boolean" ? row.resolved : undefined,
-                        status,
-                        origin,
-                        requirement: readOptionalText(row, "requirement", "requirement", 4096),
-                        evidence: readOptionalText(row, "evidence", "evidence", 4096),
-                        rejectionReason: readOptionalText(row, "rejectionReason", "rejectionReason", 4096),
-                    };
-                },
-            );
-            const advisories = outcome.advisories === undefined
-                ? undefined
-                : readRows(outcome.advisories, "advisories", (row) => {
-                    readObject(row, "advisory", ["title", "detail"]);
-                    return {
-                        title: readText(row, "title", "title", 4096),
-                        detail: readOptionalText(row, "detail", "detail", 4096),
-                    };
-                });
-            const integrationNotes = outcome.integrationNotes === undefined
-                ? undefined
-                : readRows(outcome.integrationNotes, "integrationNotes", (row) => {
-                    readObject(row, "note", ["check", "where"]);
-                    return {
-                        check: readText(row, "check", "check", 4096),
-                        where: readOptionalText(row, "where", "where", 4096),
-                    };
-                });
+            const findings =
+                outcome.findings === undefined
+                    ? undefined
+                    : readRows(
+                          outcome.findings,
+                          "findings",
+                          (row): import("../workflow/review-outcome.ts").ReviewFindingInput => {
+                              readObject(row, "finding", [
+                                  "id",
+                                  "resolved",
+                                  "title",
+                                  "requirement",
+                                  "evidence",
+                                  "status",
+                                  "rejectionReason",
+                                  "origin",
+                              ]);
+                              if (row.resolved !== undefined && typeof row.resolved !== "boolean") {
+                                  reject("invalid_input", "resolved", "resolved must be boolean.");
+                              }
+                              const status = row.status;
+                              if (
+                                  status !== undefined &&
+                                  status !== "new" &&
+                                  status !== "fix_confirmed" &&
+                                  status !== "fix_rejected"
+                              ) {
+                                  reject("invalid_input", "status", "Invalid finding status.");
+                              }
+                              const origin = row.origin;
+                              if (
+                                  origin !== undefined &&
+                                  origin !== "missed_original" &&
+                                  origin !== "repair_regression"
+                              )
+                                  reject("invalid_input", "origin", "Invalid finding origin.");
+                              return {
+                                  title: readText(row, "title", "title", 4096),
+                                  id: readOptionalText(row, "id", "id", 200),
+                                  resolved: typeof row.resolved === "boolean" ? row.resolved : undefined,
+                                  status,
+                                  origin,
+                                  requirement: readOptionalText(row, "requirement", "requirement", 4096),
+                                  evidence: readOptionalText(row, "evidence", "evidence", 4096),
+                                  rejectionReason: readOptionalText(row, "rejectionReason", "rejectionReason", 4096),
+                              };
+                          },
+                      );
+            const advisories =
+                outcome.advisories === undefined
+                    ? undefined
+                    : readRows(outcome.advisories, "advisories", (row) => {
+                          readObject(row, "advisory", ["title", "detail"]);
+                          return {
+                              title: readText(row, "title", "title", 4096),
+                              detail: readOptionalText(row, "detail", "detail", 4096),
+                          };
+                      });
+            const integrationNotes =
+                outcome.integrationNotes === undefined
+                    ? undefined
+                    : readRows(outcome.integrationNotes, "integrationNotes", (row) => {
+                          readObject(row, "note", ["check", "where"]);
+                          return {
+                              check: readText(row, "check", "check", 4096),
+                              where: readOptionalText(row, "where", "where", 4096),
+                          };
+                      });
             return {
                 actionId,
                 outcome: {
@@ -784,7 +788,8 @@ export function parseValidationInput(
                     integrationNotes,
                 },
             };
-        }));
+        }),
+    );
 }
 function readRows<Row>(value: AttachedJsonValue, field: string, read: (row: AttachedJsonObject) => Row): Row[] {
     if (!Array.isArray(value)) reject("invalid_input", field, "Must be an array.");
@@ -799,88 +804,91 @@ function readRows<Row>(value: AttachedJsonValue, field: string, read: (row: Atta
 for (const name of ["start_validation", "review_diff", "review_complete", "validation_decision"] as const) {
     const descriptor: AttachedOperationDescriptor = {
         name,
-        description: name === "start_validation"
-            ? "Continue shared Core validation or recover an interrupted validation call. Not publication."
-            : name === "review_diff"
-            ? "Read the pending reviewer candidate. Only show records coverage; list does not."
-            : name === "review_complete"
-            ? "Submit the fresh reviewer's structured outcome. Core checks coverage and candidate identity."
-            : "Submit the user's answer to the pending Core validation decision.",
+        description:
+            name === "start_validation"
+                ? "Continue shared Core validation or recover an interrupted validation call. Not publication."
+                : name === "review_diff"
+                  ? "Read the pending reviewer candidate. Only show records coverage; list does not."
+                  : name === "review_complete"
+                    ? "Submit the fresh reviewer's structured outcome. Core checks coverage and candidate identity."
+                    : "Submit the user's answer to the pending Core validation decision.",
         inputSchema: workflowOperationSchema(
             name === "start_validation"
                 ? []
                 : ["actionId", name === "review_diff" ? "command" : name === "review_complete" ? "approved" : "answer"],
-            name === "start_validation" ? {} : name === "review_diff"
-                ? {
-                    actionId: IDENTIFIER_SCHEMA,
-                    command: { type: "string", enum: ["list", "show"] },
-                    scope: { type: "string", enum: ["full", "repair"] },
-                    path: { type: "string" },
-                    offsetBytes: { type: "integer", minimum: 0 },
-                    maxBytes: { type: "integer", minimum: 0 },
-                }
-                : name === "review_complete"
-                ? {
-                    actionId: IDENTIFIER_SCHEMA,
-                    approved: { type: "boolean" },
-                    feedback: { type: "string" },
-                    findings: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            additionalProperties: false,
-                            required: ["title"],
-                            properties: {
-                                id: { type: "string", minLength: 1, maxLength: 200 },
-                                title: { type: "string", minLength: 1, maxLength: 4096 },
-                                requirement: { type: "string", minLength: 1, maxLength: 4096 },
-                                evidence: { type: "string", minLength: 1, maxLength: 4096 },
-                                status: { type: "string", enum: ["new", "fix_confirmed", "fix_rejected"] },
-                                resolved: { type: "boolean" },
-                                rejectionReason: { type: "string", minLength: 1, maxLength: 4096 },
-                                origin: { type: "string", enum: ["missed_original", "repair_regression"] },
-                            },
-                        },
-                    },
-                    advisories: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            additionalProperties: false,
-                            required: ["title"],
-                            properties: {
-                                title: { type: "string", minLength: 1, maxLength: 4096 },
-                                detail: { type: "string", minLength: 1, maxLength: 4096 },
-                            },
-                        },
-                    },
-                    integrationNotes: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            additionalProperties: false,
-                            required: ["check"],
-                            properties: {
-                                check: { type: "string", minLength: 1, maxLength: 4096 },
-                                where: { type: "string", minLength: 1, maxLength: 4096 },
-                            },
-                        },
-                    },
-                }
-                : {
-                    actionId: IDENTIFIER_SCHEMA,
-                    answer: {
-                        type: "object",
-                        additionalProperties: false,
-                        required: ["outcome"],
-                        properties: {
-                            outcome: { type: "string" },
-                            value: { type: ["string", "boolean"] },
-                            valueLabel: { type: "string" },
-                            message: { type: "string" },
-                        },
-                    },
-                },
+            name === "start_validation"
+                ? {}
+                : name === "review_diff"
+                  ? {
+                        actionId: IDENTIFIER_SCHEMA,
+                        command: { type: "string", enum: ["list", "show"] },
+                        scope: { type: "string", enum: ["full", "repair"] },
+                        path: { type: "string" },
+                        offsetBytes: { type: "integer", minimum: 0 },
+                        maxBytes: { type: "integer", minimum: 0 },
+                    }
+                  : name === "review_complete"
+                    ? {
+                          actionId: IDENTIFIER_SCHEMA,
+                          approved: { type: "boolean" },
+                          feedback: { type: "string" },
+                          findings: {
+                              type: "array",
+                              items: {
+                                  type: "object",
+                                  additionalProperties: false,
+                                  required: ["title"],
+                                  properties: {
+                                      id: { type: "string", minLength: 1, maxLength: 200 },
+                                      title: { type: "string", minLength: 1, maxLength: 4096 },
+                                      requirement: { type: "string", minLength: 1, maxLength: 4096 },
+                                      evidence: { type: "string", minLength: 1, maxLength: 4096 },
+                                      status: { type: "string", enum: ["new", "fix_confirmed", "fix_rejected"] },
+                                      resolved: { type: "boolean" },
+                                      rejectionReason: { type: "string", minLength: 1, maxLength: 4096 },
+                                      origin: { type: "string", enum: ["missed_original", "repair_regression"] },
+                                  },
+                              },
+                          },
+                          advisories: {
+                              type: "array",
+                              items: {
+                                  type: "object",
+                                  additionalProperties: false,
+                                  required: ["title"],
+                                  properties: {
+                                      title: { type: "string", minLength: 1, maxLength: 4096 },
+                                      detail: { type: "string", minLength: 1, maxLength: 4096 },
+                                  },
+                              },
+                          },
+                          integrationNotes: {
+                              type: "array",
+                              items: {
+                                  type: "object",
+                                  additionalProperties: false,
+                                  required: ["check"],
+                                  properties: {
+                                      check: { type: "string", minLength: 1, maxLength: 4096 },
+                                      where: { type: "string", minLength: 1, maxLength: 4096 },
+                                  },
+                              },
+                          },
+                      }
+                    : {
+                          actionId: IDENTIFIER_SCHEMA,
+                          answer: {
+                              type: "object",
+                              additionalProperties: false,
+                              required: ["outcome"],
+                              properties: {
+                                  outcome: { type: "string" },
+                                  value: { type: ["string", "boolean"] },
+                                  valueLabel: { type: "string" },
+                                  message: { type: "string" },
+                              },
+                          },
+                      },
         ),
     };
     ATTACHED_OPERATIONS.push(descriptor);

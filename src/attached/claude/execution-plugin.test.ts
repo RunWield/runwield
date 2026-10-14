@@ -1,9 +1,12 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-Deno.test("Claude command instructions automatically dispatch a host worker and return its report through Core", async () => {
-    const request = await Deno.readTextFile(new URL("./plugin/commands/request.md", import.meta.url));
-    const restore = await Deno.readTextFile(new URL("./plugin/commands/implement.md", import.meta.url));
-    const review = await Deno.readTextFile(new URL("./plugin/commands/plan-review.md", import.meta.url));
+test("Claude command instructions automatically dispatch a host worker and return its report through Core", async () => {
+    const request = await fsReadFile(new URL("./plugin/commands/request.md", import.meta.url), "utf8");
+    const restore = await fsReadFile(new URL("./plugin/commands/implement.md", import.meta.url), "utf8");
+    const review = await fsReadFile(new URL("./plugin/commands/plan-review.md", import.meta.url), "utf8");
     for (const source of [request, restore, review]) {
         const text = source.replace(/\s+/g, " ");
         assertStringIncludes(text, "immediately call `start_execution`");

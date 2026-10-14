@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
+import { getCwd } from "../src/constants.js";
+import { spawnNativeProcess } from "../src/shared/foreground-process.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
-import process from "node:process";
-
 import { runWithSnip, writeSnipCommandResult } from "./run-with-snip.ts";
+
+import process from "node:process";
 
 export const PRE_TEST_TASKS = [
     "submodules:check",
@@ -65,14 +67,16 @@ export interface CiOptions {
 
 export async function runCi(executeTask: ExecuteCiTask, options: CiOptions = {}): Promise<CiResult> {
     // CI must keep running after the display sleeps. -w also releases the assertion if this process exits.
-    const sleepInhibitor = Deno.build.os === "darwin"
-        ? new Deno.Command("/usr/bin/caffeinate", {
-            args: ["-i", "-w", String(Deno.pid)],
-            stdin: "null",
-            stdout: "null",
-            stderr: "null",
-        }).spawn()
-        : null;
+    const sleepInhibitor =
+        (process.platform === "win32" ? "windows" : process.platform) === "darwin"
+            ? spawnNativeProcess("/usr/bin/caffeinate", {
+                  args: ["-i", "-w", String(process.pid)],
+                  stdin: "null",
+                  stdout: "null",
+                  stderr: "null",
+                  cwd: getCwd(),
+              })
+            : null;
     try {
         const preTestRuns = PRE_TEST_TASKS.map((taskName) => settleTask(taskName, executeTask));
         const preTestResults = await Promise.all(preTestRuns);

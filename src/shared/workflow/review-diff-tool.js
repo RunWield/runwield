@@ -52,25 +52,32 @@ export function createReviewDiffTool(diffs, options = {}) {
             "review_diff(list|show): List changed files or read the diff for one file. Prefer 'list' first to see what changed, then 'show <path>' to inspect specific files.",
         parameters: Type.Object({
             command: StringEnum(["list", "show"]),
-            scope: Type.Optional(StringEnum(["full", "repair"], {
-                description:
-                    "Which diff to inspect. 'full' (default) shows the proposed branch patch from its common ancestor with the recorded target through current worktree files. 'repair' is only what the most recent repair changed, and is available from the second review round onward.",
-            })),
-            path: Type.Optional(Type.String({
-                description:
-                    "Required for 'show'. The file path to inspect. Accepts partial path matches for convenience.",
-            })),
-            offsetBytes: Type.Optional(Type.Integer({
-                minimum: 0,
-                description:
-                    "Byte offset into the file's diff content. Use to page through large per-file diffs. Default: 0.",
-            })),
-            maxBytes: Type.Optional(Type.Integer({
-                minimum: 256,
-                maximum: MAX_READ_BYTES,
-                description:
-                    `Maximum bytes to return for this file's diff. Default: ${MAX_READ_BYTES}. Max: ${MAX_READ_BYTES}.`,
-            })),
+            scope: Type.Optional(
+                StringEnum(["full", "repair"], {
+                    description:
+                        "Which diff to inspect. 'full' (default) shows the proposed branch patch from its common ancestor with the recorded target through current worktree files. 'repair' is only what the most recent repair changed, and is available from the second review round onward.",
+                }),
+            ),
+            path: Type.Optional(
+                Type.String({
+                    description:
+                        "Required for 'show'. The file path to inspect. Accepts partial path matches for convenience.",
+                }),
+            ),
+            offsetBytes: Type.Optional(
+                Type.Integer({
+                    minimum: 0,
+                    description:
+                        "Byte offset into the file's diff content. Use to page through large per-file diffs. Default: 0.",
+                }),
+            ),
+            maxBytes: Type.Optional(
+                Type.Integer({
+                    minimum: 256,
+                    maximum: MAX_READ_BYTES,
+                    description: `Maximum bytes to return for this file's diff. Default: ${MAX_READ_BYTES}. Max: ${MAX_READ_BYTES}.`,
+                }),
+            ),
         }),
         execute(toolCallId, rawParams) {
             const result = readDiff(rawParams);

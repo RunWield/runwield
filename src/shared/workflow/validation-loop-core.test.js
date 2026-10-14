@@ -139,95 +139,105 @@ async function makePlannedReviewWorktree() {
 }
 
 for (const interruption of ["abandoned catalog lock", "Git commit hook"]) {
-    test(`publication resumes reviewed work after ${interruption} and presents a pause only once`, {
-        skip: process.platform === "win32",
-    }, async function () {
-        const fixture = await makePlannedReviewWorktree();
-        let obstruction = "";
-        try {
-            const plan = await loadPlan(fixture.executionCwd, "p");
-            if (!plan) throw new Error("Missing execution Plan");
-            await savePlan(fixture.executionCwd, "p", plan.body, {
-                ...plan.attrs,
-                status: "reviewed",
-                humanReviewMode: "none",
-                humanReviewDecision: "not_required",
-            }, { expectedRevision: plan.revision });
-            await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "reviewed implementation\n");
-            const mainBefore = await git(fixture.projectRoot, ["rev-parse", "main"]);
-            if (interruption === "abandoned catalog lock") {
-                obstruction = resolveProjectRuntimeLayout(fixture.projectRoot).selected.planCatalogLockPath;
-                const past = new Date(Date.now() - 60_000);
-                await fsWriteFile(
-                    obstruction,
-                    JSON.stringify({
-                        token: "abandoned-by-live-workspace",
-                        pid: process.pid,
-                        hostname: hostname(),
-                        updatedAtMs: past.getTime(),
+    test(
+        `publication resumes reviewed work after ${interruption} and presents a pause only once`,
+        {
+            skip: process.platform === "win32",
+        },
+        async function () {
+            const fixture = await makePlannedReviewWorktree();
+            let obstruction = "";
+            try {
+                const plan = await loadPlan(fixture.executionCwd, "p");
+                if (!plan) throw new Error("Missing execution Plan");
+                await savePlan(
+                    fixture.executionCwd,
+                    "p",
+                    plan.body,
+                    {
+                        ...plan.attrs,
+                        status: "reviewed",
+                        humanReviewMode: "none",
+                        humanReviewDecision: "not_required",
+                    },
+                    { expectedRevision: plan.revision },
+                );
+                await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "reviewed implementation\n");
+                const mainBefore = await git(fixture.projectRoot, ["rev-parse", "main"]);
+                if (interruption === "abandoned catalog lock") {
+                    obstruction = resolveProjectRuntimeLayout(fixture.projectRoot).selected.planCatalogLockPath;
+                    const past = new Date(Date.now() - 60_000);
+                    await fsWriteFile(
+                        obstruction,
+                        JSON.stringify({
+                            token: "abandoned-by-live-workspace",
+                            pid: process.pid,
+                            hostname: hostname(),
+                            updatedAtMs: past.getTime(),
+                        }),
+                    );
+                    await fsUtimes(obstruction, past, past);
+                } else {
+                    obstruction = `${fixture.projectRoot}/.git/hooks/pre-commit`;
+                    await fsWriteFile(obstruction, "#!/bin/sh\necho 'commit hook rejected' >&2\nexit 1\n");
+                    await fsChmod(obstruction, 0o755);
+                }
+                setCurrentValidationProgress(
+                    fixture.hostedSession,
+                    createValidationProgress({
+                        kind: "workflow",
+                        outcome: "running",
+                        stage: "merge",
+                        cycle: 1,
+                        maxCycles: 3,
+                        checks: { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "running" },
                     }),
                 );
-                await fsUtimes(obstruction, past, past);
-            } else {
-                obstruction = `${fixture.projectRoot}/.git/hooks/pre-commit`;
-                await fsWriteFile(obstruction, "#!/bin/sh\necho 'commit hook rejected' >&2\nexit 1\n");
-                await fsChmod(obstruction, 0o755);
+                const result = await continueWorkflowValidation({
+                    hostedSession: fixture.hostedSession,
+                    planName: "p",
+                    planContent: plan.body,
+                    triageMeta: { classification: "FEATURE", status: "reviewed" },
+                    git: createGitPort(),
+                    localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
+                    workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
+                    semanticReviewPort: NO_ISOLATED_AGENT_PORT,
+                });
+                if (interruption === "abandoned catalog lock") {
+                    assertEquals(
+                        result.kind,
+                        "verified",
+                        JSON.stringify({
+                            result,
+                            publication: await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id),
+                        }),
+                    );
+                    assertEquals(
+                        await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
+                        "reviewed implementation",
+                    );
+                } else {
+                    assertEquals(result.kind, "paused", JSON.stringify(result));
+                    assertStringIncludes(result.reason || "", "Fix the Git hook or commit error");
+                    assertEquals(
+                        fixture.uiAPI.messages.filter((/** @type {string} */ message) => message === result.reason)
+                            .length,
+                        1,
+                    );
+                    assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "paused");
+                    assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
+                    assertEquals((await loadPlan(fixture.executionCwd, "p"))?.attrs.status, "reviewed");
+                    assertEquals(
+                        await fsReadFile(`${fixture.executionCwd}/delivered.txt`, "utf8"),
+                        "reviewed implementation\n",
+                    );
+                }
+            } finally {
+                if (obstruction) await fsRm(obstruction).catch(() => {});
+                await fixture.cleanup();
             }
-            setCurrentValidationProgress(
-                fixture.hostedSession,
-                createValidationProgress({
-                    kind: "workflow",
-                    outcome: "running",
-                    stage: "merge",
-                    cycle: 1,
-                    maxCycles: 3,
-                    checks: { ci: "passed", semanticReview: "passed", humanReview: "skipped", merge: "running" },
-                }),
-            );
-            const result = await continueWorkflowValidation({
-                hostedSession: fixture.hostedSession,
-                planName: "p",
-                planContent: plan.body,
-                triageMeta: { classification: "FEATURE", status: "reviewed" },
-                git: createGitPort(),
-                localCI: { run: () => Promise.reject(new Error("Completed CI must not run again")) },
-                workRecordMnemotecaPort: createWorkRecordMnemotecaFixture(),
-                semanticReviewPort: NO_ISOLATED_AGENT_PORT,
-            });
-            if (interruption === "abandoned catalog lock") {
-                assertEquals(
-                    result.kind,
-                    "verified",
-                    JSON.stringify({
-                        result,
-                        publication: await loadPublicationAttempt(fixture.projectRoot, fixture.worktree.id),
-                    }),
-                );
-                assertEquals(
-                    await git(fixture.projectRoot, ["show", "main:delivered.txt"]),
-                    "reviewed implementation",
-                );
-            } else {
-                assertEquals(result.kind, "paused", JSON.stringify(result));
-                assertStringIncludes(result.reason || "", "Fix the Git hook or commit error");
-                assertEquals(
-                    fixture.uiAPI.messages.filter((/** @type {string} */ message) => message === result.reason)
-                        .length,
-                    1,
-                );
-                assertEquals(getCurrentValidationProgress(fixture.hostedSession)?.outcome, "paused");
-                assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
-                assertEquals((await loadPlan(fixture.executionCwd, "p"))?.attrs.status, "reviewed");
-                assertEquals(
-                    await fsReadFile(`${fixture.executionCwd}/delivered.txt`, "utf8"),
-                    "reviewed implementation\n",
-                );
-            }
-        } finally {
-            if (obstruction) await fsRm(obstruction).catch(() => {});
-            await fixture.cleanup();
-        }
-    });
+        },
+    );
 }
 
 for (const sealed of [false, true]) {
@@ -264,11 +274,17 @@ for (const sealed of [false, true]) {
             }
             const plan = await loadPlan(worktree.path, "p");
             if (!plan) throw new Error("Missing execution Plan");
-            await savePlan(worktree.path, "p", plan.body, {
-                ...plan.attrs,
-                status: "reviewed",
-                targetBranch: "release/next",
-            }, { expectedRevision: plan.revision });
+            await savePlan(
+                worktree.path,
+                "p",
+                plan.body,
+                {
+                    ...plan.attrs,
+                    status: "reviewed",
+                    targetBranch: "release/next",
+                },
+                { expectedRevision: plan.revision },
+            );
             await fsWriteFile(`${worktree.path}/delivered.txt`, "late target edit\n");
             const result = await runPublicationPhase(args, phase.context, {
                 humanReviewMode: "none",
@@ -302,13 +318,19 @@ for (const targetBranch of ["release/next", " origin/release/next ", undefined])
             if (!plan) throw new Error("Missing execution Plan");
             // The Session, registry and primary Plan still describe the old target.
             // Only the execution document changes after the workflow was loaded.
-            await savePlan(fixture.executionCwd, "p", plan.body, {
-                ...plan.attrs,
-                status: "reviewed",
-                targetBranch,
-                humanReviewMode: "none",
-                humanReviewDecision: "not_required",
-            }, { expectedRevision: plan.revision });
+            await savePlan(
+                fixture.executionCwd,
+                "p",
+                plan.body,
+                {
+                    ...plan.attrs,
+                    status: "reviewed",
+                    targetBranch,
+                    humanReviewMode: "none",
+                    humanReviewDecision: "not_required",
+                },
+                { expectedRevision: plan.revision },
+            );
             await fsWriteFile(`${fixture.executionCwd}/delivered.txt`, "selected target\n");
             setCurrentValidationProgress(
                 fixture.hostedSession,
@@ -349,10 +371,7 @@ for (const targetBranch of ["release/next", " origin/release/next ", undefined])
             assertEquals(parsePlanFrontMatter(publishedPlan).attrs.targetBranch, expectedTarget);
             if (targetBranch) {
                 assertEquals(await git(fixture.projectRoot, ["rev-parse", "main"]), mainBefore);
-                assertEquals(
-                    fixture.uiAPI.messages.join("\n").includes("Merging work into main"),
-                    false,
-                );
+                assertEquals(fixture.uiAPI.messages.join("\n").includes("Merging work into main"), false);
             }
         } finally {
             await fixture.cleanup();
@@ -379,26 +398,23 @@ test("startActiveExecutionWorkflow seeds footer workflow context from Plan front
 
     const workflowContext = hostedSession.getWorkflowContext();
     assertEquals(typeof workflowContext?.planId, "string");
-    assertEquals({ ...workflowContext, planId: "<generated>" }, {
-        routingIntent: "PLANNED_CHANGE",
-        complexity: "MEDIUM",
-        planName: "footer-plan",
-        planId: "<generated>",
-        status: "ready_for_work",
-    });
+    assertEquals(
+        { ...workflowContext, planId: "<generated>" },
+        {
+            routingIntent: "PLANNED_CHANGE",
+            complexity: "MEDIUM",
+            planName: "footer-plan",
+            planId: "<generated>",
+            status: "ready_for_work",
+        },
+    );
     assertEquals(hostedSession.getActiveExecutionWorkflow()?.executionAgent, "engineer");
 });
 
 test("shouldContinueParentEpicAfterValidation detects parent epic linkage", () => {
     assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE" }), false);
-    assertEquals(
-        shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "" }),
-        false,
-    );
-    assertEquals(
-        shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "epic" }),
-        true,
-    );
+    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "" }), false);
+    assertEquals(shouldContinueParentEpicAfterValidation({ classification: "FEATURE", parentPlan: "epic" }), true);
 });
 
 test("shouldContinueParentEpicAfterValidation ignores standalone FEATURE plans", async () => {
@@ -475,12 +491,18 @@ test("runValidationLoop fails PROJECT validation when workflow diff only changes
     await git(projectRoot, ["commit", "-m", "validation baseline"]);
     const baselineTree = await git(projectRoot, ["rev-parse", "HEAD^{tree}"]);
     const baselinePlan = await loadPlan(projectRoot, "p");
-    await savePlan(projectRoot, "p", "# p\n\nPlan-only follow-up.\n", {
-        classification: "PROJECT",
-        status: "validated_ci",
-        summary: "validation fixture",
-        affectedPaths: [],
-    }, { expectedRevision: baselinePlan?.revision });
+    await savePlan(
+        projectRoot,
+        "p",
+        "# p\n\nPlan-only follow-up.\n",
+        {
+            classification: "PROJECT",
+            status: "validated_ci",
+            summary: "validation fixture",
+            affectedPaths: [],
+        },
+        { expectedRevision: baselinePlan?.revision },
+    );
     hostedSession.setActiveExecutionWorkflow({
         planName: "p",
         triageMeta: { classification: "PROJECT", status: "validated_ci" },

@@ -32,9 +32,10 @@ export async function finalizePlanImplementation(options: FinalizePlanImplementa
     if (!executionContext) {
         throw new Error(`Cannot complete ${planName}: durable execution context is missing.`);
     }
-    const planCwd = executionContext.executionMode === "worktree" && executionContext.executionCwd
-        ? executionContext.executionCwd
-        : projectRoot;
+    const planCwd =
+        executionContext.executionMode === "worktree" && executionContext.executionCwd
+            ? executionContext.executionCwd
+            : projectRoot;
     const resources = [{ kind: "plan", id: planName }];
     if (executionContext.worktreeId) resources.push({ kind: "attempt", id: executionContext.worktreeId });
     return await withOrderedTransitionResources(planCwd, resources, () => finalizeLockedImplementation(options));
@@ -54,9 +55,10 @@ async function finalizeLockedImplementation({
         throw new Error(`Cannot complete ${planName}: durable execution context is missing.`);
     }
 
-    const planCwd = executionContext.executionMode === "worktree" && executionContext.executionCwd
-        ? executionContext.executionCwd
-        : projectRoot;
+    const planCwd =
+        executionContext.executionMode === "worktree" && executionContext.executionCwd
+            ? executionContext.executionCwd
+            : projectRoot;
     let currentPlan = await (async () => {
         try {
             return await loadPlan(planCwd, planName);
@@ -97,8 +99,8 @@ async function finalizeLockedImplementation({
     // Attached binds completion to the issued document. Check under the same
     // ordered locks as restoration, lifecycle writes, checkpoint, and registry settlement.
     if (expectedPlanRevision && currentPlan.revision !== expectedPlanRevision) {
-        const sameBody = expectedPlanBodyRevision &&
-            await getPlanRevisionForText(currentPlan.body) === expectedPlanBodyRevision;
+        const sameBody =
+            expectedPlanBodyRevision && (await getPlanRevisionForText(currentPlan.body)) === expectedPlanBodyRevision;
         if (!(sameBody && (planStatus === "implemented" || restoredMissingPlan))) {
             throw new Error("The execution Plan changed since the implementation action was issued.");
         }
@@ -197,18 +199,21 @@ async function finalizeLockedImplementation({
         throw new Error(transition.message || `Implementation checkpoint did not commit for ${planName}.`);
     }
     acknowledgeImplementationCompletion(hostedSession);
-    const transitionValue = /** @type {{ value?: { implementationCommit?: string } }} */ (transition.value);
+    const transitionValue = /** @type {{ value?: { implementationCommit?: string } }} */ transition.value;
     const implementationCommit = transitionValue.value?.implementationCommit;
-    await recordWorkflowMetric({
-        category: "execution",
-        event: "implementation_finished",
-        planName,
-        details: {
-            classification: triageMeta.classification,
-            executionMode: executionContext.executionMode,
-            checkpointCommitted: Boolean(implementationCommit),
+    await recordWorkflowMetric(
+        {
+            category: "execution",
+            event: "implementation_finished",
+            planName,
+            details: {
+                classification: triageMeta.classification,
+                executionMode: executionContext.executionMode,
+                checkpointCommitted: Boolean(implementationCommit),
+            },
         },
-    }, projectRoot);
+        projectRoot,
+    );
     return implementationCommit ? { implementationCommit } : {};
 }
 

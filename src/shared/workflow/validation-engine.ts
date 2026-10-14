@@ -95,9 +95,10 @@ function resolveNextPhase(
     args: ValidationLoopArgs,
     status: "implemented" | "validated_ci" | "reviewed" | "validated",
 ): ValidationPhaseName {
-    const fromStatus: ValidationPhaseName = status === "validated"
-        ? "delivery"
-        : validationPhaseForStatus(status, args.triageMeta.validationPhase) || "mechanical";
+    const fromStatus: ValidationPhaseName =
+        status === "validated"
+            ? "delivery"
+            : validationPhaseForStatus(status, args.triageMeta.validationPhase) || "mechanical";
     const claimed = args.continuationPhase;
     if (!claimed) return fromStatus;
     const claimedIndex = VALIDATION_STATUS_ORDER.indexOf(PHASE_STATUS[claimed]);
@@ -173,15 +174,13 @@ function canonicalOperationalResult(
     };
 }
 
-export async function loadCanonicalValidationPlan(
-    args: ValidationLoopArgs,
-): Promise<
+export async function loadCanonicalValidationPlan(args: ValidationLoopArgs): Promise<
     | {
-        kind: "ok";
-        status: "implemented" | "validated_ci" | "reviewed" | "validated";
-        attrs: PlanFrontMatter;
-        markdown: string;
-    }
+          kind: "ok";
+          status: "implemented" | "validated_ci" | "reviewed" | "validated";
+          attrs: PlanFrontMatter;
+          markdown: string;
+      }
     | { kind: "blocked"; result: ValidationPhaseResult }
 > {
     const projectRoot = getProjectRoot(args);

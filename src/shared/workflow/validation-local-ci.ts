@@ -42,9 +42,10 @@ export async function resolveValidationCommand(
     projectRoot: string,
     settingsPolicy: ValidationCommandSettingsPolicy = "ordinary-project",
 ): Promise<string> {
-    const existingCommand = settingsPolicy === "exact-project"
-        ? getExactProjectCustomSetting("verification_command", projectRoot)
-        : getCustomSetting("verification_command", "project", projectRoot);
+    const existingCommand =
+        settingsPolicy === "exact-project"
+            ? getExactProjectCustomSetting("verification_command", projectRoot)
+            : getCustomSetting("verification_command", "project", projectRoot);
     if (typeof existingCommand === "string" && existingCommand.trim()) {
         return existingCommand;
     }
@@ -118,10 +119,10 @@ export type LocalCIResult =
     | { kind: "completed"; exitCode: number; output: string; timedOut?: boolean }
     | { kind: "canceled"; output: string }
     | {
-        kind: "operational_failure";
-        failure: import("./validation-operational-errors.ts").ValidationOperationalFailure;
-        output: string;
-    };
+          kind: "operational_failure";
+          failure: import("./validation-operational-errors.ts").ValidationOperationalFailure;
+          output: string;
+      };
 
 export type ValidationCommandResult = LocalCIResult | { kind: "command_missing" };
 
@@ -144,9 +145,12 @@ export interface LocalCIPort {
 }
 
 /** Run configured validation without a Session, prompt, or runtime events. */
-export async function runValidationCommand(
-    { cwd, settingsPolicy = "ordinary-project", signal, onCommandStart }: ValidationCommandOptions,
-): Promise<ValidationCommandResult> {
+export async function runValidationCommand({
+    cwd,
+    settingsPolicy = "ordinary-project",
+    signal,
+    onCommandStart,
+}: ValidationCommandOptions): Promise<ValidationCommandResult> {
     if (!cwd) throw new Error("runValidationCommand: cwd is required");
     const command = await resolveValidationCommand(cwd, settingsPolicy);
     if (signal?.aborted) return { kind: "canceled", output: "Validation canceled." };
@@ -186,9 +190,11 @@ export async function runValidationCommand(
     }
 }
 
-export async function runLocalCI(
-    { hostedSession, cwd, settingsPolicy = "ordinary-project" }: LocalCIOptions,
-): Promise<LocalCIResult> {
+export async function runLocalCI({
+    hostedSession,
+    cwd,
+    settingsPolicy = "ordinary-project",
+}: LocalCIOptions): Promise<LocalCIResult> {
     if (!cwd) throw new Error("runLocalCI: cwd is required");
     if (!hostedSession) throw new Error("runLocalCI: hostedSession is required");
     const toolCallId = `validation-ci-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -234,12 +240,13 @@ export async function runLocalCI(
             };
         }
         if (runtimeTool) {
-            const output = result.kind === "operational_failure" ||
-                    (result.kind === "canceled" && result.output === "Validation canceled.")
-                ? `${result.output}\n`
-                : result.output.trim()
-                ? result.output
-                : "(no output)\n";
+            const output =
+                result.kind === "operational_failure" ||
+                (result.kind === "canceled" && result.output === "Validation canceled.")
+                    ? `${result.output}\n`
+                    : result.output.trim()
+                      ? result.output
+                      : "(no output)\n";
             emitHostedSessionRuntimeEvent(hostedSession, {
                 type: RuntimeEventTypes.TOOL_END,
                 toolCallId,

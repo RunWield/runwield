@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile, mkdir as fsMkdir } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { loadPlan } from "../../plan-store.js";
 import { hasNonGitExecutionConsent } from "../non-git-execution-consent.ts";
 import {
@@ -13,7 +16,7 @@ import { completionInput, executionInput, readyPlan } from "./execution-test-fix
 import { type AttachedWorkflowRecord, loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 
 for (const consent of ["proceed", "decline"] as const) {
-    Deno.test(`non-Git consent persists across processes and ${consent} uses the Core decision`, async () => {
+    test(`non-Git consent persists across processes and ${consent} uses the Core decision`, async () => {
         const root = await makeValidationProjectRoot("other");
         try {
             const ready = await readyPlan(root);
@@ -49,24 +52,24 @@ for (const consent of ["proceed", "decline"] as const) {
             } else {
                 assertEquals(answer.result.workflow.state, "implementing");
                 assertEquals(answer.result.workflow.execution?.executionMode, "non_git_in_place");
-                assertEquals(answer.result.workflow.execution?.executionCwd, await Deno.realPath(root));
+                assertEquals(answer.result.workflow.execution?.executionCwd, await fsRealpath(root));
                 const completed = await runOperation("task_completed", root, completionInput(answer.result.workflow));
                 assert(completed.ok, JSON.stringify(completed));
                 assertEquals((await loadPlan(root, "dark-mode-toggle"))?.attrs.status, "implemented");
             }
         } finally {
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 }
 
-Deno.test("old Attached records without execution fields normalize to null on read", async () => {
+test("old Attached records without execution fields normalize to null on read", async () => {
     await withProject(async (root) => {
         const ready = await readyPlan(root);
         const location = locateAttachedWorkflows(root);
         const record: AttachedWorkflowRecord = JSON.parse(await readRecordBytes(root, ready.workflowId));
         const { execution: _execution, pendingConsent: _pendingConsent, ...old } = record;
-        await Deno.writeTextFile(join(location.workflowsDir, `${ready.workflowId}.json`), JSON.stringify(old));
+        await fsWriteFile(join(location.workflowsDir, `${ready.workflowId}.json`), JSON.stringify(old));
         const loaded = await loadAttachedWorkflowRecord(location, ready.workflowId);
         assert(loaded.status === "found");
         assertEquals(loaded.record.execution, null);
@@ -78,7 +81,7 @@ Deno.test("old Attached records without execution fields normalize to null on re
     });
 });
 
-Deno.test("non-Git preparation retries after a lost Attached write without repeating execution_started", async () => {
+test("non-Git preparation retries after a lost Attached write without repeating execution_started", async () => {
     const root = await makeValidationProjectRoot("other");
     try {
         const ready = await readyPlan(root);
@@ -92,8 +95,8 @@ Deno.test("non-Git preparation retries after a lost Attached write without repea
         const started = await runOperation("start_execution", root, input);
         assert(started.ok && started.workflow.state === "implementing");
         const transitionId = crypto.randomUUID();
-        await Deno.mkdir(getTransitionJournalDir(root), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(getTransitionJournalDir(root), { recursive: true });
+        await fsWriteFile(
             getTransitionJournalPath(root, transitionId),
             JSON.stringify({
                 version: 1,
@@ -108,7 +111,7 @@ Deno.test("non-Git preparation retries after a lost Attached write without repea
             }),
         );
         assertEquals((await listTransitionRecoveryRecords(root)).length, 1);
-        await Deno.writeTextFile(join(locateAttachedWorkflows(root).workflowsDir, `${ready.workflowId}.json`), before);
+        await fsWriteFile(join(locateAttachedWorkflows(root).workflowsDir, `${ready.workflowId}.json`), before);
         const retry = await spawnAttachedCli("start_execution", root, input);
         assert(retry.result.ok, JSON.stringify(retry.result));
         assertEquals(retry.result.workflow.state, "implementing");
@@ -116,6 +119,6 @@ Deno.test("non-Git preparation retries after a lost Attached write without repea
         assertEquals((await listTransitionRecoveryRecords(root)).length, 0);
         assertEquals((await loadPlan(root, "dark-mode-toggle"))?.attrs.status, "in_progress");
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

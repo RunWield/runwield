@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { coverage, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";
 import { sessionScript } from "../../testing/validation-session-script.ts";
 import { classifyValidationOperationalError } from "./validation-operational-errors.ts";
@@ -9,11 +12,11 @@ import {
     VALIDATION_PROTOCOL_CORRECTION_LIMIT,
 } from "./validation-recovery.ts";
 
-Deno.test("fresh reviewer corrections spend the same limit as Session nudges and cannot reset it", async () => {
+test("fresh reviewer corrections spend the same limit as Session nudges and cannot reset it", async () => {
     const host = await hostFixture();
     const core = await hostFixture();
     try {
-        for (const fixture of [host, core]) await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+        for (const fixture of [host, core]) await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
         let reviewer = hostRequest(await host.processTurn(), "reviewer");
         for (let count = 1; count <= VALIDATION_PROTOCOL_CORRECTION_LIMIT; count++) {
             reviewer = hostRequest(
@@ -30,12 +33,14 @@ Deno.test("fresh reviewer corrections spend the same limit as Session nudges and
         const metrics = await host.metrics();
         const ledger = (await host.plan()).attrs.validationCheckpoint?.reviewState;
         assertEquals(
-            (await host.processTurn({
-                kind: "reviewer",
-                identity: { ...reviewer.identity, correctionCount: 0 },
-                outcome: { approved: true },
-                coverage: coverage(reviewer),
-            })).kind,
+            (
+                await host.processTurn({
+                    kind: "reviewer",
+                    identity: { ...reviewer.identity, correctionCount: 0 },
+                    outcome: { approved: true },
+                    coverage: coverage(reviewer),
+                })
+            ).kind,
             "failed",
         );
         assertEquals(await host.metrics(), metrics);
@@ -65,10 +70,10 @@ Deno.test("fresh reviewer corrections spend the same limit as Session nudges and
         await core.close();
     }
 });
-Deno.test("host operational retries pause without sleeping and retain their budget across processes", async () => {
+test("host operational retries pause without sleeping and retain their budget across processes", async () => {
     const fixture = await hostFixture();
     try {
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+        await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
         let reviewer = hostRequest(await fixture.processTurn(), "reviewer");
         const failure = classifyValidationOperationalError({
             source: "provider",

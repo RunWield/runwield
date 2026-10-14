@@ -1,5 +1,6 @@
-import { assertExists } from "@std/assert";
-import { join } from "@std/path";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { assertExists } from "./assertions.ts";
+import { join } from "node:path";
 import { HostedSession } from "../shared/session/hosted-session.js";
 import { createGitPort } from "../shared/git-port.ts";
 import { executeWorkflowTestTools, type WorkflowTestToolCall } from "./workflow-agent-tools.ts";
@@ -7,12 +8,12 @@ import { continueWorkflowValidation } from "../shared/workflow/validation.ts";
 import { runLocalCI } from "../shared/workflow/validation-local-ci.ts";
 import { getWorkflowDiff, getWorktreeReviewDiff } from "../shared/workflow/git-snapshot.ts";
 import { parseDiffFiles } from "../shared/workflow/review-diff.ts";
-import type { ReviewCompletePayload } from "../shared/workflow/review-outcome.ts";
-import type { HostFixture } from "../shared/workflow/testing/validation-host-fixture.ts";
+import { type ReviewCompletePayload } from "../shared/workflow/review-outcome.ts";
+import { type HostFixture } from "../shared/workflow/testing/validation-host-fixture.ts";
 import { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } from "../shared/work-records/mnemoteca-port.ts";
-import type {
-    RuntimeInteractionRequest,
-    RuntimeInteractionResponse,
+import {
+    type RuntimeInteractionRequest,
+    type RuntimeInteractionResponse,
 } from "../shared/session/session-runtime-interactions.js";
 
 export type SessionScript = {
@@ -57,16 +58,20 @@ export async function sessionScript(fixture: HostFixture, script: SessionScript)
                         managers.push(request.sessionManager);
                         const current = await fixture.plan();
                         const baseline = current.attrs.validationCheckpoint?.reviewState?.repairBaselineTree;
-                        const scope = (current.attrs.validationCheckpoint?.reviewState?.semanticRound || 0) >= 2
-                            ? "repair"
-                            : "full";
-                        const diff = scope === "repair"
-                            ? await getWorkflowDiff(fixture.cwd, baseline)
-                            : await getWorktreeReviewDiff(fixture.cwd, "main");
-                        const calls: WorkflowTestToolCall[] = [{
-                            name: "review_diff",
-                            arguments: { command: "list", scope },
-                        }];
+                        const scope =
+                            (current.attrs.validationCheckpoint?.reviewState?.semanticRound || 0) >= 2
+                                ? "repair"
+                                : "full";
+                        const diff =
+                            scope === "repair"
+                                ? await getWorkflowDiff(fixture.cwd, baseline)
+                                : await getWorktreeReviewDiff(fixture.cwd, "main");
+                        const calls: WorkflowTestToolCall[] = [
+                            {
+                                name: "review_diff",
+                                arguments: { command: "list", scope },
+                            },
+                        ];
                         for (const file of parseDiffFiles(diff)) {
                             for (let offsetBytes = 0; offsetBytes < file.byteLength; offsetBytes += 65536) {
                                 calls.push({
@@ -90,17 +95,19 @@ export async function sessionScript(fixture: HostFixture, script: SessionScript)
                     } else {
                         repairTurn++;
                         if (script.repairCompleted !== false) {
-                            await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+                            await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
                             if (plan.attrs.executionMode === "worktree") {
-                                await Deno.writeTextFile(
+                                await fsWriteFile(
                                     join(fixture.cwd, "implementation.ts"),
                                     `export const value = ${repairTurn + 1}; // repaired implementation\n`,
                                 );
                             }
-                            await executeWorkflowTestTools(request, [{
-                                name: "task_completed",
-                                arguments: { message: "Fixed the finding." },
-                            }]);
+                            await executeWorkflowTestTools(request, [
+                                {
+                                    name: "task_completed",
+                                    arguments: { message: "Fixed the finding." },
+                                },
+                            ]);
                         }
                     }
                     return [];

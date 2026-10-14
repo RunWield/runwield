@@ -162,12 +162,7 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
     }
 
     if (round >= SEMANTIC_REVIEW_CYCLES && state.lastRepairReport) {
-        const action = await promptForSemanticRoundLimit(
-            args,
-            round,
-            openItems(ledger).length,
-            true,
-        );
+        const action = await promptForSemanticRoundLimit(args, round, openItems(ledger).length, true);
         if (action === "code_review") {
             await recordDeliveryEvidence(
                 context.projectRoot,
@@ -226,7 +221,9 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                         "User follow-up:",
                         feedback,
                         "After completing the repair, call task_completed. RunWield will rerun CI.",
-                    ].filter(Boolean).join("\n\n"),
+                    ]
+                        .filter(Boolean)
+                        .join("\n\n"),
                     "engineer_follow_up",
                     feedback,
                 );
@@ -463,7 +460,8 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 },
             });
             if (!repair.completed) {
-                const reason = repair.reason ||
+                const reason =
+                    repair.reason ||
                     "Reviewer-Feedback Engineer stopped without task_completed during semantic repair.";
                 return { kind: "paused", planName: args.planName, projectRoot: context.projectRoot, reason };
             }
@@ -537,24 +535,23 @@ export async function runReviewerRound(
     diffText: string,
 ): Promise<
     | {
-        kind: "complete";
-        outcome: ValidationReviewOutcome;
-        ledger: SemanticRoundState["reviewLedger"];
-        resolvedCount: number;
-        appendedCount: number;
-    }
+          kind: "complete";
+          outcome: ValidationReviewOutcome;
+          ledger: SemanticRoundState["reviewLedger"];
+          resolvedCount: number;
+          appendedCount: number;
+      }
     | { kind: "paused"; result: ValidationPhaseResult }
     | { kind: "failed"; reason: string }
 > {
     const savedHostReview = args.validationCheckpoint?.hostReview;
-    let nudgeReason: string | undefined = savedHostReview?.semanticRound === state.semanticRound
-        ? savedHostReview.correction
-        : undefined;
+    let nudgeReason: string | undefined =
+        savedHostReview?.semanticRound === state.semanticRound ? savedHostReview.correction : undefined;
     let inspectedDiff = false;
     let latestOutcome: ValidationReviewOutcome | null = null;
     // A child of an Epic with its own branch is reviewed for its own correctness, with the Epic as context.
-    const epicContext = await loadEpicReviewContext(context.projectRoot, args.planName, args.triageMeta).catch(() =>
-        null
+    const epicContext = await loadEpicReviewContext(context.projectRoot, args.planName, args.triageMeta).catch(
+        () => null,
     );
     let operationalAttempt = args.hostTurn ? (args.validationCheckpoint?.operationalAttempts || 0) + 1 : 1;
     const repairDiffText = state.repairBaselineTree
@@ -581,9 +578,10 @@ export async function runReviewerRound(
         });
     }
 
-    const initialAttempt = args.hostTurn && savedHostReview?.semanticRound === state.semanticRound
-        ? savedHostReview.correctionCount + 1
-        : 1;
+    const initialAttempt =
+        args.hostTurn && savedHostReview?.semanticRound === state.semanticRound
+            ? savedHostReview.correctionCount + 1
+            : 1;
     for (let attempt = initialAttempt; !latestOutcome; attempt++) {
         if (attempt > 1) {
             emitStatus(
@@ -635,12 +633,11 @@ export async function runReviewerRound(
                     if (!sameHostIdentity(identity, resume.identity)) throw new ValidationHostRejected();
                     try {
                         inspection = ReviewInspection.fromRecorded(
-                            parseDiffFiles(requiredScope === "full" ? diffText : repairDiffText)
-                                .map((file) => ({
-                                    scope: requiredScope,
-                                    path: file.path,
-                                    byteLength: file.byteLength,
-                                })),
+                            parseDiffFiles(requiredScope === "full" ? diffText : repairDiffText).map((file) => ({
+                                scope: requiredScope,
+                                path: file.path,
+                                byteLength: file.byteLength,
+                            })),
                             requiredScope,
                             resume.coverage,
                         );
@@ -664,18 +661,19 @@ export async function runReviewerRound(
                             });
                         }
                     }
-                    nudgeReason = coverageFeedback ||
-                        (normalized && !normalized.accepted ? normalized.message : undefined);
+                    nudgeReason =
+                        coverageFeedback || (normalized && !normalized.accepted ? normalized.message : undefined);
                     sessionOutcome = resume.failure
                         ? { kind: "reviewer", outcome: "operational_failure", failure: resume.failure }
                         : {
-                            kind: "reviewer" as const,
-                            outcome: "completed" as const,
-                            reviewOutcome: normalized?.accepted && !coverageFeedback ? normalized.details : null,
-                            usedDiffTool: resume.coverage.some((span) => span.end > span.start) ||
-                                parseDiffFiles(requiredScope === "full" ? diffText : repairDiffText).length === 0,
-                            trustedOpaqueMcpReview: false,
-                        };
+                              kind: "reviewer" as const,
+                              outcome: "completed" as const,
+                              reviewOutcome: normalized?.accepted && !coverageFeedback ? normalized.details : null,
+                              usedDiffTool:
+                                  resume.coverage.some((span) => span.end > span.start) ||
+                                  parseDiffFiles(requiredScope === "full" ? diffText : repairDiffText).length === 0,
+                              trustedOpaqueMcpReview: false,
+                          };
                     args.hostTurn.consumed = true;
                 } else {
                     await saveHostCheckpoint(args, {
@@ -767,11 +765,12 @@ export async function runReviewerRound(
             const outcome = sessionOutcome.reviewOutcome;
             const unaccounted = unaccountedOpenItems(state.reviewLedger, outcome?.findings);
             if (!outcome) {
-                const correction = inspection.feedback() ||
+                const correction =
+                    inspection.feedback() ||
                     (unaccounted.length
-                        ? `Account for every open finding: ${
-                            unaccounted.join(", ")
-                        }. Reuse the existing identities exactly; confirm or reject each fix with a reason.`
+                        ? `Account for every open finding: ${unaccounted.join(
+                              ", ",
+                          )}. Reuse the existing identities exactly; confirm or reject each fix with a reason.`
                         : "");
                 const failure = classifyValidationOperationalError({
                     source: "reviewer_protocol",
@@ -860,9 +859,9 @@ export async function runReviewerRound(
             } else if (unaccounted.length > 0) {
                 const required = `Your result does not mention ${
                     unaccounted.length === 1 ? "this open finding" : "these open findings"
-                }: ${
-                    unaccounted.join(", ")
-                }. Every open finding must appear in your \`findings\` array — with \`resolved: true\` if you have verified the fix in the code, or with \`resolved: false\` and what is still missing. Reuse the existing identities exactly; do not renumber them or report the same issue as a new finding. Call review_complete again with the complete set.`;
+                }: ${unaccounted.join(
+                    ", ",
+                )}. Every open finding must appear in your \`findings\` array — with \`resolved: true\` if you have verified the fix in the code, or with \`resolved: false\` and what is still missing. Reuse the existing identities exactly; do not renumber them or report the same issue as a new finding. Call review_complete again with the complete set.`;
                 const failure = classifyValidationOperationalError({
                     source: "reviewer_protocol",
                     kind: "unaccounted_findings",
@@ -1043,7 +1042,8 @@ export function buildSemanticReviewAttempt(
     };
     if (attempt > 1) {
         return {
-            prompt: nudgeReason ||
+            prompt:
+                nudgeReason ||
                 "You have not called review_complete yet. Finish this review now by calling review_complete with your decision. Do not restart the review — use what you have already inspected.",
             review,
         };
@@ -1129,9 +1129,10 @@ export async function dispatchReviewFeedbackRepair(
                 worktreeId: context.worktreeId,
                 worktreeBranch: context.worktreeBranch,
                 worktreeBaseBranch: context.worktreeBaseBranch,
-                authorityNote: packet.repairKind === "human_feedback"
-                    ? "A human reviewed this change. Their feedback is authoritative."
-                    : "A code reviewer found these issues. Fix every finding.",
+                authorityNote:
+                    packet.repairKind === "human_feedback"
+                        ? "A human reviewed this change. Their feedback is authoritative."
+                        : "A code reviewer found these issues. Fix every finding.",
                 repairsNeeded: [
                     "### Findings",
                     "",
@@ -1184,12 +1185,10 @@ export async function dispatchReviewFeedbackRepair(
 export function reviewFindingMetrics(findings: ValidationReviewOutcome["findings"], round: number) {
     return {
         initialFindingCount: round === 1 ? findings.filter((finding) => !finding.id).length : 0,
-        missedOriginalCount: round > 1
-            ? findings.filter((finding) => !finding.id && finding.origin === "missed_original").length
-            : 0,
-        repairRegressionCount: round > 1
-            ? findings.filter((finding) => !finding.id && finding.origin === "repair_regression").length
-            : 0,
+        missedOriginalCount:
+            round > 1 ? findings.filter((finding) => !finding.id && finding.origin === "missed_original").length : 0,
+        repairRegressionCount:
+            round > 1 ? findings.filter((finding) => !finding.id && finding.origin === "repair_regression").length : 0,
         unclassifiedNewCount: round > 1 ? findings.filter((finding) => !finding.id && !finding.origin).length : 0,
         existingStillOpenCount: findings.filter((finding) => finding.id && !finding.resolved).length,
         fixConfirmedCount: findings.filter((finding) => finding.id && finding.resolved).length,

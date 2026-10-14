@@ -1,46 +1,54 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals } from "../../testing/assertions.ts";
 import { normalizeReviewOutcome, reviewCompletionMetricDetails, type ReviewFindingInput } from "./review-outcome.ts";
-import type { ReviewLedger } from "./review-ledger.ts";
+import { type ReviewLedger } from "./review-ledger.ts";
 
 // Literal contract values captured from review-complete.ts before extraction.
 const LEDGER: ReviewLedger = {
     sequence: 1,
-    items: [{
-        id: "R1-1",
-        openedInRound: 1,
-        resolvedInRound: null,
-        title: "Original",
-        requirement: "",
-        evidence: "",
-        status: "fix_claimed",
-    }],
+    items: [
+        {
+            id: "R1-1",
+            openedInRound: 1,
+            resolvedInRound: null,
+            title: "Original",
+            requirement: "",
+            evidence: "",
+            status: "fix_claimed",
+        },
+    ],
 };
 const FIX: ReviewFindingInput = { id: "R1-1", title: " Fixed ", status: "fix_confirmed" };
 
-Deno.test("review outcome confirms fixes and trims the completion payload", () => {
+test("review outcome confirms fixes and trims the completion payload", () => {
     assertEquals(
-        normalizeReviewOutcome({
-            approved: true,
-            feedback: " ignored ",
-            findings: [FIX],
-            advisories: [{ title: " note ", detail: " detail " }, { title: " " }],
-            integrationNotes: [{ check: " check ", where: " src/a " }, { check: " " }],
-        }, LEDGER),
+        normalizeReviewOutcome(
+            {
+                approved: true,
+                feedback: " ignored ",
+                findings: [FIX],
+                advisories: [{ title: " note ", detail: " detail " }, { title: " " }],
+                integrationNotes: [{ check: " check ", where: " src/a " }, { check: " " }],
+            },
+            LEDGER,
+        ),
         {
             accepted: true,
             details: {
                 outcome: "approved",
                 approved: true,
                 feedback: "",
-                findings: [{
-                    id: "R1-1",
-                    resolved: true,
-                    status: "fix_confirmed",
-                    rejectionReason: "",
-                    title: "Fixed",
-                    requirement: "",
-                    evidence: "",
-                }],
+                findings: [
+                    {
+                        id: "R1-1",
+                        resolved: true,
+                        status: "fix_confirmed",
+                        rejectionReason: "",
+                        title: "Fixed",
+                        requirement: "",
+                        evidence: "",
+                    },
+                ],
                 advisories: [{ title: "note", detail: "detail" }],
                 integrationNotes: [{ check: "check", where: "src/a" }],
             },
@@ -51,19 +59,24 @@ Deno.test("review outcome confirms fixes and trims the completion payload", () =
     );
 });
 
-Deno.test("review outcome renders rejected fixes from structured findings", () => {
-    const result = normalizeReviewOutcome({
-        approved: false,
-        feedback: "do not duplicate",
-        findings: [{
-            id: "R1-1",
-            title: " Still broken ",
-            status: "fix_rejected",
-            rejectionReason: " wrong branch ",
-            requirement: " handle failure ",
-            evidence: " src/a:2 ",
-        }],
-    }, LEDGER);
+test("review outcome renders rejected fixes from structured findings", () => {
+    const result = normalizeReviewOutcome(
+        {
+            approved: false,
+            feedback: "do not duplicate",
+            findings: [
+                {
+                    id: "R1-1",
+                    title: " Still broken ",
+                    status: "fix_rejected",
+                    rejectionReason: " wrong branch ",
+                    requirement: " handle failure ",
+                    evidence: " src/a:2 ",
+                },
+            ],
+        },
+        LEDGER,
+    );
     if (!result.accepted) throw new Error(result.message);
     assertEquals(
         result.details.feedback,
@@ -75,29 +88,37 @@ Deno.test("review outcome renders rejected fixes from structured findings", () =
     );
 });
 
-Deno.test("review outcome retains legacy states, attribution, and free-text feedback", () => {
+test("review outcome retains legacy states, attribution, and free-text feedback", () => {
     const result = normalizeReviewOutcome({
         approved: false,
-        findings: [{
-            title: " New bug ",
-            origin: "repair_regression",
-        }, { title: " " }],
+        findings: [
+            {
+                title: " New bug ",
+                origin: "repair_regression",
+            },
+            { title: " " },
+        ],
     });
     if (!result.accepted) throw new Error(result.message);
-    assertEquals(result.details.findings, [{
-        id: undefined,
-        resolved: false,
-        status: "new",
-        rejectionReason: "",
-        origin: "repair_regression",
-        title: "New bug",
-        requirement: "",
-        evidence: "",
-    }]);
-    const legacy = normalizeReviewOutcome({
-        approved: true,
-        findings: [{ id: "R1-1", title: "Fixed", resolved: true }],
-    }, LEDGER);
+    assertEquals(result.details.findings, [
+        {
+            id: undefined,
+            resolved: false,
+            status: "new",
+            rejectionReason: "",
+            origin: "repair_regression",
+            title: "New bug",
+            requirement: "",
+            evidence: "",
+        },
+    ]);
+    const legacy = normalizeReviewOutcome(
+        {
+            approved: true,
+            findings: [{ id: "R1-1", title: "Fixed", resolved: true }],
+        },
+        LEDGER,
+    );
     if (!legacy.accepted) throw new Error(legacy.message);
     assertEquals(legacy.details.findings[0].status, "fix_confirmed");
     const note = normalizeReviewOutcome({ approved: false, feedback: " note " });
@@ -141,7 +162,7 @@ const INVALID_CASES: [string, ReviewFindingInput[], string][] = [
     ],
 ];
 for (const [label, findings, error] of INVALID_CASES) {
-    Deno.test(`review outcome rejects ${label}`, () => {
+    test(`review outcome rejects ${label}`, () => {
         assertEquals(normalizeReviewOutcome({ approved: true, findings }, LEDGER), {
             accepted: false,
             reason: "invalid_findings",
@@ -150,7 +171,7 @@ for (const [label, findings, error] of INVALID_CASES) {
     });
 }
 
-Deno.test("review outcome rejects approval with open findings", () => {
+test("review outcome rejects approval with open findings", () => {
     assertEquals(normalizeReviewOutcome({ approved: true, findings: [{ title: "bug" }] }), {
         accepted: false,
         reason: "approved_with_open_findings",
@@ -159,7 +180,7 @@ Deno.test("review outcome rejects approval with open findings", () => {
     });
 });
 
-Deno.test("review completion metrics describe only accepted or approval-rejected payloads", () => {
+test("review completion metrics describe only accepted or approval-rejected payloads", () => {
     assertEquals(reviewCompletionMetricDetails(normalizeReviewOutcome({ approved: true, findings: [FIX] }, LEDGER)), {
         outcome: "approved",
         approved: true,

@@ -14,13 +14,7 @@ import type { GuidedReviewPolicy } from "../../shared/workflow/guided-review.js"
 import type { ReviewDecisionSink } from "../workspace/routes/api/review-handlers.js";
 
 export type ReviewDecisionValue =
-    | string
-    | number
-    | boolean
-    | null
-    | undefined
-    | ReviewDecisionValue[]
-    | { [key: string]: ReviewDecisionValue };
+    string | number | boolean | null | undefined | ReviewDecisionValue[] | { [key: string]: ReviewDecisionValue };
 
 export interface ReviewSurface<TDecision = ReviewDecisionValue> {
     url: string;
@@ -201,13 +195,15 @@ export async function stopActiveReviewSurfaces(): Promise<void> {
     activeCodeReviewConversations.clear();
 
     try {
-        await Promise.all(surfaces.map(async (surface) => {
-            try {
-                await surface.stop();
-            } catch {
-                // Exit cleanup is best-effort. Normal per-review cleanup reports failures.
-            }
-        }));
+        await Promise.all(
+            surfaces.map(async (surface) => {
+                try {
+                    await surface.stop();
+                } catch {
+                    // Exit cleanup is best-effort. Normal per-review cleanup reports failures.
+                }
+            }),
+        );
     } finally {
         stoppingActiveReviewSurfaces = false;
         uninstallProcessExitCleanup();
@@ -320,16 +316,17 @@ function parseGitPorcelainStatus(text: string): CodeReviewStatus {
     };
 }
 
-function workspaceServer<TDecision>(
-    options: Parameters<typeof startReviewWorkspaceServer>[0],
-) {
+function workspaceServer<TDecision>(options: Parameters<typeof startReviewWorkspaceServer>[0]) {
     const server = startReviewWorkspaceServer(options);
-    return registerReviewSurface<TDecision>({
-        ...server,
-        url: server.url,
-        waitForDecision: () => server.waitForDecision() as Promise<TDecision>,
-        stop: () => server.stop(),
-    }, Boolean(options.reviewPayload.standaloneReview));
+    return registerReviewSurface<TDecision>(
+        {
+            ...server,
+            url: server.url,
+            waitForDecision: () => server.waitForDecision() as Promise<TDecision>,
+            stop: () => server.stop(),
+        },
+        Boolean(options.reviewPayload.standaloneReview),
+    );
 }
 
 export async function startPlanReviewSurface<TDecision = ReviewDecisionValue>({

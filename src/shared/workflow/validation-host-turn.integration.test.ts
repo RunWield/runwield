@@ -1,5 +1,13 @@
-import { assert, assertEquals, assertExists, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import {
+    realpath as fsRealpath,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { basename, dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { updatePlanFrontMatter } from "../../plan-store.js";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
@@ -8,19 +16,29 @@ import { getWorkflowMetricsFilePath } from "./metrics.js";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
 import { createLedger } from "./review-ledger.ts";
 import { complete, coverage, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";
-import type { ValidationHostResume } from "./validation-host-contract.ts";
+import { type ValidationHostResume } from "./validation-host-contract.ts";
+
+async function canonicalPath(path: string): Promise<string> {
+    try {
+        return await fsRealpath(path);
+    } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+        return join(await canonicalPath(dirname(path)), basename(path));
+    }
+}
 
 async function files(root: string, result = new Map<string, string>()): Promise<Map<string, string>> {
-    for await (const entry of Deno.readDir(root)) {
+    root = await fsRealpath(root);
+    for await (const entry of await fsReaddir(root, { withFileTypes: true })) {
         if (entry.name === ".git") continue; // Tree snapshots write Git objects, never a validation sidecar.
         const path = join(root, entry.name);
-        if (entry.isDirectory) await files(path, result);
-        else if (entry.isFile) result.set(path, Array.from(await Deno.readFile(path)).join(","));
+        if (entry.isDirectory()) await files(path, result);
+        else if (entry.isFile()) result.set(path, Array.from(await fsReadFile(path)).join(","));
     }
     return result;
 }
 
-Deno.test("fresh network-denied host turns validate real work without a Session or hidden state", async () => {
+test("fresh network-denied host turns validate real work without a Session or hidden state", async () => {
     const fixture = await hostFixture();
     try {
         // One prior discovery round makes this discovery round 2, followed by verify round 3.
@@ -44,8 +62,11 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         );
         const layout = resolveProjectRuntimeLayout(fixture.root);
         const originalControllers = await files(layout.primary.controllerPlansDir);
-        const metricsPath = getWorkflowMetricsFilePath(fixture.root);
-        const searchRefreshMarker = await getWorkspaceSearchRefreshMarker(fixture.root);
+        const metricsPath = await canonicalPath(getWorkflowMetricsFilePath(fixture.root));
+        const deliveryEvidenceRoot = await canonicalPath(layout.primary.deliveryEvidenceRoot);
+        const settingsPath = await canonicalPath(join(fixture.root, ".wld/settings.json"));
+        const canonicalCwd = await fsRealpath(fixture.cwd);
+        const searchRefreshMarker = await canonicalPath(await getWorkspaceSearchRefreshMarker(fixture.root));
         const snapshot = async () => {
             const result = await files(fixture.root);
             await files(fixture.parent, result);
@@ -58,14 +79,20 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
             const before = await snapshot();
             const result = await fixture.processTurn(resume);
             const after = await snapshot();
-            const changed = [...new Set([...before.keys(), ...after.keys()])].filter((path) =>
-                before.get(path) !== after.get(path)
+            const changed = [...new Set([...before.keys(), ...after.keys()])].filter(
+                (path) => before.get(path) !== after.get(path),
             );
-            const unexpected = changed.filter((path) =>
-                !(path.startsWith(fixture.cwd + "/") ||
-                    path.startsWith(layout.primary.deliveryEvidenceRoot + "/") || originalControllers.has(path) ||
-                    path === metricsPath || path === join(fixture.root, ".wld/settings.json") ||
-                    path === searchRefreshMarker)
+            const unexpected = changed.filter(
+                (path) =>
+                    !(
+                        path.startsWith(canonicalCwd + "/") ||
+                        path.startsWith(deliveryEvidenceRoot + "/") ||
+                        originalControllers.has(path) ||
+                        path === metricsPath ||
+                        path === metricsPath + ".lock" ||
+                        path === settingsPath ||
+                        path === searchRefreshMarker
+                    ),
             );
             forbiddenWrites.push(...unexpected);
             return result;
@@ -79,7 +106,10 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         assertEquals(ciRepair.role, "reviewer-feedback-engineer");
         assertEquals(ciRepair.cwd, fixture.cwd);
         assertEquals(await fixture.ciCount(), 1);
-        assertEquals((await fixture.evidence()).map((entry) => entry.kind), ["ci", "ci-repair"]);
+        assertEquals(
+            (await fixture.evidence()).map((entry) => entry.kind),
+            ["ci", "ci-repair"],
+        );
         const checkpointBytes = await fixture.checkpointBytes();
         result = await turn({
             kind: "task_completed",
@@ -88,7 +118,7 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         });
         assertEquals(result.kind, "failed");
         assertEquals(await fixture.checkpointBytes(), checkpointBytes);
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+        await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
         let reviewer = hostRequest(await turn(complete(ciRepair)), "reviewer");
         assertEquals(reviewer.reviewMode, "discovery");
         assertEquals(await fixture.ciCount(), 2);
@@ -107,7 +137,7 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         assertEquals(await fixture.lifecycle(), beforeCorrection);
         const spans = coverage(reviewer);
         assert(spans.length > 0);
-        const half = spans.map((span, index) => index ? span : { ...span, end: Math.floor(span.end / 2) });
+        const half = spans.map((span, index) => (index ? span : { ...span, end: Math.floor(span.end / 2) }));
         reviewer = hostRequest(
             await turn({ kind: "reviewer", identity: reviewer.identity, outcome: { approved: true }, coverage: half }),
             "reviewer",
@@ -143,15 +173,13 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         });
         assertEquals(result.kind, "failed");
         assertEquals(await businessState(), stable);
-        for (
-            const identity of [
-                { ...reviewer.identity, attemptId: "other" },
-                { ...reviewer.identity, generation: "other" },
-                { ...reviewer.identity, semanticRound: reviewer.identity.semanticRound + 1 },
-                { ...reviewer.identity, reviewMode: "verify" as const },
-                { ...reviewer.identity, diffHash: "other" },
-            ]
-        ) {
+        for (const identity of [
+            { ...reviewer.identity, attemptId: "other" },
+            { ...reviewer.identity, generation: "other" },
+            { ...reviewer.identity, semanticRound: reviewer.identity.semanticRound + 1 },
+            { ...reviewer.identity, reviewMode: "verify" as const },
+            { ...reviewer.identity, diffHash: "other" },
+        ]) {
             assertEquals(
                 (await turn({ kind: "reviewer", identity, outcome: { approved: true }, coverage: coverage(reviewer) }))
                     .kind,
@@ -160,18 +188,20 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
             assertEquals(await businessState(), stable);
         }
         assertEquals(
-            (await turn({
-                kind: "reviewer",
-                identity: reviewer.identity,
-                outcome: { approved: true },
-                coverage: [{ ...spans[0], end: spans[0].end + 1 }],
-            })).kind,
+            (
+                await turn({
+                    kind: "reviewer",
+                    identity: reviewer.identity,
+                    outcome: { approved: true },
+                    coverage: [{ ...spans[0], end: spans[0].end + 1 }],
+                })
+            ).kind,
             "failed",
         );
         assertEquals(await businessState(), stable);
         const implementation = join(fixture.cwd, "implementation.ts");
-        const original = await Deno.readTextFile(implementation);
-        await Deno.writeTextFile(implementation, original + "export const stale = true;\n");
+        const original = await fsReadFile(implementation, "utf8");
+        await fsWriteFile(implementation, original + "export const stale = true;\n");
         result = await turn({
             kind: "reviewer",
             identity: reviewer.identity,
@@ -180,7 +210,7 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         });
         assertEquals(result.kind, "failed");
         assertEquals(await businessState(), stable);
-        await Deno.writeTextFile(implementation, original);
+        await fsWriteFile(implementation, original);
         const { getWorktreeReviewDiff } = await import("./git-snapshot.ts");
         assertEquals(await getWorktreeReviewDiff(fixture.cwd, "main"), reviewer.fullDiff);
         const semanticRepair = hostRequest(
@@ -190,12 +220,14 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
                 coverage: coverage(reviewer),
                 outcome: {
                     approved: false,
-                    findings: [{
-                        title: "Wrong value",
-                        requirement: "Implement value",
-                        evidence: "value is 1",
-                        status: "new",
-                    }],
+                    findings: [
+                        {
+                            title: "Wrong value",
+                            requirement: "Implement value",
+                            evidence: "value is 1",
+                            status: "new",
+                        },
+                    ],
                 },
             }),
             "repair",
@@ -209,16 +241,18 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         const repairState = await businessState();
         const semanticBytes = await fixture.checkpointBytes();
         assertEquals(
-            (await turn({
-                kind: "task_completed",
-                identity: { ...semanticRepair.identity, repairGeneration: "wrong" },
-                report: "wrong",
-            })).kind,
+            (
+                await turn({
+                    kind: "task_completed",
+                    identity: { ...semanticRepair.identity, repairGeneration: "wrong" },
+                    report: "wrong",
+                })
+            ).kind,
             "failed",
         );
         assertEquals(await businessState(), repairState);
         assertEquals(await fixture.checkpointBytes(), semanticBytes);
-        await Deno.writeTextFile(implementation, "export const value = 2;\n");
+        await fsWriteFile(implementation, "export const value = 2;\n");
         reviewer = hostRequest(await turn(complete(semanticRepair)), "reviewer");
         assertEquals(reviewer.reviewMode, "verify");
         assertEquals(reviewer.requiredScope, "repair");
@@ -252,14 +286,19 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         const reviewed = await fixture.plan();
         assertEquals(reviewed.attrs.status, "reviewed");
         assertEquals(reviewed.attrs.validationCheckpoint?.reviewState?.reviewLedger.items[0].status, "fix_confirmed");
-        assertEquals((await fixture.evidence()).some((entry) => entry.kind === "human"), false);
+        assertEquals(
+            (await fixture.evidence()).some((entry) => entry.kind === "human"),
+            false,
+        );
         assertEquals(reviewed.attrs.humanReviewedAt ?? null, null);
         assertEquals(reviewed.attrs.publicationReceipt ?? null, null);
         assertEquals(reviewed.attrs.worktreeStatus, "completed");
         assertEquals(
-            (await fixture.lifecycle()).filter((event) =>
-                event === "plan_event:validation_passed" || event === "plan_event:epic_publication_confirmed" ||
-                event.includes("human")
+            (await fixture.lifecycle()).filter(
+                (event) =>
+                    event === "plan_event:validation_passed" ||
+                    event === "plan_event:epic_publication_confirmed" ||
+                    event.includes("human"),
             ),
             [],
         );

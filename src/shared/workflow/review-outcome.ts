@@ -83,7 +83,8 @@ export function normalizeReviewOutcome(payload: ReviewCompletePayload, ledger?: 
         return { accepted: false, reason: "invalid_findings", message: `review_complete rejected: ${findingError}` };
     }
     if (approved && openFindings.length > 0) {
-        const rejection = `Cannot approve with ${openFindings.length} unresolved finding(s). ` +
+        const rejection =
+            `Cannot approve with ${openFindings.length} unresolved finding(s). ` +
             "Either resolve them (resolved: true, after verifying the fix in the code) or call " +
             "review_complete with approved: false.";
         return {
@@ -101,8 +102,8 @@ export function normalizeReviewOutcome(payload: ReviewCompletePayload, ledger?: 
     const message = approved
         ? "Semantic review approved — implementation matches the plan."
         : `Semantic review rejected — ${findings.length > 0 ? `${openLabel}${resolvedNote}` : "issues found"}:\n${
-            projection || "(no feedback provided)"
-        }`;
+              projection || "(no feedback provided)"
+          }`;
 
     return {
         accepted: true,
@@ -126,16 +127,18 @@ function normalizeFindings(value: ReviewFindingInput[] | undefined): ReviewFindi
     return value.flatMap((finding) => {
         const title = finding.title.trim();
         if (!title) return [];
-        return [{
-            id: typeof finding.id === "string" && finding.id.trim() ? finding.id.trim() : undefined,
-            resolved: finding.status ? finding.status === "fix_confirmed" : finding.resolved === true,
-            status: finding.status || (finding.resolved ? "fix_confirmed" : finding.id ? "fix_rejected" : "new"),
-            rejectionReason: finding.rejectionReason?.trim() || "",
-            ...(finding.origin ? { origin: finding.origin } : {}),
-            title,
-            requirement: typeof finding.requirement === "string" ? finding.requirement.trim() : "",
-            evidence: typeof finding.evidence === "string" ? finding.evidence.trim() : "",
-        }];
+        return [
+            {
+                id: typeof finding.id === "string" && finding.id.trim() ? finding.id.trim() : undefined,
+                resolved: finding.status ? finding.status === "fix_confirmed" : finding.resolved === true,
+                status: finding.status || (finding.resolved ? "fix_confirmed" : finding.id ? "fix_rejected" : "new"),
+                rejectionReason: finding.rejectionReason?.trim() || "",
+                ...(finding.origin ? { origin: finding.origin } : {}),
+                title,
+                requirement: typeof finding.requirement === "string" ? finding.requirement.trim() : "",
+                evidence: typeof finding.evidence === "string" ? finding.evidence.trim() : "",
+            },
+        ];
     });
 }
 
@@ -143,7 +146,8 @@ function validateFindingStates(findings: ReviewFindingInput[], ledger?: ReviewLe
     const ids = new Set<string>();
     for (const finding of findings) {
         if (
-            finding.status && finding.resolved !== undefined &&
+            finding.status &&
+            finding.resolved !== undefined &&
             finding.resolved !== (finding.status === "fix_confirmed")
         ) {
             return "status and resolved contradict each other. Use status to state the decision.";
@@ -168,9 +172,9 @@ function validateFindingStates(findings: ReviewFindingInput[], ledger?: ReviewLe
     if (ledger) {
         const missing = unaccountedOpenItems(ledger, normalizeFindings(findings));
         if (missing.length) {
-            return `Account for every open finding: ${
-                missing.join(", ")
-            }. Confirm or reject each fix using its existing id.`;
+            return `Account for every open finding: ${missing.join(
+                ", ",
+            )}. Confirm or reject each fix using its existing id.`;
         }
     }
     return "";
@@ -181,10 +185,12 @@ function normalizeAdvisories(value: ReviewAdvisoryInput[] | undefined): ReviewAd
     return value.flatMap((advisory) => {
         const title = advisory.title.trim();
         if (!title) return [];
-        return [{
-            title,
-            detail: typeof advisory.detail === "string" ? advisory.detail.trim() : "",
-        }];
+        return [
+            {
+                title,
+                detail: typeof advisory.detail === "string" ? advisory.detail.trim() : "",
+            },
+        ];
     });
 }
 

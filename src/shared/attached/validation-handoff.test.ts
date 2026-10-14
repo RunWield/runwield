@@ -1,10 +1,13 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { parseDiffFiles } from "../workflow/review-diff.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
-import type { AttachedWorkflowView } from "./operations.ts";
+import { type AttachedWorkflowView } from "./operations.ts";
 
-Deno.test("Attached validation hands CI repair to a fresh worker and accepts task_completed through Core", async () => {
+test("Attached validation hands CI repair to a fresh worker and accepts task_completed through Core", async () => {
     const fixture = await attachedValidationFixture();
     try {
         const result = await fixture.call("start_validation", await fixture.status());
@@ -12,7 +15,7 @@ Deno.test("Attached validation hands CI repair to a fresh worker and accepts tas
         const action = result.workflow.nextAction;
         assertEquals(action.request.kind, "repair");
         assertStringIncludes(result.instructions?.text || "", "Do not call completion or lifecycle tools");
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+        await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
         const input = { actionId: action.actionId, message: "- Fixed CI by adding the required marker." };
         const next = await fixture.call("task_completed", result.workflow, input, "repair-completed");
         assert(next.ok && next.workflow.nextAction.kind === "validation", JSON.stringify(next));
@@ -26,10 +29,10 @@ Deno.test("Attached validation hands CI repair to a fresh worker and accepts tas
     }
 });
 
-Deno.test("direct review_diff receipts gate review; listing is not inspection and stale actions fail", async () => {
+test("direct review_diff receipts gate review; listing is not inspection and stale actions fail", async () => {
     const fixture = await attachedValidationFixture();
     try {
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "pass");
+        await fsWriteFile(join(fixture.cwd, "marker"), "pass");
         let result = await fixture.call("start_validation", await fixture.status());
         assert(result.ok && result.workflow.nextAction.kind === "validation");
         const original = result.workflow.nextAction.actionId;
@@ -49,11 +52,9 @@ Deno.test("direct review_diff receipts gate review; listing is not inspection an
         for (let round = 0; round < 5 && workflow.nextAction.kind === "validation"; round++) {
             const action = workflow.nextAction;
             assert(action.request.kind === "reviewer");
-            for (
-                const file of parseDiffFiles(
-                    action.request.requiredScope === "full" ? action.request.fullDiff : action.request.repairDiff,
-                )
-            ) {
+            for (const file of parseDiffFiles(
+                action.request.requiredScope === "full" ? action.request.fullDiff : action.request.repairDiff,
+            )) {
                 const read = await fixture.call("review_diff", workflow, {
                     actionId: action.actionId,
                     command: "show",
@@ -78,14 +79,14 @@ Deno.test("direct review_diff receipts gate review; listing is not inspection an
     }
 });
 
-Deno.test("changed review candidates reject old host outcomes and start_validation recovers", async () => {
+test("changed review candidates reject old host outcomes and start_validation recovers", async () => {
     const fixture = await attachedValidationFixture();
     try {
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "pass");
+        await fsWriteFile(join(fixture.cwd, "marker"), "pass");
         const result = await fixture.call("start_validation", await fixture.status());
         assert(result.ok && result.workflow.nextAction.kind === "validation");
         const old = result.workflow.nextAction.actionId;
-        await Deno.writeTextFile(join(fixture.cwd, "implementation.ts"), "export const value = 2;\n");
+        await fsWriteFile(join(fixture.cwd, "implementation.ts"), "export const value = 2;\n");
         const rejected = await fixture.call("review_complete", result.workflow, {
             actionId: old,
             ...{ approved: true },

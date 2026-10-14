@@ -221,9 +221,10 @@ export async function getReviewDiff(cwd: string, { baseRef, head }: ReviewDiffOp
         throw error;
     }
     const baseTree = (await runGit(cwd, ["rev-parse", "--verify", `${commonAncestor}^{tree}`])).trim();
-    const currentTree = head.kind === "worktree"
-        ? await captureWorktreeTree(cwd)
-        : (await runGit(cwd, ["rev-parse", "--verify", `${executionCommit}^{tree}`])).trim();
+    const currentTree =
+        head.kind === "worktree"
+            ? await captureWorktreeTree(cwd)
+            : (await runGit(cwd, ["rev-parse", "--verify", `${executionCommit}^{tree}`])).trim();
     return await diffTrees(cwd, baseTree, currentTree);
 }
 

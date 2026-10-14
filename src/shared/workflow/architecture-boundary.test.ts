@@ -3,6 +3,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath as fromFileUrl } from "node:url";
+
 import ts from "typescript";
 
 const REPO_ROOT = join(dirname(fromFileUrl(import.meta.url)), "../../..");
@@ -41,10 +42,9 @@ const RAW_LIFECYCLE_PATTERNS: [string, RegExp][] = [
 
 function isInsideSemanticTransitionApply(text: string, index: number): boolean {
     const window = text.slice(Math.max(0, index - 5000), index);
-    return /run(?:Recovery|ValidationOutcome|ExecutionPreparation|ImplementationCheckpoint|Archive|PlanFrontMatter|ReviewReopen|PlanLifecycleEvent|PlanReviewDecision)Transition\s*\([\s\S]*(?:recover|settle|prepare|checkpoint|move|reopen|record|decide|apply)\s*:\s*async/
-        .test(
-            window,
-        );
+    return /run(?:Recovery|ValidationOutcome|ExecutionPreparation|ImplementationCheckpoint|Archive|PlanFrontMatter|ReviewReopen|PlanLifecycleEvent|PlanReviewDecision)Transition\s*\([\s\S]*(?:recover|settle|prepare|checkpoint|move|reopen|record|decide|apply)\s*:\s*async/.test(
+        window,
+    );
 }
 
 test("high-level lifecycle callers use Plan Lifecycle APIs instead of raw Plan status writes", async () => {
@@ -110,19 +110,23 @@ function importSpecifiers(text: string, file: string): string[] {
     const imports: string[] = [];
     function visit(node: ts.Node): void {
         if (
-            (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier &&
+            (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+            node.moduleSpecifier &&
             ts.isStringLiteral(node.moduleSpecifier)
         ) {
             imports.push(node.moduleSpecifier.text);
         }
         if (
-            ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) &&
+            ts.isImportTypeNode(node) &&
+            ts.isLiteralTypeNode(node.argument) &&
             ts.isStringLiteral(node.argument.literal)
         ) {
             imports.push(node.argument.literal.text);
         }
         if (
-            ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] &&
+            ts.isCallExpression(node) &&
+            node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+            node.arguments[0] &&
             ts.isStringLiteral(node.arguments[0])
         ) {
             imports.push(node.arguments[0].text);
@@ -133,25 +137,27 @@ function importSpecifiers(text: string, file: string): string[] {
     return imports;
 }
 
-interface GraphModule {
-    specifier: string;
-}
-interface ModuleGraph {
-    modules: GraphModule[];
-}
-
 async function moduleGraphOffenders(root: string, forbidden: RegExp): Promise<string[]> {
-    const result = await new Deno.Command(Deno.execPath(), {
-        args: ["info", "--json", repoPath(root)],
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
-    assertEquals(result.success, true, new TextDecoder().decode(result.stderr));
-    const graph: ModuleGraph = JSON.parse(new TextDecoder().decode(result.stdout));
-    return graph.modules.map((module) => module.specifier).filter((specifier) => forbidden.test(specifier));
+    const pending = [repoPath(root)];
+    const visited = new Set<string>();
+    const offenders = new Set<string>();
+    while (pending.length) {
+        const file = pending.pop()!;
+        if (visited.has(file)) continue;
+        visited.add(file);
+        if (forbidden.test(file)) offenders.add(file);
+        const text = await fsReadFile(file, "utf8");
+        for (const specifier of importSpecifiers(text, file)) {
+            if (forbidden.test(specifier)) offenders.add(specifier);
+            if (specifier.startsWith("node:") || specifier.startsWith("bun:")) continue;
+            const resolved = Bun.resolveSync(specifier, dirname(file));
+            if (/\.[cm]?[jt]sx?$/.test(resolved)) pending.push(resolved);
+        }
+    }
+    return [...offenders].sort();
 }
 
-Deno.test("pure review diff graph excludes Pi, the tool wrapper, and HostedSession", async () => {
+test("pure review diff graph excludes Pi, the tool wrapper, and HostedSession", async () => {
     assertEquals(
         await moduleGraphOffenders(
             "src/shared/workflow/review-diff.ts",
@@ -161,7 +167,7 @@ Deno.test("pure review diff graph excludes Pi, the tool wrapper, and HostedSessi
     );
 });
 
-Deno.test("pure review outcome graph excludes Pi, the completion tool, and HostedSession", async () => {
+test("pure review outcome graph excludes Pi, the completion tool, and HostedSession", async () => {
     assertEquals(
         await moduleGraphOffenders(
             "src/shared/workflow/review-outcome.ts",
@@ -171,22 +177,23 @@ Deno.test("pure review outcome graph excludes Pi, the completion tool, and Hoste
     );
 });
 
-Deno.test("validation supervisor does not import Session composition", async () => {
+test("validation supervisor does not import Session composition", async () => {
     const file = repoPath("src/shared/workflow/validation-supervisor.ts");
-    const imports = importSpecifiers(await Deno.readTextFile(file), file);
+    const imports = importSpecifiers(await fsReadFile(file, "utf8"), file);
     assertEquals(
         imports.filter((specifier) =>
-            /(?:^|\/)(?:validation\.ts|validation-session-adapter\.ts|hosted-session\.js)$/.test(specifier)
+            /(?:^|\/)(?:validation\.ts|validation-session-adapter\.ts|hosted-session\.js)$/.test(specifier),
         ),
         [],
     );
 });
 
-Deno.test("host-turn composition has no validation policy, CI invocation, or model construction", async () => {
-    const text = await Deno.readTextFile(repoPath("src/shared/workflow/validation-host-turn.ts"));
+test("host-turn composition has no validation policy, CI invocation, or model construction", async () => {
+    const text = await fsReadFile(repoPath("src/shared/workflow/validation-host-turn.ts"), "utf8");
     assertEquals(
-        /\b(?:runValidationLoop|applyRoundFindings|unaccountedOpenItems|decideValidationRecovery|recordLifecycleEvent|recordDeliveryEvidence|runValidationCommand|runLocalCI|createAgentSession|createValidationSessionPort)\s*\(/
-            .test(text),
+        /\b(?:runValidationLoop|applyRoundFindings|unaccountedOpenItems|decideValidationRecovery|recordLifecycleEvent|recordDeliveryEvidence|runValidationCommand|runLocalCI|createAgentSession|createValidationSessionPort)\s*\(/.test(
+            text,
+        ),
         false,
     );
     assertEquals(/new\s+(?:HostedSession|AgentSession)\s*\(/.test(text), false);

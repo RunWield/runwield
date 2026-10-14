@@ -1,5 +1,8 @@
-import { assertEquals, assertExists, assertNotEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { join } from "node:path";
 import { updatePlanFrontMatter } from "../../plan-store.js";
 import { getExactProjectCustomSetting } from "../settings.js";
 import { captureWorktreeTree } from "./git-snapshot.ts";
@@ -10,14 +13,20 @@ import { complete, coverage, type HostFixture, hostFixture, hostRequest } from "
 import { sessionScript } from "../../testing/validation-session-script.ts";
 
 async function pastReviewLimit(fixture: HostFixture) {
-    await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+    await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
     const plan = await fixture.plan();
-    const ledger = applyRoundFindings(createLedger(), [{
-        title: "Value",
-        resolved: false,
-        requirement: "Value",
-        evidence: "Missing",
-    }], 1).ledger;
+    const ledger = applyRoundFindings(
+        createLedger(),
+        [
+            {
+                title: "Value",
+                resolved: false,
+                requirement: "Value",
+                evidence: "Missing",
+            },
+        ],
+        1,
+    ).ledger;
     await updatePlanFrontMatter(
         fixture.cwd,
         "p",
@@ -42,17 +51,15 @@ async function pastReviewLimit(fixture: HostFixture) {
         { expectedRevision: plan.revision, expectedControllerRevision: plan.controllerRevision },
     );
 }
-Deno.test("round-limit continue is durable and accepts the next reviewer without another decision", async () => {
+test("round-limit continue is durable and accepts the next reviewer without another decision", async () => {
     const fixture = await hostFixture();
     try {
         await pastReviewLimit(fixture);
         const decision = hostRequest(await fixture.processTurn(), "decision");
-        assertEquals(decision.interaction.options?.map((option) => option.value), [
-            "continue",
-            "engineer_follow_up",
-            "code_review",
-            "stop",
-        ]);
+        assertEquals(
+            decision.interaction.options?.map((option) => option.value),
+            ["continue", "engineer_follow_up", "code_review", "stop"],
+        );
         const reviewer = hostRequest(
             await fixture.processTurn({
                 kind: "decision",
@@ -76,7 +83,7 @@ Deno.test("round-limit continue is durable and accepts the next reviewer without
         await fixture.close();
     }
 });
-Deno.test("round-limit stop preserves passing tests and findings like the Session answer", async () => {
+test("round-limit stop preserves passing tests and findings like the Session answer", async () => {
     const host = await hostFixture();
     const core = await hostFixture();
     try {
@@ -118,12 +125,14 @@ Deno.test("round-limit stop preserves passing tests and findings like the Sessio
             findings: [{ id: "R1-1", title: "Value", status: "fix_confirmed" as const }],
         };
         assertEquals(
-            (await host.processTurn({
-                kind: "reviewer",
-                identity: reviewer.identity,
-                coverage: coverage(reviewer),
-                outcome,
-            })).kind,
+            (
+                await host.processTurn({
+                    kind: "reviewer",
+                    identity: reviewer.identity,
+                    coverage: coverage(reviewer),
+                    outcome,
+                })
+            ).kind,
             "awaiting_delivery",
         );
         const restarted = await sessionScript(core, {
@@ -147,21 +156,23 @@ Deno.test("round-limit stop preserves passing tests and findings like the Sessio
         await core.close();
     }
 });
-Deno.test("missing validation command asks the same question and saves the answer before CI", async () => {
+test("missing validation command asks the same question and saves the answer before CI", async () => {
     const fixture = await hostFixture({ command: null });
     try {
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+        await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
         const decision = hostRequest(await fixture.processTurn(), "decision");
         assertEquals(decision.interaction.type, "text");
         assertEquals(decision.interaction.allowEmpty, false);
         assertEquals(await fixture.ciCount(), 0);
         const checkpoint = JSON.stringify((await fixture.plan()).attrs.validationCheckpoint);
         assertEquals(
-            (await fixture.processTurn({
-                kind: "decision",
-                identity: { ...decision.identity, generation: "stale" },
-                answer: { outcome: "text", value: "sh verify.sh" },
-            })).kind,
+            (
+                await fixture.processTurn({
+                    kind: "decision",
+                    identity: { ...decision.identity, generation: "stale" },
+                    answer: { outcome: "text", value: "sh verify.sh" },
+                })
+            ).kind,
             "failed",
         );
         assertEquals(JSON.stringify((await fixture.plan()).attrs.validationCheckpoint), checkpoint);
@@ -180,7 +191,7 @@ Deno.test("missing validation command asks the same question and saves the answe
     }
 });
 for (const answer of ["retry", "engineer_follow_up", "stop"] as const) {
-    Deno.test(`CI exhaustion resumes ${answer} at the original prompt without running CI first`, async () => {
+    test(`CI exhaustion resumes ${answer} at the original prompt without running CI first`, async () => {
         const host = await hostFixture({ attrs: { validationCiAttempts: CI_REPAIR_CYCLES } });
         const core = await hostFixture({ attrs: { validationCiAttempts: CI_REPAIR_CYCLES } });
         try {
@@ -188,11 +199,10 @@ for (const answer of ["retry", "engineer_follow_up", "stop"] as const) {
             const checkpoint = (await host.plan()).attrs.validationCheckpoint;
             assertExists(checkpoint?.pendingCiDecision);
             assertEquals(checkpoint.pendingCiDecision.ciAttempts, CI_REPAIR_CYCLES);
-            assertEquals(decision.interaction.options?.map((option) => option.value), [
-                "engineer_follow_up",
-                "retry",
-                "stop",
-            ]);
+            assertEquals(
+                decision.interaction.options?.map((option) => option.value),
+                ["engineer_follow_up", "retry", "stop"],
+            );
             const before = (await host.evidence()).filter((entry) => entry.kind === "ci").length;
             let result = await host.processTurn({
                 kind: "decision",
@@ -227,11 +237,13 @@ for (const answer of ["retry", "engineer_follow_up", "stop"] as const) {
                 assertEquals(waiting?.repairGeneration, repair.repairGeneration);
                 const bytes = await host.checkpointBytes();
                 assertEquals(
-                    (await host.processTurn({
-                        kind: "task_completed",
-                        identity: { ...repair.identity, repairGeneration: "wrong" },
-                        report: "wrong",
-                    })).kind,
+                    (
+                        await host.processTurn({
+                            kind: "task_completed",
+                            identity: { ...repair.identity, repairGeneration: "wrong" },
+                            report: "wrong",
+                        })
+                    ).kind,
                     "failed",
                 );
                 assertEquals(await host.checkpointBytes(), bytes);
@@ -240,7 +252,7 @@ for (const answer of ["retry", "engineer_follow_up", "stop"] as const) {
                 assertEquals(repeated.identity, repair.identity);
                 assertEquals(await host.ciCount(), count);
                 // A completed follow-up reruns CI once. Repeating its receipt runs nothing.
-                await Deno.writeTextFile(join(host.cwd, "marker"), "fixed");
+                await fsWriteFile(join(host.cwd, "marker"), "fixed");
                 const afterRepair = hostRequest(await host.processTurn(complete(repair)), "reviewer");
                 assertEquals(await host.ciCount(), count + 1);
                 const evidence = await host.evidence();
@@ -270,7 +282,7 @@ for (const answer of ["retry", "engineer_follow_up", "stop"] as const) {
     });
 }
 
-Deno.test("round-limit human takeover stops at reviewed without a human or publication turn", async () => {
+test("round-limit human takeover stops at reviewed without a human or publication turn", async () => {
     const fixture = await hostFixture();
     try {
         await pastReviewLimit(fixture);
@@ -285,16 +297,21 @@ Deno.test("round-limit human takeover stops at reviewed without a human or publi
         assertEquals(plan.attrs.status, "reviewed");
         assertEquals(plan.attrs.humanReviewMode, "always");
         assertEquals(plan.attrs.humanReviewDecision, null);
-        assertEquals((await fixture.evidence()).map(({ kind, outcome }) => ({ kind, outcome })), [{
-            kind: "ai-skip",
-            outcome: "Human takeover",
-        }]);
+        assertEquals(
+            (await fixture.evidence()).map(({ kind, outcome }) => ({ kind, outcome })),
+            [
+                {
+                    kind: "ai-skip",
+                    outcome: "Human takeover",
+                },
+            ],
+        );
         assertEquals(await fixture.ciCount(), 0);
     } finally {
         await fixture.close();
     }
 });
-Deno.test("round-limit Engineer follow-up keeps the ledger and consumes task completion once", async () => {
+test("round-limit Engineer follow-up keeps the ledger and consumes task completion once", async () => {
     const fixture = await hostFixture();
     try {
         await pastReviewLimit(fixture);
@@ -323,18 +340,17 @@ Deno.test("round-limit Engineer follow-up keeps the ledger and consumes task com
         );
         const bytes = await fixture.checkpointBytes();
         assertEquals(
-            (await fixture.processTurn({
-                kind: "task_completed",
-                identity: { ...repair.identity, repairGeneration: "wrong" },
-                report: "wrong",
-            })).kind,
+            (
+                await fixture.processTurn({
+                    kind: "task_completed",
+                    identity: { ...repair.identity, repairGeneration: "wrong" },
+                    report: "wrong",
+                })
+            ).kind,
             "failed",
         );
         assertEquals(await fixture.checkpointBytes(), bytes);
-        await Deno.writeTextFile(
-            join(fixture.cwd, "implementation.ts"),
-            "export const value = 2; // follow-up repair\n",
-        );
+        await fsWriteFile(join(fixture.cwd, "implementation.ts"), "export const value = 2; // follow-up repair\n");
         const nextDecision = hostRequest(await fixture.processTurn(complete(repair)), "decision");
         assertEquals(await fixture.ciCount(), 1);
         assertEquals(
@@ -352,7 +368,7 @@ Deno.test("round-limit Engineer follow-up keeps the ledger and consumes task com
         await fixture.close();
     }
 });
-Deno.test("CI exhaustion without an answer reruns CI rather than replaying the old decision", async () => {
+test("CI exhaustion without an answer reruns CI rather than replaying the old decision", async () => {
     const fixture = await hostFixture({ attrs: { validationCiAttempts: CI_REPAIR_CYCLES } });
     try {
         hostRequest(await fixture.processTurn(), "decision");
@@ -365,7 +381,7 @@ Deno.test("CI exhaustion without an answer reruns CI rather than replaying the o
     }
 });
 
-Deno.test("Retry followed by the same CI failure rejects the old decision without effects", async () => {
+test("Retry followed by the same CI failure rejects the old decision without effects", async () => {
     const fixture = await hostFixture({ attrs: { validationCiAttempts: CI_REPAIR_CYCLES } });
     try {
         const first = hostRequest(await fixture.processTurn(), "decision");

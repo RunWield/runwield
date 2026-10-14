@@ -1,13 +1,5 @@
 // @ts-nocheck: local wrapper includes a tiny Fresh-free router and production Astro bridge with dynamic handler shapes.
 import { ownerPlanContinuationApi } from "./routes/owner-plan-continuation.ts";
-/**
- * Programmatic Workspace server composition.
- *
- * Local Workspace serving is RunWield-owned: token checks, cwd state,
- * static/theme routes, and JSON APIs stay in this wrapper while page SSR can
- * delegate to the Astro Deno adapter output when it is available.
- */
-
 import { serveHttp } from "../../shared/http-server.ts";
 import { env, versions } from "node:process";
 import { readFile } from "node:fs/promises";
@@ -119,6 +111,14 @@ import { createOwnerConnectionRegistry } from "./server/owner-connections.ts";
 import { setAstroOwnerWorkspaceSessionContinuation, setAstroOwnerWorkspaceStore } from "./server/astro-owner-data.js";
 import { WORKSPACE_PWA_PATHS, workspacePwaResponse } from "./server/workspace-pwa.ts";
 import { createWorkspaceSearchService } from "./server/workspace-search.ts";
+
+/**
+ * Programmatic Workspace server composition.
+ *
+ * Local Workspace serving is RunWield-owned: token checks, cwd state,
+ * static/theme routes, and JSON APIs stay in this wrapper while page SSR can
+ * delegate to the Astro Deno adapter output when it is available.
+ */
 
 const WORKSPACE_DIR = join(RUNWIELD_SOURCE_ROOT, "ui", "workspace");
 const ROOT_DIR = RUNWIELD_ROOT;
@@ -566,9 +566,10 @@ function linkedDocumentKind(path) {
 /** @param {ReviewWorkspaceServerOptions} options */
 export function createReviewWorkspaceApp(options) {
     const { cwd = getCwd(), token, reviewPayload, reviewType, reviewConversation } = options;
-    const reviewAgentState = reviewType === "code"
-        ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runConfiguredGuideCommand })
-        : null;
+    const reviewAgentState =
+        reviewType === "code"
+            ? createReviewAgentState({ cwd, token, reviewPayload, runGuideCommand: runConfiguredGuideCommand })
+            : null;
     return {
         cleanup: () => (reviewAgentState ? cleanupReviewAgentState(reviewAgentState) : Promise.resolve()),
         handler() {
@@ -620,9 +621,12 @@ export function createReviewWorkspaceApp(options) {
                     if (!reviewPayload.reviewRevisionUrl || !hasReviewAssetToken(request, token)) {
                         return new Response("Review revision unavailable.", { status: 404 });
                     }
-                    return Response.json({ revision: reviewPayload.reviewRevision }, {
-                        headers: { "cache-control": "no-store" },
-                    });
+                    return Response.json(
+                        { revision: reviewPayload.reviewRevision },
+                        {
+                            headers: { "cache-control": "no-store" },
+                        },
+                    );
                 }
                 if (
                     request.method === "POST" &&

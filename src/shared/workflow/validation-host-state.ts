@@ -119,8 +119,11 @@ export async function assertHostReviewerCandidate(args: HostReviewerCandidateArg
     const scope = mode === "discovery" ? "full" : "repair";
     try {
         ReviewInspection.fromRecorded(
-            parseDiffFiles(scope === "full" ? fullDiff : repairDiff)
-                .map((file) => ({ scope, path: file.path, byteLength: file.byteLength })),
+            parseDiffFiles(scope === "full" ? fullDiff : repairDiff).map((file) => ({
+                scope,
+                path: file.path,
+                byteLength: file.byteLength,
+            })),
             scope,
             resume.coverage,
         );

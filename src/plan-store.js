@@ -509,11 +509,9 @@ function formatFrontMatter(fm) {
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.collaborationBodyHash, fm.collaborationBodyHash);
     appendYamlField(lines, PLAN_FRONT_MATTER_KEYS.collaborationSyncedAt, fm.collaborationSyncedAt);
 
-    for (
-        const key of Object.keys(fm)
-            .filter((key) => !KNOWN_FRONT_MATTER_KEYS.has(key))
-            .sort()
-    ) {
+    for (const key of Object.keys(fm)
+        .filter((key) => !KNOWN_FRONT_MATTER_KEYS.has(key))
+        .sort()) {
         appendYamlField(lines, key, /** @type {Record<string, unknown>} */ (fm)[key]);
     }
 
@@ -714,22 +712,18 @@ export function resolvePlanExecutionPolicy(meta) {
         return {
             ok: false,
             reason: "invalid_execution_agent",
-            error: `Invalid executionAgent: ${
-                String(
-                    meta.executionAgent,
-                )
-            }. Supported values are engineer and frontend-engineer.`,
+            error: `Invalid executionAgent: ${String(
+                meta.executionAgent,
+            )}. Supported values are engineer and frontend-engineer.`,
         };
     }
     if (explicitRecommendation && !validRecommendation) {
         return {
             ok: false,
             reason: "invalid_collaboration_recommendation",
-            error: `Invalid collaborationRecommendation: ${
-                String(
-                    meta.collaborationRecommendation,
-                )
-            }. Supported values are autonomous and pair.`,
+            error: `Invalid collaborationRecommendation: ${String(
+                meta.collaborationRecommendation,
+            )}. Supported values are autonomous and pair.`,
         };
     }
     if (classification === "PROJECT") {
@@ -755,18 +749,20 @@ export function resolvePlanExecutionPolicy(meta) {
     }
 
     const isPlannedChange = isPlannedChangeClassification(classification);
-    const executionAgent = isPlannedChange && validAgent
-        ? validAgent
-        : isPlannedChange && meta.frontend === true
-        ? "frontend-engineer"
-        : "engineer";
-    const source = isPlannedChange && validAgent
-        ? "canonical"
-        : isPlannedChange && meta.frontend === true
-        ? "legacy_frontend"
-        : isPlannedChange && meta.frontend === false
-        ? "legacy_frontend_false"
-        : "absent";
+    const executionAgent =
+        isPlannedChange && validAgent
+            ? validAgent
+            : isPlannedChange && meta.frontend === true
+              ? "frontend-engineer"
+              : "engineer";
+    const source =
+        isPlannedChange && validAgent
+            ? "canonical"
+            : isPlannedChange && meta.frontend === true
+              ? "legacy_frontend"
+              : isPlannedChange && meta.frontend === false
+                ? "legacy_frontend_false"
+                : "absent";
     return {
         ok: true,
         policy: {
@@ -782,7 +778,8 @@ export function resolvePlanExecutionPolicy(meta) {
  * @param {Partial<PlanFrontMatter>} merged
  */
 function assertExecutionPolicyWriteAllowed(attempted, merged) {
-    const writesPolicy = Object.hasOwn(attempted, "executionAgent") ||
+    const writesPolicy =
+        Object.hasOwn(attempted, "executionAgent") ||
         Object.hasOwn(attempted, "collaborationRecommendation") ||
         Object.hasOwn(attempted, "classification") ||
         Object.hasOwn(attempted, "frontend");
@@ -998,9 +995,10 @@ function normalizeWorkRecordBacklink(value) {
     const status = source.status === "generated" || source.status === "failed" ? source.status : undefined;
     const recordId = typeof source.recordId === "string" && source.recordId.trim() ? source.recordId.trim() : undefined;
     const path = typeof source.path === "string" && source.path.trim() ? source.path.trim() : undefined;
-    const lastAttemptAt = typeof source.lastAttemptAt === "string" && source.lastAttemptAt.trim()
-        ? source.lastAttemptAt.trim()
-        : undefined;
+    const lastAttemptAt =
+        typeof source.lastAttemptAt === "string" && source.lastAttemptAt.trim()
+            ? source.lastAttemptAt.trim()
+            : undefined;
     const error = typeof source.error === "string" && source.error.trim() ? source.error.trim() : undefined;
     if (!status && !recordId && !path && !lastAttemptAt && !error) return undefined;
     return {
@@ -1181,7 +1179,9 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
             body: markdown,
         };
     }
-    const { attrs, body } = /** @type {import("./shared/front-matter.ts").FrontMatter<PlanFrontMatter>} */ (extractYaml(markdown));
+    const { attrs, body } = /** @type {import("./shared/front-matter.ts").FrontMatter<PlanFrontMatter>} */ (
+        extractYaml(markdown)
+    );
     const collaborationAttrs = normalizeCollaborationFrontMatter(attrs);
     const sourceAttrs = { ...attrs };
     for (const key of OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS) Reflect.deleteProperty(sourceAttrs, key);
@@ -1208,16 +1208,18 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
                 ? (attrs.collaborationRecommendation ?? undefined)
                 : undefined,
             frontend: normalizeOptionalBoolean(attrs.frontend),
-            devServerCommand: typeof attrs.devServerCommand === "string"
-                ? attrs.devServerCommand
-                : attrs.devServerCommand === null
-                ? null
-                : undefined,
-            devServerUrl: typeof attrs.devServerUrl === "string"
-                ? attrs.devServerUrl
-                : attrs.devServerUrl === null
-                ? null
-                : undefined,
+            devServerCommand:
+                typeof attrs.devServerCommand === "string"
+                    ? attrs.devServerCommand
+                    : attrs.devServerCommand === null
+                      ? null
+                      : undefined,
+            devServerUrl:
+                typeof attrs.devServerUrl === "string"
+                    ? attrs.devServerUrl
+                    : attrs.devServerUrl === null
+                      ? null
+                      : undefined,
             devServerHmr: attrs.devServerHmr === null ? null : normalizeOptionalBoolean(attrs.devServerHmr),
             createdAt: attrs.createdAt || DEFAULT_FRONT_MATTER.createdAt,
             updatedAt: attrs.updatedAt,
@@ -1232,40 +1234,39 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
             validatedAt: attrs.validatedAt,
             verifiedAt: attrs.verifiedAt,
             userVerifiedAt: attrs.userVerifiedAt,
-            userVerificationNote: typeof attrs.userVerificationNote === "string"
-                ? attrs.userVerificationNote
-                : undefined,
-            closedWithoutVerificationReason: typeof attrs.closedWithoutVerificationReason === "string"
-                ? attrs.closedWithoutVerificationReason
-                : undefined,
-            closedWithoutVerificationAt: typeof attrs.closedWithoutVerificationAt === "string"
-                ? attrs.closedWithoutVerificationAt
-                : undefined,
+            userVerificationNote:
+                typeof attrs.userVerificationNote === "string" ? attrs.userVerificationNote : undefined,
+            closedWithoutVerificationReason:
+                typeof attrs.closedWithoutVerificationReason === "string"
+                    ? attrs.closedWithoutVerificationReason
+                    : undefined,
+            closedWithoutVerificationAt:
+                typeof attrs.closedWithoutVerificationAt === "string" ? attrs.closedWithoutVerificationAt : undefined,
             executionReport: typeof attrs.executionReport === "string" ? attrs.executionReport : undefined,
             workRecord: normalizeWorkRecordBacklink(attrs.workRecord),
             humanReviewMode: normalizeHumanReviewMode(attrs.humanReviewMode),
             humanReviewDecision: normalizeHumanReviewDecision(attrs.humanReviewDecision),
             humanReviewedAt: attrs.humanReviewedAt,
-            validationPhase: attrs.validationPhase === "mechanical" ||
-                    attrs.validationPhase === "semantic" ||
-                    attrs.validationPhase === "delivery"
-                ? attrs.validationPhase
-                : undefined,
-            validationCheckpoint: attrs.validationCheckpoint && typeof attrs.validationCheckpoint === "object"
-                ? attrs.validationCheckpoint
-                : attrs.validationCheckpoint === null
-                ? null
-                : undefined,
+            validationPhase:
+                attrs.validationPhase === "mechanical" ||
+                attrs.validationPhase === "semantic" ||
+                attrs.validationPhase === "delivery"
+                    ? attrs.validationPhase
+                    : undefined,
+            validationCheckpoint:
+                attrs.validationCheckpoint && typeof attrs.validationCheckpoint === "object"
+                    ? attrs.validationCheckpoint
+                    : attrs.validationCheckpoint === null
+                      ? null
+                      : undefined,
             epicCompletionMode: attrs.epicCompletionMode === "done_enough" ? attrs.epicCompletionMode : undefined,
             epicDoneEnoughAt: attrs.epicDoneEnoughAt,
             epicDoneEnoughSummary: attrs.epicDoneEnoughSummary,
             epicBaseCommit: typeof attrs.epicBaseCommit === "string" ? attrs.epicBaseCommit : undefined,
-            epicDeliveryTargetBranch: typeof attrs.epicDeliveryTargetBranch === "string"
-                ? attrs.epicDeliveryTargetBranch
-                : undefined,
-            epicIntegrationReport: typeof attrs.epicIntegrationReport === "string"
-                ? attrs.epicIntegrationReport
-                : undefined,
+            epicDeliveryTargetBranch:
+                typeof attrs.epicDeliveryTargetBranch === "string" ? attrs.epicDeliveryTargetBranch : undefined,
+            epicIntegrationReport:
+                typeof attrs.epicIntegrationReport === "string" ? attrs.epicIntegrationReport : undefined,
             executionMode: normalizeExecutionMode(attrs.executionMode),
             deliveryEvidence: normalizeDeliveryEvidence(attrs.deliveryEvidence),
             validatedCommit: typeof attrs.validatedCommit === "string" ? attrs.validatedCommit : undefined,
@@ -1275,11 +1276,12 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
             worktreeBranch: attrs.worktreeBranch,
             worktreeBaseBranch: attrs.worktreeBaseBranch,
             deliveryBranch: typeof attrs.deliveryBranch === "string" ? attrs.deliveryBranch : undefined,
-            targetBranch: typeof attrs.targetBranch === "string"
-                ? attrs.targetBranch
-                : typeof attrs.worktreeBaseBranch === "string"
-                ? attrs.worktreeBaseBranch
-                : undefined,
+            targetBranch:
+                typeof attrs.targetBranch === "string"
+                    ? attrs.targetBranch
+                    : typeof attrs.worktreeBaseBranch === "string"
+                      ? attrs.worktreeBaseBranch
+                      : undefined,
             worktreeStatus: normalizeWorktreeStatus(attrs.worktreeStatus),
             heldFromStatus: normalizePlanStatusForOptionalHold(attrs.heldFromStatus),
             heldAt: attrs.heldAt,
@@ -1371,8 +1373,8 @@ async function effectivePlanLifecycleAttrs(cwd, attrs, state, document) {
         combined.status = "verified";
     } else if (combined.status === "validated") {
         const pendingAttempt = combined.worktreeId && !combined.verifiedAt;
-        const pendingEpic = isProjectPlan(combined) && combined.targetBranch &&
-            combined.epicCompletionMode !== "done_enough";
+        const pendingEpic =
+            isProjectPlan(combined) && combined.targetBranch && combined.epicCompletionMode !== "done_enough";
         let delivered = Boolean(combined.verifiedAt || combined.deliveryEvidence?.mode === "non_git_in_place");
         if (!delivered && !pendingAttempt && !pendingEpic && combined.epicCompletionMode !== "done_enough") {
             const { verifyRecordedPublication } = await import("./shared/workflow/validation-merge-verification.ts");
@@ -1382,8 +1384,8 @@ async function effectivePlanLifecycleAttrs(cwd, attrs, state, document) {
         combined.status = delivered
             ? "verified"
             : isProjectPlan(combined) && combined.epicCompletionMode === "done_enough"
-            ? "closed_without_verification"
-            : "reviewed";
+              ? "closed_without_verification"
+              : "reviewed";
     }
     if (combined.status === "validated_ci") {
         combined.status = "implemented";
@@ -1489,11 +1491,9 @@ function formatFrontMatterOverrideLines(overrides) {
             appendYamlField(lines, key, /** @type {Record<string, unknown>} */ (overrides)[key]);
         }
     }
-    for (
-        const key of Object.keys(overrides)
-            .filter((key) => !KNOWN_FRONT_MATTER_KEYS.has(key))
-            .sort()
-    ) {
+    for (const key of Object.keys(overrides)
+        .filter((key) => !KNOWN_FRONT_MATTER_KEYS.has(key))
+        .sort()) {
         appendYamlField(lines, key, /** @type {Record<string, unknown>} */ (overrides)[key]);
     }
     return lines;
@@ -1526,8 +1526,8 @@ export function mergeFrontMatterText(markdown, overrides) {
     const frontMatterTerminator = frontMatterBlock.endsWith("\r\n")
         ? "\r\n"
         : frontMatterBlock.endsWith("\n")
-        ? "\n"
-        : "";
+          ? "\n"
+          : "";
     return `${mergedLines.join(eol)}${frontMatterTerminator}${body}`;
 }
 
@@ -1751,14 +1751,12 @@ async function acquireSimpleLock(lockPath) {
             try {
                 snapshot = await readLockFileSnapshot(lockPath);
             } catch (readError) {
-                if (
-                    !(
-                        platform === "win32" &&
-                        readError instanceof Error &&
-                        "code" in readError &&
-                        readError.code === "EBUSY"
-                    )
-                ) {
+                if (!(
+                    platform === "win32" &&
+                    readError instanceof Error &&
+                    "code" in readError &&
+                    readError.code === "EBUSY"
+                )) {
                     throw readError;
                 }
                 if (Date.now() > deadline) throw new PlanLockTimeoutError(lockPath);
@@ -1781,7 +1779,8 @@ async function acquireSimpleLock(lockPath) {
             // Age only permits an ownership check: removal must still acquire the
             // OS lock and match the snapshot, so a paused live holder stays safe.
             // Windows removal cannot retain that OS lock across unlink.
-            const abandoned = platform !== "win32" &&
+            const abandoned =
+                platform !== "win32" &&
                 Date.now() - Math.max(snapshot.mtime, snapshot.updatedAt || 0) > PLAN_LOCK_ABANDONED_MS;
             const stale = abandoned || (await isLockHolderGone(snapshot.text));
             if (stale && (await removeLockFileIfSnapshotMatches(lockPath, snapshot))) {
@@ -2338,24 +2337,27 @@ export async function saveChildFeaturePlans(cwd, epicPlanName, children, options
             frontend: child.frontend,
         });
         if (!policyResult.ok) throw new Error(policyResult.error);
-        const devServerCommand = typeof child.devServerCommand === "string"
-            ? child.devServerCommand
-            : child.devServerCommand === null
-            ? null
-            : undefined;
-        const devServerUrl = typeof child.devServerUrl === "string"
-            ? child.devServerUrl
-            : child.devServerUrl === null
-            ? null
-            : undefined;
+        const devServerCommand =
+            typeof child.devServerCommand === "string"
+                ? child.devServerCommand
+                : child.devServerCommand === null
+                  ? null
+                  : undefined;
+        const devServerUrl =
+            typeof child.devServerUrl === "string"
+                ? child.devServerUrl
+                : child.devServerUrl === null
+                  ? null
+                  : undefined;
         const devServerHmr = child.devServerHmr === null ? null : normalizeOptionalBoolean(child.devServerHmr);
-        const worktreeBaseBranch = typeof child.targetBranch === "string"
-            ? child.targetBranch
-            : typeof child.worktreeBaseBranch === "string"
-            ? child.worktreeBaseBranch
-            : child.worktreeBaseBranch === null
-            ? null
-            : undefined;
+        const worktreeBaseBranch =
+            typeof child.targetBranch === "string"
+                ? child.targetBranch
+                : typeof child.worktreeBaseBranch === "string"
+                  ? child.worktreeBaseBranch
+                  : child.worktreeBaseBranch === null
+                    ? null
+                    : undefined;
         metadata.executionAgent = policyResult.policy.executionAgent;
         if (policyResult.policy.executionAgent === "frontend-engineer") {
             metadata.collaborationRecommendation = policyResult.policy.collaborationRecommendation;
@@ -2670,16 +2672,14 @@ export async function updatePlanCollaborationMetadata(cwd, planName, updates, co
             delete collaborationUpdates.collaborationBodyHash;
         }
         const planMetadataUpdates = pickKnownPlanFrontMatter(updates);
-        for (
-            const key of [
-                "collaborationState",
-                "collaborationServerUrl",
-                "collaborationSpaceId",
-                "collaborationRevision",
-                "collaborationBodyHash",
-                "collaborationSyncedAt",
-            ]
-        ) {
+        for (const key of [
+            "collaborationState",
+            "collaborationServerUrl",
+            "collaborationSpaceId",
+            "collaborationRevision",
+            "collaborationBodyHash",
+            "collaborationSyncedAt",
+        ]) {
             delete (/** @type {Record<string, unknown>} */ (planMetadataUpdates)[key]);
         }
         const definedCollaborationUpdates = Object.fromEntries(
@@ -2845,7 +2845,8 @@ async function collectPlans(dir, prefix, results, parseIssues, documentOnly = fa
  * @returns {number}
  */
 export function comparePlansForList(a, b) {
-    const statusDelta = (PLAN_LIST_STATUS_ORDER.get(a.attrs.status) ?? PLAN_LIST_STATUS_ORDER.size) -
+    const statusDelta =
+        (PLAN_LIST_STATUS_ORDER.get(a.attrs.status) ?? PLAN_LIST_STATUS_ORDER.size) -
         (PLAN_LIST_STATUS_ORDER.get(b.attrs.status) ?? PLAN_LIST_STATUS_ORDER.size);
     if (statusDelta !== 0) return statusDelta;
 
@@ -2891,9 +2892,8 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
         for (const projectPlan of [...results]) {
-            const targetBranch = typeof projectPlan.attrs.targetBranch === "string"
-                ? projectPlan.attrs.targetBranch.trim()
-                : "";
+            const targetBranch =
+                typeof projectPlan.attrs.targetBranch === "string" ? projectPlan.attrs.targetBranch.trim() : "";
             if (!targetBranch || !isProjectPlan(projectPlan.attrs)) continue;
             if (onlyEpic !== null && projectPlan.name !== onlyEpic) continue;
             let targetChildren;
@@ -3191,7 +3191,7 @@ export async function archivePlan(cwd, planNameOrId, options = {}) {
                 const lockedSource = await resolveActivePlanNameOrId(cwd, source.name);
                 if (
                     (await getPlanRevisionForText(lockedSource.markdown)) !==
-                        (await getPlanRevisionForText(source.markdown))
+                    (await getPlanRevisionForText(source.markdown))
                 ) {
                     throw new StalePlanWriteError(
                         await getPlanRevisionForText(source.markdown),
@@ -3205,9 +3205,10 @@ export async function archivePlan(cwd, planNameOrId, options = {}) {
                 /** @type {MoveEpicArtifactResult[]} */
                 let movedArtifacts = [];
                 try {
-                    movedArtifacts = source.attrs.classification === "PROJECT" && source.name.split("/").length === 1
-                        ? await moveEpicArtifactsToArchive(cwd, source.name)
-                        : [];
+                    movedArtifacts =
+                        source.attrs.classification === "PROJECT" && source.name.split("/").length === 1
+                            ? await moveEpicArtifactsToArchive(cwd, source.name)
+                            : [];
                     await fsRm(source.path);
                     await syncDirectory(dirname(source.path));
                     await syncDirectory(dirname(destination.filePath));
@@ -3405,12 +3406,10 @@ export async function deleteArchivedPlanUnit(cwd, archivedPlanName) {
             const directoryStat = await fsStat(directoryPath);
             if (!directoryStat.isDirectory()) {
                 throw new Error(
-                    `Refusing to prune ${location.name}: archived Plan directory path is not a directory ${
-                        projectRelativePath(
-                            cwd,
-                            directoryPath,
-                        )
-                    }`,
+                    `Refusing to prune ${location.name}: archived Plan directory path is not a directory ${projectRelativePath(
+                        cwd,
+                        directoryPath,
+                    )}`,
                 );
             }
             directoryExists = true;
@@ -3418,12 +3417,10 @@ export async function deleteArchivedPlanUnit(cwd, archivedPlanName) {
                 const entryPath = join(directoryPath, entry.name);
                 if (!entry.isFile() || !entry.name.endsWith(".md")) {
                     throw new Error(
-                        `Refusing to prune ${location.name}: archived Plan directory contains non-markdown entry ${
-                            projectRelativePath(
-                                cwd,
-                                entryPath,
-                            )
-                        }`,
+                        `Refusing to prune ${location.name}: archived Plan directory contains non-markdown entry ${projectRelativePath(
+                            cwd,
+                            entryPath,
+                        )}`,
                     );
                 }
                 directoryEntries.push(entryPath);
@@ -3545,14 +3542,15 @@ export async function restoreArchivedPlan(cwd, archivedPlanNameOrId, options = {
         cwd,
         async () =>
             await withPlanLock(cwd, destination.name, async () => {
-                const renamedAttempt = destination.name !== archived.name
-                    ? (await listControllerDocumentWorktrees(cwd)).find(
-                        (entry) =>
-                            entry.planName === archived.name &&
-                            resolve(entry.path) === resolve(cwd) &&
-                            entry.planId === archived.attrs.planId,
-                    )
-                    : undefined;
+                const renamedAttempt =
+                    destination.name !== archived.name
+                        ? (await listControllerDocumentWorktrees(cwd)).find(
+                              (entry) =>
+                                  entry.planName === archived.name &&
+                                  resolve(entry.path) === resolve(cwd) &&
+                                  entry.planId === archived.attrs.planId,
+                          )
+                        : undefined;
                 if (
                     destination.name !== archived.name &&
                     (await listPlans(resolvePrimaryCheckoutRoot(cwd))).some((plan) => plan.name === destination.name)
@@ -3562,7 +3560,7 @@ export async function restoreArchivedPlan(cwd, archivedPlanNameOrId, options = {
                 const lockedArchived = await resolveArchivedPlanNameOrId(cwd, archived.name);
                 if (
                     (await getPlanRevisionForText(lockedArchived.markdown)) !==
-                        (await getPlanRevisionForText(archived.markdown))
+                    (await getPlanRevisionForText(archived.markdown))
                 ) {
                     throw new StalePlanWriteError(
                         await getPlanRevisionForText(archived.markdown),
@@ -3971,12 +3969,14 @@ export async function findPlanEvidenceById(cwd, planId) {
         // Target-branch list entries can use a Git revision:path reference, not a
         // filesystem path. Prefer the saved local child in the selected document
         // worktree when it has the same identity.
-        const local = !isAbsolute(matches[0].path) && resolvePrimaryCheckoutRoot(cwd) !== cwd
-            ? await loadPlanStrict(cwd, matches[0].name)
-            : null;
-        const loaded = local?.kind === "loaded" && local.attrs.planId === matches[0].attrs.planId
-            ? local
-            : await loadPlanFileStrict(matches[0].path);
+        const local =
+            !isAbsolute(matches[0].path) && resolvePrimaryCheckoutRoot(cwd) !== cwd
+                ? await loadPlanStrict(cwd, matches[0].name)
+                : null;
+        const loaded =
+            local?.kind === "loaded" && local.attrs.planId === matches[0].attrs.planId
+                ? local
+                : await loadPlanFileStrict(matches[0].path);
         if (loaded.kind !== "loaded") {
             if (loaded.kind === "malformed") throw loaded.error;
             throw new Error(`Plan not found for planId: ${normalized}`);
@@ -4167,8 +4167,8 @@ export function resolveSiblingChildPlanDependencyStates(parentPlan, dependencies
             state: isRunWieldVerifiedStatus(status)
                 ? /** @type {const} */ ("verified")
                 : isUserVerifiedStatus(status)
-                ? /** @type {const} */ ("user_verified")
-                : /** @type {const} */ ("unverified"),
+                  ? /** @type {const} */ ("user_verified")
+                  : /** @type {const} */ ("unverified"),
         };
     });
 }

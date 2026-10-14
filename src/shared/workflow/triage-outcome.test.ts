@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals } from "../../testing/assertions.ts";
 import { normalizeTriageOutcome } from "./triage-outcome.ts";
 
-Deno.test("normalizeTriageOutcome keeps classification and Work Kind for a planned change", () => {
+test("normalizeTriageOutcome keeps classification and Work Kind for a planned change", () => {
     assertEquals(
         normalizeTriageOutcome({
             routingIntent: "PLANNED_CHANGE",
@@ -21,7 +22,7 @@ Deno.test("normalizeTriageOutcome keeps classification and Work Kind for a plann
     );
 });
 
-Deno.test("normalizeTriageOutcome maps the legacy FEATURE label and classification field", () => {
+test("normalizeTriageOutcome maps the legacy FEATURE label and classification field", () => {
     assertEquals(
         normalizeTriageOutcome({ routingIntent: "FEATURE", complexity: "LOW", summary: "s" })?.routingIntent,
         "PLANNED_CHANGE",
@@ -34,7 +35,7 @@ Deno.test("normalizeTriageOutcome maps the legacy FEATURE label and classificati
     });
 });
 
-Deno.test("normalizeTriageOutcome drops Work Kind and classification outside planned work", () => {
+test("normalizeTriageOutcome drops Work Kind and classification outside planned work", () => {
     assertEquals(
         normalizeTriageOutcome({
             routingIntent: "OPERATION",
@@ -46,7 +47,7 @@ Deno.test("normalizeTriageOutcome drops Work Kind and classification outside pla
     );
 });
 
-Deno.test("normalizeTriageOutcome rejects a missing intent, an unknown complexity, or an empty summary", () => {
+test("normalizeTriageOutcome rejects a missing intent, an unknown complexity, or an empty summary", () => {
     assertEquals(normalizeTriageOutcome({ complexity: "LOW", summary: "s" }), null);
     assertEquals(normalizeTriageOutcome({ routingIntent: "INQUIRY", complexity: "EXTREME", summary: "s" }), null);
     assertEquals(normalizeTriageOutcome({ routingIntent: "INQUIRY", complexity: "LOW", summary: "" }), null);

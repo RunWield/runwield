@@ -77,8 +77,10 @@ function isAtomicTempPath(path: string, filePath: string): boolean {
 }
 
 function isLegacyRuntimeTempPath(path: string): boolean {
-    return isAtomicTempPath(path, underRunWield(WORKTREE_REGISTRY_FILE)) ||
-        isAtomicTempPath(path, PROJECT_SECRET_STORE_RELATIVE_PATH);
+    return (
+        isAtomicTempPath(path, underRunWield(WORKTREE_REGISTRY_FILE)) ||
+        isAtomicTempPath(path, PROJECT_SECRET_STORE_RELATIVE_PATH)
+    );
 }
 
 export function isCurrentProjectRuntimePath(path: string): boolean {
@@ -148,8 +150,14 @@ function canonicalBlock(eol: string, retainedLegacyDirectories: string[] = []): 
 function isBroadRunWieldIgnoreRule(line: string): boolean {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("!")) return false;
-    return trimmed === ".wld" || trimmed === ".wld/" || trimmed === "/.wld" || trimmed === "/.wld/" ||
-        trimmed === ".wld/**" || trimmed === "/.wld/**";
+    return (
+        trimmed === ".wld" ||
+        trimmed === ".wld/" ||
+        trimmed === "/.wld" ||
+        trimmed === "/.wld/" ||
+        trimmed === ".wld/**" ||
+        trimmed === "/.wld/**"
+    );
 }
 
 function isObsoleteRunWieldLine(line: string): boolean {
@@ -165,7 +173,7 @@ export async function inspectRunWieldGitignore(projectRoot: string): Promise<Run
     try {
         return analyzeRunWieldGitignore(await fsReadFile(join(projectRoot, ".gitignore"), "utf8"));
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
 }
@@ -174,9 +182,9 @@ export async function inspectRunWieldGitignore(projectRoot: string): Promise<Run
 export async function runWieldGitignoreNeedsUpdate(projectRoot: string): Promise<boolean> {
     let existing = "";
     try {
-        existing = await Deno.readTextFile(join(projectRoot, ".gitignore"));
+        existing = await fsReadFile(join(projectRoot, ".gitignore"), "utf8");
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     return reconcileGitignore(existing).content !== existing;
 }
@@ -231,8 +239,7 @@ function reconcileGitignore(
             warnings.push({
                 kind: "broad_wld_ignore",
                 rule: line.text.trim(),
-                message:
-                    `The .gitignore rule ${line.text.trim()} also hides .wld/settings.json, .wld/agents/, .wld/skills/, and .wld/prompts/ from Git.`,
+                message: `The .gitignore rule ${line.text.trim()} also hides .wld/settings.json, .wld/agents/, .wld/skills/, and .wld/prompts/ from Git.`,
             });
             kept.push(line);
             continue;
@@ -270,10 +277,12 @@ export async function ensureRunWieldOwnedGitignoreBlock(
     // must never become user changes (or be accidentally committed with git add).
     const retainedLegacyDirectories: string[] = [];
     for (const path of LEGACY_RUNTIME_DIRECTORIES) {
-        const exists = await fsLstat(join(projectRoot, path)).then(() => true).catch((error) => {
-            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
-            throw error;
-        });
+        const exists = await fsLstat(join(projectRoot, path))
+            .then(() => true)
+            .catch((error) => {
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+                throw error;
+            });
         if (exists) retainedLegacyDirectories.push(path);
     }
     const { content, warnings } = reconcileGitignore(existing, retainedLegacyDirectories);
