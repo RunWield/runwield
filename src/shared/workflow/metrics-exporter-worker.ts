@@ -1,5 +1,5 @@
 /** Failure-isolated package call. This entry is used only by the export scheduler. */
-import { toFileUrl } from "@std/path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import type { MetricsExportCredentials } from "./metrics-export-grants.ts";
 import type { MetricsExportObservation } from "./metrics-export-record.ts";
 

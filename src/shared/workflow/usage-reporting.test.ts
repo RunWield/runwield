@@ -1,5 +1,13 @@
-import { assert, assertEquals, assertThrows } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { getCwd } from "../../constants.js";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { mkdir as fsMkdir, writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { getWorkflowMetricsFilePath, recordWorkflowMetric } from "./metrics.js";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
@@ -37,14 +45,14 @@ function usage(ts: string, fields: Record<string, string | number | boolean | nu
 }
 async function journal(root: string, rows: FixtureRow[]) {
     const path = getWorkflowMetricsFilePath(root);
-    await Deno.mkdir(dirname(path), { recursive: true });
-    await Deno.writeTextFile(path, rows.map((item) => JSON.stringify(item)).join("\n") + "\n");
+    await fsMkdir(dirname(path), { recursive: true });
+    await fsWriteFile(path, rows.map((item) => JSON.stringify(item)).join("\n") + "\n");
     return path;
 }
 const enabled = row("collection_epoch", "2026-10-31T00:00:00Z", { v: 1, enabled: true });
 const watermark = row("collection_epoch", "2026-11-06T00:00:00Z", { v: 1, enabled: true });
 
-Deno.test("report returns exact settled totals, backend/model values and durable watermark", async () => {
+test("report returns exact settled totals, backend/model values and durable watermark", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -63,7 +71,7 @@ Deno.test("report returns exact settled totals, backend/model values and durable
     });
 });
 
-Deno.test("incomplete operations stay separate with no settled spend or latency", async () => {
+test("incomplete operations stay separate with no settled spend or latency", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -84,7 +92,7 @@ Deno.test("incomplete operations stay separate with no settled spend or latency"
     });
 });
 
-Deno.test("only human provenance or explicit commands make days active", async () => {
+test("only human provenance or explicit commands make days active", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -100,11 +108,14 @@ Deno.test("only human provenance or explicit commands make days active", async (
         ]);
         const report = new UsageReporter().query([projectRoot], period, zone);
         assertEquals(report.totals.activeDays, 2);
-        assertEquals(report.daily.map((day) => day.totals.activeDays), [0, 1, 1, 0]);
+        assertEquals(
+            report.daily.map((day) => day.totals.activeDays),
+            [0, 1, 1, 0],
+        );
     });
 });
 
-Deno.test("disabled, legacy and covered zero days are distinct; missing cost is excluded", async () => {
+test("disabled, legacy and covered zero days are distinct; missing cost is excluded", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -118,19 +129,27 @@ Deno.test("disabled, legacy and covered zero days are distinct; missing cost is 
         assert(report.daily[0].gaps.includes("disabled"));
         assert(report.daily[1].gaps.includes("legacy"));
         assertEquals(report.daily[2].gaps, []);
-        assertEquals(report.daily.map((day) => day.tokens), [null, null, 0, null]);
-        assertEquals(report.projects[0].daily.map((day) => day.tokens), [null, null, 0, null]);
+        assertEquals(
+            report.daily.map((day) => day.tokens),
+            [null, null, 0, null],
+        );
+        assertEquals(
+            report.projects[0].daily.map((day) => day.tokens),
+            [null, null, 0, null],
+        );
         assertEquals(report.totals.estimatedCostUsd.exclusions, 1);
-        assertEquals(report.projects[0].legacy, [{
-            timestamp: "2026-11-02T16:00:00Z",
-            event: "tool_call",
-            availability: "legacy/partial",
-        }]);
+        assertEquals(report.projects[0].legacy, [
+            {
+                timestamp: "2026-11-02T16:00:00Z",
+                event: "tool_call",
+                availability: "legacy/partial",
+            },
+        ]);
         assertEquals(JSON.stringify(report).includes("private"), false);
     });
 });
 
-Deno.test("DST repeated hour and midnight respect local half-open dates", async () => {
+test("DST repeated hour and midnight respect local half-open dates", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -141,13 +160,16 @@ Deno.test("DST repeated hour and midnight respect local half-open dates", async 
             watermark,
         ]);
         const report = new UsageReporter().query([projectRoot], period, zone);
-        assertEquals(report.daily.map((day) => day.totals.tokens.value), [57, 19, 0, 0]);
+        assertEquals(
+            report.daily.map((day) => day.totals.tokens.value),
+            [57, 19, 0, 0],
+        );
         const exclusive = new UsageReporter().query([projectRoot], { start: "2026-11-01", end: "2026-11-02" }, zone);
         assertEquals(exclusive.totals.tokens.value, 57);
     });
 });
 
-Deno.test("publication, validation, repair and observed delivery remain separate", async () => {
+test("publication, validation, repair and observed delivery remain separate", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const publication = row("publication_confirmed", "2026-11-01T16:00:00Z", {
             eventId: "publication_confirmed:a",
@@ -199,7 +221,7 @@ Deno.test("publication, validation, repair and observed delivery remain separate
     });
 });
 
-Deno.test("alternative CLI representations excluded without discarding independent request usage", async () => {
+test("alternative CLI representations excluded without discarding independent request usage", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -214,39 +236,38 @@ Deno.test("alternative CLI representations excluded without discarding independe
     });
 });
 
-Deno.test("refresh reads only appended suffix and rebuilding changes no source files", async () => {
+test("refresh reads only appended suffix and rebuilding changes no source files", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
-        const rows = Array.from(
-            { length: 20000 },
-            (_, seq) => row("tool_exposure", "2026-11-01T16:00:00Z", { seq, toolName: "code_search" }),
+        const rows = Array.from({ length: 20000 }, (_, seq) =>
+            row("tool_exposure", "2026-11-01T16:00:00Z", { seq, toolName: "code_search" }),
         );
         const path = await journal(projectRoot, [enabled, ...rows, watermark]);
         const protectedPath = join(projectRoot, "transcript.jsonl");
-        await Deno.writeTextFile(protectedPath, "private transcript");
+        await fsWriteFile(protectedPath, "private transcript");
         const reporter = new UsageReporter();
         reporter.query([projectRoot], period, zone);
         const before = reporter.diagnostics;
         const suffix = JSON.stringify(usage("2026-11-02T16:00:00Z")) + "\n";
-        await Deno.writeTextFile(path, suffix, { append: true });
+        await fsWriteFile(path, suffix, { flag: "a" });
         const report = reporter.query([projectRoot], period, zone);
         assertEquals(reporter.diagnostics.linesParsed - before.linesParsed, 1);
         assertEquals(reporter.diagnostics.bytesRead - before.bytesRead, new TextEncoder().encode(suffix).length);
         assertEquals(report.totals.tokens.value, 19);
-        const bytes = await Deno.readFile(path);
+        const bytes = await fsReadFile(path);
         assertEquals(new UsageReporter().query([projectRoot], period, zone).totals, report.totals);
-        assertEquals(await Deno.readFile(path), bytes);
-        assertEquals(await Deno.readTextFile(protectedPath), "private transcript");
+        assertEquals(await fsReadFile(path), bytes);
+        assertEquals(await fsReadFile(protectedPath, "utf8"), "private transcript");
         reporter.query([projectRoot], period, zone);
         assertEquals(reporter.diagnostics.linesParsed - before.linesParsed, 1);
     });
 });
 
-Deno.test("torn and corrupt records are gaps; absent history is not covered zero", async () => {
+test("torn and corrupt records are gaps; absent history is not covered zero", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const reporter = new UsageReporter();
         assertEquals(reporter.query([projectRoot], period, zone).daily[0].tokens, null);
         const path = await journal(projectRoot, [enabled, usage("2026-11-01T16:00:00Z"), watermark]);
-        await Deno.writeTextFile(path, 'bad interior\n{"v":2', { append: true });
+        await fsWriteFile(path, 'bad interior\n{"v":2', { flag: "a" });
         const report = reporter.query([projectRoot], period, zone);
         assertEquals(report.totals.tokens.value, 19);
         assertEquals(report.projects[0].coverage.corruptLines, 1);
@@ -255,14 +276,14 @@ Deno.test("torn and corrupt records are gaps; absent history is not covered zero
     });
 });
 
-Deno.test("clear keeps other Projects and source artifacts, then accepts fresh observations", async () => {
+test("clear keeps other Projects and source artifacts, then accepts fresh observations", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const other = join(projectRoot, "other");
-        await Deno.mkdir(other);
+        await fsMkdir(other);
         await journal(other, [enabled, usage("2026-11-01T16:00:00Z")]);
-        const otherBytes = await Deno.readFile(getWorkflowMetricsFilePath(other));
+        const otherBytes = await fsReadFile(getWorkflowMetricsFilePath(other));
         const artifact = join(projectRoot, "plan.md");
-        await Deno.writeTextFile(artifact, "Plan and Session survive");
+        await fsWriteFile(artifact, "Plan and Session survive");
         const metric = {
             v: 2,
             category: "command",
@@ -274,16 +295,19 @@ Deno.test("clear keeps other Projects and source artifacts, then accepts fresh o
         };
         assert((await recordWorkflowMetric(metric, projectRoot)).persisted);
         const path = getWorkflowMetricsFilePath(projectRoot);
-        await Deno.writeTextFile(path, JSON.stringify(row("old", "1999-01-01T00:00:00Z", { v: 1 })) + "\n", {
-            append: true,
+        await fsWriteFile(path, JSON.stringify(row("old", "1999-01-01T00:00:00Z", { v: 1 })) + "\n", {
+            flag: "a",
         });
         const reporter = new UsageReporter();
         reporter.query([projectRoot], { start: "1998-01-01", end: "2000-01-01" }, zone);
         const result = await reporter.clear([projectRoot]);
         assertEquals(result[0].persisted, true);
-        assertEquals(await Deno.readFile(getWorkflowMetricsFilePath(other)), otherBytes);
-        assertEquals(await Deno.readTextFile(artifact), "Plan and Session survive");
-        const cleared = (await Deno.readTextFile(path)).trim().split("\n").map((line) => JSON.parse(line));
+        assertEquals(await fsReadFile(getWorkflowMetricsFilePath(other)), otherBytes);
+        assertEquals(await fsReadFile(artifact, "utf8"), "Plan and Session survive");
+        const cleared = (await fsReadFile(path, "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
         assertEquals(cleared.length, 1);
         assertEquals(cleared[0].event, "history_epoch");
         assertEquals(
@@ -292,8 +316,14 @@ Deno.test("clear keeps other Projects and source artifacts, then accepts fresh o
             [],
         );
         assert((await recordWorkflowMetric({ ...metric, eventId: "command_started:new" }, projectRoot)).persisted);
-        const newRows = (await Deno.readTextFile(path)).trim().split("\n").map((line) => JSON.parse(line));
-        assertEquals(newRows.some((item) => item.eventId === metric.eventId), false);
+        const newRows = (await fsReadFile(path, "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+        assertEquals(
+            newRows.some((item) => item.eventId === metric.eventId),
+            false,
+        );
         // Reusing an identity in the NEW epoch is new evidence, not a stale offset lookup.
         assert((await recordWorkflowMetric(metric, projectRoot)).persisted);
         assertEquals(
@@ -304,23 +334,23 @@ Deno.test("clear keeps other Projects and source artifacts, then accepts fresh o
     });
 });
 
-Deno.test("a real paused second process cannot settle into cleared history", async () => {
+test("a real paused second process cannot settle into cleared history", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         await recordWorkflowMetric({ category: "command", event: "first" }, projectRoot);
         const path = getWorkflowMetricsFilePath(projectRoot);
         const script = join(projectRoot, "paused.ts");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             script,
-            `import { appendWorkflowMetric, resolveCollectionEpoch } from ${
-                JSON.stringify(new URL("./metrics-journal.ts", import.meta.url).href)
-            };
-const state = resolveCollectionEpoch(Deno.args[0], true);
+            `import { appendWorkflowMetric, resolveCollectionEpoch } from ${JSON.stringify(
+                new URL("./metrics-journal.ts", import.meta.url).href,
+            )};
+const state = resolveCollectionEpoch((await import("node:process")).argv.slice(2)[0], true);
 const invocation = { enabled:true, epoch:state.collectionEpoch.id, historyEpoch:state.historyEpoch, deadline:Date.now()+30000 };
-console.log("ready"); await Deno.stdin.read(new Uint8Array(1));
-console.log(JSON.stringify(await appendWorkflowMetric(Deno.args[0], Deno.args[1], {v:2,event:"model_usage", eventId:"stale"}, invocation)));`,
+console.log("ready"); await (await import("node:events")).once((await import("node:process")).stdin, "data");
+console.log(JSON.stringify(await appendWorkflowMetric((await import("node:process")).argv.slice(2)[0], (await import("node:process")).argv.slice(2)[1], {v:2,event:"model_usage", eventId:"stale"}, invocation)));`,
         );
-        const child = new Deno.Command(Deno.execPath(), {
-            args: [
+        const child = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs([
                 "run",
                 "-A",
                 "--config",
@@ -328,12 +358,13 @@ console.log(JSON.stringify(await appendWorkflowMetric(Deno.args[0], Deno.args[1]
                 script,
                 path,
                 projectRoot,
-            ],
+            ]),
             env: { HOME: homeDir },
             stdin: "piped",
             stdout: "piped",
             stderr: "piped",
-        }).spawn();
+            cwd: getCwd(),
+        });
         const reader = child.stdout.getReader();
         await reader.read();
         const reporter = new UsageReporter();
@@ -348,11 +379,11 @@ console.log(JSON.stringify(await appendWorkflowMetric(Deno.args[0], Deno.args[1]
         reader.releaseLock();
         await child.stderr.cancel();
         assertEquals((await child.status).code, 0);
-        assertEquals((await Deno.readTextFile(path)).includes("stale"), false);
+        assertEquals((await fsReadFile(path, "utf8")).includes("stale"), false);
     });
 });
 
-Deno.test("an execution recorder cannot restore late usage after clear", async () => {
+test("an execution recorder cannot restore late usage after clear", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const recorder = new ExecutionMetricsRecorder({ projectRoot, userInitiated: true });
         await recorder.recordExecutionStart();
@@ -366,21 +397,23 @@ Deno.test("an execution recorder cannot restore late usage after clear", async (
             costUsd: 4,
         });
         await recorder.settleExecution();
-        assertEquals((await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).includes("model_usage"), false);
+        assertEquals(
+            (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).includes("model_usage"),
+            false,
+        );
     });
 });
 
 const gitFixture = defineCommittedGitFixture();
-Deno.test("worktree aliases report a Project once and no unauthorized root is read", async () => {
+test("worktree aliases report a Project once and no unauthorized root is read", async () => {
     await withWorkflowMetricsFixture(async () => {
         const root = await gitFixture.checkout();
         const worktree = `${root}-linked`;
         try {
-            const result = await new Deno.Command("git", {
+            const result = await captureForegroundProcess("git", {
                 args: ["-C", root, "worktree", "add", "-b", "linked", worktree],
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+                cwd: getCwd(),
+            });
             assertEquals(result.code, 0);
             await journal(root, [enabled, usage("2026-11-01T16:00:00Z"), watermark]);
             const report = new UsageReporter().query([root, worktree], period, zone);
@@ -388,34 +421,33 @@ Deno.test("worktree aliases report a Project once and no unauthorized root is re
             assertEquals(report.totals.tokens.value, 19);
             assertEquals(new UsageReporter().query([], period, zone).totals.tokens.value, 0);
         } finally {
-            await Deno.remove(worktree, { recursive: true }).catch(() => {});
-            await Deno.remove(root, { recursive: true });
+            await fsRm(worktree, { recursive: true }).catch(() => {});
+            await fsRm(root, { recursive: true });
         }
     });
 });
 
-Deno.test("invalid calendar ranges and time zones fail explicitly", () => {
+test("invalid calendar ranges and time zones fail explicitly", () => {
     const reporter = new UsageReporter();
     assertThrows(() => reporter.query([], { start: "2026-02-30", end: "2026-03-02" }, zone));
     assertThrows(() => reporter.query([], period, "not-a-timezone"));
     assertThrows(() => reporter.query([], { start: "2026-01-02", end: "2026-01-01" }, zone));
 });
 
-Deno.test("reporting and retention glossary requirements exist in owning documents", async () => {
-    const prd = await Deno.readTextFile(new URL("../../../docs/prd/runwield-core-prd.md", import.meta.url));
-    const glossary = await Deno.readTextFile(new URL("../../../docs/domain-language.md", import.meta.url));
-    for (
-        const text of [
-            "usage-measurement-and-export",
-            "Report collected usage",
-            "Keep and clear measurement history",
-            "Usage gap",
-        ]
-    ) assert(prd.includes(text), text);
+test("reporting and retention glossary requirements exist in owning documents", async () => {
+    const prd = await fsReadFile(new URL("../../../docs/prd/runwield-core-prd.md", import.meta.url), "utf8");
+    const glossary = await fsReadFile(new URL("../../../docs/domain-language.md", import.meta.url), "utf8");
+    for (const text of [
+        "usage-measurement-and-export",
+        "Report collected usage",
+        "Keep and clear measurement history",
+        "Usage gap",
+    ])
+        assert(prd.includes(text), text);
     for (const text of ["**Active day**", "**Usage gap**"]) assert(glossary.includes(text), text);
 });
 
-Deno.test("cache observes another reporter's clear and missing classification is excluded", async () => {
+test("cache observes another reporter's clear and missing classification is excluded", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -436,28 +468,32 @@ Deno.test("cache observes another reporter's clear and missing classification is
     });
 });
 
-Deno.test("interrupted clear hides old rows and the next writer completes deletion", async () => {
+test("interrupted clear hides old rows and the next writer completes deletion", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
-        const first = await recordWorkflowMetric({
-            v: 2,
-            category: "command",
-            event: "command_started",
-            recorderId: "test",
-            seq: 0,
-            command: "help",
-        }, projectRoot);
+        const first = await recordWorkflowMetric(
+            {
+                v: 2,
+                category: "command",
+                event: "command_started",
+                recorderId: "test",
+                seq: 0,
+                command: "help",
+            },
+            projectRoot,
+        );
         assert(first.persisted);
         const path = getWorkflowMetricsFilePath(projectRoot);
-        const state = JSON.parse(await Deno.readTextFile(join(dirname(path), "state.json")));
-        const marker = JSON.stringify({
-            v: 1,
-            event: "history_epoch",
-            historyEpoch: "fresh",
-            enabled: true,
-            collectionEpoch: state.collectionEpoch.id,
-            ts: "2026-11-01T16:00:00Z",
-        }) + "\n";
-        await Deno.writeTextFile(
+        const state = JSON.parse(await fsReadFile(join(dirname(path), "state.json"), "utf8"));
+        const marker =
+            JSON.stringify({
+                v: 1,
+                event: "history_epoch",
+                historyEpoch: "fresh",
+                enabled: true,
+                collectionEpoch: state.collectionEpoch.id,
+                ts: "2026-11-01T16:00:00Z",
+            }) + "\n";
+        await fsWriteFile(
             join(dirname(path), "clear.json"),
             JSON.stringify({
                 state: {
@@ -474,27 +510,32 @@ Deno.test("interrupted clear hides old rows and the next writer completes deleti
         assertEquals(fenced.projects[0].coverage.unavailable, true);
         assertEquals(fenced.projects[0].links, []);
         assert(
-            (await recordWorkflowMetric({
-                v: 2,
-                category: "command",
-                event: "command_started",
-                recorderId: "test",
-                seq: 1,
-                command: "help",
-            }, projectRoot)).persisted,
+            (
+                await recordWorkflowMetric(
+                    {
+                        v: 2,
+                        category: "command",
+                        event: "command_started",
+                        recorderId: "test",
+                        seq: 1,
+                        command: "help",
+                    },
+                    projectRoot,
+                )
+            ).persisted,
         );
-        const saved = await Deno.readTextFile(path);
+        const saved = await fsReadFile(path, "utf8");
         assertEquals(saved.includes(first.eventId!), false);
         assert(saved.includes('"historyEpoch":"fresh"'));
         assertEquals(new UsageReporter().query([projectRoot], period, zone).projects[0].coverage.unavailable, false);
     });
 });
 
-Deno.test("disk failure stays fail-open with explicit unavailable report and failed clear", async () => {
+test("disk failure stays fail-open with explicit unavailable report and failed clear", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const metricsDirectory = join(homeDir, ".wld", "workflow-metrics");
-        await Deno.mkdir(join(homeDir, ".wld"), { recursive: true });
-        await Deno.writeTextFile(metricsDirectory, "blocks storage");
+        await fsMkdir(join(homeDir, ".wld"), { recursive: true });
+        await fsWriteFile(metricsDirectory, "blocks storage");
         assertEquals(
             (await recordWorkflowMetric({ category: "command", event: "help" }, projectRoot)).persisted,
             false,
@@ -505,7 +546,7 @@ Deno.test("disk failure stays fail-open with explicit unavailable report and fai
     });
 });
 
-Deno.test("reported zero, included-cache tokens and unknown subtotals keep their meaning", async () => {
+test("reported zero, included-cache tokens and unknown subtotals keep their meaning", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -527,7 +568,7 @@ Deno.test("reported zero, included-cache tokens and unknown subtotals keep their
     });
 });
 
-Deno.test("ongoing is evaluated as of the requested period, not a later publication", async () => {
+test("ongoing is evaluated as of the requested period, not a later publication", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -550,18 +591,18 @@ Deno.test("ongoing is evaluated as of the requested period, not a later publicat
     });
 });
 
-Deno.test("concurrent processes report every persisted identity once across refreshes", async () => {
+test("concurrent processes report every persisted identity once across refreshes", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const script = join(projectRoot, "concurrent.ts");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             script,
             `import { recordWorkflowMetric } from ${JSON.stringify(new URL("./metrics.js", import.meta.url).href)};
-for (let seq=0;seq<6;seq++) console.log(JSON.stringify(await recordWorkflowMetric({v:2,category:"command",event:"command_started",recorderId:Deno.args[1],seq,command:"help"},Deno.args[0])));`,
+for (let seq=0;seq<6;seq++) console.log(JSON.stringify(await recordWorkflowMetric({v:2,category:"command",event:"command_started",recorderId:(await import("node:process")).argv.slice(2)[1],seq,command:"help"},(await import("node:process")).argv.slice(2)[0])));`,
         );
         const outputs = await Promise.all(
             ["a", "b"].map((id) =>
-                new Deno.Command(Deno.execPath(), {
-                    args: [
+                captureForegroundProcess(process.execPath, {
+                    args: runtimeSourceArgs([
                         "run",
                         "-A",
                         "--config",
@@ -569,18 +610,21 @@ for (let seq=0;seq<6;seq++) console.log(JSON.stringify(await recordWorkflowMetri
                         script,
                         projectRoot,
                         id,
-                    ],
+                    ]),
                     env: { HOME: homeDir },
-                    stdout: "piped",
-                    stderr: "piped",
-                }).output()
+                    cwd: getCwd(),
+                }),
             ),
         );
         const saved = outputs.flatMap((output) => {
             assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
-            return new TextDecoder().decode(output.stdout).trim().split("\n").map((line) => JSON.parse(line)).filter((
-                item,
-            ) => item.persisted).map((item) => item.eventId);
+            return new TextDecoder()
+                .decode(output.stdout)
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line))
+                .filter((item) => item.persisted)
+                .map((item) => item.eventId);
         });
         assert(saved.length > 0);
         const reporter = new UsageReporter();
@@ -591,7 +635,7 @@ for (let seq=0;seq<6;seq++) console.log(JSON.stringify(await recordWorkflowMetri
     });
 });
 
-Deno.test("incomplete operations crossing the period cannot contribute totals", async () => {
+test("incomplete operations crossing the period cannot contribute totals", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -608,16 +652,16 @@ Deno.test("incomplete operations crossing the period cannot contribute totals", 
     });
 });
 
-Deno.test("unavailable completion coverage is a gap even without a usage row", async () => {
+test("unavailable completion coverage is a gap even without a usage row", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = await journal(projectRoot, [enabled, watermark]);
-        await Deno.writeTextFile(
+        await fsWriteFile(
             path,
             JSON.stringify({
                 ...row("execution_finished", "2026-11-01T16:00:00Z", { outcome: "succeeded", executionId: "missing" }),
                 coverage: { usage: "unavailable" },
             }) + "\n",
-            { append: true },
+            { flag: "a" },
         );
         const report = new UsageReporter().query([projectRoot], period, zone);
         assertEquals(report.totals.tokens.exclusions, 1);
@@ -626,7 +670,7 @@ Deno.test("unavailable completion coverage is a gap even without a usage row", a
     });
 });
 
-Deno.test("completion timestamp, not persistence delay, assigns latency to a local day", async () => {
+test("completion timestamp, not persistence delay, assigns latency to a local day", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -637,11 +681,14 @@ Deno.test("completion timestamp, not persistence delay, assigns latency to a loc
             watermark,
         ]);
         const report = new UsageReporter().query([projectRoot], period, zone);
-        assertEquals(report.daily.map((day) => day.totals.latencyMs.value), [500, 0, 0, 0]);
+        assertEquals(
+            report.daily.map((day) => day.totals.latencyMs.value),
+            [500, 0, 0, 0],
+        );
     });
 });
 
-Deno.test("a later generic transition never reopens a terminal delivery attempt", async () => {
+test("a later generic transition never reopens a terminal delivery attempt", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -666,20 +713,20 @@ Deno.test("a later generic transition never reopens a terminal delivery attempt"
     });
 });
 
-Deno.test("oversized corrupt tails are bounded and cannot swallow later complete records", async () => {
+test("oversized corrupt tails are bounded and cannot swallow later complete records", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = await journal(projectRoot, [enabled]);
-        await Deno.writeTextFile(path, "x".repeat(2 * 1024 * 1024), { append: true });
+        await fsWriteFile(path, "x".repeat(2 * 1024 * 1024), { flag: "a" });
         const reporter = new UsageReporter();
         assertEquals(reporter.query([projectRoot], period, zone).projects[0].coverage.incompleteTail, true);
-        await Deno.writeTextFile(path, "\n" + JSON.stringify(usage("2026-11-01T16:00:00Z")) + "\n", { append: true });
+        await fsWriteFile(path, "\n" + JSON.stringify(usage("2026-11-01T16:00:00Z")) + "\n", { flag: "a" });
         const report = reporter.query([projectRoot], period, zone);
         assertEquals(report.totals.tokens.value, 19);
         assertEquals(report.projects[0].coverage.corruptLines, 1);
     });
 });
 
-Deno.test("a covered zero day begins at DST-correct local midnight", async () => {
+test("a covered zero day begins at DST-correct local midnight", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             row("collection_epoch", "2026-11-02T05:00:00Z", { v: 1, enabled: true }),
@@ -691,21 +738,21 @@ Deno.test("a covered zero day begins at DST-correct local midnight", async () =>
     });
 });
 
-Deno.test("old measurements remain readable after recording is off and targets are removed", async () => {
+test("old measurements remain readable after recording is off and targets are removed", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const target = join(projectRoot, "session.jsonl");
-        await Deno.writeTextFile(target, "private Session history\n");
+        await fsWriteFile(target, "private Session history\n");
         await journal(projectRoot, [usage("1999-01-01T12:00:00Z", { managedSessionId: "removed-session" })]);
         const reporter = new UsageReporter();
         const oldPeriod = { start: "1999-01-01", end: "1999-01-02" };
         assertEquals(reporter.query([projectRoot], oldPeriod, "UTC").totals.tokens.value, 19);
         await setCustomSetting("workflowMetrics", false, "project", projectRoot);
-        await Deno.remove(target);
+        await fsRm(target);
         assertEquals(new UsageReporter().query([projectRoot], oldPeriod, "UTC").totals.tokens.value, 19);
     });
 });
 
-Deno.test("older interactive starts disclose active-day exclusions at every aggregation level", async () => {
+test("older interactive starts disclose active-day exclusions at every aggregation level", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -715,21 +762,19 @@ Deno.test("older interactive starts disclose active-day exclusions at every aggr
             watermark,
         ]);
         const report = new UsageReporter().query([projectRoot], period, zone);
-        for (
-            const total of [
-                report.projects[0].daily[0].totals,
-                report.projects[0].totals,
-                report.daily[0].totals,
-                report.totals,
-            ]
-        ) {
+        for (const total of [
+            report.projects[0].daily[0].totals,
+            report.projects[0].totals,
+            report.daily[0].totals,
+            report.totals,
+        ]) {
             assertEquals(total.activeDays, 0);
             assertEquals(total.activeDaysExclusions, 1);
         }
     });
 });
 
-Deno.test("partial numeric token observations retain subtotals with exclusions", async () => {
+test("partial numeric token observations retain subtotals with exclusions", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -739,15 +784,13 @@ Deno.test("partial numeric token observations retain subtotals with exclusions",
             watermark,
         ]);
         const report = new UsageReporter().query([projectRoot], period, zone);
-        for (
-            const total of [
-                report.totals,
-                report.projects[0].totals,
-                report.daily[0].totals,
-                report.backends[0].totals,
-                report.models[0].totals,
-            ]
-        ) {
+        for (const total of [
+            report.totals,
+            report.projects[0].totals,
+            report.daily[0].totals,
+            report.backends[0].totals,
+            report.models[0].totals,
+        ]) {
             assertEquals(total.inputTokens, { value: 10, exclusions: 1 });
             assertEquals(total.outputTokens, { value: 2, exclusions: 1 });
             assertEquals(total.cacheReadTokens, { value: 3, exclusions: 1 });
@@ -758,7 +801,7 @@ Deno.test("partial numeric token observations retain subtotals with exclusions",
     });
 });
 
-Deno.test("backend and model subtotals disclose incomplete usage and latency exclusions", async () => {
+test("backend and model subtotals disclose incomplete usage and latency exclusions", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,
@@ -781,15 +824,13 @@ Deno.test("backend and model subtotals disclose incomplete usage and latency exc
             watermark,
         ]);
         const report = new UsageReporter().query([projectRoot], period, zone);
-        for (
-            const total of [
-                report.totals,
-                report.projects[0].backends[0].totals,
-                report.projects[0].models[0].totals,
-                report.backends[0].totals,
-                report.models[0].totals,
-            ]
-        ) {
+        for (const total of [
+            report.totals,
+            report.projects[0].backends[0].totals,
+            report.projects[0].models[0].totals,
+            report.backends[0].totals,
+            report.models[0].totals,
+        ]) {
             assertEquals(total.tokens, { value: 19, exclusions: 1 });
             assertEquals(total.inputTokens, { value: 10, exclusions: 1 });
             assertEquals(total.outputTokens, { value: 2, exclusions: 1 });
@@ -802,7 +843,7 @@ Deno.test("backend and model subtotals disclose incomplete usage and latency exc
     });
 });
 
-Deno.test("new cache-exclusive CLI rows count known cache tokens while old unknown rows stay excluded", async () => {
+test("new cache-exclusive CLI rows count known cache tokens while old unknown rows stay excluded", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         await journal(projectRoot, [
             enabled,

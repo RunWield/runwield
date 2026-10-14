@@ -80,18 +80,16 @@ test("runSessionCommand formats the Runtime session-info projection", async () =
     });
 
     const plain = messages.join("\n");
-    for (
-        const expected of [
-            "Session compacted 1 time",
-            "Deep Work",
-            "/tmp/session.jsonl",
-            "session-123",
-            "96,000/128,000 (75.0%)",
-            "1,775",
-            "Compaction Usage (separate from assistant tokens)",
-            "unavailable",
-        ]
-    ) {
+    for (const expected of [
+        "Session compacted 1 time",
+        "Deep Work",
+        "/tmp/session.jsonl",
+        "session-123",
+        "96,000/128,000 (75.0%)",
+        "1,775",
+        "Compaction Usage (separate from assistant tokens)",
+        "unavailable",
+    ]) {
         assertEquals(plain.includes(expected), true);
     }
 });

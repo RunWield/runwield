@@ -1,3 +1,4 @@
+import { mkdir as fsMkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,22 +12,24 @@ async function createFixture() {
     const projects = ["RunWield", "Notes", "Archived Project"];
     for (const [index, name] of projects.entries()) {
         const projectRoot = join(root, name);
-        await Deno.mkdir(projectRoot);
+        await fsMkdir(projectRoot);
         const project = store.registerProject({ root: projectRoot, displayName: name });
         if (index === 2) {
             store.setProjectEnabled(project.projectId, false);
             continue;
         }
         const path = getWorkflowMetricsFilePath(store.requireEnabledProjectRoot(project.projectId));
-        await Deno.mkdir(dirname(path), { recursive: true });
+        await fsMkdir(dirname(path), { recursive: true });
         const now = Date.now();
-        const rows = [{
-            v: 1,
-            event: "collection_epoch",
-            enabled: true,
-            ts: new Date(now - 31 * 86400000).toISOString(),
-            eventId: crypto.randomUUID(),
-        }];
+        const rows = [
+            {
+                v: 1,
+                event: "collection_epoch",
+                enabled: true,
+                ts: new Date(now - 31 * 86400000).toISOString(),
+                eventId: crypto.randomUUID(),
+            },
+        ];
         const observations = [];
         for (let day = 29; day >= 1; day--) {
             const ts = new Date(now - day * 86400000).toISOString();
@@ -55,13 +58,19 @@ async function createFixture() {
         }
         await writeFile(
             path,
-            [...rows, ...observations, {
-                v: 1,
-                event: "collection_epoch",
-                enabled: true,
-                ts: new Date(now).toISOString(),
-                eventId: crypto.randomUUID(),
-            }].map((row) => JSON.stringify(row)).join("\n") + "\n",
+            [
+                ...rows,
+                ...observations,
+                {
+                    v: 1,
+                    event: "collection_epoch",
+                    enabled: true,
+                    ts: new Date(now).toISOString(),
+                    eventId: crypto.randomUUID(),
+                },
+            ]
+                .map((row) => JSON.stringify(row))
+                .join("\n") + "\n",
         );
     }
     return store;

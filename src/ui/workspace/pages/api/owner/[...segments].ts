@@ -25,7 +25,9 @@ function pageValue(url: URL, name: string, fallback: number) {
 }
 
 function routeSegments(context: { params: { segments?: string } }) {
-    return String(context.params.segments || "").split("/").filter(Boolean);
+    return String(context.params.segments || "")
+        .split("/")
+        .filter(Boolean);
 }
 
 function devOperationSnapshot(operationId: string) {
@@ -118,19 +120,19 @@ export const GET = async ({ request, params }: { request: Request; params: { seg
             return json(
                 segments[1] === DEV_OWNER_SECOND_PROJECT.projectId
                     ? {
-                        sessions: [],
-                        diagnostics: [],
-                        page: 0,
-                        pageSize: pageValue(url, "pageSize", 30),
-                        total: 0,
-                        hasNext: false,
-                        hasPrevious: false,
-                    }
+                          sessions: [],
+                          diagnostics: [],
+                          page: 0,
+                          pageSize: pageValue(url, "pageSize", 30),
+                          total: 0,
+                          hasNext: false,
+                          hasPrevious: false,
+                      }
                     : devOwnerSessionPage(
-                        pageValue(url, "page", 0),
-                        pageValue(url, "pageSize", 30),
-                        url.searchParams.get("archiveState") === "archived",
-                    ),
+                          pageValue(url, "page", 0),
+                          pageValue(url, "pageSize", 30),
+                          url.searchParams.get("archiveState") === "archived",
+                      ),
             );
         }
         if (segments[2] === "sessions" && segments[4] === "timeline") {
@@ -153,8 +155,11 @@ export const POST = async ({ request, params }: { request: Request; params: { se
     if (!import.meta.env.DEV) return json({ error: "Not found." }, 404);
     const segments = routeSegments({ params });
     if (
-        segments[0] === "projects" && segments[1] === DEV_OWNER_PROJECT.projectId && segments[2] === "sessions" &&
-        segments.length === 5 && ["archive", "unarchive"].includes(segments[4])
+        segments[0] === "projects" &&
+        segments[1] === DEV_OWNER_PROJECT.projectId &&
+        segments[2] === "sessions" &&
+        segments.length === 5 &&
+        ["archive", "unarchive"].includes(segments[4])
     ) {
         const body = await request.json().catch(() => ({}));
         const result = devOwnerSetSessionArchive(segments[3], segments[4] === "archive", body.confirmed === true);
@@ -162,11 +167,14 @@ export const POST = async ({ request, params }: { request: Request; params: { se
     }
     if (segments.join("/") === "search/refresh") return json({ refreshed: true });
     if (segments.join("/") === "pairing/request") {
-        return json({
-            code: "DEV123",
-            expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-            state: "pending",
-        }, 201);
+        return json(
+            {
+                code: "DEV123",
+                expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+                state: "pending",
+            },
+            201,
+        );
     }
     if (segments.join("/") === "pairing/claim") return json({ paired: true, device: DEV_OWNER_DEVICE }, 201);
     if (segments.join("/") === "projects") return json({ project: DEV_OWNER_PROJECT }, 201);

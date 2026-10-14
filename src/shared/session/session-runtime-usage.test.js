@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { createSessionRuntimeEvent, normalizeRuntimeUsage, RuntimeEventTypes } from "./session-runtime-events.js";
 
 const unavailable = {
@@ -9,13 +10,13 @@ const unavailable = {
     costUsd: null,
 };
 
-Deno.test("Runtime usage preserves absent measurements", () => {
+test("Runtime usage preserves absent measurements", () => {
     for (const source of [undefined, null, {}, { cost: {} }]) {
         assertEquals(normalizeRuntimeUsage(source), unavailable);
     }
 });
 
-Deno.test("Runtime usage distinguishes supplied zero from absent categories", () => {
+test("Runtime usage distinguishes supplied zero from absent categories", () => {
     assertEquals(normalizeRuntimeUsage({ input: 7, output: 0, cost: { total: 0 } }), {
         ...unavailable,
         inputTokens: 7,
@@ -30,7 +31,7 @@ Deno.test("Runtime usage distinguishes supplied zero from absent categories", ()
     });
 });
 
-Deno.test("Runtime usage does not report invalid numbers as measurements", () => {
+test("Runtime usage does not report invalid numbers as measurements", () => {
     for (const value of [-1, Infinity, -Infinity, NaN, "0", false, ""]) {
         assertEquals(
             normalizeRuntimeUsage({
@@ -46,14 +47,14 @@ Deno.test("Runtime usage does not report invalid numbers as measurements", () =>
     }
 });
 
-Deno.test("Runtime usage events accept unavailable and measured zero fields", () => {
+test("Runtime usage events accept unavailable and measured zero fields", () => {
     const usage = { ...unavailable, inputTokens: 0, outputTokens: 3 };
     const event = createSessionRuntimeEvent("session-usage", { type: RuntimeEventTypes.USAGE, usage });
     if (event.type !== RuntimeEventTypes.USAGE) throw new Error("unexpected event type");
     assertEquals(event.usage, usage);
 });
 
-Deno.test("Runtime usage events reject missing and invalid measurements", () => {
+test("Runtime usage events reject missing and invalid measurements", () => {
     for (const field of Object.keys(unavailable)) {
         for (const value of [undefined, -1, NaN, Infinity, -Infinity, "0", false]) {
             assertThrows(

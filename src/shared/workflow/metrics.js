@@ -95,7 +95,9 @@ export async function hashMetricCwd(value) {
     if (cached) return cached;
     const bytes = new TextEncoder().encode(value);
     const digest = await crypto.subtle.digest("SHA-256", bytes);
-    const hash = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const hash = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
     cwdHashCache.set(value, hash);
     return hash;
 }
@@ -147,9 +149,10 @@ function sanitizeMetricValue(key, value) {
         return value.length > MAX_STRING_LENGTH ? `${value.slice(0, MAX_STRING_LENGTH)}…` : value;
     }
     if (Array.isArray(value)) {
-        return value.slice(0, MAX_ARRAY_LENGTH).map((item) => sanitizeMetricValue(key, item)).filter((item) =>
-            item !== undefined
-        );
+        return value
+            .slice(0, MAX_ARRAY_LENGTH)
+            .map((item) => sanitizeMetricValue(key, item))
+            .filter((item) => item !== undefined);
     }
     if (isPlainObject(value)) {
         /** @type {{[key: string]: SafeMetricDetails}} */
@@ -727,13 +730,16 @@ let metricsWriteQueue = Promise.resolve();
 function waitForMetrics(pending, timeoutMs) {
     return new Promise((resolve) => {
         const timer = setTimeout(resolve, timeoutMs);
-        void pending.then(() => {
-            clearTimeout(timer);
-            resolve();
-        }, () => {
-            clearTimeout(timer);
-            resolve();
-        });
+        void pending.then(
+            () => {
+                clearTimeout(timer);
+                resolve();
+            },
+            () => {
+                clearTimeout(timer);
+                resolve();
+            },
+        );
     });
 }
 
@@ -756,12 +762,14 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
     /** @type {Record<string, unknown>} */
     const record = {
         v: 2,
-        ts: typeof metric.ts === "string" && Number.isFinite(Date.parse(metric.ts))
-            ? new Date(metric.ts).toISOString()
-            : new Date().toISOString(),
-        eventId: typeof metric.eventId === "string" && V2_IDENTIFIER.test(metric.eventId)
-            ? metric.eventId
-            : crypto.randomUUID(),
+        ts:
+            typeof metric.ts === "string" && Number.isFinite(Date.parse(metric.ts))
+                ? new Date(metric.ts).toISOString()
+                : new Date().toISOString(),
+        eventId:
+            typeof metric.eventId === "string" && V2_IDENTIFIER.test(metric.eventId)
+                ? metric.eventId
+                : crypto.randomUUID(),
         recorderId: metric.recorderId,
         seq,
         event,
@@ -806,15 +814,15 @@ function sanitizeV2MetricRecord(metric, cwdHash) {
             if (typeof value === "boolean" || value === null) record[key] = value;
         } else if (key === "coverage" && isPlainObject(value)) {
             record.coverage = Object.fromEntries(
-                ["tools", "usage", "context"].filter((part) =>
-                    typeof value[part] === "string" && V2_ENUMS.availability.has(value[part])
-                ).map((part) => [part, value[part]]),
+                ["tools", "usage", "context"]
+                    .filter((part) => typeof value[part] === "string" && V2_ENUMS.availability.has(value[part]))
+                    .map((part) => [part, value[part]]),
             );
         } else if (key === "staticCategoryCounts" && isPlainObject(value)) {
             record.staticCategoryCounts = Object.fromEntries(
-                ["systemTokens", "toolsTokens", "messagesTokens"].filter((part) =>
-                    allowNonNegativeInteger(value[part]) !== undefined
-                ).map((part) => [part, value[part]]),
+                ["systemTokens", "toolsTokens", "messagesTokens"]
+                    .filter((part) => allowNonNegativeInteger(value[part]) !== undefined)
+                    .map((part) => [part, value[part]]),
             );
         } else if (key === "unavailableReason") {
             if (value === null || value === "not_reported" || value === "source_unavailable") record[key] = value;
@@ -848,16 +856,19 @@ export async function recordWorkflowMetric(metric, cwd) {
         const filePath = getWorkflowMetricsFilePath(projectRoot);
         const epochState = resolveCollectionEpoch(filePath, isWorkflowMetricsEnabled(resolvedSetting));
         const invocation = {
-            enabled: metric.persisted === false && typeof metric.collectionEnabledAtCall === "boolean"
-                ? metric.collectionEnabledAtCall
-                : isWorkflowMetricsEnabled(resolvedSetting),
-            epoch: metric.persisted === false && typeof metric.collectionEpoch === "string"
-                ? metric.collectionEpoch
-                : epochState.collectionEpoch.id,
+            enabled:
+                metric.persisted === false && typeof metric.collectionEnabledAtCall === "boolean"
+                    ? metric.collectionEnabledAtCall
+                    : isWorkflowMetricsEnabled(resolvedSetting),
+            epoch:
+                metric.persisted === false && typeof metric.collectionEpoch === "string"
+                    ? metric.collectionEpoch
+                    : epochState.collectionEpoch.id,
             historyEpoch: typeof metric.historyEpoch === "string" ? metric.historyEpoch : epochState.historyEpoch,
-            deadline: typeof metric.persistenceDeadline === "number"
-                ? Math.min(Date.now() + 1000, metric.persistenceDeadline)
-                : Date.now() + 1000,
+            deadline:
+                typeof metric.persistenceDeadline === "number"
+                    ? Math.min(Date.now() + 1000, metric.persistenceDeadline)
+                    : Date.now() + 1000,
         };
         const cwdHash = await hashMetricCwd(projectRoot);
 
@@ -867,9 +878,10 @@ export async function recordWorkflowMetric(metric, cwd) {
             if (!record) return { persisted: false, reason: "invalid_record" };
         } else {
             const eventName = typeof metric.event === "string" ? metric.event : "";
-            const categoryName = typeof metric.category === "string"
-                ? /** @type {WorkflowMetricCategory} */ (metric.category)
-                : "execution";
+            const categoryName =
+                typeof metric.category === "string"
+                    ? /** @type {WorkflowMetricCategory} */ (metric.category)
+                    : "execution";
             const dedicatedFrontendEvent = DEDICATED_FRONTEND_EVENTS.has(eventName);
             const dedicatedDetails = dedicatedFrontendEvent
                 ? sanitizeDedicatedFrontendMetricDetails(eventName, metric.details)
@@ -885,15 +897,20 @@ export async function recordWorkflowMetric(metric, cwd) {
                 ...(!dedicatedFrontendEvent && metric.planName ? { planName: String(metric.planName) } : {}),
                 ...(!dedicatedFrontendEvent && metric.agentName ? { agentName: String(metric.agentName) } : {}),
                 ...(dedicatedFrontendEvent
-                    ? dedicatedDetails !== undefined ? { details: dedicatedDetails } : {}
+                    ? dedicatedDetails !== undefined
+                        ? { details: dedicatedDetails }
+                        : {}
                     : metric.details !== undefined
-                    ? { details: sanitizeMetricDetails(metric.details) }
-                    : {}),
+                      ? { details: sanitizeMetricDetails(metric.details) }
+                      : {}),
             };
         }
 
         const pending = metricsWriteQueue.then(() => appendWorkflowMetric(filePath, projectRoot, record, invocation));
-        metricsWriteQueue = pending.then(() => {}, () => {});
+        metricsWriteQueue = pending.then(
+            () => {},
+            () => {},
+        );
         return await pending;
     } catch {
         return { persisted: false, reason: "storage_failure" };
@@ -975,12 +992,15 @@ export function classifyToolSubUsage(toolName, args = undefined) {
 export function recordToolCallStarted(toolCallId, toolName, args, cwd, agentName) {
     const subUsage = classifyToolSubUsage(toolName, args);
     activeToolCalls.set(toolCallId, { subUsage, startedAt: Date.now() });
-    return recordWorkflowMetric({
-        category: "tool_usage",
-        event: "tool_call_started",
-        agentName,
-        details: { toolName, subUsage },
-    }, cwd);
+    return recordWorkflowMetric(
+        {
+            category: "tool_usage",
+            event: "tool_call_started",
+            agentName,
+            details: { toolName, subUsage },
+        },
+        cwd,
+    );
 }
 
 /**
@@ -995,17 +1015,20 @@ export function recordToolCallFinished(toolCallId, toolName, isError, cwd, agent
     const started = activeToolCalls.get(toolCallId);
     activeToolCalls.delete(toolCallId);
     const now = Date.now();
-    return recordWorkflowMetric({
-        category: "tool_usage",
-        event: "tool_call_finished",
-        agentName,
-        details: {
-            toolName,
-            subUsage: started?.subUsage || classifyToolSubUsage(toolName),
-            isError,
-            durationMs: started ? now - started.startedAt : undefined,
+    return recordWorkflowMetric(
+        {
+            category: "tool_usage",
+            event: "tool_call_finished",
+            agentName,
+            details: {
+                toolName,
+                subUsage: started?.subUsage || classifyToolSubUsage(toolName),
+                isError,
+                durationMs: started ? now - started.startedAt : undefined,
+            },
         },
-    }, cwd);
+        cwd,
+    );
 }
 
 /**
@@ -1026,9 +1049,11 @@ export function recordToolCallFinished(toolCallId, toolName, isError, cwd, agent
  */
 export function readLegacyWorkflowMetric(record) {
     if (
-        record.v !== 1 || !Number.isFinite(Date.parse(record.ts)) ||
+        record.v !== 1 ||
+        !Number.isFinite(Date.parse(record.ts)) ||
         ["collection_epoch", "history_epoch", "measurement_gap"].includes(record.event)
-    ) return null;
+    )
+        return null;
     return {
         timestamp: record.ts,
         event: /^[a-z][a-z0-9_]{0,80}$/.test(record.event) ? record.event : "legacy",

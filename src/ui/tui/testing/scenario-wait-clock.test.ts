@@ -1,5 +1,10 @@
-import { assertEquals } from "@std/assert";
-import { join, toFileUrl } from "@std/path";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
+import { assertEquals } from "../../../testing/assertions.ts";
+
+import { pathToFileURL as toFileUrl } from "node:url";
 import { runGoldenScenarioChildProcess } from "./child-protocol.js";
 
 const cases = [
@@ -16,15 +21,15 @@ const cases = [
 ];
 
 for (const testCase of cases) {
-    Deno.test(`Golden ${testCase.action} tolerates a forward wall-clock adjustment`, async () => {
-        const root = await Deno.makeTempDir({ prefix: "golden-wait-clock-" });
+    test(`Golden ${testCase.action} tolerates a forward wall-clock adjustment`, async () => {
+        const root = await fsMkdtemp(join(tmpdir(), "golden-wait-clock-"));
         const path = join(root, "scenario.ts");
         try {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 path,
-                `import { ${testCase.exportName} as base } from ${
-                    JSON.stringify(new URL(testCase.module, import.meta.url).href)
-                };
+                `import { ${testCase.exportName} as base } from ${JSON.stringify(
+                    new URL(testCase.module, import.meta.url).href,
+                )};
 const now = Date.now;
 export const scenario = {
     ...base,
@@ -46,7 +51,7 @@ export const scenario = {
             });
             assertEquals(result.result.actor.remaining, []);
         } finally {
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 }

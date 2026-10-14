@@ -105,18 +105,18 @@ export function UsageReport() {
         }
         setLoading(true);
         setError("");
-        void fetch(`/api/owner/usage?${params}`, { cache: "no-store", signal: controller.signal }).then(
-            async (response) => {
+        void fetch(`/api/owner/usage?${params}`, { cache: "no-store", signal: controller.signal })
+            .then(async (response) => {
                 if (!response.ok) {
                     const failure: { error?: string } = await response.json();
                     throw new Error(failure.error || "Usage could not be loaded.");
                 }
                 const next: OwnerUsageReport = await response.json();
                 if (!controller.signal.aborted) setReport(next);
-            },
-        ).catch((caught: Error) => {
-            if (!controller.signal.aborted) setError(caught.message);
-        })
+            })
+            .catch((caught: Error) => {
+                if (!controller.signal.aborted) setError(caught.message);
+            })
             .finally(() => {
                 if (!controller.signal.aborted) setLoading(false);
             });
@@ -137,7 +137,8 @@ export function UsageReport() {
                 }}
             >
                 <label>
-                    Period<select
+                    Period
+                    <select
                         value={custom ? "custom" : preset}
                         onChange={(event) => {
                             if (event.target.value === "custom") {
@@ -158,7 +159,8 @@ export function UsageReport() {
                     </select>
                 </label>
                 <label>
-                    Project<select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                    Project
+                    <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
                         <option value="">All enabled Projects</option>
                         {report?.availableProjects.map((project) => (
                             <option key={project.projectId} value={project.projectId}>
@@ -170,7 +172,8 @@ export function UsageReport() {
                 {custom && (
                     <>
                         <label>
-                            From<input
+                            From
+                            <input
                                 type="date"
                                 required
                                 value={start}
@@ -180,7 +183,8 @@ export function UsageReport() {
                             />
                         </label>
                         <label>
-                            Until (exclusive)<input
+                            Until (exclusive)
+                            <input
                                 type="date"
                                 required
                                 value={end}
@@ -210,7 +214,8 @@ export function UsageReport() {
                     <p className="rw-usage-context">
                         {report.period.start} to {report.period.end} (exclusive) · Host time zone:{" "}
                         <strong>{report.timeZone}</strong>
-                        <br />Recorded through: {report.recordedThrough || "No recorded measurements"}
+                        <br />
+                        Recorded through: {report.recordedThrough || "No recorded measurements"}
                     </p>
                     <dl className="rw-usage-summary">
                         <div>
@@ -247,9 +252,9 @@ export function UsageReport() {
                     <div className="rw-usage-coverage">
                         <h2>Coverage</h2>
                         <p>
-                            {Object.entries(report.coverage.gapDays).map(([reason, days]) =>
-                                `${days} days: ${reason.replaceAll("_", " ")}`
-                            ).join(" · ") || "No recorded gaps in this period."}
+                            {Object.entries(report.coverage.gapDays)
+                                .map(([reason, days]) => `${days} days: ${reason.replaceAll("_", " ")}`)
+                                .join(" · ") || "No recorded gaps in this period."}
                         </p>
                         <p>
                             {report.coverage.incompleteOperations} pending measurements ·{" "}
@@ -257,16 +262,19 @@ export function UsageReport() {
                             {report.coverage.unavailableProjects} unreadable measurement journals
                         </p>
                         <p>
-                            Reported cost:{" "}
-                            <Measure measure={totals.reportedCostUsd} cost />. Estimates are not billing totals. Gaps
-                            are not zero activity.
+                            Reported cost: <Measure measure={totals.reportedCostUsd} cost />. Estimates are not billing
+                            totals. Gaps are not zero activity.
                         </p>
                         {report.excludedProjects.length > 0 && (
                             <p>
                                 Excluded Projects:{" "}
-                                {report.excludedProjects.map((project) =>
-                                    `${project.displayName || project.rootLabel} (${project.exclusionReason})`
-                                ).join(", ")}. Their measurements are not included.
+                                {report.excludedProjects
+                                    .map(
+                                        (project) =>
+                                            `${project.displayName || project.rootLabel} (${project.exclusionReason})`,
+                                    )
+                                    .join(", ")}
+                                . Their measurements are not included.
                             </p>
                         )}
                     </div>
@@ -305,16 +313,16 @@ export function UsageReport() {
                                                 </td>
                                                 <td>
                                                     {day.gaps.length
-                                                        ? (day.totals.estimatedCostUsd.value > 0
-                                                            ? `Known subtotal: ${
-                                                                money.format(day.totals.estimatedCostUsd.value)
-                                                            }`
-                                                            : "—")
+                                                        ? day.totals.estimatedCostUsd.value > 0
+                                                            ? `Known subtotal: ${money.format(
+                                                                  day.totals.estimatedCostUsd.value,
+                                                              )}`
+                                                            : "—"
                                                         : money.format(day.totals.estimatedCostUsd.value)}
                                                     {day.totals.estimatedCostUsd.exclusions > 0 && (
                                                         <small>
-                                                            {day.totals.estimatedCostUsd.exclusions}{" "}
-                                                            observations excluded
+                                                            {day.totals.estimatedCostUsd.exclusions} observations
+                                                            excluded
                                                         </small>
                                                     )}
                                                 </td>
@@ -356,7 +364,8 @@ export function UsageReport() {
                         caption="By Project"
                         rows={report.projects.map((project) => ({
                             key: project.projectId,
-                            label: project.aliases.map((alias) => alias.label).join(" / ") +
+                            label:
+                                project.aliases.map((alias) => alias.label).join(" / ") +
                                 (project.aliases.length > 1 ? " (shared history)" : ""),
                             totals: project.totals,
                             links: [...project.links, ...project.incomplete, ...project.ongoing],

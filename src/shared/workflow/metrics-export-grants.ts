@@ -1,5 +1,6 @@
+import { realpathSync, statSync, readFileSync } from "node:fs";
 /** Owner consent, transport credentials, and host-local reference identity. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import { type InstalledMetricsExporter, resolveApprovedMetricsExporters } from "../extensions/metrics-exporter.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
@@ -71,14 +72,22 @@ export function grantMatchesExporter(
     grant: MetricsExportDestinationGrant,
     exporter: InstalledMetricsExporter,
 ): boolean {
-    return exporter.approved && grant.exporterId === exporter.id && grant.exporterSource === exporter.source &&
-        grant.exporterInstalledPath === exporter.installedPath && grant.exporterVersion === exporter.version;
+    return (
+        exporter.approved &&
+        grant.exporterId === exporter.id &&
+        grant.exporterSource === exporter.source &&
+        grant.exporterInstalledPath === exporter.installedPath &&
+        grant.exporterVersion === exporter.version
+    );
 }
 function validateEndpoint(input: MetricsExportGrantInput): string {
     const url = new URL(input.endpoint);
     const loopback = ["127.0.0.1", "[::1]", "localhost"].includes(url.hostname);
     if (
-        url.username || url.password || url.hash || (url.protocol !== "https:" &&
+        url.username ||
+        url.password ||
+        url.hash ||
+        (url.protocol !== "https:" &&
             !(url.protocol === "http:" && loopback && input.allowInsecureLocalEndpoint === true))
     ) {
         throw new Error("Export endpoint requires HTTPS, or explicit loopback HTTP permission");
@@ -86,14 +95,14 @@ function validateEndpoint(input: MetricsExportGrantInput): string {
     return url.href;
 }
 async function projectStart(root: string): Promise<MetricsExportProjectStart> {
-    const projectRoot = Deno.realPathSync(resolvePrimaryCheckoutRoot(Deno.realPathSync(root)));
+    const projectRoot = realpathSync(resolvePrimaryCheckoutRoot(realpathSync(root)));
     const path = getWorkflowMetricsFilePath(projectRoot);
     return await withWorkflowMetricJournalLock(path, (historyEpoch) => {
         let offset = 0;
         try {
-            offset = Deno.statSync(path).size;
+            offset = statSync(path).size;
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
         return { projectRoot, historyEpoch, offset };
     });
@@ -110,24 +119,25 @@ export async function grantMetricsExportDestination(
 /** Caller holds the configuration lock through reading consent and capturing starts. */
 async function saveDestinationGrant(input: MetricsExportGrantInput): Promise<MetricsExportDestinationGrant> {
     const endpoint = validateEndpoint(input);
-    const exporter = (await resolveApprovedMetricsExporters()).find((e) =>
-        e.id === input.exporterId && e.source === input.exporterSource
+    const exporter = (await resolveApprovedMetricsExporters()).find(
+        (e) => e.id === input.exporterId && e.source === input.exporterSource,
     );
     if (!exporter) throw new Error("Metrics exporter is not installed and approved");
     const saved = readMetricsExportGrants();
     const previous = saved.find((g) => g.destinationId === input.destinationId);
     const destinationId = input.destinationId ?? crypto.randomUUID();
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(destinationId)) throw new Error("Invalid destination ID");
-    const preserve = previous && previous.endpoint === endpoint &&
+    const preserve =
+        previous &&
+        previous.endpoint === endpoint &&
         previous.externalProject === input.externalProject &&
         grantMatchesExporter(previous, exporter);
     const projects: MetricsExportProjectStart[] = [];
     for (const root of input.projectRoots) {
-        const canonical = Deno.realPathSync(resolvePrimaryCheckoutRoot(Deno.realPathSync(root)));
+        const canonical = realpathSync(resolvePrimaryCheckoutRoot(realpathSync(root)));
         if (projects.some((p) => p.projectRoot === canonical)) continue;
         projects.push(
-            (preserve && previous.projects.find((p) => p.projectRoot === canonical)) ||
-                await projectStart(canonical),
+            (preserve && previous.projects.find((p) => p.projectRoot === canonical)) || (await projectStart(canonical)),
         );
     }
     const grant: MetricsExportDestinationGrant = {
@@ -167,9 +177,9 @@ export async function revokeMetricsExportDestination(destinationId: string): Pro
 }
 function readCredentialFile(): CredentialFile {
     try {
-        return JSON.parse(Deno.readTextFileSync(join(metricsExportDirectory(), "credentials.json")));
+        return JSON.parse(readFileSync(join(metricsExportDirectory(), "credentials.json"), "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return {};
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
         throw new Error("Export credentials are unavailable");
     }
 }
@@ -201,14 +211,16 @@ export async function readMetricsExportHostIdentity(): Promise<MetricsExportHost
     return await withExportConfigurationLock(() => {
         const path = join(metricsExportDirectory(), "host.json");
         try {
-            return JSON.parse(Deno.readTextFileSync(path));
+            return JSON.parse(readFileSync(path, "utf8"));
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw new Error("Export identity is unavailable");
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
+                throw new Error("Export identity is unavailable");
         }
         const identity = {
             ownerRef: crypto.randomUUID(),
-            referenceKey: Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0"))
-                .join(""),
+            referenceKey: Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
+                b.toString(16).padStart(2, "0"),
+            ).join(""),
         };
         replaceExportFile(path, JSON.stringify(identity));
         return identity;

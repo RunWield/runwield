@@ -1,5 +1,12 @@
-import { assert, assertEquals } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { getCwd } from "../../constants.js";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { test } from "node:test";
+import { readFile as fsReadFile, mkdir as fsMkdir, writeFile as fsWriteFile, rm as fsRm } from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { setCustomSetting } from "../settings.js";
 import { findById } from "../worktree-registry.js";
@@ -11,7 +18,7 @@ import { advanceStoredPublication, cleanupStoredPublication } from "./publicatio
 import { makePublicationOutcomeFixture } from "./testing/publication-outcome-fixture.ts";
 
 for (const early of [false, true]) {
-    Deno.test(`confirmed publication is counted once through ${early ? "early" : "full"} cleanup`, async () => {
+    test(`confirmed publication is counted once through ${early ? "early" : "full"} cleanup`, async () => {
         await withWorkflowMetricsFixture(async (metrics) => {
             const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
             try {
@@ -33,9 +40,9 @@ for (const early of [false, true]) {
                     workflowOutcomeEventId("publication_confirmed", attempt.attemptId),
                 );
                 assertEquals(publications[0].planId, "plan-demo");
-                const before = await Deno.readTextFile(getWorkflowMetricsFilePath(metrics.projectRoot));
+                const before = await fsReadFile(getWorkflowMetricsFilePath(metrics.projectRoot), "utf8");
                 assert((await cleanupStoredPublication(metrics.projectRoot, cleanup.attempt)).complete);
-                assertEquals(await Deno.readTextFile(getWorkflowMetricsFilePath(metrics.projectRoot)), before);
+                assertEquals(await fsReadFile(getWorkflowMetricsFilePath(metrics.projectRoot), "utf8"), before);
             } finally {
                 await fixture.dispose();
             }
@@ -44,7 +51,7 @@ for (const early of [false, true]) {
 }
 
 for (const failure of ["disabled", "unwritable"]) {
-    Deno.test(`publication completes with incomplete coverage when measurement is ${failure}`, async () => {
+    test(`publication completes with incomplete coverage when measurement is ${failure}`, async () => {
         await withWorkflowMetricsFixture(async (metrics) => {
             const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
             try {
@@ -53,8 +60,8 @@ for (const failure of ["disabled", "unwritable"]) {
                     await setCustomSetting("workflowMetrics", false, "project", metrics.projectRoot);
                 } else {
                     const file = getWorkflowMetricsFilePath(metrics.projectRoot);
-                    await Deno.mkdir(dirname(file), { recursive: true });
-                    await Deno.mkdir(file); // A directory at the file path fails on every host, including root.
+                    await fsMkdir(dirname(file), { recursive: true });
+                    await fsMkdir(file); // A directory at the file path fails on every host, including root.
                 }
                 assert((await cleanupStoredPublication(metrics.projectRoot, attempt)).complete);
                 assertEquals(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }), null);
@@ -72,26 +79,25 @@ for (const failure of ["disabled", "unwritable"]) {
 }
 
 for (const boundary of ["before", "after"]) {
-    Deno.test(`fresh-process death ${boundary} observation preserves only observed publication`, async () => {
+    test(`fresh-process death ${boundary} observation preserves only observed publication`, async () => {
         await withWorkflowMetricsFixture(async (metrics) => {
             const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
             try {
                 const attempt = await fixture.confirm();
-                const output = await new Deno.Command(Deno.execPath(), {
-                    args: [
+                const output = await captureForegroundProcess(process.execPath, {
+                    args: runtimeSourceArgs([
                         "run",
                         "-A",
                         new URL("./testing/publication-outcome-process-driver.ts", import.meta.url).pathname,
                         metrics.projectRoot,
                         boundary,
-                    ],
-                    stdout: "piped",
-                    stderr: "piped",
-                }).output();
+                    ]),
+                    cwd: getCwd(),
+                });
                 assert(!output.success, new TextDecoder().decode(output.stderr));
                 assert(await findById(metrics.projectRoot, attempt.attemptId, { migrate: false }));
-                const publications = (await metrics.readMetrics()).filter((row) =>
-                    row.event === "publication_confirmed"
+                const publications = (await metrics.readMetrics()).filter(
+                    (row) => row.event === "publication_confirmed",
                 );
                 assertEquals(publications.length, boundary === "after" ? 1 : 0);
                 const record = await readControllerRecord(metrics.projectRoot, {
@@ -102,17 +108,16 @@ for (const boundary of ["before", "after"]) {
                     record?.state.publicationObservation?.coverage,
                     boundary === "after" ? "complete" : "unverified",
                 );
-                const resumed = await new Deno.Command(Deno.execPath(), {
-                    args: [
+                const resumed = await captureForegroundProcess(process.execPath, {
+                    args: runtimeSourceArgs([
                         "run",
                         "-A",
                         new URL("./testing/publication-outcome-process-driver.ts", import.meta.url).pathname,
                         metrics.projectRoot,
                         "resume",
-                    ],
-                    stdout: "piped",
-                    stderr: "piped",
-                }).output();
+                    ]),
+                    cwd: getCwd(),
+                });
                 assert(resumed.success, new TextDecoder().decode(resumed.stderr));
                 assertEquals(
                     (await metrics.readMetrics()).filter((row) => row.event === "publication_confirmed").length,
@@ -126,12 +131,12 @@ for (const boundary of ["before", "after"]) {
     });
 }
 
-Deno.test("confirmed publication is observed even when cleanup keeps user files", async () => {
+test("confirmed publication is observed even when cleanup keeps user files", async () => {
     await withWorkflowMetricsFixture(async (metrics) => {
         const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
         try {
             const attempt = await fixture.confirm();
-            await Deno.writeTextFile(join(fixture.executionCwd, "feature.txt"), "user edit\n");
+            await fsWriteFile(join(fixture.executionCwd, "feature.txt"), "user edit\n");
             const result = await cleanupStoredPublication(metrics.projectRoot, attempt);
             assertEquals(result.complete, false);
             assertEquals(result.worktreeKept, true);
@@ -145,7 +150,7 @@ Deno.test("confirmed publication is observed even when cleanup keeps user files"
     });
 });
 
-Deno.test("repeat cleanup preserves saved publication coverage after collection is disabled", async () => {
+test("repeat cleanup preserves saved publication coverage after collection is disabled", async () => {
     await withWorkflowMetricsFixture(async (metrics) => {
         const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
         try {
@@ -166,23 +171,23 @@ Deno.test("repeat cleanup preserves saved publication coverage after collection 
     });
 });
 
-Deno.test("a lost journal checkpoint recovers stable publication identity without recounting", async () => {
+test("a lost journal checkpoint recovers stable publication identity without recounting", async () => {
     await withWorkflowMetricsFixture(async (metrics) => {
         const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
         try {
             const cleanup = await cleanupStoredPublication(metrics.projectRoot, await fixture.confirm());
             const file = getWorkflowMetricsFilePath(metrics.projectRoot);
-            const before = await Deno.readTextFile(file);
-            await Deno.remove(join(dirname(file), "state.json"));
+            const before = await fsReadFile(file, "utf8");
+            await fsRm(join(dirname(file), "state.json"));
             assert((await cleanupStoredPublication(metrics.projectRoot, cleanup.attempt)).complete);
-            assertEquals(await Deno.readTextFile(file), before);
+            assertEquals(await fsReadFile(file, "utf8"), before);
         } finally {
             await fixture.dispose();
         }
     });
 });
 
-Deno.test("restart cleanup cannot restore a publication removed by clear", async () => {
+test("restart cleanup cannot restore a publication removed by clear", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, homeDir }) => {
         const fixture = await makePublicationOutcomeFixture(projectRoot);
         try {
@@ -191,17 +196,17 @@ Deno.test("restart cleanup cannot restore a publication removed by clear", async
             const reporter = new UsageReporter();
             assert((await reporter.clear([projectRoot]))[0].persisted);
             const path = getWorkflowMetricsFilePath(projectRoot);
-            const cleared = await Deno.readTextFile(path);
+            const cleared = await fsReadFile(path, "utf8");
             const script = join(projectRoot, "restart-cleanup.ts");
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 script,
-                `import { cleanupStoredPublication } from ${
-                    JSON.stringify(new URL("./publication-machine.ts", import.meta.url).href)
-                };
-console.log(JSON.stringify(await cleanupStoredPublication(Deno.args[0], JSON.parse(Deno.args[1]))));`,
+                `import { cleanupStoredPublication } from ${JSON.stringify(
+                    new URL("./publication-machine.ts", import.meta.url).href,
+                )};
+console.log(JSON.stringify(await cleanupStoredPublication((await import("node:process")).argv.slice(2)[0], JSON.parse((await import("node:process")).argv.slice(2)[1]))));`,
             );
-            const restarted = await new Deno.Command(Deno.execPath(), {
-                args: [
+            const restarted = await captureForegroundProcess(process.execPath, {
+                args: runtimeSourceArgs([
                     "run",
                     "-A",
                     "--config",
@@ -209,13 +214,12 @@ console.log(JSON.stringify(await cleanupStoredPublication(Deno.args[0], JSON.par
                     script,
                     projectRoot,
                     JSON.stringify(cleanup.attempt),
-                ],
+                ]),
                 env: { HOME: homeDir },
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+                cwd: getCwd(),
+            });
             assert(restarted.success, new TextDecoder().decode(restarted.stderr));
-            assertEquals(await Deno.readTextFile(path), cleared);
+            assertEquals(await fsReadFile(path, "utf8"), cleared);
         } finally {
             await fixture.dispose();
         }

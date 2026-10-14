@@ -37,9 +37,10 @@ export async function finalizePlanImplementation({
         throw new Error(`Cannot complete ${planName}: durable execution context is missing.`);
     }
 
-    const planCwd = executionContext.executionMode === "worktree" && executionContext.executionCwd
-        ? executionContext.executionCwd
-        : projectRoot;
+    const planCwd =
+        executionContext.executionMode === "worktree" && executionContext.executionCwd
+            ? executionContext.executionCwd
+            : projectRoot;
     let currentPlan = await (async () => {
         try {
             return await loadPlan(planCwd, planName);
@@ -163,7 +164,7 @@ export async function finalizePlanImplementation({
         throw new Error(transition.message || `Implementation checkpoint did not commit for ${planName}.`);
     }
     acknowledgeImplementationCompletion(hostedSession);
-    const transitionValue = /** @type {{ value?: { implementationCommit?: string } }} */ (transition.value);
+    const transitionValue = /** @type {{ value?: { implementationCommit?: string } }} */ transition.value;
     const implementationCommit = transitionValue.value?.implementationCommit;
     await recordWorkflowOutcome(projectRoot, {
         category: "execution",

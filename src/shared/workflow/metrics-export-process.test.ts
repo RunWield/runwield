@@ -1,5 +1,17 @@
-import { assert, assertEquals } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { open as fsOpen } from "node:fs/promises";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { getCwd } from "../../constants.js";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { readFile as fsReadFile, rename as fsRename, rm as fsRm } from "node:fs/promises";
+import process from "node:process";
+import { test } from "node:test";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { type MetricsExportFixture, withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import { setCustomSetting } from "../settings.js";
 import { getWorkflowMetricsFilePath } from "./metrics.js";
@@ -14,8 +26,8 @@ import { exportDestinationDirectory, tryExportLock } from "./metrics-export-stor
 
 function startCycle(f: MetricsExportFixture, clockAdvance = 0) {
     const module = new URL("./metrics-export-scheduler.ts", import.meta.url).href;
-    return new Deno.Command(Deno.execPath(), {
-        args: [
+    return spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
             "eval",
             "--no-check",
             "--config",
@@ -23,34 +35,35 @@ function startCycle(f: MetricsExportFixture, clockAdvance = 0) {
             `import { runMetricsExportCycle } from ${JSON.stringify(module)};
              const now = Date.now; Date.now = () => now() + ${clockAdvance};
              await runMetricsExportCycle();`,
-        ],
+        ]),
         cwd: f.project,
         env: { HOME: f.home, WLD_TEST_SANDBOX_HOME: f.home },
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+        stdin: "null",
+    });
 }
-Deno.test("two host processes send each observation exactly once", async () => {
+test("two host processes send each observation exactly once", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         for (let i = 0; i < 4; i++) await f.record();
         const children = [startCycle(f), startCycle(f)];
-        for (const result of await Promise.all(children.map((c) => c.output()))) {
+        for (const result of await Promise.all(children.map((c) => collectProcessOutput(c)))) {
             assert(result.success, new TextDecoder().decode(result.stderr));
         }
         assertEquals(f.requests.length, 4);
         assertEquals(new Set(f.requests.map((o) => o.observationId)).size, 4);
     });
 });
-Deno.test("process loss becomes unconfirmed and restart never duplicates the request", async () => {
+test("process loss becomes unconfirmed and restart never duplicates the request", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         await f.record();
         f.hold();
         const child = startCycle(f);
         await f.waitForRequest();
-        child.kill(Deno.build.os === "windows" ? "SIGTERM" : "SIGKILL");
-        await child.output();
+        child.kill((process.platform === "win32" ? "windows" : process.platform) === "windows" ? "SIGTERM" : "SIGKILL");
+        await collectProcessOutput(child);
         f.release();
         assertEquals([...readMetricsExportLedger("fixture").values()][0].state, "sending");
         await runMetricsExportCycle();
@@ -58,24 +71,24 @@ Deno.test("process loss becomes unconfirmed and restart never duplicates the req
         assertEquals(item.state, "unconfirmed");
         assertEquals(item.code, "process_lost");
         await f.record();
-        const restarted = await startCycle(f).output();
+        const restarted = await collectProcessOutput(startCycle(f));
         assert(restarted.success);
         assertEquals(f.requests.length, 2);
     });
 });
-Deno.test("cross-Project discovery does not depend on cwd or Workspace registration", async () => {
+test("cross-Project discovery does not depend on cwd or Workspace registration", async () => {
     await withMetricsExportFixture(async (f) => {
         const other = join(f.project, "unregistered");
-        await Deno.mkdir(other);
+        await fsMkdir(other);
         await setCustomSetting("workflowMetrics", true, "project", other);
         await f.grant("/accept", [other]);
         await f.record("model_usage", undefined, other);
-        const result = await startCycle(f).output();
+        const result = await collectProcessOutput(startCycle(f));
         assert(result.success, new TextDecoder().decode(result.stderr));
         assertEquals(f.requests.length, 1);
     });
 });
-Deno.test("held journal guard prevents authorization and releases without network work", async () => {
+test("held journal guard prevents authorization and releases without network work", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         await f.record();
@@ -87,68 +100,71 @@ Deno.test("held journal guard prevents authorization and releases without networ
         assertEquals(f.requests.length, 1);
     });
 });
-Deno.test("torn ledger tails retain accepted fences through restart", async () => {
+test("torn ledger tails retain accepted fences through restart", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         await f.record();
         await runMetricsExportCycle();
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(f.home, ".wld", "metrics-export", "destinations", "fixture", "ledger.jsonl"),
             '{"partial":',
-            { append: true },
+            { flag: "a" },
         );
         await f.record();
-        assert((await startCycle(f).output()).success);
+        assert((await collectProcessOutput(startCycle(f))).success);
         assertEquals(f.requests.length, 2);
         assertEquals((await readMetricsExportStatus())[0].counts.accepted, 2);
     });
 });
 
-Deno.test("retryable payload survives restart and resumes only after its saved backoff", async () => {
+test("retryable payload survives restart and resumes only after its saved backoff", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant("/503");
         await f.record();
         await runMetricsExportCycle();
-        assert((await startCycle(f).output()).success);
+        assert((await collectProcessOutput(startCycle(f))).success);
         assertEquals(f.requests.length, 1);
         const item = [...readMetricsExportLedger("fixture").values()][0];
         const advance = item.nextAttemptAt! - Date.now() + 1000;
-        assert((await startCycle(f, advance).output()).success);
+        assert((await collectProcessOutput(startCycle(f, advance))).success);
         assertEquals(f.requests.length, 2);
         assertEquals(f.requests[0], f.requests[1]);
         assertEquals([...readMetricsExportLedger("fixture").values()][0].attempts, 2);
     });
 });
-Deno.test("restart retains eligible open executions across incremental journal scans", async () => {
+test("restart retains eligible open executions across incremental journal scans", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.record();
         await f.grant();
         await f.record("execution_started", "open");
-        assert((await startCycle(f).output()).success);
+        assert((await collectProcessOutput(startCycle(f))).success);
         await f.record("model_usage", "open");
-        assert((await startCycle(f).output()).success);
+        assert((await collectProcessOutput(startCycle(f))).success);
         await f.record("execution_finished", "open");
-        assert((await startCycle(f).output()).success);
-        assertEquals(f.requests.map((o) => o.kind), ["model_usage", "execution_finished"]);
+        assert((await collectProcessOutput(startCycle(f))).success);
+        assertEquals(
+            f.requests.map((o) => o.kind),
+            ["model_usage", "execution_finished"],
+        );
     });
 });
 
-Deno.test({
-    name: "shutdown cancels stalled package inventory and releases destination ownership",
-    ignore: Deno.build.os === "windows",
-    async fn() {
+test(
+    "shutdown cancels stalled package inventory and releases destination ownership",
+    { skip: (process.platform === "win32" ? "windows" : process.platform) === "windows" },
+    async () => {
         await withMetricsExportFixture(async (f) => {
             await f.grant();
             await f.record();
             const manifest = join(f.packageRoot, "package.json");
             const original = manifest + ".original";
-            const contents = await Deno.readTextFile(manifest);
-            await Deno.rename(manifest, original);
-            assert((await new Deno.Command("mkfifo", { args: [manifest] }).output()).success);
+            const contents = await fsReadFile(manifest, "utf8");
+            await fsRename(manifest, original);
+            assert((await captureForegroundProcess("mkfifo", { args: [manifest], cwd: getCwd() })).success);
             const stop = startMetricsExportScheduler();
             // Opening the writer proves that inventory opened the reader. Keep it
             // open without bytes or EOF so the real package read cannot complete.
-            const writer = await Deno.open(manifest, { write: true });
+            const writer = await fsOpen(manifest, "w");
             try {
                 const start = Date.now();
                 await stop();
@@ -159,13 +175,13 @@ Deno.test({
                 assertEquals(f.requests, []);
             } finally {
                 await stop();
-                await Deno.remove(manifest);
-                await Deno.rename(original, manifest);
-                writer.writeSync(new TextEncoder().encode(contents));
-                writer.close();
+                await fsRm(manifest);
+                await fsRename(original, manifest);
+                await writer.write(new TextEncoder().encode(contents));
+                await writer.close();
                 // Let the canceled, read-only inventory finish against the restored package.
                 await new Promise((resolve) => setTimeout(resolve, 100));
             }
         });
     },
-});
+);

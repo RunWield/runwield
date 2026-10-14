@@ -28,9 +28,11 @@ function requireMeasurement(value: number | null | undefined, name: string): num
 }
 
 export function encodeGuidedReviewUsageEvent(usage: GuidedReviewUsage): string {
-    return `${GUIDED_REVIEW_EVENT_PREFIX}${
-        JSON.stringify({ version: GUIDED_REVIEW_USAGE_VERSION, type: "usage", usage })
-    }\n`;
+    return `${GUIDED_REVIEW_EVENT_PREFIX}${JSON.stringify({
+        version: GUIDED_REVIEW_USAGE_VERSION,
+        type: "usage",
+        usage,
+    })}\n`;
 }
 
 export function parseGuidedReviewUsageEventLine(line: string): GuidedReviewUsageEvent | null {
@@ -76,8 +78,11 @@ export function parseGuidedReviewMetadataLine(line: string): GuidedReviewMetadat
     if (!line.startsWith(GUIDED_REVIEW_METADATA_PREFIX)) return null;
     const metadata: Partial<GuidedReviewMetadata> = JSON.parse(line.slice(GUIDED_REVIEW_METADATA_PREFIX.length));
     if (
-        !metadata || typeof metadata.provider !== "string" || !metadata.provider ||
-        typeof metadata.model !== "string" || !metadata.model ||
+        !metadata ||
+        typeof metadata.provider !== "string" ||
+        !metadata.provider ||
+        typeof metadata.model !== "string" ||
+        !metadata.model ||
         (metadata.thinkingLevel !== undefined && typeof metadata.thinkingLevel !== "string")
     ) {
         throw new Error("Malformed Guided Review metadata: expected provider, model, and optional thinkingLevel.");

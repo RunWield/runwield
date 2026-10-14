@@ -1,5 +1,11 @@
-import { assert } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../shared/http-server.ts";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp } from "node:fs/promises";
+import { join } from "node:path";
+import { realpath as fsRealpath, mkdir as fsMkdir, writeFile as fsWriteFile, rm as fsRm } from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 import { __resetSettingsForTests, setCustomSetting } from "../shared/settings.js";
 import { approveMetricsExporter, listInstalledMetricsExporters } from "../shared/extensions/metrics-exporter.ts";
@@ -15,7 +21,7 @@ export const FIXTURE_EXPORTER = `
 export async function deliver(o, c) {
   if (!Object.isFrozen(o) || !Object.isFrozen(o.fields)) throw new Error('observation must be immutable');
   const path = new URL(c.endpoint).pathname;
-  if (path === '/exit') Deno.exit(23);
+  if (path === '/exit') (await import("node:process")).exit(23);
   if (path === '/throw') throw new Error('credential-secret-do-not-log');
   if (path === '/hang') await new Promise(() => {});
   if (path === '/malformed') return { outcome: 'magic', code: c.credentials.secretKey };
@@ -47,15 +53,15 @@ export interface MetricsExportFixture {
 }
 export async function withMetricsExportFixture(run: (fixture: MetricsExportFixture) => Promise<void>): Promise<void> {
     await withProcessGlobalTestLock(async () => {
-        const root = await Deno.realPath(await Deno.makeTempDir({ prefix: "metrics-export-" }));
+        const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "metrics-export-")));
         const home = join(root, "home");
         const project = join(root, "project");
         const packageRoot = join(root, "package");
-        for (const directory of [home, project, packageRoot]) await Deno.mkdir(directory);
-        const oldHome = Deno.env.get("HOME");
-        const oldSandbox = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        Deno.env.set("HOME", home);
-        Deno.env.set("WLD_TEST_SANDBOX_HOME", home);
+        for (const directory of [home, project, packageRoot]) await fsMkdir(directory);
+        const oldHome = process.env["HOME"];
+        const oldSandbox = process.env["WLD_TEST_SANDBOX_HOME"];
+        process.env["HOME"] = home;
+        process.env["WLD_TEST_SANDBOX_HOME"] = home;
         __resetSettingsForTests();
         const requests: MetricsExportObservation[] = [];
         const confirmations: MetricsExportObservation[] = [];
@@ -72,51 +78,54 @@ export async function withMetricsExportFixture(run: (fixture: MetricsExportFixtu
         const arrived = new Promise<void>((resolve) => {
             requestArrived = resolve;
         });
-        const server = Deno.serve({
-            hostname: "127.0.0.1",
-            port: 0,
-            onListen() {},
-            onError: () => new Response(null, { status: 500 }),
-        }, async (request) => {
-            const path = new URL(request.url).pathname;
-            const body: MetricsExportObservation = await request.json();
-            if (path.endsWith("/confirm")) {
-                confirmations.push(body);
-                confirmationArrived();
-                if (confirmationHeld) await confirmationHeld;
-                return new Response(
-                    path.startsWith("/present") || path.startsWith("/drop-present")
-                        ? "present"
-                        : path.startsWith("/mismatch")
-                        ? "mismatch"
-                        : "not_found_yet",
+        const server = serveHttp(
+            {
+                hostname: "127.0.0.1",
+                port: 0,
+                onListen() {},
+                onError: () => new Response(null, { status: 500 }),
+            },
+            async (request) => {
+                const path = new URL(request.url).pathname;
+                const body: MetricsExportObservation = await request.json();
+                if (path.endsWith("/confirm")) {
+                    confirmations.push(body);
+                    confirmationArrived();
+                    if (confirmationHeld) await confirmationHeld;
+                    return new Response(
+                        path.startsWith("/present") || path.startsWith("/drop-present")
+                            ? "present"
+                            : path.startsWith("/mismatch")
+                              ? "mismatch"
+                              : "not_found_yet",
+                    );
+                }
+                // This is a durability acceptance check, not a replacement for Core's ledger.
+                assert(
+                    [...readMetricsExportLedger("fixture").values()].some((item) => item.state === "sending"),
+                    "intent must exist before I/O",
                 );
-            }
-            // This is a durability acceptance check, not a replacement for Core's ledger.
-            assert(
-                [...readMetricsExportLedger("fixture").values()].some((item) => item.state === "sending"),
-                "intent must exist before I/O",
-            );
-            requests.push(body);
-            headers.push(request.headers.get("authorization") ?? "");
-            requestArrived();
-            if (held) await held;
-            if (path.startsWith("/drop")) {
-                return new Response(
-                    new ReadableStream({
-                        start(controller) {
-                            controller.enqueue(new TextEncoder().encode("accepted"));
-                            setTimeout(() => controller.error(new Error("response lost")), 20);
-                        },
-                    }),
-                );
-            }
-            return new Response("ack", {
-                status: path === "/503" ? 503 : path === "/401" ? 401 : path === "/400" ? 400 : 200,
-            });
-        });
+                requests.push(body);
+                headers.push(request.headers.get("authorization") ?? "");
+                requestArrived();
+                if (held) await held;
+                if (path.startsWith("/drop")) {
+                    return new Response(
+                        new ReadableStream({
+                            start(controller) {
+                                controller.enqueue(new TextEncoder().encode("accepted"));
+                                setTimeout(() => controller.error(new Error("response lost")), 20);
+                            },
+                        }),
+                    );
+                }
+                return new Response("ack", {
+                    status: path === "/503" ? 503 : path === "/401" ? 401 : path === "/400" ? 400 : 200,
+                });
+            },
+        );
         try {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(packageRoot, "package.json"),
                 JSON.stringify({
                     name: "fixture-exporter",
@@ -124,7 +133,7 @@ export async function withMetricsExportFixture(run: (fixture: MetricsExportFixtu
                     wld: { metricsExporter: { contract: 1, id: "fixture", entry: "exporter.js" } },
                 }),
             );
-            await Deno.writeTextFile(join(packageRoot, "exporter.js"), FIXTURE_EXPORTER);
+            await fsWriteFile(join(packageRoot, "exporter.js"), FIXTURE_EXPORTER);
             await setCustomSetting("packages", [packageRoot], "global", project);
             await setCustomSetting("workflowMetrics", true, "project", project);
             await approveMetricsExporter((await listInstalledMetricsExporters())[0]);
@@ -149,36 +158,39 @@ export async function withMetricsExportFixture(run: (fixture: MetricsExportFixtu
                         projectRoots,
                     }),
                 async record(event = "model_usage", executionId, root = project) {
-                    const result = await recordWorkflowMetric({
-                        v: 2,
-                        recorderId: "fixture",
-                        seq: seq++,
-                        eventId: crypto.randomUUID(),
-                        event,
-                        category: event.startsWith("execution_")
-                            ? "execution"
-                            : event === "tool_call_finished"
-                            ? "tool_usage"
-                            : "model_usage",
-                        executionId,
-                        sessionId: "raw-session-id",
-                        planId: "raw-plan-id",
-                        backend: "pi",
-                        provider: "fixture",
-                        model: "fixture-model",
-                        inputTokens: 4,
-                        outputTokens: 2,
-                        costAmount: 0.1,
-                        costCurrency: "USD",
-                        costSource: "reported",
-                        aggregationBasis: "turn",
-                        outcome: "succeeded",
-                        reason: "completed",
-                        elapsedMs: 10,
-                        toolName: "read",
-                        durationMs: 5,
-                    }, root);
-                    assert(result.persisted, result.reason);
+                    const result = await recordWorkflowMetric(
+                        {
+                            v: 2,
+                            recorderId: "fixture",
+                            seq: seq++,
+                            eventId: crypto.randomUUID(),
+                            event,
+                            category: event.startsWith("execution_")
+                                ? "execution"
+                                : event === "tool_call_finished"
+                                  ? "tool_usage"
+                                  : "model_usage",
+                            executionId,
+                            sessionId: "raw-session-id",
+                            planId: "raw-plan-id",
+                            backend: "pi",
+                            provider: "fixture",
+                            model: "fixture-model",
+                            inputTokens: 4,
+                            outputTokens: 2,
+                            costAmount: 0.1,
+                            costCurrency: "USD",
+                            costSource: "reported",
+                            aggregationBasis: "turn",
+                            outcome: "succeeded",
+                            reason: "completed",
+                            elapsedMs: 10,
+                            toolName: "read",
+                            durationMs: 5,
+                        },
+                        root,
+                    );
+                    assert(result.persisted, result.reason || "Metric was not persisted");
                 },
                 hold() {
                     held = new Promise<void>((resolve) => {
@@ -208,11 +220,11 @@ export async function withMetricsExportFixture(run: (fixture: MetricsExportFixtu
             releaseConfirmation();
             await server.shutdown();
             __resetSettingsForTests();
-            if (oldHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", oldHome);
-            if (oldSandbox === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", oldSandbox);
-            await Deno.remove(root, { recursive: true });
+            if (oldHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = oldHome;
+            if (oldSandbox === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = oldSandbox;
+            await fsRm(root, { recursive: true });
         }
     });
 }

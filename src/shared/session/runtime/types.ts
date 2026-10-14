@@ -166,11 +166,15 @@ export interface ManagedOperationRunFailure extends ManagedOperationFailure {
     turns: 0;
 }
 
-export function isManagedOperationFailure<T>(
-    value: T | ManagedOperationFailure,
-): value is ManagedOperationFailure {
-    return typeof value === "object" && value !== null && "ok" in value && value.ok === false &&
-        "error" in value && typeof value.error === "string";
+export function isManagedOperationFailure<T>(value: T | ManagedOperationFailure): value is ManagedOperationFailure {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "ok" in value &&
+        value.ok === false &&
+        "error" in value &&
+        typeof value.error === "string"
+    );
 }
 
 export interface ActiveSessionInfoCacheEntry {

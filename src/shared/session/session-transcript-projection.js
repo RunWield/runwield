@@ -66,8 +66,9 @@ function replayAgentDisplayName(agentName, projectRoot) {
 
 /** @param {unknown} entry @param {string | null} [segmentId] */
 function replayMeta(entry, segmentId = null) {
-    const value =
-        /** @type {{ id?: string, type?: string, timestamp?: unknown, message?: { role?: string } }} */ (entry || {});
+    const value = /** @type {{ id?: string, type?: string, timestamp?: unknown, message?: { role?: string } }} */ (
+        entry || {}
+    );
     const timestamp = normalizeReplayTimestamp(value.timestamp);
     return {
         replay: true,
@@ -118,17 +119,25 @@ function backendStatusLevel(status) {
 export function createReplayEvents(sessionId, entries, options = {}) {
     const segmentId = options.segmentId || null;
     const projectRoot = typeof options.projectRoot === "string" ? options.projectRoot : undefined;
-    const agentProjectionState = options.agentProjectionState ||
-        { agentName: null, displayName: null, hasBaseline: false };
+    const agentProjectionState = options.agentProjectionState || {
+        agentName: null,
+        displayName: null,
+        hasBaseline: false,
+    };
     /** @type {Array<Record<string, any> & { type: string, eventId: string }>} */
     const events = [];
-    const acceptedCompletions = new Set(entries.flatMap((entry) => {
-        const value = /** @type {CompletionEventEntry} */ (entry);
-        return value?.type === "custom" && value.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE &&
-                value.data?.state === "accepted" && value.data.kind === "task_completed" && value.data.toolCallId
-            ? [value.data.toolCallId]
-            : [];
-    }));
+    const acceptedCompletions = new Set(
+        entries.flatMap((entry) => {
+            const value = /** @type {CompletionEventEntry} */ (entry);
+            return value?.type === "custom" &&
+                value.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE &&
+                value.data?.state === "accepted" &&
+                value.data.kind === "task_completed" &&
+                value.data.toolCallId
+                ? [value.data.toolCallId]
+                : [];
+        }),
+    );
     /** @type {string | null} */
     let replayModel = null;
     /** @type {string | null} */
@@ -151,13 +160,14 @@ export function createReplayEvents(sessionId, entries, options = {}) {
         if (!entry || typeof entry !== "object") continue;
         const value = /** @type {any} */ (entry);
         if (
-            value.type === "custom" && value.customType === "runwield.request_attempt" &&
+            value.type === "custom" &&
+            value.customType === "runwield.request_attempt" &&
             value.data?.phase === "started"
         ) {
-            pendingGeneratedTaskId = value.data.dispatchKind === "background_task_result" &&
-                    typeof value.data.taskId === "string"
-                ? value.data.taskId
-                : "";
+            pendingGeneratedTaskId =
+                value.data.dispatchKind === "background_task_result" && typeof value.data.taskId === "string"
+                    ? value.data.taskId
+                    : "";
             continue;
         }
         if (value.type === "custom" && value.customType === "runwield.background_task_steering") {
@@ -185,8 +195,11 @@ export function createReplayEvents(sessionId, entries, options = {}) {
         const meta = replayMeta(value, segmentId);
         const common = { timestamp: normalizeReplayTimestamp(value.timestamp), _meta: meta };
         if (
-            value.type === "custom" && value.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE &&
-            value.data?.state === "accepted" && typeof value.data.kind === "string" && value.data.toolCallId
+            value.type === "custom" &&
+            value.customType === WORKFLOW_TOOL_EVENT_CUSTOM_TYPE &&
+            value.data?.state === "accepted" &&
+            typeof value.data.kind === "string" &&
+            value.data.toolCallId
         ) {
             const completion = value.data;
             const toolCallId = completion.toolCallId;
@@ -242,8 +255,9 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                     durationMs: finishReplayTool(toolCallId, common.timestamp),
                 });
                 const taskCompletedMessage =
-                    toolName === "task_completed" && toolResult.details?.outcome === "task_completed" &&
-                        typeof toolResult.details?.message === "string"
+                    toolName === "task_completed" &&
+                    toolResult.details?.outcome === "task_completed" &&
+                    typeof toolResult.details?.message === "string"
                         ? toolResult.details.message
                         : "";
                 if (taskCompletedMessage.trim()) {
@@ -263,9 +277,12 @@ export function createReplayEvents(sessionId, entries, options = {}) {
             }
             const blocks = Array.isArray(content) ? content : [{ type: "text", text: toReplayText(content) }];
             if (role === "user") {
-                const text = blocks.filter((block) => block?.type === "text").map((block) => toReplayText(block.text))
+                const text = blocks
+                    .filter((block) => block?.type === "text")
+                    .map((block) => toReplayText(block.text))
                     .join("\n");
-                const images = blocks.filter((block) => block?.type === "image" && (block.data || block.base64))
+                const images = blocks
+                    .filter((block) => block?.type === "image" && (block.data || block.base64))
                     .map((block) => ({ base64: block.data || block.base64, mimeType: block.mimeType }));
                 if (skipNextCompactNamedInvocation && text === skipNextCompactNamedInvocation) {
                     skipNextCompactNamedInvocation = "";
@@ -387,7 +404,8 @@ export function createReplayEvents(sessionId, entries, options = {}) {
                 }
             }
             if (
-                role === "assistant" && value.message?.stopReason === "error" &&
+                role === "assistant" &&
+                value.message?.stopReason === "error" &&
                 !/^(?:the signal has been aborted|aborted)$/i.test(value.message.errorMessage || "")
             ) {
                 events.push({
@@ -512,7 +530,9 @@ export function createReplayEvents(sessionId, entries, options = {}) {
 /** @param {Uint8Array} bytes */
 export async function sha256Hex(bytes) {
     const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 /**
@@ -544,13 +564,16 @@ function parseJsonlPrefix(bytes) {
     if (text.length > 0 && !text.endsWith("\n")) {
         throw new Error("Committed transcript prefix must end at a JSONL boundary");
     }
-    return text.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    return text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
 }
 
 /** @param {unknown[]} entries */
 function terminalEntryId(entries) {
     const last = entries.at(-1);
-    return last && typeof last === "object" && typeof /** @type {any} */ (last).id === "string"
+    return last && typeof last === "object" && typeof (/** @type {any} */ (last).id) === "string"
         ? /** @type {any} */ (last).id
         : null;
 }
@@ -617,13 +640,16 @@ export function summarizeResumableTranscript(entries) {
         const value = /** @type {ResumableTranscriptEntry} */ (entry);
         if (value?.type !== "message" || value.message?.role !== "user") continue;
         const content = value.message.content;
-        const text = (typeof content === "string"
-            ? content
-            : Array.isArray(content)
-            ? content.filter((block) =>
-                block?.type === "text"
-            ).map((block) => block.text || "").join("\n")
-            : "").trim();
+        const text = (
+            typeof content === "string"
+                ? content
+                : Array.isArray(content)
+                  ? content
+                        .filter((block) => block?.type === "text")
+                        .map((block) => block.text || "")
+                        .join("\n")
+                  : ""
+        ).trim();
         if (text) {
             firstMessage = text;
             break;
@@ -703,7 +729,8 @@ export function selectProjectedEventsAfterCursor(options) {
     return {
         events: selected,
         nextCursor: selected.length > 0 ? selected[selected.length - 1].eventId : options.cursorEventId || null,
-        nextCursorOrdinal: selected.length > 0 ? startIndex + selected.length - 1 : options.cursorEventOrdinal ?? null,
+        nextCursorOrdinal:
+            selected.length > 0 ? startIndex + selected.length - 1 : (options.cursorEventOrdinal ?? null),
         complete: startIndex + selected.length >= events.length,
     };
 }
@@ -711,24 +738,26 @@ export function selectProjectedEventsAfterCursor(options) {
 /** @param {unknown} error */
 export function toProjectionFailure(error) {
     const message = error instanceof Error ? error.message : String(error);
-    const code = error instanceof Error && error.name === "ProjectionContinuityError"
-        ? "cursor_missing"
-        : message.includes("digest")
-        ? "evidence_mismatch"
-        : message.includes("terminal")
-        ? "terminal_mismatch"
-        : message.includes("outside")
-        ? "invalid_transcript_path"
-        : message.includes("JSON")
-        ? "malformed_committed_prefix"
-        : "projection_failed";
+    const code =
+        error instanceof Error && error.name === "ProjectionContinuityError"
+            ? "cursor_missing"
+            : message.includes("digest")
+              ? "evidence_mismatch"
+              : message.includes("terminal")
+                ? "terminal_mismatch"
+                : message.includes("outside")
+                  ? "invalid_transcript_path"
+                  : message.includes("JSON")
+                    ? "malformed_committed_prefix"
+                    : "projection_failed";
     return {
         ok: false,
         state: "degraded",
         code,
-        message: message === "Committed generation references an ambiguous segment lineage"
-            ? message
-            : "Committed transcript projection is unavailable.",
+        message:
+            message === "Committed generation references an ambiguous segment lineage"
+                ? message
+                : "Committed transcript projection is unavailable.",
     };
 }
 
@@ -787,9 +816,8 @@ export function getCommittedTranscriptAuthorityFacts(projection) {
         tutorialContext: snapshot.tutorialContext || null,
         model: typeof snapshot.model === "string" && snapshot.model ? snapshot.model : null,
         provider: typeof snapshot.provider === "string" && snapshot.provider ? snapshot.provider : null,
-        thinkingLevel: typeof snapshot.thinkingLevel === "string" && snapshot.thinkingLevel
-            ? snapshot.thinkingLevel
-            : null,
+        thinkingLevel:
+            typeof snapshot.thinkingLevel === "string" && snapshot.thinkingLevel ? snapshot.thinkingLevel : null,
         planAssociations: Array.isArray(snapshot.planAssociations)
             ? snapshot.planAssociations.map((association) => ({ ...association }))
             : [],
@@ -946,9 +974,8 @@ export function summarizeProjectedEntries(entries) {
 
 /** @param {unknown} value @returns {string} */
 function projectedDisplayText(value) {
-    const namedInvocationText = typeof value === "object" && value !== null
-        ? namedInvocationDisplayText(/** @type {any} */ (value))
-        : "";
+    const namedInvocationText =
+        typeof value === "object" && value !== null ? namedInvocationDisplayText(/** @type {any} */ (value)) : "";
     if (namedInvocationText) return namedInvocationText;
     if (typeof value === "string") return value;
     if (Array.isArray(value)) return value.map(projectedDisplayText).filter(Boolean).join("\n");
@@ -976,9 +1003,10 @@ export function inspectProjectedTranscript(entries) {
     return {
         estimatedTokens,
         messageCount,
-        model: summary.model || summary.provider
-            ? { provider: summary.provider || "", modelId: summary.model || "" }
-            : null,
+        model:
+            summary.model || summary.provider
+                ? { provider: summary.provider || "", modelId: summary.model || "" }
+                : null,
     };
 }
 
@@ -1016,17 +1044,17 @@ export function buildProjectedSessionInfo(entries, options) {
         if (message.role === "user") {
             info.userMessages++;
             info.toolResults += Array.isArray(message.content)
-                ? message.content.filter((/** @type {any} */ block) =>
-                    block?.type === "tool_result" || block?.type === "toolResult"
-                ).length
+                ? message.content.filter(
+                      (/** @type {any} */ block) => block?.type === "tool_result" || block?.type === "toolResult",
+                  ).length
                 : 0;
         }
         if (message.role === "assistant") {
             info.assistantMessages++;
             info.toolCalls += Array.isArray(message.content)
-                ? message.content.filter((/** @type {any} */ block) =>
-                    block?.type === "tool_use" || block?.type === "toolCall"
-                ).length
+                ? message.content.filter(
+                      (/** @type {any} */ block) => block?.type === "tool_use" || block?.type === "toolCall",
+                  ).length
                 : 0;
             assistantUsage.add(normalizeRuntimeUsage(message.usage));
         }
@@ -1053,14 +1081,19 @@ export function buildProjectedSessionContextProjection(entries) {
         if (value.type !== "message" || !value.message) continue;
         tokens += estimateProjectedTextTokens(projectedDisplayText(value.message.content));
     }
-    const categories = tokens > 0
-        ? [{
-            id: /** @type {import('./session-context-report.ts').ContextCategoryId} */ ("conversation_overhead"),
-            label: "Committed conversation",
-            tokens,
-            items: [],
-        }]
-        : [];
+    const categories =
+        tokens > 0
+            ? [
+                  {
+                      id: /** @type {import('./session-context-report.ts').ContextCategoryId} */ (
+                          "conversation_overhead"
+                      ),
+                      label: "Committed conversation",
+                      tokens,
+                      items: [],
+                  },
+              ]
+            : [];
     return {
         categories,
         instructionFiles: [],
@@ -1098,24 +1131,29 @@ export async function exportProjectedTranscript(entries, options, outputPath) {
             .replaceAll('"', "&quot;")
             .replaceAll("'", "&#39;");
     let skipNextNamedInvocation = "";
-    const rows = entries.flatMap((entry) => {
-        const value = /** @type {any} */ (entry || {});
-        const namedInvocationText = namedInvocationDisplayText(value);
-        const displayText = namedInvocationText ||
-            projectedDisplayText(value.message?.content ?? value.content ?? JSON.stringify(value));
-        if (
-            skipNextNamedInvocation && value.type === "message" && value.message?.role === "user" &&
-            displayText === skipNextNamedInvocation
-        ) {
-            skipNextNamedInvocation = "";
-            return [];
-        }
-        skipNextNamedInvocation = namedInvocationText || "";
-        const text = escapeHtml(displayText);
-        return [
-            `<section class="entry"><header>${escapeHtml(value.type || "entry")}</header><pre>${text}</pre></section>`,
-        ];
-    }).join("\n");
+    const rows = entries
+        .flatMap((entry) => {
+            const value = /** @type {any} */ (entry || {});
+            const namedInvocationText = namedInvocationDisplayText(value);
+            const displayText =
+                namedInvocationText ||
+                projectedDisplayText(value.message?.content ?? value.content ?? JSON.stringify(value));
+            if (
+                skipNextNamedInvocation &&
+                value.type === "message" &&
+                value.message?.role === "user" &&
+                displayText === skipNextNamedInvocation
+            ) {
+                skipNextNamedInvocation = "";
+                return [];
+            }
+            skipNextNamedInvocation = namedInvocationText || "";
+            const text = escapeHtml(displayText);
+            return [
+                `<section class="entry"><header>${escapeHtml(value.type || "entry")}</header><pre>${text}</pre></section>`,
+            ];
+        })
+        .join("\n");
     await fsWriteFile(
         filePath,
         [

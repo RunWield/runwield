@@ -105,10 +105,9 @@ export interface DispatchPostTriageArgs {
  */
 function buildQuickFixManualQaContext(decoratedRequest: string, messages?: AgentMessage[]): string {
     const manualQaSummary = messages ? extractAssistantOutput(messages) : null;
-    return [
-        decoratedRequest,
-        manualQaSummary ? `## Implementation Summary\n${manualQaSummary}` : "",
-    ].filter(Boolean).join("\n\n");
+    return [decoratedRequest, manualQaSummary ? `## Implementation Summary\n${manualQaSummary}` : ""]
+        .filter(Boolean)
+        .join("\n\n");
 }
 
 /**
@@ -213,8 +212,7 @@ async function confirmNonGitQuickFixExecution(
         hostedSession,
         {
             type: RuntimeInteractionTypes.SELECT,
-            prompt:
-                "Git is not available for this project. RunWield recommends using Git before QUICK_FIX edits so changes can be reviewed and recovered with normal Git tools. Proceeding will modify the current files directly.",
+            prompt: "Git is not available for this project. RunWield recommends using Git before QUICK_FIX edits so changes can be reviewed and recovered with normal Git tools. Proceeding will modify the current files directly.",
             options: [
                 { value: "proceed", label: "Proceed in current files and remember for QUICK_FIX work" },
                 { value: "cancel", label: "Cancel QUICK_FIX" },
@@ -288,8 +286,11 @@ export function readLatestTriageOutcome(messages: AgentMessage[], fromIndex?: nu
     for (let i = messages.length - 1; i >= start; i--) {
         const msg = messages[i];
         if (
-            msg && "role" in msg && msg.role === "toolResult" &&
-            "toolName" in msg && msg.toolName === "triage_report"
+            msg &&
+            "role" in msg &&
+            msg.role === "toolResult" &&
+            "toolName" in msg &&
+            msg.toolName === "triage_report"
         ) {
             const toolResult = msg as AgentMessage & TriageToolResultMessage;
             const normalized = normalizeTriageOutcome(toolResult.details);
@@ -346,11 +347,15 @@ export async function dispatchPostTriage({
     const projectRoot = hostedSession.cwd;
     const recordMetric = (metric: Parameters<typeof recordWorkflowMetric>[0]) => {
         if (
-            metric.event === "feature_project_outcome" || metric.event === "operation_completed_observed" ||
+            metric.event === "feature_project_outcome" ||
+            metric.event === "operation_completed_observed" ||
             metric.event === "quick_fix_completed_observed"
         ) {
             const details = metric.details;
-            const completed = details && typeof details === "object" && "taskCompletedObserved" in details &&
+            const completed =
+                details &&
+                typeof details === "object" &&
+                "taskCompletedObserved" in details &&
                 details.taskCompletedObserved === true;
             return recordWorkflowOutcome(projectRoot, {
                 category: "execution",
@@ -377,17 +382,18 @@ export async function dispatchPostTriage({
     applyAutoSessionName(sessionManager, normalizedTriage, hostedSession);
 
     checkCanceled();
-    const dispatchTarget = normalizedTriage.routingIntent === "INQUIRY"
-        ? AGENTS.GUIDE
-        : normalizedTriage.routingIntent === "IDEATION"
-        ? AGENTS.IDEATOR
-        : normalizedTriage.routingIntent === "OPERATION"
-        ? AGENTS.OPERATOR
-        : normalizedTriage.routingIntent === "QUICK_FIX"
-        ? AGENTS.ENGINEER
-        : isPlannedChangeClassification(normalizedTriage.routingIntent)
-        ? AGENTS.PLANNER
-        : AGENTS.ARCHITECT;
+    const dispatchTarget =
+        normalizedTriage.routingIntent === "INQUIRY"
+            ? AGENTS.GUIDE
+            : normalizedTriage.routingIntent === "IDEATION"
+              ? AGENTS.IDEATOR
+              : normalizedTriage.routingIntent === "OPERATION"
+                ? AGENTS.OPERATOR
+                : normalizedTriage.routingIntent === "QUICK_FIX"
+                  ? AGENTS.ENGINEER
+                  : isPlannedChangeClassification(normalizedTriage.routingIntent)
+                    ? AGENTS.PLANNER
+                    : AGENTS.ARCHITECT;
     const decoratedRequest = buildAgentHandoffRequest(
         getAgentDisplayName(dispatchTarget, projectRoot),
         userRequest,
@@ -459,7 +465,8 @@ export async function dispatchPostTriage({
         const initialManualQaContext = buildQuickFixManualQaContext(decoratedRequest);
         const gitProbe = await probeGitRepository(projectRoot);
         if (
-            !gitProbe.ok && !hasNonGitExecutionConsent("quickFix", projectRoot) &&
+            !gitProbe.ok &&
+            !hasNonGitExecutionConsent("quickFix", projectRoot) &&
             !(await confirmNonGitQuickFixExecution(hostedSession, projectRoot))
         ) {
             emitSystemStatus(
@@ -512,12 +519,15 @@ export async function dispatchPostTriage({
         const manualQaContext = buildQuickFixManualQaContext(decoratedRequest, messages);
         const quickFixWorkflow = hostedSession.getActiveExecutionWorkflow();
         hostedSession.clearActiveExecutionWorkflow();
-        const mechanicalResult = await runMechanicalValidation({
-            hostedSession,
-            sessionManager,
-            manualQaName,
-            manualQaContext,
-        }, localCI);
+        const mechanicalResult = await runMechanicalValidation(
+            {
+                hostedSession,
+                sessionManager,
+                manualQaName,
+                manualQaContext,
+            },
+            localCI,
+        );
         if (acceptedCompletion) {
             acknowledgeTaskCompletion(hostedSession, acceptedCompletion);
         }
@@ -639,8 +649,8 @@ export async function dispatchPostTriage({
             });
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            const executionOwner = hostedSession.getActiveExecutionWorkflow()?.executionAgent ||
-                resolveExecutionOwner(decisionTriageMeta);
+            const executionOwner =
+                hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta);
             await recordMetric({
                 category: "execution",
                 event: "feature_project_outcome",
@@ -654,17 +664,18 @@ export async function dispatchPostTriage({
             });
             emitSystemStatus(
                 hostedSession,
-                `Plan execution failed: ${reason}. ${
-                    getAgentDisplayName(executionOwner, projectRoot)
-                } may need manual intervention.`,
+                `Plan execution failed: ${reason}. ${getAgentDisplayName(
+                    executionOwner,
+                    projectRoot,
+                )} may need manual intervention.`,
                 { level: "error", header: "RunWield" },
             );
             await activateAgent(executionOwner);
             return;
         }
 
-        const executionOwner = hostedSession.getActiveExecutionWorkflow()?.executionAgent ||
-            resolveExecutionOwner(decisionTriageMeta);
+        const executionOwner =
+            hostedSession.getActiveExecutionWorkflow()?.executionAgent || resolveExecutionOwner(decisionTriageMeta);
         const executionDecision = decidePostExecution(executionResult, {
             planName,
             triageMeta: decisionTriageMeta,
@@ -740,9 +751,10 @@ export async function dispatchPostTriage({
                 });
             }
         } else if (executionDecision.kind === "stay_with_agent") {
-            const nextAgentName = typeof executionDecision.payload.agentName === "string"
-                ? executionDecision.payload.agentName
-                : AGENTS.ENGINEER;
+            const nextAgentName =
+                typeof executionDecision.payload.agentName === "string"
+                    ? executionDecision.payload.agentName
+                    : AGENTS.ENGINEER;
             await recordMetric({
                 category: "execution",
                 event: "feature_project_outcome",

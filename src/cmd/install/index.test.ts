@@ -1,3 +1,7 @@
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { readFileSync, chmodSync } from "node:fs";
+import { stat as fsStat, chmod as fsChmod, readFile as fsReadFile, rename as fsRename } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { getCwd } from "../../constants.js";
@@ -85,9 +89,9 @@ async function writeFixturePackage(packageDir: string, options: InstallPackageFi
         await fsMkdir(join(packageDir, "extensions"), { recursive: true });
         await fsWriteFile(
             join(packageDir, "extensions", "index.js"),
-            `import { writeFileSync } from "node:fs";\nwriteFileSync(${
-                JSON.stringify(join(packageDir, "loaded"))
-            }, "loaded");\nexport default () => {};\n`,
+            `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(
+                join(packageDir, "loaded"),
+            )}, "loaded");\nexport default () => {};\n`,
         );
         if (options.extension === "compatible") {
             pi.wld = {
@@ -101,9 +105,9 @@ async function writeFixturePackage(packageDir: string, options: InstallPackageFi
     if (options.exporter) {
         await fsWriteFile(
             join(packageDir, "exporter.js"),
-            `import { writeFileSync } from "node:fs";\nwriteFileSync(${
-                JSON.stringify(join(packageDir, "exporter-loaded"))
-            }, "loaded");\nexport default () => {};\n`,
+            `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(
+                join(packageDir, "exporter-loaded"),
+            )}, "loaded");\nexport default () => {};\n`,
         );
     }
 
@@ -218,7 +222,7 @@ test("runInstallCommand enables a compatible local extension after consent", asy
     await withInstallCommandFixture({ extension: "compatible" }, async ({ packageDir, source }) => {
         const prompts: string[] = [];
         globalThis.prompt = (message = "") => {
-            const saved = JSON.parse(Deno.readTextFileSync(join(getSettingsDir("global"), "settings.json")));
+            const saved = JSON.parse(readFileSync(join(getSettingsDir("global"), "settings.json"), "utf8"));
             assertEquals(saved.packages[0].extensions, []);
             prompts.push(message);
             return "yes";
@@ -230,7 +234,10 @@ test("runInstallCommand enables a compatible local extension after consent", asy
         assertEquals(prompts, [`Enable extensions from ${source} for loading? [y/N] `]);
         assert(output.logs.includes("  WLD-compatible code extensions enabled: 1"));
         const installed = await resolveInstalledWldExtensionResources();
-        assertEquals(installed.map((resource) => resource.path), [join(packageDir, "extensions", "index.js")]);
+        assertEquals(
+            installed.map((resource) => resource.path),
+            [join(packageDir, "extensions", "index.js")],
+        );
         assertEquals(await markerExists(join(packageDir, "loaded")), false);
         await freshSessionLoader();
         assertEquals(await markerExists(join(packageDir, "loaded")), true);
@@ -259,10 +266,7 @@ test("runInstallCommand reports usage without terminating the test process", asy
         const output = await captureConsole(() => runInstallCommand([]));
 
         assertEquals(output.logs, []);
-        assertEquals(output.errors, [
-            "Usage: wld install <source>",
-            "Sources: npm:<spec>, git:<url>, <path>",
-        ]);
+        assertEquals(output.errors, ["Usage: wld install <source>", "Sources: npm:<spec>, git:<url>, <path>"]);
         assertEquals(process.exitCode, 1);
     });
 });
@@ -281,7 +285,7 @@ test("runInstallCommand reports a real missing local package", async () => {
 
 async function markerExists(path: string): Promise<boolean> {
     try {
-        return (await Deno.stat(path)).isFile;
+        return (await fsStat(path)).isFile();
     } catch {
         return false;
     }
@@ -293,7 +297,7 @@ async function freshSessionLoader(): Promise<DefaultResourceLoader> {
     const extensions = await resolveInstalledWldExtensionResources();
     const prompts = await resolveInstalledPackagePromptResources();
     const loader = new DefaultResourceLoader({
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         agentDir: getSettingsDir("global"),
         settingsManager: getSettingsManager(),
         noExtensions: true,
@@ -311,7 +315,7 @@ async function freshSessionLoader(): Promise<DefaultResourceLoader> {
 }
 
 for (const outcome of ["n", "true", "", null, "throw"] as const) {
-    Deno.test(`install keeps code disabled and exporter unapproved after ${String(outcome)}`, async () => {
+    test(`install keeps code disabled and exporter unapproved after ${String(outcome)}`, async () => {
         await withInstallCommandFixture(
             { extension: "compatible", passiveResources: true, exporter: true },
             async ({ packageDir }) => {
@@ -324,17 +328,27 @@ for (const outcome of ["n", "true", "", null, "throw"] as const) {
                 const loader = await freshSessionLoader();
                 assertEquals(await markerExists(join(packageDir, "loaded")), false);
                 assertEquals(await markerExists(join(packageDir, "exporter-loaded")), false);
-                assertEquals(loader.getPrompts().prompts.map((prompt) => prompt.name), ["fixture"]);
+                assertEquals(
+                    loader.getPrompts().prompts.map((prompt) => prompt.name),
+                    ["fixture"],
+                );
                 assert(getAvailableThemes().includes("fixture-install-theme"));
-                assertEquals((await listInstalledMetricsExporters()).map((exporter) => exporter.approved), [false]);
+                assertEquals(
+                    (await listInstalledMetricsExporters()).map((exporter) => exporter.approved),
+                    [false],
+                );
                 assertEquals(await resolveApprovedMetricsExporters(), []);
             },
         );
     });
 }
 
-for (const answers of [["yes", "n"], ["n", "yes"], ["yes", "yes"]]) {
-    Deno.test(`extension/exporter consent is separate: ${answers.join("/")}`, async () => {
+for (const answers of [
+    ["yes", "n"],
+    ["n", "yes"],
+    ["yes", "yes"],
+]) {
+    test(`extension/exporter consent is separate: ${answers.join("/")}`, async () => {
         await withInstallCommandFixture({ extension: "compatible", exporter: true }, async ({ packageDir }) => {
             const remaining = [...answers];
             globalThis.prompt = () => remaining.shift() || "";
@@ -350,21 +364,24 @@ for (const answers of [["yes", "n"], ["n", "yes"], ["yes", "yes"]]) {
 }
 
 for (const choice of ["enabled", "disabled", "filtered"] as const) {
-    Deno.test(`reinstall preserves ${choice} choices for relative and absolute input`, async () => {
+    test(`reinstall preserves ${choice} choices for relative and absolute input`, async () => {
         await withInstallCommandFixture(
             { extension: "compatible", passiveResources: true },
             async ({ source, projectRoot }) => {
                 const settings = getSettingsManager();
-                const entry: PackageSource = choice === "enabled" ? source : {
-                    source,
-                    extensions: choice === "disabled" ? [] : ["extensions/index.js"],
-                    themes: ["themes/*.json"],
-                    prompts: [],
-                    skills: [],
-                };
+                const entry: PackageSource =
+                    choice === "enabled"
+                        ? source
+                        : {
+                              source,
+                              extensions: choice === "disabled" ? [] : ["extensions/index.js"],
+                              themes: ["themes/*.json"],
+                              prompts: [],
+                              skills: [],
+                          };
                 const unrelated = { source: join(projectRoot, "unrelated"), extensions: [], themes: [] };
-                await Deno.mkdir(unrelated.source);
-                await Deno.writeTextFile(join(unrelated.source, "package.json"), "{}");
+                await fsMkdir(unrelated.source);
+                await fsWriteFile(join(unrelated.source, "package.json"), "{}");
                 settings.setPackages([entry, unrelated]);
                 settings.setTheme("catppuccin-mocha");
                 await settings.flush();
@@ -386,7 +403,7 @@ for (const choice of ["enabled", "disabled", "filtered"] as const) {
     });
 }
 
-Deno.test("failed physical install creates no package registration", async () => {
+test("failed physical install creates no package registration", async () => {
     await withInstallCommandFixture({ extension: "none" }, async ({ projectRoot }) => {
         await captureConsole(() => runInstallCommand([join(projectRoot, "missing")]));
         __resetSettingsForTests();
@@ -394,14 +411,14 @@ Deno.test("failed physical install creates no package registration", async () =>
     });
 });
 
-Deno.test("read-only settings fail installation without reporting executable success", async () => {
-    if (Deno.build.os === "windows") return;
+test("read-only settings fail installation without reporting executable success", async () => {
+    if ((process.platform === "win32" ? "windows" : process.platform) === "windows") return;
     await withInstallCommandFixture({ extension: "compatible", exporter: true }, async ({ packageDir }) => {
         const dir = getSettingsDir("global");
-        await Deno.mkdir(dir, { recursive: true });
-        await Deno.writeTextFile(join(dir, "settings.json"), "{}");
+        await fsMkdir(dir, { recursive: true });
+        await fsWriteFile(join(dir, "settings.json"), "{}");
         getSettingsManager();
-        await Deno.chmod(dir, 0o555);
+        await fsChmod(dir, 0o555);
         try {
             let prompts = 0;
             globalThis.prompt = () => {
@@ -410,16 +427,19 @@ Deno.test("read-only settings fail installation without reporting executable suc
             };
             const output = await captureConsole(() => runInstallCommand([packageDir]));
             assertEquals(prompts, 0);
-            assertEquals(Deno.exitCode, 1);
+            assertEquals(process.exitCode, 1);
             assert(output.errors.some((line) => line.startsWith("Installation failed:")));
-            assertEquals(output.logs.some((line) => /enabled:|approved:/.test(line)), false);
+            assertEquals(
+                output.logs.some((line) => /enabled:|approved:/.test(line)),
+                false,
+            );
         } finally {
-            await Deno.chmod(dir, 0o755);
+            await fsChmod(dir, 0o755);
         }
     });
 });
 
-Deno.test("exporter version change and removal require a new approval", async () => {
+test("exporter version change and removal require a new approval", async () => {
     await withInstallCommandFixture({ extension: "none", exporter: true }, async ({ packageDir, projectRoot }) => {
         let promptCount = 0;
         globalThis.prompt = () => {
@@ -431,9 +451,9 @@ Deno.test("exporter version change and removal require a new approval", async ()
         await runInstallCommand([packageDir]);
         assertEquals(promptCount, 1);
         const path = join(packageDir, "package.json");
-        const manifest = JSON.parse(await Deno.readTextFile(path));
+        const manifest = JSON.parse(await fsReadFile(path, "utf8"));
         manifest.version = "2.0.0";
-        await Deno.writeTextFile(path, JSON.stringify(manifest));
+        await fsWriteFile(path, JSON.stringify(manifest));
         assertEquals((await listInstalledMetricsExporters())[0].approved, false);
         await runInstallCommand([packageDir]);
         assertEquals(promptCount, 2);
@@ -453,7 +473,7 @@ async function interruptInstallAtPrompt(
 ) {
     const script = join(projectRoot, "interrupt-install.ts");
     const installUrl = new URL("./index.ts", import.meta.url).href;
-    await Deno.writeTextFile(
+    await fsWriteFile(
         script,
         `
         import { runInstallCommand } from ${JSON.stringify(installUrl)};
@@ -466,20 +486,28 @@ async function interruptInstallAtPrompt(
         await runInstallCommand([${JSON.stringify(packageDir)}]);
     `,
     );
-    const child = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "--config", new URL("../../../deno.json", import.meta.url).pathname, script],
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
+            "run",
+            "-A",
+            "--config",
+            new URL("../../../deno.json", import.meta.url).pathname,
+            script,
+        ]),
         cwd: projectRoot,
         env: { HOME: homeDir, WLD_TEST_SANDBOX_HOME: homeDir },
         stdin: "null",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const reader = child.stdout.getReader();
     const stderr = new Response(child.stderr).text();
     const timeout = setTimeout(() => {
         try {
             child.kill("SIGKILL");
-        } catch { /* already exited */ }
+        } catch {
+            /* already exited */
+        }
     }, 20000);
     let text = "";
     try {
@@ -492,8 +520,12 @@ async function interruptInstallAtPrompt(
         clearTimeout(timeout);
         try {
             child.kill("SIGKILL");
-        } catch { /* already exited */ }
-        while (!(await reader.read()).done) { /* drain */ }
+        } catch {
+            /* already exited */
+        }
+        while (!(await reader.read()).done) {
+            /* drain */
+        }
         reader.releaseLock();
         await child.status;
         await stderr;
@@ -501,7 +533,7 @@ async function interruptInstallAtPrompt(
 }
 
 for (const exporterPrompt of [false, true]) {
-    Deno.test(`killing install at the ${exporterPrompt ? "exporter" : "extension"} prompt keeps code disabled`, async () => {
+    test(`killing install at the ${exporterPrompt ? "exporter" : "extension"} prompt keeps code disabled`, async () => {
         await withInstallCommandFixture(
             { extension: "compatible", passiveResources: true, exporter: true },
             async ({ packageDir, homeDir, projectRoot }) => {
@@ -509,23 +541,29 @@ for (const exporterPrompt of [false, true]) {
                 const loader = await freshSessionLoader();
                 assertEquals(await markerExists(join(packageDir, "loaded")), false);
                 assertEquals(await markerExists(join(packageDir, "exporter-loaded")), false);
-                assertEquals(loader.getPrompts().prompts.map((prompt) => prompt.name), ["fixture"]);
+                assertEquals(
+                    loader.getPrompts().prompts.map((prompt) => prompt.name),
+                    ["fixture"],
+                );
                 assert(getAvailableThemes().includes("fixture-install-theme"));
-                assertEquals((await listInstalledMetricsExporters()).map((entry) => entry.approved), [false]);
+                assertEquals(
+                    (await listInstalledMetricsExporters()).map((entry) => entry.approved),
+                    [false],
+                );
             },
         );
     });
 }
 
-Deno.test("Session loader ignores exporter-only code in a Pi auto-discovered extensions directory", async () => {
+test("Session loader ignores exporter-only code in a Pi auto-discovered extensions directory", async () => {
     await withInstallCommandFixture({ extension: "none", exporter: true }, async ({ packageDir }) => {
-        await Deno.mkdir(join(packageDir, "extensions"));
-        await Deno.rename(join(packageDir, "exporter.js"), join(packageDir, "extensions", "exporter.js"));
+        await fsMkdir(join(packageDir, "extensions"));
+        await fsRename(join(packageDir, "exporter.js"), join(packageDir, "extensions", "exporter.js"));
         const manifestPath = join(packageDir, "package.json");
-        const manifest = JSON.parse(await Deno.readTextFile(manifestPath));
+        const manifest = JSON.parse(await fsReadFile(manifestPath, "utf8"));
         delete manifest.pi;
         manifest.wld.metricsExporter.entry = "./extensions/exporter.js";
-        await Deno.writeTextFile(manifestPath, JSON.stringify(manifest));
+        await fsWriteFile(manifestPath, JSON.stringify(manifest));
         let prompts = 0;
         globalThis.prompt = () => {
             prompts++;
@@ -539,14 +577,14 @@ Deno.test("Session loader ignores exporter-only code in a Pi auto-discovered ext
     });
 });
 
-Deno.test("acceptance saves only compatible candidate paths", async () => {
+test("acceptance saves only compatible candidate paths", async () => {
     await withInstallCommandFixture({ extension: "compatible" }, async ({ packageDir }) => {
         const incompatibleRoot = join(packageDir, "extensions");
-        await Deno.writeTextFile(join(incompatibleRoot, "untrusted.js"), "throw new Error('must not load');\n");
+        await fsWriteFile(join(incompatibleRoot, "untrusted.js"), "throw new Error('must not load');\n");
         const manifestPath = join(packageDir, "package.json");
-        const manifest = JSON.parse(await Deno.readTextFile(manifestPath));
+        const manifest = JSON.parse(await fsReadFile(manifestPath, "utf8"));
         manifest.pi.extensions = ["extensions/*.js", "!extensions/untrusted.js"];
-        await Deno.writeTextFile(manifestPath, JSON.stringify(manifest));
+        await fsWriteFile(manifestPath, JSON.stringify(manifest));
         globalThis.prompt = () => "yes";
         const output = await captureConsole(() => runInstallCommand([packageDir]));
         assertEquals(output.errors, []);
@@ -559,22 +597,25 @@ Deno.test("acceptance saves only compatible candidate paths", async () => {
 });
 
 for (const failurePrompt of ["extension", "exporter"] as const) {
-    Deno.test(`failed ${failurePrompt} approval write reports failure and saves no executable grant`, async () => {
-        if (Deno.build.os === "windows") return;
+    test(`failed ${failurePrompt} approval write reports failure and saves no executable grant`, async () => {
+        if ((process.platform === "win32" ? "windows" : process.platform) === "windows") return;
         await withInstallCommandFixture({ extension: "compatible", exporter: true }, async ({ packageDir }) => {
             const dir = getSettingsDir("global");
             globalThis.prompt = (question = "") => {
                 if (failurePrompt === "exporter" && question.startsWith("Enable")) return "n";
-                Deno.chmodSync(dir, 0o555);
+                chmodSync(dir, 0o555);
                 return "yes";
             };
             try {
                 const output = await captureConsole(() => runInstallCommand([packageDir]));
-                assertEquals(Deno.exitCode, 1);
+                assertEquals(process.exitCode, 1);
                 assert(output.errors.some((line) => line.startsWith("Installation failed:")));
-                assertEquals(output.logs.some((line) => /enabled:|approved:/.test(line)), false);
+                assertEquals(
+                    output.logs.some((line) => /enabled:|approved:/.test(line)),
+                    false,
+                );
             } finally {
-                await Deno.chmod(dir, 0o755);
+                await fsChmod(dir, 0o755);
             }
             await freshSessionLoader();
             assertEquals(await markerExists(join(packageDir, "loaded")), false);
@@ -583,7 +624,7 @@ for (const failurePrompt of ["extension", "exporter"] as const) {
     });
 }
 
-Deno.test("exporter approval accepts a trimmed single-letter yes", async () => {
+test("exporter approval accepts a trimmed single-letter yes", async () => {
     await withInstallCommandFixture({ extension: "none", exporter: true }, async ({ packageDir }) => {
         globalThis.prompt = () => " Y ";
         const output = await captureConsole(() => runInstallCommand([packageDir]));
@@ -594,7 +635,7 @@ Deno.test("exporter approval accepts a trimmed single-letter yes", async () => {
     });
 });
 
-Deno.test("package matching keeps saved npm choices even when its installed directory is absent", async () => {
+test("package matching keeps saved npm choices even when its installed directory is absent", async () => {
     await withInstallCommandFixture({ extension: "none" }, async () => {
         const settings = getSettingsManager();
         const entry = { source: "npm:fixture-not-installed@1.0.0", extensions: [], prompts: ["prompts/*.md"] };

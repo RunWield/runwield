@@ -1,5 +1,9 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { mkdir as fsMkdir, writeFile as fsWriteFile, rm as fsRm, rename as fsRename } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { queryUsageReport } from "../../shared/workflow/usage-reporting.ts";
 import { getWorkflowMetricsFilePath } from "../../shared/workflow/metrics.js";
@@ -41,14 +45,16 @@ function usage(fields: Record<string, string | number | boolean> = {}) {
 }
 async function journal(root: string, rows: FixtureRow[]) {
     const path = getWorkflowMetricsFilePath(root);
-    await Deno.mkdir(dirname(path), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(dirname(path), { recursive: true });
+    await fsWriteFile(
         path,
         [
             row("collection_epoch", "2026-08-30T00:00:00Z", { v: 1, enabled: true }),
             ...rows,
             row("collection_epoch", "2026-09-06T00:00:00Z", { v: 1, enabled: true }),
-        ].map((item) => JSON.stringify(item)).join("\n") + "\n",
+        ]
+            .map((item) => JSON.stringify(item))
+            .join("\n") + "\n",
     );
 }
 function pairedHeaders(store: ReturnType<typeof openOwnerCoordinationStore>) {
@@ -63,11 +69,11 @@ function reportUrl(projectId = "") {
     return `${origin}/api/owner/usage?${params}`;
 }
 
-Deno.test("owner usage preserves exact Core totals, mixed daily gaps, backend and model aggregates", async () => {
+test("owner usage preserves exact Core totals, mixed daily gaps, backend and model aggregates", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
         const second = join(projectRoot, "second");
-        await Deno.mkdir(second);
+        await fsMkdir(second);
         const a = store.registerProject({ root: projectRoot, displayName: "A" });
         const b = store.registerProject({ root: second, displayName: "B" });
         const roots = [a, b].map((project) => store.requireEnabledProjectRoot(project.projectId));
@@ -82,7 +88,10 @@ Deno.test("owner usage preserves exact Core totals, mixed daily gaps, backend an
             for (const key of ["totals", "daily", "backends", "models"] as const) assertEquals(result[key], core[key]);
             assertEquals(result.totals.tokens.value, 48);
             assertEquals(result.totals.estimatedCostUsd.value, 1.25);
-            assertEquals(result.daily.map((day) => day.tokens), [48, 0, null]);
+            assertEquals(
+                result.daily.map((day) => day.tokens),
+                [48, 0, null],
+            );
             assertEquals(result.recordedThrough, "2026-09-06T00:00:00Z");
             assertEquals(
                 result.projects.map((project) => project.aliases[0].projectId).sort(),
@@ -105,14 +114,14 @@ Deno.test("owner usage preserves exact Core totals, mixed daily gaps, backend an
     });
 });
 
-Deno.test("primary and worktree registrations share totals once and retain both labels", async () => {
+test("primary and worktree registrations share totals once and retain both labels", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir }) => {
         const primary = await repo.checkout();
         const worktree = `${primary}-worktree`;
-        const command = await new Deno.Command("git", {
+        const command = await captureForegroundProcess("git", {
             cwd: primary,
             args: ["worktree", "add", "-b", "usage-alias", worktree],
-        }).output();
+        });
         assertEquals(command.code, 0);
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
         const a = store.registerProject({ root: primary, displayName: "Primary" });
@@ -128,21 +137,22 @@ Deno.test("primary and worktree registrations share totals once and retain both 
             assertEquals(result.projects.length, 1);
             assertEquals(result.projects[0].aliases.map((alias) => alias.label).sort(), ["Primary", "Worktree"]);
             for (const project of [a, b]) {
-                const selected: OwnerUsageReport =
-                    await (await app.handler()(new Request(reportUrl(project.projectId), { headers }))).json();
+                const selected: OwnerUsageReport = await (
+                    await app.handler()(new Request(reportUrl(project.projectId), { headers }))
+                ).json();
                 assertEquals(selected.totals.tokens.value, 19);
                 assertEquals(selected.projects[0].projectId, project.projectId);
             }
         } finally {
             await app.close();
             store.close();
-            await Deno.remove(worktree, { recursive: true });
-            await Deno.remove(primary, { recursive: true });
+            await fsRm(worktree, { recursive: true });
+            await fsRm(primary, { recursive: true });
         }
     });
 });
 
-Deno.test("disabled, removed, unavailable and unregistered Projects cannot contribute or be queried", async () => {
+test("disabled, removed, unavailable and unregistered Projects cannot contribute or be queried", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
         const included = store.registerProject({ root: projectRoot });
@@ -150,12 +160,12 @@ Deno.test("disabled, removed, unavailable and unregistered Projects cannot contr
         const denied = [];
         for (const label of ["disabled", "removed", "unavailable"]) {
             const root = join(projectRoot, label);
-            await Deno.mkdir(root);
+            await fsMkdir(root);
             const project = store.registerProject({ root, displayName: label });
             await journal(store.requireEnabledProjectRoot(project.projectId), [usage({ inputTokens: 900 })]);
             if (label === "disabled") store.setProjectEnabled(project.projectId, false);
             if (label === "removed") store.removeProject(project.projectId);
-            if (label === "unavailable") await Deno.rename(root, `${root}-moved`);
+            if (label === "unavailable") await fsRename(root, `${root}-moved`);
             denied.push(project.projectId);
         }
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
@@ -169,7 +179,7 @@ Deno.test("disabled, removed, unavailable and unregistered Projects cannot contr
             for (const projectId of [...denied, "unregistered"]) {
                 const response = await app.handler()(new Request(reportUrl(projectId), { headers }));
                 assertEquals(response.status, 400);
-                assertEquals("totals" in await response.json(), false);
+                assertEquals("totals" in (await response.json()), false);
             }
         } finally {
             await app.close();
@@ -178,7 +188,7 @@ Deno.test("disabled, removed, unavailable and unregistered Projects cannot contr
     });
 });
 
-Deno.test("usage requires pairing and rejects invalid periods with sanitized errors", async () => {
+test("usage requires pairing and rejects invalid periods with sanitized errors", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
         store.registerProject({ root: projectRoot });
@@ -203,7 +213,7 @@ Deno.test("usage requires pairing and rejects invalid periods with sanitized err
     });
 });
 
-Deno.test("usage links use managed Session and Plan IDs and omit missing or foreign targets", async () => {
+test("usage links use managed Session and Plan IDs and omit missing or foreign targets", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const fixture = await makeManagedSessionFixture({
             home: homeDir,
@@ -219,8 +229,8 @@ Deno.test("usage links use managed Session and Plan IDs and omit missing or fore
         store.registerProject({ root: foreign.projectRoot });
         const planId = crypto.randomUUID();
         const planPath = join(projectRoot, "docs", "plans", "usage-example.md");
-        await Deno.mkdir(dirname(planPath), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(planPath), { recursive: true });
+        await fsWriteFile(
             planPath,
             `---\nplanId: "${planId}"\nstatus: draft\nclassification: PLANNED_CHANGE\n---\n# Usage Example\n`,
         );
@@ -246,9 +256,12 @@ Deno.test("usage links use managed Session and Plan IDs and omit missing or fore
             assert(foreignLink);
             assertEquals(foreignLink.sessionHref, undefined);
             assertEquals(result.totals.tokens.value, 57);
-            await Deno.remove(planPath);
+            await fsRm(planPath);
             const deleted: OwnerUsageReport = await (await app.handler()(new Request(reportUrl(), { headers }))).json();
-            assertEquals(deleted.projects.flatMap((project) => project.links).some((link) => link.planHref), false);
+            assertEquals(
+                deleted.projects.flatMap((project) => project.links).some((link) => link.planHref),
+                false,
+            );
             assertEquals(deleted.totals.tokens.value, 57);
         } finally {
             await app.close();
@@ -258,7 +271,7 @@ Deno.test("usage links use managed Session and Plan IDs and omit missing or fore
     });
 });
 
-Deno.test("pending operations do not become settled spend", async () => {
+test("pending operations do not become settled spend", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
         const project = store.registerProject({ root: projectRoot });
@@ -268,8 +281,9 @@ Deno.test("pending operations do not become settled spend", async () => {
         ]);
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store });
         try {
-            const result: OwnerUsageReport =
-                await (await app.handler()(new Request(reportUrl(), { headers: pairedHeaders(store) }))).json();
+            const result: OwnerUsageReport = await (
+                await app.handler()(new Request(reportUrl(), { headers: pairedHeaders(store) }))
+            ).json();
             assertEquals(result.totals.tokens.value, 0);
             assertEquals(result.totals.estimatedCostUsd.value, 0);
             assertEquals(result.coverage.incompleteOperations, 1);
@@ -282,13 +296,17 @@ Deno.test("pending operations do not become settled spend", async () => {
     });
 });
 
-Deno.test("shared history links resolve targets in a second authorized worktree", async () => {
+test("shared history links resolve targets in a second authorized worktree", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir }) => {
         const primary = await repo.checkout();
         const worktree = `${primary}-worktree`;
         assertEquals(
-            (await new Deno.Command("git", { cwd: primary, args: ["worktree", "add", "-b", "usage-links", worktree] })
-                .output()).code,
+            (
+                await captureForegroundProcess("git", {
+                    cwd: primary,
+                    args: ["worktree", "add", "-b", "usage-links", worktree],
+                })
+            ).code,
             0,
         );
         const store = openOwnerCoordinationStore({ dbPath: join(homeDir, "owner.sqlite3") });
@@ -300,8 +318,8 @@ Deno.test("shared history links resolve targets in a second authorized worktree"
         });
         const planId = crypto.randomUUID();
         const planPath = join(worktree, "docs", "plans", "worktree-only.md");
-        await Deno.mkdir(dirname(planPath), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(planPath), { recursive: true });
+        await fsWriteFile(
             planPath,
             `---\nplanId: "${planId}"\nstatus: draft\nclassification: PLANNED_CHANGE\n---\n# Worktree-only Plan\n`,
         );
@@ -310,8 +328,9 @@ Deno.test("shared history links resolve targets in a second authorized worktree"
         ]);
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: origin, store: fixture.store });
         try {
-            const result: OwnerUsageReport =
-                await (await app.handler()(new Request(reportUrl(), { headers: pairedHeaders(fixture.store) }))).json();
+            const result: OwnerUsageReport = await (
+                await app.handler()(new Request(reportUrl(), { headers: pairedHeaders(fixture.store) }))
+            ).json();
             assertEquals(result.projects.length, 1);
             assertEquals(result.projects[0].aliases.length, 2);
             assertEquals(result.totals.tokens.value, 19);
@@ -323,8 +342,8 @@ Deno.test("shared history links resolve targets in a second authorized worktree"
             await app.close();
             await fixture.cleanup();
             store.close();
-            await Deno.remove(worktree, { recursive: true });
-            await Deno.remove(primary, { recursive: true });
+            await fsRm(worktree, { recursive: true });
+            await fsRm(primary, { recursive: true });
         }
     });
 });

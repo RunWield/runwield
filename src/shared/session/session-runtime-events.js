@@ -362,7 +362,8 @@ function validateRuntimeValidationProgress(progress, type) {
     }
     if (value.kind === "mechanical") {
         requireRuntimeEvent(
-            value.checks.semanticReview === "skipped" && value.checks.humanReview === "skipped" &&
+            value.checks.semanticReview === "skipped" &&
+                value.checks.humanReview === "skipped" &&
                 value.checks.merge === "skipped",
             type,
             "mechanical validation must skip non-CI checks",
@@ -437,24 +438,30 @@ function validateRuntimeValidationProgress(progress, type) {
             "delivery report requires completed workflow",
         );
         requireRuntimeEvent(
-            report?.version === 1 && typeof report.planName === "string" &&
-                typeof report.heading === "string" && typeof report.settings === "string" &&
-                typeof report.workRecordFailed === "boolean" && Array.isArray(report.rows) &&
+            report?.version === 1 &&
+                typeof report.planName === "string" &&
+                typeof report.heading === "string" &&
+                typeof report.settings === "string" &&
+                typeof report.workRecordFailed === "boolean" &&
+                Array.isArray(report.rows) &&
                 Array.isArray(report.artifacts),
             type,
             "delivery report is invalid",
         );
         for (const row of report.rows) {
             requireRuntimeEvent(
-                typeof row.label === "string" && typeof row.outcome === "string" &&
-                    typeof row.detail === "string" && ["success", "warning", "neutral"].includes(row.tone),
+                typeof row.label === "string" &&
+                    typeof row.outcome === "string" &&
+                    typeof row.detail === "string" &&
+                    ["success", "warning", "neutral"].includes(row.tone),
                 type,
                 "delivery report row is invalid",
             );
         }
         for (const artifact of report.artifacts) {
             requireRuntimeEvent(
-                typeof artifact.title === "string" && typeof artifact.path === "string" &&
+                typeof artifact.title === "string" &&
+                    typeof artifact.path === "string" &&
                     ["plan", "prd", "adr", "work-record", "epic-artifact", "report"].includes(artifact.kind),
                 type,
                 "delivery report artifact is invalid",
@@ -566,8 +573,8 @@ export function assertSessionRuntimeEvent(event) {
                 requireRuntimeEvent(Array.isArray(value.content), event.type, "content must be an array");
                 for (const block of value.content) {
                     const validText = block?.type === "text" && typeof block.text === "string";
-                    const validImage = block?.type === "image" && typeof block.data === "string" &&
-                        typeof block.mimeType === "string";
+                    const validImage =
+                        block?.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string";
                     requireRuntimeEvent(validText || validImage, event.type, "content block is invalid");
                 }
                 requireRuntimeEvent(
@@ -677,7 +684,8 @@ export function assertSessionRuntimeEvent(event) {
             for (const field of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "costUsd"]) {
                 requireRuntimeEvent(
                     value.usage[field] === null ||
-                        (typeof value.usage[field] === "number" && Number.isFinite(value.usage[field]) &&
+                        (typeof value.usage[field] === "number" &&
+                            Number.isFinite(value.usage[field]) &&
                             value.usage[field] >= 0),
                     event.type,
                     `usage.${field} must be a finite nonnegative number or null`,
@@ -813,10 +821,14 @@ export function normalizeRuntimeUsage(value) {
  * @returns {string}
  */
 function removeModelOnlyImageOmissionNotes(output) {
-    return output.split("\n").filter((line) =>
-        !line.startsWith("[Image omitted:") &&
-        !line.startsWith("[Current model does not support images.")
-    ).join("\n").trimEnd();
+    return output
+        .split("\n")
+        .filter(
+            (line) =>
+                !line.startsWith("[Image omitted:") && !line.startsWith("[Current model does not support images."),
+        )
+        .join("\n")
+        .trimEnd();
 }
 
 /**
@@ -846,12 +858,17 @@ export function normalizeRuntimeToolResult(value) {
         }
         if (typeof block.text === "string") content.push({ type: "text", text: block.text });
     }
-    const details = source?.details && typeof source.details === "object"
-        ? /** @type {Record<string, unknown>} */ (source.details)
-        : null;
-    let output = details?.runwieldDisplay === "binary_display_suppressed"
-        ? ""
-        : content.filter((block) => block.type === "text").map((block) => block.text).join("");
+    const details =
+        source?.details && typeof source.details === "object"
+            ? /** @type {Record<string, unknown>} */ (source.details)
+            : null;
+    let output =
+        details?.runwieldDisplay === "binary_display_suppressed"
+            ? ""
+            : content
+                  .filter((block) => block.type === "text")
+                  .map((block) => block.text)
+                  .join("");
     if (Array.isArray(details?.runwieldDisplayImages)) {
         output = removeModelOnlyImageOmissionNotes(output);
     }
@@ -869,9 +886,10 @@ export function normalizeRuntimeToolResult(value) {
  * @returns {SessionRuntimeEvent}
  */
 export function createSessionRuntimeEvent(sessionId, event) {
-    const messageId = MESSAGE_ID_EVENT_TYPES.has(event.type) && !("messageId" in event)
-        ? `${sessionId}:${event.type}:${crypto.randomUUID()}`
-        : undefined;
+    const messageId =
+        MESSAGE_ID_EVENT_TYPES.has(event.type) && !("messageId" in event)
+            ? `${sessionId}:${event.type}:${crypto.randomUUID()}`
+            : undefined;
     const level = event.type === RuntimeEventTypes.SYSTEM_STATUS && !("level" in event) ? "info" : undefined;
     const images = event.type === RuntimeEventTypes.USER_MESSAGE && !("images" in event) ? [] : undefined;
     const runtimeEvent = /** @type {SessionRuntimeEvent} */ ({
@@ -880,9 +898,8 @@ export function createSessionRuntimeEvent(sessionId, event) {
         ...(level ? { level } : {}),
         ...(images ? { images } : {}),
         sessionId,
-        timestamp: "timestamp" in event && typeof event.timestamp === "string"
-            ? event.timestamp
-            : new Date().toISOString(),
+        timestamp:
+            "timestamp" in event && typeof event.timestamp === "string" ? event.timestamp : new Date().toISOString(),
     });
     return assertSessionRuntimeEvent(runtimeEvent);
 }

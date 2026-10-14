@@ -187,31 +187,31 @@ export type ReviewerRoundMode = "discovery" | "verify" | "integration";
 
 export type IsolatedAgentSessionRequest =
     | {
-        kind: "reviewer";
-        agentName: string;
-        userRequest: string;
-        cwd: string;
-        reviewerMode: ReviewerRoundMode;
-        customTools: OpaqueToolDefinition[];
-        sessionManager: SessionManagerHandle;
-    }
+          kind: "reviewer";
+          agentName: string;
+          userRequest: string;
+          cwd: string;
+          reviewerMode: ReviewerRoundMode;
+          customTools: OpaqueToolDefinition[];
+          sessionManager: SessionManagerHandle;
+      }
     | {
-        kind: "feedback_engineer";
-        agentName: string;
-        userRequest: string;
-        cwd: string;
-        images?: Array<{ base64: string; mimeType: string }>;
-        customTools: OpaqueToolDefinition[];
-        sessionManager?: SessionManagerHandle;
-    }
+          kind: "feedback_engineer";
+          agentName: string;
+          userRequest: string;
+          cwd: string;
+          images?: Array<{ base64: string; mimeType: string }>;
+          customTools: OpaqueToolDefinition[];
+          sessionManager?: SessionManagerHandle;
+      }
     | {
-        kind: "manual_qa";
-        agentName: string;
-        userRequest: string;
-        cwd: string;
-        customTools: OpaqueToolDefinition[];
-        sessionManager?: SessionManagerHandle;
-    };
+          kind: "manual_qa";
+          agentName: string;
+          userRequest: string;
+          cwd: string;
+          customTools: OpaqueToolDefinition[];
+          sessionManager?: SessionManagerHandle;
+      };
 
 /**
  * Typed outcome of an isolated Agent session.
@@ -222,38 +222,38 @@ export type IsolatedAgentSessionRequest =
  */
 export type IsolatedAgentSessionOutcome =
     | {
-        kind: "reviewer";
-        outcome: "completed";
-        reviewOutcome: ValidationReviewOutcome | null;
-        usedDiffTool: boolean;
-        trustedOpaqueMcpReview: boolean;
-    }
+          kind: "reviewer";
+          outcome: "completed";
+          reviewOutcome: ValidationReviewOutcome | null;
+          usedDiffTool: boolean;
+          trustedOpaqueMcpReview: boolean;
+      }
     | {
-        kind: "feedback_engineer";
-        outcome: "completed";
-        taskReport: AgentTurnOutcome;
-    }
+          kind: "feedback_engineer";
+          outcome: "completed";
+          taskReport: AgentTurnOutcome;
+      }
     | {
-        kind: "manual_qa";
-        outcome: "recorded" | "already_present" | "missing_tool_call" | "rejected";
-        relativePath?: string;
-        warning?: string;
-    }
+          kind: "manual_qa";
+          outcome: "recorded" | "already_present" | "missing_tool_call" | "rejected";
+          relativePath?: string;
+          warning?: string;
+      }
     | {
-        kind: "reviewer";
-        outcome: "operational_failure";
-        failure: ValidationOperationalFailure;
-    }
+          kind: "reviewer";
+          outcome: "operational_failure";
+          failure: ValidationOperationalFailure;
+      }
     | {
-        kind: "feedback_engineer";
-        outcome: "operational_failure";
-        failure: ValidationOperationalFailure;
-    }
+          kind: "feedback_engineer";
+          outcome: "operational_failure";
+          failure: ValidationOperationalFailure;
+      }
     | {
-        kind: "manual_qa";
-        outcome: "operational_failure";
-        failure: ValidationOperationalFailure;
-    };
+          kind: "manual_qa";
+          outcome: "operational_failure";
+          failure: ValidationOperationalFailure;
+      };
 
 /**
  * Opaque handle for a Pi `ToolDefinition`.

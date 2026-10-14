@@ -22,14 +22,19 @@ test("one Pi execution links usage from successive model turns to its own turn",
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Read fixture." })).ok, true);
             await drainWorkflowMetrics();
-            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8")).trim().split("\n")
+            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+                .trim()
+                .split("\n")
                 .map((line) => JSON.parse(line));
             const turns = rows.filter((row) => row.event === "response_latency");
             assertEquals(turns.length, 2);
             assertNotEquals(turns[0].turnId, turns[1].turnId);
             const usage = rows.filter((row) => row.event === "model_usage" && row.usageKind === "turn");
             assertEquals(usage.length, 2);
-            assertEquals(usage.map((row) => row.turnId), turns.map((row) => row.turnId));
+            assertEquals(
+                usage.map((row) => row.turnId),
+                turns.map((row) => row.turnId),
+            );
             assert(usage.every((row) => row.executionId === turns[0].executionId));
         } finally {
             await runtime.closeAllSessionsWhenIdle();
@@ -37,10 +42,10 @@ test("one Pi execution links usage from successive model turns to its own turn",
     });
 });
 
-Deno.test("Pi assistant usage keeps observed message timing before settlement", async () => {
+test("Pi assistant usage keeps observed message timing before settlement", async () => {
     await withRuntimeCommandFixture("metrics-pi-timing-", async ({ projectRoot, setModelResponseFactories }) => {
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
-        await Deno.writeTextFile(`${projectRoot}/fixture.txt`, "safe fixture\n");
+        await fsWriteFile(`${projectRoot}/fixture.txt`, "safe fixture\n");
         setModelResponseFactories([
             () => fauxAssistantMessage(fauxToolCall("read", { path: "fixture.txt" })),
             async () => {
@@ -55,7 +60,9 @@ Deno.test("Pi assistant usage keeps observed message timing before settlement", 
             await runtime.switchAgent(sessionId, { agentName: "engineer" });
             assertEquals((await runtime.promptUserTurn(sessionId, { initialRequest: "Read fixture." })).ok, true);
             await drainWorkflowMetrics();
-            const rows = (await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot))).trim().split("\n")
+            const rows = (await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8"))
+                .trim()
+                .split("\n")
                 .map((line) => JSON.parse(line));
             const turns = rows.filter((row) => row.event === "response_latency");
             const usage = rows.filter((row) => row.event === "model_usage" && row.usageKind === "turn");

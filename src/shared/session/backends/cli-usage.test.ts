@@ -1,5 +1,13 @@
-import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { writeRuntimeExecutableFixture } from "../../../testing/runtime-executable-fixture.ts";
+import { writeFile as fsWriteFile, mkdir as fsMkdir, rm as fsRm, readFile as fsReadFile } from "node:fs/promises";
+import process from "node:process";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+function assertAlmostEquals(actual: number, expected: number, tolerance = 1e-7): void {
+    assert(Math.abs(actual - expected) <= tolerance, `${actual} differs from ${expected} by more than ${tolerance}`);
+}
+import { assertEquals } from "../../../testing/assertions.ts";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { defineGitFixture, git } from "../../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
@@ -13,7 +21,7 @@ import { ClaudeCliExecutionSession } from "./claude-cli/execution-session.ts";
 import { AgyCliExecutionSession } from "./agy-cli/execution-session.ts";
 
 const repository = defineGitFixture(async (root) => {
-    await Deno.writeTextFile(join(root, "README.md"), "usage fixture\n");
+    await fsWriteFile(join(root, "README.md"), "usage fixture\n");
     await git(root, ["add", "."]);
     await git(root, ["commit", "-m", "fixture"]);
 });
@@ -66,68 +74,67 @@ async function withCliFixture(fixture: UsageFixture, callback: (root: string) =>
         const root = await repository.checkout();
         const home = join(root, "home");
         const bin = join(root, "bin");
-        const previousHome = Deno.env.get("HOME");
-        const previousPath = Deno.env.get("PATH");
+        const previousHome = process.env["HOME"];
+        const previousPath = process.env["PATH"];
         try {
-            await Deno.mkdir(home);
-            await Deno.mkdir(bin);
+            await fsMkdir(home);
+            await fsMkdir(bin);
             const streamPath = join(root, "stream.jsonl");
             const nativeTool = fixture.nativeTool
                 ? JSON.stringify({
-                    type: "step_update",
-                    step_update: {
-                        step_type: "tool",
-                        step_index: 1,
-                        state: "DONE",
-                        tool_info: { name: "read_file", parameters: { path: "README.md" }, output: "usage fixture" },
-                    },
-                }) + "\n"
+                      type: "step_update",
+                      step_update: {
+                          step_type: "tool",
+                          step_index: 1,
+                          state: "DONE",
+                          tool_info: { name: "read_file", parameters: { path: "README.md" }, output: "usage fixture" },
+                      },
+                  }) + "\n"
                 : "";
-            await Deno.writeTextFile(streamPath, fixture.vendorStream ?? nativeTool + fixture.result + "\n");
+            await fsWriteFile(streamPath, fixture.vendorStream ?? nativeTool + fixture.result + "\n");
             const script = join(bin, "fixture.js");
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 script,
                 `
-const args = Deno.args;
+const args = (await import("node:process")).argv.slice(2);
 if (args.includes("/agents")) {
     const names = [];
-    for await (const entry of Deno.readDir(${JSON.stringify(join(home, ".gemini/config/agents"))})) {
-        if (entry.isDirectory) names.push({ name: entry.name });
+    for await (const entry of await (await import("node:fs/promises")).readdir(${JSON.stringify(join(home, ".gemini/config/agents"))}, {withFileTypes:true})) {
+        if (entry.isDirectory()) names.push({ name: entry.name });
     }
     console.log(JSON.stringify({ agents: names }));
 } else {
     if (args.includes("--agent")) {
-        console.log(JSON.stringify({ type: "init", agent: args[args.indexOf("--agent") + 1], model: ${
-                    JSON.stringify((fixture.modelId || "gemini-3.8-flash") + "-low")
-                } }));
+        console.log(JSON.stringify({ type: "init", agent: args[args.indexOf("--agent") + 1], model: ${JSON.stringify(
+            (fixture.modelId || "gemini-3.8-flash") + "-low",
+        )} }));
     } else {
-        await new Response(Deno.stdin.readable).text();
-        if (!${
-                    Boolean(fixture.vendorStream)
-                }) console.log(JSON.stringify({ type: "assistant", message: { id: "cli-assistant", content: [{ type: "text", text: "reply" }], usage: ${
-                    JSON.stringify(fixture.assistantUsage)
-                } } }));
+        for await (const _chunk of (await import("node:process")).stdin) { /* drain fixture input */ }
+        if (!${Boolean(
+            fixture.vendorStream,
+        )}) console.log(JSON.stringify({ type: "assistant", message: { id: "cli-assistant", content: [{ type: "text", text: "reply" }], usage: ${JSON.stringify(
+            fixture.assistantUsage,
+        )} } }));
     }
-    console.log(await Deno.readTextFile(${JSON.stringify(streamPath)}));
+    console.log(await (await import("node:fs/promises")).readFile(${JSON.stringify(streamPath)}, "utf8"));
     if (${Boolean(fixture.vendorStream)}) await new Promise((resolve) => setTimeout(resolve, 30));
 }
 `,
             );
             for (const command of ["claude", "agy"]) {
                 const executable = join(bin, command);
-                await Deno.writeTextFile(executable, `#!/bin/sh\nexec deno run -A ${JSON.stringify(script)} "$@"\n`);
-                await Deno.chmod(executable, 0o755);
+                await writeRuntimeExecutableFixture(executable, script);
             }
-            Deno.env.set("HOME", home);
-            Deno.env.set("PATH", `${bin}:${previousPath || ""}`);
+            process.env["HOME"] = home;
+            process.env["PATH"] = `${bin}:${previousPath || ""}`;
             await setCustomSetting("workflowMetrics", true, "project", root);
             await callback(root);
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", previousPath);
-            await Deno.remove(root, { recursive: true });
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            if (previousPath === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = previousPath;
+            await fsRm(root, { recursive: true });
         }
     });
 }
@@ -260,12 +267,14 @@ const fixtures: UsageFixture[] = [
     },
 ];
 
-const claudeVendor = await Deno.readTextFile(
+const claudeVendor = await fsReadFile(
     new URL("./claude-cli/fixtures/claude-2.1.284-read-tool-stream.jsonl", import.meta.url),
+    "utf8",
 );
-const agyVendor = await Deno.readTextFile(new URL("./agy-cli/fixtures/agy-1.2.12-tool-stream.jsonl", import.meta.url));
-const agyThinkingVendor = await Deno.readTextFile(
+const agyVendor = await fsReadFile(new URL("./agy-cli/fixtures/agy-1.2.12-tool-stream.jsonl", import.meta.url), "utf8");
+const agyThinkingVendor = await fsReadFile(
     new URL("./agy-cli/fixtures/agy-1.2.12-model-read-tool-stream.jsonl", import.meta.url),
+    "utf8",
 );
 fixtures.push({
     name: "Claude vendor tool stream stores cache-exclusive aggregate and unmeasured request alternatives",
@@ -300,9 +309,10 @@ for (const modelId of ["gemini-3.8-flash", "gemini-3.1-pro"]) {
             cacheReadTokens: 16511,
             cacheWriteTokens: null,
             reasoningTokens: 0,
-            costAmount: modelId === "gemini-3.8-flash"
-                ? 19529 * 0.75 / 1_000_000 + 155 * 3.75 / 1_000_000 + 16511 * 0.075 / 1_000_000
-                : null,
+            costAmount:
+                modelId === "gemini-3.8-flash"
+                    ? (19529 * 0.75) / 1_000_000 + (155 * 3.75) / 1_000_000 + (16511 * 0.075) / 1_000_000
+                    : null,
             costSource: modelId === "gemini-3.8-flash" ? "calculated" : "unavailable",
             measurementAvailability: "partial",
         },
@@ -321,14 +331,14 @@ fixtures.push({
         cacheReadTokens: 0,
         cacheWriteTokens: null,
         reasoningTokens: 205 + 51,
-        costAmount: 31817 * 0.75 / 1_000_000 + 320 * 3.75 / 1_000_000,
+        costAmount: (31817 * 0.75) / 1_000_000 + (320 * 3.75) / 1_000_000,
         costSource: "calculated",
         measurementAvailability: "partial",
     },
 });
 
 for (const fixture of fixtures) {
-    Deno.test(`${fixture.name}, including saved replay`, async () => {
+    test(`${fixture.name}, including saved replay`, async () => {
         await withCliFixture(fixture, async (root) => {
             const model = getModelRegistry().find(
                 fixture.backend,
@@ -350,16 +360,19 @@ for (const fixture of fixtures) {
                 sessionManager: manager,
                 hostedSession,
             };
-            const session = fixture.backend === "claude-cli"
-                ? new ClaudeCliExecutionSession(options)
-                : await AgyCliExecutionSession.create(options);
+            const session =
+                fixture.backend === "claude-cli"
+                    ? new ClaudeCliExecutionSession(options)
+                    : await AgyCliExecutionSession.create(options);
             try {
                 const beforeTurn = Date.now();
                 const messages = await session.runTurn({ userRequest: "hello" });
                 const afterTurn = Date.now();
                 assertEquals(observed, [fixture.runtime]);
                 if (fixture.journal) {
-                    const metrics = (await Deno.readTextFile(getWorkflowMetricsFilePath(root))).trim().split("\n")
+                    const metrics = (await fsReadFile(getWorkflowMetricsFilePath(root), "utf8"))
+                        .trim()
+                        .split("\n")
                         .map((line) => JSON.parse(line));
                     const rows = metrics.filter((record) => record.event === "model_usage");
                     const turn = rows.find((record) => record.aggregationBasis === "turn");
@@ -380,30 +393,34 @@ for (const fixture of fixtures) {
                     if (fixture.backend === "agy-cli") assert(Date.parse(turn.endedAt) < Date.parse(turn.ts));
                     for (const alternative of rows.filter((record) => record.aggregationBasis === "alternative")) {
                         assertEquals(alternative.inputCacheBasis, "excludes_cache");
-                        assertEquals([alternative.startedAt, alternative.endedAt, alternative.reasoningTokens], [
-                            null,
-                            null,
-                            null,
-                        ]);
+                        assertEquals(
+                            [alternative.startedAt, alternative.endedAt, alternative.reasoningTokens],
+                            [null, null, null],
+                        );
                     }
                     if (fixture.backend === "claude-cli") {
                         assertEquals(
-                            rows.filter((record) => record.aggregationBasis === "alternative").map((
-                                record,
-                            ) => [
-                                record.inputTokens,
-                                record.outputTokens,
-                                record.cacheReadTokens,
-                                record.cacheWriteTokens,
-                            ]),
-                            [[2, 8, 1448, 2430], [2, 2, 3878, 3604], [null, null, null, null]],
+                            rows
+                                .filter((record) => record.aggregationBasis === "alternative")
+                                .map((record) => [
+                                    record.inputTokens,
+                                    record.outputTokens,
+                                    record.cacheReadTokens,
+                                    record.cacheWriteTokens,
+                                ]),
+                            [
+                                [2, 8, 1448, 2430],
+                                [2, 2, 3878, 3604],
+                                [null, null, null, null],
+                            ],
                         );
                     }
                 }
                 if (fixture.availability) {
-                    const metrics = (await Deno.readTextFile(getWorkflowMetricsFilePath(root))).trim().split("\n").map((
-                        line,
-                    ) => JSON.parse(line));
+                    const metrics = (await fsReadFile(getWorkflowMetricsFilePath(root), "utf8"))
+                        .trim()
+                        .split("\n")
+                        .map((line) => JSON.parse(line));
                     const usage = metrics.find((record) => record.event === "model_usage");
                     assertEquals(usage?.measurementAvailability, fixture.availability);
                     assertEquals(usage?.inputTokens, fixture.runtime.inputTokens);
@@ -413,21 +430,26 @@ for (const fixture of fixtures) {
                         usage?.costAmount,
                         price
                             ? ((fixture.runtime.inputTokens ?? 0) * price.cost.input +
-                                (fixture.runtime.outputTokens ?? 0) * price.cost.output) / 1_000_000
+                                  (fixture.runtime.outputTokens ?? 0) * price.cost.output) /
+                                  1_000_000
                             : 0,
                         1e-12,
                     );
                 }
                 if (fixture.alternatives) {
-                    const metrics = (await Deno.readTextFile(getWorkflowMetricsFilePath(root))).trim().split("\n").map((
-                        line,
-                    ) => JSON.parse(line));
+                    const metrics = (await fsReadFile(getWorkflowMetricsFilePath(root), "utf8"))
+                        .trim()
+                        .split("\n")
+                        .map((line) => JSON.parse(line));
                     const observations = metrics.filter((record) => record.event === "model_usage");
-                    assertEquals(observations.map((record) => [record.aggregationBasis, record.inputTokens]), [
-                        ["alternative", 3],
-                        ["turn", 10],
-                        ["alternative", 7],
-                    ]);
+                    assertEquals(
+                        observations.map((record) => [record.aggregationBasis, record.inputTokens]),
+                        [
+                            ["alternative", 3],
+                            ["turn", 10],
+                            ["alternative", 7],
+                        ],
+                    );
                     assertEquals(new Set(observations.map((record) => record.sourceId)).size, 3);
                 }
                 const reply = messages.at(-1);
@@ -435,8 +457,8 @@ for (const fixture of fixtures) {
                 assertEquals(reply.usage, fixture.saved);
                 assertEquals("usage" in reply, fixture.saved !== undefined);
                 if (fixture.nativeTool) {
-                    const tool = messages.find((message) =>
-                        message.role === "assistant" && message.stopReason === "toolUse"
+                    const tool = messages.find(
+                        (message) => message.role === "assistant" && message.stopReason === "toolUse",
                     );
                     assert(tool);
                     assertEquals("usage" in tool, false);
@@ -445,9 +467,10 @@ for (const fixture of fixtures) {
                 assert(path);
                 const reloaded = SessionManager.open(path);
                 const replayOptions = { ...options, sessionManager: reloaded };
-                const replay = fixture.backend === "claude-cli"
-                    ? new ClaudeCliExecutionSession(replayOptions)
-                    : await AgyCliExecutionSession.create(replayOptions);
+                const replay =
+                    fixture.backend === "claude-cli"
+                        ? new ClaudeCliExecutionSession(replayOptions)
+                        : await AgyCliExecutionSession.create(replayOptions);
                 try {
                     assertEquals(replay.getMessages(), messages);
                 } finally {

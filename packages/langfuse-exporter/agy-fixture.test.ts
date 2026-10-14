@@ -1,4 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals } from "../../src/testing/assertions.ts";
 interface UsageExcerpt {
     fixture: string;
     inputTokens: number;
@@ -25,27 +27,34 @@ interface VendorEvent {
     result?: VendorResult;
 }
 const excerpts: ExcerptFile = JSON.parse(
-    await Deno.readTextFile(new URL("./fixtures/agy-usage.json", import.meta.url)),
+    await fsReadFile(new URL("./fixtures/agy-usage.json", import.meta.url), "utf8"),
 );
 for (const excerpt of excerpts.rows) {
-    Deno.test(`sanitized partial fixture matches the recorded agy result: ${excerpt.fixture}`, async () => {
-        const text = await Deno.readTextFile(
+    test(`sanitized partial fixture matches the recorded agy result: ${excerpt.fixture}`, async () => {
+        const text = await fsReadFile(
             new URL(`../../src/shared/session/backends/agy-cli/fixtures/${excerpt.fixture}`, import.meta.url),
+            "utf8",
         );
-        const events: VendorEvent[] = text.trim().split("\n").map((line) => JSON.parse(line));
+        const events: VendorEvent[] = text
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
         const usage = events.find((event) => event.event === "result")!.result!.usage;
-        assertEquals({
-            inputTokens: excerpt.inputTokens,
-            outputTokens: excerpt.outputTokens,
-            reasoningTokens: excerpt.reasoningTokens,
-            cacheReadTokens: excerpt.cacheReadTokens,
-            cacheWriteTokens: excerpt.cacheWriteTokens,
-        }, {
-            inputTokens: usage.input_tokens,
-            outputTokens: usage.output_tokens,
-            reasoningTokens: usage.thinking_tokens,
-            cacheReadTokens: usage.cache_read_tokens,
-            cacheWriteTokens: usage.cache_write_tokens ?? null,
-        });
+        assertEquals(
+            {
+                inputTokens: excerpt.inputTokens,
+                outputTokens: excerpt.outputTokens,
+                reasoningTokens: excerpt.reasoningTokens,
+                cacheReadTokens: excerpt.cacheReadTokens,
+                cacheWriteTokens: excerpt.cacheWriteTokens,
+            },
+            {
+                inputTokens: usage.input_tokens,
+                outputTokens: usage.output_tokens,
+                reasoningTokens: usage.thinking_tokens,
+                cacheReadTokens: usage.cache_read_tokens,
+                cacheWriteTokens: usage.cache_write_tokens ?? null,
+            },
+        );
     });
 }

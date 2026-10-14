@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import {
     encodeGuidedReviewUsageEvent,
     GUIDED_REVIEW_EVENT_PREFIX,
@@ -14,7 +15,7 @@ const usage: GuidedReviewUsage = {
     costUsd: null,
 };
 
-Deno.test("Guided Review version 2 preserves missing, zero, and present measurements", () => {
+test("Guided Review version 2 preserves missing, zero, and present measurements", () => {
     assertEquals(parseGuidedReviewUsageEventLine(encodeGuidedReviewUsageEvent(usage)), {
         version: 2,
         type: "usage",
@@ -22,7 +23,7 @@ Deno.test("Guided Review version 2 preserves missing, zero, and present measurem
     });
 });
 
-Deno.test("Guided Review rejects version 1 frames rather than treating old zero filling as measurements", () => {
+test("Guided Review rejects version 1 frames rather than treating old zero filling as measurements", () => {
     assertThrows(
         () =>
             parseGuidedReviewUsageEventLine(
@@ -33,7 +34,7 @@ Deno.test("Guided Review rejects version 1 frames rather than treating old zero 
     );
 });
 
-Deno.test("Guided Review requires explicit nullable categories", () => {
+test("Guided Review requires explicit nullable categories", () => {
     const { costUsd: _cost, ...incomplete } = usage;
     assertThrows(
         () =>
@@ -45,7 +46,7 @@ Deno.test("Guided Review requires explicit nullable categories", () => {
     );
 });
 
-Deno.test("Guided Review rejects invalid negative measurements", () => {
+test("Guided Review rejects invalid negative measurements", () => {
     assertThrows(
         () => parseGuidedReviewUsageEventLine(encodeGuidedReviewUsageEvent({ ...usage, inputTokens: -1 })),
         Error,

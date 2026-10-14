@@ -1,7 +1,8 @@
-import { assert } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { walkSourceFiles } from "./source-files.js";
 
-Deno.test("first-party package sources and tests participate in the type gate", async () => {
+test("first-party package sources and tests participate in the type gate", async () => {
     const files = await walkSourceFiles();
     assert(files.includes("packages/langfuse-exporter/exporter.ts"));
     assert(files.includes("packages/langfuse-exporter/installation.test.ts"));

@@ -69,16 +69,16 @@ type AgyCliStreamEvent =
     | { kind: "text_delta"; text: string }
     | { kind: "tool_info"; permissionDetail?: string; tool?: AgyCliToolStep; observation: AgyCliToolInfoObservation }
     | {
-        kind: "result";
-        text: string;
-        usage: AgyCliUsage;
-        model?: string;
-        sessionId?: string;
-        status: string;
-        errorText: string;
-        deniedActions: boolean;
-        permissionDetails: string[];
-    };
+          kind: "result";
+          text: string;
+          usage: AgyCliUsage;
+          model?: string;
+          sessionId?: string;
+          status: string;
+          errorText: string;
+          deniedActions: boolean;
+          permissionDetails: string[];
+      };
 
 const emptyUsage: AgyCliUsage = {
     inputTokens: null,
@@ -113,9 +113,13 @@ function asNullableNumber(value: JsonValue | undefined): number | null {
 function readUsage(value: JsonValue | undefined): AgyCliUsage {
     const usage = isJsonRecord(value) ? value : {};
     return {
-        inputTokens: asNullableNumber(usage.input_tokens) ?? asNullableNumber(usage.inputTokens) ??
+        inputTokens:
+            asNullableNumber(usage.input_tokens) ??
+            asNullableNumber(usage.inputTokens) ??
             asNullableNumber(usage.input),
-        outputTokens: asNullableNumber(usage.output_tokens) ?? asNullableNumber(usage.outputTokens) ??
+        outputTokens:
+            asNullableNumber(usage.output_tokens) ??
+            asNullableNumber(usage.outputTokens) ??
             asNullableNumber(usage.output),
         thinkingTokens: asNullableNumber(usage.thinking_tokens) ?? asNullableNumber(usage.thinkingTokens),
         cacheReadTokens: asNullableNumber(usage.cache_read_tokens) ?? asNullableNumber(usage.cacheReadTokens),
@@ -131,22 +135,26 @@ function readTextDelta(record: JsonRecord): string {
 }
 
 function readResultText(record: JsonRecord): string {
-    const direct = asString(record.result) || asString(record.response) || asString(record.text) ||
-        asString(record.output);
+    const direct =
+        asString(record.result) || asString(record.response) || asString(record.text) || asString(record.output);
     if (direct) return direct;
     const result = isJsonRecord(record.result) ? record.result : undefined;
     return asString(result?.response) || asString(result?.text) || asString(result?.output);
 }
 
 function readStatus(record: JsonRecord, result: JsonRecord): string {
-    return (asString(result.status) || asString(record.status) || asString(result.outcome) ||
+    return (
+        asString(result.status) ||
+        asString(record.status) ||
+        asString(result.outcome) ||
         asString(record.outcome) ||
-        "success").toLowerCase();
+        "success"
+    ).toLowerCase();
 }
 
 function readErrorText(record: JsonRecord, result: JsonRecord): string {
-    const direct = asString(result.error) || asString(record.error) || asString(result.message) ||
-        asString(record.message);
+    const direct =
+        asString(result.error) || asString(record.error) || asString(result.message) || asString(record.message);
     if (direct) return direct;
     const error = isJsonRecord(result.error) ? result.error : isJsonRecord(record.error) ? record.error : undefined;
     return asString(error?.message) || asString(error?.text);
@@ -157,8 +165,12 @@ function hasItems(value: JsonValue | undefined): value is JsonArray {
 }
 
 function hasDeniedActions(record: JsonRecord, result: JsonRecord): boolean {
-    return hasItems(record.denied_actions) || hasItems(result.denied_actions) ||
-        hasItems(record.deniedActions) || hasItems(result.deniedActions);
+    return (
+        hasItems(record.denied_actions) ||
+        hasItems(result.denied_actions) ||
+        hasItems(record.deniedActions) ||
+        hasItems(result.deniedActions)
+    );
 }
 
 function readDeniedActionNames(record: JsonRecord, result: JsonRecord): string[] {
@@ -177,9 +189,12 @@ function readDeniedActionNames(record: JsonRecord, result: JsonRecord): string[]
 
 function readToolStep(update: JsonRecord): AgyCliToolStep | undefined {
     if (
-        update.step_type !== "tool" || typeof update.step_index !== "number" ||
-        !Number.isSafeInteger(update.step_index) || update.step_index < 0
-    ) return undefined;
+        update.step_type !== "tool" ||
+        typeof update.step_index !== "number" ||
+        !Number.isSafeInteger(update.step_index) ||
+        update.step_index < 0
+    )
+        return undefined;
     const state = asString(update.state);
     if (state !== "ACTIVE" && state !== "DONE" && state !== "ERROR") return undefined;
     const info = isJsonRecord(update.tool_info) ? update.tool_info : undefined;
@@ -212,8 +227,8 @@ function readToolInfo(update: JsonRecord): AgyCliToolInfoObservation {
         ...(state === "error"
             ? { status: "error" as const }
             : state === "success"
-            ? { status: "success" as const }
-            : {}),
+              ? { status: "success" as const }
+              : {}),
     };
 }
 
@@ -225,11 +240,12 @@ function readToolPermissionDetail(update: JsonRecord): string | undefined {
     if (!/^[a-z][a-z0-9_]{0,63}$/i.test(name)) return undefined;
     // Retain file targets, never shell commands, tool output, or arbitrary arguments.
     const parameters = info && isJsonRecord(info.parameters) ? info.parameters : undefined;
-    const path = name === "view_file"
-        ? asString(parameters?.AbsolutePath)
-        : ["write_to_file", "replace_file_content", "multi_replace_file_content"].includes(name)
-        ? asString(parameters?.TargetFile)
-        : "";
+    const path =
+        name === "view_file"
+            ? asString(parameters?.AbsolutePath)
+            : ["write_to_file", "replace_file_content", "multi_replace_file_content"].includes(name)
+              ? asString(parameters?.TargetFile)
+              : "";
     return sanitizeAgyStatusMessage(path ? `${name}: ${path}` : name, "permission_denied");
 }
 
@@ -250,9 +266,12 @@ export function parseAgyCliJsonLine(line: string): AgyCliStreamEvent | null {
             kind: "init",
             agent: asString(init.agent) || undefined,
             model: asString(init.model) || asString(parsed.model) || undefined,
-            sessionId: asString(parsed.conversation_id) || asString(init.conversation_id) ||
+            sessionId:
+                asString(parsed.conversation_id) ||
+                asString(init.conversation_id) ||
                 asString(init.session_id) ||
-                asString(init.sessionId) || undefined,
+                asString(init.sessionId) ||
+                undefined,
         };
     }
     if (type === "step_update") {
@@ -289,9 +308,12 @@ export function parseAgyCliJsonLine(line: string): AgyCliStreamEvent | null {
             text: readResultText(parsed),
             usage: readUsage(result.usage || parsed.usage),
             model: asString(result.model) || asString(parsed.model) || undefined,
-            sessionId: asString(parsed.conversation_id) || asString(result.conversation_id) ||
+            sessionId:
+                asString(parsed.conversation_id) ||
+                asString(result.conversation_id) ||
                 asString(result.session_id) ||
-                asString(result.sessionId) || undefined,
+                asString(result.sessionId) ||
+                undefined,
             status: readStatus(parsed, result),
             errorText,
             deniedActions: hasDeniedActions(parsed, result),
@@ -368,9 +390,10 @@ export async function parseAgyCliStream(
                 event = parseAgyCliJsonLine(line);
             } catch (error) {
                 if (!streamError) {
-                    streamError = error instanceof AgyCliStreamError
-                        ? error
-                        : new AgyCliStreamError("malformed_stream", String(error));
+                    streamError =
+                        error instanceof AgyCliStreamError
+                            ? error
+                            : new AgyCliStreamError("malformed_stream", String(error));
                 }
             }
             if (event) applyEvent(event);
@@ -383,9 +406,10 @@ export async function parseAgyCliStream(
             event = parseAgyCliJsonLine(buffered);
         } catch (error) {
             if (!streamError) {
-                streamError = error instanceof AgyCliStreamError
-                    ? error
-                    : new AgyCliStreamError("malformed_stream", String(error));
+                streamError =
+                    error instanceof AgyCliStreamError
+                        ? error
+                        : new AgyCliStreamError("malformed_stream", String(error));
             }
         }
         if (event) applyEvent(event);
@@ -396,8 +420,8 @@ export async function parseAgyCliStream(
         throw new AgyCliStreamError("empty_result", "Agy CLI stream ended without a terminal result");
     }
     const successfulStatus = !status || status === "success" || status === "ok" || status === "completed";
-    const permissionDenied = deniedActions || toolPermissionDetails.size > 0 ||
-        isAgyPermissionDenied(`${status}\n${errorText}`);
+    const permissionDenied =
+        deniedActions || toolPermissionDetails.size > 0 || isAgyPermissionDenied(`${status}\n${errorText}`);
     if (successfulStatus && !rawResultText && !permissionDenied) {
         throw new AgyCliStreamError("empty_result", "Agy CLI stream ended with an empty terminal result");
     }

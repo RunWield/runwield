@@ -18,14 +18,7 @@ const SOURCE_ROOTS = ["src", "scripts", "packages"];
  * `src/ui/workspace` is excluded because it is an Astro project with its own
  * `bun run workspace:check`, which understands `.astro` files and its own tsconfig.
  */
-const SKIP_DIRS = new Set([
-    ".astro",
-    ".vite",
-    "_fresh",
-    "coverage",
-    "dist",
-    "node_modules",
-]);
+const SKIP_DIRS = new Set([".astro", ".vite", "_fresh", "coverage", "dist", "node_modules"]);
 
 const SKIP_PATHS = new Set(["src/ui/workspace"]);
 

@@ -1,5 +1,10 @@
+import { closeSync, fsyncSync, openSync, writeSync } from "node:fs";
+import { openNativeFileLock, type NativeFileLock } from "../native-file-lock.ts";
+import { syncParentDirectory, writeTextAtomically } from "../private-json-file.ts";
+import { statSync, mkdirSync, chmodSync } from "node:fs";
+import process from "node:process";
 /** Private local export storage. No observation payload is stored here. */
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 
 export function metricsExportDirectory(): string {
@@ -13,66 +18,43 @@ export function exportDestinationDirectory(destinationId: string): string {
 
 export function ensureExportDirectory(path = metricsExportDirectory()): void {
     try {
-        if (Deno.statSync(path).isDirectory) return;
+        if (statSync(path).isDirectory()) return;
         throw new Error("Export storage is not a directory");
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     ensureExportDirectory(dirname(path));
     try {
-        Deno.mkdirSync(path, { mode: 0o700 });
+        mkdirSync(path, { mode: 0o700 });
     } catch (error) {
-        if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
     }
-    const parent = Deno.openSync(dirname(path), { read: true });
-    try {
-        parent.syncSync();
-    } finally {
-        parent.close();
-    }
+    syncParentDirectory(path);
 }
 
 export function writeExportFile(path: string, content: string, append = false): void {
     ensureExportDirectory(dirname(path));
-    const file = Deno.openSync(path, { create: true, write: true, append, truncate: !append, mode: 0o600 });
+    const file = openSync(path, append ? "a" : "w", 0o600);
     try {
-        if (Deno.build.os !== "windows") Deno.chmodSync(path, 0o600);
+        if ((process.platform === "win32" ? "windows" : process.platform) !== "windows") chmodSync(path, 0o600);
         const bytes = new TextEncoder().encode(content);
         let offset = 0;
-        while (offset < bytes.length) offset += file.writeSync(bytes.subarray(offset));
-        file.syncSync();
+        while (offset < bytes.length) offset += writeSync(file, bytes.subarray(offset));
+        fsyncSync(file);
     } finally {
-        file.close();
+        closeSync(file);
     }
-    const parent = Deno.openSync(dirname(path), { read: true });
-    try {
-        parent.syncSync();
-    } finally {
-        parent.close();
-    }
+    syncParentDirectory(path);
 }
 
 export function replaceExportFile(path: string, content: string): void {
-    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-    writeExportFile(temporary, content);
-    try {
-        Deno.renameSync(temporary, path);
-        const parent = Deno.openSync(dirname(path), { read: true });
-        try {
-            parent.syncSync();
-        } finally {
-            parent.close();
-        }
-    } finally {
-        try {
-            Deno.removeSync(temporary);
-        } catch { /* renamed */ }
-    }
+    ensureExportDirectory(dirname(path));
+    writeTextAtomically(path, content);
 }
 
-export function tryExportLock(path: string): Deno.FsFile | null {
+export function tryExportLock(path: string): NativeFileLock | null {
     ensureExportDirectory(dirname(path));
-    const file = Deno.openSync(path, { read: true, write: true, create: true, mode: 0o600 });
+    const file = openNativeFileLock(path);
     if (file.tryLockSync(true)) return file;
     file.close();
     return null;

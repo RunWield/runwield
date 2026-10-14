@@ -1,5 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../http-server.ts";
+import { test } from "node:test";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
     createAssistantMessageEventStream,
@@ -14,29 +17,30 @@ import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixtu
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 
-Deno.test("bounded remote see_image records vision requests, not verification turns", async (t) => {
+test("bounded remote see_image records vision requests, not verification turns", async (t) => {
     await withWorkflowMetricsFixture(async (fixture) => {
         const personal = join(fixture.homeDir, ".wld");
-        await Deno.mkdir(personal, { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(personal, { recursive: true });
+        await fsWriteFile(
             join(fixture.projectRoot, ".wld", "settings.json"),
             JSON.stringify({
                 workflowMetrics: true,
                 visionFallback: { model: "remote-usage/vision" },
             }),
         );
-        await Deno.writeFile(join(fixture.projectRoot, "shot.png"), new Uint8Array([1, 2, 3]));
+        await fsWriteFile(join(fixture.projectRoot, "shot.png"), new Uint8Array([1, 2, 3]));
         let primaryRequests = 0;
         let visionResponse = fauxAssistantMessage(fauxText("remote vision"));
         let networkFailure = false;
         const stream: ProviderStreams["streamSimple"] = (model) => {
             if (model.id === "vision" && networkFailure) throw new Error("Network unavailable");
             const result = createAssistantMessageEventStream();
-            const reply = model.id === "vision"
-                ? visionResponse
-                : ++primaryRequests % 2 === 1
-                ? fauxAssistantMessage(fauxToolCall("see_image", { imageRef: "shot.png" }))
-                : fauxAssistantMessage(fauxText("Verification complete"));
+            const reply =
+                model.id === "vision"
+                    ? visionResponse
+                    : ++primaryRequests % 2 === 1
+                      ? fauxAssistantMessage(fauxToolCall("see_image", { imageRef: "shot.png" }))
+                      : fauxAssistantMessage(fauxText("Verification complete"));
             queueMicrotask(() => {
                 if (reply.stopReason === "error" || reply.stopReason === "aborted") {
                     result.push({ type: "error", reason: reply.stopReason, error: reply });
@@ -51,39 +55,39 @@ Deno.test("bounded remote see_image records vision requests, not verification tu
             allowModelNetwork: false,
             refreshOnCreate: false,
         });
-        runtime.registerNativeProvider(createProvider({
-            id: "remote-usage",
-            name: "Remote usage fixture",
-            models: ["primary", "vision"].map((id) => ({
-                provider: "remote-usage",
-                id,
-                name: id,
-                api: "openai-completions",
-                baseUrl: "https://example.invalid",
-                reasoning: false,
-                input: id === "vision" ? ["text", "image"] : ["text"],
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                contextWindow: 128000,
-                maxTokens: 100,
-            })),
-            auth: {
-                apiKey: {
-                    name: "Fixture",
-                    check: () => Promise.resolve({ type: "api_key" }),
-                    resolve: () => Promise.resolve({ auth: {} }),
+        runtime.registerNativeProvider(
+            createProvider({
+                id: "remote-usage",
+                name: "Remote usage fixture",
+                models: ["primary", "vision"].map((id) => ({
+                    provider: "remote-usage",
+                    id,
+                    name: id,
+                    api: "openai-completions",
+                    baseUrl: "https://example.invalid",
+                    reasoning: false,
+                    input: id === "vision" ? ["text", "image"] : ["text"],
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: 128000,
+                    maxTokens: 100,
+                })),
+                auth: {
+                    apiKey: {
+                        name: "Fixture",
+                        check: () => Promise.resolve({ type: "api_key" }),
+                        resolve: () => Promise.resolve({ auth: {} }),
+                    },
                 },
-            },
-            api: { stream, streamSimple: stream },
-        }));
+                api: { stream, streamSimple: stream },
+            }),
+        );
         await runtime.refresh({ allowNetwork: false });
         const bridge = new LocalModelBridge(runtime);
         const credential = "a".repeat(64);
-        const server = Deno.serve(
-            { hostname: "127.0.0.1", port: 0, onListen() {} },
-            (request) =>
-                request.headers.get("Authorization") === `Bearer ${credential}`
-                    ? handleModelRequest(bridge, request, new URL(request.url).pathname)
-                    : new Response(null, { status: 401 }),
+        const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) =>
+            request.headers.get("Authorization") === `Bearer ${credential}`
+                ? handleModelRequest(bridge, request, new URL(request.url).pathname)
+                : new Response(null, { status: 401 }),
         );
         try {
             const { session } = await createBoundedRemoteModelSession({
@@ -102,7 +106,7 @@ Deno.test("bounded remote see_image records vision requests, not verification tu
                 },
             });
             try {
-                await t.step("measured usage crosses streamSimple and keeps supplied zero", async () => {
+                await t.test("measured usage crosses streamSimple and keeps supplied zero", async () => {
                     visionResponse.usage = {
                         input: 41,
                         output: 12,
@@ -114,7 +118,10 @@ Deno.test("bounded remote see_image records vision requests, not verification tu
                     await session.prompt("Describe shot.png");
                     assertStringIncludes(JSON.stringify(session.messages), "remote vision");
                     const journal = await fixture.readMetrics();
-                    assertEquals(journal.some((record) => record.event === "execution_started"), false);
+                    assertEquals(
+                        journal.some((record) => record.event === "execution_started"),
+                        false,
+                    );
                     const records = journal.filter((record) => record.event === "model_usage");
                     assertEquals(records.length, 1);
                     assertEquals(records[0].event, "model_usage");
@@ -134,13 +141,16 @@ Deno.test("bounded remote see_image records vision requests, not verification tu
                     assertEquals(records[0].costSource, "calculated");
                     assertEquals(records[0].measurementAvailability, "complete");
                 });
-                await t.step("upstream absence crosses the bridge as unavailable", async () => {
+                await t.test("upstream absence crosses the bridge as unavailable", async () => {
                     visionResponse = fauxAssistantMessage(fauxText("vision without usage"));
                     Reflect.deleteProperty(visionResponse, "usage");
                     await session.prompt("Describe shot.png again");
                     assertStringIncludes(JSON.stringify(session.messages), "vision without usage");
                     const journal = await fixture.readMetrics();
-                    assertEquals(journal.some((record) => record.event === "execution_started"), false);
+                    assertEquals(
+                        journal.some((record) => record.event === "execution_started"),
+                        false,
+                    );
                     const records = journal.filter((record) => record.event === "model_usage");
                     assertEquals(records.length, 2);
                     assertEquals(records[1].inputTokens, null);
@@ -151,18 +161,21 @@ Deno.test("bounded remote see_image records vision requests, not verification tu
                     assertEquals(records[1].costSource, "unavailable");
                     assertEquals(records[1].measurementAvailability, "unavailable");
                 });
-                await t.step("absent upstream cost crosses the bridge without zero filling", async () => {
+                await t.test("absent upstream cost crosses the bridge without zero filling", async () => {
                     visionResponse = fauxAssistantMessage(fauxText("vision without cost"));
                     Reflect.deleteProperty(visionResponse.usage, "cost");
                     await session.prompt("Describe shot.png without cost");
                     const journal = await fixture.readMetrics();
-                    assertEquals(journal.some((record) => record.event === "execution_started"), false);
+                    assertEquals(
+                        journal.some((record) => record.event === "execution_started"),
+                        false,
+                    );
                     const records = journal.filter((record) => record.event === "model_usage");
                     assertEquals(records.length, 3);
                     assertEquals(records[2].costAmount, null);
                     assertEquals(records[2].costSource, "unavailable");
                 });
-                await t.step("errored remote vision does not add fabricated usage", async () => {
+                await t.test("errored remote vision does not add fabricated usage", async () => {
                     visionResponse = fauxAssistantMessage(fauxText(""), {
                         stopReason: "error",
                         errorMessage: "Provider failed",
@@ -173,7 +186,7 @@ Deno.test("bounded remote see_image records vision requests, not verification tu
                         3,
                     );
                 });
-                await t.step("remote network failure does not add fabricated usage", async () => {
+                await t.test("remote network failure does not add fabricated usage", async () => {
                     networkFailure = true;
                     await session.prompt("Describe shot.png with network error");
                     assertEquals(

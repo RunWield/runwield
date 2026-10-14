@@ -109,11 +109,12 @@ async function continueLastRepairSession(args: ValidationLoopArgs, prompt: strin
 async function reloadValidationPlanSnapshot(args: ValidationLoopArgs): Promise<ValidationPhaseResult | null> {
     const projectRoot = getProjectRoot(args);
     const activeWorkflow = args.session.getActiveWorkflow();
-    const planCwd = activeWorkflow?.executionMode === "worktree" && activeWorkflow.executionCwd
-        ? activeWorkflow.executionCwd
-        : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
-        ? args.executionContext.executionCwd
-        : projectRoot;
+    const planCwd =
+        activeWorkflow?.executionMode === "worktree" && activeWorkflow.executionCwd
+            ? activeWorkflow.executionCwd
+            : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
+              ? args.executionContext.executionCwd
+              : projectRoot;
     const plan = await loadPlan(planCwd, args.planName);
     if (!plan) {
         const message = buildValidationUserMessage({
@@ -170,13 +171,14 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
             planName: args.planName,
             attempt: ciAttempts + 1,
             phase: "mechanical",
-            outcome: ciResult.kind === "operational_failure"
-                ? "incomplete"
-                : ciResult.kind === "canceled"
-                ? "interrupted"
-                : ciResult.kind === "completed" && ciResult.exitCode === 0
-                ? "succeeded"
-                : "failed",
+            outcome:
+                ciResult.kind === "operational_failure"
+                    ? "incomplete"
+                    : ciResult.kind === "canceled"
+                      ? "interrupted"
+                      : ciResult.kind === "completed" && ciResult.exitCode === 0
+                        ? "succeeded"
+                        : "failed",
             session: args.session.metricsSession,
         });
         if (ciResult.kind === "operational_failure") {
@@ -194,11 +196,11 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
 
         if (ciResult.kind === "canceled") {
             const pause: UserActionPause = {
-                whatHappened:
-                    `The tests for "${args.planName}" were stopped before they finished, so RunWield cannot tell yet whether the work is good.`,
-                doThis: `Pick Engineer follow-up to return to the ${
-                    args.session.getAgentDisplayName(phase.context.executionAgent, phase.context.projectRoot)
-                } session, Retry to run them again now, or Stop to come back to this later.`,
+                whatHappened: `The tests for "${args.planName}" were stopped before they finished, so RunWield cannot tell yet whether the work is good.`,
+                doThis: `Pick Engineer follow-up to return to the ${args.session.getAgentDisplayName(
+                    phase.context.executionAgent,
+                    phase.context.projectRoot,
+                )} session, Retry to run them again now, or Stop to come back to this later.`,
                 options: ENGINEER_FOLLOW_UP_OPTIONS,
             };
             const action = await pauseForUserAction(args, pause);
@@ -228,11 +230,11 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
         const failureReason = getCiFailureReason(ciResult);
         if (ciAttempts >= CI_REPAIR_CYCLES) {
             const pause: UserActionPause = {
-                whatHappened: `The tests for "${args.planName}" are still failing. ${
-                    args.session.getAgentDisplayName(AGENTS.REVIEWER_FEEDBACK_ENGINEER, phase.context.projectRoot)
-                } tried ${CI_REPAIR_CYCLES} times and could not get them passing.`,
-                doThis:
-                    "Pick Engineer follow-up to reopen the last repair session, Retry only after you fixed the tests outside RunWield, or Stop to come back to this later.",
+                whatHappened: `The tests for "${args.planName}" are still failing. ${args.session.getAgentDisplayName(
+                    AGENTS.REVIEWER_FEEDBACK_ENGINEER,
+                    phase.context.projectRoot,
+                )} tried ${CI_REPAIR_CYCLES} times and could not get them passing.`,
+                doThis: "Pick Engineer follow-up to reopen the last repair session, Retry only after you fixed the tests outside RunWield, or Stop to come back to this later.",
                 details: [failureReason],
                 options: ENGINEER_FOLLOW_UP_OPTIONS,
             };
@@ -310,9 +312,10 @@ function pauseForEngineerFollowUp(
         kind: "paused",
         planName: args.planName,
         projectRoot: context.projectRoot,
-        reason: `Mechanical Validation paused for ${
-            args.session.getAgentDisplayName(context.executionAgent, context.projectRoot)
-        } follow-up. ${reason}`,
+        reason: `Mechanical Validation paused for ${args.session.getAgentDisplayName(
+            context.executionAgent,
+            context.projectRoot,
+        )} follow-up. ${reason}`,
         awaitingTaskCompletion: true,
     };
 }

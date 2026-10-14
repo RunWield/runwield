@@ -1,5 +1,20 @@
-import { assert, assertEquals } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { getCwd } from "../../constants.js";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { captureForegroundProcess } from "../captured-process.ts";
+import {
+    readFile as fsReadFile,
+    rm as fsRm,
+    mkdir as fsMkdir,
+    writeFile as fsWriteFile,
+    stat as fsStat,
+    utimes as fsUtimes,
+} from "node:fs/promises";
+import { test } from "node:test";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { setCustomSetting } from "../settings.js";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
@@ -10,7 +25,10 @@ const metric = { v: 2, category: "command", event: "command_started", recorderId
 
 /** @param {string} path */
 async function readJournal(path) {
-    return (await Deno.readTextFile(path)).trim().split("\n").map((line) => JSON.parse(line));
+    return (await fsReadFile(path, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
 }
 
 /** @param {string} path @param {boolean} [enabled] */
@@ -18,9 +36,9 @@ function invocation(path, enabled = true) {
     return { enabled, epoch: resolveCollectionEpoch(path, enabled).collectionEpoch.id, deadline: Date.now() + 1000 };
 }
 
-Deno.test("journal preserves opt-in and project-over-global precedence", async () => {
+test("journal preserves opt-in and project-over-global precedence", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
-        await Deno.remove(join(projectRoot, ".wld", "settings.json"));
+        await fsRm(join(projectRoot, ".wld", "settings.json"));
         assertEquals((await recordWorkflowMetric(metric, projectRoot)).persisted, false);
         await setCustomSetting("workflowMetrics", false, "global", projectRoot);
         assertEquals((await recordWorkflowMetric(metric, projectRoot)).persisted, false);
@@ -33,7 +51,7 @@ Deno.test("journal preserves opt-in and project-over-global precedence", async (
     });
 });
 
-Deno.test("journal excludes invocations across disable and re-enable without replay", async () => {
+test("journal excludes invocations across disable and re-enable without replay", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         await recordWorkflowMetric(metric, projectRoot);
@@ -57,24 +75,24 @@ Deno.test("journal excludes invocations across disable and re-enable without rep
     });
 });
 
-Deno.test("upgrade keeps v1 bytes and unknown history without transcript replay", async () => {
+test("upgrade keeps v1 bytes and unknown history without transcript replay", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
+        await fsMkdir(dirname(path), { recursive: true });
         const old = '{"v":1,"event":"old","details":{"safe":true}}\n';
-        await Deno.writeTextFile(path, old);
+        await fsWriteFile(path, old);
         await setCustomSetting("workflowMetrics", false, "project", projectRoot);
-        await Deno.writeTextFile(join(projectRoot, "transcript.jsonl"), '{"text":"private activity"}\n');
+        await fsWriteFile(join(projectRoot, "transcript.jsonl"), '{"text":"private activity"}\n');
         await recordWorkflowMetric(metric, projectRoot);
-        assertEquals(await Deno.readTextFile(path), old);
+        assertEquals(await fsReadFile(path, "utf8"), old);
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         await recordWorkflowMetric(metric, projectRoot);
-        assert((await Deno.readTextFile(path)).startsWith(old));
+        assert((await fsReadFile(path, "utf8")).startsWith(old));
         const rows = await readJournal(path);
         assertEquals(rows.length, 3);
         assertEquals(rows[1].event, "collection_epoch");
         assertEquals(JSON.stringify(rows).includes("private activity"), false);
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(dirname(path), "state.json"),
             JSON.stringify({
                 v: 1,
@@ -83,34 +101,36 @@ Deno.test("upgrade keeps v1 bytes and unknown history without transcript replay"
             }),
         );
         await recordWorkflowMetric({ ...metric, seq: 1 }, projectRoot);
-        const state = JSON.parse(await Deno.readTextFile(join(dirname(path), "state.json")));
+        const state = JSON.parse(await fsReadFile(join(dirname(path), "state.json"), "utf8"));
         assertEquals(state.collectionEpoch.id, rows[1].collectionEpoch);
     });
 });
 
-Deno.test("contended journal skips within its budget and retry keeps observation identity", async () => {
+test("contended journal skips within its budget and retry keeps observation identity", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         await recordWorkflowMetric(metric, projectRoot);
         const script = join(projectRoot, "lock-holder.js");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             script,
-            `import lockfile from "proper-lockfile";
-const release = lockfile.lockSync(Deno.args[0], {realpath:false});
-console.log("ready"); await Deno.stdin.read(new Uint8Array(1)); release();`,
+            `import lockfile from ${JSON.stringify(import.meta.resolve("proper-lockfile"))};
+const release = lockfile.lockSync((await import("node:process")).argv.slice(2)[0], {realpath:false});
+console.log("ready"); await (await import("node:events")).once((await import("node:process")).stdin, "data"); release();`,
         );
-        const holder = new Deno.Command(Deno.execPath(), {
-            args: [
+        const holder = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs([
                 "run",
                 "-A",
                 "--config",
                 new URL("../../../deno.json", import.meta.url).pathname,
                 script,
                 join(dirname(path), ".journal.lock"),
-            ],
+            ]),
             stdin: "piped",
             stdout: "piped",
-        }).spawn();
+            cwd: getCwd(),
+            stderr: "piped",
+        });
         const reader = holder.stdout.getReader();
         await reader.read();
         let failed;
@@ -136,23 +156,23 @@ console.log("ready"); await Deno.stdin.read(new Uint8Array(1)); release();`,
     });
 });
 
-Deno.test("two processes preserve complete unique saved observations and report budget skips", async () => {
+test("two processes preserve complete unique saved observations and report budget skips", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot }) => {
         const script = join(projectRoot, "writer.js");
         const module = new URL("./metrics.js", import.meta.url).href;
-        await Deno.writeTextFile(
+        await fsWriteFile(
             script,
             `import { recordWorkflowMetric } from ${JSON.stringify(module)};
 const results = [];
 for (let seq = 0; seq < 12; seq++) {
-results.push(await recordWorkflowMetric({ v:2, category:"command", event:"command_started", recorderId:Deno.args[1], seq, command:"help" }, Deno.args[0]));
+results.push(await recordWorkflowMetric({ v:2, category:"command", event:"command_started", recorderId:(await import("node:process")).argv.slice(2)[1], seq, command:"help" }, (await import("node:process")).argv.slice(2)[0]));
 }
 console.log(JSON.stringify(results));`,
         );
         const results = await Promise.all(
             ["one", "two"].map((id) =>
-                new Deno.Command(Deno.execPath(), {
-                    args: [
+                captureForegroundProcess(process.execPath, {
+                    args: runtimeSourceArgs([
                         "run",
                         "-A",
                         "--config",
@@ -160,11 +180,10 @@ console.log(JSON.stringify(results));`,
                         script,
                         projectRoot,
                         id,
-                    ],
+                    ]),
                     env: { HOME: homeDir },
-                    stdout: "piped",
-                    stderr: "piped",
-                }).output()
+                    cwd: getCwd(),
+                }),
             ),
         );
         const outcomes = results.flatMap((result, index) => {
@@ -181,28 +200,39 @@ console.log(JSON.stringify(results));`,
             return reported;
         });
         assertEquals(new Set(outcomes.map((outcome) => outcome.eventId)).size, 24);
-        const saved = outcomes.filter((outcome) => outcome.persisted).map(({ persisted: _persisted, ...record }) =>
-            record
-        );
+        const saved = outcomes
+            .filter((outcome) => outcome.persisted)
+            .map(({ persisted: _persisted, ...record }) => record);
         assert(saved.length > 0);
         const observations = (await readJournal(getWorkflowMetricsFilePath(projectRoot))).filter((row) => row.v === 2);
         assertEquals(observations.length, saved.length);
-        for (const record of saved) assertEquals(observations.find((row) => row.eventId === record.eventId), record);
+        for (const record of saved)
+            assertEquals(
+                observations.find((row) => row.eventId === record.eventId),
+                record,
+            );
     });
 });
 
-Deno.test("kill and restart repairs incomplete final evidence without losing earlier records", async () => {
+test("kill and restart repairs incomplete final evidence without losing earlier records", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         const first = await recordWorkflowMetric(metric, projectRoot);
         const script = join(projectRoot, "torn.js");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             script,
-            `const file = Deno.openSync(Deno.args[0], {write:true, append:true});
-file.writeSync(new TextEncoder().encode('{"v":2,"eventId":"incomplete'));
-file.syncSync(); console.log("ready"); await new Promise(() => {});`,
+            `const {openSync, writeSync, fsyncSync} = await import("node:fs");
+const file = openSync((await import("node:process")).argv.slice(2)[0], "a");
+writeSync(file, new TextEncoder().encode('{"v":2,"eventId":"incomplete'));
+fsyncSync(file); console.log("ready"); await new Promise(() => {});`,
         );
-        const child = new Deno.Command(Deno.execPath(), { args: ["run", "-A", script, path], stdout: "piped" }).spawn();
+        const child = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs(["run", "-A", script, path]),
+            stdout: "piped",
+            cwd: getCwd(),
+            stdin: "null",
+            stderr: "piped",
+        });
         const reader = child.stdout.getReader();
         await reader.read();
         child.kill("SIGKILL");
@@ -218,26 +248,26 @@ file.syncSync(); console.log("ready"); await new Promise(() => {});`,
     });
 });
 
-Deno.test("interior corruption stays isolated with an explicit coverage gap", async () => {
+test("interior corruption stays isolated with an explicit coverage gap", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         await recordWorkflowMetric(metric, projectRoot);
-        await Deno.writeTextFile(path, 'broken-interior\n{"v":1,"event":"legacy"}\n', { append: true });
+        await fsWriteFile(path, 'broken-interior\n{"v":1,"event":"legacy"}\n', { flag: "a" });
         const result = await recordWorkflowMetric({ ...metric, seq: 1 }, projectRoot);
         assertEquals(result.persisted, true);
         assert(result.coverageGap);
         assertEquals(result.coverageGap.corruptLines, [3]);
-        const text = await Deno.readTextFile(path);
+        const text = await fsReadFile(path, "utf8");
         assert(text.includes('broken-interior\n{"v":1,"event":"legacy"}\n'));
         assert(text.includes('"reason":"interior_corruption"'));
     });
 });
 
-Deno.test("disk failure returns not-persisted evidence and never throws", async () => {
+test("disk failure returns not-persisted evidence and never throws", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
-        await Deno.mkdir(path);
+        await fsMkdir(dirname(path), { recursive: true });
+        await fsMkdir(path);
         const result = await appendWorkflowMetric(path, projectRoot, metric, {
             enabled: true,
             epoch: "initial",
@@ -248,7 +278,7 @@ Deno.test("disk failure returns not-persisted evidence and never throws", async 
     });
 });
 
-Deno.test("pending recorder rechecks settings after acquiring the journal lock", async () => {
+test("pending recorder rechecks settings after acquiring the journal lock", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         await recordWorkflowMetric(metric, projectRoot);
@@ -274,7 +304,7 @@ Deno.test("pending recorder rechecks settings after acquiring the journal lock",
     });
 });
 
-Deno.test("first enabled invocation that settles disabled creates a rejecting boundary", async () => {
+test("first enabled invocation that settles disabled creates a rejecting boundary", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         const started = invocation(path);
@@ -285,11 +315,14 @@ Deno.test("first enabled invocation that settles disabled creates a rejecting bo
         const retried = await recordWorkflowMetric(failed, projectRoot);
         assertEquals(retried.persisted, false);
         assertEquals(retried.eventId, "first");
-        assertEquals((await readJournal(path)).map((row) => row.enabled), [false, true]);
+        assertEquals(
+            (await readJournal(path)).map((row) => row.enabled),
+            [false, true],
+        );
     });
 });
 
-Deno.test("first post-enable batch persists without accepting earlier epoch retries", async () => {
+test("first post-enable batch persists without accepting earlier epoch retries", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         const old = await recordWorkflowMetric(metric, projectRoot);
@@ -298,7 +331,10 @@ Deno.test("first post-enable batch persists without accepting earlier epoch retr
         await recordWorkflowMetric(metric, projectRoot);
         await setCustomSetting("workflowMetrics", true, "project", projectRoot);
         const batch = await Promise.all([1, 2, 3].map((seq) => recordWorkflowMetric({ ...metric, seq }, projectRoot)));
-        assertEquals(batch.map((row) => row.persisted), [true, true, true]);
+        assertEquals(
+            batch.map((row) => row.persisted),
+            [true, true, true],
+        );
         assertEquals(new Set(batch.map((row) => row.collectionEpoch)).size, 1);
         const stale = await appendWorkflowMetric(path, projectRoot, metric, {
             enabled: true,
@@ -310,17 +346,17 @@ Deno.test("first post-enable batch persists without accepting earlier epoch retr
     });
 });
 
-Deno.test("large checkpointed history does not delay enabled or disabled observations", async () => {
+test("large checkpointed history does not delay enabled or disabled observations", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         await recordWorkflowMetric(metric, projectRoot);
         const statePath = join(dirname(path), "state.json");
-        const state = JSON.parse(await Deno.readTextFile(statePath));
+        const state = JSON.parse(await fsReadFile(statePath, "utf8"));
         const retained = ('{"v":1,"event":"legacy","padding":"' + "x".repeat(1024) + '"}\n').repeat(32768);
-        await Deno.writeTextFile(path, retained, { append: true });
-        state.journalBytes = (await Deno.stat(path)).size;
+        await fsWriteFile(path, retained, { flag: "a" });
+        state.journalBytes = (await fsStat(path)).size;
         state.journalLines += 32768;
-        await Deno.writeTextFile(statePath, JSON.stringify(state));
+        await fsWriteFile(statePath, JSON.stringify(state));
         const start = Date.now();
         assertEquals((await recordWorkflowMetric(metric, projectRoot)).persisted, true);
         await setCustomSetting("workflowMetrics", false, "project", projectRoot);
@@ -328,7 +364,7 @@ Deno.test("large checkpointed history does not delay enabled or disabled observa
         assert(Date.now() - start < 1400);
         const disabledEpoch = resolveCollectionEpoch(path).collectionEpoch.id;
         // Each bounded recovery call advances the checkpoint without replaying activity.
-        await Deno.remove(statePath);
+        await fsRm(statePath);
         let recovered;
         for (let attempt = 0; attempt < 200; attempt++) {
             const recoveryStart = Date.now();
@@ -346,13 +382,13 @@ Deno.test("large checkpointed history does not delay enabled or disabled observa
     });
 });
 
-Deno.test("large legacy journal builds a checkpoint and resumes enabled recording", async () => {
+test("large legacy journal builds a checkpoint and resumes enabled recording", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
-        await Deno.mkdir(dirname(path), { recursive: true });
+        await fsMkdir(dirname(path), { recursive: true });
         // One row also spans a recovery chunk, including a multibyte character.
         const retained = JSON.stringify({ v: 1, event: "legacy", padding: "é".repeat(300000) }) + "\n";
-        await Deno.writeTextFile(path, retained);
+        await fsWriteFile(path, retained);
         const results = [];
         for (let attempt = 0; attempt < 5; attempt++) {
             const start = Date.now();
@@ -365,22 +401,22 @@ Deno.test("large legacy journal builds a checkpoint and resumes enabled recordin
         const saved = results.at(-1);
         assert(saved);
         assertEquals(saved.persisted, true);
-        assert((await Deno.readTextFile(path)).startsWith(retained));
+        assert((await fsReadFile(path, "utf8")).startsWith(retained));
         assertEquals((await readMetrics()).filter((row) => row.v === 2).length, 1);
         assertEquals((await readJournal(path)).filter((row) => row.event === "measurement_gap").length, 0);
     });
 });
 
-Deno.test("behind checkpoint recovers distant boundaries and gaps without accepting old retries", async () => {
+test("behind checkpoint recovers distant boundaries and gaps without accepting old retries", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         const old = await recordWorkflowMetric(metric, projectRoot);
         const statePath = join(dirname(path), "state.json");
-        const behind = await Deno.readTextFile(statePath);
+        const behind = await fsReadFile(statePath, "utf8");
         const retained = ('{"v":1,"event":"legacy","padding":"' + "x".repeat(1024) + '"}\n').repeat(600);
-        await Deno.writeTextFile(path, "broken-interior\n", { append: true });
-        await Deno.writeTextFile(path, retained, { append: true });
-        await Deno.writeTextFile(
+        await fsWriteFile(path, "broken-interior\n", { flag: "a" });
+        await fsWriteFile(path, retained, { flag: "a" });
+        await fsWriteFile(
             path,
             JSON.stringify({
                 v: 1,
@@ -389,10 +425,10 @@ Deno.test("behind checkpoint recovers distant boundaries and gaps without accept
                 enabled: false,
                 historyEpoch: old.historyEpoch,
             }) + "\n",
-            { append: true },
+            { flag: "a" },
         );
         // A stale checkpoint has not seen the large suffix or its disabled boundary.
-        await Deno.writeTextFile(statePath, behind);
+        await fsWriteFile(statePath, behind);
         const results = [];
         for (let attempt = 0; attempt < 5; attempt++) {
             const result = await recordWorkflowMetric(metric, projectRoot);
@@ -412,28 +448,29 @@ Deno.test("behind checkpoint recovers distant boundaries and gaps without accept
                 .reason,
             "collection_boundary",
         );
-        assert((await Deno.readTextFile(path)).includes(retained));
+        assert((await fsReadFile(path, "utf8")).includes(retained));
     });
 });
 
-Deno.test("paused OS-lock owner cannot be displaced by an expired lease", async () => {
-    if (Deno.build.os === "windows") return;
+test("paused OS-lock owner cannot be displaced by an expired lease", async () => {
+    if ((process.platform === "win32" ? "windows" : process.platform) === "windows") return;
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         await recordWorkflowMetric(metric, projectRoot);
         const lockPath = join(dirname(path), ".journal.lock");
         const script = join(projectRoot, "paused-lock.js");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             script,
-            `import lockfile from "proper-lockfile";
-const guard = Deno.openSync(Deno.args[0], {read:true, write:true});
+            `import lockfile from ${JSON.stringify(import.meta.resolve("proper-lockfile"))};
+const {openNativeFileLock} = await import(${JSON.stringify(new URL("../native-file-lock.ts", import.meta.url).href)});
+const guard = openNativeFileLock((await import("node:process")).argv.slice(2)[0]);
 guard.lockSync(true);
-const release = lockfile.lockSync(Deno.args[1], {realpath:false});
-console.log("ready"); await Deno.stdin.read(new Uint8Array(1));
+const release = lockfile.lockSync((await import("node:process")).argv.slice(2)[1], {realpath:false});
+console.log("ready"); await (await import("node:events")).once((await import("node:process")).stdin, "data");
 release(); guard.close();`,
         );
-        const child = new Deno.Command(Deno.execPath(), {
-            args: [
+        const child = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs([
                 "run",
                 "-A",
                 "--config",
@@ -441,22 +478,24 @@ release(); guard.close();`,
                 script,
                 join(dirname(path), ".journal.guard"),
                 lockPath,
-            ],
+            ]),
             stdin: "piped",
             stdout: "piped",
-        }).spawn();
+            cwd: getCwd(),
+            stderr: "piped",
+        });
         const reader = child.stdout.getReader();
         await reader.read();
-        child.kill("SIGSTOP");
+        process.kill(child.pid, "SIGSTOP");
         try {
             const expired = new Date(Date.now() - 60000);
-            await Deno.utime(`${lockPath}.lock`, expired, expired);
+            await fsUtimes(`${lockPath}.lock`, expired, expired);
             const result = await recordWorkflowMetric(metric, projectRoot);
             assertEquals(result.reason, "lock_timeout");
             assertEquals(result.persisted, false);
-            assertEquals((await Deno.stat(`${lockPath}.lock`)).isDirectory, true);
+            assertEquals((await fsStat(`${lockPath}.lock`)).isDirectory(), true);
         } finally {
-            child.kill("SIGCONT");
+            process.kill(child.pid, "SIGCONT");
             const writer = child.stdin.getWriter();
             await writer.write(new Uint8Array([10]));
             await writer.close();
@@ -469,19 +508,20 @@ release(); guard.close();`,
     });
 });
 
-Deno.test("interrupted tail repair retains its gap and earlier observations", async () => {
+test("interrupted tail repair retains its gap and earlier observations", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         const first = await recordWorkflowMetric(metric, projectRoot);
-        const end = (await Deno.stat(path)).size;
-        const gap = JSON.stringify({
-            v: 1,
-            event: "measurement_gap",
-            reason: "incomplete_append",
-            tornBytes: 12,
-            historyEpoch: resolveCollectionEpoch(path).historyEpoch,
-        }) + "\n";
-        await Deno.writeTextFile(join(dirname(path), "repair.json"), JSON.stringify({ end, gap }));
+        const end = (await fsStat(path)).size;
+        const gap =
+            JSON.stringify({
+                v: 1,
+                event: "measurement_gap",
+                reason: "incomplete_append",
+                tornBytes: 12,
+                historyEpoch: resolveCollectionEpoch(path).historyEpoch,
+            }) + "\n";
+        await fsWriteFile(join(dirname(path), "repair.json"), JSON.stringify({ end, gap }));
         // The original writer stopped after removing the torn bytes, before appending the gap.
         const next = await recordWorkflowMetric({ ...metric, seq: 1 }, projectRoot);
         assertEquals(next.persisted, true);
@@ -492,7 +532,7 @@ Deno.test("interrupted tail repair retains its gap and earlier observations", as
     });
 });
 
-Deno.test("first-ever pending append with an earlier timestamp survives empty-history clear", async () => {
+test("first-ever pending append with an earlier timestamp survives empty-history clear", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {
         const path = getWorkflowMetricsFilePath(projectRoot);
         const state = resolveCollectionEpoch(path, true);

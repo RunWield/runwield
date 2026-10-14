@@ -13,13 +13,7 @@ export interface MetricsJournalRow {
     planId?: string;
     parentExecutionId?: string;
     attemptId?: string;
-    [key: string]:
-        | string
-        | number
-        | boolean
-        | null
-        | undefined
-        | MetricsAvailability;
+    [key: string]: string | number | boolean | null | undefined | MetricsAvailability;
 }
 export interface MetricsAvailability {
     tools?: string;
@@ -46,10 +40,7 @@ export interface MetricsExportObservation {
     executionRef?: string;
     parentExecutionRef?: string;
     attemptRef?: string;
-    fields: Record<
-        string,
-        string | number | boolean | null | MetricsAvailability
-    >;
+    fields: Record<string, string | number | boolean | null | MetricsAvailability>;
 }
 const FIELDS: Record<MetricsExportKind, string[]> = {
     model_usage: [
@@ -72,14 +63,7 @@ const FIELDS: Record<MetricsExportKind, string[]> = {
         "aggregationBasis",
         "inputCacheBasis",
     ],
-    execution_finished: [
-        "backend",
-        "outcome",
-        "reason",
-        "elapsedMs",
-        "callCount",
-        "coverage",
-    ],
+    execution_finished: ["backend", "outcome", "reason", "elapsedMs", "callCount", "coverage"],
     tool_call_finished: [
         "toolName",
         "outcome",
@@ -110,34 +94,17 @@ const FIELDS: Record<MetricsExportKind, string[]> = {
 };
 export function isExportableMetric(row: MetricsJournalRow): boolean {
     // Alternative measurements overlap the authoritative total. Keep them local.
-    return row.v === 2 && Object.hasOwn(FIELDS, row.event) &&
-        row.aggregationBasis !== "alternative";
+    return row.v === 2 && Object.hasOwn(FIELDS, row.event) && row.aggregationBasis !== "alternative";
 }
 export async function metricsExportReference(
     identity: MetricsExportHostIdentity,
     kind: string,
     id: string,
 ): Promise<string> {
-    const bytes = Uint8Array.from(
-        identity.referenceKey.match(/../g) ?? [],
-        (pair) => parseInt(pair, 16),
-    );
-    const key = await crypto.subtle.importKey(
-        "raw",
-        bytes,
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"],
-    );
-    const signature = await crypto.subtle.sign(
-        "HMAC",
-        key,
-        new TextEncoder().encode(`${kind}:${id}`),
-    );
-    return Array.from(
-        new Uint8Array(signature),
-        (b) => b.toString(16).padStart(2, "0"),
-    ).join("");
+    const bytes = Uint8Array.from(identity.referenceKey.match(/../g) ?? [], (pair) => parseInt(pair, 16));
+    const key = await crypto.subtle.importKey("raw", bytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${kind}:${id}`));
+    return Array.from(new Uint8Array(signature), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export async function buildMetricsExportObservation(
@@ -156,23 +123,17 @@ export async function buildMetricsExportObservation(
             `${projectRoot}:${row.historyEpoch}:${row.eventId}`,
         ),
         occurredAt: row.ts,
-        ownerRef: await metricsExportReference(
-            identity,
-            "owner",
-            identity.ownerRef,
-        ),
+        ownerRef: await metricsExportReference(identity, "owner", identity.ownerRef),
         projectRef: await metricsExportReference(identity, "project", projectRoot),
         fields: {},
     };
-    for (
-        const [local, reference] of [
-            ["sessionId", "sessionRef"],
-            ["planId", "planRef"],
-            ["executionId", "executionRef"],
-            ["parentExecutionId", "parentExecutionRef"],
-            ["attemptId", "attemptRef"],
-        ] as const
-    ) {
+    for (const [local, reference] of [
+        ["sessionId", "sessionRef"],
+        ["planId", "planRef"],
+        ["executionId", "executionRef"],
+        ["parentExecutionId", "parentExecutionRef"],
+        ["attemptId", "attemptRef"],
+    ] as const) {
         const value = row[local];
         if (typeof value === "string") {
             observation[reference] = await metricsExportReference(
@@ -190,18 +151,15 @@ export async function buildMetricsExportObservation(
             continue;
         }
         if (field === "reasoningTokens") {
-            observation.fields[field] = typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-                ? value
-                : null;
+            observation.fields[field] =
+                typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
             continue;
         }
         if (value === undefined) continue;
         if (field === "coverage" && value && typeof value === "object") {
             const coverage: MetricsAvailability = {};
             for (const part of ["tools", "usage", "context"] as const) {
-                if (
-                    ["complete", "partial", "unavailable"].includes(value[part] ?? "")
-                ) coverage[part] = value[part];
+                if (["complete", "partial", "unavailable"].includes(value[part] ?? "")) coverage[part] = value[part];
             }
             observation.fields.coverage = Object.freeze(coverage);
         } else if (typeof value === "string") {
@@ -211,7 +169,8 @@ export async function buildMetricsExportObservation(
                 : /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
             if (pattern.test(value)) observation.fields[field] = value;
         } else if (
-            value === null || typeof value === "boolean" ||
+            value === null ||
+            typeof value === "boolean" ||
             (typeof value === "number" && Number.isFinite(value) && value >= 0)
         ) {
             observation.fields[field] = value;

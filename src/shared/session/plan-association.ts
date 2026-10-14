@@ -38,7 +38,7 @@ function normalizeString(value: unknown): string {
 
 function normalizePurpose(value: unknown): AssociationPurpose | null {
     const purpose = normalizeString(value);
-    return PURPOSES.has(purpose as AssociationPurpose) ? purpose as AssociationPurpose : null;
+    return PURPOSES.has(purpose as AssociationPurpose) ? (purpose as AssociationPurpose) : null;
 }
 
 function normalizeSegmentKind(value: unknown): SessionTranscriptSegment["kind"] {
@@ -97,10 +97,14 @@ export function planAssociationAtTime(
     const segment = segments.find((item) => item.segmentId === scope.segmentId);
     if (!segment || !Number.isFinite(time)) return undefined;
     if (segment.sealedAt && time >= Date.parse(segment.sealedAt)) return undefined;
-    const eligible = associations.filter((item) =>
-        item.committedGeneration !== null && item.segmentId === scope.segmentId &&
-        Date.parse(item.recordedAt) <= time
-    ).sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt));
+    const eligible = associations
+        .filter(
+            (item) =>
+                item.committedGeneration !== null &&
+                item.segmentId === scope.segmentId &&
+                Date.parse(item.recordedAt) <= time,
+        )
+        .sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt));
     const latest = eligible[0];
     // Simultaneous ambiguous associations do not authorize spreading one observation.
     if (!latest || latest.planName !== scope.planName) return undefined;
@@ -116,6 +120,6 @@ export function normalizeManifestPlanAssociation(value: unknown): ManifestPlanAs
     const committedGeneration = (value as Record<string, unknown>).committedGeneration;
     return {
         ...association,
-        committedGeneration: Number.isInteger(committedGeneration) ? committedGeneration as number : null,
+        committedGeneration: Number.isInteger(committedGeneration) ? (committedGeneration as number) : null,
     };
 }

@@ -1,5 +1,16 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { writeRuntimeExecutableFixture } from "../../src/testing/runtime-executable-fixture.ts";
+import {
+    writeFile as fsWriteFile,
+    mkdir as fsMkdir,
+    copyFile as fsCopyFile,
+    readFile as fsReadFile,
+    rm as fsRm,
+} from "node:fs/promises";
+import { test } from "node:test";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../src/testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../src/testing/process-global-lock.ts";
 import { defineGitFixture, git } from "../../src/shared/git-test-fixture.ts";
 import { getModelRegistry } from "../../src/shared/models/model-registry.ts";
@@ -17,22 +28,23 @@ import { deliver } from "./exporter.ts";
 import { attributes, metadata, native, span, withServer } from "./test-fixture.ts";
 
 const repository = defineGitFixture(async (root) => {
-    await Deno.writeTextFile(join(root, "README.md"), "usage fixture\n");
+    await fsWriteFile(join(root, "README.md"), "usage fixture\n");
     await git(root, ["add", "."]);
     await git(root, ["commit", "-m", "fixture"]);
 });
 
-Deno.test("Claude fixture keeps local alternatives but exports one aggregate generation with exact totals", async () => {
+test("Claude fixture keeps local alternatives but exports one aggregate generation with exact totals", async () => {
     await withProcessGlobalTestLock(async () => {
         const root = await repository.checkout();
-        const previousHome = Deno.env.get("HOME");
-        const previousPath = Deno.env.get("PATH");
+        const previousHome = process.env["HOME"];
+        const previousPath = process.env["PATH"];
         try {
-            const home = join(root, "home"), bin = join(root, "bin");
-            await Deno.mkdir(home);
-            await Deno.mkdir(bin);
+            const home = join(root, "home"),
+                bin = join(root, "bin");
+            await fsMkdir(home);
+            await fsMkdir(bin);
             const stream = join(root, "stream.jsonl");
-            await Deno.copyFile(
+            await fsCopyFile(
                 new URL(
                     "../../src/shared/session/backends/claude-cli/fixtures/claude-2.1.284-read-tool-stream.jsonl",
                     import.meta.url,
@@ -40,19 +52,18 @@ Deno.test("Claude fixture keeps local alternatives but exports one aggregate gen
                 stream,
             );
             const script = join(bin, "fixture.js");
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 script,
                 `
-await new Response(Deno.stdin.readable).text();
-console.log(await Deno.readTextFile(${JSON.stringify(stream)}));
+for await (const _chunk of (await import("node:process")).stdin) { /* drain fixture input */ }
+console.log(await (await import("node:fs/promises")).readFile(${JSON.stringify(stream)}, "utf8"));
 await new Promise((resolve) => setTimeout(resolve, 30));
 `,
             );
             const executable = join(bin, "claude");
-            await Deno.writeTextFile(executable, `#!/bin/sh\nexec deno run -A ${JSON.stringify(script)} "$@"\n`);
-            await Deno.chmod(executable, 0o755);
-            Deno.env.set("HOME", home);
-            Deno.env.set("PATH", `${bin}:${previousPath || ""}`);
+            await writeRuntimeExecutableFixture(executable, script);
+            process.env["HOME"] = home;
+            process.env["PATH"] = `${bin}:${previousPath || ""}`;
             await setCustomSetting("workflowMetrics", true, "project", root);
             const model = getModelRegistry().find("claude-cli", "sonnet");
             assert(model);
@@ -61,6 +72,7 @@ await new Promise((resolve) => setTimeout(resolve, 30));
             const session = new ClaudeCliExecutionSession({
                 cwd: root,
                 agentName: "Guide",
+                agentDisplayName: "Guide",
                 finalSystemPrompt: "Fixture system instructions",
                 model,
                 sessionManager: manager,
@@ -71,17 +83,20 @@ await new Promise((resolve) => setTimeout(resolve, 30));
             } finally {
                 await session.dispose();
             }
-            const rows: MetricsJournalRow[] = (await Deno.readTextFile(getWorkflowMetricsFilePath(root)))
-                .trim().split("\n").map((line) => JSON.parse(line));
+            const rows: MetricsJournalRow[] = (await fsReadFile(getWorkflowMetricsFilePath(root), "utf8"))
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line));
             const localUsage = rows.filter((row) => row.event === "model_usage");
             assertEquals(
-                localUsage.filter((row) => row.aggregationBasis === "alternative").map((row) => [
-                    row.inputTokens,
-                    row.outputTokens,
-                    row.cacheReadTokens,
-                    row.cacheWriteTokens,
-                ]),
-                [[2, 8, 1448, 2430], [2, 2, 3878, 3604], [null, null, null, null]],
+                localUsage
+                    .filter((row) => row.aggregationBasis === "alternative")
+                    .map((row) => [row.inputTokens, row.outputTokens, row.cacheReadTokens, row.cacheWriteTokens]),
+                [
+                    [2, 8, 1448, 2430],
+                    [2, 2, 3878, 3604],
+                    [null, null, null, null],
+                ],
             );
             const identity = { ownerRef: "owner", referenceKey: "ab".repeat(32) };
             await withServer(async ({ context, requests }) => {
@@ -90,9 +105,9 @@ await new Promise((resolve) => setTimeout(resolve, 30));
                     assert(observation);
                     assertEquals((await deliver(observation, context)).outcome, "accepted");
                 }
-                const generations = requests.map(span).filter((s) =>
-                    attributes(s)["langfuse.observation.type"] === "generation"
-                );
+                const generations = requests
+                    .map(span)
+                    .filter((s) => attributes(s)["langfuse.observation.type"] === "generation");
                 assertEquals(generations.length, 1);
                 const generation = generations[0];
                 assertEquals(metadata(generation).aggregationBasis, "turn");
@@ -105,11 +120,11 @@ await new Promise((resolve) => setTimeout(resolve, 30));
                 assertEquals(native(generation, "cost_details"), { total: 0.0594932 });
             });
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", previousPath);
-            await Deno.remove(root, { recursive: true });
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            if (previousPath === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = previousPath;
+            await fsRm(root, { recursive: true });
         }
     });
 });

@@ -118,14 +118,11 @@ export function pickControllerState(source: Partial<WorkflowControllerState>): W
     const result: WorkflowControllerState = {};
     for (const key of CONTROLLER_STATE_FIELDS) {
         if (!Object.hasOwn(source, key)) continue;
-        const value = source[key] === null && ![
-                "validationCheckpoint",
-                "humanReviewMode",
-                "humanReviewDecision",
-                "humanReviewedAt",
-            ].includes(key)
-            ? undefined
-            : source[key];
+        const value =
+            source[key] === null &&
+            !["validationCheckpoint", "humanReviewMode", "humanReviewDecision", "humanReviewedAt"].includes(key)
+                ? undefined
+                : source[key];
         Object.assign(result, { [key]: value });
     }
     return result;

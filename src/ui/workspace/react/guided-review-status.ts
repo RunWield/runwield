@@ -52,13 +52,12 @@ export function formatGuidedReviewUsageStatus(job: GuidedReviewJobStatus): Guide
         job.tokens?.cacheWriteTokens,
     ].map(readNumber);
     const labels = ["in", "out", "read", "write"];
-    const tokens = state === "available" && values.some((value) => value !== null)
-        ? `tokens ${
-            values.map((value, index) => `${value === null ? "—" : formatCompactTokens(value)} ${labels[index]}`).join(
-                " / ",
-            )
-        }`
-        : "tokens unavailable";
+    const tokens =
+        state === "available" && values.some((value) => value !== null)
+            ? `tokens ${values
+                  .map((value, index) => `${value === null ? "—" : formatCompactTokens(value)} ${labels[index]}`)
+                  .join(" / ")}`
+            : "tokens unavailable";
     return { tokens, cost: costUsd === null ? "cost unavailable" : `cost $${costUsd.toFixed(3)}` };
 }
 

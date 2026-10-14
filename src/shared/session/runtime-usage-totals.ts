@@ -30,11 +30,12 @@ export class RuntimeUsageTotals {
         for (const category of categories) {
             const value = usage[category];
             const availability = value === null ? "unavailable" : "complete";
-            this.availability[category] = this.observations === 0
-                ? availability
-                : this.availability[category] === availability
-                ? availability
-                : "partial";
+            this.availability[category] =
+                this.observations === 0
+                    ? availability
+                    : this.availability[category] === availability
+                      ? availability
+                      : "partial";
             if (value !== null) this.usage[category] = (this.usage[category] ?? 0) + value;
         }
         if (usage.contextWindow !== undefined) this.usage.contextWindow = usage.contextWindow;

@@ -1,3 +1,4 @@
+import { readFile as fsReadFile } from "node:fs/promises";
 import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import {
@@ -183,18 +184,18 @@ test("runRemoveCommand reports usage without terminating the test process", asyn
     });
 });
 
-Deno.test("runRemoveCommand deletes only the removed source's exporter approvals", async () => {
+test("runRemoveCommand deletes only the removed source's exporter approvals", async () => {
     await withRemoveCommandFixture(async ({ packageDir, projectRoot, source }) => {
         const manifestPath = join(packageDir, "package.json");
-        const manifest = JSON.parse(await Deno.readTextFile(manifestPath));
+        const manifest = JSON.parse(await fsReadFile(manifestPath, "utf8"));
         manifest.wld = { metricsExporter: { contract: 1, id: "fixture", entry: "./exporter.js" } };
-        await Deno.writeTextFile(manifestPath, JSON.stringify(manifest));
-        await Deno.writeTextFile(join(packageDir, "exporter.js"), "export default () => {};\n");
+        await fsWriteFile(manifestPath, JSON.stringify(manifest));
+        await fsWriteFile(join(packageDir, "exporter.js"), "export default () => {};\n");
         await installFixturePackage(projectRoot, source);
         const other = join(projectRoot, "other-package");
-        await Deno.mkdir(other);
-        await Deno.writeTextFile(join(other, "package.json"), JSON.stringify(manifest));
-        await Deno.writeTextFile(join(other, "exporter.js"), "export default () => {};\n");
+        await fsMkdir(other);
+        await fsWriteFile(join(other, "package.json"), JSON.stringify(manifest));
+        await fsWriteFile(join(other, "exporter.js"), "export default () => {};\n");
         await installFixturePackage(projectRoot, other);
         await getSettingsManager().flush();
         for (const exporter of await listInstalledMetricsExporters()) await approveMetricsExporter(exporter);

@@ -53,8 +53,8 @@ export class AcpSessionMap {
     }
 
     createRecord(session: AcpRuntimeSession, options: CreateAcpSessionRecordOptions = {}): AcpSessionRecord {
-        const acpSessionId = options.acpSessionId ||
-            `${ACP_SESSION_PREFIX}${options.persistedSessionId || session.sessionId}`;
+        const acpSessionId =
+            options.acpSessionId || `${ACP_SESSION_PREFIX}${options.persistedSessionId || session.sessionId}`;
         if (this.records.has(acpSessionId)) throw new Error(`ACP session already exists: ${acpSessionId}`);
         const record: AcpSessionRecord = {
             acpSessionId,

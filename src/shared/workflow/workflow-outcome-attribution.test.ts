@@ -1,5 +1,13 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import {
+    realpath as fsRealpath,
+    mkdir as fsMkdir,
+    writeFile as fsWriteFile,
+    readFile as fsReadFile,
+} from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
@@ -7,19 +15,19 @@ import { PLAN_ASSOCIATION_CUSTOM_TYPE } from "../session/plan-association.ts";
 import { encodeCwdForSessionDir, getRunWieldSessionsBaseDir } from "../session/root-session.js";
 import { recordWorkflowOutcome } from "./outcome-observations.ts";
 
-Deno.test("outcomes use only the committed Plan association in their observation time scope", async () => {
+test("outcomes use only the committed Plan association in their observation time scope", async () => {
     await withWorkflowMetricsFixture(async (metrics) => {
         const store = openFileSessionStore();
         try {
             const project = store.ensureRuntimeProject({ root: metrics.projectRoot });
             const directory = join(
                 getRunWieldSessionsBaseDir(),
-                encodeCwdForSessionDir(await Deno.realPath(metrics.projectRoot)),
+                encodeCwdForSessionDir(await fsRealpath(metrics.projectRoot)),
             );
-            await Deno.mkdir(directory, { recursive: true });
+            await fsMkdir(directory, { recursive: true });
             const transcriptPath = join(directory, "2026-01-01T00-00-00-000Z_two-plan-session.jsonl");
             const start = "2026-01-01T00:00:00.000Z";
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 transcriptPath,
                 JSON.stringify({
                     type: "session",
@@ -44,7 +52,10 @@ Deno.test("outcomes use only the committed Plan association in their observation
                 ownerInstanceId: "owner",
                 ownerProcessKind: "test",
             });
-            for (const [planName, second] of [["alpha", "10"], ["beta", "20"]]) {
+            for (const [planName, second] of [
+                ["alpha", "10"],
+                ["beta", "20"],
+            ]) {
                 const data = {
                     planId: `plan-${planName}`,
                     planName,
@@ -53,7 +64,7 @@ Deno.test("outcomes use only the committed Plan association in their observation
                     segmentKind: segment.kind,
                     recordedAt: `2026-01-01T00:00:${second}.000Z`,
                 };
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     transcriptPath,
                     JSON.stringify({
                         type: "custom",
@@ -62,13 +73,13 @@ Deno.test("outcomes use only the committed Plan association in their observation
                         timestamp: data.recordedAt,
                         data,
                     }) + "\n",
-                    { append: true },
+                    { flag: "a" },
                 );
                 store.stagePlanAssociation(proof, data);
             }
             proof = store.changeSessionActivationPhase(proof, "hydrated");
             proof = store.changeSessionActivationPhase(proof, "checkpointing");
-            const bytes = await Deno.readFile(transcriptPath);
+            const bytes = await fsReadFile(transcriptPath);
             store.publishGenerationAndRelease(proof, {
                 generation: 0,
                 byteLength: bytes.byteLength,
@@ -114,7 +125,10 @@ Deno.test("outcomes use only the committed Plan association in their observation
             }
             const rows = await metrics.readMetrics();
             assertEquals(rows.length, cases.length);
-            assertEquals(rows.map((row) => row.planId), cases.map((item) => item.expected));
+            assertEquals(
+                rows.map((row) => row.planId),
+                cases.map((item) => item.expected),
+            );
             assertEquals(rows.filter((row) => row.outcome === "abandoned").length, 0);
             assertEquals(rows[5].planId, undefined); // General discussion is not an undelivered Plan.
             store.close();

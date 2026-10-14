@@ -1,5 +1,7 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { withWorkflowMetricsFixture } from "../testing/workflow-metrics-fixture.ts";
@@ -34,8 +36,8 @@ interface VisionCase {
 
 async function observeVision(testCase: VisionCase) {
     await withWorkflowMetricsFixture(async (fixture) => {
-        await Deno.mkdir(join(fixture.homeDir, ".wld"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(fixture.homeDir, ".wld"), { recursive: true });
+        await fsWriteFile(
             join(fixture.homeDir, ".wld", "models.json"),
             JSON.stringify({
                 providers: {
@@ -50,7 +52,7 @@ async function observeVision(testCase: VisionCase) {
         );
         await setCustomSetting("visionFallback", { model: "vision/model" }, "project", fixture.projectRoot);
         if (testCase.disabled) await setCustomSetting("workflowMetrics", false, "project", fixture.projectRoot);
-        await Deno.writeFile(join(fixture.projectRoot, "shot.png"), new Uint8Array([1, 2, 3]));
+        await fsWriteFile(join(fixture.projectRoot, "shot.png"), new Uint8Array([1, 2, 3]));
         const recorder = new ExecutionMetricsRecorder({
             projectRoot: fixture.projectRoot,
             sessionId: "vision-session",
@@ -94,8 +96,8 @@ async function observeVision(testCase: VisionCase) {
             !usage
                 ? "unavailable"
                 : usage.input == null || usage.output == null || usage.cacheRead == null || usage.cacheWrite == null
-                ? "partial"
-                : "complete",
+                  ? "partial"
+                  : "complete",
         );
     });
 }
@@ -106,38 +108,37 @@ function completion() {
     return response;
 }
 
-Deno.test("see_image records measured vision usage once, including measured zero", () =>
+test("see_image records measured vision usage once, including measured zero", () =>
     observeVision({ response: completion() }));
 
-Deno.test("see_image records unavailable usage for a completed response without measurements", () => {
+test("see_image records unavailable usage for a completed response without measurements", () => {
     const response = completion();
     Reflect.deleteProperty(response, "usage");
     return observeVision({ response });
 });
 
-Deno.test("see_image keeps absent vision categories and cost unavailable", () => {
+test("see_image keeps absent vision categories and cost unavailable", () => {
     const response = completion();
     Reflect.deleteProperty(response.usage, "cacheWrite");
     Reflect.deleteProperty(response.usage, "cost");
     return observeVision({ response });
 });
 
-Deno.test("see_image does not observe an errored vision response", () =>
+test("see_image does not observe an errored vision response", () =>
     observeVision({
         response: fauxAssistantMessage(fauxText(""), { stopReason: "error", errorMessage: "Provider failed" }),
     }));
 
-Deno.test("see_image does not observe a cancelled vision response", () =>
+test("see_image does not observe a cancelled vision response", () =>
     observeVision({
         response: fauxAssistantMessage(fauxText(""), { stopReason: "aborted" }),
     }));
 
-Deno.test("see_image does not invent usage when the vision network fails", () => observeVision({ rejects: true }));
+test("see_image does not invent usage when the vision network fails", () => observeVision({ rejects: true }));
 
-Deno.test("see_image respects disabled workflow metrics", () =>
-    observeVision({ response: completion(), disabled: true }));
+test("see_image respects disabled workflow metrics", () => observeVision({ response: completion(), disabled: true }));
 
-Deno.test("see_image preserves cache-only usage as partial rather than unavailable", () => {
+test("see_image preserves cache-only usage as partial rather than unavailable", () => {
     const response = completion();
     Reflect.deleteProperty(response.usage, "input");
     Reflect.deleteProperty(response.usage, "output");

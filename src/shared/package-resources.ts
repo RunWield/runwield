@@ -78,12 +78,12 @@ export async function resolveInstalledPackagePromptResources(
     }
     return remote
         ? prompts.map((resource) => ({
-            ...resource,
-            metadata: {
-                ...resource.metadata,
-                source: originalSources.get(resource.metadata.source) ?? resource.metadata.source,
-            },
-        }))
+              ...resource,
+              metadata: {
+                  ...resource.metadata,
+                  source: originalSources.get(resource.metadata.source) ?? resource.metadata.source,
+              },
+          }))
         : prompts;
 }
 
@@ -100,16 +100,15 @@ export function mappedRemotePackageSettings(
             if (key === "getGlobalSettings") {
                 return () => ({
                     ...target.getGlobalSettings(),
-                    packages: (target.getGlobalSettings().packages ?? [])
-                        .flatMap<PackageSource>((entry) => {
-                            const source = typeof entry === "string" ? entry : entry.source;
-                            const path = roots[source];
-                            if (!path) return [];
-                            // Pi must read the installed laptop directory, never install
-                            // a missing package or interpret a laptop path on the server.
-                            if (!originalSources.has(path)) originalSources.set(path, source);
-                            return [typeof entry === "string" ? path : { ...entry, source: path }];
-                        }),
+                    packages: (target.getGlobalSettings().packages ?? []).flatMap<PackageSource>((entry) => {
+                        const source = typeof entry === "string" ? entry : entry.source;
+                        const path = roots[source];
+                        if (!path) return [];
+                        // Pi must read the installed laptop directory, never install
+                        // a missing package or interpret a laptop path on the server.
+                        if (!originalSources.has(path)) originalSources.set(path, source);
+                        return [typeof entry === "string" ? path : { ...entry, source: path }];
+                    }),
                 });
             }
             return Reflect.get(target, key, target);
@@ -148,7 +147,7 @@ export function resolveConfiguredUserPackageSource(source: string, options: Pack
     if (normalizer.removeSourceFromSettings(source)) {
         const remaining = new Set(
             (normalizationSettings.getGlobalSettings().packages || []).map((entry) =>
-                typeof entry === "string" ? entry : entry.source
+                typeof entry === "string" ? entry : entry.source,
             ),
         );
         const matched = packages.find((entry) => !remaining.has(typeof entry === "string" ? entry : entry.source))!;
@@ -159,8 +158,13 @@ export function resolveConfiguredUserPackageSource(source: string, options: Pack
     const normalizedSource = typeof entry === "string" ? entry : entry.source;
     const manager = new DefaultPackageManager({ cwd, agentDir, settingsManager: settings });
     const requestedPath = manager.getInstalledPath(normalizedSource, "user");
-    return manager.listConfiguredPackages().find((pkg) =>
-        pkg.scope === "user" &&
-        (pkg.source === normalizedSource || Boolean(requestedPath && pkg.installedPath === requestedPath))
-    )?.source || normalizedSource;
+    return (
+        manager
+            .listConfiguredPackages()
+            .find(
+                (pkg) =>
+                    pkg.scope === "user" &&
+                    (pkg.source === normalizedSource || Boolean(requestedPath && pkg.installedPath === requestedPath)),
+            )?.source || normalizedSource
+    );
 }

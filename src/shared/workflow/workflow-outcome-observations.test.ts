@@ -1,4 +1,7 @@
-import { assert, assertEquals } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan } from "../../plan-store.js";
@@ -18,13 +21,14 @@ import type { WorkflowMetricFixtureRecord } from "../../testing/workflow-metrics
 
 async function readRows(root: string): Promise<WorkflowMetricFixtureRecord[]> {
     await drainWorkflowMetrics();
-    return (await Deno.readTextFile(getWorkflowMetricsFilePath(root))).trim().split("\n").map((line) =>
-        JSON.parse(line)
-    );
+    return (await fsReadFile(getWorkflowMetricsFilePath(root), "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
 }
 
 for (const completeRepair of [true, false]) {
-    Deno.test(`failed validation records distinct repair work that is ${completeRepair ? "completed" : "ongoing"}`, async () => {
+    test(`failed validation records distinct repair work that is ${completeRepair ? "completed" : "ongoing"}`, async () => {
         await withRuntimeCommandFixture("workflow-outcomes-", async (runtime) => {
             const fixture = await makePublicationOutcomeFixture(runtime.projectRoot);
             const ui = makeUi();
@@ -54,14 +58,18 @@ for (const completeRepair of [true, false]) {
                 runtime.setModelResponseFactories(
                     completeRepair
                         ? [
-                            () => fauxAssistantMessage(fauxToolCall("bash", { command: "touch repair-done" })),
-                            () =>
-                                fauxAssistantMessage(
-                                    fauxToolCall("task_completed", { message: "- Fixed the failed check." }),
-                                ),
-                        ]
-                        : [() =>
-                            fauxAssistantMessage(fauxText("The turn was interrupted. Continue this repair later."))],
+                              () => fauxAssistantMessage(fauxToolCall("bash", { command: "touch repair-done" })),
+                              () =>
+                                  fauxAssistantMessage(
+                                      fauxToolCall("task_completed", { message: "- Fixed the failed check." }),
+                                  ),
+                          ]
+                        : [
+                              () =>
+                                  fauxAssistantMessage(
+                                      fauxText("The turn was interrupted. Continue this repair later."),
+                                  ),
+                          ],
                 );
                 const result = await runValidationPhase({
                     hostedSession,
@@ -100,8 +108,8 @@ for (const completeRepair of [true, false]) {
                     assertEquals(validations[1].outcome, "succeeded");
                     const attempt = await fixture.confirm();
                     assert((await cleanupStoredPublication(runtime.projectRoot, attempt)).complete);
-                    const delivered = (await readRows(runtime.projectRoot)).filter((row) =>
-                        row.event === "publication_confirmed"
+                    const delivered = (await readRows(runtime.projectRoot)).filter(
+                        (row) => row.event === "publication_confirmed",
                     );
                     assertEquals(delivered.length, 1);
                     assertEquals(delivered[0].planId, "plan-demo");
@@ -114,7 +122,7 @@ for (const completeRepair of [true, false]) {
     });
 }
 
-Deno.test("interrupted non-Plan work stays ongoing and tool fan-out creates no model requests", async () => {
+test("interrupted non-Plan work stays ongoing and tool fan-out creates no model requests", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({
             projectRoot,
@@ -130,7 +138,10 @@ Deno.test("interrupted non-Plan work stays ongoing and tool fan-out creates no m
         });
         await recorder.recordExecutionStart();
         await recorder.recordToolStart("batch", "code_batch", {
-            operations: [{ op: "show", target: "Example" }, { op: "outline", file: "src/example.ts" }],
+            operations: [
+                { op: "show", target: "Example" },
+                { op: "outline", file: "src/example.ts" },
+            ],
         });
         await recorder.recordToolFinish("batch", "code_batch", {
             outcome: "canceled",
@@ -146,14 +157,20 @@ Deno.test("interrupted non-Plan work stays ongoing and tool fan-out creates no m
         const rows = await readMetrics();
         assertEquals(rows.filter((row) => row.event === "tool_operation").length, 2);
         assertEquals(rows.filter((row) => row.event === "model_usage").length, 0);
-        assertEquals(rows.some((row) => row.modelRequestId), false);
+        assertEquals(
+            rows.some((row) => row.modelRequestId),
+            false,
+        );
         assertEquals(rows.find((row) => row.event === "plan_execution_result")?.outcome, "ongoing");
-        assertEquals(rows.some((row) => row.planId || row.attemptId || row.outcome === "abandoned"), false);
+        assertEquals(
+            rows.some((row) => row.planId || row.attemptId || row.outcome === "abandoned"),
+            false,
+        );
         assertEquals(rows.filter((row) => row.event === "publication_confirmed").length, 0);
     });
 });
 
-Deno.test("a missing validation command records incomplete checks rather than a failed verdict", async () => {
+test("a missing validation command records incomplete checks rather than a failed verdict", async () => {
     await withRuntimeCommandFixture("workflow-operational-outcome-", async (runtime) => {
         const fixture = await makePublicationOutcomeFixture(runtime.projectRoot);
         const ui = makeUi();
@@ -188,7 +205,10 @@ Deno.test("a missing validation command records incomplete checks rather than a 
                 localCI: { run: (args) => runLocalCI({ ...args, settingsPolicy: "exact-project" }) },
             });
             const attempts = (await readRows(runtime.projectRoot)).filter((row) => row.event === "validation_attempt");
-            assertEquals(attempts.map((row) => row.outcome), ["incomplete"]);
+            assertEquals(
+                attempts.map((row) => row.outcome),
+                ["incomplete"],
+            );
             assertEquals(ui.toolCalls.length, 0);
         } finally {
             hostedSession.dispose();

@@ -1,4 +1,9 @@
-import { assert, assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../src/testing/assertions.ts";
 import {
     buildMetricsExportObservation,
     type MetricsJournalRow,
@@ -6,8 +11,8 @@ import {
 import { deliver } from "./exporter.ts";
 import { span, withServer } from "./test-fixture.ts";
 
-Deno.test("Core nested execution references link exported spans in one trace", async () => {
-    const root = await Deno.makeTempDir();
+test("Core nested execution references link exported spans in one trace", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-"));
     try {
         const identity = { ownerRef: "owner", referenceKey: "ab".repeat(32) };
         const row: MetricsJournalRow = {
@@ -43,6 +48,6 @@ Deno.test("Core nested execution references link exported spans in one trace", a
             assertEquals(childSpan.traceId, parentSpan.traceId);
         });
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

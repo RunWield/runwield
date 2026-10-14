@@ -1,11 +1,14 @@
-import { assert, assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
 import { setCustomSetting } from "../settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
 import { UsageReporter } from "./usage-reporting.ts";
 
-Deno.test("a real managed text prompt records human activity independently of presentation events", async () => {
+test("a real managed text prompt records human activity independently of presentation events", async () => {
     await withRuntimeCommandFixture("usage-human-provenance-", async (fixture) => {
         fixture.setModelResponse("A fixture response.");
         await setCustomSetting("workflowMetrics", true, "project", fixture.projectRoot);
@@ -22,8 +25,11 @@ Deno.test("a real managed text prompt records human activity independently of pr
             });
             assertEquals(result.ok, true);
             await drainWorkflowMetrics();
-            const contents = await Deno.readTextFile(getWorkflowMetricsFilePath(fixture.projectRoot));
-            const rows = contents.trim().split("\n").map((line) => JSON.parse(line));
+            const contents = await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8");
+            const rows = contents
+                .trim()
+                .split("\n")
+                .map((line) => JSON.parse(line));
             assert(rows.some((row) => row.event === "execution_started" && row.userInitiated === true));
             assertEquals(contents.includes("private user prompt"), false);
             const now = Date.now();

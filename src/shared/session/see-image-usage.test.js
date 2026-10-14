@@ -1,5 +1,8 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     createAssistantMessageEventStream,
     createProvider,
@@ -19,49 +22,54 @@ import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../workflow/me
 
 /** @param {VisionFixture} fixture */
 async function configureVision(fixture) {
-    const settings = JSON.parse(await Deno.readTextFile(fixture.settingsPath));
+    const settings = JSON.parse(await fsReadFile(fixture.settingsPath, "utf8"));
     settings.visionFallback = { model: "runtime-command-fixture/fixture-model" };
     settings.workflowMetrics = true;
-    await Deno.writeTextFile(fixture.settingsPath, JSON.stringify(settings));
-    await Deno.writeFile(join(fixture.projectRoot, "shot.png"), new Uint8Array([1, 2, 3]));
+    await fsWriteFile(fixture.settingsPath, JSON.stringify(settings));
+    await fsWriteFile(join(fixture.projectRoot, "shot.png"), new Uint8Array([1, 2, 3]));
     const runtime = await getModelRegistry().getRuntime();
     let primaryRequests = 0;
     /** @type {import('@earendil-works/pi-ai').ProviderStreams['streamSimple']} */
     const stream = () => {
         const result = createAssistantMessageEventStream();
-        const reply = ++primaryRequests % 2 === 1
-            ? fauxAssistantMessage(fauxToolCall("see_image", { imageRef: "shot.png" }))
-            : fauxAssistantMessage(fauxText("Vision completed"));
+        const reply =
+            ++primaryRequests % 2 === 1
+                ? fauxAssistantMessage(fauxToolCall("see_image", { imageRef: "shot.png" }))
+                : fauxAssistantMessage(fauxText("Vision completed"));
         queueMicrotask(() => {
             result.push({ type: "done", reason: "stop", message: reply });
             result.end();
         });
         return result;
     };
-    runtime.registerNativeProvider(createProvider({
-        id: "vision-usage-primary",
-        name: "Vision usage primary",
-        models: [{
-            id: "text-only",
-            name: "Text only",
-            provider: "vision-usage-primary",
-            api: "openai-completions",
-            baseUrl: "https://example.invalid",
-            reasoning: false,
-            input: ["text"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 128000,
-            maxTokens: 100,
-        }],
-        auth: {
-            apiKey: {
-                name: "Fixture",
-                check: () => Promise.resolve({ type: "api_key" }),
-                resolve: () => Promise.resolve({ auth: {} }),
+    runtime.registerNativeProvider(
+        createProvider({
+            id: "vision-usage-primary",
+            name: "Vision usage primary",
+            models: [
+                {
+                    id: "text-only",
+                    name: "Text only",
+                    provider: "vision-usage-primary",
+                    api: "openai-completions",
+                    baseUrl: "https://example.invalid",
+                    reasoning: false,
+                    input: ["text"],
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: 128000,
+                    maxTokens: 100,
+                },
+            ],
+            auth: {
+                apiKey: {
+                    name: "Fixture",
+                    check: () => Promise.resolve({ type: "api_key" }),
+                    resolve: () => Promise.resolve({ auth: {} }),
+                },
             },
-        },
-        api: { stream, streamSimple: stream },
-    }));
+            api: { stream, streamSimple: stream },
+        }),
+    );
     await runtime.refresh({ allowNetwork: false });
     const visionReply = fauxAssistantMessage(fauxText("local vision description"));
     visionReply.usage = {
@@ -94,11 +102,14 @@ async function configureVision(fixture) {
  * @returns {Promise<VisionMetric[]>} */
 async function readMetrics(fixture) {
     await drainWorkflowMetrics();
-    const contents = await Deno.readTextFile(getWorkflowMetricsFilePath(fixture.projectRoot));
-    return contents.trim().split("\n").map((line) => JSON.parse(line));
+    const contents = await fsReadFile(getWorkflowMetricsFilePath(fixture.projectRoot), "utf8");
+    return contents
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
 }
 
-Deno.test("local see_image outside a managed execution links usage to the session", async () => {
+test("local see_image outside a managed execution links usage to the session", async () => {
     await withRuntimeCommandFixture("vision-session-usage-", async (fixture) => {
         const cleanup = await configureVision(fixture);
         const { session } = await buildAgentSession({
@@ -132,7 +143,7 @@ Deno.test("local see_image outside a managed execution links usage to the sessio
     });
 });
 
-Deno.test("local see_image links vision usage to the active execution, request and turn", async () => {
+test("local see_image links vision usage to the active execution, request and turn", async () => {
     await withRuntimeCommandFixture("vision-execution-usage-", async (fixture) => {
         const cleanup = await configureVision(fixture);
         const hostedSession = new HostedSession({ id: "vision-execution", cwd: fixture.projectRoot });

@@ -1,5 +1,21 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import {
+    mkdir as fsMkdir,
+    writeFile as fsWriteFile,
+    mkdtemp as fsMkdtemp,
+    rm as fsRm,
+    readFile as fsReadFile,
+    symlink as fsSymlink,
+    rename as fsRename,
+    realpath as fsRealpath,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import {
     __resetSettingsForTests,
@@ -23,8 +39,8 @@ interface ExporterFixture {
 }
 
 async function writeExporter(root: string, entry = "./exporter.js") {
-    await Deno.mkdir(root, { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(root, { recursive: true });
+    await fsWriteFile(
         join(root, "package.json"),
         JSON.stringify({
             name: "fixture-exporter",
@@ -32,58 +48,56 @@ async function writeExporter(root: string, entry = "./exporter.js") {
             wld: { metricsExporter: { contract: 1, id: "fixture", entry } },
         }),
     );
-    await Deno.writeTextFile(join(root, "exporter.js"), "throw new Error('inventory must not import code');\n");
+    await fsWriteFile(join(root, "exporter.js"), "throw new Error('inventory must not import code');\n");
 }
 
 async function withExporterFixture(run: (fixture: ExporterFixture) => Promise<void>) {
     await withProcessGlobalTestLock(async () => {
-        const root = await Deno.makeTempDir({ prefix: "metrics-exporter-" });
-        const previousHome = Deno.env.get("HOME");
-        const previousSandbox = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        const previousCwd = Deno.cwd();
+        const root = await fsMkdtemp(join(tmpdir(), "metrics-exporter-"));
+        const previousHome = process.env["HOME"];
+        const previousSandbox = process.env["WLD_TEST_SANDBOX_HOME"];
+        const previousCwd = getCwd();
         const home = join(root, "home");
         const packageRoot = join(root, "package");
         const projectRoot = join(root, "project");
-        await Deno.mkdir(home);
-        await Deno.mkdir(projectRoot);
+        await fsMkdir(home);
+        await fsMkdir(projectRoot);
         await writeExporter(packageRoot);
-        Deno.env.set("HOME", home);
-        Deno.env.set("WLD_TEST_SANDBOX_HOME", home);
-        Deno.chdir(projectRoot);
+        process.env["HOME"] = home;
+        process.env["WLD_TEST_SANDBOX_HOME"] = home;
+        process.chdir(projectRoot);
         __resetSettingsForTests();
         try {
             await run({ root, packageRoot, projectRoot });
         } finally {
             __resetSettingsForTests();
-            Deno.chdir(previousCwd);
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousSandbox === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", previousSandbox);
-            await Deno.remove(root, { recursive: true });
+            process.chdir(previousCwd);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            if (previousSandbox === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = previousSandbox;
+            await fsRm(root, { recursive: true });
         }
     });
 }
 
-for (
-    const defect of [
-        "contract",
-        "id",
-        "absolute",
-        "escape",
-        "symlink",
-        "pi-resource",
-        "pi-glob",
-        "auto-discovery",
-    ] as const
-) {
-    Deno.test(`exporter declaration rejects ${defect}`, async () => {
-        const root = await Deno.makeTempDir();
+for (const defect of [
+    "contract",
+    "id",
+    "absolute",
+    "escape",
+    "symlink",
+    "pi-resource",
+    "pi-glob",
+    "auto-discovery",
+] as const) {
+    test(`exporter declaration rejects ${defect}`, async () => {
+        const root = await fsMkdtemp(join(tmpdir(), "runwield-"));
         const pkg = join(root, "pkg");
         try {
             await writeExporter(pkg);
             const path = join(pkg, "package.json");
-            const manifest = JSON.parse(await Deno.readTextFile(path));
+            const manifest = JSON.parse(await fsReadFile(path, "utf8"));
             const declaration = manifest.wld.metricsExporter;
             if (defect === "contract") declaration.contract = 2;
             if (defect === "id") declaration.id = "  ";
@@ -91,14 +105,14 @@ for (
                 declaration.entry = join(pkg, "exporter.js");
                 // A joined absolute entry must still be rejected if that nested path happens to exist.
                 const nested = join(pkg, declaration.entry);
-                await Deno.mkdir(join(nested, ".."), { recursive: true });
-                await Deno.writeTextFile(nested, "export default () => {};\n");
+                await fsMkdir(join(nested, ".."), { recursive: true });
+                await fsWriteFile(nested, "export default () => {};\n");
             }
             if (defect === "escape" || defect === "symlink") {
-                await Deno.writeTextFile(join(root, "outside.js"), "export default () => {};\n");
+                await fsWriteFile(join(root, "outside.js"), "export default () => {};\n");
                 if (defect === "escape") declaration.entry = "../outside.js";
                 else {
-                    await Deno.symlink(join(root, "outside.js"), join(pkg, "link.js"));
+                    await fsSymlink(join(root, "outside.js"), join(pkg, "link.js"));
                     declaration.entry = "./link.js";
                 }
             }
@@ -106,19 +120,19 @@ for (
                 manifest.pi = { extensions: [defect === "pi-resource" ? "./exporter.js" : "./*.js"] };
             }
             if (defect === "auto-discovery") {
-                await Deno.mkdir(join(pkg, "extensions"));
-                await Deno.rename(join(pkg, "exporter.js"), join(pkg, "extensions", "exporter.js"));
+                await fsMkdir(join(pkg, "extensions"));
+                await fsRename(join(pkg, "exporter.js"), join(pkg, "extensions", "exporter.js"));
                 declaration.entry = "./extensions/exporter.js";
             }
-            await Deno.writeTextFile(path, JSON.stringify(manifest));
+            await fsWriteFile(path, JSON.stringify(manifest));
             assertEquals(await readMetricsExporterDeclaration(pkg), null);
         } finally {
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 }
 
-Deno.test("exporter inventory exposes absent, unapproved, approved, and invalid states without importing code", async () => {
+test("exporter inventory exposes absent, unapproved, approved, and invalid states without importing code", async () => {
     await withExporterFixture(async ({ packageRoot }) => {
         assertEquals(await listInstalledMetricsExporters(), []);
         assertEquals(await resolveApprovedMetricsExporters(), []);
@@ -133,18 +147,18 @@ Deno.test("exporter inventory exposes absent, unapproved, approved, and invalid 
         assertEquals((await listInstalledMetricsExporters())[0].approved, true);
         assertEquals(
             (await resolveApprovedMetricsExporters())[0].entryPath,
-            await Deno.realPath(join(packageRoot, "exporter.js")),
+            await fsRealpath(join(packageRoot, "exporter.js")),
         );
         await removeMetricsExporterApprovals(packageRoot);
         assertEquals(await resolveApprovedMetricsExporters(), []);
-        await Deno.writeTextFile(join(packageRoot, "package.json"), "{}");
+        await fsWriteFile(join(packageRoot, "package.json"), "{}");
         assertEquals(await listInstalledMetricsExporters(), []);
         assertEquals(await resolveApprovedMetricsExporters(), []);
     });
 });
 
 for (const identity of ["id", "source", "installedPath", "version"] as const) {
-    Deno.test(`exporter approval is invalidated by a changed ${identity}`, async () => {
+    test(`exporter approval is invalidated by a changed ${identity}`, async () => {
         await withExporterFixture(async ({ root, packageRoot }) => {
             const settings = getSettingsManager();
             settings.setPackages([packageRoot]);
@@ -157,14 +171,14 @@ for (const identity of ["id", "source", "installedPath", "version"] as const) {
             } else if (identity === "installedPath") {
                 // Keep the configured source stable while moving its real installed target.
                 const moved = join(root, "moved");
-                await Deno.rename(packageRoot, moved);
-                await Deno.symlink(moved, packageRoot);
+                await fsRename(packageRoot, moved);
+                await fsSymlink(moved, packageRoot);
             } else {
                 const path = join(packageRoot, "package.json");
-                const manifest = JSON.parse(await Deno.readTextFile(path));
+                const manifest = JSON.parse(await fsReadFile(path, "utf8"));
                 if (identity === "version") manifest.version = "2.0.0";
                 else manifest.wld.metricsExporter.id = "other";
-                await Deno.writeTextFile(path, JSON.stringify(manifest));
+                await fsWriteFile(path, JSON.stringify(manifest));
             }
             assertEquals((await listInstalledMetricsExporters())[0].approved, false);
             assertEquals(await resolveApprovedMetricsExporters(), []);
@@ -173,22 +187,23 @@ for (const identity of ["id", "source", "installedPath", "version"] as const) {
     });
 }
 
-Deno.test("Project packages and Project approval records cannot replace or approve the user's exporter", async () => {
+test("Project packages and Project approval records cannot replace or approve the user's exporter", async () => {
     await withExporterFixture(async ({ projectRoot }) => {
         const userPackage = join(getSettingsDir("global"), "npm", "node_modules", "fixture-exporter");
         const projectPackage = join(projectRoot, ".pi", "npm", "node_modules", "fixture-exporter");
         await writeExporter(userPackage);
         await writeExporter(projectPackage, "./project.js");
-        await Deno.writeTextFile(join(projectPackage, "project.js"), "throw new Error('project code');\n");
+        await fsWriteFile(join(projectPackage, "project.js"), "throw new Error('project code');\n");
         const settings = getSettingsManager();
         settings.setPackages(["npm:fixture-exporter"]);
         settings.setProjectTrusted(true);
         settings.setProjectPackages(["npm:fixture-exporter"]);
         await settings.flush();
         const exporters = await listInstalledMetricsExporters();
-        assertEquals(exporters.map((entry) => entry.entryPath), [
-            await Deno.realPath(join(userPackage, "exporter.js")),
-        ]);
+        assertEquals(
+            exporters.map((entry) => entry.entryPath),
+            [await fsRealpath(join(userPackage, "exporter.js"))],
+        );
         const [exporter] = exporters;
         await setCustomSetting(
             "metricsExporterApprovals",
@@ -202,19 +217,19 @@ Deno.test("Project packages and Project approval records cannot replace or appro
     });
 });
 
-Deno.test("missing version binds approval to an empty version and local file edits keep it", async () => {
+test("missing version binds approval to an empty version and local file edits keep it", async () => {
     await withExporterFixture(async ({ packageRoot }) => {
         const path = join(packageRoot, "package.json");
-        const manifest = JSON.parse(await Deno.readTextFile(path));
+        const manifest = JSON.parse(await fsReadFile(path, "utf8"));
         delete manifest.version;
-        await Deno.writeTextFile(path, JSON.stringify(manifest));
+        await fsWriteFile(path, JSON.stringify(manifest));
         const settings = getSettingsManager();
         settings.setPackages([packageRoot]);
         await settings.flush();
         const [exporter] = await listInstalledMetricsExporters();
         assertEquals(exporter.version, "");
         await approveMetricsExporter(exporter);
-        await Deno.writeTextFile(join(packageRoot, "exporter.js"), "throw new Error('changed local code');\n");
+        await fsWriteFile(join(packageRoot, "exporter.js"), "throw new Error('changed local code');\n");
         assertEquals((await resolveApprovedMetricsExporters()).length, 1);
         const saved = getCustomSetting("metricsExporterApprovals", "global");
         assert(typeof saved[0].approvedAt === "string");

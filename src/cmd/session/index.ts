@@ -52,9 +52,10 @@ export async function runSessionCommand(_argv: string[], options: CommandContext
     const compactionSettings = info.compactionSettings as SessionCompactionSettings | null | undefined;
     const contextUsage = info.contextUsage;
     const contextWindow = contextUsage?.contextWindow;
-    const autoThreshold = compactionSettings && typeof contextWindow === "number" && contextWindow > 0
-        ? Math.max(0, contextWindow - compactionSettings.reserveTokens)
-        : null;
+    const autoThreshold =
+        compactionSettings && typeof contextWindow === "number" && contextWindow > 0
+            ? Math.max(0, contextWindow - compactionSettings.reserveTokens)
+            : null;
 
     const lines = [];
 
@@ -94,9 +95,10 @@ export async function runSessionCommand(_argv: string[], options: CommandContext
         if (contextUsage && typeof contextUsage.tokens === "number") {
             const percent = typeof contextUsage.percent === "number" ? ` (${contextUsage.percent.toFixed(1)}%)` : "";
             lines.push(
-                `${
-                    theme.fg("dim", "Current Context:")
-                } ${contextUsage.tokens.toLocaleString()}/${contextUsage.contextWindow.toLocaleString()}${percent}`,
+                `${theme.fg(
+                    "dim",
+                    "Current Context:",
+                )} ${contextUsage.tokens.toLocaleString()}/${contextUsage.contextWindow.toLocaleString()}${percent}`,
             );
         } else if (typeof contextWindow === "number" && contextWindow > 0) {
             lines.push(`${theme.fg("dim", "Current Context:")} unknown/${contextWindow.toLocaleString()}`);
@@ -119,13 +121,11 @@ export async function runSessionCommand(_argv: string[], options: CommandContext
     const total = tokenCategories.every((value) => value === null)
         ? null
         : tokenCategories.reduce((sum, value) => (sum ?? 0) + (value ?? 0), 0);
-    const totalAvailability =
-        Object.entries(info.usageAvailability).filter(([category]) => category !== "costUsd").every((
-                [, availability],
-            ) => availability === "complete"
-            )
-            ? "complete"
-            : "partial";
+    const totalAvailability = Object.entries(info.usageAvailability)
+        .filter(([category]) => category !== "costUsd")
+        .every(([, availability]) => availability === "complete")
+        ? "complete"
+        : "partial";
     lines.push(`${theme.fg("dim", "Total:")} ${formatUsage(total, totalAvailability)}`);
     if (compactionCount > 0) {
         lines.push("");
@@ -134,14 +134,16 @@ export async function runSessionCommand(_argv: string[], options: CommandContext
         lines.push(`${theme.fg("dim", "Input:")} ${formatUsage(usage.inputTokens, usage.availability.inputTokens)}`);
         lines.push(`${theme.fg("dim", "Output:")} ${formatUsage(usage.outputTokens, usage.availability.outputTokens)}`);
         lines.push(
-            `${theme.fg("dim", "Cache Read:")} ${
-                formatUsage(usage.cacheReadTokens, usage.availability.cacheReadTokens)
-            }`,
+            `${theme.fg("dim", "Cache Read:")} ${formatUsage(
+                usage.cacheReadTokens,
+                usage.availability.cacheReadTokens,
+            )}`,
         );
         lines.push(
-            `${theme.fg("dim", "Cache Write:")} ${
-                formatUsage(usage.cacheWriteTokens, usage.availability.cacheWriteTokens)
-            }`,
+            `${theme.fg("dim", "Cache Write:")} ${formatUsage(
+                usage.cacheWriteTokens,
+                usage.availability.cacheWriteTokens,
+            )}`,
         );
         lines.push(`${theme.fg("dim", "Cost (USD):")} ${formatUsage(usage.costUsd, usage.availability.costUsd)}`);
     }

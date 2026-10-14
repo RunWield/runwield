@@ -1,5 +1,8 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import type { WorkflowMetricFixtureRecord } from "../../testing/workflow-metrics-fixture.ts";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "./metrics.js";
@@ -53,7 +56,10 @@ const transitions = [
                 ...options,
                 projectRoot,
                 event: "test",
-                resources: [{ kind: "plan", id: "demo" }, { kind: "attempt", id: "attempt-demo" }],
+                resources: [
+                    { kind: "plan", id: "demo" },
+                    { kind: "attempt", id: "attempt-demo" },
+                ],
                 record: () => Promise.resolve(),
             }),
     },
@@ -125,7 +131,7 @@ const transitions = [
 ];
 
 for (const transition of transitions) {
-    Deno.test(`${transition.name} observation retains its committed attempt Plan association`, async () => {
+    test(`${transition.name} observation retains its committed attempt Plan association`, async () => {
         await withWorkflowMetricsFixture(async (metrics) => {
             const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
             try {
@@ -134,10 +140,11 @@ for (const transition of transitions) {
                 // Archive transitions use the Plan document root as their observation directory.
                 await drainWorkflowMetrics();
                 const observationRoot = transition.name === "archive" ? fixture.executionCwd : metrics.projectRoot;
-                const contents = await Deno.readTextFile(getWorkflowMetricsFilePath(observationRoot));
-                const records: WorkflowMetricFixtureRecord[] = contents.trim().split("\n").map((line) =>
-                    JSON.parse(line)
-                );
+                const contents = await fsReadFile(getWorkflowMetricsFilePath(observationRoot), "utf8");
+                const records: WorkflowMetricFixtureRecord[] = contents
+                    .trim()
+                    .split("\n")
+                    .map((line) => JSON.parse(line));
                 const rows = records.filter((row) => row.event === "workflow_transition_committed");
                 assertEquals(rows.length, 1);
                 assertEquals([rows[0].attemptId, rows[0].planId], ["attempt-demo", "plan-demo"]);
@@ -148,12 +155,12 @@ for (const transition of transitions) {
     });
 }
 
-Deno.test("restored execution Plan observation retains its committed attempt Plan association", async () => {
+test("restored execution Plan observation retains its committed attempt Plan association", async () => {
     await withWorkflowMetricsFixture(async (metrics) => {
         const fixture = await makePublicationOutcomeFixture(metrics.projectRoot);
         try {
-            await Deno.remove(join(fixture.executionCwd, "docs/plans/demo.md"));
-            await Deno.writeTextFile(join(fixture.executionCwd, "feature.txt"), "implemented feature\n");
+            await fsRm(join(fixture.executionCwd, "docs/plans/demo.md"));
+            await fsWriteFile(join(fixture.executionCwd, "feature.txt"), "implemented feature\n");
             await git(fixture.executionCwd, ["add", "."]);
             await git(fixture.executionCwd, ["commit", "-m", "Implementation without Plan copy"]);
             const result = await resolveValidationExecutionContext({
@@ -163,8 +170,8 @@ Deno.test("restored execution Plan observation retains its committed attempt Pla
             assertEquals(result.kind, "ok");
             assert(result.kind === "ok");
             assertEquals(result.restoredPlanFile, { relativePath: "docs/plans/demo.md" });
-            const rows = (await metrics.readMetrics()).filter((row) =>
-                row.event === "execution_context_resolution" && row.v === 2
+            const rows = (await metrics.readMetrics()).filter(
+                (row) => row.event === "execution_context_resolution" && row.v === 2,
             );
             assertEquals(rows.length, 1);
             assertEquals([rows[0].attemptId, rows[0].planId], ["attempt-demo", "plan-demo"]);

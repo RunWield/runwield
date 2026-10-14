@@ -1,5 +1,7 @@
+import { readdirSync } from "node:fs";
+import { readFileSync, truncateSync } from "node:fs";
 /** Durable delivery fences, not a payload queue. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import { exportDestinationDirectory, metricsExportDirectory, writeExportFile } from "./metrics-export-storage.ts";
 import { metricsExportReference } from "./metrics-export-record.ts";
 import type { MetricsExportHostIdentity } from "./metrics-export-grants.ts";
@@ -28,9 +30,9 @@ export function readMetricsExportLedger(destinationId: string): Map<string, Metr
     const items = new Map<string, MetricsDeliveryItem>();
     let text;
     try {
-        text = Deno.readTextFileSync(join(exportDestinationDirectory(destinationId), "ledger.jsonl"));
+        text = readFileSync(join(exportDestinationDirectory(destinationId), "ledger.jsonl"), "utf8");
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return items;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return items;
         throw error;
     }
     for (const line of text.split("\n").slice(0, -1)) {
@@ -44,11 +46,11 @@ export function appendMetricsExportLedger(destinationId: string, item: MetricsDe
     const path = join(exportDestinationDirectory(destinationId), "ledger.jsonl");
     // A crash may leave only the final append incomplete. Keep all preceding fences.
     try {
-        const bytes = Deno.readFileSync(path);
+        const bytes = readFileSync(path);
         const end = bytes.lastIndexOf(10) + 1;
-        if (end !== bytes.length) Deno.truncateSync(path, end);
+        if (end !== bytes.length) truncateSync(path, end);
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     writeExportFile(path, JSON.stringify(item) + "\n", true);
 }
@@ -56,28 +58,30 @@ export function appendMetricsExportLedger(destinationId: string, item: MetricsDe
 export async function metricsDeliveryInFlightForJournal(path: string): Promise<boolean> {
     let identity: MetricsExportHostIdentity;
     try {
-        identity = JSON.parse(Deno.readTextFileSync(join(metricsExportDirectory(), "host.json")));
+        identity = JSON.parse(readFileSync(join(metricsExportDirectory(), "host.json"), "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
     const reference = await metricsExportReference(identity, "journal", path);
     let entries;
     try {
-        entries = [...Deno.readDirSync(join(metricsExportDirectory(), "destinations"))];
+        entries = [...readdirSync(join(metricsExportDirectory(), "destinations"), { withFileTypes: true })];
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
-    return entries.filter((e) => e.isDirectory).some((e) =>
-        [...readMetricsExportLedger(e.name).values()].some((item) =>
-            item.journalRef === reference && (item.state === "sending" || item.confirming)
-        )
-    );
+    return entries
+        .filter((e) => e.isDirectory())
+        .some((e) =>
+            [...readMetricsExportLedger(e.name).values()].some(
+                (item) => item.journalRef === reference && (item.state === "sending" || item.confirming),
+            ),
+        );
 }
 
 export function metricsDeliveryInFlight(destinationId: string): boolean {
-    return [...readMetricsExportLedger(destinationId).values()].some((item) =>
-        item.state === "sending" || item.confirming === true
+    return [...readMetricsExportLedger(destinationId).values()].some(
+        (item) => item.state === "sending" || item.confirming === true,
     );
 }

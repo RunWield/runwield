@@ -1,6 +1,8 @@
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { realpathSync, statSync, readFileSync } from "node:fs";
 /** Read-only reporting over collected Project measurements. No Session or Plan reads. */
 import { createHash } from "node:crypto";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { getWorkflowMetricsFilePath, readLegacyWorkflowMetric } from "./metrics.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { clearWorkflowMetricJournal } from "./metrics-journal.ts";
@@ -154,15 +156,19 @@ function journalPaths(roots: string[]): string[] {
         const primary = resolvePrimaryCheckoutRoot(root);
         let identity = primary;
         try {
-            identity = Deno.realPathSync(primary);
-        } catch { /* Unavailable roots remain explicit gaps. */ }
+            identity = realpathSync(primary);
+        } catch {
+            /* Unavailable roots remain explicit gaps. */
+        }
         const path = getWorkflowMetricsFilePath(primary);
         if (!paths.has(identity)) paths.set(identity, path);
         // Preserve existing history when an alias uses a different spelling of the same root.
         try {
-            Deno.statSync(path);
+            statSync(path);
             paths.set(identity, path);
-        } catch { /* Reporting handles absent journals. */ }
+        } catch {
+            /* Reporting handles absent journals. */
+        }
     }
     return [...paths.values()];
 }
@@ -190,32 +196,28 @@ function totals(): UsageTotals {
 }
 
 function sumTotals(target: UsageTotals, source: UsageTotals): void {
-    for (
-        const key of [
-            "inputTokens",
-            "outputTokens",
-            "cacheReadTokens",
-            "cacheWriteTokens",
-            "tokens",
-            "reportedCostUsd",
-            "estimatedCostUsd",
-            "latencyMs",
-        ] as const
-    ) {
+    for (const key of [
+        "inputTokens",
+        "outputTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens",
+        "tokens",
+        "reportedCostUsd",
+        "estimatedCostUsd",
+        "latencyMs",
+    ] as const) {
         target[key].value += source[key].value;
         target[key].exclusions += source[key].exclusions;
     }
-    for (
-        const key of [
-            "activeDaysExclusions",
-            "publishedChanges",
-            "publishedChangesExclusions",
-            "validationAttempts",
-            "repairRounds",
-            "ongoing",
-            "abandoned",
-        ] as const
-    ) {
+    for (const key of [
+        "activeDaysExclusions",
+        "publishedChanges",
+        "publishedChangesExclusions",
+        "validationAttempts",
+        "repairRounds",
+        "ongoing",
+        "abandoned",
+    ] as const) {
         target[key] += source[key];
     }
 }
@@ -228,7 +230,8 @@ function localDate(timestamp: number, formatter: Intl.DateTimeFormat): string {
 function dateNumber(date: string): number {
     const time = Date.parse(`${date}T00:00:00Z`);
     if (
-        !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(time) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        !Number.isFinite(time) ||
         new Date(time).toISOString().slice(0, 10) !== date
     ) {
         throw new Error("invalid_usage_period");
@@ -278,20 +281,23 @@ function addUsage(target: UsageTotals, row: JournalRow): void {
         }
     }
     // Input with included cache already counts those tokens. Unknown bases keep a known subtotal only.
-    target.tokens.value += (finite(row.inputTokens) ? row.inputTokens : 0) +
-        (finite(row.outputTokens) ? row.outputTokens : 0);
+    target.tokens.value +=
+        (finite(row.inputTokens) ? row.inputTokens : 0) + (finite(row.outputTokens) ? row.outputTokens : 0);
     if (row.inputCacheBasis === "excludes_cache") {
-        target.tokens.value += (finite(row.cacheReadTokens) ? row.cacheReadTokens : 0) +
+        target.tokens.value +=
+            (finite(row.cacheReadTokens) ? row.cacheReadTokens : 0) +
             (finite(row.cacheWriteTokens) ? row.cacheWriteTokens : 0);
     }
     if (
         ["partial", "unavailable"].includes(row.measurementAvailability || "") ||
         ![row.inputTokens, row.outputTokens, row.cacheReadTokens, row.cacheWriteTokens].every(finite) ||
         !["includes_cache", "excludes_cache"].includes(row.inputCacheBasis || "")
-    ) target.tokens.exclusions++;
+    )
+        target.tokens.exclusions++;
     const cost = row.costSource === "reported" ? target.reportedCostUsd : target.estimatedCostUsd;
     if (
-        finite(row.costAmount) && row.costCurrency === "USD" &&
+        finite(row.costAmount) &&
+        row.costCurrency === "USD" &&
         ["reported", "calculated"].includes(row.costSource || "")
     ) {
         cost.value += row.costAmount;
@@ -315,38 +321,39 @@ export class UsageReporter {
     private epoch(path: string): string {
         const directory = dirname(path);
         try {
-            Deno.statSync(join(directory, "clear.json"));
+            statSync(join(directory, "clear.json"));
             throw new Error("history_clear_pending");
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
         try {
-            return JSON.parse(Deno.readTextFileSync(join(directory, "state.json"))).historyEpoch || "initial";
+            return JSON.parse(readFileSync(join(directory, "state.json"), "utf8")).historyEpoch || "initial";
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             return "initial";
         }
     }
 
     private refresh(path: string): JournalCache {
         const epoch = this.epoch(path);
-        const file = Deno.openSync(path, { read: true });
+        const file = openSync(path, "r");
         try {
-            const size = file.statSync().size;
+            const size = fstatSync(file).size;
             let cache = this.journals.get(path);
             if (!cache || cache.epoch !== epoch || cache.offset > size) {
                 cache = { epoch, offset: 0, rows: new Map(), corruptLines: 0, incompleteTail: false };
                 this.journals.set(path, cache);
             }
-            file.seekSync(cache.offset, Deno.SeekMode.Start);
+            let position = cache.offset;
             let remaining = size - cache.offset;
             let pending = new Uint8Array();
             let oversizedLine = cache.oversizedLine === true;
             cache.incompleteTail = false;
             while (remaining > 0) {
                 const buffer = new Uint8Array(Math.min(remaining, 64 * 1024));
-                const count = file.readSync(buffer);
-                if (count === null) break;
+                const count = readSync(file, buffer, 0, buffer.length, position);
+                position += count;
+                if (count === 0) break;
                 this.bytesRead += count;
                 remaining -= count;
                 if (oversizedLine) {
@@ -358,7 +365,7 @@ export class UsageReporter {
                     cache.offset += newline + 1;
                     oversizedLine = false;
                     pending = new Uint8Array();
-                    file.seekSync(cache.offset, Deno.SeekMode.Start);
+                    position = cache.offset;
                     remaining = size - cache.offset;
                     continue;
                 }
@@ -371,7 +378,8 @@ export class UsageReporter {
                     try {
                         const row: JournalRow = JSON.parse(new TextDecoder().decode(bytes.subarray(start, end)));
                         if (
-                            typeof row.event !== "string" || typeof row.ts !== "string" ||
+                            typeof row.event !== "string" ||
+                            typeof row.ts !== "string" ||
                             !Number.isFinite(Date.parse(row.ts))
                         ) {
                             cache.corruptLines++;
@@ -401,7 +409,7 @@ export class UsageReporter {
             }
             return cache;
         } finally {
-            file.close();
+            closeSync(file);
         }
     }
 
@@ -428,7 +436,7 @@ export class UsageReporter {
             try {
                 cache = this.refresh(path);
             } catch (error) {
-                unavailable = !(error instanceof Deno.errors.NotFound);
+                unavailable = !(error instanceof Error && "code" in error && error.code === "ENOENT");
                 this.journals.delete(path);
                 cache = { epoch: "initial", offset: 0, rows: new Map(), corruptLines: 0, incompleteTail: false };
             }
@@ -452,7 +460,9 @@ export class UsageReporter {
                 if (row.executionId && row.event === "execution_started") starts.set(row.executionId, row);
                 if (row.executionId && row.event === "execution_finished") finishes.set(row.executionId, row);
                 if (
-                    localDate(observationTime(row), formatter) < period.end && row.attemptId && row.planId &&
+                    localDate(observationTime(row), formatter) < period.end &&
+                    row.attemptId &&
+                    row.planId &&
                     [
                         "publication_confirmed",
                         "workflow_abandoned",
@@ -465,9 +475,11 @@ export class UsageReporter {
                 ) {
                     const previous = latestWorkflows.get(row.attemptId);
                     if (
-                        !previous || !["publication_confirmed", "workflow_abandoned"].includes(previous.event) ||
+                        !previous ||
+                        !["publication_confirmed", "workflow_abandoned"].includes(previous.event) ||
                         ["publication_confirmed", "workflow_abandoned"].includes(row.event)
-                    ) latestWorkflows.set(row.attemptId, row);
+                    )
+                        latestWorkflows.set(row.attemptId, row);
                 }
             }
             const incompleteExecutions = new Set<string>();
@@ -485,7 +497,8 @@ export class UsageReporter {
             }
             for (const row of rows) {
                 if (
-                    row.event === "execution_finished" && ["incomplete", "interrupted"].includes(row.outcome || "") &&
+                    row.event === "execution_finished" &&
+                    ["incomplete", "interrupted"].includes(row.outcome || "") &&
                     (!row.executionId || !starts.has(row.executionId))
                 ) {
                     if (row.executionId) incompleteExecutions.add(row.executionId);
@@ -502,16 +515,21 @@ export class UsageReporter {
                 if (row.v !== 2) continue;
                 if (
                     row.event === "command_started" ||
-                    (row.event === "execution_started" && row.executionKind !== "delegated" &&
-                        row.executionKind !== "isolated" && row.mode !== "background" &&
+                    (row.event === "execution_started" &&
+                        row.executionKind !== "delegated" &&
+                        row.executionKind !== "isolated" &&
+                        row.mode !== "background" &&
                         row.userInitiated === true &&
                         ["interactive", "plan_execution", "quick_fix", "validation_repair"].includes(
                             row.dispatchKind || "",
                         ))
-                ) active.add(day.date);
+                )
+                    active.add(day.date);
                 if (
-                    row.event === "execution_started" && row.userInitiated === undefined &&
-                    row.dispatchKind === "interactive" && row.executionKind !== "isolated" &&
+                    row.event === "execution_started" &&
+                    row.userInitiated === undefined &&
+                    row.dispatchKind === "interactive" &&
+                    row.executionKind !== "isolated" &&
                     row.executionKind !== "delegated"
                 ) {
                     day.totals.activeDaysExclusions++;
@@ -520,10 +538,7 @@ export class UsageReporter {
                 if (row.event === "model_usage") {
                     const group = `${row.executionId || row.requestId}:${row.turnId || ""}`;
                     const identity = `${row.recorderId || group}:${row.sourceId || row.eventId}`;
-                    if (
-                        row.aggregationBasis === "alternative" ||
-                        seenUsage.has(identity)
-                    ) {
+                    if (row.aggregationBasis === "alternative" || seenUsage.has(identity)) {
                         overlappingUsage++;
                         continue;
                     }
@@ -543,17 +558,15 @@ export class UsageReporter {
                         row.executionId &&
                         (incompleteExecutions.has(row.executionId) || (starts.has(row.executionId) && !finish))
                     ) {
-                        for (
-                            const key of [
-                                "inputTokens",
-                                "outputTokens",
-                                "cacheReadTokens",
-                                "cacheWriteTokens",
-                                "tokens",
-                                "reportedCostUsd",
-                                "estimatedCostUsd",
-                            ] as const
-                        ) {
+                        for (const key of [
+                            "inputTokens",
+                            "outputTokens",
+                            "cacheReadTokens",
+                            "cacheWriteTokens",
+                            "tokens",
+                            "reportedCostUsd",
+                            "estimatedCostUsd",
+                        ] as const) {
                             for (const target of targets) target[key].exclusions++;
                         }
                         day.gaps.push("incomplete");
@@ -561,12 +574,15 @@ export class UsageReporter {
                     }
                     for (const target of targets) addUsage(target, row);
                     if (
-                        day.totals.tokens.exclusions || day.totals.reportedCostUsd.exclusions ||
+                        day.totals.tokens.exclusions ||
+                        day.totals.reportedCostUsd.exclusions ||
                         day.totals.estimatedCostUsd.exclusions
-                    ) day.gaps.push("unavailable");
+                    )
+                        day.gaps.push("unavailable");
                 }
                 if (
-                    row.event === "execution_finished" && ["unavailable", "partial"].includes(row.coverage?.usage || "")
+                    row.event === "execution_finished" &&
+                    ["unavailable", "partial"].includes(row.coverage?.usage || "")
                 ) {
                     day.gaps.push("unavailable");
                     if (!rows.some((item) => item.event === "model_usage" && item.executionId === row.executionId)) {
@@ -583,8 +599,13 @@ export class UsageReporter {
                     }
                 }
                 if (
-                    row.event === "publication_confirmed" && row.eventId && row.attemptId && row.planId &&
-                    row.planKind === "PLANNED_CHANGE" && row.outcome === "succeeded" && !publicationIds.has(row.eventId)
+                    row.event === "publication_confirmed" &&
+                    row.eventId &&
+                    row.attemptId &&
+                    row.planId &&
+                    row.planKind === "PLANNED_CHANGE" &&
+                    row.outcome === "succeeded" &&
+                    !publicationIds.has(row.eventId)
                 ) {
                     publicationIds.add(row.eventId);
                     day.totals.publishedChanges++;
@@ -592,7 +613,8 @@ export class UsageReporter {
                     day.totals.publishedChangesExclusions++;
                 }
                 if (
-                    row.event === "validation_attempt" && !validationIds.has(row.operationId || row.eventId || row.ts)
+                    row.event === "validation_attempt" &&
+                    !validationIds.has(row.operationId || row.eventId || row.ts)
                 ) {
                     validationIds.add(row.operationId || row.eventId || row.ts);
                     day.totals.validationAttempts++;
@@ -613,8 +635,8 @@ export class UsageReporter {
                     if (day) day.totals.abandoned++;
                 } else ongoing.push(link(projectId, row));
             }
-            const controls = rows.filter((row) =>
-                ["collection_epoch", "history_epoch"].includes(row.event) && typeof row.enabled === "boolean"
+            const controls = rows.filter(
+                (row) => ["collection_epoch", "history_epoch"].includes(row.event) && typeof row.enabled === "boolean",
             );
             for (const day of daily) {
                 const begin = dayBoundary(day.date, formatter);
@@ -626,28 +648,39 @@ export class UsageReporter {
                 if (
                     preceding?.enabled === false ||
                     intervals.some((row) => Date.parse(row.ts) >= begin && row.enabled === false)
-                ) day.gaps.push("disabled");
+                )
+                    day.gaps.push("disabled");
                 if (!through || Date.parse(through) < end) day.gaps.push("not_yet_collected");
                 if (
-                    selected.some((row) =>
-                        row.v === 1 && !["collection_epoch", "history_epoch", "measurement_gap"].includes(row.event) &&
-                        localDate(observationTime(row), formatter) === day.date
+                    selected.some(
+                        (row) =>
+                            row.v === 1 &&
+                            !["collection_epoch", "history_epoch", "measurement_gap"].includes(row.event) &&
+                            localDate(observationTime(row), formatter) === day.date,
                     )
-                ) day.gaps.push("legacy");
+                )
+                    day.gaps.push("legacy");
                 if (
-                    selected.some((row) =>
-                        row.event === "measurement_gap" && localDate(observationTime(row), formatter) === day.date
-                    ) || cache.corruptLines || cache.incompleteTail
-                ) day.gaps.push("incomplete");
+                    selected.some(
+                        (row) =>
+                            row.event === "measurement_gap" && localDate(observationTime(row), formatter) === day.date,
+                    ) ||
+                    cache.corruptLines ||
+                    cache.incompleteTail
+                )
+                    day.gaps.push("incomplete");
                 if (incomplete.some((item) => localDate(Date.parse(item.asOf), formatter) === day.date)) {
                     day.gaps.push("incomplete");
                 }
                 if (
-                    selected.some((row) =>
-                        row.executionId && incompleteExecutions.has(row.executionId) &&
-                        localDate(observationTime(row), formatter) === day.date
+                    selected.some(
+                        (row) =>
+                            row.executionId &&
+                            incompleteExecutions.has(row.executionId) &&
+                            localDate(observationTime(row), formatter) === day.date,
                     )
-                ) day.gaps.push("incomplete");
+                )
+                    day.gaps.push("incomplete");
                 if (unavailable) day.gaps.push("unavailable");
                 day.gaps = [...new Set(day.gaps)];
                 day.tokens = day.gaps.length ? null : day.totals.tokens.value;
@@ -716,9 +749,11 @@ export class UsageReporter {
             period,
             timeZone,
             recordedThrough:
-                projects.map((project) => project.recordedThrough).filter((ts): ts is string => ts !== null).sort().at(
-                    -1,
-                ) || null,
+                projects
+                    .map((project) => project.recordedThrough)
+                    .filter((ts): ts is string => ts !== null)
+                    .sort()
+                    .at(-1) || null,
             totals: total,
             daily,
             projects,

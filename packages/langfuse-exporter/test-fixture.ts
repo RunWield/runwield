@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { serveHttp } from "../../src/shared/http-server.ts";
+import { assertEquals } from "../../src/testing/assertions.ts";
 import { deliver, type MetricsExportContext, type MetricsExportObservation } from "./exporter.ts";
 
 export interface Value {
@@ -45,9 +46,7 @@ export interface ServerFixture {
     context: MetricsExportContext;
     requests: Wire[];
 }
-export function observation(
-    fields: MetricsExportObservation["fields"] = {},
-): MetricsExportObservation {
+export function observation(fields: MetricsExportObservation["fields"] = {}): MetricsExportObservation {
     return {
         contract: 1,
         kind: "model_usage",
@@ -84,7 +83,7 @@ export async function withServer(
     handler: (wire: Wire) => Response | Promise<Response> = () => Response.json({}),
 ): Promise<void> {
     const requests: Wire[] = [];
-    const server = Deno.serve(
+    const server = serveHttp(
         { hostname: "127.0.0.1", port: 0, onListen() {}, onError: () => new Response(null, { status: 500 }) },
         async (request) => {
             const wire = {
@@ -120,29 +119,25 @@ export function span(wire: Wire): CapturedSpan {
 }
 export function attributes(s: CapturedSpan): Record<string, Scalar> {
     return Object.fromEntries(
-        s.attributes.map((
-            { key, value },
-        ) => [key, value.stringValue ?? value.boolValue ?? value.doubleValue!]),
+        s.attributes.map(({ key, value }) => [key, value.stringValue ?? value.boolValue ?? value.doubleValue!]),
     );
 }
 export function metadata(s: CapturedSpan): Record<string, Scalar> {
     const prefix = "langfuse.observation.metadata.";
     return Object.fromEntries(
-        Object.entries(attributes(s)).filter(([key]) => key.startsWith(prefix)).map(
-            ([key, value]) => [key.slice(prefix.length), value],
-        ),
+        Object.entries(attributes(s))
+            .filter(([key]) => key.startsWith(prefix))
+            .map(([key, value]) => [key.slice(prefix.length), value]),
     );
 }
-export function native(
-    s: CapturedSpan,
-    key: string,
-): Record<string, number> | undefined {
+export function native(s: CapturedSpan, key: string): Record<string, number> | undefined {
     const value = attributes(s)[`langfuse.observation.${key}`];
     return typeof value === "string" ? JSON.parse(value) : undefined;
 }
 /** Fixture wire shape: pinned Langfuse observations v2 core/basic/usage/model/metadata groups. */
 export function readback(s: CapturedSpan): JsonRecord {
-    const usage = native(s, "usage_details"), cost = native(s, "cost_details");
+    const usage = native(s, "usage_details"),
+        cost = native(s, "cost_details");
     return {
         id: s.spanId,
         traceId: s.traceId,
@@ -150,10 +145,8 @@ export function readback(s: CapturedSpan): JsonRecord {
         parentObservationId: s.parentSpanId ?? null,
         type: attributes(s)["langfuse.observation.type"] === "generation" ? "GENERATION" : "SPAN",
         name: s.name,
-        startTime: new Date(Number(BigInt(s.startTimeUnixNano) / 1000000n))
-            .toISOString(),
-        endTime: new Date(Number(BigInt(s.endTimeUnixNano) / 1000000n))
-            .toISOString(),
+        startTime: new Date(Number(BigInt(s.startTimeUnixNano) / 1000000n)).toISOString(),
+        endTime: new Date(Number(BigInt(s.endTimeUnixNano) / 1000000n)).toISOString(),
         metadata: metadata(s),
         usageDetails: usage ?? {},
         costDetails: cost ?? {},

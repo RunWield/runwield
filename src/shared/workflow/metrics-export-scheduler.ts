@@ -1,5 +1,7 @@
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { readFileSync } from "node:fs";
 /** Journal discovery, serialized authorization, bounded delivery, and public status. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     type InstalledMetricsExporter,
     metricsExporterStillApproved,
@@ -72,34 +74,33 @@ interface WorkerResult {
 
 function readCursor(destinationId: string): CursorFile {
     try {
-        return JSON.parse(Deno.readTextFileSync(join(exportDestinationDirectory(destinationId), "cursor.json")));
+        return JSON.parse(readFileSync(join(exportDestinationDirectory(destinationId), "cursor.json"), "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return {};
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
         throw error;
     }
 }
 function readRows(path: string, offset: number, firstOnly = false, endOffset?: number): PositionedRow[] {
     let file;
     try {
-        file = Deno.openSync(path, { read: true });
+        file = openSync(path, "r");
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
     let bytes;
     try {
-        const size = Math.min(file.statSync().size, endOffset ?? Infinity);
+        const size = Math.min(fstatSync(file).size, endOffset ?? Infinity);
         bytes = new Uint8Array(Math.max(0, firstOnly ? Math.min(16_384, size - offset) : size - offset));
-        file.seekSync(offset, Deno.SeekMode.Start);
         let read = 0;
         while (read < bytes.length) {
-            const n = file.readSync(bytes.subarray(read));
-            if (n === null) break;
+            const n = readSync(file, bytes, read, bytes.length - read, offset + read);
+            if (n === 0) break;
             read += n;
         }
         bytes = bytes.subarray(0, read);
     } finally {
-        file.close();
+        closeSync(file);
     }
     const rows: PositionedRow[] = [];
     let start = 0;
@@ -111,7 +112,9 @@ function readRows(path: string, offset: number, firstOnly = false, endOffset?: n
                 end: offset + i + 1,
                 row: JSON.parse(new TextDecoder().decode(bytes.subarray(start, i))),
             });
-        } catch { /* Invalid journal rows are never candidates. */ }
+        } catch {
+            /* Invalid journal rows are never candidates. */
+        }
         start = i + 1;
         if (firstOnly) break;
     }
@@ -124,33 +127,35 @@ function scanProject(
     epoch: string,
 ): ProjectCursor {
     const cursor: ProjectCursor =
-        previous && previous.grantId === grant.grantId && previous.startEpoch === project.historyEpoch &&
-            previous.startOffset === project.offset && previous.historyEpoch === epoch && previous.excludedExecutions
+        previous &&
+        previous.grantId === grant.grantId &&
+        previous.startEpoch === project.historyEpoch &&
+        previous.startOffset === project.offset &&
+        previous.historyEpoch === epoch &&
+        previous.excludedExecutions
             ? structuredClone(previous)
             : {
-                grantId: grant.grantId,
-                startEpoch: project.historyEpoch,
-                startOffset: project.offset,
-                historyEpoch: epoch,
-                offset: epoch === project.historyEpoch ? project.offset : 0,
-                pending: [],
-            };
+                  grantId: grant.grantId,
+                  startEpoch: project.historyEpoch,
+                  startOffset: project.offset,
+                  historyEpoch: epoch,
+                  offset: epoch === project.historyEpoch ? project.offset : 0,
+                  pending: [],
+              };
     // Only a recorded start before consent excludes an execution. Auxiliary
     // recorders without starts use the row offset, like rows without execution IDs.
-    cursor.excludedExecutions ??= epoch === project.historyEpoch
-        ? readRows(getWorkflowMetricsFilePath(project.projectRoot), 0, false, project.offset)
-            .filter(({ row }) => row.v === 2 && row.historyEpoch === epoch && row.event === "execution_started")
-            .flatMap(({ row }) => row.executionId ? [row.executionId] : [])
-        : [];
+    cursor.excludedExecutions ??=
+        epoch === project.historyEpoch
+            ? readRows(getWorkflowMetricsFilePath(project.projectRoot), 0, false, project.offset)
+                  .filter(({ row }) => row.v === 2 && row.historyEpoch === epoch && row.event === "execution_started")
+                  .flatMap(({ row }) => (row.executionId ? [row.executionId] : []))
+            : [];
     const excludedExecutions = new Set(cursor.excludedExecutions);
     for (const positioned of readRows(getWorkflowMetricsFilePath(project.projectRoot), cursor.offset)) {
         cursor.offset = positioned.end;
         const row = positioned.row;
         if (row.v !== 2 || row.historyEpoch !== epoch) continue;
-        if (
-            isExportableMetric(row) &&
-            (!row.executionId || !excludedExecutions.has(row.executionId))
-        ) {
+        if (isExportableMetric(row) && (!row.executionId || !excludedExecutions.has(row.executionId))) {
             cursor.pending.push({ offset: positioned.offset, eventId: row.eventId });
         }
     }
@@ -158,8 +163,9 @@ function scanProject(
 }
 function rowAt(path: string, position: PendingPosition, epoch: string): MetricsJournalRow | null {
     const positioned = readRows(path, position.offset, true)[0];
-    return positioned?.offset === position.offset && positioned.row.eventId === position.eventId &&
-            positioned.row.historyEpoch === epoch
+    return positioned?.offset === position.offset &&
+        positioned.row.eventId === position.eventId &&
+        positioned.row.historyEpoch === epoch
         ? positioned.row
         : null;
 }
@@ -167,8 +173,8 @@ function code(value?: string): string | undefined {
     return value === undefined
         ? undefined
         : typeof value === "string" && /^[a-z0-9_]{1,64}$/.test(value)
-        ? value
-        : "unrecognized";
+          ? value
+          : "unrecognized";
 }
 function callExporter(
     entryPath: string,
@@ -201,20 +207,27 @@ function callExporter(
         worker.onmessage = ({ data }) => {
             const result: WorkerResult = data;
             if (
-                !result || typeof result !== "object" ||
-                (method === "deliver" && !(result.outcome === "accepted" || result.outcome === "uncertain" ||
-                    (result.outcome === "not_accepted" &&
-                        ["retryable", "needs_correction", "permanent"].includes(result.retry ?? "")))) ||
+                !result ||
+                typeof result !== "object" ||
+                (method === "deliver" &&
+                    !(
+                        result.outcome === "accepted" ||
+                        result.outcome === "uncertain" ||
+                        (result.outcome === "not_accepted" &&
+                            ["retryable", "needs_correction", "permanent"].includes(result.retry ?? ""))
+                    )) ||
                 (method === "confirm" &&
                     !["present", "not_found_yet", "mismatch", "unsupported"].includes(result.status ?? ""))
             ) {
                 finish({ outcome: "uncertain", code: "malformed_result" });
-            } else {finish({
+            } else {
+                finish({
                     outcome: result.outcome,
                     retry: result.retry,
                     code: code(result.code),
                     status: result.status,
-                });}
+                });
+            }
         };
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) {
@@ -256,17 +269,24 @@ function currentProject(
     grant: MetricsExportDestinationGrant,
     project: MetricsExportProjectStart,
 ): MetricsExportDestinationGrant | undefined {
-    return readMetricsExportGrants().find((g) =>
-        g.destinationId === grant.destinationId && g.grantId === grant.grantId &&
-        g.projects.some((p) =>
-            p.projectRoot === project.projectRoot && p.historyEpoch === project.historyEpoch &&
-            p.offset === project.offset
-        )
+    return readMetricsExportGrants().find(
+        (g) =>
+            g.destinationId === grant.destinationId &&
+            g.grantId === grant.grantId &&
+            g.projects.some(
+                (p) =>
+                    p.projectRoot === project.projectRoot &&
+                    p.historyEpoch === project.historyEpoch &&
+                    p.offset === project.offset,
+            ),
     );
 }
 function shouldSend(item: MetricsDeliveryItem | undefined, revision: string): boolean {
-    return !item || (item.state === "pending" && (item.nextAttemptAt ?? 0) <= Date.now()) ||
-        (item.state === "rejected" && item.retry === "needs_correction" && item.credentialsRevision !== revision);
+    return (
+        !item ||
+        (item.state === "pending" && (item.nextAttemptAt ?? 0) <= Date.now()) ||
+        (item.state === "rejected" && item.retry === "needs_correction" && item.credentialsRevision !== revision)
+    );
 }
 function retainPending(item: MetricsDeliveryItem): boolean {
     return item.state === "pending" || (item.state === "rejected" && item.retry === "needs_correction");
@@ -286,14 +306,15 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
             const ledger = readMetricsExportLedger(grant.destinationId);
             for (const [key, item] of ledger) {
                 if (item.state !== "sending" && !item.confirming) continue;
-                const lost: MetricsDeliveryItem = item.state === "sending"
-                    ? {
-                        ...item,
-                        state: "unconfirmed",
-                        code: "process_lost",
-                        at: new Date().toISOString(),
-                    }
-                    : { ...item, confirming: false };
+                const lost: MetricsDeliveryItem =
+                    item.state === "sending"
+                        ? {
+                              ...item,
+                              state: "unconfirmed",
+                              code: "process_lost",
+                              at: new Date().toISOString(),
+                          }
+                        : { ...item, confirming: false };
                 appendMetricsExportLedger(grant.destinationId, lost);
                 ledger.set(key, lost);
             }
@@ -326,31 +347,35 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
                     // commit between the final consent read and the durable intent.
                     const authorized = await withExportConfigurationLock(
                         () =>
-                            withWorkflowMetricJournalLock(path, (epoch) => {
-                                if (epoch !== cursor.historyEpoch || options.signal?.aborted) return null;
-                                const fresh = currentProject(grant, project);
-                                if (!metricsExporterStillApproved(exporter) || !fresh) return null;
-                                const row = rowAt(path, position, epoch);
-                                if (!row) return null;
-                                const credentials = readMetricsExportCredentials(grant.destinationId);
-                                const intent: MetricsDeliveryItem = {
-                                    eventId: row.eventId,
-                                    attemptId: crypto.randomUUID(),
-                                    grantId: grant.grantId,
-                                    projectRef,
-                                    journalRef,
-                                    historyEpoch: epoch,
-                                    offset: position.offset,
-                                    state: "sending",
-                                    at: new Date().toISOString(),
-                                    credentialsRevision: credentials.revision,
-                                    attempts: (previous?.attempts ?? 0) + 1,
-                                    confirmations: 0,
-                                };
-                                appendMetricsExportLedger(grant.destinationId, intent);
-                                ledger.set(key, intent);
-                                return { row, exporter, credentials, intent };
-                            }, options.signal),
+                            withWorkflowMetricJournalLock(
+                                path,
+                                (epoch) => {
+                                    if (epoch !== cursor.historyEpoch || options.signal?.aborted) return null;
+                                    const fresh = currentProject(grant, project);
+                                    if (!metricsExporterStillApproved(exporter) || !fresh) return null;
+                                    const row = rowAt(path, position, epoch);
+                                    if (!row) return null;
+                                    const credentials = readMetricsExportCredentials(grant.destinationId);
+                                    const intent: MetricsDeliveryItem = {
+                                        eventId: row.eventId,
+                                        attemptId: crypto.randomUUID(),
+                                        grantId: grant.grantId,
+                                        projectRef,
+                                        journalRef,
+                                        historyEpoch: epoch,
+                                        offset: position.offset,
+                                        state: "sending",
+                                        at: new Date().toISOString(),
+                                        credentialsRevision: credentials.revision,
+                                        attempts: (previous?.attempts ?? 0) + 1,
+                                        confirmations: 0,
+                                    };
+                                    appendMetricsExportLedger(grant.destinationId, intent);
+                                    ledger.set(key, intent);
+                                    return { row, exporter, credentials, intent };
+                                },
+                                options.signal,
+                            ),
                         options.signal,
                     );
                     if (!authorized) continue;
@@ -380,11 +405,14 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
                     }
                     const settlement: MetricsDeliveryItem = {
                         ...authorized.intent,
-                        state: result.outcome === "accepted"
-                            ? "accepted"
-                            : result.outcome === "not_accepted"
-                            ? result.retry === "retryable" ? "pending" : "rejected"
-                            : "unconfirmed",
+                        state:
+                            result.outcome === "accepted"
+                                ? "accepted"
+                                : result.outcome === "not_accepted"
+                                  ? result.retry === "retryable"
+                                      ? "pending"
+                                      : "rejected"
+                                  : "unconfirmed",
                         code: code(result.code),
                         at: new Date().toISOString(),
                     };
@@ -392,8 +420,8 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
                         settlement.retry = result.retry as MetricsDeliveryItem["retry"];
                     }
                     if (settlement.state === "pending") {
-                        settlement.nextAttemptAt = Date.now() +
-                            Math.min(3_600_000, 60_000 * 2 ** Math.min(settlement.attempts - 1, 6));
+                        settlement.nextAttemptAt =
+                            Date.now() + Math.min(3_600_000, 60_000 * 2 ** Math.min(settlement.attempts - 1, 6));
                     }
                     appendMetricsExportLedger(grant.destinationId, settlement);
                     ledger.set(key, settlement);
@@ -405,11 +433,14 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
                 for (const [key, item] of ledger) {
                     if (options.signal?.aborted || !currentProject(grant, project)) break;
                     if (
-                        item.grantId !== grant.grantId || item.projectRef !== projectRef ||
+                        item.grantId !== grant.grantId ||
+                        item.projectRef !== projectRef ||
                         item.historyEpoch !== cursor.historyEpoch ||
                         (item.historyEpoch === project.historyEpoch && item.offset < project.offset) ||
-                        !["accepted", "unconfirmed"].includes(item.state) || item.confirmations >= 3
-                    ) continue;
+                        !["accepted", "unconfirmed"].includes(item.state) ||
+                        item.confirmations >= 3
+                    )
+                        continue;
                     const exporter = await findApprovedExporter(grant, options.signal);
                     if (!exporter || options.signal?.aborted) continue;
                     const candidate = rowAt(path, { offset: item.offset, eventId: item.eventId }, item.historyEpoch);
@@ -419,40 +450,52 @@ export async function runMetricsExportCycle(options: CycleOptions = {}): Promise
                     if (!observation) continue;
                     const authorized = await withExportConfigurationLock(
                         () =>
-                            withWorkflowMetricJournalLock(path, (epoch) => {
-                                if (
-                                    epoch !== item.historyEpoch || options.signal?.aborted ||
-                                    !metricsExporterStillApproved(exporter)
-                                ) return null;
-                                const row = rowAt(path, { offset: item.offset, eventId: item.eventId }, epoch);
-                                if (!row) return null;
-                                if (!currentProject(grant, project) || options.signal?.aborted) return null;
-                                // Count the check before I/O, so a crash cannot evade the three-check cap.
-                                const intent: MetricsDeliveryItem = {
-                                    ...item,
-                                    confirming: true,
-                                    confirmations: item.confirmations + 1,
-                                };
-                                appendMetricsExportLedger(grant.destinationId, intent);
-                                ledger.set(key, intent);
-                                return {
-                                    exporter,
-                                    observation,
-                                    intent,
-                                    credentials: readMetricsExportCredentials(grant.destinationId).credentials,
-                                };
-                            }, options.signal),
+                            withWorkflowMetricJournalLock(
+                                path,
+                                (epoch) => {
+                                    if (
+                                        epoch !== item.historyEpoch ||
+                                        options.signal?.aborted ||
+                                        !metricsExporterStillApproved(exporter)
+                                    )
+                                        return null;
+                                    const row = rowAt(path, { offset: item.offset, eventId: item.eventId }, epoch);
+                                    if (!row) return null;
+                                    if (!currentProject(grant, project) || options.signal?.aborted) return null;
+                                    // Count the check before I/O, so a crash cannot evade the three-check cap.
+                                    const intent: MetricsDeliveryItem = {
+                                        ...item,
+                                        confirming: true,
+                                        confirmations: item.confirmations + 1,
+                                    };
+                                    appendMetricsExportLedger(grant.destinationId, intent);
+                                    ledger.set(key, intent);
+                                    return {
+                                        exporter,
+                                        observation,
+                                        intent,
+                                        credentials: readMetricsExportCredentials(grant.destinationId).credentials,
+                                    };
+                                },
+                                options.signal,
+                            ),
                         options.signal,
                     );
                     if (!authorized) continue;
                     let result: WorkerResult;
                     try {
-                        result = await callExporter(authorized.exporter.entryPath, "confirm", authorized.observation, {
-                            endpoint: grant.endpoint,
-                            externalProject: grant.externalProject,
-                            credentials: authorized.credentials,
-                            deadline: Date.now() + (options.deadlineMs ?? METRICS_EXPORT_DEADLINE_MS),
-                        }, options.signal);
+                        result = await callExporter(
+                            authorized.exporter.entryPath,
+                            "confirm",
+                            authorized.observation,
+                            {
+                                endpoint: grant.endpoint,
+                                externalProject: grant.externalProject,
+                                credentials: authorized.credentials,
+                                deadline: Date.now() + (options.deadlineMs ?? METRICS_EXPORT_DEADLINE_MS),
+                            },
+                            options.signal,
+                        );
                     } catch {
                         result = { status: "not_found_yet" };
                     }
@@ -481,9 +524,11 @@ export function startMetricsExportScheduler(options: CycleOptions = {}): () => P
     let timer: ReturnType<typeof setInterval> | undefined;
     const cycle = () => {
         if (running || controller.signal.aborted) return;
-        running = runMetricsExportCycle({ ...options, signal: controller.signal }).catch(() => {}).finally(() => {
-            running = undefined;
-        });
+        running = runMetricsExportCycle({ ...options, signal: controller.signal })
+            .catch(() => {})
+            .finally(() => {
+                running = undefined;
+            });
     };
     const abort = () => {
         clearInterval(timer);
@@ -527,17 +572,22 @@ export async function readMetricsExportStatus() {
             const projectRef = await metricsExportReference(identity, "project", project.projectRoot);
             const cursor = scanProject(grant, project, cursors[projectRef], epoch);
             const credential = readMetricsExportCredentials(grant.destinationId);
-            const items = [...ledger.values()].filter((item) =>
-                item.grantId === grant.grantId && item.historyEpoch === epoch && item.projectRef === projectRef &&
-                (epoch !== project.historyEpoch || item.offset >= project.offset)
+            const items = [...ledger.values()].filter(
+                (item) =>
+                    item.grantId === grant.grantId &&
+                    item.historyEpoch === epoch &&
+                    item.projectRef === projectRef &&
+                    (epoch !== project.historyEpoch || item.offset >= project.offset),
             );
             currentItems.push(...items);
             for (const item of items) {
                 if (
                     item.state === "sending" ||
-                    (item.state === "rejected" && item.retry === "needs_correction" &&
+                    (item.state === "rejected" &&
+                        item.retry === "needs_correction" &&
                         item.credentialsRevision !== credential.revision)
-                ) counts.pending++;
+                )
+                    counts.pending++;
                 else counts[item.state]++;
             }
             counts.pending += cursor.pending.filter((p) => !items.some((item) => item.eventId === p.eventId)).length;
@@ -554,8 +604,15 @@ export async function readMetricsExportStatus() {
             },
             exporterApproved: exporters.some((e) => grantMatchesExporter(grant, e)),
             counts,
-            latestCodes: currentItems.slice(-10).map((item) => code(item.code)).filter(Boolean),
-            lastAttemptAt: currentItems.map((item) => item.at).sort().at(-1) ?? null,
+            latestCodes: currentItems
+                .slice(-10)
+                .map((item) => code(item.code))
+                .filter(Boolean),
+            lastAttemptAt:
+                currentItems
+                    .map((item) => item.at)
+                    .sort()
+                    .at(-1) ?? null,
         });
     }
     return statuses;

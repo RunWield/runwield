@@ -47,16 +47,19 @@ export class SessionContextMetricsRecorder {
         event: string,
         fields: Record<string, string | number | ContextSnapshotObservation["staticCategoryCounts"] | null>,
     ): Promise<void> {
-        await recordWorkflowMetric({
-            v: 2,
-            category: event.startsWith("retry_") ? "execution" : "context",
-            event,
-            recorderId: this.recorderId,
-            seq: this.seq++,
-            sessionId: this.sessionId,
-            commandId: this.commandId,
-            ...fields,
-        }, this.projectRoot);
+        await recordWorkflowMetric(
+            {
+                v: 2,
+                category: event.startsWith("retry_") ? "execution" : "context",
+                event,
+                recorderId: this.recorderId,
+                seq: this.seq++,
+                sessionId: this.sessionId,
+                commandId: this.commandId,
+                ...fields,
+            },
+            this.projectRoot,
+        );
     }
 
     async start(snapshot: ContextSnapshotObservation): Promise<void> {
@@ -177,12 +180,7 @@ export interface ContextSnapshotObservation {
         | "overflow"
         | string;
     samplingPoint:
-        | "execution_start"
-        | "execution_end"
-        | "turn_start"
-        | "turn_end"
-        | "before_compaction"
-        | "after_compaction";
+        "execution_start" | "execution_end" | "turn_start" | "turn_end" | "before_compaction" | "after_compaction";
 }
 
 export interface ResponseLatencyObservation {
@@ -223,24 +221,9 @@ const KNOWN_GIT_SUBCOMMANDS = new Set([
     "rm",
 ]);
 
-const KNOWN_DENO_PUBLIC_TASKS = new Set([
-    "test",
-    "check",
-    "lint",
-    "fmt",
-    "ci",
-    "seams:check",
-    "build",
-]);
+const KNOWN_DENO_PUBLIC_TASKS = new Set(["test", "check", "lint", "fmt", "ci", "seams:check", "build"]);
 
-const KNOWN_PACKAGE_TASKS = new Set([
-    "test",
-    "check",
-    "lint",
-    "fmt",
-    "ci",
-    "build",
-]);
+const KNOWN_PACKAGE_TASKS = new Set(["test", "check", "lint", "fmt", "ci", "build"]);
 
 const KNOWN_SAFE_BINARIES = new Set([
     "ls",
@@ -355,9 +338,7 @@ function splitShellSegments(input: string): string[] | null {
 
 function tokenizeCommandWords(segment: string): string[] {
     // Strip redirection like > /dev/null, 2>&1, >> file, < file
-    const cleaned = segment
-        .replace(/>>\s*\S+|>\s*\S+|2>&1|<&[0-9]+|<\s*\S+/g, " ")
-        .trim();
+    const cleaned = segment.replace(/>>\s*\S+|>\s*\S+|2>&1|<&[0-9]+|<\s*\S+/g, " ").trim();
     const words: string[] = [];
     let current = "";
     let singleOpen = false;
@@ -488,9 +469,8 @@ export function classifyMemoryOperation(
             else if (cmd.includes(" delete ") || cmd.includes(" rm ")) action = "delete";
             else action = "recall";
 
-            const scope: "project" | "global" | "unified" = cmd.includes(" -g") || cmd.includes(" --global")
-                ? "global"
-                : "project";
+            const scope: "project" | "global" | "unified" =
+                cmd.includes(" -g") || cmd.includes(" --global") ? "global" : "project";
             return { action, scope };
         }
     }
@@ -538,29 +518,29 @@ export function extractCodeBatchOperations(
     let resultItems: Array<Record<string, unknown>> = [];
     if (result && typeof result === "object") {
         const resObj = result as Record<string, unknown>;
-        const details = resObj.details && typeof resObj.details === "object"
-            ? (resObj.details as Record<string, unknown>)
-            : null;
+        const details =
+            resObj.details && typeof resObj.details === "object" ? (resObj.details as Record<string, unknown>) : null;
         if (Array.isArray(resObj.results)) {
             resultItems = resObj.results.filter((item): item is Record<string, unknown> =>
-                Boolean(item && typeof item === "object")
+                Boolean(item && typeof item === "object"),
             );
         } else if (details && Array.isArray(details.results)) {
-            resultItems = details.results.filter(
-                (item): item is Record<string, unknown> => Boolean(item && typeof item === "object"),
+            resultItems = details.results.filter((item): item is Record<string, unknown> =>
+                Boolean(item && typeof item === "object"),
             );
         }
     }
 
     return operations.map((op, index) => {
         const opObj = op && typeof op === "object" ? (op as Record<string, unknown>) : {};
-        const opKind = typeof opObj.op === "string"
-            ? opObj.op
-            : typeof opObj.kind === "string"
-            ? opObj.kind
-            : typeof opObj.type === "string"
-            ? opObj.type
-            : "";
+        const opKind =
+            typeof opObj.op === "string"
+                ? opObj.op
+                : typeof opObj.kind === "string"
+                  ? opObj.kind
+                  : typeof opObj.type === "string"
+                    ? opObj.type
+                    : "";
         const batchKind: "show" | "outline" = opKind === "outline" ? "outline" : "show";
 
         const resItem = resultItems[index];
@@ -592,9 +572,11 @@ export function estimateToolSchemaTokens(definition: {
 }): { schemaTokens: number; residentTokens: number } {
     const schemaString = definition.parameters ? JSON.stringify(definition.parameters) : "";
     const schemaTokens = estimateContextTextTokens(schemaString);
-    const residentTokens = definition.residentTokens ?? estimateContextTextTokens(
-        `Tool: ${definition.name}\nDescription: ${definition.description || ""}\nParameters schema: ${schemaString}`,
-    );
+    const residentTokens =
+        definition.residentTokens ??
+        estimateContextTextTokens(
+            `Tool: ${definition.name}\nDescription: ${definition.description || ""}\nParameters schema: ${schemaString}`,
+        );
     return { schemaTokens, residentTokens };
 }
 
@@ -807,56 +789,70 @@ export class ExecutionMetricsRecorder {
                 if (part.type === "toolCall") await this.recordToolStart(part.id, part.name, part.arguments);
             }
         } else if (message.role === "toolResult") {
-            const reason = message.details && typeof message.details === "object" && "reason" in message.details &&
-                    typeof message.details.reason === "string"
-                ? message.details.reason
-                : null;
-            const outcome = reason === "aborted"
-                ? "canceled"
-                : reason && reason !== "execution_error"
-                ? "rejected"
-                : message.isError
-                ? "error"
-                : "success";
+            const reason =
+                message.details &&
+                typeof message.details === "object" &&
+                "reason" in message.details &&
+                typeof message.details.reason === "string"
+                    ? message.details.reason
+                    : null;
+            const outcome =
+                reason === "aborted"
+                    ? "canceled"
+                    : reason && reason !== "execution_error"
+                      ? "rejected"
+                      : message.isError
+                        ? "error"
+                        : "success";
             await this.recordToolFinish(message.toolCallId, message.toolName, {
                 outcome,
                 isError: message.isError,
-                reason: reason === "aborted"
-                    ? "aborted"
-                    : reason === "execution_error"
-                    ? "execution_error"
-                    : reason?.startsWith("invalid arguments")
-                    ? "invalid_arguments"
-                    : reason?.includes("closed the gate")
-                    ? "gate_closed"
-                    : reason
-                    ? "rejected"
-                    : undefined,
+                reason:
+                    reason === "aborted"
+                        ? "aborted"
+                        : reason === "execution_error"
+                          ? "execution_error"
+                          : reason?.startsWith("invalid arguments")
+                            ? "invalid_arguments"
+                            : reason?.includes("closed the gate")
+                              ? "gate_closed"
+                              : reason
+                                ? "rejected"
+                                : undefined,
                 result: message,
             });
         }
     }
 
-    async recordNativeToolInfo(
-        observation: { toolName?: string; callId?: string; stepIndex?: number; status?: "success" | "error" },
-    ): Promise<void> {
-        const identity = observation.callId ??
-            (observation.stepIndex !== undefined ? `step_${observation.stepIndex}` : null);
+    async recordNativeToolInfo(observation: {
+        toolName?: string;
+        callId?: string;
+        stepIndex?: number;
+        status?: "success" | "error";
+    }): Promise<void> {
+        const identity =
+            observation.callId ?? (observation.stepIndex !== undefined ? `step_${observation.stepIndex}` : null);
         if (
-            identity && (this.nativeObservationIds.has(identity) || this.openToolCalls.has(identity) ||
+            identity &&
+            (this.nativeObservationIds.has(identity) ||
+                this.openToolCalls.has(identity) ||
                 this.completedToolCallIds.has(identity))
-        ) return;
+        )
+            return;
         if (identity) this.nativeObservationIds.add(identity);
-        await recordWorkflowMetric({
-            ...this.baseLinks(),
-            category: "tool_usage",
-            event: "native_tool_observed",
-            seq: this.nextSeq(),
-            callId: observation.callId ?? null,
-            stepIndex: observation.stepIndex ?? null,
-            toolName: observation.toolName ?? "unknown",
-            status: observation.status ?? null,
-        }, this.projectRoot);
+        await recordWorkflowMetric(
+            {
+                ...this.baseLinks(),
+                category: "tool_usage",
+                event: "native_tool_observed",
+                seq: this.nextSeq(),
+                callId: observation.callId ?? null,
+                stepIndex: observation.stepIndex ?? null,
+                toolName: observation.toolName ?? "unknown",
+                status: observation.status ?? null,
+            },
+            this.projectRoot,
+        );
     }
 
     async recordToolStart(callId: string, toolName: string, args?: unknown): Promise<void> {
@@ -877,10 +873,13 @@ export class ExecutionMetricsRecorder {
         this.observedCallCount++;
 
         // Capture child observations before any asynchronous write can interleave with this call.
-        const command = toolName === "bash" && args && typeof args === "object" &&
-                typeof (args as { command?: unknown }).command === "string"
-            ? (args as { command: string }).command
-            : "";
+        const command =
+            toolName === "bash" &&
+            args &&
+            typeof args === "object" &&
+            typeof (args as { command?: unknown }).command === "string"
+                ? (args as { command: string }).command
+                : "";
         const labels = toolName === "bash" ? normalizeBashCommand(command) : [];
         const memoryOp = toolName.startsWith("memory") ? classifyMemoryOperation(toolName, args) : null;
         const operationSeqs = Array.from({ length: labels.length + (memoryOp ? 1 : 0) }, () => this.nextSeq());
@@ -953,11 +952,8 @@ export class ExecutionMetricsRecorder {
         this.completedToolCallIds.add(callId);
 
         const now = Date.now();
-        const durationMs = options.durationMs !== undefined
-            ? options.durationMs
-            : open
-            ? Math.max(0, now - open.startedAt)
-            : null;
+        const durationMs =
+            options.durationMs !== undefined ? options.durationMs : open ? Math.max(0, now - open.startedAt) : null;
 
         const subUsage = open?.subUsage || classifyToolSubUsage(toolName, options.args);
         const exposureId = open?.exposureId || this.activeExposureId;
@@ -975,9 +971,10 @@ export class ExecutionMetricsRecorder {
             options.truncated,
         );
 
-        const batchOps = effectiveToolName === "code_batch"
-            ? extractCodeBatchOperations(options.args ?? open.args, options.result)
-            : [];
+        const batchOps =
+            effectiveToolName === "code_batch"
+                ? extractCodeBatchOperations(options.args ?? open.args, options.result)
+                : [];
         const operationSeqs = batchOps.map(() => this.nextSeq());
         const finishSeq = this.nextSeq();
         if (batchOps.length > 0) {
@@ -1081,9 +1078,10 @@ export class ExecutionMetricsRecorder {
                 }
             }
             if (!usage) continue;
-            const timing = entry.type === "message" && entry.message.role === "assistant"
-                ? this.piMessageTiming.get(entry.message)
-                : undefined;
+            const timing =
+                entry.type === "message" && entry.message.role === "assistant"
+                    ? this.piMessageTiming.get(entry.message)
+                    : undefined;
             await this.recordModelUsage({
                 startedAt: timing?.startedAt ?? null,
                 endedAt: timing?.endedAt ?? null,
@@ -1107,13 +1105,16 @@ export class ExecutionMetricsRecorder {
 
     async recordModelUsage(usage: ModelUsageObservation): Promise<void> {
         const sourceId = usage.sourceId || `usage_${crypto.randomUUID()}`;
-        const availability = usage.measurementAvailability ||
+        const availability =
+            usage.measurementAvailability ||
             (usage.inputTokens === null && usage.outputTokens === null
                 ? "unavailable"
-                : usage.inputTokens === null || usage.outputTokens === null ||
-                        usage.cacheReadTokens == null || usage.cacheWriteTokens == null
-                ? "partial"
-                : "complete");
+                : usage.inputTokens === null ||
+                    usage.outputTokens === null ||
+                    usage.cacheReadTokens == null ||
+                    usage.cacheWriteTokens == null
+                  ? "partial"
+                  : "complete");
         if (this.reconciledUsageEntryIds.has(sourceId)) return;
         this.reconciledUsageEntryIds.add(sourceId);
         if (availability !== "complete") this.usageIncomplete = true;
@@ -1145,7 +1146,7 @@ export class ExecutionMetricsRecorder {
                 unavailableReason: usage.unavailableReason ?? null,
                 aggregationBasis: usage.aggregationBasis || "turn",
                 inputCacheBasis: usage.inputCacheBasis || "unknown",
-                turnId: usage.turnId !== undefined ? usage.turnId : this.currentTurnId ?? this.turnId ?? null,
+                turnId: usage.turnId !== undefined ? usage.turnId : (this.currentTurnId ?? this.turnId ?? null),
                 requestId: usage.requestId || this.requestId,
             },
             this.projectRoot,
@@ -1171,12 +1172,8 @@ export class ExecutionMetricsRecorder {
         },
     ): Promise<void> {
         let samplingPoint:
-            | "execution_start"
-            | "execution_end"
-            | "turn_start"
-            | "turn_end"
-            | "before_compaction"
-            | "after_compaction" = "turn_end";
+            "execution_start" | "execution_end" | "turn_start" | "turn_end" | "before_compaction" | "after_compaction" =
+            "turn_end";
         let capacity: number | null = null;
         let currentUsage: number | null = null;
         let usageState = "normal";
@@ -1338,11 +1335,12 @@ export class ExecutionMetricsRecorder {
     }): Promise<void> {
         const source = options.retrySource === "summarization_retry" ? "summarization_retry" : "auto_retry";
         if (options.outcome) {
-            const outcome = options.outcome === "canceled"
-                ? "canceled"
-                : options.outcome === "success" || options.outcome === "succeeded"
-                ? "succeeded"
-                : "failed";
+            const outcome =
+                options.outcome === "canceled"
+                    ? "canceled"
+                    : options.outcome === "success" || options.outcome === "succeeded"
+                      ? "succeeded"
+                      : "failed";
             await this.recordRetryFinish({
                 retrySource: source,
                 attempt: options.attempt,
@@ -1436,10 +1434,7 @@ export class ExecutionMetricsRecorder {
         );
     }
 
-    async settleExecution(
-        outcome: ExecutionOutcome = "succeeded",
-        reason = "completed",
-    ): Promise<void> {
+    async settleExecution(outcome: ExecutionOutcome = "succeeded", reason = "completed"): Promise<void> {
         if (this.settled) return;
         this.settled = true;
 
@@ -1483,11 +1478,12 @@ export class ExecutionMetricsRecorder {
                 elapsedMs,
                 callCount: this.observedCallCount,
                 coverage: {
-                    tools: this.inventoryCoverage === "unavailable" && this.observedCallCount === 0
-                        ? "unavailable"
-                        : this.missingToolEnds || this.inventoryCoverage !== "complete"
-                        ? "partial"
-                        : "complete",
+                    tools:
+                        this.inventoryCoverage === "unavailable" && this.observedCallCount === 0
+                            ? "unavailable"
+                            : this.missingToolEnds || this.inventoryCoverage !== "complete"
+                              ? "partial"
+                              : "complete",
                     usage: this.usageCoverage,
                     context: this.observedContext ? "partial" : "unavailable",
                 },
@@ -1531,7 +1527,8 @@ function evaluateToolResultMetrics(
         const obj = result as Record<string, unknown>;
         if (typeof obj.truncated === "boolean") foundTruncated = obj.truncated;
         if (
-            obj.details && typeof obj.details === "object" &&
+            obj.details &&
+            typeof obj.details === "object" &&
             typeof (obj.details as Record<string, unknown>).truncated === "boolean"
         ) {
             foundTruncated = (obj.details as Record<string, unknown>).truncated as boolean;

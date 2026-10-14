@@ -1,5 +1,9 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import process from "node:process";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withMetricsExportFixture } from "../../testing/metrics-export-fixture.ts";
 import { revokeMetricsExportDestination, setMetricsExportCredentials } from "./metrics-export-grants.ts";
 import { readMetricsExportLedger } from "./metrics-export-ledger.ts";
@@ -10,13 +14,13 @@ import {
 } from "./metrics-export-scheduler.ts";
 import { clearUsageHistory, queryUsageReport } from "./usage-reporting.ts";
 
-for (
-    const [path, expected] of [["/accept", "accepted"], ["/400", "rejected"], ["/401", "rejected"], [
-        "/503",
-        "pending",
-    ]] as const
-) {
-    Deno.test(`delivery ${path} has ${expected} status without blocking later observations`, async () => {
+for (const [path, expected] of [
+    ["/accept", "accepted"],
+    ["/400", "rejected"],
+    ["/401", "rejected"],
+    ["/503", "pending"],
+] as const) {
+    test(`delivery ${path} has ${expected} status without blocking later observations`, async () => {
         await withMetricsExportFixture(async (f) => {
             await f.grant(path);
             await f.record();
@@ -34,7 +38,7 @@ for (
         });
     });
 }
-Deno.test("only needs-correction rejections resume on credential revision", async () => {
+test("only needs-correction rejections resume on credential revision", async () => {
     await withMetricsExportFixture(async (f) => {
         const grant = await f.grant("/401");
         await f.record();
@@ -47,7 +51,7 @@ Deno.test("only needs-correction rejections resume on credential revision", asyn
         assertEquals(f.headers.at(-1), "new-secret");
     });
 });
-Deno.test("lost responses are never resent and do not block later rows", async () => {
+test("lost responses are never resent and do not block later rows", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant("/drop");
         await f.record();
@@ -61,7 +65,7 @@ Deno.test("lost responses are never resent and do not block later rows", async (
     });
 });
 for (const path of ["/present", "/drop-present", "/accept", "/mismatch"]) {
-    Deno.test(`read-back ${path} confirms only proven remote presence and is capped`, async () => {
+    test(`read-back ${path} confirms only proven remote presence and is capped`, async () => {
         await withMetricsExportFixture(async (f) => {
             await f.grant(path);
             await f.record();
@@ -74,7 +78,7 @@ for (const path of ["/present", "/drop-present", "/accept", "/mismatch"]) {
     });
 }
 for (const path of ["/throw", "/hang", "/exit", "/malformed"]) {
-    Deno.test(`worker ${path} leaves Core running and records an unconfirmed delivery`, async () => {
+    test(`worker ${path} leaves Core running and records an unconfirmed delivery`, async () => {
         await withMetricsExportFixture(async (f) => {
             await f.grant(path);
             await f.record();
@@ -86,7 +90,7 @@ for (const path of ["/throw", "/hang", "/exit", "/malformed"]) {
         });
     });
 }
-Deno.test("clear during delivery reports in-flight work and settlement restores no measurements", async () => {
+test("clear during delivery reports in-flight work and settlement restores no measurements", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         await f.record();
@@ -106,7 +110,7 @@ Deno.test("clear during delivery reports in-flight work and settlement restores 
         assertEquals([...readMetricsExportLedger("fixture").values()][0].state, "accepted");
     });
 });
-Deno.test("revoke during delivery reports in-flight work and prevents further authorization", async () => {
+test("revoke during delivery reports in-flight work and prevents further authorization", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         await f.record();
@@ -121,7 +125,7 @@ Deno.test("revoke during delivery reports in-flight work and prevents further au
         assertEquals(await readMetricsExportStatus(), []);
     });
 });
-Deno.test("scheduler shutdown is bounded and releases delivery ownership", async () => {
+test("scheduler shutdown is bounded and releases delivery ownership", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         await f.record();
@@ -137,42 +141,43 @@ Deno.test("scheduler shutdown is bounded and releases delivery ownership", async
         assertEquals((await readMetricsExportStatus())[0].counts.unconfirmed, 1);
     });
 });
-Deno.test("transport context alone contains credentials; observations and local fences are content-free", async () => {
+test("transport context alone contains credentials; observations and local fences are content-free", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant();
         await setMetricsExportCredentials("fixture", { secretKey: "credential-secret" });
         await f.record();
         await runMetricsExportCycle();
         const wire = JSON.stringify(f.requests);
-        for (
-            const forbidden of [f.project, "cwdHash", "raw-plan-id", "raw-session-id", "credential-secret", "prompt"]
-        ) assert(!wire.includes(forbidden), forbidden);
+        for (const forbidden of [f.project, "cwdHash", "raw-plan-id", "raw-session-id", "credential-secret", "prompt"])
+            assert(!wire.includes(forbidden), forbidden);
         assertEquals(f.headers, ["credential-secret"]);
         const status = JSON.stringify(await readMetricsExportStatus());
-        const settings = await Deno.readTextFile(join(f.home, ".wld", "settings.json"));
-        const ledger = await Deno.readTextFile(
+        const settings = await fsReadFile(join(f.home, ".wld", "settings.json"), "utf8");
+        const ledger = await fsReadFile(
             join(f.home, ".wld", "metrics-export", "destinations", "fixture", "ledger.jsonl"),
+            "utf8",
         );
         for (const local of [status, settings, ledger]) assert(!local.includes("credential-secret"));
         for (const file of ["credentials.json", "host.json"]) {
-            if (Deno.build.os !== "windows") {
-                assertEquals((await Deno.stat(join(f.home, ".wld", "metrics-export", file))).mode! & 0o777, 0o600);
+            if ((process.platform === "win32" ? "windows" : process.platform) !== "windows") {
+                assertEquals((await fsStat(join(f.home, ".wld", "metrics-export", file))).mode! & 0o777, 0o600);
             }
         }
     });
 });
 
 for (const action of ["clear", "revoke"] as const) {
-    Deno.test(`${action} during confirmation reports in-flight read-back without restoring history`, async () => {
+    test(`${action} during confirmation reports in-flight read-back without restoring history`, async () => {
         await withMetricsExportFixture(async (f) => {
             await f.grant("/present");
             await f.record();
             f.holdConfirmation();
             const cycle = runMetricsExportCycle();
             await f.waitForConfirmation();
-            const result = action === "clear"
-                ? (await clearUsageHistory([f.project]))[0]
-                : await revokeMetricsExportDestination("fixture");
+            const result =
+                action === "clear"
+                    ? (await clearUsageHistory([f.project]))[0]
+                    : await revokeMetricsExportDestination("fixture");
             assertEquals(result.deliveryInFlight, true);
             f.release();
             await cycle;
@@ -184,7 +189,7 @@ for (const action of ["clear", "revoke"] as const) {
         });
     });
 }
-Deno.test("permanent rejection stays final after credential rotation", async () => {
+test("permanent rejection stays final after credential rotation", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant("/400");
         await f.record();
@@ -196,7 +201,7 @@ Deno.test("permanent rejection stays final after credential rotation", async () 
     });
 });
 
-Deno.test("exporter response codes cannot retain free text or credential-shaped content", async () => {
+test("exporter response codes cannot retain free text or credential-shaped content", async () => {
     await withMetricsExportFixture(async (f) => {
         await f.grant("/unsafe-code");
         await setMetricsExportCredentials("fixture", { secretKey: "credential-secret/path" });
@@ -206,8 +211,8 @@ Deno.test("exporter response codes cannot retain free text or credential-shaped 
         assertEquals(status.counts.accepted, 1);
         assertEquals(status.latestCodes, ["unrecognized"]);
         assert(!JSON.stringify([...readMetricsExportLedger("fixture").values()]).includes("credential-secret"));
-        if (Deno.build.os !== "windows") {
-            assertEquals((await Deno.stat(join(f.home, ".wld", "metrics-export"))).mode! & 0o777, 0o700);
+        if ((process.platform === "win32" ? "windows" : process.platform) !== "windows") {
+            assertEquals((await fsStat(join(f.home, ".wld", "metrics-export"))).mode! & 0o777, 0o700);
         }
     });
 });

@@ -91,7 +91,7 @@ test("review_complete refuses to approve while a finding is unresolved", async (
     assertEquals(result.details.reason, "approved_with_open_findings");
 });
 
-Deno.test("review observations keep reused tool-call identities distinct across Sessions", async () => {
+test("review observations keep reused tool-call identities distinct across Sessions", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         for (const id of ["first-review-session", "second-review-session"]) {
             const hostedSession = new HostedSession({ id, cwd: projectRoot });
@@ -105,6 +105,9 @@ Deno.test("review observations keep reused tool-call identities distinct across 
         const rows = await readMetrics();
         assertEquals(rows.length, 2);
         assertEquals(new Set(rows.map((row) => row.eventId)).size, 2);
-        assertEquals(rows.map((row) => row.outcome), ["approved", "approved"]);
+        assertEquals(
+            rows.map((row) => row.outcome),
+            ["approved", "approved"],
+        );
     });
 });

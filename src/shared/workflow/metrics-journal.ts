@@ -1,5 +1,9 @@
+import { closeSync, fstatSync, fsyncSync, openSync, readSync, writeSync } from "node:fs";
+import { openNativeFileLock, type NativeFileLock } from "../native-file-lock.ts";
+import { syncParentDirectory, writeTextAtomically } from "../private-json-file.ts";
+import { readFileSync, truncateSync, rmSync, mkdirSync, statSync } from "node:fs";
 /** Durable, content-free Project measurement journal. */
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { metricsDeliveryInFlightForJournal } from "./metrics-export-ledger.ts";
 
@@ -44,8 +48,14 @@ interface JournalEpochState {
 }
 
 export function isWorkflowMetricsEnabled<T>(setting: T) {
-    return setting === true || (setting !== null && typeof setting === "object" &&
-        !Array.isArray(setting) && "enabled" in setting && setting.enabled === true);
+    return (
+        setting === true ||
+        (setting !== null &&
+            typeof setting === "object" &&
+            !Array.isArray(setting) &&
+            "enabled" in setting &&
+            setting.enabled === true)
+    );
 }
 
 /** Identity of the next observed enabled interval, captured before queueing. */
@@ -57,9 +67,10 @@ function enabledEpoch(epoch: string): string {
 function readJournalState(filePath: string): JournalEpochState {
     let diskState: JournalEpochState | undefined;
     try {
-        diskState = JSON.parse(Deno.readTextFileSync(join(dirname(filePath), "state.json")));
+        diskState = JSON.parse(readFileSync(join(dirname(filePath), "state.json"), "utf8"));
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound) && !(error instanceof SyntaxError)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT") && !(error instanceof SyntaxError))
+            throw error;
     }
     return diskState?.v === 1 && diskState.collectionEpoch?.id && diskState.historyEpoch
         ? diskState
@@ -73,10 +84,7 @@ function scanJournalLines(bytes: Uint8Array, state: JournalEpochState): number[]
     for (const [index, line] of lines.entries()) {
         try {
             const record = JSON.parse(line);
-            if (
-                record.v === 2 && typeof record.eventId === "string" &&
-                record.eventId.startsWith(`${record.event}:`)
-            ) {
+            if (record.v === 2 && typeof record.eventId === "string" && record.eventId.startsWith(`${record.event}:`)) {
                 state.outcomeEventOffsets ??= {};
                 state.outcomeEventOffsets[record.eventId] = offset;
             }
@@ -101,10 +109,10 @@ function scanJournalLines(bytes: Uint8Array, state: JournalEpochState): number[]
 /** Read the latest durable epoch, not a process-local settings cache. */
 export function resolveCollectionEpoch(filePath: string, enabledAtCall = false): JournalEpochState {
     try {
-        const intent = JSON.parse(Deno.readTextFileSync(join(dirname(filePath), "clear.json")));
+        const intent = JSON.parse(readFileSync(join(dirname(filePath), "clear.json"), "utf8"));
         return intent.state;
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     const state = readJournalState(filePath);
     const tail = readUncheckedTail(filePath, state);
@@ -124,29 +132,29 @@ const MAX_RECOVERY_BYTES = 256 * 1024;
 function readUncheckedTail(filePath: string, state: JournalEpochState) {
     let file;
     try {
-        file = Deno.openSync(filePath, { read: true });
+        file = openSync(filePath, "r");
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return { bytes: new Uint8Array(), end: 0, offset: 0, more: false };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT")
+            return { bytes: new Uint8Array(), end: 0, offset: 0, more: false };
         throw error;
     }
     try {
-        const size = file.statSync().size;
+        const size = fstatSync(file).size;
         const offset = state.journalBytes ?? 0;
         if (offset > size) throw new Error("journal_checkpoint_ahead");
-        file.seekSync(offset, Deno.SeekMode.Start);
         const pending = state.recoveryBytes ?? [];
         const length = Math.min(size - offset, MAX_RECOVERY_BYTES);
         const bytes = new Uint8Array(pending.length + length);
         bytes.set(pending);
         let read = pending.length;
         while (read < bytes.length) {
-            const count = file.readSync(bytes.subarray(read));
-            if (count === null) break;
+            const count = readSync(file, bytes, read, bytes.length - read, offset + read - pending.length);
+            if (count === 0) break;
             read += count;
         }
         return { bytes, end: bytes.lastIndexOf(10) + 1, offset: offset - pending.length, more: size - offset > length };
     } finally {
-        file.close();
+        closeSync(file);
     }
 }
 
@@ -155,12 +163,12 @@ function repairJournalTail(filePath: string, state: JournalEpochState): JournalC
     const intentPath = join(dirname(filePath), "repair.json");
     let intent: JournalRepairIntent | undefined;
     try {
-        intent = JSON.parse(Deno.readTextFileSync(intentPath));
+        intent = JSON.parse(readFileSync(intentPath, "utf8"));
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     if (intent) {
-        Deno.truncateSync(filePath, intent.end);
+        truncateSync(filePath, intent.end);
         writeSynced(filePath, intent.gap, true);
         removeSynced(intentPath);
     }
@@ -180,18 +188,19 @@ function repairJournalTail(filePath: string, state: JournalEpochState): JournalC
     const tornBytes = tail.bytes.length - tail.end;
     if (tornBytes) {
         if (state.historyEpoch === "initial") state.historyEpoch = crypto.randomUUID();
-        const gap = JSON.stringify({
-            v: 1,
-            event: "measurement_gap",
-            ts: new Date().toISOString(),
-            reason: "incomplete_append",
-            tornBytes,
-            corruptLines,
-            historyEpoch: state.historyEpoch,
-        }) + "\n";
+        const gap =
+            JSON.stringify({
+                v: 1,
+                event: "measurement_gap",
+                ts: new Date().toISOString(),
+                reason: "incomplete_append",
+                tornBytes,
+                corruptLines,
+                historyEpoch: state.historyEpoch,
+            }) + "\n";
         const end = tail.offset + tail.end;
         replaceSynced(intentPath, JSON.stringify({ end, gap }));
-        Deno.truncateSync(filePath, end);
+        truncateSync(filePath, end);
         writeSynced(filePath, gap, true);
         removeSynced(intentPath);
         state.journalLines = (state.journalLines ?? 0) + 1;
@@ -201,48 +210,26 @@ function repairJournalTail(filePath: string, state: JournalEpochState): JournalC
 
 /** @param {string} path @param {string | Uint8Array} text @param {boolean} [append] */
 function writeSynced(path: string, text: string | Uint8Array, append = false) {
-    const file = Deno.openSync(path, { create: true, write: true, append, truncate: !append });
+    const file = openSync(path, append ? "a" : "w", 0o600);
     try {
         const bytes = typeof text === "string" ? new TextEncoder().encode(text) : text;
         let offset = 0;
-        while (offset < bytes.length) offset += file.writeSync(bytes.subarray(offset));
-        file.syncSync();
+        while (offset < bytes.length) offset += writeSync(file, bytes.subarray(offset));
+        fsyncSync(file);
     } finally {
-        file.close();
+        closeSync(file);
     }
 }
 
 /** Commit removal so a completed repair intent cannot return after a crash. */
 function removeSynced(path: string) {
-    Deno.removeSync(path);
-    const parent = Deno.openSync(dirname(path), { read: true });
-    try {
-        parent.syncSync();
-    } finally {
-        parent.close();
-    }
+    rmSync(path);
+    syncParentDirectory(path);
 }
 
-/** Atomic replacement also syncs the parent directory.
- * @param {string} path
- * @param {string | Uint8Array} content
- */
+/** Replace the complete checkpoint and flush its parent where the platform supports it. */
 function replaceSynced(path: string, content: string | Uint8Array) {
-    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-    try {
-        writeSynced(temporary, content);
-        Deno.renameSync(temporary, path);
-        const parent = Deno.openSync(dirname(path), { read: true });
-        try {
-            parent.syncSync();
-        } finally {
-            parent.close();
-        }
-    } finally {
-        try {
-            Deno.removeSync(temporary);
-        } catch { /* Already renamed. */ }
-    }
+    writeTextAtomically(path, content);
 }
 
 interface JournalClearIntent {
@@ -259,24 +246,26 @@ interface JournalLock {
 async function acquireJournalLock(filePath: string, deadline: number, signal?: AbortSignal): Promise<JournalLock> {
     if (signal?.aborted) throw new Error("lock_canceled");
     let release: (() => void) | undefined;
-    let guard: Deno.FsFile | undefined;
+    let guard: NativeFileLock | undefined;
     const lock: JournalLock = {
         compromised: false,
         close() {
             try {
                 release?.();
-            } catch { /* Do not throw into development work. */ }
+            } catch {
+                /* Do not throw into development work. */
+            }
             guard?.close();
         },
     };
     try {
         const directory = dirname(filePath);
-        Deno.mkdirSync(directory, { recursive: true });
+        mkdirSync(directory, { recursive: true });
         const lockPath = join(directory, ".journal.lock");
-        Deno.openSync(lockPath, { create: true, write: true }).close();
+        closeSync(openSync(lockPath, "a", 0o600));
         // The OS lock cannot expire while its writer is paused. Keep the lease
         // lock for compatibility, but never mutate or release it without this guard.
-        guard = Deno.openSync(join(directory, ".journal.guard"), { create: true, read: true, write: true });
+        guard = openNativeFileLock(join(directory, ".journal.guard"));
         while (!guard.tryLockSync(true)) {
             if (signal?.aborted) throw new Error("lock_canceled");
             if (Date.now() >= deadline) throw new Error("lock_timeout");
@@ -310,9 +299,9 @@ function finishHistoryClear(filePath: string): void {
     const intentPath = join(directory, "clear.json");
     let intent: JournalClearIntent;
     try {
-        intent = JSON.parse(Deno.readTextFileSync(intentPath));
+        intent = JSON.parse(readFileSync(intentPath, "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
         throw error;
     }
     writeSynced(filePath, intent.marker);
@@ -320,7 +309,7 @@ function finishHistoryClear(filePath: string): void {
     try {
         removeSynced(join(directory, "repair.json"));
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     removeSynced(intentPath);
 }
@@ -364,14 +353,15 @@ export async function clearWorkflowMetricJournal(filePath: string): Promise<Jour
         const deliveryInFlight = await metricsDeliveryInFlightForJournal(filePath).catch(() => true);
         const historyEpoch = crypto.randomUUID();
         const historyStartedAt = new Date().toISOString();
-        const marker = JSON.stringify({
-            v: 1,
-            event: "history_epoch",
-            ts: historyStartedAt,
-            historyEpoch,
-            collectionEpoch: previous.collectionEpoch.id,
-            enabled: previous.collectionEpoch.enabled,
-        }) + "\n";
+        const marker =
+            JSON.stringify({
+                v: 1,
+                event: "history_epoch",
+                ts: historyStartedAt,
+                historyEpoch,
+                collectionEpoch: previous.collectionEpoch.id,
+                enabled: previous.collectionEpoch.enabled,
+            }) + "\n";
         const state: JournalEpochState = {
             v: 1,
             historyEpoch,
@@ -456,13 +446,9 @@ export async function appendWorkflowMetric<T>(
             });
         }
         if (entries.length) {
-            writeSynced(
-                filePath,
-                entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-                true,
-            );
+            writeSynced(filePath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", true);
         }
-        state.journalBytes = Deno.statSync(filePath).size;
+        state.journalBytes = statSync(filePath).size;
         state.journalLines = (state.journalLines ?? 0) + entries.length;
         replaceSynced(join(directory, "state.json"), JSON.stringify(state) + "\n");
         if (lock.compromised) return { ...failedRecord, persisted: false, reason: "lock_compromised" };
@@ -474,44 +460,53 @@ export async function appendWorkflowMetric<T>(
             return { ...failedRecord, persisted: false, reason: "collection_boundary" };
         }
         if (
-            invocation.historyEpoch && invocation.historyEpoch !== "initial" &&
+            invocation.historyEpoch &&
+            invocation.historyEpoch !== "initial" &&
             invocation.historyEpoch !== state.historyEpoch
         ) {
             return { ...failedRecord, persisted: false, reason: "history_boundary" };
         }
         if (
-            invocation.historyEpoch !== "initial" && state.historyStartedAt && record !== null &&
-            typeof record === "object" && "ts" in record &&
-            typeof record.ts === "string" && Date.parse(record.ts) < Date.parse(state.historyStartedAt)
+            invocation.historyEpoch !== "initial" &&
+            state.historyStartedAt &&
+            record !== null &&
+            typeof record === "object" &&
+            "ts" in record &&
+            typeof record.ts === "string" &&
+            Date.parse(record.ts) < Date.parse(state.historyStartedAt)
         ) {
             return { ...failedRecord, persisted: false, reason: "history_boundary" };
         }
-        const outcomeIdentity = record !== null && typeof record === "object" &&
-                "v" in record && record.v === 2 && "event" in record &&
-                "eventId" in record && typeof record.eventId === "string" &&
-                record.eventId.startsWith(`${record.event}:`)
-            ? record.eventId
-            : undefined;
+        const outcomeIdentity =
+            record !== null &&
+            typeof record === "object" &&
+            "v" in record &&
+            record.v === 2 &&
+            "event" in record &&
+            "eventId" in record &&
+            typeof record.eventId === "string" &&
+            record.eventId.startsWith(`${record.event}:`)
+                ? record.eventId
+                : undefined;
         const previousOffset = outcomeIdentity ? state.outcomeEventOffsets?.[outcomeIdentity] : undefined;
         if (previousOffset !== undefined) {
-            const file = Deno.openSync(filePath, { read: true });
+            const file = openSync(filePath, "r");
             try {
-                file.seekSync(previousOffset, Deno.SeekMode.Start);
                 const bytes = new Uint8Array(MAX_RECOVERY_BYTES);
-                const size = file.readSync(bytes) || 0;
+                const size = readSync(file, bytes, 0, bytes.length, previousOffset);
                 const end = bytes.subarray(0, size).indexOf(10);
                 if (end < 0) throw new Error("incomplete_saved_observation");
                 const previous = JSON.parse(new TextDecoder().decode(bytes.subarray(0, end)));
                 if (previous.eventId !== outcomeIdentity) throw new Error("observation_index_mismatch");
                 return { ...previous, persisted: true };
             } finally {
-                file.close();
+                closeSync(file);
             }
         }
         const observationOffset = state.journalBytes;
         const saved = { ...record, collectionEpoch: state.collectionEpoch.id, historyEpoch: state.historyEpoch };
         writeSynced(filePath, JSON.stringify(saved) + "\n", true);
-        state.journalBytes = Deno.statSync(filePath).size;
+        state.journalBytes = statSync(filePath).size;
         state.journalLines = (state.journalLines ?? 0) + 1;
         if (outcomeIdentity && observationOffset !== undefined) {
             state.outcomeEventOffsets ??= {};

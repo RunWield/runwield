@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
 import { emitHostedSessionRuntimeEvent, type RuntimeUsage } from "../../shared/session/session-runtime-events.js";
 import { createChatFooterController } from "./chat-footer.ts";
@@ -14,7 +15,7 @@ const absent: RuntimeUsage = {
     costUsd: null,
 };
 
-Deno.test("footer shows unavailable categories before a measurement", async () => {
+test("footer shows unavailable categories before a measurement", async () => {
     await withSessionViewFixture(({ runtime, sessionId }) => {
         const controller = createChatFooterController({
             runtime,
@@ -30,7 +31,7 @@ Deno.test("footer shows unavailable categories before a measurement", async () =
     });
 });
 
-Deno.test("footer preserves present values and measured zero beside unavailable categories", async () => {
+test("footer preserves present values and measured zero beside unavailable categories", async () => {
     await withSessionViewFixture(({ runtime, sessionId, session }) => {
         const controller = createChatFooterController({
             runtime,
@@ -52,7 +53,7 @@ Deno.test("footer preserves present values and measured zero beside unavailable 
     });
 });
 
-Deno.test("footer shows reported zero cost and sums only measured values", async () => {
+test("footer shows reported zero cost and sums only measured values", async () => {
     await withSessionViewFixture(({ runtime, sessionId, session }) => {
         const controller = createChatFooterController({
             runtime,

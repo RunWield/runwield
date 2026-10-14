@@ -131,7 +131,11 @@ test("two local producers preserve saved observations and report lock budget ski
             );
         });
         assertEquals(rows.length, saved.length);
-        for (const row of saved) assertEquals(rows.find((record) => record.eventId === row.eventId), row);
+        for (const row of saved)
+            assertEquals(
+                rows.find((record) => record.eventId === row.eventId),
+                row,
+            );
     });
 });
 
@@ -139,7 +143,7 @@ test("metrics remain bounded under an external writer lock and resume after rele
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const filePath = getWorkflowMetricsFilePath(projectRoot);
         await mkdir(dirname(filePath), { recursive: true });
-        const lock = openNativeFileLock(`${filePath}.lock`);
+        const lock = openNativeFileLock(join(dirname(filePath), ".journal.guard"));
         lock.lockSync(true);
         let held = true;
         try {

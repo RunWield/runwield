@@ -1,6 +1,8 @@
+import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
+import { realpathSync, readFileSync } from "node:fs";
 /** Host-approved metrics exporter inventory. This module never imports package code. */
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { isAbsolute, join, relative } from "@std/path";
+import { isAbsolute, join, relative } from "node:path";
 import { withExportConfigurationLock } from "../workflow/metrics-export-storage.ts";
 import { getCwd } from "../../constants.js";
 import type { PackagePromptResourceOptions } from "../package-resources.ts";
@@ -39,19 +41,24 @@ const APPROVAL_KEY = "metricsExporterApprovals";
 /** Invalid, missing, escaping, and Pi extension entries are not exporter declarations. */
 export async function readMetricsExporterDeclaration(packageRoot: string): Promise<MetricsExporterDeclaration | null> {
     try {
-        const manifest = JSON.parse(await Deno.readTextFile(join(packageRoot, "package.json")));
+        const manifest = JSON.parse(await fsReadFile(join(packageRoot, "package.json"), "utf8"));
         const declaration = manifest?.wld?.metricsExporter;
         if (
-            declaration?.contract !== 1 || typeof declaration.id !== "string" || !declaration.id.trim() ||
-            typeof declaration.entry !== "string" || !declaration.entry || isAbsolute(declaration.entry)
-        ) return null;
-        const root = await Deno.realPath(packageRoot);
-        const entryPath = await Deno.realPath(join(root, declaration.entry));
+            declaration?.contract !== 1 ||
+            typeof declaration.id !== "string" ||
+            !declaration.id.trim() ||
+            typeof declaration.entry !== "string" ||
+            !declaration.entry ||
+            isAbsolute(declaration.entry)
+        )
+            return null;
+        const root = await fsRealpath(packageRoot);
+        const entryPath = await fsRealpath(join(root, declaration.entry));
         const rest = relative(root, entryPath);
         if (!rest || rest === ".." || rest.startsWith("../") || rest.startsWith("..\\") || isAbsolute(rest)) {
             return null;
         }
-        if (!(await Deno.stat(entryPath)).isFile) return null;
+        if (!(await fsStat(entryPath)).isFile()) return null;
         const manager = new DefaultPackageManager({
             cwd: root,
             agentDir: root,
@@ -59,7 +66,7 @@ export async function readMetricsExporterDeclaration(packageRoot: string): Promi
         });
         const resources = await manager.resolveExtensionSources([root]);
         for (const resource of resources.extensions) {
-            if (await Deno.realPath(resource.path) === entryPath) return null;
+            if ((await fsRealpath(resource.path)) === entryPath) return null;
         }
         return { contract: 1, id: declaration.id, entry: declaration.entry };
     } catch {
@@ -70,16 +77,24 @@ export async function readMetricsExporterDeclaration(packageRoot: string): Promi
 function approvals(): MetricsExporterApproval[] {
     const records: MetricsExporterApproval[] = getCustomSetting(APPROVAL_KEY, "global");
     if (!Array.isArray(records)) return [];
-    return records.filter((record) =>
-        record && typeof record.id === "string" && typeof record.source === "string" &&
-        typeof record.installedPath === "string" && typeof record.version === "string" &&
-        typeof record.approvedAt === "string"
+    return records.filter(
+        (record) =>
+            record &&
+            typeof record.id === "string" &&
+            typeof record.source === "string" &&
+            typeof record.installedPath === "string" &&
+            typeof record.version === "string" &&
+            typeof record.approvedAt === "string",
     );
 }
 
 function sameIdentity(record: MetricsExporterApproval, exporter: InstalledMetricsExporter): boolean {
-    return record.id === exporter.id && record.source === exporter.source &&
-        record.installedPath === exporter.installedPath && record.version === exporter.version;
+    return (
+        record.id === exporter.id &&
+        record.source === exporter.source &&
+        record.installedPath === exporter.installedPath &&
+        record.version === exporter.version
+    );
 }
 
 export async function listInstalledMetricsExporters(
@@ -90,16 +105,18 @@ export async function listInstalledMetricsExporters(
     const remote = remotePersonalResourcesActive();
     const roots = personalPackageRoots();
     // No resolve(): Project packages must never replace the user's exporter.
-    const manager = remote ? null : new DefaultPackageManager({
-        cwd: options.cwd || getCwd(),
-        agentDir: options.agentDir || getSettingsDir("global"),
-        settingsManager: settings,
-    });
+    const manager = remote
+        ? null
+        : new DefaultPackageManager({
+              cwd: options.cwd || getCwd(),
+              agentDir: options.agentDir || getSettingsDir("global"),
+              settingsManager: settings,
+          });
     const packages = remote
         ? (settings.getGlobalSettings().packages || []).map((entry) => {
-            const source = typeof entry === "string" ? entry : entry.source;
-            return { source, scope: "user", installedPath: roots[source] };
-        })
+              const source = typeof entry === "string" ? entry : entry.source;
+              return { source, scope: "user", installedPath: roots[source] };
+          })
         : manager!.listConfiguredPackages();
     const saved = approvals();
     const exporters: InstalledMetricsExporter[] = [];
@@ -113,9 +130,9 @@ export async function listInstalledMetricsExporters(
         }
         const declaration = await readMetricsExporterDeclaration(pkg.installedPath);
         if (!declaration) continue;
-        const installedPath = await Deno.realPath(pkg.installedPath);
-        const manifest = JSON.parse(await Deno.readTextFile(join(installedPath, "package.json")));
-        const entryPath = await Deno.realPath(join(installedPath, declaration.entry));
+        const installedPath = await fsRealpath(pkg.installedPath);
+        const manifest = JSON.parse(await fsReadFile(join(installedPath, "package.json"), "utf8"));
+        const entryPath = await fsRealpath(join(installedPath, declaration.entry));
         if (remote) {
             await assertPersonalResourcePath(join(pkg.installedPath, declaration.entry), "metrics exporter entry", {
                 packageResource: true,
@@ -148,13 +165,16 @@ export function metricsExporterStillApproved(exporter: InstalledMetricsExporter)
     const packages: Array<string | { source: string }> = getCustomSetting("packages", "global") ?? [];
     if (!packages.some((pkg) => (typeof pkg === "string" ? pkg : pkg.source) === exporter.source)) return false;
     try {
-        if (isAbsolute(exporter.source) && Deno.realPathSync(exporter.source) !== exporter.installedPath) return false;
-        const manifest = JSON.parse(Deno.readTextFileSync(join(exporter.installedPath, "package.json")));
+        if (isAbsolute(exporter.source) && realpathSync(exporter.source) !== exporter.installedPath) return false;
+        const manifest = JSON.parse(readFileSync(join(exporter.installedPath, "package.json"), "utf8"));
         const declaration = manifest?.wld?.metricsExporter;
-        return declaration?.contract === 1 && declaration.id === exporter.id &&
+        return (
+            declaration?.contract === 1 &&
+            declaration.id === exporter.id &&
             (typeof manifest.version === "string" ? manifest.version : "") === exporter.version &&
             typeof declaration.entry === "string" &&
-            Deno.realPathSync(join(exporter.installedPath, declaration.entry)) === exporter.entryPath;
+            realpathSync(join(exporter.installedPath, declaration.entry)) === exporter.entryPath
+        );
     } catch {
         return false;
     }
@@ -169,10 +189,11 @@ export async function approveMetricsExporter(exporter: InstalledMetricsExporter)
             version: exporter.version,
             approvedAt: new Date().toISOString(),
         };
-        await setCustomSetting(APPROVAL_KEY, [
-            ...approvals().filter((saved) => !(saved.source === record.source && saved.id === record.id)),
-            record,
-        ], "global");
+        await setCustomSetting(
+            APPROVAL_KEY,
+            [...approvals().filter((saved) => !(saved.source === record.source && saved.id === record.id)), record],
+            "global",
+        );
         if (!approvals().some((saved) => sameIdentity(saved, exporter))) {
             throw new Error(`Approval for metrics exporter ${exporter.id} was not saved`);
         }
@@ -183,7 +204,11 @@ export async function removeMetricsExporterApprovals(source: string): Promise<vo
     await withExportConfigurationLock(async () => {
         const saved = approvals();
         if (!saved.some((record) => record.source === source)) return;
-        await setCustomSetting(APPROVAL_KEY, saved.filter((record) => record.source !== source), "global");
+        await setCustomSetting(
+            APPROVAL_KEY,
+            saved.filter((record) => record.source !== source),
+            "global",
+        );
         if (approvals().some((record) => record.source === source)) {
             throw new Error("Exporter approval removal was not saved");
         }

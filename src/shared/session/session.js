@@ -2256,22 +2256,26 @@ export async function buildAgentSession({
         visionFallbackModelRef &&
         !finalCustomTools.find((t) => t.name === "see_image")
     ) {
-        finalCustomTools.push(createSeeImageTool({
-            cwd: sessionCwd,
-            sessionManager: effectiveSessionManager,
-            completeSimpleFn: completeSimple,
-            onModelUsage: (observation) => {
-                const recorder = executionMetricsForSession.get(session) || new ExecutionMetricsRecorder({
-                    projectRoot: sessionCwd,
-                    sessionId: effectiveSessionManager.getSessionId(),
-                    managedSessionId: targetHostedSession?.getManagedMetadata()?.runwieldSessionId,
-                    segmentId: targetHostedSession?.getManagedMetadata()?.currentSegmentId,
-                    commandId: targetHostedSession?.activeCommandInvocationId || undefined,
-                    agentName,
-                });
-                return recorder.recordModelUsage(observation);
-            },
-        }));
+        finalCustomTools.push(
+            createSeeImageTool({
+                cwd: sessionCwd,
+                sessionManager: effectiveSessionManager,
+                completeSimpleFn: completeSimple,
+                onModelUsage: (observation) => {
+                    const recorder =
+                        executionMetricsForSession.get(session) ||
+                        new ExecutionMetricsRecorder({
+                            projectRoot: sessionCwd,
+                            sessionId: effectiveSessionManager.getSessionId(),
+                            managedSessionId: targetHostedSession?.getManagedMetadata()?.runwieldSessionId,
+                            segmentId: targetHostedSession?.getManagedMetadata()?.currentSegmentId,
+                            commandId: targetHostedSession?.activeCommandInvocationId || undefined,
+                            agentName,
+                        });
+                    return recorder.recordModelUsage(observation);
+                },
+            }),
+        );
     }
 
     // Resolve system prompt placeholders

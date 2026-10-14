@@ -8,7 +8,6 @@ import { git } from "../git-test-fixture.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import {
     classifyToolSubUsage,
-    drainWorkflowMetrics,
     getWorkflowMetricsFilePath,
     isWorkflowMetricsEnabled,
     recordToolCallFinished,

@@ -69,19 +69,25 @@ export async function recordWorkflowOutcome(cwd: string, observation: WorkflowOu
                 planId = entry.planId;
             }
         }
-    } catch { /* Missing attribution does not invent a Plan relationship. */ }
+    } catch {
+        /* Missing attribution does not invent a Plan relationship. */
+    }
     if (observation.persistenceDeadline && Date.now() >= observation.persistenceDeadline) {
         return { persisted: false, reason: "lock_timeout" };
     }
-    return await recordWorkflowMetric({
-        ...fields,
-        ts,
-        v: 2,
-        eventId: workflowOutcomeEventId(observation.event, observation.operationId),
-        recorderId: createHash("sha256").update(workflowOutcomeEventId(observation.event, observation.operationId))
-            .digest("hex"),
-        seq: 0,
-        ...(planId ? { planId } : {}),
-        ...(session ? { managedSessionId: session.runwieldSessionId, segmentId: session.currentSegmentId } : {}),
-    }, cwd);
+    return await recordWorkflowMetric(
+        {
+            ...fields,
+            ts,
+            v: 2,
+            eventId: workflowOutcomeEventId(observation.event, observation.operationId),
+            recorderId: createHash("sha256")
+                .update(workflowOutcomeEventId(observation.event, observation.operationId))
+                .digest("hex"),
+            seq: 0,
+            ...(planId ? { planId } : {}),
+            ...(session ? { managedSessionId: session.runwieldSessionId, segmentId: session.currentSegmentId } : {}),
+        },
+        cwd,
+    );
 }

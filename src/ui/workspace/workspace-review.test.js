@@ -621,7 +621,7 @@ test("review guide jobs keep reported zero usage available", async () => {
     await state.widgets.cleanup();
 });
 
-test("custom review guide commands do not interpret stderr usage-like text", async () => {
+test("custom review guide commands do not interpret unframed stderr usage-like text", async () => {
     await withProcessGlobalTestLock(async () => {
         const previousCommand = process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"];
         const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-custom-guide-route-"));
@@ -629,7 +629,7 @@ test("custom review guide commands do not interpret stderr usage-like text", asy
         try {
             const executable = await writeGuideCommandFixture(commandPath, {
                 stdout: makeGuideJson("Custom guide"),
-                stderr: [`${GUIDE_EVENT_PREFIX}{"version":2,"type":"usage","usage":{"inputTokens":999}}`],
+                stderr: ['{"usage":{"inputTokens":999}}'],
             });
             process.env["RUNWIELD_GUIDED_REVIEW_COMMAND"] = shellQuote(executable);
 
