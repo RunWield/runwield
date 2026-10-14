@@ -53,10 +53,16 @@ test("saved interrupted attempts replay once per entry without a live retry clai
             ["failed-tool:terminal_error:0", "The model service stopped responding before the reply was complete."],
         ],
     );
-    assertEquals(first.some((event) => event.type === "tool_start" && event.toolCallId === "never-ran"), false);
-    assertEquals(first.some((event) => /retrying|currently stopped/i.test(event.message || "")), false);
-    assertEquals(first.filter((event) => event.type === "assistant_text_delta").map((event) => event.delta), [
-        "partial",
-        "Done",
-    ]);
+    assertEquals(
+        first.some((event) => event.type === "tool_start" && event.toolCallId === "never-ran"),
+        false,
+    );
+    assertEquals(
+        first.some((event) => /retrying|currently stopped/i.test(event.message || "")),
+        false,
+    );
+    assertEquals(
+        first.filter((event) => event.type === "assistant_text_delta").map((event) => event.delta),
+        ["partial", "Done"],
+    );
 });
