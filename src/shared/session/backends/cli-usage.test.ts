@@ -109,7 +109,9 @@ if (args.includes("/agents")) {
             (fixture.modelId || "gemini-3.8-flash") + "-low",
         )} }));
     } else {
-        for await (const _chunk of (await import("node:process")).stdin) { /* drain fixture input */ }
+        const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
+        await new Promise((resolve) => lines.once("line", resolve));
+        lines.close();
         if (!${Boolean(
             fixture.vendorStream,
         )}) console.log(JSON.stringify({ type: "assistant", message: { id: "cli-assistant", content: [{ type: "text", text: "reply" }], usage: ${JSON.stringify(
