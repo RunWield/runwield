@@ -13,7 +13,8 @@ import { VERSION } from "../../shared/version.js";
 import { downloadReleaseRuntime } from "../../shared/remote/release-artifact.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "../../shared/remote/model-proof-config.ts";
 
-export const REMOTE_USAGE = "Usage: wld remote <ssh-host>[:<remote-directory>]\n" +
+export const REMOTE_USAGE =
+    "Usage: wld remote <ssh-host>[:<remote-directory>]\n" +
     "       wld remote sessions\n" +
     "Run conversation turns in an existing remote Linux directory (defaults to the remote home).\n" +
     "Personal resources and saved Session history stay on the laptop.\n" +
@@ -275,11 +276,14 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     }
     let service: ReturnType<typeof startRemoteControlService>;
     try {
-        service = startRemoteControlService({ buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION }, {
-            store,
-            target,
-            targetLabel: `${host}:${target.cwd}`,
-        });
+        service = startRemoteControlService(
+            { buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION },
+            {
+                store,
+                target,
+                targetLabel: `${host}:${target.cwd}`,
+            },
+        );
     } catch (error) {
         store.close();
         await sftp.close();

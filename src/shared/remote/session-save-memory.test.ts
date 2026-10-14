@@ -1,9 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals } from "../../testing/assertions.ts";
 import { makeControlFixture } from "./session-save-test-fixture.ts";
 import { verificationClient } from "./session-save-verification-fixture.ts";
 
 for (const mode of ["oversized", "allocation-fault"] as const) {
-    Deno.test(`remote ${mode} refuses memory use and leaves the operation sticky`, async () => {
+    test(`remote ${mode} refuses memory use and leaves the operation sticky`, async () => {
         const f = await makeControlFixture();
         await f.ready();
         const child = verificationClient(f, f.baseUrl, { mode });

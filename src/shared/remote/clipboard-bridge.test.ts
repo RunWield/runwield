@@ -1,21 +1,30 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { getCwd } from "../../constants.js";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { serveHttp } from "../http-server.ts";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { createRemoteClipboardReader, MAX_CLIPBOARD_BODY_BYTES } from "./clipboard-bridge.ts";
 import { clipboardImage, laptopClipboardFixture } from "./clipboard-test-fixture.ts";
+import process from "node:process";
 
 const credential = "a".repeat(64);
 
 function clipboardServer(reply: () => Response) {
-    const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) => {
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, (request) => {
         if (
-            request.method !== "GET" || new URL(request.url).pathname !== "/clipboard/image" ||
+            request.method !== "GET" ||
+            new URL(request.url).pathname !== "/clipboard/image" ||
             request.headers.get("Authorization") !== `Bearer ${credential}`
-        ) return new Response(null, { status: 401 });
+        )
+            return new Response(null, { status: 401 });
         return reply();
     });
     return { server, reader: createRemoteClipboardReader({ port: server.addr.port, credential }) };
 }
 
-Deno.test("remote clipboard reads authenticated image input and no-image replies", async () => {
+test("remote clipboard reads authenticated image input and no-image replies", async () => {
     let image = true;
     const { server, reader } = clipboardServer(() => Response.json(image ? clipboardImage : null));
     try {
@@ -30,7 +39,7 @@ Deno.test("remote clipboard reads authenticated image input and no-image replies
     }
 });
 
-Deno.test("remote clipboard rejects invalid input replies, paths, and wrong MIME types", async () => {
+test("remote clipboard rejects invalid input replies, paths, and wrong MIME types", async () => {
     const replies = [
         {},
         [],
@@ -54,7 +63,7 @@ Deno.test("remote clipboard rejects invalid input replies, paths, and wrong MIME
     }
 });
 
-Deno.test("remote clipboard rejects malformed JSON and non-JSON or unavailable replies", async () => {
+test("remote clipboard rejects malformed JSON and non-JSON or unavailable replies", async () => {
     let current = new Response("{", { headers: { "Content-Type": "application/json" } });
     const { server, reader } = clipboardServer(() => current);
     try {
@@ -69,19 +78,20 @@ Deno.test("remote clipboard rejects malformed JSON and non-JSON or unavailable r
     }
 });
 
-Deno.test("remote clipboard bounds streamed input without trusting Content-Length", async () => {
-    const { server, reader } = clipboardServer(() =>
-        new Response(
-            new ReadableStream<Uint8Array>({
-                start(controller) {
-                    const bytes = new Uint8Array(MAX_CLIPBOARD_BODY_BYTES + 1);
-                    bytes.fill(32);
-                    controller.enqueue(bytes);
-                    controller.close();
-                },
-            }),
-            { headers: { "Content-Type": "application/json" } },
-        )
+test("remote clipboard bounds streamed input without trusting Content-Length", async () => {
+    const { server, reader } = clipboardServer(
+        () =>
+            new Response(
+                new ReadableStream<Uint8Array>({
+                    start(controller) {
+                        const bytes = new Uint8Array(MAX_CLIPBOARD_BODY_BYTES + 1);
+                        bytes.fill(32);
+                        controller.enqueue(bytes);
+                        controller.close();
+                    },
+                }),
+                { headers: { "Content-Type": "application/json" } },
+            ),
     );
     try {
         await assertRejects(() => reader.readClipboardImage(), Error, "too large");
@@ -91,12 +101,12 @@ Deno.test("remote clipboard bounds streamed input without trusting Content-Lengt
     }
 });
 
-Deno.test("closing remote clipboard aborts in-flight input and prevents later local fallback", async () => {
+test("closing remote clipboard aborts in-flight input and prevents later local fallback", async () => {
     let received = () => {};
-    const started = new Promise<void>((resolve) => received = resolve);
+    const started = new Promise<void>((resolve) => (received = resolve));
     let finish = () => {};
-    const done = new Promise<void>((resolve) => finish = resolve);
-    const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async () => {
+    const done = new Promise<void>((resolve) => (finish = resolve));
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async () => {
         received();
         await done;
         return Response.json(clipboardImage);
@@ -115,29 +125,29 @@ Deno.test("closing remote clipboard aborts in-flight input and prevents later lo
     }
 });
 
-Deno.test({
-    name: "configured remote process public clipboard reads laptop bytes and stays fail-closed on cleanup",
-    ignore: Deno.build.os !== "darwin",
-    async fn() {
+test(
+    "configured remote process public clipboard reads laptop bytes and stays fail-closed on cleanup",
+    { skip: (process.platform === "win32" ? "windows" : process.platform) !== "darwin" },
+    async () => {
         const fixture = await laptopClipboardFixture();
         try {
             await fixture.ready();
             const emptyClipboard = `${fixture.root}/remote-clipboard`;
-            await Deno.writeTextFile(emptyClipboard, "none");
-            const output = await new Deno.Command(Deno.execPath(), {
+            await fsWriteFile(emptyClipboard, "none");
+            const output = await captureForegroundProcess(process.execPath, {
                 env: {
-                    PATH: `${fixture.root}:${Deno.env.get("PATH")}`,
+                    PATH: `${fixture.root}:${process.env["PATH"]}`,
                     CLIPBOARD_MODE_PATH: emptyClipboard,
                     CLIPBOARD_PNG_PATH: `${fixture.root}/clipboard.png`,
                 },
-                args: [
+                args: runtimeSourceArgs([
                     "eval",
                     "--config",
                     new URL("../../../deno.json", import.meta.url).pathname,
                     `
-import { configureRemoteClipboardConnection, readClipboardImage, hasClipboardImage } from ${
-                        JSON.stringify(new URL("../../ui/tui/clipboard.ts", import.meta.url).href)
-                    };
+import { configureRemoteClipboardConnection, readClipboardImage, hasClipboardImage } from ${JSON.stringify(
+                        new URL("../../ui/tui/clipboard.ts", import.meta.url).href,
+                    )};
 const close = configureRemoteClipboardConnection(${JSON.stringify(fixture.connection)});
 const image = await readClipboardImage();
 const available = await hasClipboardImage();
@@ -146,8 +156,9 @@ let closed = false;
 try { await readClipboardImage(); } catch { closed = true; }
 console.log(JSON.stringify({ image, available, closed }));
 `,
-                ],
-            }).output();
+                ]),
+                cwd: getCwd(),
+            });
             assertEquals(output.success, true, new TextDecoder().decode(output.stderr));
             assertEquals(JSON.parse(new TextDecoder().decode(output.stdout)), {
                 image: clipboardImage,
@@ -158,4 +169,4 @@ console.log(JSON.stringify({ image, available, closed }));
             await fixture.close();
         }
     },
-});
+);

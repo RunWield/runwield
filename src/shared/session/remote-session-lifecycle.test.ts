@@ -1,15 +1,25 @@
-import { assert, assertEquals, assertNotEquals, assertRejects, assertThrows } from "@std/assert";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { decodeTextStream } from "../../testing/decode-text-stream.ts";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { getCwd, getHomeDir } from "../../constants.js";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { test } from "node:test";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { customEntry, makeSessionFixture, within } from "../remote/session-save-test-fixture.ts";
 import { RemoteSessionOwner } from "./remote-session-owner.ts";
 import { parseRemoteSessionTranscript, sessionDigest } from "../remote/session-protocol.ts";
 import { HostedSession } from "./hosted-session.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import { getHomeDir } from "../../constants.js";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { lockPath, manifestPath, writeJsonAtomically, writeTextAtomically } from "./file-session-storage.ts";
-import type { FileSessionManifest } from "./file-session-store-types.ts";
+import { type FileSessionManifest } from "./file-session-store-types.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+
+import process from "node:process";
+
 function lines() {
     let pending = "";
     return new TransformStream<string, string>({
@@ -43,7 +53,7 @@ type SessionFixture = Awaited<ReturnType<typeof makeSessionFixture>>;
 function processOptions(f: SessionFixture, mode: "contend" | "owner" | "monitor" | "migration-refusal") {
     const state = f.store.inspectSessionActivation(f.session.runwieldSessionId);
     return {
-        args: [
+        args: runtimeSourceArgs([
             "run",
             "-A",
             "--node-modules-dir=manual",
@@ -58,7 +68,8 @@ function processOptions(f: SessionFixture, mode: "contend" | "owner" | "monitor"
                 lockFile: lockPath(dirname(f.transcriptPath), f.session.runwieldSessionId),
                 effectPath: join(f.remoteProject, "death-effect"),
             }),
-        ],
+        ]),
+        cwd: getCwd(),
         env: { HOME: f.home, MNEMOTECA_DB_PATH: join(f.home, "memory.sqlite3") },
         stdin: "piped" as const,
         stdout: "piped" as const,
@@ -67,7 +78,7 @@ function processOptions(f: SessionFixture, mode: "contend" | "owner" | "monitor"
 }
 async function contender(f: SessionFixture): Promise<ProcessReply> {
     const output = await within(
-        new Deno.Command(Deno.execPath(), { ...processOptions(f, "contend"), stdin: "null" }).output(),
+        captureForegroundProcess(process.execPath, { ...processOptions(f, "contend"), cwd: getCwd() }),
     );
     assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
     return JSON.parse(new TextDecoder().decode(output.stdout));
@@ -87,18 +98,19 @@ function freshOwner(f: SessionFixture) {
     );
 }
 
-Deno.test("legacy laptop bytes migrate durably before remote hydration is admitted", async () => {
-    const legacy = JSON.stringify({
-        type: "custom",
-        timestamp: "2026-01-01T00:00:00.000Z",
-        customType: "legacy-effect",
-        data: { effect: "finished" },
-    }) + "\n";
+test("legacy laptop bytes migrate durably before remote hydration is admitted", async () => {
+    const legacy =
+        JSON.stringify({
+            type: "custom",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            customType: "legacy-effect",
+            data: { effect: "finished" },
+        }) + "\n";
     const f = await makeSessionFixture({ version: 1, legacyContents: legacy });
     try {
         const migrated = f.owner.inspect().contents;
         assertNotEquals(migrated, f.initial);
-        assertEquals(await Deno.readTextFile(f.transcriptPath), migrated);
+        assertEquals(await fsReadFile(f.transcriptPath, "utf8"), migrated);
         const entries = parseRemoteSessionTranscript(migrated);
         assertEquals(entries[0].type === "session" && entries[0].version, 3);
         assert(entries[1].type !== "session" && entries[1].id);
@@ -116,7 +128,7 @@ Deno.test("legacy laptop bytes migrate durably before remote hydration is admitt
     }
 });
 
-Deno.test("an actual second OS process is excluded before saves and before generation publication", async () => {
+test("an actual second OS process is excluded before saves and before generation publication", async () => {
     const f = await makeSessionFixture();
     try {
         assertEquals((await contender(f)).excluded, true);
@@ -131,14 +143,13 @@ Deno.test("an actual second OS process is excluded before saves and before gener
     }
 });
 
-Deno.test("remote rollover keeps native lock exclusion and rejects stale old payload after successor", async () => {
+test("remote rollover keeps native lock exclusion and rejects stale old payload after successor", async () => {
     await withProcessGlobalTestLock(async () => {
         const f = await makeSessionFixture({ homeSessions: true });
         const home = getHomeDir();
-        Deno.env.set("HOME", f.home);
-        const monitor = new Deno.Command(Deno.execPath(), processOptions(f, "monitor")).spawn();
-        const reader = monitor.stdout.pipeThrough(new TextDecoderStream()).pipeThrough(lines())
-            .getReader();
+        process.env["HOME"] = f.home;
+        const monitor = spawnNativeProcess(process.execPath, processOptions(f, "monitor"));
+        const reader = monitor.stdout.pipeThrough(decodeTextStream()).pipeThrough(lines()).getReader();
         const errors = new Response(monitor.stderr).text();
         try {
             const ready = await within(reader.read());
@@ -205,27 +216,29 @@ Deno.test("remote rollover keeps native lock exclusion and rejects stale old pay
             assertEquals((await contender(f)).excluded, true);
             assertThrows(() => fresh.handle(f.request("append", 2, customEntry("late", "effect-1"))), Error, "Stale");
             assertEquals(fresh.inspect().contents, successor);
-            assertEquals(await Deno.readTextFile(f.transcriptPath), f.initial + customEntry());
+            assertEquals(await fsReadFile(f.transcriptPath, "utf8"), f.initial + customEntry());
             fresh.markUncertain();
         } finally {
             try {
                 monitor.kill("SIGKILL");
-            } catch { /* Exited. */ }
+            } catch {
+                /* Exited. */
+            }
             await monitor.status;
             await reader.cancel();
             reader.releaseLock();
             await errors;
-            Deno.env.set("HOME", home);
+            process.env["HOME"] = home;
             await f.close();
         }
     });
 });
 
-Deno.test("owner OS-process death recovers exact laptop evidence and a fresh operation without effect replay", async () => {
+test("owner OS-process death recovers exact laptop evidence and a fresh operation without effect replay", async () => {
     const f = await makeSessionFixture();
     f.owner.markUncertain();
     f.owner.recoverUncertain();
-    const child = new Deno.Command(Deno.execPath(), processOptions(f, "owner")).spawn();
+    const child = spawnNativeProcess(process.execPath, processOptions(f, "owner"));
     const reader = child.stdout.getReader();
     let stderr = "";
     const errors = new Response(child.stderr).text().then((text) => {
@@ -236,14 +249,14 @@ Deno.test("owner OS-process death recovers exact laptop evidence and a fresh ope
         assert(first.value, stderr);
         const reply: ProcessReply = JSON.parse(new TextDecoder().decode(first.value).trim());
         assertEquals(reply.pid, child.pid);
-        assertEquals(await Deno.readTextFile(join(f.remoteProject, "death-effect")), "effect\n");
+        assertEquals(await fsReadFile(join(f.remoteProject, "death-effect"), "utf8"), "effect\n");
         assertEquals((await contender(f)).excluded, true);
         child.kill("SIGKILL");
         await within(child.status);
         await errors;
         const state = f.store.inspectSessionActivation(f.session.runwieldSessionId);
         assert(state.activation);
-        const saved = await Deno.readTextFile(f.transcriptPath);
+        const saved = await fsReadFile(f.transcriptPath, "utf8");
         assertEquals(saved, reply.saved);
         const last = parseRemoteSessionTranscript(saved).at(-1);
         assert(last && last.type !== "session");
@@ -285,11 +298,13 @@ Deno.test("owner OS-process death recovers exact laptop evidence and a fresh ope
         });
         fresh.handle({ operation: fresh.operation, sequence: 2, kind: "checkpoint", contents: "" });
         assertEquals(parseRemoteSessionTranscript(fresh.inspect().contents).length, 3);
-        assertEquals(await Deno.readTextFile(join(f.remoteProject, "death-effect")), "effect\n");
+        assertEquals(await fsReadFile(join(f.remoteProject, "death-effect"), "utf8"), "effect\n");
     } finally {
         try {
             child.kill("SIGKILL");
-        } catch { /* Exited. */ }
+        } catch {
+            /* Exited. */
+        }
         await child.status;
         await reader.cancel();
         reader.releaseLock();
@@ -299,7 +314,7 @@ Deno.test("owner OS-process death recovers exact laptop evidence and a fresh ope
 });
 
 for (const committedLegacy of [false, true]) {
-    Deno.test(`laptop migration ${committedLegacy ? "committed" : "initial"} baseline recovers after remote save uncertainty`, async () => {
+    test(`laptop migration ${committedLegacy ? "committed" : "initial"} baseline recovers after remote save uncertainty`, async () => {
         const f = await makeSessionFixture({ version: 2, committedLegacy });
         try {
             const migrated = f.owner.inspect().contents;
@@ -319,14 +334,14 @@ for (const committedLegacy of [false, true]) {
 
 for (const replaced of [false, true]) {
     for (const committedLegacy of [false, true]) {
-        Deno.test(`interrupted migration ${replaced ? "after" : "before"} replacement reconciles ${committedLegacy ? "committed" : "initial"} evidence`, async () => {
+        test(`interrupted migration ${replaced ? "after" : "before"} replacement reconciles ${committedLegacy ? "committed" : "initial"} evidence`, async () => {
             const f = await makeSessionFixture({ committedLegacy });
             const path = manifestPath(dirname(f.transcriptPath), f.session.runwieldSessionId);
             try {
-                const before = await Deno.readTextFile(f.transcriptPath);
+                const before = await fsReadFile(f.transcriptPath, "utf8");
                 const after = before.trimEnd() + " \n";
                 // A durable crash snapshot with the real manifest, bytes and native lock.
-                const manifest: FileSessionManifest = JSON.parse(await Deno.readTextFile(path));
+                const manifest: FileSessionManifest = JSON.parse(await fsReadFile(path, "utf8"));
                 manifest.activation.pendingMigration = {
                     beforeByteLength: new TextEncoder().encode(before).length,
                     beforeDigestHex: sessionDigest(before),
@@ -370,28 +385,30 @@ for (const replaced of [false, true]) {
 }
 
 for (const tail of ["partial-json", "partial-utf8", "complete-without-newline"] as const) {
-    Deno.test(`uncertain ${tail} recovery retains complete laptop entries without replay`, async () => {
+    test(`uncertain ${tail} recovery retains complete laptop entries without replay`, async () => {
         const f = await makeSessionFixture();
         try {
             f.owner.handle(f.request("hydrate", 0));
             f.owner.handle(f.request("append", 1, customEntry()));
             const partial = new TextEncoder().encode('{"type":"custom","data":"🌍');
-            const fragment = tail === "complete-without-newline"
-                ? new TextEncoder().encode(customEntry("tail-entry", "effect-1").slice(0, -1))
-                : tail === "partial-utf8"
-                ? partial.slice(0, -2)
-                : new TextEncoder().encode('{"type":"custom","data":"cut');
-            await Deno.writeFile(f.transcriptPath, fragment, { append: true });
-            await Deno.writeTextFile(join(f.remoteProject, "effect"), "finished once");
+            const fragment =
+                tail === "complete-without-newline"
+                    ? new TextEncoder().encode(customEntry("tail-entry", "effect-1").slice(0, -1))
+                    : tail === "partial-utf8"
+                      ? partial.slice(0, -2)
+                      : new TextEncoder().encode('{"type":"custom","data":"cut');
+            await fsWriteFile(f.transcriptPath, fragment, { flag: "a" });
+            await fsWriteFile(join(f.remoteProject, "effect"), "finished once");
             f.owner.markUncertain();
             f.owner.recoverUncertain();
             const fresh = freshOwner(f);
             assertEquals(
                 fresh.inspect().contents,
-                f.initial + customEntry() +
+                f.initial +
+                    customEntry() +
                     (tail === "complete-without-newline" ? customEntry("tail-entry", "effect-1") : ""),
             );
-            assertEquals(await Deno.readTextFile(join(f.remoteProject, "effect")), "finished once");
+            assertEquals(await fsReadFile(join(f.remoteProject, "effect"), "utf8"), "finished once");
             fresh.markUncertain();
         } finally {
             await f.close();
@@ -399,11 +416,11 @@ for (const tail of ["partial-json", "partial-utf8", "complete-without-newline"] 
     });
 }
 
-Deno.test("rollover after committed laptop migration uses authoritative proof rather than stale hosted generation", async () => {
+test("rollover after committed laptop migration uses authoritative proof rather than stale hosted generation", async () => {
     await withProcessGlobalTestLock(async () => {
         const f = await makeSessionFixture({ version: 2, committedLegacy: true, homeSessions: true });
         const home = getHomeDir();
-        Deno.env.set("HOME", f.home);
+        process.env["HOME"] = f.home;
         try {
             f.owner.handle(f.request("hydrate", 0));
             const segment = f.store.getCurrentSessionSegment(f.session.runwieldSessionId);
@@ -446,36 +463,38 @@ Deno.test("rollover after committed laptop migration uses authoritative proof ra
             assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).activation?.state, "idle");
             assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).generation?.generation, 2);
         } finally {
-            Deno.env.set("HOME", home);
+            process.env["HOME"] = home;
             await f.close();
         }
     });
 });
 
-Deno.test({
-    name: "migration refuses storage-intent failure before changing any transcript bytes",
-    ignore: Deno.build.os !== "darwin",
-    fn: async () => {
+test(
+    "migration refuses storage-intent failure before changing any transcript bytes",
+    { skip: (process.platform === "win32" ? "windows" : process.platform) !== "darwin" },
+    async () => {
         const f = await makeSessionFixture();
         try {
             f.store.releaseUnchangedActivation(f.proof);
-            const output = await within(new Deno.Command(Deno.execPath(), {
-                ...processOptions(f, "migration-refusal"),
-                stdin: "null",
-            }).output());
+            const output = await within(
+                captureForegroundProcess(process.execPath, {
+                    ...processOptions(f, "migration-refusal"),
+                    cwd: getCwd(),
+                }),
+            );
             assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
             const reply: ProcessReply = JSON.parse(new TextDecoder().decode(output.stdout));
             assertEquals(reply.migrationRefused, true);
             assertEquals(reply.originalUnchanged, true);
-            assertEquals(await Deno.readTextFile(f.transcriptPath), f.initial);
+            assertEquals(await fsReadFile(f.transcriptPath, "utf8"), f.initial);
         } finally {
             await f.close();
         }
     },
-});
+);
 
 for (const failure of ["missing-metadata", "missing-segment", "wrong-project"] as const) {
-    Deno.test(`remote rollover ${failure} releases ownership and permits fresh recovery`, async () => {
+    test(`remote rollover ${failure} releases ownership and permits fresh recovery`, async () => {
         const f = await makeSessionFixture();
         try {
             f.owner.handle(f.request("hydrate", 0));
@@ -485,20 +504,23 @@ for (const failure of ["missing-metadata", "missing-segment", "wrong-project"] a
             const hosted = new HostedSession({
                 id: "failed-rollover",
                 cwd: f.remoteProject,
-                managed: failure === "missing-metadata" ? undefined : {
-                    runwieldSessionId: f.session.runwieldSessionId,
-                    projectId: failure === "wrong-project" ? "other-project" : f.session.projectId,
-                    piSessionId: segment.piSessionId,
-                    transcriptPath: segment.transcriptPath,
-                    currentSegmentId: failure === "missing-segment" ? "missing" : segment.segmentId,
-                    generation: null,
-                    acknowledgedGeneration: null,
-                    acknowledgedEventId: null,
-                    name: null,
-                    activeAgent: null,
-                    workflowContext: null,
-                    tutorialContext: null,
-                },
+                managed:
+                    failure === "missing-metadata"
+                        ? undefined
+                        : {
+                              runwieldSessionId: f.session.runwieldSessionId,
+                              projectId: failure === "wrong-project" ? "other-project" : f.session.projectId,
+                              piSessionId: segment.piSessionId,
+                              transcriptPath: segment.transcriptPath,
+                              currentSegmentId: failure === "missing-segment" ? "missing" : segment.segmentId,
+                              generation: null,
+                              acknowledgedGeneration: null,
+                              acknowledgedEventId: null,
+                              name: null,
+                              activeAgent: null,
+                              workflowContext: null,
+                              tutorialContext: null,
+                          },
             });
             await assertRejects(() =>
                 f.owner.rollover({
@@ -512,7 +534,7 @@ for (const failure of ["missing-metadata", "missing-segment", "wrong-project"] a
                         nextCycle: 1,
                         lastFindingsText: "saved findings",
                     },
-                })
+                }),
             );
             assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).activation?.state, "uncertain");
             f.owner.recoverUncertain();

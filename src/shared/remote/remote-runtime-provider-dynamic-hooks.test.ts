@@ -1,14 +1,16 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 
-Deno.test("remote root rejects a provider hook registered during Agent startup before a laptop request", async () => {
+test("remote root rejects a provider hook registered during Agent startup before a laptop request", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         const root = join(f.remoteProject, "dynamic-hook-extension");
-        await Deno.mkdir(root);
-        await Deno.mkdir(join(f.remoteProject, ".wld"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(root);
+        await fsMkdir(join(f.remoteProject, ".wld"), { recursive: true });
+        await fsWriteFile(
             join(root, "package.json"),
             JSON.stringify({
                 name: "remote-dynamic-hook-fixture",
@@ -20,7 +22,7 @@ Deno.test("remote root rejects a provider hook registered during Agent startup b
                 },
             }),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(root, "index.js"),
             `export default (pi) => {
             pi.on("before_agent_start", () => {
@@ -28,7 +30,7 @@ Deno.test("remote root rejects a provider hook registered during Agent startup b
             });
         };\n`,
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(f.remoteProject, ".wld", "settings.json"),
             JSON.stringify({ packages: ["../dynamic-hook-extension"] }),
         );

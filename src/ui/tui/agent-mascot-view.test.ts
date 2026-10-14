@@ -80,7 +80,10 @@ test("disabling a live TUI mascot removes rail and compact face without losing i
             await terminal.flush();
             assertStringIncludes(terminal.getScreenText(), "██   ██");
             await setCustomSetting("mascot", false, "project", projectRoot);
-            for (const [columns, rows] of [[150, 45], [60, 16]]) {
+            for (const [columns, rows] of [
+                [150, 45],
+                [60, 16],
+            ]) {
                 terminal.resize(columns, rows);
                 tui.renderNow(true);
                 await terminal.flush();

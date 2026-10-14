@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { listSavedRemoteSessions } from "./laptop-session-control.ts";
 import {
@@ -7,7 +9,7 @@ import {
     withRemoteRuntimeFixture,
 } from "./remote-runtime-test-fixture.ts";
 
-Deno.test("lost first user-save acknowledgement stops the remote turn and resume does not replay the submitted request", async () => {
+test("lost first user-save acknowledgement stops the remote turn and resume does not replay the submitted request", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         let modelRequests = 0;
         f.setModelResponseFactory(() => {
@@ -17,7 +19,9 @@ Deno.test("lost first user-save acknowledgement stops the remote turn and resume
         let interrupted = false;
         f.policy.handle = async (input, path, response) => {
             if (
-                path === "/session/request" && input.kind === "append" && "contents" in input &&
+                path === "/session/request" &&
+                input.kind === "append" &&
+                "contents" in input &&
                 input.contents.includes('"role":"user"')
             ) {
                 interrupted = true;
@@ -41,11 +45,17 @@ Deno.test("lost first user-save acknowledgement stops the remote turn and resume
         // find this first interrupted turn without the caller knowing its id.
         assertEquals(listSavedRemoteSessions(f.store.path), []);
         const discovered = await f.control.list();
-        assertEquals(discovered.map((session) => session.id), [failed.savedId]);
+        assertEquals(
+            discovered.map((session) => session.id),
+            [failed.savedId],
+        );
         assertEquals(discovered[0].firstMessage, "Never replay request violet-925.");
         assertEquals(discovered[0].messageCount, 2);
         assertEquals(f.store.inspectSessionActivation(failed.savedId).activation?.state, "idle");
-        assertEquals(listSavedRemoteSessions(f.store.path).map((session) => session.summary.id), [failed.savedId]);
+        assertEquals(
+            listSavedRemoteSessions(f.store.path).map((session) => session.summary.id),
+            [failed.savedId],
+        );
         const fresh = await f.start();
         await fresh.read();
         await fresh.send({ kind: "load", sessionId: discovered[0].id });

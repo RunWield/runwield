@@ -1,4 +1,5 @@
-/** Real remote subprocess used by the focused Session transport tests. */
+import { stdinStream } from "../../testing/stdin-stream.ts";
+import { writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { RemoteSessionSaveBridge } from "./session-save-bridge.ts";
 import {
     createRemoteRootSessionManager,
@@ -16,9 +17,12 @@ import {
     waitForWorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
 import { MAX_SESSION_BYTES, type RemoteSessionConnection } from "./session-protocol.ts";
-import type { RemoteModelConnection } from "./model-bridge.ts";
+import { type RemoteModelConnection } from "./model-bridge.ts";
 import { makeSaveAgent } from "./session-save-agent-fixture.ts";
 import { persistImageAttachment } from "../session/image-attachments.ts";
+import process from "node:process";
+
+/** Real remote subprocess used by the focused Session transport tests. */
 
 interface ClientInput {
     connection: RemoteSessionConnection;
@@ -56,14 +60,26 @@ function denied(action: () => void): boolean {
     }
 }
 
+let inputReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+let inputChunk: Uint8Array = new Uint8Array();
+let inputOffset = 0;
+async function readInputByte(): Promise<number | null> {
+    if (inputOffset === inputChunk.length) {
+        const result = await (inputReader ??= stdinStream().getReader()).read();
+        if (result.done) return null;
+        inputChunk = result.value;
+        inputOffset = 0;
+    }
+    return inputChunk[inputOffset++] ?? null;
+}
+
 /** Private one-line stdin also supports the compiled SSH client; credentials are never CLI arguments. */
 async function privateInput(): Promise<ClientInput> {
-    if (Deno.args[0]) return JSON.parse(Deno.args[0]);
+    if (process.argv.slice(2)[0]) return JSON.parse(process.argv.slice(2)[0]);
     const bytes: number[] = [];
-    const byte = new Uint8Array(1);
-    while (await Deno.stdin.read(byte) !== null) {
-        if (byte[0] === 10) return JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)));
-        bytes.push(byte[0]);
+    for (let byte = await readInputByte(); byte !== null; byte = await readInputByte()) {
+        if (byte === 10) return JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)));
+        bytes.push(byte);
         if (bytes.length > 65536) throw new Error("Private input too large");
     }
     throw new Error("Missing private input");
@@ -94,6 +110,17 @@ class MeasuredSaveBridge extends RemoteSessionSaveBridge {
         }
     }
 }
+// Fault the real runtime Worker after hydration, without replacing persistence or transport.
+let saveWorker: Worker | undefined;
+const NativeWorker = globalThis.Worker;
+if (input.mode === "worker-fault") {
+    globalThis.Worker = class extends NativeWorker {
+        constructor(url: string | URL, options?: WorkerOptions) {
+            super(url, options);
+            saveWorker = this;
+        }
+    };
+}
 const bridge = new MeasuredSaveBridge(input.connection);
 try {
     const manager = await createRemoteRootSessionManager(input.cwd, bridge);
@@ -115,7 +142,7 @@ try {
                 bridge.request(
                     input.mode === "oversized" ? "attachment" : "inspect",
                     input.mode === "oversized" ? "x".repeat(MAX_SESSION_BYTES + 1) : "",
-                )
+                ),
             );
         } finally {
             globalThis.SharedArrayBuffer = allocator;
@@ -141,7 +168,7 @@ try {
             modelConnection: input.modelConnection,
             execute: () => {
                 effects++;
-                Deno.writeTextFileSync(input.marker, "effect\n", { append: true });
+                writeFileSync(input.marker, "effect\n", { flag: "a" });
                 if (input.mode === "agent-fault" && input.faultPoint === "after-tool") fault();
                 return Promise.resolve("remote-effect-complete");
             },
@@ -218,13 +245,13 @@ try {
         bridge.request("checkpoint");
     } else if (input.mode === "lifecycle") {
         const stopped = denied(() =>
-            Reflect.get(manager, input.blockedMethod ?? "newSession")(`${input.cwd}/must-not-write.jsonl`)
+            Reflect.get(manager, input.blockedMethod ?? "newSession")(`${input.cwd}/must-not-write.jsonl`),
         );
         console.log(JSON.stringify({ stopped, readStopped: denied(() => retainedRead()) }));
     } else if (input.mode === "mount") {
         // A detached mount must not become an alternate local writer root.
-        Deno.renameSync(input.mount, `${input.mount}-detached`);
-        Deno.mkdirSync(input.mount);
+        renameSync(input.mount, `${input.mount}-detached`);
+        mkdirSync(input.mount);
         const storeStopped = denied(() => openFileSessionStore({ baseDir: `${input.mount}/sessions` }));
         const locatorStopped = denied(() => getRunWieldSessionsBaseDir());
         let lifecycleStopped = false;
@@ -258,7 +285,7 @@ try {
                 toolCallId: "after-fault",
                 kind: "plan_written",
                 payload: { outcome: "approved_execute", planName: "remote-plan" },
-            })
+            }),
         );
         const pendingStopped = denied(() => listPendingWorkflowToolEvents(hostedSession));
         const settlementStopped = denied(() => settleWorkflowToolEvent(hostedSession, event));
@@ -285,7 +312,7 @@ try {
             payload: { outcome: "approved_execute", planName: "remote-plan" },
         });
         const event = await waited;
-        Deno.writeTextFileSync(input.marker, event.eventId);
+        writeFileSync(input.marker, event.eventId);
         settleWorkflowToolEvent(hostedSession, event);
         bridge.request("checkpoint");
         console.log(
@@ -296,19 +323,16 @@ try {
             }),
         );
     } else if (input.mode === "fault" || input.mode === "worker-fault") {
-        if (input.mode === "worker-fault") await Deno.permissions.revoke({ name: "net" });
+        if (input.mode === "worker-fault") saveWorker?.terminate();
         const failed = denied(() => manager.appendCustomEntry("runwield.test", { effect: "already finished" }));
         const readStopped = denied(() => retainedRead());
         const writeStopped = denied(() => retainedWrite("must not authorize progress"));
         const checkpointStopped = denied(() => bridge.request("checkpoint"));
-        if (!failed) Deno.writeTextFileSync(input.marker, "dependent action");
+        if (!failed) writeFileSync(input.marker, "dependent action");
         if (input.faultGate) {
-            Deno.writeTextFileSync(
-                input.faultGate,
-                JSON.stringify({ failed, readStopped, writeStopped, checkpointStopped }),
-            );
+            writeFileSync(input.faultGate, JSON.stringify({ failed, readStopped, writeStopped, checkpointStopped }));
             // Keep the failed manager alive while the parent releases the late network response.
-            await Deno.stdin.read(new Uint8Array(1));
+            await readInputByte();
             console.log(
                 JSON.stringify({
                     failed,
@@ -325,7 +349,7 @@ try {
         }
     } else {
         manager.appendCustomEntry("runwield.test", { immutable: true });
-        Deno.writeTextFileSync(input.marker, "dependent action");
+        writeFileSync(input.marker, "dependent action");
         manager.appendMessage({ role: "user", content: "hello", timestamp: Date.now() });
         manager.appendCompaction("summary", manager.getEntries()[1].id, 12);
         console.log(
@@ -340,5 +364,6 @@ try {
     }
 } finally {
     bridge.close();
+    await inputReader?.cancel();
     if (input.measure) console.log(JSON.stringify({ samples, hydratedContents }));
 }

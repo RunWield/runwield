@@ -1,8 +1,9 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRemoteSubmitFixture } from "./testing/remote-submit-fixture.ts";
 import { assertRemoteStorageAbsent } from "../../shared/remote/remote-runtime-test-fixture.ts";
 
-Deno.test("normal remote TUI resumes through the actual selector and submits with saved context", async () => {
+test("normal remote TUI resumes through the actual selector and submits with saved context", async () => {
     await withRemoteSubmitFixture(async (f) => {
         const first = await f.startTui();
         await first.read();
@@ -21,7 +22,10 @@ Deno.test("normal remote TUI resumes through the actual selector and submits wit
         assertStringIncludes((await fresh.read()).screen, "TUI-TURN-2-741");
         assertStringIncludes(f.requests[1], "Remember amber-741.");
         assertStringIncludes(f.requests[1], "TUI-TURN-1-741");
-        assertEquals((await f.control.list()).map((session) => session.id), [savedId]);
+        assertEquals(
+            (await f.control.list()).map((session) => session.id),
+            [savedId],
+        );
         await assertRemoteStorageAbsent(f);
     });
 });

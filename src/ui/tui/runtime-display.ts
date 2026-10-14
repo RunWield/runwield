@@ -27,10 +27,10 @@ function collectDetailDisplayImage(image: RuntimeDisplayImageCandidate): Runtime
 function collectRuntimeDisplayImages(event: RuntimeDisplayEvent): RuntimeDisplayImage[] {
     const contentImages = Array.isArray(event.content)
         ? event.content.flatMap((block) =>
-            block?.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string"
-                ? [{ base64: block.data, mimeType: block.mimeType }]
-                : []
-        )
+              block?.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string"
+                  ? [{ base64: block.data, mimeType: block.mimeType }]
+                  : [],
+          )
         : [];
     const detailImages = Array.isArray(event.details?.runwieldDisplayImages)
         ? event.details.runwieldDisplayImages.flatMap(collectDetailDisplayImage)
@@ -102,8 +102,10 @@ export function createTuiDisplayConsumer(uiAPI: UiAPI) {
                     const block = uiAPI.getActiveToolBlock?.(value.toolCallId);
                     const images = collectRuntimeDisplayImages(value);
                     if (
-                        !block && value.toolName === "task_completed" &&
-                        value.details?.outcome === "pair_completion_checkpoint" && value.output
+                        !block &&
+                        value.toolName === "task_completed" &&
+                        value.details?.outcome === "pair_completion_checkpoint" &&
+                        value.output
                     ) {
                         uiAPI.appendSystemMessage(value.output, false, "Pair checkpoint");
                     }

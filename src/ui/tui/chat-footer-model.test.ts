@@ -1,8 +1,10 @@
-import { assertEquals } from "@std/assert";
-import stripAnsi from "strip-ansi";
+import { test } from "node:test";
+import { assertEquals } from "../../testing/assertions.ts";
 import { getSettingsManager } from "../../shared/settings.js";
 import { createChatFooterController } from "./chat-footer.ts";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
+
+import stripAnsi from "strip-ansi";
 
 const modelCases = [
     {
@@ -32,7 +34,7 @@ const modelCases = [
 ];
 
 for (const modelCase of modelCases) {
-    Deno.test(`live footer ${modelCase.name}`, async () => {
+    test(`live footer ${modelCase.name}`, async () => {
         await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
             session.resetAgentInfoStack("Router", modelCase.model, modelCase.provider, "router");
             session.setThinkingLevel("off");

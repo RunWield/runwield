@@ -70,7 +70,7 @@ export function createClipboardReader(port: ClipboardSystemPort): ClipboardReade
     }
 
     async function readClipboardImage(): Promise<ClipboardImage | null> {
-        if (!await hasClipboardImage()) return null;
+        if (!(await hasClipboardImage())) return null;
 
         const tempFile = await port.makeTempFile({
             prefix: "runwield-clipboard-",

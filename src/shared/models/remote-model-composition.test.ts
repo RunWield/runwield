@@ -1,5 +1,10 @@
-import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../http-server.ts";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { configureRemoteModelConnection, getModelRegistry, getModelRuntime } from "./model-registry.ts";
@@ -9,7 +14,7 @@ import { configureRemotePersonalResources } from "../remote/personal-resources.t
 async function fixture() {
     let upstreamAuthorization = "";
     let upstreamBody = "";
-    const provider = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+    const provider = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
         if (new URL(request.url).pathname !== "/v1/chat/completions") return new Response(null, { status: 404 });
         upstreamAuthorization = request.headers.get("Authorization") ?? "";
         upstreamBody = await request.text();
@@ -38,22 +43,24 @@ async function fixture() {
         api: "openai-completions",
         baseUrl: `http://127.0.0.1:${provider.addr.port}/v1`,
         apiKey: "laptop-api-secret",
-        models: [{
-            id: "allowed",
-            name: "Allowed",
-            reasoning: false,
-            input: ["text"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 1000,
-            maxTokens: 100,
-        }],
+        models: [
+            {
+                id: "allowed",
+                name: "Allowed",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1000,
+                maxTokens: 100,
+            },
+        ],
     });
     await source.refresh({ allowNetwork: false });
     const bridge = new LocalModelBridge(source);
     const credential = "a".repeat(64);
     let catalogStatus = 200;
     let holdCatalog: (() => Promise<void>) | undefined;
-    const control = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+    const control = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
         if (request.headers.get("Authorization") !== `Bearer ${credential}`) return new Response(null, { status: 401 });
         const path = new URL(request.url).pathname;
         if (path === "/models/catalog") {
@@ -64,8 +71,8 @@ async function fixture() {
     });
     return {
         connection: { port: control.addr.port, credential },
-        setCatalogStatus: (status: number) => catalogStatus = status,
-        holdCatalog: (hold?: () => Promise<void>) => holdCatalog = hold,
+        setCatalogStatus: (status: number) => (catalogStatus = status),
+        holdCatalog: (hold?: () => Promise<void>) => (holdCatalog = hold),
         upstreamAuthorization: () => upstreamAuthorization,
         upstreamBody: () => upstreamBody,
         async close() {
@@ -81,8 +88,8 @@ function assertClosed() {
     assertThrows(() => getModelRegistry(), Error, "explicit control connection");
 }
 
-Deno.test("production remote model composition boundary", async (test) => {
-    const root = await Deno.makeTempDir({ prefix: "remote-model-composition-" });
+test("production remote model composition boundary", async (test) => {
+    const root = await fsMkdtemp(join(tmpdir(), "remote-model-composition-"));
     const service = await fixture();
     const auth = '{"mounted-only":{"type":"api_key","key":"mounted-secret"}}';
     const models = JSON.stringify({
@@ -95,25 +102,23 @@ Deno.test("production remote model composition boundary", async (test) => {
             },
         },
     });
-    await Deno.writeTextFile(join(root, "auth.json"), auth);
-    await Deno.writeTextFile(join(root, "models.json"), models);
+    await fsWriteFile(join(root, "auth.json"), auth);
+    await fsWriteFile(join(root, "models.json"), models);
     try {
-        await test.step("setup requires an active mounted context", async () => {
+        await test.test("setup requires an active mounted context", async () => {
             await assertRejects(() => configureRemoteModelConnection(service.connection), Error, "mounted context");
         });
         configureRemotePersonalResources({ globalRoot: root });
 
-        await test.step("unconfigured consumers fail closed", () => assertClosed());
+        await test.test("unconfigured consumers fail closed", () => assertClosed());
 
-        await test.step("invalid control descriptors do not install a composition", async () => {
-            for (
-                const connection of [
-                    { ...service.connection, port: 0 },
-                    { ...service.connection, port: 65536 },
-                    { ...service.connection, port: 1.5 },
-                    { ...service.connection, credential: "invalid" },
-                ]
-            ) {
+        await test.test("invalid control descriptors do not install a composition", async () => {
+            for (const connection of [
+                { ...service.connection, port: 0 },
+                { ...service.connection, port: 65536 },
+                { ...service.connection, port: 1.5 },
+                { ...service.connection, credential: "invalid" },
+            ]) {
                 await assertRejects(
                     () => configureRemoteModelConnection(connection),
                     Error,
@@ -123,7 +128,7 @@ Deno.test("production remote model composition boundary", async (test) => {
             }
         });
 
-        await test.step("catalog failures leave no local fallback and permit a retry", async () => {
+        await test.test("catalog failures leave no local fallback and permit a retry", async () => {
             for (const status of [401, 503]) {
                 service.setCatalogStatus(status);
                 await assertRejects(() => configureRemoteModelConnection(service.connection), Error, `(${status})`);
@@ -135,11 +140,11 @@ Deno.test("production remote model composition boundary", async (test) => {
             assertClosed();
         });
 
-        await test.step("setup is atomic and rejects a concurrent installation", async () => {
+        await test.test("setup is atomic and rejects a concurrent installation", async () => {
             let arrived = () => {};
             let release = () => {};
-            const requestArrived = new Promise<void>((resolve) => arrived = resolve);
-            const held = new Promise<void>((resolve) => release = resolve);
+            const requestArrived = new Promise<void>((resolve) => (arrived = resolve));
+            const held = new Promise<void>((resolve) => (release = resolve));
             service.holdCatalog(() => {
                 arrived();
                 return held;
@@ -158,7 +163,7 @@ Deno.test("production remote model composition boundary", async (test) => {
             }
         });
 
-        await test.step("normal consumers use the installed laptop runtime and real HTTP provider", async () => {
+        await test.test("normal consumers use the installed laptop runtime and real HTTP provider", async () => {
             const connection = { ...service.connection };
             const clear = await configureRemoteModelConnection(connection);
             try {
@@ -167,9 +172,10 @@ Deno.test("production remote model composition boundary", async (test) => {
                 assert(registry.remote);
                 assertEquals(await registry.getRuntime(), runtime);
                 assertEquals(getModelRegistry(), registry);
-                assertEquals(registry.getSelectable().map(({ provider, id }) => `${provider}/${id}`), [
-                    "laptop-synthetic/allowed",
-                ]);
+                assertEquals(
+                    registry.getSelectable().map(({ provider, id }) => `${provider}/${id}`),
+                    ["laptop-synthetic/allowed"],
+                );
                 assertEquals(registry.find("mounted-only", "mounted-model"), undefined);
                 assertEquals(registry.find("claude-cli", "sonnet"), undefined);
                 const model = registry.find("laptop-synthetic", "allowed")!;
@@ -191,7 +197,7 @@ Deno.test("production remote model composition boundary", async (test) => {
             }
         });
 
-        await test.step("installed registry keeps authentication and catalog mutations laptop-owned", async () => {
+        await test.test("installed registry keeps authentication and catalog mutations laptop-owned", async () => {
             const clear = await configureRemoteModelConnection(service.connection);
             try {
                 const registry = getModelRegistry();
@@ -220,15 +226,18 @@ Deno.test("production remote model composition boundary", async (test) => {
                 await assertRejects(() => registry.refresh(), Error, "new control connection");
                 assertThrows(() => registry.registerProvider("new-provider", {}), Error, "laptop-owned");
                 assertThrows(() => registry.unregisterProvider("laptop-synthetic"), Error, "laptop-owned");
-                assertEquals(registry.getSelectable().map((item) => item.id), ["allowed"]);
-                assertEquals(await Deno.readTextFile(join(root, "auth.json")), auth);
-                assertEquals(await Deno.readTextFile(join(root, "models.json")), models);
+                assertEquals(
+                    registry.getSelectable().map((item) => item.id),
+                    ["allowed"],
+                );
+                assertEquals(await fsReadFile(join(root, "auth.json"), "utf8"), auth);
+                assertEquals(await fsReadFile(join(root, "models.json"), "utf8"), models);
             } finally {
                 clear();
             }
         });
 
-        await test.step("cleanup is idempotent and cannot clear a successor connection", async () => {
+        await test.test("cleanup is idempotent and cannot clear a successor connection", async () => {
             const firstClear = await configureRemoteModelConnection(service.connection);
             const firstRuntime = await getModelRuntime();
             await assertRejects(() => configureRemoteModelConnection(service.connection), Error, "fresh valid");
@@ -249,6 +258,6 @@ Deno.test("production remote model composition boundary", async (test) => {
         });
     } finally {
         await service.close();
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { __resetSettingsForTests } from "../settings.js";
 import { type RuntimeFixture, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
@@ -7,7 +10,7 @@ import { type RuntimeFixture, withRemoteRuntimeFixture } from "./remote-runtime-
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
 async function configureVision(f: RuntimeFixture, visionInput: string[] = ["text", "image"]) {
-    await Deno.writeTextFile(
+    await fsWriteFile(
         join(f.homeDir, ".wld", "models.json"),
         JSON.stringify({
             providers: {
@@ -41,21 +44,21 @@ async function configureVision(f: RuntimeFixture, visionInput: string[] = ["text
         visionFallback: { model: "runtime-command-fixture/vision-model" },
         notifications: { enabled: false },
     };
-    await Deno.writeTextFile(f.settingsPath, JSON.stringify(settings));
-    await Deno.writeTextFile(join(f.resources, "settings.json"), JSON.stringify(settings));
+    await fsWriteFile(f.settingsPath, JSON.stringify(settings));
+    await fsWriteFile(join(f.resources, "settings.json"), JSON.stringify(settings));
     __resetSettingsForTests();
 }
 
 for (const source of ["project", "attachment"] as const) {
-    Deno.test(`remote text-only root describes an image from ${source} through the laptop vision fallback`, async () => {
+    test(`remote text-only root describes an image from ${source} through the laptop vision fallback`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
             await configureVision(f);
             // Omit see_image from the Agent definition: fallback must activate it automatically.
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(f.resources, "agents", "remote-runtime.md"),
                 "---\nname: Remote Runtime\ndescription: Text-only image conversation\ntools:\n    - read\n---\nDescribe images when asked.\n",
             );
-            await Deno.writeFile(
+            await fsWriteFile(
                 join(f.remoteProject, "pixel.png"),
                 Uint8Array.from(atob(PNG), (c) => c.charCodeAt(0)),
             );
@@ -64,9 +67,8 @@ for (const source of ["project", "attachment"] as const) {
                 (context) => {
                     const serialized = JSON.stringify(context);
                     contexts.push(serialized);
-                    const imageRef = source === "project"
-                        ? "pixel.png"
-                        : serialized.match(/attachment:[a-f0-9-]+/)?.[0];
+                    const imageRef =
+                        source === "project" ? "pixel.png" : serialized.match(/attachment:[a-f0-9-]+/)?.[0];
                     assert(imageRef, serialized);
                     return fauxAssistantMessage(fauxToolCall("see_image", { imageRef, question: "What is visible?" }));
                 },
@@ -85,11 +87,14 @@ for (const source of ["project", "attachment"] as const) {
             const result = await child.read();
             assertEquals(result.ok, true, JSON.stringify(result));
             assertEquals(contexts.length, 3, JSON.stringify(result));
-            assertEquals(f.modelRequests.map((request) => `${request.provider}/${request.model}`), [
-                "runtime-command-fixture/fixture-model",
-                "runtime-command-fixture/vision-model",
-                "runtime-command-fixture/fixture-model",
-            ]);
+            assertEquals(
+                f.modelRequests.map((request) => `${request.provider}/${request.model}`),
+                [
+                    "runtime-command-fixture/fixture-model",
+                    "runtime-command-fixture/vision-model",
+                    "runtime-command-fixture/fixture-model",
+                ],
+            );
             assertEquals(f.modelRequests[1].options.maxTokens, 2048);
             assertStringIncludes(contexts[0], "see_image");
             assertEquals(contexts[0].includes('"type":"image"'), false);
@@ -106,7 +111,7 @@ for (const source of ["project", "attachment"] as const) {
     });
 }
 
-Deno.test("remote text-only root rejects a fallback without image input before model execution", async () => {
+test("remote text-only root rejects a fallback without image input before model execution", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         await configureVision(f, ["text"]);
         let executed = false;

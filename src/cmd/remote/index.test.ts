@@ -80,6 +80,16 @@ import { existsSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 const args = process.argv.slice(2);
 const readyFile = process.env.SSH_LOG + ".ready";
+if (args[0] === "-G") {
+    console.log("hostname remote.example\\nuser tester\\nport 22");
+    process.exit(0);
+}
+if (args[0] === "-v") {
+    if (args[1] !== "-o" || args[2] !== "ControlPath=none" || args[3] !== "-oFingerprintHash=sha256") process.exit(42);
+    args.splice(0, 4);
+    process.stderr.write("debug1: Server host key: ssh-ed25519 SHA256:fixture\\n");
+}
+
 if (args[0] === "-tt") {
     if (!args.includes("ExitOnForwardFailure=yes") || !args.includes("remote-alias")) process.exit(42);
     process.stdout.write("REMOTE_SUPERVISOR_READY:/tmp/wld-remote-fixture/control.sock\\n");
@@ -133,6 +143,16 @@ import { writeFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 const args = process.argv.slice(2);
 writeFileSync(process.env.SSH_LOG, args.join("\\n") + "\\n");
+if (args[0] === "-G") {
+    console.log("hostname remote.example\\nuser tester\\nport 22");
+    process.exit(0);
+}
+if (args[0] === "-v") {
+    if (args[1] !== "-o" || args[2] !== "ControlPath=none" || args[3] !== "-oFingerprintHash=sha256") process.exit(42);
+    args.splice(0, 4);
+    process.stderr.write("debug1: Server host key: ssh-ed25519 SHA256:fixture\\n");
+}
+
 if (args.length !== 4 || args[0] !== "-T" || args[1] !== "--") process.exit(42);
 let input = "";
 for await (const chunk of process.stdin) input += chunk.toString();

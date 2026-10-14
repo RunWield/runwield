@@ -71,9 +71,13 @@ export function validateSessionControlRequest(input: RemoteSessionControlRequest
     if ("admissionId" in input && !validId(input.admissionId)) throw new Error("Invalid Session admission identity");
     if (input.kind === "create") {
         if (
-            keys === "admissionId,kind,name,sessionId" && typeof input.name === "string" &&
-            input.name.length <= 1024 && validId(input.sessionId) && validId(input.admissionId)
-        ) return;
+            keys === "admissionId,kind,name,sessionId" &&
+            typeof input.name === "string" &&
+            input.name.length <= 1024 &&
+            validId(input.sessionId) &&
+            validId(input.admissionId)
+        )
+            return;
     } else if (input.kind === "begin") {
         if (keys === "admissionId,kind,sessionId" && validId(input.sessionId) && validId(input.admissionId)) return;
     } else if (input.kind === "checkpoint" || input.kind === "markUncertain") {
@@ -94,30 +98,54 @@ export interface SessionWorkerRequest {
 
 export function validateSessionRequest(input: RemoteSessionRequest): void {
     if (
-        !input || Object.keys(input).sort().join(",") !== "contents,kind,operation,sequence" ||
-        typeof input.operation !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(input.operation) ||
-        !Number.isSafeInteger(input.sequence) || input.sequence < 0 ||
-        !["hydrate", "inspect", "append", "rewrite", "attachment", "attachment-read", "checkpoint", "uncertain"]
-            .includes(input.kind) ||
-        typeof input.contents !== "string" || new TextEncoder().encode(input.contents).length > MAX_SESSION_BYTES ||
+        !input ||
+        Object.keys(input).sort().join(",") !== "contents,kind,operation,sequence" ||
+        typeof input.operation !== "string" ||
+        !/^[a-zA-Z0-9-]{1,128}$/.test(input.operation) ||
+        !Number.isSafeInteger(input.sequence) ||
+        input.sequence < 0 ||
+        ![
+            "hydrate",
+            "inspect",
+            "append",
+            "rewrite",
+            "attachment",
+            "attachment-read",
+            "checkpoint",
+            "uncertain",
+        ].includes(input.kind) ||
+        typeof input.contents !== "string" ||
+        new TextEncoder().encode(input.contents).length > MAX_SESSION_BYTES ||
         (!["append", "rewrite", "attachment", "attachment-read"].includes(input.kind) && input.contents !== "")
-    ) throw new Error("Invalid remote Session request");
+    )
+        throw new Error("Invalid remote Session request");
 }
 
 /** Validate current Pi JSONL before admitting an in-memory remote manager. No file paths cross the wire. */
 export function parseRemoteSessionTranscript(contents: string): FileEntry[] {
     if (!contents.endsWith("\n")) throw new Error("Session transcript must end with a newline");
-    const entries: FileEntry[] = contents.slice(0, -1).split("\n").map((line) => JSON.parse(line));
+    const entries: FileEntry[] = contents
+        .slice(0, -1)
+        .split("\n")
+        .map((line) => JSON.parse(line));
     const header = entries[0];
     if (
-        !header || header.type !== "session" || header.version !== 3 ||
-        typeof header.id !== "string" || !header.id || typeof header.cwd !== "string" ||
-        !header.cwd || typeof header.timestamp !== "string" || !Number.isFinite(Date.parse(header.timestamp))
-    ) throw new Error("Session header requires laptop migration or is invalid");
+        !header ||
+        header.type !== "session" ||
+        header.version !== 3 ||
+        typeof header.id !== "string" ||
+        !header.id ||
+        typeof header.cwd !== "string" ||
+        !header.cwd ||
+        typeof header.timestamp !== "string" ||
+        !Number.isFinite(Date.parse(header.timestamp))
+    )
+        throw new Error("Session header requires laptop migration or is invalid");
     const ids = new Set<string>();
     for (const entry of entries.slice(1)) {
         if (
-            !entry || entry.type === "session" ||
+            !entry ||
+            entry.type === "session" ||
             ![
                 "message",
                 "thinking_level_change",
@@ -131,10 +159,14 @@ export function parseRemoteSessionTranscript(contents: string): FileEntry[] {
                 "label",
                 "session_info",
             ].includes(entry.type) ||
-            typeof entry.id !== "string" || !entry.id || ids.has(entry.id) || typeof entry.timestamp !== "string" ||
+            typeof entry.id !== "string" ||
+            !entry.id ||
+            ids.has(entry.id) ||
+            typeof entry.timestamp !== "string" ||
             !Number.isFinite(Date.parse(entry.timestamp)) ||
             (entry.parentId !== null && (typeof entry.parentId !== "string" || !ids.has(entry.parentId)))
-        ) throw new Error("Invalid Session entry identity or parent");
+        )
+            throw new Error("Invalid Session entry identity or parent");
         switch (entry.type) {
             case "message":
                 if (!entry.message || typeof entry.message.role !== "string") {
@@ -157,9 +189,11 @@ export function parseRemoteSessionTranscript(contents: string): FileEntry[] {
                 break;
             case "compaction":
                 if (
-                    typeof entry.summary !== "string" || typeof entry.firstKeptEntryId !== "string" ||
+                    typeof entry.summary !== "string" ||
+                    typeof entry.firstKeptEntryId !== "string" ||
                     !Number.isFinite(entry.tokensBefore)
-                ) throw new Error("Invalid compaction entry");
+                )
+                    throw new Error("Invalid compaction entry");
                 break;
             case "branch_summary":
                 if (typeof entry.summary !== "string" || typeof entry.fromId !== "string") {
@@ -197,5 +231,5 @@ export function inspectRecoverableSessionTranscript(bytes: Uint8Array): Recovera
         entries = parseRemoteSessionTranscript(contents);
     }
     const last = entries.at(-1);
-    return { contents, terminalEntryId: last?.type === "session" ? null : last?.id ?? null };
+    return { contents, terminalEntryId: last?.type === "session" ? null : (last?.id ?? null) };
 }

@@ -488,10 +488,7 @@ export interface FileSessionStore {
         evidence: TranscriptEvidence & { generation: number },
         options?: { now?: () => string },
     ): SessionControlSnapshot;
-    releaseUnchangedActivation(
-        proof: FileActivationProof,
-        options?: { now?: () => string },
-    ): SessionControlSnapshot;
+    releaseUnchangedActivation(proof: FileActivationProof, options?: { now?: () => string }): SessionControlSnapshot;
     recoverSessionControl(options: SessionRecoveryOptions): SessionControlSnapshot;
     markSessionReconcileRequired(session: ReconcileSession, options?: ReconcileOptions): SessionControlSnapshot;
     markSessionUncertain(proof: FileActivationProof, options?: ReconcileOptions): SessionControlSnapshot;

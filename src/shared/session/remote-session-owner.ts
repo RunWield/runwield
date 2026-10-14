@@ -1,14 +1,20 @@
-import { CURRENT_SESSION_VERSION, migrateSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { FileEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
-import { dirname, join } from "@std/path";
+import { readFileSync } from "node:fs";
+import {
+    CURRENT_SESSION_VERSION,
+    migrateSessionEntries,
+    SessionManager,
+    type FileEntry,
+    type SessionHeader,
+} from "@earendil-works/pi-coding-agent";
+import { dirname, join } from "node:path";
 import { readSessionImageAttachment, saveImageAttachment } from "./image-attachments.ts";
-import type { ImageAttachment } from "./types.js";
+import { type ImageAttachment } from "./types.js";
 import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
-import type {
-    FileActivationProof,
-    FileSessionStore,
-    ProcessKind,
-    TranscriptEvidence,
+import {
+    type FileActivationProof,
+    type FileSessionStore,
+    type ProcessKind,
+    type TranscriptEvidence,
 } from "./file-session-store-types.ts";
 import {
     inspectRecoverableSessionTranscript,
@@ -50,10 +56,14 @@ export class RemoteSessionOwner {
         if (!segment) throw new Error("Session transcript is unavailable");
         this.#transcriptPath = segment.transcriptPath;
         if (CURRENT_SESSION_VERSION !== 3) throw new Error("Incompatible Pi Session format");
-        const supplied: FileEntry[] = this.#contents.trimEnd().split("\n").map((line) => JSON.parse(line));
+        const supplied: FileEntry[] = this.#contents
+            .trimEnd()
+            .split("\n")
+            .map((line) => JSON.parse(line));
         const header = supplied[0];
         if (
-            !header || header.type !== "session" ||
+            !header ||
+            header.type !== "session" ||
             (header.version !== undefined && ![1, 2, 3].includes(header.version))
         ) {
             throw new Error("Invalid laptop Session header");
@@ -75,7 +85,7 @@ export class RemoteSessionOwner {
 
     inspect(): RemoteSessionResponse {
         const contents = this.#settled
-            ? Deno.readTextFileSync(this.#transcriptPath)
+            ? readFileSync(this.#transcriptPath, "utf8")
             : this.#store.readActiveSessionTranscript(this.#proof);
         const entries = parseRemoteSessionTranscript(contents);
         const last = entries.at(-1);
@@ -86,7 +96,7 @@ export class RemoteSessionOwner {
             evidence: {
                 byteLength: new TextEncoder().encode(contents).length,
                 digestHex: sessionDigest(contents),
-                terminalEntryId: last?.type === "session" ? null : last?.id ?? null,
+                terminalEntryId: last?.type === "session" ? null : (last?.id ?? null),
             },
         };
     }
@@ -130,8 +140,10 @@ export class RemoteSessionOwner {
             if (input.kind === "attachment") {
                 const image: ImageAttachment = JSON.parse(input.contents);
                 if (
-                    !image || Object.keys(image).sort().join(",") !== "base64,mimeType" ||
-                    typeof image.base64 !== "string" || typeof image.mimeType !== "string"
+                    !image ||
+                    Object.keys(image).sort().join(",") !== "base64,mimeType" ||
+                    typeof image.base64 !== "string" ||
+                    typeof image.mimeType !== "string"
                 ) {
                     throw new Error("Invalid Session attachment");
                 }
@@ -143,10 +155,12 @@ export class RemoteSessionOwner {
                 );
                 attachment = JSON.stringify({ base64: saved.base64, mimeType: saved.mimeType, ref: saved.ref });
             } else if (input.kind === "attachment-read") {
-                attachment = JSON.stringify(readSessionImageAttachment(
-                    input.contents,
-                    join(dirname(this.#transcriptPath), `${this.#header.id}_images`),
-                ));
+                attachment = JSON.stringify(
+                    readSessionImageAttachment(
+                        input.contents,
+                        join(dirname(this.#transcriptPath), `${this.#header.id}_images`),
+                    ),
+                );
             }
             evidence = this.#store.writeActiveSessionTranscript(this.#proof, contents, sessionDigest(current));
         } catch (error) {
@@ -243,7 +257,7 @@ export function recoverRemoteSession(
     }
     const segment = store.getCurrentSessionSegment(sessionId);
     if (!segment) throw new Error("Session transcript is unavailable");
-    const bytes = Deno.readFileSync(segment.transcriptPath);
+    const bytes = readFileSync(segment.transcriptPath);
     const recovered = inspectRecoverableSessionTranscript(bytes);
     store.recoverSessionControl({
         runwieldSessionId: sessionId,

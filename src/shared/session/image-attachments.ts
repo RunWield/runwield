@@ -163,7 +163,9 @@ function resolveAttachmentPath(ref: string, uuid: string, directory: string): Re
             if (statSync(candidate).isFile()) {
                 return { path: candidate, mimeType: mimeTypeForImagePath(candidate), refType: "attachment" };
             }
-        } catch { /* try next extension */ }
+        } catch {
+            /* try next extension */
+        }
     }
     throw new Error(`Image attachment not found in this session: ${ref}`);
 }
@@ -199,10 +201,14 @@ export async function readImageRef(imageRef: string, opts: ImageReferenceOptions
         try {
             const image: ImageAttachment = JSON.parse(response.contents);
             if (
-                !image || Object.keys(image).sort().join(",") !== "base64,mimeType,ref" ||
-                typeof image.base64 !== "string" || typeof image.mimeType !== "string" || image.ref !== ref ||
+                !image ||
+                Object.keys(image).sort().join(",") !== "base64,mimeType,ref" ||
+                typeof image.base64 !== "string" ||
+                typeof image.mimeType !== "string" ||
+                image.ref !== ref ||
                 image.base64.length > Math.ceil(MAX_SESSION_BYTES / 3) * 4
-            ) throw new Error("Invalid Session attachment read acknowledgement");
+            )
+                throw new Error("Invalid Session attachment read acknowledgement");
             const bytes = Buffer.from(image.base64, "base64");
             if (bytes.length > MAX_SESSION_BYTES || bytes.toString("base64") !== image.base64) {
                 throw new Error("Invalid Session attachment bytes");
@@ -255,7 +261,10 @@ export function prepareImagesForModel(opts: PrepareImagesOptions): PreparedImage
     const images = opts.images || [];
     if (images.length === 0) return { ok: true, text: opts.text, images: undefined, mode: "none" };
     if (modelSupportsImageInput(opts.activeModel)) {
-        const markers = images.filter((image) => image.ref && !image.path).map(formatImageAttachmentMarker).join("\n");
+        const markers = images
+            .filter((image) => image.ref && !image.path)
+            .map(formatImageAttachmentMarker)
+            .join("\n");
         return {
             ok: true,
             text: markers ? `${opts.text}\n\n${markers}` : opts.text,
@@ -280,8 +289,7 @@ export function preflightImageAttachments(
         return {
             ok: true,
             mode: "fallback",
-            warning:
-                `Current model does not support vision. Images will be described using visionFallback.model: ${opts.fallbackModelRef}.`,
+            warning: `Current model does not support vision. Images will be described using visionFallback.model: ${opts.fallbackModelRef}.`,
         };
     }
     return { ok: false, message: IMAGE_FALLBACK_BLOCK_MESSAGE };
@@ -304,15 +312,9 @@ export async function resolveVisionFallbackModel(
         try {
             // The fallback model is explicitly configured for vision, so register
             // discovered models with image input even though /models can't report it.
-            found = await discoverProviderModel(
-                modelRegistry,
-                parsed.provider,
-                parsed.id,
-                network,
-                {
-                    input: ["text", "image"],
-                },
-            );
+            found = await discoverProviderModel(modelRegistry, parsed.provider, parsed.id, network, {
+                input: ["text", "image"],
+            });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             throw new Error(`Unknown visionFallback.model: ${configured}. ${message}`);

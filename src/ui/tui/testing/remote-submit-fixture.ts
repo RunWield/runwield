@@ -1,5 +1,9 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { runtimeSourceArgs } from "../../../testing/runtime-source-args.ts";
+import { serveHttp } from "../../../shared/http-server.ts";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { spawnNativeProcess } from "../../../shared/foreground-process.ts";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { join } from "node:path";
 import { getModelRegistry } from "../../../shared/models/model-registry.ts";
 import { __resetSettingsForTests } from "../../../shared/settings.js";
 import { processLines } from "../../../shared/remote/remote-runtime-lines.ts";
@@ -8,7 +12,8 @@ import {
     within,
     withRemoteRuntimeFixture,
 } from "../../../shared/remote/remote-runtime-test-fixture.ts";
-import type { RemoteSubmitCommand, RemoteSubmitReport } from "./remote-submit-client.ts";
+import { type RemoteSubmitCommand, type RemoteSubmitReport } from "./remote-submit-client.ts";
+import process from "node:process";
 
 export interface RemoteSubmitProcess {
     send(command: RemoteSubmitCommand): Promise<void>;
@@ -25,19 +30,17 @@ export async function withRemoteSubmitFixture(run: (fixture: RemoteSubmitFixture
     await withRemoteRuntimeFixture(async (f) => {
         const requests: string[] = [];
         const secret = "laptop-only-submit-secret";
-        const provider = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+        const provider = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
             assertEquals(request.headers.get("Authorization"), `Bearer ${secret}`);
             requests.push(await request.text());
             const chunk = (content: string, finish: string | null) =>
-                `data: ${
-                    JSON.stringify({
-                        id: "chatcmpl-submit",
-                        object: "chat.completion.chunk",
-                        created: 1,
-                        model: "remote-model",
-                        choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: finish }],
-                    })
-                }\n\n`;
+                `data: ${JSON.stringify({
+                    id: "chatcmpl-submit",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "remote-model",
+                    choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: finish }],
+                })}\n\n`;
             return new Response(
                 chunk(`TUI-TURN-${requests.length}-741`, null) + chunk("", "stop") + "data: [DONE]\n\n",
                 {
@@ -46,15 +49,15 @@ export async function withRemoteSubmitFixture(run: (fixture: RemoteSubmitFixture
             );
         });
         const port = provider.addr.transport === "tcp" ? provider.addr.port : 0;
-        const settings = JSON.parse(await Deno.readTextFile(f.settingsPath));
+        const settings = JSON.parse(await fsReadFile(f.settingsPath, "utf8"));
         const configured = JSON.stringify({
             ...settings,
             defaultProvider: "laptop-http",
             defaultModel: "remote-model",
         });
-        await Deno.writeTextFile(f.settingsPath, configured);
-        await Deno.writeTextFile(join(f.resources, "settings.json"), configured);
-        await Deno.writeTextFile(
+        await fsWriteFile(f.settingsPath, configured);
+        await fsWriteFile(join(f.resources, "settings.json"), configured);
+        await fsWriteFile(
             join(f.homeDir, ".wld", "models.json"),
             JSON.stringify({
                 providers: {
@@ -66,7 +69,7 @@ export async function withRemoteSubmitFixture(run: (fixture: RemoteSubmitFixture
                 },
             }),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(f.homeDir, ".wld", "auth.json"),
             JSON.stringify({
                 "laptop-http": { type: "api_key", key: secret },
@@ -93,15 +96,15 @@ export async function withRemoteSubmitFixture(run: (fixture: RemoteSubmitFixture
 }
 
 async function startProcess(f: RuntimeFixture): Promise<RemoteSubmitProcess> {
-    const child = new Deno.Command(Deno.execPath(), {
-        args: [
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
             "run",
             "-A",
             "--quiet",
             "--config",
             new URL("../../../../deno.json", import.meta.url).pathname,
             new URL("./remote-submit-client.ts", import.meta.url).pathname,
-        ],
+        ]),
         cwd: f.remoteProject,
         env: {
             HOME: f.remoteHome,
@@ -111,7 +114,7 @@ async function startProcess(f: RuntimeFixture): Promise<RemoteSubmitProcess> {
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const writer = child.stdin.getWriter();
     const reader = processLines(child.stdout);
     const stderr = new Response(child.stderr).text();
@@ -140,7 +143,9 @@ async function startProcess(f: RuntimeFixture): Promise<RemoteSubmitProcess> {
             } finally {
                 try {
                     child.kill("SIGKILL");
-                } catch { /* Already exited. */ }
+                } catch {
+                    /* Already exited. */
+                }
                 await child.status;
                 await reader.cancel().catch(() => {});
                 reader.releaseLock();

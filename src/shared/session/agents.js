@@ -597,8 +597,7 @@ function normalizeSharedPracticeNames(value, agentName) {
  * @returns {Promise<string>}
  */
 async function readSharedPracticeBody(name, layerDirs) {
-    const candidatePaths = layerDirs
-        .map((dir) => join(dir, SHARED_PRACTICE_DIR, `${name}.md`));
+    const candidatePaths = layerDirs.map((dir) => join(dir, SHARED_PRACTICE_DIR, `${name}.md`));
 
     for (const filePath of candidatePaths) {
         await assertPersonalResourcePath(filePath, `shared practice "${name}"`);

@@ -1,9 +1,20 @@
-import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { open as fsOpen } from "node:fs/promises";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { mkdir as fsMkdir, writeFile as fsWriteFile, stat as fsStat, truncate as fsTruncate } from "node:fs/promises";
+import { getCwd } from "../../constants.js";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { test } from "node:test";
+import { readdirSync } from "node:fs";
+import { serveHttp } from "../http-server.ts";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { makeControlFixture, makeSessionFixture, within } from "./session-save-test-fixture.ts";
 import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
 import { MAX_SESSION_BYTES, type RemoteSessionResponse } from "./session-protocol.ts";
-import type { ImageAttachment } from "../session/types.js";
+import { type ImageAttachment } from "../session/types.js";
+import process from "node:process";
 
 type Fixture = Awaited<ReturnType<typeof makeControlFixture>>;
 interface ClientResult {
@@ -23,30 +34,35 @@ async function client(
     baseUrl = f.baseUrl,
     operation = f.owner.operation,
 ): Promise<ClientResult> {
-    await Deno.mkdir(f.mount, { recursive: true });
-    const child = new Deno.Command(Deno.execPath(), {
-        args: [
+    await fsMkdir(f.mount, { recursive: true });
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
             "run",
             "-A",
             "--node-modules-dir=manual",
             "--quiet",
             new URL("./session-attachment-read-test-client.ts", import.meta.url).pathname,
-        ],
+        ]),
         env: { HOME: f.home, MNEMOTECA_DB_PATH: join(f.home, "memory.sqlite3") },
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
-    const output = child.output();
+        cwd: getCwd(),
+    });
+    const output = collectProcessOutput(child);
     try {
         const writer = child.stdin.getWriter();
-        await writer.write(new TextEncoder().encode(JSON.stringify({
-            connection: { baseUrl, operation, credential: f.control.credential },
-            cwd: f.remoteProject,
-            mount: f.mount,
-            mode,
-            ref,
-        })));
+        await writer.write(
+            new TextEncoder().encode(
+                JSON.stringify({
+                    connection: { baseUrl, operation, credential: f.control.credential },
+                    cwd: f.remoteProject,
+                    mount: f.mount,
+                    mode,
+                    ref,
+                }),
+            ),
+        );
         await writer.close();
         writer.releaseLock();
         const result = await within(output, 20_000);
@@ -55,7 +71,9 @@ async function client(
     } finally {
         try {
             child.kill("SIGKILL");
-        } catch { /* Already exited. */ }
+        } catch {
+            /* Already exited. */
+        }
         await output;
     }
 }
@@ -65,10 +83,10 @@ function imageDirectory(f: Awaited<ReturnType<typeof makeSessionFixture>>): stri
     return join(dirname(segment.transcriptPath), `${segment.piSessionId}_images`);
 }
 
-Deno.test("remote upload and fresh hydrated manager read laptop attachment bytes through see_image without a mount", async () => {
+test("remote upload and fresh hydrated manager read laptop attachment bytes through see_image without a mount", async () => {
     const f = await makeControlFixture();
     await f.ready();
-    await Deno.writeFile(join(f.remoteProject, "project.png"), new Uint8Array([5, 6]));
+    await fsWriteFile(join(f.remoteProject, "project.png"), new Uint8Array([5, 6]));
     try {
         const first = await client(f, "upload");
         assert(first.attachment?.ref);
@@ -78,7 +96,7 @@ Deno.test("remote upload and fresh hydrated manager read laptop attachment bytes
         assertEquals(first.images, ["image/png:AQIDBA==", "image/png:BQY="]);
         assertEquals(first.pathDenied, true);
         assertEquals(first.file, null);
-        await assertRejects(() => Deno.stat(f.mount), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(f.mount), Error, "ENOENT");
         const state = f.store.inspectSessionActivation(f.session.runwieldSessionId);
         const fresh = new RemoteSessionOwner(
             f.store,
@@ -94,16 +112,19 @@ Deno.test("remote upload and fresh hydrated manager read laptop attachment bytes
         f.control.registerSessionOwner(fresh);
         const second = await client(f, "read", first.attachment.ref, f.baseUrl, fresh.operation);
         assertEquals(second, first);
-        await assertRejects(() => Deno.stat(f.mount), Deno.errors.NotFound);
-        assertEquals([...Deno.readDirSync(f.remoteProject)].map((entry) => entry.name), ["project.png"]);
-        await assertRejects(() => Deno.stat(join(f.home, ".wld", "sessions")), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(f.mount), Error, "ENOENT");
+        assertEquals(
+            [...readdirSync(f.remoteProject, { withFileTypes: true })].map((entry) => entry.name),
+            ["project.png"],
+        );
+        await assertRejects(() => fsStat(join(f.home, ".wld", "sessions")), Error, "ENOENT");
         assertEquals(fresh.inspect().contents, f.owner.inspect().contents);
     } finally {
         await f.close();
     }
 });
 
-Deno.test("attachment read requires credentials, current operation, hydration and native writer ownership", async () => {
+test("attachment read requires credentials, current operation, hydration and native writer ownership", async () => {
     const f = await makeControlFixture();
     await f.ready();
     try {
@@ -123,7 +144,7 @@ Deno.test("attachment read requires credentials, current operation, hydration an
     }
 });
 
-Deno.test("attachment read retries return the same path-free receipt and reject conflicting identities", async () => {
+test("attachment read retries return the same path-free receipt and reject conflicting identities", async () => {
     const f = await makeSessionFixture();
     try {
         f.owner.handle(f.request("hydrate", 0));
@@ -136,7 +157,7 @@ Deno.test("attachment read retries return the same path-free receipt and reject 
         assertEquals(JSON.parse(first.contents), image);
         assertEquals(first.evidence, upload.evidence);
         // A saved response remains stable even if the underlying file changes before a retry.
-        await Deno.writeFile(join(imageDirectory(f), `${image.ref?.slice(11)}.jpg`), new Uint8Array([9]));
+        await fsWriteFile(join(imageDirectory(f), `${image.ref?.slice(11)}.jpg`), new Uint8Array([9]));
         assertEquals(f.owner.handle(read), first);
         assertThrows(
             () => f.owner.handle({ ...read, contents: `attachment:${crypto.randomUUID()}` }),
@@ -150,14 +171,12 @@ Deno.test("attachment read retries return the same path-free receipt and reject 
     }
 });
 
-for (
-    const [label, ref] of [
-        ["project path", "../outside.png"],
-        ["invalid attachment ref", "attachment:../../outside"],
-        ["missing attachment", "attachment:00000000-0000-0000-0000-000000000000"],
-    ]
-) {
-    Deno.test(`owner refuses ${label} without fallback and keeps read failure sticky`, async () => {
+for (const [label, ref] of [
+    ["project path", "../outside.png"],
+    ["invalid attachment ref", "attachment:../../outside"],
+    ["missing attachment", "attachment:00000000-0000-0000-0000-000000000000"],
+]) {
+    test(`owner refuses ${label} without fallback and keeps read failure sticky`, async () => {
         const f = await makeSessionFixture();
         try {
             f.owner.handle(f.request("hydrate", 0));
@@ -170,33 +189,33 @@ for (
     });
 }
 
-Deno.test("owner bounds attachment bytes at 16 MiB before returning base64", async () => {
+test("owner bounds attachment bytes at 16 MiB before returning base64", async () => {
     const f = await makeSessionFixture();
     try {
         f.owner.handle(f.request("hydrate", 0));
         const ref = `attachment:${crypto.randomUUID()}`;
         const directory = imageDirectory(f);
-        await Deno.mkdir(directory);
+        await fsMkdir(directory);
         const path = join(directory, `${ref.slice(11)}.png`);
-        const file = await Deno.open(path, { create: true, write: true });
+        const file = await fsOpen(path, "w");
         await file.truncate(MAX_SESSION_BYTES);
-        file.close();
+        await file.close();
         const response = f.owner.handle(f.request("attachment-read", 1, ref));
         const image: ImageAttachment = JSON.parse(response.contents);
         assertEquals(image.base64.length, Math.ceil(MAX_SESSION_BYTES / 3) * 4);
         assertEquals(Object.keys(image).sort(), ["base64", "mimeType", "ref"]);
-        await Deno.truncate(path, MAX_SESSION_BYTES + 1);
+        await fsTruncate(path, MAX_SESSION_BYTES + 1);
         assertThrows(() => f.owner.handle(f.request("attachment-read", 2, ref)), Error, "read limit");
     } finally {
         await f.close();
     }
 });
 
-Deno.test("Worker bounds an oversized attachment-read reply and stops the manager permanently", async () => {
+test("Worker bounds an oversized attachment-read reply and stops the manager permanently", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const ref = `attachment:${crypto.randomUUID()}`;
-    const proxy = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+    const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
         const body = await request.text();
         const input = JSON.parse(body);
         if (input.kind === "attachment-read") {
@@ -217,14 +236,14 @@ Deno.test("Worker bounds an oversized attachment-read reply and stops the manage
     }
 });
 
-Deno.test("Worker carries attachment read payloads larger than a save acknowledgement", async () => {
+test("Worker carries attachment read payloads larger than a save acknowledgement", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const ref = `attachment:${crypto.randomUUID()}`;
     const directory = imageDirectory(f);
-    await Deno.mkdir(directory);
-    await Deno.writeFile(join(directory, `${ref.slice(11)}.webp`), new Uint8Array(64 * 1024).fill(7));
-    await Deno.writeFile(join(f.remoteProject, "project.png"), new Uint8Array([5, 6]));
+    await fsMkdir(directory);
+    await fsWriteFile(join(directory, `${ref.slice(11)}.webp`), new Uint8Array(64 * 1024).fill(7));
+    await fsWriteFile(join(f.remoteProject, "project.png"), new Uint8Array([5, 6]));
     try {
         const result = await client(f, "read", ref);
         assertEquals(result.attachment, { base64: btoa("\x07".repeat(64 * 1024)), mimeType: "image/webp", ref });
@@ -234,14 +253,14 @@ Deno.test("Worker carries attachment read payloads larger than a save acknowledg
 });
 
 for (const fault of ["path", "ref", "mime", "base64"] as const) {
-    Deno.test(`invalid attachment ${fault} acknowledgement stops the remote manager`, async () => {
+    test(`invalid attachment ${fault} acknowledgement stops the remote manager`, async () => {
         const f = await makeControlFixture();
         await f.ready();
         const ref = `attachment:${crypto.randomUUID()}`;
         const directory = imageDirectory(f);
-        await Deno.mkdir(directory);
-        await Deno.writeFile(join(directory, `${ref.slice(11)}.png`), new Uint8Array([1, 2, 3, 4]));
-        const proxy = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+        await fsMkdir(directory);
+        await fsWriteFile(join(directory, `${ref.slice(11)}.png`), new Uint8Array([1, 2, 3, 4]));
+        const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
             const body = await request.text();
             const input = JSON.parse(body);
             const response = await fetch(`${f.baseUrl}/session/request`, {

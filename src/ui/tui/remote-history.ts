@@ -22,7 +22,7 @@ export async function showRemoteHistory(tui: TUI, saved: SavedRemoteSession[]): 
     const messages = new Container();
     const interaction = new Container();
     const footer = new Text(theme.fg("dim", "Saved remote Sessions · ↑/↓ choose · Enter open · Esc exit"), 0, 0);
-    const uiAPI = createUiApi(tui, messages, new SpinnerBlock(), undefined, undefined, interaction);
+    const uiAPI = createUiApi(null, tui, messages, new SpinnerBlock(), undefined, undefined, interaction);
     const display = createTuiDisplayConsumer(uiAPI);
     const transcript = new ScrollView(messages, { primary: true, scrollbar: "auto" });
     if (isViewportTUI(tui)) {

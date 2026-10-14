@@ -114,15 +114,17 @@ export async function resolveRemoteTarget(
         cwd: getCwd(),
         args: ["-G", "--", host],
         signal,
-        stdout: "piped",
-        stderr: "piped",
     });
     if (!configuration.success) throw new Error("Cannot resolve SSH host configuration");
     const fields = new Map(
-        new TextDecoder().decode(configuration.stdout).trim().split(/\r?\n/).map((line) => {
-            const separator = line.indexOf(" ");
-            return [line.slice(0, separator), line.slice(separator + 1)];
-        }),
+        new TextDecoder()
+            .decode(configuration.stdout)
+            .trim()
+            .split(/\r?\n/)
+            .map((line) => {
+                const separator = line.indexOf(" ");
+                return [line.slice(0, separator), line.slice(separator + 1)];
+            }),
     );
     const hostname = fields.get("hostname");
     const user = fields.get("user");

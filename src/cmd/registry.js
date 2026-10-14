@@ -158,11 +158,7 @@ export const commandRegistry = {
         displayName: getAgentDisplayName(COMMAND_NAMES.ROUTER),
         description: "Triage the current request (default)",
         summary: "Route a request through triage and execution/planning flow (default command).",
-        usage: [
-            `${bin('"<user request>"')}`,
-            `${bin('router "<user request>"')}`,
-            `${bin("router --help")}`,
-        ],
+        usage: [`${bin('"<user request>"')}`, `${bin('router "<user request>"')}`, `${bin("router --help")}`],
         notes: [
             "This is the default command when no explicit command is provided.",
             `Source-run fallback: ${DEV_CLI_RUN} "<user request>"`,
@@ -181,11 +177,7 @@ export const commandRegistry = {
         displayName: "Onboard",
         description: "Start the guided first-change tutorial",
         summary: "Guide one small real project change through Plan Review, validation, and delivery.",
-        usage: [
-            `${bin("onboard")}`,
-            `${bin("onboard --help")}`,
-            "/onboard",
-        ],
+        usage: [`${bin("onboard")}`, `${bin("onboard --help")}`, "/onboard"],
         notes: [
             "TUI guidance only. The tutorial warns before it starts real work or uses a model.",
             "Skipping the automatic offer does not disable this explicit command.",
@@ -209,10 +201,7 @@ export const commandRegistry = {
         displayName: "ACP",
         description: "Run the ACP stdio adapter",
         summary: "Start the Agent Client Protocol stdio server without launching the TUI.",
-        usage: [
-            `${bin("acp")}`,
-            `${bin("--mode acp")}`,
-        ],
+        usage: [`${bin("acp")}`, `${bin("--mode acp")}`],
         notes: [
             "CLI only: stdout is reserved for ACP JSON-RPC protocol frames.",
             "Handles initialize, session new/load/prompt/close, and session cancellation; other ACP methods return structured unimplemented errors.",
@@ -332,13 +321,8 @@ export const commandRegistry = {
         displayName: "Logout",
         description: "Remove stored model credentials",
         summary: "Remove credentials stored by /login.",
-        usage: [
-            "/logout",
-            "/logout openai-codex",
-        ],
-        notes: [
-            "Environment variables and models.json provider config are not changed.",
-        ],
+        usage: ["/logout", "/logout openai-codex"],
+        notes: ["Environment variables and models.json provider config are not changed."],
         execute: (argv, options) => runLogoutCommand(argv, requireInteractiveCommandContext(options)),
         surfaces: ["slash"],
         slashSurfaces: ["tui", "acp"],
@@ -348,12 +332,8 @@ export const commandRegistry = {
         displayName: "Status",
         description: "Show model authentication status",
         summary: "Show configured providers and available model count.",
-        usage: [
-            "/status",
-        ],
-        notes: [
-            "This reports model/auth status for the current RunWield configuration.",
-        ],
+        usage: ["/status"],
+        notes: ["This reports model/auth status for the current RunWield configuration."],
         execute: (argv, options) => runStatusCommand(argv, requireInteractiveCommandContext(options)),
         surfaces: ["slash"],
         slashSurfaces: ["tui", "acp"],
@@ -370,9 +350,7 @@ export const commandRegistry = {
             "/load-plan <plan-name-or-id>",
             `${bin("load-plan --help")}`,
         ],
-        notes: [
-            "If the plan is approved, you can proceed, re-open review, or inspect details.",
-        ],
+        notes: ["If the plan is approved, you can proceed, re-open review, or inspect details."],
         execute: async (argv, options) =>
             await (await import("./load-plan/index.ts")).runLoadPlanCommand(argv, options),
         surfaces: ["cli", "slash"],
@@ -412,13 +390,8 @@ export const commandRegistry = {
         displayName: "Resume Session",
         description: "Browse and resume a recent session",
         summary: "Browse and resume a recent session.",
-        usage: [
-            "/resume",
-            `${bin("resume <session-id>")}`,
-        ],
-        notes: [
-            "Use /resume to browse saved Sessions, or pass an exact Session ID on the command line.",
-        ],
+        usage: ["/resume", `${bin("resume <session-id>")}`],
+        notes: ["Use /resume to browse saved Sessions, or pass an exact Session ID on the command line."],
         execute: runResumeCommand,
         surfaces: ["cli", "slash"],
         slashSurfaces: ["tui", "workspace"],
@@ -428,13 +401,8 @@ export const commandRegistry = {
         displayName: "New Session",
         description: "Start a new interactive session",
         summary: "Start a brand new root session.",
-        usage: [
-            "/new",
-            "/new <optional name>",
-        ],
-        notes: [
-            "Slash command only (interactive session).",
-        ],
+        usage: ["/new", "/new <optional name>"],
+        notes: ["Slash command only (interactive session)."],
         execute: runNewCommand,
         surfaces: ["slash"],
         slashSurfaces: ["tui", "workspace"],
@@ -444,13 +412,8 @@ export const commandRegistry = {
         displayName: "Session Name",
         description: "Set or show the current session name",
         summary: "Set or show the current session name.",
-        usage: [
-            "/name",
-            "/name <name>",
-        ],
-        notes: [
-            "Slash command only (interactive session).",
-        ],
+        usage: ["/name", "/name <name>"],
+        notes: ["Slash command only (interactive session)."],
         execute: runNameCommand,
         surfaces: ["slash"],
         slashSurfaces: ["tui", "acp"],
@@ -460,12 +423,8 @@ export const commandRegistry = {
         displayName: "Session Info",
         description: "Show information about the current session",
         summary: "Show information about the current session.",
-        usage: [
-            "/session",
-        ],
-        notes: [
-            "Slash command only (interactive session).",
-        ],
+        usage: ["/session"],
+        notes: ["Slash command only (interactive session)."],
         execute: runSessionCommand,
         surfaces: ["slash"],
         slashSurfaces: ["tui", "acp", "workspace"],
@@ -475,9 +434,7 @@ export const commandRegistry = {
         displayName: "Context Usage",
         description: "Show active Agent Session context-window usage",
         summary: "Show current context-window usage and estimated resident context categories.",
-        usage: [
-            "/context",
-        ],
+        usage: ["/context"],
         notes: [
             "Slash command only (interactive session).",
             "Reports current resident context, unlike /session's cumulative session statistics.",
@@ -491,9 +448,7 @@ export const commandRegistry = {
         displayName: "Share",
         description: "Share current session as a secret GitHub Gist",
         summary: "Export the current session JSONL snapshot and upload it as a secret GitHub Gist.",
-        usage: [
-            "/share",
-        ],
+        usage: ["/share"],
         notes: [
             "Requires GitHub CLI ('gh') to be installed and authenticated.",
             "Saves session as a secret (private) Gist.",
@@ -507,11 +462,7 @@ export const commandRegistry = {
         displayName: "Export",
         description: "Export current session (HTML default, or specify .html/.jsonl path)",
         summary: "Export current interactive session to HTML (default) or JSONL.",
-        usage: [
-            "/export",
-            "/export output.html",
-            "/export output.jsonl",
-        ],
+        usage: ["/export", "/export output.html", "/export output.jsonl"],
         notes: [
             "Slash command only (interactive session).",
             "Default output path is session-<iso-datetime>.html in the current working directory.",
@@ -531,9 +482,9 @@ export const commandRegistry = {
             `${bin("plans read <plan-name-or-id> [--help]")}`,
             `${bin("plans doctor [--repair] [--help]")}`,
             `${bin("plans share <plan-name-or-id> [--plan-server <url>] [--project-secrets] [--help]")}`,
-            `${
-                bin("plans pull <maintainer-url-or-plan-name-or-id> [--plan-server <url>] [--project-secrets] [--to <plan-name>] [--help]")
-            }`,
+            `${bin(
+                "plans pull <maintainer-url-or-plan-name-or-id> [--plan-server <url>] [--project-secrets] [--to <plan-name>] [--help]",
+            )}`,
             `${bin("plans push <plan-name-or-id> [--plan-server <url>] [--project-secrets] [--help]")}`,
             `${bin("plans unshare <plan-name-or-id> [--plan-server <url>] [--project-secrets] [--force] [--help]")}`,
             `${bin("plans archive [--help]")}`,
@@ -572,9 +523,9 @@ export const commandRegistry = {
         description: "Start the persistent owner Workspace or approve browser pairing",
         summary: "Serve the persistent multi-Project owner Workspace and approve paired browser devices.",
         usage: [
-            `${
-                bin("workspace serve [--bind <host>|--host <host>] [--port <port>] [--public-origin <origin>] [--trust-tls-terminator] [--no-open]")
-            }`,
+            `${bin(
+                "workspace serve [--bind <host>|--host <host>] [--port <port>] [--public-origin <origin>] [--trust-tls-terminator] [--no-open]",
+            )}`,
             `${bin("workspace pair <code>")}`,
             `${bin("workspace --help")}`,
         ],
@@ -620,7 +571,9 @@ export const commandRegistry = {
             "Manual create remains deferred to later Work Records slices.",
         ],
         execute: async (argv, options) =>
-            await (await import("./wr/index.ts")).runWorkRecordsCommand(argv, {
+            await (
+                await import("./wr/index.ts")
+            ).runWorkRecordsCommand(argv, {
                 ...options,
                 mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
             }),
@@ -631,10 +584,7 @@ export const commandRegistry = {
         displayName: "Sleep",
         description: "Safely back up and consolidate memory",
         summary: "Create a session-scoped memory backup, then optimize memory with Engineer.",
-        usage: [
-            `${bin("sleep")}`,
-            `${bin("sleep --help")}`,
-        ],
+        usage: [`${bin("sleep")}`, `${bin("sleep --help")}`],
         notes: [
             "Requires mnemoteca binary in PATH.",
             "Creates a verified backup under ~/.wld/sessions before any memory changes.",
@@ -677,11 +627,7 @@ export const commandRegistry = {
         displayName: "Version",
         description: "Show version and architecture info",
         summary: "Print runwield version and platform architecture.",
-        usage: [
-            `${bin("--version")}`,
-            `${bin("-v")}`,
-            `${bin("version")}`,
-        ],
+        usage: [`${bin("--version")}`, `${bin("-v")}`, `${bin("version")}`],
         notes: [],
         execute: runVersionCommand,
         surfaces: ["cli", "slash"],
@@ -742,11 +688,7 @@ export const commandRegistry = {
         displayName: "Init",
         description: "Initialize RunWield into the current project",
         summary: "Initialize RunWield into the current project (bootstraps context index and memory).",
-        usage: [
-            `${bin("init")}`,
-            `${bin("init --help")}`,
-            "/init",
-        ],
+        usage: [`${bin("init")}`, `${bin("init --help")}`, "/init"],
         notes: [
             "Runs a one-time agent that explores the codebase and writes docs/domain-language.md.",
             "Safe to run multiple times — subsequent runs in the same directory will warn and exit.",
@@ -759,16 +701,16 @@ export const commandRegistry = {
             ]);
             await (options?.sessionRuntime && options.sessionId
                 ? runInitCommand(argv, {
-                    uiAPI: options.uiAPI,
-                    sessionPort: SYSTEM_INTERACTIVE_SESSION_PORT,
-                    sessionRuntime: options.sessionRuntime,
-                    sessionId: options.sessionId,
-                    projectRoot: options.sessionRuntime.getSessionSnapshot(options.sessionId)?.cwd,
-                })
+                      uiAPI: options.uiAPI,
+                      sessionPort: SYSTEM_INTERACTIVE_SESSION_PORT,
+                      sessionRuntime: options.sessionRuntime,
+                      sessionId: options.sessionId,
+                      projectRoot: options.sessionRuntime.getSessionSnapshot(options.sessionId)?.cwd,
+                  })
                 : runInitCommand(argv, {
-                    uiAPI: options?.uiAPI,
-                    sessionPort: SYSTEM_INTERACTIVE_SESSION_PORT,
-                }));
+                      uiAPI: options?.uiAPI,
+                      sessionPort: SYSTEM_INTERACTIVE_SESSION_PORT,
+                  }));
         },
         surfaces: ["cli", "slash"],
         slashSurfaces: ["tui", "acp"],
@@ -778,14 +720,8 @@ export const commandRegistry = {
         displayName: "Theme",
         description: "Switch TUI theme",
         summary: "Switch the active visual theme.",
-        usage: [
-            "/theme",
-            `${bin("theme <name>")}`,
-            `${bin("theme --list")}`,
-        ],
-        notes: [
-            "Inside the TUI, /theme opens an interactive picker with live previews.",
-        ],
+        usage: ["/theme", `${bin("theme <name>")}`, `${bin("theme --list")}`],
+        notes: ["Inside the TUI, /theme opens an interactive picker with live previews."],
         execute: async (argv, options) => await (await import("./theme/index.ts")).runThemeCommand(argv, options),
         surfaces: ["cli", "slash"],
         slashSurfaces: ["tui"],
@@ -796,11 +732,7 @@ export const commandRegistry = {
         description: "Install a package source",
         summary:
             "Install package themes, prompt templates, and WLD-compatible extensions from npm, git, or local path.",
-        usage: [
-            `${bin("install npm:<spec>")}`,
-            `${bin("install git:<url>")}`,
-            `${bin("install local:<path>")}`,
-        ],
+        usage: [`${bin("install npm:<spec>")}`, `${bin("install git:<url>")}`, `${bin("install local:<path>")}`],
         notes: [
             "Theme (.json) resources and passive prompt templates are registered.",
             "Pi package skills are ignored; install them separately with `npx skills add <source>`.",
@@ -814,9 +746,7 @@ export const commandRegistry = {
         displayName: "Remove",
         description: "Remove an installed package source",
         summary: "Uninstall a package source and unregister its resources.",
-        usage: [
-            `${bin("remove <source>")}`,
-        ],
+        usage: [`${bin("remove <source>")}`],
         notes: [],
         execute: runRemoveCommand,
         surfaces: ["cli"],
@@ -848,10 +778,7 @@ export const commandRegistry = {
         displayName: "Compact",
         description: "Compact the session context",
         summary: "Manually compact the session context to free up tokens.",
-        usage: [
-            "/compact",
-            '/compact "focus on summarizing the architecture decisions"',
-        ],
+        usage: ["/compact", '/compact "focus on summarizing the architecture decisions"'],
         notes: [
             "Slash command only (interactive session).",
             "Optionally pass custom instructions to guide the summarization.",
@@ -865,9 +792,7 @@ export const commandRegistry = {
         displayName: "Settings",
         description: "Open settings menu",
         summary: "Open the interactive settings menu (compaction, model presets).",
-        usage: [
-            "/settings",
-        ],
+        usage: ["/settings"],
         notes: [
             "Slash command only (interactive session).",
             "Exposes compaction settings (auto-compact, reserve tokens, keep-recent tokens) and model preset selection (activeModelPreset).",
@@ -881,9 +806,7 @@ export const commandRegistry = {
         displayName: "Copy",
         description: "Copy the last assistant message to clipboard",
         summary: "Copy the last assistant response text to the system clipboard.",
-        usage: [
-            "/copy",
-        ],
+        usage: ["/copy"],
         notes: [
             "Slash command only (interactive session).",
             "Uses pbcopy (macOS), xclip/xsel (Linux), or clip (Windows).",
@@ -897,9 +820,7 @@ export const commandRegistry = {
         displayName: "Reload",
         description: "Reload dynamic config and context",
         summary: "Reload themes, settings, system prompt, and memories without losing the active session.",
-        usage: [
-            "/reload",
-        ],
+        usage: ["/reload"],
         notes: [
             "Slash command only (interactive session).",
             "Refreshes memories, RUNWIELD.md, prompt templates, skills, model settings, and themes.",

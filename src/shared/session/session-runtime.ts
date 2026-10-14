@@ -388,12 +388,7 @@ interface ManagedContinuationSnapshot {
     activeExecutionWorkflow?: RuntimeContinuationValue;
 }
 type RuntimeContinuationValue =
-    | string
-    | number
-    | boolean
-    | null
-    | RuntimeContinuationRecord
-    | RuntimeContinuationValue[];
+    string | number | boolean | null | RuntimeContinuationRecord | RuntimeContinuationValue[];
 interface RuntimeContinuationRecord {
     [key: string]: RuntimeContinuationValue;
 }
@@ -412,9 +407,8 @@ export function deriveManagedSessionContinuationDecision(facts: ManagedContinuat
     return {
         ok: true,
         code: "continue",
-        agentName: typeof snapshot.activeAgent === "string" && snapshot.activeAgent
-            ? snapshot.activeAgent
-            : AGENTS.ROUTER,
+        agentName:
+            typeof snapshot.activeAgent === "string" && snapshot.activeAgent ? snapshot.activeAgent : AGENTS.ROUTER,
         message: "Ready for your next message.",
     };
 }

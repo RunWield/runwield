@@ -1,12 +1,21 @@
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { tmpdir } from "node:os";
+import {
+    mkdtemp as fsMkdtemp,
+    realpath as fsRealpath,
+    writeFile as fsWriteFile,
+    chmod as fsChmod,
+    rm as fsRm,
+} from "node:fs/promises";
+import { join } from "node:path";
+import { test } from "node:test";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { resolveRemoteTarget } from "./target.ts";
 
 async function withSsh(test: (ssh: string, root: string) => Promise<void>): Promise<void> {
-    const root = await Deno.realPath(await Deno.makeTempDir());
+    const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "runwield-")));
     try {
         const ssh = join(root, "ssh");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             ssh,
             `#!/bin/sh
 if [ "$1" = -G ]; then
@@ -46,14 +55,14 @@ HOME=${JSON.stringify(root)} export HOME
 exec sh -c "$4"
 `,
         );
-        await Deno.chmod(ssh, 0o700);
+        await fsChmod(ssh, 0o700);
         await test(ssh, root);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 }
 
-Deno.test("SSH aliases use effective host configuration and the verified key", async () => {
+test("SSH aliases use effective host configuration and the verified key", async () => {
     await withSsh(async (ssh) => {
         const first = await resolveRemoteTarget("alias-one", null, ssh);
         const second = await resolveRemoteTarget("alias-two", null, ssh);
@@ -71,7 +80,7 @@ Deno.test("SSH aliases use effective host configuration and the verified key", a
     });
 });
 
-Deno.test("SSH target key rotation changes identity behind a jump host", async () => {
+test("SSH target key rotation changes identity behind a jump host", async () => {
     await withSsh(async (ssh) => {
         const first = await resolveRemoteTarget("jump", null, ssh);
         const changed = await resolveRemoteTarget("jump-target-rotated", null, ssh);
@@ -80,7 +89,7 @@ Deno.test("SSH target key rotation changes identity behind a jump host", async (
     });
 });
 
-Deno.test("SSH jump host key rotation does not change target identity", async () => {
+test("SSH jump host key rotation does not change target identity", async () => {
     await withSsh(async (ssh) => {
         const first = await resolveRemoteTarget("jump", null, ssh);
         const changed = await resolveRemoteTarget("jump-rotated", null, ssh);
@@ -88,26 +97,26 @@ Deno.test("SSH jump host key rotation does not change target identity", async ()
     });
 });
 
-Deno.test("SSH target certificates do not use a jump host fingerprint", async () => {
+test("SSH target certificates do not use a jump host fingerprint", async () => {
     await withSsh(async (ssh) => {
         assertEquals((await resolveRemoteTarget("jump-certificate", null, ssh)).host.hostKeyFingerprint, null);
     });
 });
 
-Deno.test("SSH certificates retain effective identity without a host key fingerprint", async () => {
+test("SSH certificates retain effective identity without a host key fingerprint", async () => {
     await withSsh(async (ssh) => {
         assertEquals((await resolveRemoteTarget("certificate", null, ssh)).host.hostKeyFingerprint, null);
     });
 });
 
-Deno.test("missing key evidence and failed host verification cannot establish identity", async () => {
+test("missing key evidence and failed host verification cannot establish identity", async () => {
     await withSsh(async (ssh) => {
         await assertRejects(() => resolveRemoteTarget("no-key", null, ssh), Error, "did not report");
         await assertRejects(() => resolveRemoteTarget("failed", null, ssh), Error, "Host key verification failed");
     });
 });
 
-Deno.test("failed or invalid effective SSH configuration cannot establish identity", async () => {
+test("failed or invalid effective SSH configuration cannot establish identity", async () => {
     await withSsh(async (ssh) => {
         await assertRejects(() => resolveRemoteTarget("bad-config", null, ssh), Error, "Cannot resolve");
         await assertRejects(() => resolveRemoteTarget("bad-port", null, ssh), Error, "Invalid SSH host configuration");

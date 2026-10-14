@@ -1,5 +1,9 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { openNativeFileLock } from "../native-file-lock.ts";
+import { rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import {
@@ -11,8 +15,8 @@ import {
 import { startRemoteControlService } from "./control.ts";
 import { LaptopSessionControl, listSavedRemoteSessions } from "./laptop-session-control.ts";
 import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
-import type { ResolvedRemoteTarget } from "./target.ts";
-import type { RemoteSessionControlRequest } from "./session-protocol.ts";
+import { type ResolvedRemoteTarget } from "./target.ts";
+import { type RemoteSessionControlRequest } from "./session-protocol.ts";
 import { customEntry } from "./session-save-test-fixture.ts";
 
 const repositories = defineCommittedGitFixture();
@@ -25,7 +29,7 @@ async function fixture(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<v
     } finally {
         await f.service.close();
         f.store.close();
-        await Deno.remove(f.root, { recursive: true });
+        await fsRm(f.root, { recursive: true });
     }
 }
 async function setup() {
@@ -55,7 +59,10 @@ async function setup() {
             body,
         });
     }
-    for (const [path, body] of [["/handshake", JSON.stringify(identity)], ["/readiness", ""]]) {
+    for (const [path, body] of [
+        ["/handshake", JSON.stringify(identity)],
+        ["/readiness", ""],
+    ]) {
         await (await post(path, body)).text();
     }
     async function request(input: RemoteSessionControlRequest) {
@@ -71,15 +78,15 @@ async function setup() {
     return { root, store, target, service, control, owners, request, post, save, baseDir };
 }
 
-Deno.test("a dormant laptop connection and empty remote list create no project or Session evidence", async () => {
+test("a dormant laptop connection and empty remote list create no project or Session evidence", async () => {
     await fixture(async (f) => {
         assertEquals(await f.request({ kind: "list" }), { sessions: [] });
         assertEquals(listProjectsFromDisk(f.baseDir), []);
-        assertEquals(Array.from(Deno.readDirSync(f.baseDir)), []);
+        assertEquals(Array.from(readdirSync(f.baseDir, { withFileTypes: true })), []);
     });
 });
 
-Deno.test("first message ownership stays on the laptop and publication releases the native writer", async () => {
+test("first message ownership stays on the laptop and publication releases the native writer", async () => {
     await fixture(async (f) => {
         const sessionId = crypto.randomUUID();
         const created = await f.request({ kind: "create", sessionId, name: "", admissionId: crypto.randomUUID() });
@@ -88,20 +95,21 @@ Deno.test("first message ownership stays on the laptop and publication releases 
         assertEquals(JSON.parse(hydrated.contents.split("\n")[0]).cwd, f.target.cwd);
         const project = listProjectsFromDisk(f.baseDir)[0];
         const directory = sessionDirForProject(f.baseDir, project);
-        const file = Deno.openSync(lockPath(directory, sessionId), { read: true, write: true });
+        const file = openNativeFileLock(lockPath(directory, sessionId), false);
         try {
             assertEquals(file.tryLockSync(true), false);
-            const user = JSON.stringify({
-                type: "message",
-                id: "user-entry",
-                parentId: null,
-                timestamp: new Date().toISOString(),
-                message: {
-                    role: "user",
-                    content: [{ type: "text", text: "remote sentinel" }],
-                    timestamp: Date.now(),
-                },
-            }) + "\n";
+            const user =
+                JSON.stringify({
+                    type: "message",
+                    id: "user-entry",
+                    parentId: null,
+                    timestamp: new Date().toISOString(),
+                    message: {
+                        role: "user",
+                        content: [{ type: "text", text: "remote sentinel" }],
+                        timestamp: Date.now(),
+                    },
+                }) + "\n";
             await f.save(created.operation, 1, "append", user);
             await f.request({ kind: "checkpoint", operation: created.operation });
             assertEquals(file.tryLockSync(true), true);
@@ -128,7 +136,7 @@ Deno.test("first message ownership stays on the laptop and publication releases 
     });
 });
 
-Deno.test("remote control rejects paths, proofs and lock handles", async () => {
+test("remote control rejects paths, proofs and lock handles", async () => {
     await fixture(async (f) => {
         for (const field of ["path", "proof", "lockHandle", "cwd", "projectId"]) {
             const response = await f.post(
@@ -148,7 +156,7 @@ Deno.test("remote control rejects paths, proofs and lock handles", async () => {
     });
 });
 
-Deno.test("remote begin and list refuse another target's Session", async () => {
+test("remote begin and list refuse another target's Session", async () => {
     await fixture(async (f) => {
         const sessionId = crypto.randomUUID();
         const created = await f.control.handle({
@@ -161,19 +169,20 @@ Deno.test("remote begin and list refuse another target's Session", async () => {
         owner.handle({ operation: owner.operation, sequence: 0, kind: "hydrate", contents: "" });
         owner.handle({ operation: owner.operation, sequence: 1, kind: "append", contents: customEntry() });
         await f.control.handle({ kind: "checkpoint", operation: owner.operation });
-        for (
-            const changed of [
-                { ...f.target.host, hostname: "other.example" },
-                { ...f.target.host, user: "other" },
-                { ...f.target.host, port: 2222 },
-                { ...f.target.host, hostKeyFingerprint: "SHA256:other" },
-            ]
-        ) {
-            const other = new LaptopSessionControl({
-                store: f.store,
-                target: { ...f.target, host: changed },
-                targetLabel: "other",
-            }, new Map());
+        for (const changed of [
+            { ...f.target.host, hostname: "other.example" },
+            { ...f.target.host, user: "other" },
+            { ...f.target.host, port: 2222 },
+            { ...f.target.host, hostKeyFingerprint: "SHA256:other" },
+        ]) {
+            const other = new LaptopSessionControl(
+                {
+                    store: f.store,
+                    target: { ...f.target, host: changed },
+                    targetLabel: "other",
+                },
+                new Map(),
+            );
             assertEquals(await other.handle({ kind: "list" }), { sessions: [] });
             await assertRejects(
                 () => other.handle({ kind: "begin", sessionId, admissionId: crypto.randomUUID() }),
@@ -182,11 +191,14 @@ Deno.test("remote begin and list refuse another target's Session", async () => {
             );
             await assertRejects(() => other.handle({ kind: "list", sessionId }), Error, "does not belong");
         }
-        const otherRoot = new LaptopSessionControl({
-            store: f.store,
-            target: { ...f.target, primaryRoot: join(f.root, "other") },
-            targetLabel: "other",
-        }, new Map());
+        const otherRoot = new LaptopSessionControl(
+            {
+                store: f.store,
+                target: { ...f.target, primaryRoot: join(f.root, "other") },
+                targetLabel: "other",
+            },
+            new Map(),
+        );
         await assertRejects(
             () => otherRoot.handle({ kind: "begin", sessionId, admissionId: crypto.randomUUID() }),
             Error,
@@ -195,7 +207,7 @@ Deno.test("remote begin and list refuse another target's Session", async () => {
     });
 });
 
-Deno.test("connection loss preserves durable entries, releases ownership, and recovers without repeating effects", async () => {
+test("connection loss preserves durable entries, releases ownership, and recovers without repeating effects", async () => {
     await fixture(async (f) => {
         const sessionId = crypto.randomUUID();
         const created = await f.control.handle({
@@ -220,7 +232,7 @@ Deno.test("connection loss preserves durable entries, releases ownership, and re
         assertEquals(typeof reopened.operation, "string");
         const project = listProjectsFromDisk(f.baseDir)[0];
         const manifest = listManifests(sessionDirForProject(f.baseDir, project), false)[0].manifest;
-        assertEquals(Deno.readTextFileSync(manifest.segments[0].transcriptPath).split('"saved-effect"').length - 1, 1);
+        assertEquals(readFileSync(manifest.segments[0].transcriptPath, "utf8").split('"saved-effect"').length - 1, 1);
         next.close();
         assertThrows(
             () =>
@@ -236,18 +248,19 @@ Deno.test("connection loss preserves durable entries, releases ownership, and re
     });
 });
 
-Deno.test("offline history reads only the committed prefix while another turn holds the writer", async () => {
+test("offline history reads only the committed prefix while another turn holds the writer", async () => {
     await fixture(async (f) => {
         const sessionId = crypto.randomUUID();
         const created = await f.request({ kind: "create", sessionId, name: "", admissionId: crypto.randomUUID() });
         await f.save(created.operation, 0, "hydrate");
-        const user = JSON.stringify({
-            type: "message",
-            id: "saved-user",
-            parentId: null,
-            timestamp: new Date().toISOString(),
-            message: { role: "user", content: [{ type: "text", text: "saved history" }], timestamp: Date.now() },
-        }) + "\n";
+        const user =
+            JSON.stringify({
+                type: "message",
+                id: "saved-user",
+                parentId: null,
+                timestamp: new Date().toISOString(),
+                message: { role: "user", content: [{ type: "text", text: "saved history" }], timestamp: Date.now() },
+            }) + "\n";
         await f.save(created.operation, 1, "append", user);
         await f.request({ kind: "checkpoint", operation: created.operation });
         const opened = await f.request({ kind: "begin", sessionId, admissionId: crypto.randomUUID() });
@@ -262,7 +275,7 @@ Deno.test("offline history reads only the committed prefix while another turn ho
     });
 });
 
-Deno.test("cancelling before admission arrives refuses both create and begin without acquiring a writer", async () => {
+test("cancelling before admission arrives refuses both create and begin without acquiring a writer", async () => {
     await fixture(async (f) => {
         const cancelledCreate = crypto.randomUUID();
         await f.request({ kind: "markUncertain", admissionId: cancelledCreate });
@@ -300,7 +313,7 @@ Deno.test("cancelling before admission arrives refuses both create and begin wit
     });
 });
 
-Deno.test("cancelling an in-flight first creation releases the real native acquisition when it finishes", async () => {
+test("cancelling an in-flight first creation releases the real native acquisition when it finishes", async () => {
     await fixture(async (f) => {
         const sessionId = crypto.randomUUID();
         const admissionId = crypto.randomUUID();
@@ -316,7 +329,7 @@ Deno.test("cancelling an in-flight first creation releases the real native acqui
     });
 });
 
-Deno.test("repeated admission and cancellation cannot cancel the next operation on the same Session", async () => {
+test("repeated admission and cancellation cannot cancel the next operation on the same Session", async () => {
     await fixture(async (f) => {
         const sessionId = crypto.randomUUID();
         const admissionId = crypto.randomUUID();
@@ -349,7 +362,7 @@ Deno.test("repeated admission and cancellation cannot cancel the next operation 
     });
 });
 
-Deno.test("a refused busy admission cancellation leaves the existing operation active", async () => {
+test("a refused busy admission cancellation leaves the existing operation active", async () => {
     await fixture(async (f) => {
         const sessionId = crypto.randomUUID();
         const created = await f.request({ kind: "create", sessionId, name: "", admissionId: crypto.randomUUID() });
@@ -364,18 +377,16 @@ Deno.test("a refused busy admission cancellation leaves the existing operation a
     });
 });
 
-Deno.test("admission cancellation protocol refuses ambiguous identities and private laptop authority", async () => {
+test("admission cancellation protocol refuses ambiguous identities and private laptop authority", async () => {
     await fixture(async (f) => {
         const admissionId = crypto.randomUUID();
-        for (
-            const body of [
-                { kind: "begin", sessionId: crypto.randomUUID() },
-                { kind: "create", sessionId: crypto.randomUUID(), name: "" },
-                { kind: "markUncertain", admissionId: "not-an-admission" },
-                { kind: "markUncertain", admissionId, operation: crypto.randomUUID() },
-                { kind: "markUncertain", admissionId, proof: { ownerInstanceId: "remote" } },
-            ]
-        ) {
+        for (const body of [
+            { kind: "begin", sessionId: crypto.randomUUID() },
+            { kind: "create", sessionId: crypto.randomUUID(), name: "" },
+            { kind: "markUncertain", admissionId: "not-an-admission" },
+            { kind: "markUncertain", admissionId, operation: crypto.randomUUID() },
+            { kind: "markUncertain", admissionId, proof: { ownerInstanceId: "remote" } },
+        ]) {
             const response = await f.post("/session/control", JSON.stringify(body));
             assertEquals(response.status, 400);
             await response.text();

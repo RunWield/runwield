@@ -1,9 +1,12 @@
-import { assertEquals, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp, realpath as fsRealpath, writeFile as fsWriteFile, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import { listOwnerProjects } from "../../ui/workspace/server/owner-projects.ts";
-import type { RemoteHostIdentity, RemoteTarget } from "../remote/target.ts";
-import type { FileSessionManifest } from "./file-session-store-types.ts";
+import { type RemoteHostIdentity, type RemoteTarget } from "../remote/target.ts";
+import { type FileSessionManifest } from "./file-session-store-types.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import {
     ensureRemoteProject,
@@ -38,7 +41,7 @@ function target(root: string): RemoteTarget {
 }
 
 async function makeFixture() {
-    const root = await Deno.realPath(await Deno.makeTempDir({ prefix: "local-project-visibility-" }));
+    const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "local-project-visibility-")));
     const baseDir = join(root, "sessions");
     const store = openFileSessionStore({ baseDir });
     const local = store.ensureRuntimeProject({ root });
@@ -48,7 +51,7 @@ async function makeFixture() {
     const localDir = sessionDirForProject(baseDir, local);
     const transcriptPath = join(localDir, "2026-01-01T00-00-00-000Z_local-pi.jsonl");
     const timestamp = "2026-01-01T00:00:00.000Z";
-    await Deno.writeTextFile(
+    await fsWriteFile(
         transcriptPath,
         JSON.stringify({ type: "session", version: 3, id: "local-pi", timestamp, cwd: root }) + "\n",
     );
@@ -62,7 +65,7 @@ async function makeFixture() {
     // catalog APIs deliberately cannot register a remote transcript.
     const remoteDir = sessionDirForProject(baseDir, remote);
     const remoteTranscript = join(remoteDir, "2026-01-01T00-00-00-000Z_remote-pi.jsonl");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         remoteTranscript,
         JSON.stringify({ type: "session", version: 3, id: "remote-pi", timestamp, cwd: root }) + "\n",
     );
@@ -78,15 +81,17 @@ async function makeFixture() {
         piSessionId: "remote-pi",
         transcriptPath: remoteTranscript,
     }));
-    manifest.planAssociations = [{
-        planId: "remote-plan",
-        planName: "remote-plan",
-        purpose: "planning",
-        segmentId: "remote-segment",
-        segmentKind: "planning",
-        recordedAt: timestamp,
-        committedGeneration: 1,
-    }];
+    manifest.planAssociations = [
+        {
+            planId: "remote-plan",
+            planName: "remote-plan",
+            purpose: "planning",
+            segmentId: "remote-segment",
+            segmentKind: "planning",
+            recordedAt: timestamp,
+            committedGeneration: 1,
+        },
+    ];
     writeManifest(manifest, manifestPath(remoteDir, "remote-session"));
     return {
         root,
@@ -99,7 +104,7 @@ async function makeFixture() {
         remoteTranscript,
         async close() {
             store.close();
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         },
     };
 }
@@ -116,7 +121,7 @@ async function withFixture(test: (fixture: Fixture) => Promise<void> | void) {
 }
 
 for (const method of ["listSessionProjects", "listProjects"] as const) {
-    Deno.test(`${method} exposes only local Projects and preserves raw remote records`, async () => {
+    test(`${method} exposes only local Projects and preserves raw remote records`, async () => {
         await withFixture(({ store, baseDir, local, remote, missingRemote }) => {
             assertEquals(store[method](), [local]);
             assertEquals(
@@ -127,7 +132,7 @@ for (const method of ["listSessionProjects", "listProjects"] as const) {
     });
 }
 
-Deno.test("local project lookup and root evidence hide a remote locator", async () => {
+test("local project lookup and root evidence hide a remote locator", async () => {
     await withFixture(({ store, local, remote }) => {
         assertEquals(store.getProjectById(local.projectId), local);
         assertEquals(store.getProjectById(remote.projectId), null);
@@ -136,7 +141,7 @@ Deno.test("local project lookup and root evidence hide a remote locator", async 
 });
 
 for (const key of ["remote", "missingRemote"] as const) {
-    Deno.test(`local root access rejects ${key} before laptop filesystem lookup`, async () => {
+    test(`local root access rejects ${key} before laptop filesystem lookup`, async () => {
         await withFixture((fixture) => {
             assertThrows(
                 () => fixture.store.requireSessionProjectRoot(fixture[key].projectId),
@@ -149,7 +154,7 @@ for (const key of ["remote", "missingRemote"] as const) {
 }
 
 for (const catalog of [true, false]) {
-    Deno.test(`local Session listing hides remote manifests with catalog=${catalog}`, async () => {
+    test(`local Session listing hides remote manifests with catalog=${catalog}`, async () => {
         await withFixture(async ({ store, local, remote, missingRemote }) => {
             assertEquals((await store.listProjectSessions(local.projectId, { catalog })).total, 1);
             for (const project of [remote, missingRemote]) {
@@ -162,7 +167,7 @@ for (const catalog of [true, false]) {
     });
 }
 
-Deno.test("local Session ID lookup hides remote Sessions", async () => {
+test("local Session ID lookup hides remote Sessions", async () => {
     await withFixture(({ store, local, remote, session }) => {
         assertEquals(store.getSessionById(session.runwieldSessionId)?.projectId, local.projectId);
         assertEquals(store.getSessionById("remote-session"), null);
@@ -170,7 +175,7 @@ Deno.test("local Session ID lookup hides remote Sessions", async () => {
     });
 });
 
-Deno.test("local Pi Session locator lookup hides remote Sessions", async () => {
+test("local Pi Session locator lookup hides remote Sessions", async () => {
     await withFixture(({ store, local, remote }) => {
         assertEquals(store.findSessionByLocator({ piSessionId: "local-pi" })?.projectId, local.projectId);
         assertEquals(store.findSessionByLocator({ piSessionId: "remote-pi" }), null);
@@ -178,7 +183,7 @@ Deno.test("local Pi Session locator lookup hides remote Sessions", async () => {
     });
 });
 
-Deno.test("local transcript locator lookup hides remote Sessions", async () => {
+test("local transcript locator lookup hides remote Sessions", async () => {
     await withFixture(({ store, session, remoteTranscript }) => {
         assertEquals(
             store.findSessionByLocator({ transcriptPath: session.transcriptPath })?.projectId,
@@ -188,7 +193,7 @@ Deno.test("local transcript locator lookup hides remote Sessions", async () => {
     });
 });
 
-Deno.test("local resume classification ignores a remote Project with the same root", async () => {
+test("local resume classification ignores a remote Project with the same root", async () => {
     await withFixture(async ({ store, root, local }) => {
         assertEquals(
             (await classifyRootSessionLocator({ cwd: root, ownerCoordinationStore: store })).project?.projectId,
@@ -197,18 +202,21 @@ Deno.test("local resume classification ignores a remote Project with the same ro
     });
 });
 
-Deno.test("load-plan association lookup excludes remote planning evidence", async () => {
+test("load-plan association lookup excludes remote planning evidence", async () => {
     await withFixture(async ({ store, root }) => {
         assertEquals(await findPlanAssociatedSessions(store, { cwd: root, planId: "remote-plan" }), []);
     });
 });
 
-Deno.test("Workspace project scans do not discover remote file Session Projects", async () => {
+test("Workspace project scans do not discover remote file Session Projects", async () => {
     await withFixture(({ root, baseDir, remote }) => {
         const owner = openOwnerCoordinationStore({ dbPath: join(root, "owner.sqlite3"), sessionBaseDir: baseDir });
         try {
             assertEquals(listOwnerProjects(owner), []);
-            assertEquals(owner.listSessionProjects().some((project) => project.projectId === remote.projectId), false);
+            assertEquals(
+                owner.listSessionProjects().some((project) => project.projectId === remote.projectId),
+                false,
+            );
             assertEquals(owner.getProjectById(remote.projectId), null);
         } finally {
             owner.close();

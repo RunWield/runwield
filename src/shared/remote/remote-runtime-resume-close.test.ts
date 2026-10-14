@@ -1,8 +1,10 @@
-import { assert, assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
 import { latch, within, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 
 for (const held of ["begin", "checkpoint"] as const) {
-    Deno.test(`remote close waits for resume's ${held} acknowledgement and leaves no writer`, async () => {
+    test(`remote close waits for resume's ${held} acknowledgement and leaves no writer`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
             f.setModelResponse("Saved history for a close during resume.");
             const original = await f.start();

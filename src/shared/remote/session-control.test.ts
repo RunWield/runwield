@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals } from "../../testing/assertions.ts";
 import { customEntry, makeControlFixture } from "./session-save-test-fixture.ts";
 
-Deno.test("Session HTTP rejects bad credentials without hydrating laptop authority", async () => {
+test("Session HTTP rejects bad credentials without hydrating laptop authority", async () => {
     const f = await makeControlFixture();
     try {
         await f.ready();
@@ -15,7 +16,7 @@ Deno.test("Session HTTP rejects bad credentials without hydrating laptop authori
     }
 });
 
-Deno.test("Session HTTP requires connection readiness and rejects stale operation identities", async () => {
+test("Session HTTP requires connection readiness and rejects stale operation identities", async () => {
     const f = await makeControlFixture();
     try {
         const notReady = await f.post("/session/request", JSON.stringify(f.request("hydrate", 0)));
@@ -38,18 +39,16 @@ Deno.test("Session HTTP requires connection readiness and rejects stale operatio
     }
 });
 
-Deno.test("Session HTTP does not accept paths or caller writer proofs", async () => {
+test("Session HTTP does not accept paths or caller writer proofs", async () => {
     const f = await makeControlFixture();
     try {
         await f.ready();
-        for (
-            const input of [
-                { ...f.request("hydrate", 0), proof: f.proof },
-                { ...f.request("hydrate", 0), path: f.transcriptPath },
-                { ...f.request("hydrate", 0), sequence: -1 },
-                { ...f.request("hydrate", 0), contents: "unexpected" },
-            ]
-        ) {
+        for (const input of [
+            { ...f.request("hydrate", 0), proof: f.proof },
+            { ...f.request("hydrate", 0), path: f.transcriptPath },
+            { ...f.request("hydrate", 0), sequence: -1 },
+            { ...f.request("hydrate", 0), contents: "unexpected" },
+        ]) {
             const response = await f.post("/session/request", JSON.stringify(input));
             assertEquals(response.status, 400);
             await response.text();
@@ -60,7 +59,7 @@ Deno.test("Session HTTP does not accept paths or caller writer proofs", async ()
     }
 });
 
-Deno.test("Session HTTP returns duplicate receipt but refuses conflicting exact bytes", async () => {
+test("Session HTTP returns duplicate receipt but refuses conflicting exact bytes", async () => {
     const f = await makeControlFixture();
     try {
         await f.ready();
@@ -83,7 +82,7 @@ Deno.test("Session HTTP returns duplicate receipt but refuses conflicting exact 
     }
 });
 
-Deno.test("Session HTTP shutdown refuses further save and checkpoint admission", async () => {
+test("Session HTTP shutdown refuses further save and checkpoint admission", async () => {
     const f = await makeControlFixture();
     try {
         await f.ready();

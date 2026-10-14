@@ -17,7 +17,9 @@ export class RemoteSessionControl {
     readonly #baseUrl: string;
     constructor(readonly connection: RemoteSessionControlConnection) {
         if (
-            !Number.isInteger(connection.port) || connection.port < 1 || connection.port > 65535 ||
+            !Number.isInteger(connection.port) ||
+            connection.port < 1 ||
+            connection.port > 65535 ||
             !/^[a-f0-9]{64}$/.test(connection.credential)
         ) {
             throw new Error("Invalid remote Session control connection");

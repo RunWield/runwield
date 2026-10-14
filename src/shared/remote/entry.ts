@@ -80,12 +80,20 @@ export async function parseRemoteInteractiveConfig(header: string): Promise<Remo
     const { parseRemoteConnectionViewConfig } = await import("../../ui/tui/remote-connection-view.ts");
     parseRemoteConnectionViewConfig(JSON.stringify(config.view ?? config));
     if (
-        !config.connection || !Number.isInteger(config.connection.port) || config.connection.port < 1 ||
-        config.connection.port > 65535 || !/^[a-f0-9]{64}$/.test(config.connection.credential) ||
-        typeof config.cwd !== "string" || !config.cwd.startsWith("/") || config.cwd.includes("\0") ||
-        config.cwd !== config.view.cwd || !config.resources ||
-        typeof config.resources.globalRoot !== "string" || !config.resources.globalRoot.startsWith("/")
-    ) throw new Error("Invalid remote interactive configuration");
+        !config.connection ||
+        !Number.isInteger(config.connection.port) ||
+        config.connection.port < 1 ||
+        config.connection.port > 65535 ||
+        !/^[a-f0-9]{64}$/.test(config.connection.credential) ||
+        typeof config.cwd !== "string" ||
+        !config.cwd.startsWith("/") ||
+        config.cwd.includes("\0") ||
+        config.cwd !== config.view.cwd ||
+        !config.resources ||
+        typeof config.resources.globalRoot !== "string" ||
+        !config.resources.globalRoot.startsWith("/")
+    )
+        throw new Error("Invalid remote interactive configuration");
     return config;
 }
 
@@ -102,7 +110,7 @@ export async function runRemoteView(): Promise<void> {
     let stopTUI: (() => void) | undefined;
     let lifecycle: import("../../ui/tui/chat-session.ts").InteractiveLifecycleHandle | undefined;
     let end = () => {};
-    const lifetime = new Promise<void>((resolve) => end = resolve);
+    const lifetime = new Promise<void>((resolve) => (end = resolve));
     const signals = ["SIGTERM", "SIGHUP"] as const;
     try {
         const { configureRemoteModelConnection } = await import("../models/model-registry.ts");
@@ -116,7 +124,7 @@ export async function runRemoteView(): Promise<void> {
         await startInteractiveSession(null, {
             remoteSessionControl: new RemoteSessionControl(config.connection),
             browser: NO_OPEN_BROWSER_PORT,
-            onLifecycleReady: (handle) => lifecycle = handle,
+            onLifecycleReady: (handle) => (lifecycle = handle),
         });
         // entry dispatch exits after return. Startup completion is not TUI exit.
         await lifetime;

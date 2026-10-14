@@ -1,8 +1,10 @@
-import { assert, assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 
-Deno.test("remote resume picker restores the conversation selected by its presented session id", async () => {
+test("remote resume picker restores the conversation selected by its presented session id", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         const contexts: string[] = [];
         f.setModelResponseFactory((context) => {
@@ -22,7 +24,10 @@ Deno.test("remote resume picker restores the conversation selected by its presen
         assertEquals(resumed.ok, true, resumed.error);
         assertEquals(resumed.selectedId, saved.savedId);
         assertEquals(resumed.savedId, saved.savedId);
-        assert(resumed.notices?.some((notice) => notice.includes("restored")), JSON.stringify(resumed));
+        assert(
+            resumed.notices?.some((notice) => notice.includes("restored")),
+            JSON.stringify(resumed),
+        );
         assertEquals(contexts.length, 1, "Resume must not run the saved request again");
         await fresh.send({ kind: "turn", text: "Continue with the saved memory." });
         const continued = await fresh.read();

@@ -6,19 +6,24 @@ export interface RemoteClipboardConnection {
 }
 
 // Match the 20 MiB image limit used by other image input surfaces, including JSON overhead.
-export const MAX_CLIPBOARD_BODY_BYTES = Math.ceil(20 * 1024 * 1024 / 3) * 4 + 64;
+export const MAX_CLIPBOARD_BODY_BYTES = Math.ceil((20 * 1024 * 1024) / 3) * 4 + 64;
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 /** Clipboard input is bytes only. Local paths and attachment identities never cross this boundary. */
 export function validateClipboardImage(value: JsonValue | ClipboardImage): ClipboardImage | null {
     if (value === null) return null;
     if (
-        typeof value !== "object" || Array.isArray(value) ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
         Object.keys(value).sort().join(",") !== "base64,mimeType" ||
-        value.mimeType !== "image/png" || typeof value.base64 !== "string" ||
-        value.base64.length === 0 || value.base64.length > MAX_CLIPBOARD_BODY_BYTES - 64 ||
-        value.base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value.base64)
-    ) throw new Error("Invalid laptop clipboard image");
+        value.mimeType !== "image/png" ||
+        typeof value.base64 !== "string" ||
+        value.base64.length === 0 ||
+        value.base64.length > MAX_CLIPBOARD_BODY_BYTES - 64 ||
+        value.base64.length % 4 !== 0 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(value.base64)
+    )
+        throw new Error("Invalid laptop clipboard image");
     return { base64: value.base64, mimeType: "image/png" };
 }
 
@@ -29,9 +34,12 @@ export interface RemoteClipboardReader extends ClipboardReader {
 /** Compose only the authenticated network boundary; closing never enables a local clipboard fallback. */
 export function createRemoteClipboardReader(connection: RemoteClipboardConnection): RemoteClipboardReader {
     if (
-        !Number.isInteger(connection.port) || connection.port < 1 || connection.port > 65535 ||
+        !Number.isInteger(connection.port) ||
+        connection.port < 1 ||
+        connection.port > 65535 ||
         !/^[a-f0-9]{64}$/.test(connection.credential)
-    ) throw new Error("Invalid remote clipboard connection");
+    )
+        throw new Error("Invalid remote clipboard connection");
     const { port, credential } = connection;
     const abort = new AbortController();
     async function readClipboardImage(): Promise<ClipboardImage | null> {
@@ -72,7 +80,7 @@ export function createRemoteClipboardReader(connection: RemoteClipboardConnectio
     }
     return {
         readClipboardImage,
-        hasClipboardImage: async () => await readClipboardImage() !== null,
+        hasClipboardImage: async () => (await readClipboardImage()) !== null,
         close: () => abort.abort(),
     };
 }

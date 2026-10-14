@@ -80,9 +80,8 @@ export function getResumeModelSelection(sessionModel: PersistedModelSelection | 
             if (model && registry.isSelectable(model)) {
                 return {
                     modelOverride: `${model.provider}/${model.id}`,
-                    contextWindow: typeof model.contextWindow === "number"
-                        ? model.contextWindow
-                        : DEFAULT_CONTEXT_WINDOW,
+                    contextWindow:
+                        typeof model.contextWindow === "number" ? model.contextWindow : DEFAULT_CONTEXT_WINDOW,
                 };
             }
         } catch {
@@ -211,9 +210,9 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
         try {
             const result = await sessionRuntime.compactSession(loaded.sessionId);
             if ("ok" in result && result.ok === false) throw new Error(result.error);
-            notice = `Conversation compacted and restored. Previous size: ${
-                (result.tokensBefore ?? 0).toLocaleString()
-            } tokens.`;
+            notice = `Conversation compacted and restored. Previous size: ${(
+                result.tokensBefore ?? 0
+            ).toLocaleString()} tokens.`;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const canceled = message === "Compaction cancelled" || message.includes("cancelled");

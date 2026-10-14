@@ -1,5 +1,7 @@
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { rename as fsRename } from "node:fs/promises";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
 import { getHomeDir } from "../../constants.js";
 import { configureRemotePersonalResources, PersonalResourcePathError } from "../../shared/remote/personal-resources.ts";
@@ -10,7 +12,7 @@ import { VirtualTerminal } from "./testing/virtual-terminal.js";
 
 // Remote personal roots are process-lifetime state. Isolate this mount-loss
 // regression from other view fixtures with the per-file test runner.
-Deno.test("chat view renders its warmed Session when unused personal settings become unavailable", async () => {
+test("chat view renders its warmed Session when unused personal settings become unavailable", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
         session.resetAgentInfoStack("Router", "selected-model", "selected-provider", "router");
         assertEquals(isMascotEnabled(projectRoot), true);
@@ -28,6 +30,7 @@ Deno.test("chat view renders its warmed Session when unused personal settings be
                     const tui = new TuiCtor(terminal);
                     const view = await createChatView({
                         tui,
+                        documentLinks: null,
                         suppressStartupHeader: true,
                         getSessionId: () => sessionId,
                         sessionRuntime: runtime,
@@ -42,7 +45,7 @@ Deno.test("chat view renders its warmed Session when unused personal settings be
                 }
             }
             configureRemotePersonalResources({ globalRoot: mounted });
-            await Deno.rename(mounted, detached);
+            await fsRename(mounted, detached);
             mountRemoved = true;
             assertThrows(() => getSettingsManager(projectRoot).getDefaultModel(), PersonalResourcePathError);
             // The existing 500 ms window stays warm. Rendering must not bypass
@@ -54,7 +57,7 @@ Deno.test("chat view renders its warmed Session when unused personal settings be
                 assertStringIncludes(terminal.getScreenText(), "keep my draft");
             }
         } finally {
-            if (mountRemoved) await Deno.rename(detached, mounted);
+            if (mountRemoved) await fsRename(detached, mounted);
             for (const { view, tui } of views) {
                 view.dispose();
                 tui.stop();

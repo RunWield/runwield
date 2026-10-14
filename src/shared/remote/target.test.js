@@ -134,6 +134,13 @@ test("laptop resolver sends literal SSH operands and JSON paths and preserves re
             source,
             `
 import { readFileSync, writeFileSync } from "node:fs";
+const args = process.argv.slice(2);
+if (args[0] === "-G") {
+    if (JSON.stringify(args) !== JSON.stringify(["-G", "--", "user@example"])) process.exit(42);
+    console.log("hostname example\\nuser user\\nport 22");
+    process.exit(0);
+}
+console.error("debug1: Server host key: ssh-ed25519 SHA256:fixture");
 let input = "";
 for await (const chunk of process.stdin) input += chunk.toString();
 writeFileSync(${JSON.stringify(log)}, JSON.stringify({ args: process.argv.slice(2), input: JSON.parse(input) }));
@@ -156,9 +163,21 @@ process.exitCode = response.ok ? 0 : 1;
         };
         await fsWriteFile(config, JSON.stringify({ ok: true, ...target }));
         const path = "space ' $(touch BAD); folder";
-        assertEquals(await resolveRemoteTarget("user@example", path, ssh), target);
+        assertEquals(await resolveRemoteTarget("user@example", path, ssh), {
+            ...target,
+            host: { hostname: "example", user: "user", port: 22, hostKeyFingerprint: "SHA256:fixture" },
+        });
         assertEquals(JSON.parse(await fsReadFile(log, "utf8")), {
-            args: ["-T", "--", "user@example", REMOTE_RESOLVE_COMMAND],
+            args: [
+                "-v",
+                "-o",
+                "ControlPath=none",
+                "-oFingerprintHash=sha256",
+                "-T",
+                "--",
+                "user@example",
+                REMOTE_RESOLVE_COMMAND,
+            ],
             input: { path },
         });
         await resolveRemoteTarget("user@example", null, ssh);

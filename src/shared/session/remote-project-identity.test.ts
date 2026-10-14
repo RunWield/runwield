@@ -1,6 +1,10 @@
-import { assertEquals, assertNotEquals } from "@std/assert";
-import { join } from "@std/path";
-import type { RemoteHostIdentity, RemoteTarget } from "../remote/target.ts";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp, realpath as fsRealpath, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
+import { test } from "node:test";
+import { assertEquals } from "../../testing/assertions.ts";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { type RemoteHostIdentity, type RemoteTarget } from "../remote/target.ts";
 import {
     ensureProject,
     ensureRemoteProject,
@@ -30,15 +34,15 @@ function target(root: string): RemoteTarget {
 }
 
 async function withStore(test: (baseDir: string, root: string) => void): Promise<void> {
-    const root = await Deno.realPath(await Deno.makeTempDir());
+    const root = await fsRealpath(await fsMkdtemp(join(tmpdir(), "runwield-")));
     try {
         test(join(root, "sessions"), root);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 }
 
-Deno.test("remote project registration and lookup never require a laptop directory for the remote root", async () => {
+test("remote project registration and lookup never require a laptop directory for the remote root", async () => {
     await withStore((baseDir) => {
         const remote = target(`/remote-only-${crypto.randomUUID()}/project`);
         const project = ensureRemoteProject(baseDir, host, remote);
@@ -49,18 +53,17 @@ Deno.test("remote project registration and lookup never require a laptop directo
     });
 });
 
-Deno.test("same-named remote folders are scoped by every host identity field", async () => {
+test("same-named remote folders are scoped by every host identity field", async () => {
     await withStore((baseDir) => {
         const remote = target("/home/developer/project");
         const project = ensureRemoteProject(baseDir, host, remote);
-        for (
-            const changed of [
-                { ...host, hostname: "second.example" },
-                { ...host, user: "other" },
-                { ...host, port: 2222 },
-                { ...host, hostKeyFingerprint: "SHA256:second" },
-            ]
-        ) assertNotEquals(ensureRemoteProject(baseDir, changed, remote).projectId, project.projectId);
+        for (const changed of [
+            { ...host, hostname: "second.example" },
+            { ...host, user: "other" },
+            { ...host, port: 2222 },
+            { ...host, hostKeyFingerprint: "SHA256:second" },
+        ])
+            assertNotEquals(ensureRemoteProject(baseDir, changed, remote).projectId, project.projectId);
         assertEquals(ensureRemoteProject(baseDir, { ...host }, remote).projectId, project.projectId);
         assertNotEquals(
             ensureRemoteProject(baseDir, host, target("/home/developer/other")).projectId,
@@ -69,7 +72,7 @@ Deno.test("same-named remote folders are scoped by every host identity field", a
     });
 });
 
-Deno.test("a remote linked worktree shares the primary project identity without changing its execution cwd", async () => {
+test("a remote linked worktree shares the primary project identity without changing its execution cwd", async () => {
     await withStore((baseDir) => {
         const primary = target("/home/developer/project");
         primary.gitRoot = primary.cwd;
@@ -90,7 +93,7 @@ Deno.test("a remote linked worktree shares the primary project identity without 
     });
 });
 
-Deno.test("a remote project cannot adopt a local project with the same root string", async () => {
+test("a remote project cannot adopt a local project with the same root string", async () => {
     await withStore((baseDir, root) => {
         const remote = ensureRemoteProject(baseDir, host, target(root));
         const local = ensureProject(baseDir, root);

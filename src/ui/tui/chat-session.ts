@@ -245,7 +245,7 @@ export async function startInteractiveSession(
                 if (action.kind === "review_plan") {
                     const result = await sessionRuntime.reopenPlanReview(sessionId);
                     if ("url" in result && result.url) {
-                        if (!await options.browser.open(result.url)) {
+                        if (!(await options.browser.open(result.url))) {
                             uiAPIForDispose?.appendSystemMessage(result.url, false, "Plan review");
                         }
                     } else if (result.message) {
@@ -255,7 +255,7 @@ export async function startInteractiveSession(
                 }
                 if (action.kind === "review_code") {
                     const reviewUrl = snapshot.workflowContext?.liveReviewUrl || "";
-                    if (!reviewUrl || !await options.browser.open(reviewUrl)) {
+                    if (!reviewUrl || !(await options.browser.open(reviewUrl))) {
                         uiAPIForDispose?.appendSystemMessage(
                             reviewUrl || "The Code Review is starting. Try again when it is ready.",
                             false,
@@ -276,22 +276,21 @@ export async function startInteractiveSession(
                     ...(context?.status ? { status: context.status } : {}),
                 };
                 const status = String(triageMeta.status || "");
-                const validationStatus = ["implemented", "validated_ci", "reviewed", "validated"].includes(
-                    status,
-                );
-                const result = validationStatus || action.kind === "recover"
-                    ? await sessionRuntime.runValidation(sessionId, {
-                        ...workflow,
-                        planName,
-                        planContent: "",
-                        triageMeta,
-                        trigger: action.kind === "recover" ? "repair" : "session_resume",
-                    })
-                    : await sessionRuntime.executePlan(sessionId, {
-                        ...workflow,
-                        planName,
-                        triageMeta,
-                    });
+                const validationStatus = ["implemented", "validated_ci", "reviewed", "validated"].includes(status);
+                const result =
+                    validationStatus || action.kind === "recover"
+                        ? await sessionRuntime.runValidation(sessionId, {
+                              ...workflow,
+                              planName,
+                              planContent: "",
+                              triageMeta,
+                              trigger: action.kind === "recover" ? "repair" : "session_resume",
+                          })
+                        : await sessionRuntime.executePlan(sessionId, {
+                              ...workflow,
+                              planName,
+                              triageMeta,
+                          });
                 if (result?.error) throw new Error(result.error);
             },
         });
@@ -349,11 +348,11 @@ export async function startInteractiveSession(
             builtinSlashInvocationNames = new Set(
                 Array.from(chatBuiltinSlashNames).flatMap((name) => getCommandInvocationNames(commandRegistry[name])),
             );
-            invokablePromptTemplates = promptTemplates.filter((template) =>
-                !builtinSlashInvocationNames.has(template.name)
+            invokablePromptTemplates = promptTemplates.filter(
+                (template) => !builtinSlashInvocationNames.has(template.name),
             );
             blockedPromptTemplates = promptTemplates.filter((template) =>
-                builtinSlashInvocationNames.has(template.name)
+                builtinSlashInvocationNames.has(template.name),
             );
             promptTemplateByName = new Map(invokablePromptTemplates.map((template) => [template.name, template]));
         };
@@ -390,11 +389,12 @@ export async function startInteractiveSession(
                     completedSessionId: string,
                     workRecordFailed?: boolean,
                     workRecordPlanName?: string,
-                ) => inputControllerForPause?.offerSessionCompletion(
-                    completedSessionId,
-                    workRecordFailed,
-                    workRecordPlanName,
-                ),
+                ) =>
+                    inputControllerForPause?.offerSessionCompletion(
+                        completedSessionId,
+                        workRecordFailed,
+                        workRecordPlanName,
+                    ),
             });
             subscribeCommandCatalog();
             view.resetForSessionReplacement();
@@ -422,24 +422,24 @@ export async function startInteractiveSession(
         const modelWelcomeResult = options.skipModelWelcome
             ? { shown: false, suppressBootBanner: false, noModel: false, setupCompleted: false }
             : explicitOnboardingStartup
-            ? {
-                shown: false,
-                suppressBootBanner: false,
-                noModel: !explicitStartupAvailability?.available,
-                setupCompleted: false,
-                availabilityError: explicitStartupAvailability?.error,
-            }
-            : await maybeShowModelWelcome({
-                uiAPI,
-                editor: view.editor,
-                tui,
-                sessionId,
-                sessionRuntime,
-                initialAgentInternalName,
-                initialAgentModel: options.initialAgentModel,
-                projectRoot: runtimeSnapshot().cwd,
-                deferRootActivation: shouldDeferManagedActivation,
-            });
+              ? {
+                    shown: false,
+                    suppressBootBanner: false,
+                    noModel: !explicitStartupAvailability?.available,
+                    setupCompleted: false,
+                    availabilityError: explicitStartupAvailability?.error,
+                }
+              : await maybeShowModelWelcome({
+                    uiAPI,
+                    editor: view.editor,
+                    tui,
+                    sessionId,
+                    sessionRuntime,
+                    initialAgentInternalName,
+                    initialAgentModel: options.initialAgentModel,
+                    projectRoot: runtimeSnapshot().cwd,
+                    deferRootActivation: shouldDeferManagedActivation,
+                });
         if (!modelWelcomeResult.noModel && shouldDeferManagedActivation && !explicitOnboardingStartup) {
             sessionRuntime.markPromptReadyAgent(sessionId, {
                 agentName: initialAgentInternalName,
@@ -454,9 +454,7 @@ export async function startInteractiveSession(
                 COMMAND_NAMES.ONBOARD,
                 COMMAND_NAMES.QUIT,
                 COMMAND_NAMES.EXIT,
-            ].includes(
-                commandName,
-            );
+            ].includes(commandName);
         };
         let modelSetupRequired = modelWelcomeResult.noModel;
         const shouldBlockForModelSetup = (): boolean => {
@@ -470,16 +468,21 @@ export async function startInteractiveSession(
             return true;
         };
         if (
-            !explicitOnboardingStartup && !sessionStartedEmptyProjectDirectory && !initDone &&
+            !explicitOnboardingStartup &&
+            !sessionStartedEmptyProjectDirectory &&
+            !initDone &&
             !modelWelcomeResult.noModel
         ) {
             const alreadyOffered = await isInitOfferedFn();
             if (!alreadyOffered || initStateClaimedDone) {
                 startupInitDecisionHandled = true;
-                const choice = await uiAPI.promptSelect("Would you like to run /init to bootstrap RunWield?", [{
-                    value: "yes",
-                    label: "Yes",
-                }, { value: "no", label: "No" }]);
+                const choice = await uiAPI.promptSelect("Would you like to run /init to bootstrap RunWield?", [
+                    {
+                        value: "yes",
+                        label: "Yes",
+                    },
+                    { value: "no", label: "No" },
+                ]);
                 if (choice === "yes") {
                     await commandRegistry[COMMAND_NAMES.INIT].execute([], { uiAPI, sessionId, sessionRuntime });
                     initCommandAvailable = !(await isProjectInitComplete());
@@ -494,9 +497,10 @@ export async function startInteractiveSession(
                 [
                     ...Array.from(chatBuiltinSlashNames).map((name) => ({
                         name,
-                        description: name === "init" && !initCommandAvailable
-                            ? "Already initialized for this project"
-                            : commandRegistry[name].description,
+                        description:
+                            name === "init" && !initCommandAvailable
+                                ? "Already initialized for this project"
+                                : commandRegistry[name].description,
                         getArgumentCompletions: commandRegistry[name].getArgumentCompletions,
                     })),
                     ...invokablePromptTemplates.map((template) => ({
@@ -504,7 +508,8 @@ export async function startInteractiveSession(
                         argumentHint: template.argumentHint,
                         description: template.description,
                     })),
-                    ...skills.filter((skill) => skill.description && skill.description !== "No description provided")
+                    ...skills
+                        .filter((skill) => skill.description && skill.description !== "No description provided")
                         .map((skill) => ({ name: `skill:${skill.name}`, description: skill.description })),
                 ],
                 runtimeSnapshot().cwd,
@@ -524,13 +529,10 @@ export async function startInteractiveSession(
         };
         const beginOnboarding = async (): Promise<void> => {
             const projectRoot = runtimeSnapshot().cwd;
-            const choice = await uiAPI.promptSelect(
-                `${ONBOARDING_WARNING}\n\nProject: ${projectRoot}`,
-                [
-                    { value: "start", label: "Start tutorial" },
-                    { value: "skip", label: "Skip" },
-                ],
-            );
+            const choice = await uiAPI.promptSelect(`${ONBOARDING_WARNING}\n\nProject: ${projectRoot}`, [
+                { value: "start", label: "Start tutorial" },
+                { value: "skip", label: "Skip" },
+            ]);
             await markOnboardingOfferHandled();
             if (choice !== "start") {
                 view.focusEditor();
@@ -664,10 +666,7 @@ export async function startInteractiveSession(
             }
 
             uiAPI.appendSystemMessage(ONBOARDING_DISCOVERY_EXPLANATION, false, "Tutorial · Choose an improvement");
-            await inputController?.submitTutorialRequest(
-                ONBOARDING_TUTORIAL_REQUEST,
-                createInitialTutorialContext(),
-            );
+            await inputController?.submitTutorialRequest(ONBOARDING_TUTORIAL_REQUEST, createInitialTutorialContext());
         };
         inputController = createChatInputController({
             view,
@@ -699,7 +698,9 @@ export async function startInteractiveSession(
         }
         view.requestRender();
         if (
-            !suppressStartupHeader && sessionStartedEmptyProjectDirectory && !initialUserRequest &&
+            !suppressStartupHeader &&
+            sessionStartedEmptyProjectDirectory &&
+            !initialUserRequest &&
             !modelWelcomeResult.noModel
         ) {
             uiAPI.appendSystemMessage(EMPTY_PROJECT_DIRECTORY_WELCOME_BODY, false, EMPTY_PROJECT_DIRECTORY_HEADER, {
@@ -714,13 +715,10 @@ export async function startInteractiveSession(
                 await restoreVerifiedTutorialRecap({ runtime: sessionRuntime, sessionId, uiAPI });
             }
             if (tutorialContext?.guidanceEnabled && !tutorialContext.recapShown) {
-                const resumeChoice = await uiAPI.promptSelect(
-                    "Resume tutorial guidance for this saved Session?",
-                    [
-                        { value: "resume", label: "Resume guidance" },
-                        { value: "without", label: "Continue without tutorial" },
-                    ],
-                );
+                const resumeChoice = await uiAPI.promptSelect("Resume tutorial guidance for this saved Session?", [
+                    { value: "resume", label: "Resume guidance" },
+                    { value: "without", label: "Continue without tutorial" },
+                ]);
                 if (resumeChoice !== "resume") {
                     await sessionRuntime.updateTutorialContext(sessionId, { guidanceEnabled: false });
                     tuiRuntimeAdapter.resumeTutorialPresentation({ discard: true });
@@ -731,13 +729,11 @@ export async function startInteractiveSession(
                 tuiRuntimeAdapter.resumeTutorialPresentation({ discard: true });
             }
         }
-        const automaticOnboardingEligible = !explicitOnboardingStartup && sessionStartMode === "new" &&
+        const automaticOnboardingEligible =
+            !explicitOnboardingStartup &&
+            sessionStartMode === "new" &&
             !initialUserRequest &&
-            getCustomSetting(
-                    ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
-                    "global",
-                    runtimeSnapshot().cwd,
-                ) !== true;
+            getCustomSetting(ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY, "global", runtimeSnapshot().cwd) !== true;
         if (explicitOnboardingStartup || automaticOnboardingEligible) await beginOnboarding();
         if (initialUserRequest && !modelWelcomeResult.noModel) {
             view.editor.setText(initialUserRequest);

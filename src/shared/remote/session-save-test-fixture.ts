@@ -1,4 +1,12 @@
-import { join } from "@std/path";
+import { tmpdir } from "node:os";
+import {
+    mkdtemp as fsMkdtemp,
+    mkdir as fsMkdir,
+    realpath as fsRealpath,
+    writeFile as fsWriteFile,
+    rm as fsRm,
+} from "node:fs/promises";
+import { join } from "node:path";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.js";
 import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
@@ -16,22 +24,26 @@ interface SessionFixtureOptions {
 }
 
 export async function makeSessionFixture(options: SessionFixtureOptions = {}) {
-    const root = await Deno.makeTempDir({ prefix: "remote-session-save-" });
+    const root = await fsMkdtemp(join(tmpdir(), "remote-session-save-"));
     const project = join(root, "laptop-project");
     const remoteProject = join(root, "remote-project");
     const mount = join(root, "mount");
     const home = join(root, "remote-home");
-    for (const path of [project, remoteProject, mount, home]) await Deno.mkdir(path);
-    const cwd = await Deno.realPath(project);
+    for (const path of [project, remoteProject, mount, home]) await fsMkdir(path);
+    const cwd = await fsRealpath(project);
     const baseDir = options.homeSessions ? join(home, ".wld", "sessions") : join(root, "sessions");
     const sessionDir = join(baseDir, encodeCwdForSessionDir(cwd));
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     const piSessionId = crypto.randomUUID();
     const transcriptPath = join(sessionDir, `2026-01-01T00-00-00-000Z_${piSessionId}.jsonl`);
-    const initial = `${
-        JSON.stringify({ type: "session", version: options.version ?? 3, id: piSessionId, timestamp, cwd })
-    }\n${options.legacyContents ?? ""}`;
-    await Deno.writeTextFile(transcriptPath, initial);
+    const initial = `${JSON.stringify({
+        type: "session",
+        version: options.version ?? 3,
+        id: piSessionId,
+        timestamp,
+        cwd,
+    })}\n${options.legacyContents ?? ""}`;
+    await fsWriteFile(transcriptPath, initial);
     const store = openFileSessionStore({ baseDir });
     const registered = store.ensureRuntimeProject({ root: cwd });
     const acquired = await store.ensureSessionCatalogRecordAndAcquire({
@@ -83,20 +95,18 @@ export async function makeSessionFixture(options: SessionFixtureOptions = {}) {
         },
         async close() {
             store.close();
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         },
     };
 }
 
 export function customEntry(id = "effect-1", parentId: string | null = null): string {
     // Whitespace is deliberate: acknowledgements must not normalize saved bytes.
-    return `${
-        JSON.stringify(
-            { type: "custom", id, parentId, timestamp, customType: "runwield.test", data: { effect: "finished" } },
-            null,
-            0,
-        )
-    } \n`;
+    return `${JSON.stringify(
+        { type: "custom", id, parentId, timestamp, customType: "runwield.test", data: { effect: "finished" } },
+        null,
+        0,
+    )} \n`;
 }
 
 export async function makeControlFixture() {
@@ -121,10 +131,12 @@ export async function makeControlFixture() {
         await readiness.text();
         if (healthTimer === undefined) {
             healthTimer = setInterval(() => {
-                healthRequest = healthRequest.then(async () => {
-                    const response = await post("/health", "");
-                    await response.text();
-                }).catch(() => undefined);
+                healthRequest = healthRequest
+                    .then(async () => {
+                        const response = await post("/health", "");
+                        await response.text();
+                    })
+                    .catch(() => undefined);
             }, 250);
         }
     }

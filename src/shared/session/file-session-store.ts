@@ -220,22 +220,23 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             if (locator.transcriptPath) {
                 const found = manifests.findByTranscriptPath(locator.transcriptPath);
                 if (!found || !store.getProjectById(found.manifest.projectId)) return null;
-                const segment = found.manifest.segments.find((candidate) =>
-                    resolve(candidate.transcriptPath) === resolve(String(locator.transcriptPath))
+                const segment = found.manifest.segments.find(
+                    (candidate) => resolve(candidate.transcriptPath) === resolve(String(locator.transcriptPath)),
                 );
                 if (!segment) return null;
                 if (locator.projectId && found.manifest.projectId !== locator.projectId) return null;
                 if (locator.piSessionId && segment.piSessionId !== locator.piSessionId) return null;
                 return catalogedSession(found.manifest);
             }
-            const projects = store.listSessionProjects()
+            const projects = store
+                .listSessionProjects()
                 .filter((project) => !locator.projectId || project.projectId === locator.projectId);
             for (const project of projects) {
                 for (const item of listManifests(sessionDirForProject(baseDir, project))) {
                     manifests.rememberProject(project);
                     manifests.remember(item.path, item.manifest);
-                    const segment = item.manifest.segments.find((candidate) =>
-                        candidate.piSessionId === locator.piSessionId
+                    const segment = item.manifest.segments.find(
+                        (candidate) => candidate.piSessionId === locator.piSessionId,
                     );
                     if (segment) return catalogedSession(item.manifest);
                 }
@@ -345,7 +346,8 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
                     if (
                         lineageResult.kind === "valid" &&
                         !manifests.resolve(lineageResult.lineage.runwieldSessionId, projectId)
-                    ) continue;
+                    )
+                        continue;
                     try {
                         await store.ensureSessionCatalogRecord({
                             projectId,
@@ -373,21 +375,25 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
                     ? requestedPage
                     : 0;
             const requestedPageSize = sessionOptions.pageSize;
-            const pageSize: number = typeof requestedPageSize === "number" &&
-                    Number.isInteger(requestedPageSize) && requestedPageSize > 0
-                ? Math.min(requestedPageSize, 100)
-                : 30;
+            const pageSize: number =
+                typeof requestedPageSize === "number" && Number.isInteger(requestedPageSize) && requestedPageSize > 0
+                    ? Math.min(requestedPageSize, 100)
+                    : 30;
             const listedManifests = listManifests(sessionDir);
             for (const item of listedManifests) manifests.remember(item.path, item.manifest);
             const sessions = listedManifests
                 .map((item) => catalogedSession(item.manifest))
-                .filter((session) =>
-                    sessionOptions.archiveState === "all" ||
-                    (sessionOptions.archiveState === "archived" ? Boolean(session.archivedAt) : !session.archivedAt)
+                .filter(
+                    (session) =>
+                        sessionOptions.archiveState === "all" ||
+                        (sessionOptions.archiveState === "archived"
+                            ? Boolean(session.archivedAt)
+                            : !session.archivedAt),
                 )
-                .sort((left, right) =>
-                    Date.parse(right.headerTimestamp || "") - Date.parse(left.headerTimestamp || "") ||
-                    right.runwieldSessionId.localeCompare(left.runwieldSessionId)
+                .sort(
+                    (left, right) =>
+                        Date.parse(right.headerTimestamp || "") - Date.parse(left.headerTimestamp || "") ||
+                        right.runwieldSessionId.localeCompare(left.runwieldSessionId),
                 );
             const start = page * pageSize;
             return {
@@ -427,8 +433,9 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
         getCurrentSessionSegment(runwieldSessionId) {
             const found = manifests.resolve(runwieldSessionId);
             if (!found) return null;
-            return found.manifest.segments.find((segment) => segment.segmentId === found.manifest.currentSegmentId) ||
-                null;
+            return (
+                found.manifest.segments.find((segment) => segment.segmentId === found.manifest.currentSegmentId) || null
+            );
         },
         async appendSessionTranscriptSegment(segmentOptions) {
             const found = manifests.resolve(segmentOptions.runwieldSessionId, segmentOptions.projectId);
@@ -518,9 +525,9 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
         },
         async findOrphanRolloverCandidates(orphanOptions) {
             const known = new Set(
-                store.listSessionTranscriptSegments(orphanOptions.runwieldSessionId).map((segment) =>
-                    resolve(segment.transcriptPath)
-                ),
+                store
+                    .listSessionTranscriptSegments(orphanOptions.runwieldSessionId)
+                    .map((segment) => resolve(segment.transcriptPath)),
             );
             const found = manifests.resolve(orphanOptions.runwieldSessionId, orphanOptions.projectId);
             if (!found) return [];
@@ -535,7 +542,8 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
                     lineageResult.kind !== "valid" ||
                     lineageResult.lineage.runwieldSessionId !== orphanOptions.runwieldSessionId ||
                     !parentSegmentId
-                ) continue;
+                )
+                    continue;
                 const lineage = lineageResult.lineage;
                 candidates.push({
                     runwieldSessionId: orphanOptions.runwieldSessionId,
@@ -566,7 +574,8 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             if (!path || !successorExists) {
                 return { state: "no_op_retry", transcriptPath: path, segmentId: null, reason: "successor_not_created" };
             }
-            const committed = store.listSessionTranscriptSegments(rolloverOptions.runwieldSessionId)
+            const committed = store
+                .listSessionTranscriptSegments(rolloverOptions.runwieldSessionId)
                 .find((segment) => resolve(segment.transcriptPath) === path);
             if (committed) {
                 return {
@@ -579,19 +588,24 @@ export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}):
             const lineageResult = readLineage(path);
             return lineageResult.kind === "valid"
                 ? {
-                    state: "recoverable_orphan",
-                    transcriptPath: path,
-                    segmentId: lineageResult.lineage.segmentId,
-                    reason: "orphan_lineage_valid",
-                }
+                      state: "recoverable_orphan",
+                      transcriptPath: path,
+                      segmentId: lineageResult.lineage.segmentId,
+                      reason: "orphan_lineage_valid",
+                  }
                 : lineageResult.kind === "malformed"
-                ? {
-                    state: "database_ahead",
-                    transcriptPath: path,
-                    segmentId: null,
-                    reason: "orphan_lineage_malformed",
-                }
-                : { state: "removable_orphan", transcriptPath: path, segmentId: null, reason: "orphan_has_no_lineage" };
+                  ? {
+                        state: "database_ahead",
+                        transcriptPath: path,
+                        segmentId: null,
+                        reason: "orphan_lineage_malformed",
+                    }
+                  : {
+                        state: "removable_orphan",
+                        transcriptPath: path,
+                        segmentId: null,
+                        reason: "orphan_has_no_lineage",
+                    };
         },
         async discardOrphanRolloverCandidate(orphanOptions) {
             const path = resolve(orphanOptions.transcriptPath);

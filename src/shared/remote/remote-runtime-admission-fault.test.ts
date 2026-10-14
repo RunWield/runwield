@@ -1,5 +1,8 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import {
     assertRemoteStorageAbsent,
@@ -10,7 +13,7 @@ import {
 
 for (const kind of ["create", "begin"] as const) {
     for (const fault of ["held", "lost"] as const) {
-        Deno.test(`${fault} ${kind} admission reply stops work and releases the laptop writer with live heartbeats`, async () => {
+        test(`${fault} ${kind} admission reply stops work and releases the laptop writer with live heartbeats`, async () => {
             await withRemoteRuntimeFixture(async (f) => {
                 let modelRequests = 0;
                 f.setModelResponseFactory(() => {
@@ -66,8 +69,8 @@ for (const kind of ["create", "begin"] as const) {
                         "Admission failure must not start a model or tool",
                     );
                     assertEquals(f.store.inspectSessionActivation(admittedSession).activation?.state, "uncertain");
-                    assertEquals(await Deno.readTextFile(join(f.remoteProject, "sentinel.txt")), "remote initial\n");
-                    assertEquals(await Deno.readTextFile(join(f.projectRoot, "sentinel.txt")), "laptop initial\n");
+                    assertEquals(await fsReadFile(join(f.remoteProject, "sentinel.txt"), "utf8"), "remote initial\n");
+                    assertEquals(await fsReadFile(join(f.projectRoot, "sentinel.txt"), "utf8"), "laptop initial\n");
                     assertEquals(
                         f.controls.filter((entry) => entry.request.kind === kind).length,
                         1,

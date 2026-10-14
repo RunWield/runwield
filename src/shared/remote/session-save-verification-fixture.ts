@@ -1,7 +1,13 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { getCwd } from "../../constants.js";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { serveHttp } from "../http-server.ts";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { makeControlFixture, within } from "./session-save-test-fixture.ts";
-import type { RemoteSessionRequest } from "./session-protocol.ts";
+import { type RemoteSessionRequest } from "./session-protocol.ts";
+import process from "node:process";
 
 export type SaveControlFixture = Awaited<ReturnType<typeof makeControlFixture>>;
 export interface VerificationResult {
@@ -32,31 +38,37 @@ export interface VerificationOptions {
     modelConnection?: import("./model-bridge.ts").RemoteModelConnection;
 }
 export function verificationClient(f: SaveControlFixture, baseUrl: string, options: VerificationOptions) {
-    const child = new Deno.Command(Deno.execPath(), {
-        args: [
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
             "run",
             "-A",
             "--node-modules-dir=manual",
             "--quiet",
             new URL("./session-save-test-client.ts", import.meta.url).pathname,
-        ],
+        ]),
         env: { HOME: f.home, MNEMOTECA_DB_PATH: join(f.home, "mnemoteca.sqlite3") },
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
-    const output = child.output();
+        cwd: getCwd(),
+    });
+    const output = collectProcessOutput(child);
     const writer = child.stdin.getWriter();
-    const sent = writer.write(new TextEncoder().encode(
-        JSON.stringify({
-            ...options,
-            connection: { baseUrl, credential: f.control.credential, operation: f.owner.operation },
-            cwd: f.remoteProject,
-            home: f.home,
-            mount: f.mount,
-            marker: join(f.remoteProject, "dependent-marker"),
-        }) + "\n",
-    )).then(() => writer.close()).finally(() => writer.releaseLock());
+    const sent = writer
+        .write(
+            new TextEncoder().encode(
+                JSON.stringify({
+                    ...options,
+                    connection: { baseUrl, credential: f.control.credential, operation: f.owner.operation },
+                    cwd: f.remoteProject,
+                    home: f.home,
+                    mount: f.mount,
+                    marker: join(f.remoteProject, "dependent-marker"),
+                }) + "\n",
+            ),
+        )
+        .then(() => writer.close())
+        .finally(() => writer.releaseLock());
     return {
         async result(): Promise<VerificationResult> {
             await sent;
@@ -67,7 +79,9 @@ export function verificationClient(f: SaveControlFixture, baseUrl: string, optio
         async close() {
             try {
                 child.kill("SIGKILL");
-            } catch { /* Already exited. */ }
+            } catch {
+                /* Already exited. */
+            }
             await output;
             await sent.catch(() => undefined);
         },
@@ -79,7 +93,7 @@ export function verificationTransport(
     f: SaveControlFixture,
     reply: (input: RemoteSessionRequest, response: Response) => Promise<Response>,
 ) {
-    const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
         const contents = await request.text();
         const input: RemoteSessionRequest = JSON.parse(contents);
         const response = await fetch(`${f.baseUrl}/session/request`, {

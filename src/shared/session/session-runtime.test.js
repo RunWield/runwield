@@ -4303,7 +4303,7 @@ test("SessionRuntime loadSession returns opaque metadata and redacted replay eve
         ],
     );
     assertEquals(
-        result.replayEvents.flatMap((event) => event.type === RuntimeEventTypes.SYSTEM_STATUS ? [event.message] : []),
+        result.replayEvents.flatMap((event) => (event.type === RuntimeEventTypes.SYSTEM_STATUS ? [event.message] : [])),
         ["Model changed: test/later", "Thinking level changed: medium"],
     );
     const modernToolEnd = /** @type {any} */ (

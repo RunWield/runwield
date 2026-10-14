@@ -113,11 +113,13 @@ export class RuntimeLifecycleLoading {
             if (managed) {
                 await this.turns.rollManagedSessionSegment(oldSession.id, {
                     kind: "execution",
-                    continuation: JSON.parse(JSON.stringify({
-                        kind: "execution",
-                        activeWorkflow: workflow,
-                        executionOwner: executionAgent,
-                    })),
+                    continuation: JSON.parse(
+                        JSON.stringify({
+                            kind: "execution",
+                            activeWorkflow: workflow,
+                            executionOwner: executionAgent,
+                        }),
+                    ),
                     expectedGeneration: managed.generation,
                 });
             }
@@ -233,9 +235,7 @@ export class RuntimeLifecycleLoading {
         if (classified.kind === "managed") {
             if (classified.session) {
                 const managedSession = classified.session;
-                let inspected = ownerCoordinationStore.inspectSessionActivation(
-                    managedSession.runwieldSessionId,
-                );
+                let inspected = ownerCoordinationStore.inspectSessionActivation(managedSession.runwieldSessionId);
                 if (
                     ["uncertain", "reconcile_required"].includes(inspected.activation?.state || "") ||
                     (!inspected.generation && inspected.activation?.state === "uninitialized")
@@ -259,8 +259,8 @@ export class RuntimeLifecycleLoading {
                     const setupEvents = this.events.consumePendingReplayEvents(adopted.sessionId);
                     const replayEvents = sync.ok
                         ? setupEvents.concat(
-                            (sync.events || []).map((event) => createSessionRuntimeEvent(adopted.sessionId, event)),
-                        )
+                              (sync.events || []).map((event) => createSessionRuntimeEvent(adopted.sessionId, event)),
+                          )
                         : setupEvents;
                     this.events.replacePendingReplayEvents(adopted.sessionId, replayEvents);
                     return {
@@ -311,9 +311,10 @@ export class RuntimeLifecycleLoading {
                 parentSegmentId: managedSegment.lineageParentSegmentId,
                 parentPiSessionId: managedSegment.lineageParentPiSessionId,
                 lineageGroupKey: managedSegment.lineageGroupKey || managedSegment.segmentId,
-                kind: managedSegment.kind === "execution" || managedSegment.kind === "semantic_repair"
-                    ? managedSegment.kind
-                    : "planning",
+                kind:
+                    managedSegment.kind === "execution" || managedSegment.kind === "semantic_repair"
+                        ? managedSegment.kind
+                        : "planning",
             });
             agentName = await resolveResumeAgentName(sessionManager);
         } catch (error) {
@@ -358,11 +359,9 @@ export class RuntimeLifecycleLoading {
             });
             const setupEvents = this.events.consumePendingReplayEvents(hostedSession.id);
             const replayEvents = setupEvents.concat(
-                createProjectedReplayEvents(
-                    hostedSession.id,
-                    getRootSessionBranchEntries(sessionManager),
-                )
-                    .map((event) => createSessionRuntimeEvent(hostedSession.id, event)),
+                createProjectedReplayEvents(hostedSession.id, getRootSessionBranchEntries(sessionManager)).map(
+                    (event) => createSessionRuntimeEvent(hostedSession.id, event),
+                ),
             );
             this.events.replacePendingReplayEvents(hostedSession.id, replayEvents);
             this.events.emitSessionEvent(hostedSession.id, {

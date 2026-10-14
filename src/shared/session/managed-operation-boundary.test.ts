@@ -17,9 +17,7 @@ function delay(ms: number): Promise<void> {
 
 test("managed operation re-entry policy is keyed to capability state, not runtime busy state", async () => {
     const source = await fsReadFile(new URL("./runtime/managed-operations.ts", import.meta.url), "utf8");
-    const rejectionStart = source.indexOf(
-        "rejectManagedPublicMutation(",
-    );
+    const rejectionStart = source.indexOf("rejectManagedPublicMutation(");
     const rejectionEnd = source.indexOf("\n    async runManagedStandaloneMutation", rejectionStart);
     const rejectionBody = source.slice(rejectionStart, rejectionEnd);
     assertEquals(rejectionBody.includes("currentManagedOperations"), true);
@@ -49,9 +47,7 @@ test("managed prompt re-entry is rejected while a real operation holds the capab
                     ownerProcessKind: "test",
                     ownerInstanceId: "managed-operation-boundary-owner",
                 });
-                let firstPrompt:
-                    | Promise<{ ok: boolean; turns: number; error?: string }>
-                    | null = null;
+                let firstPrompt: Promise<{ ok: boolean; turns: number; error?: string }> | null = null;
                 try {
                     const created = await runtime.createInteractiveSession({
                         cwd,

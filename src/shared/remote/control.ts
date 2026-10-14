@@ -38,21 +38,27 @@ function validJson(value: JsonValue): boolean {
 
 function validate(request: UpdateRequest): void {
     if (
-        !request || typeof request.id !== "string" || !/^[a-f0-9]{32}$/.test(request.id) ||
-        !request.update || !record(request.update as JsonValue)
-    ) throw new Error("Invalid settings request");
+        !request ||
+        typeof request.id !== "string" ||
+        !/^[a-f0-9]{32}$/.test(request.id) ||
+        !request.update ||
+        !record(request.update as JsonValue)
+    )
+        throw new Error("Invalid settings request");
     const update = request.update;
     if (update.kind === "set") {
         if (
             Object.keys(update).sort().join(",") !== "key,kind,value" ||
-            !/^[a-zA-Z][a-zA-Z0-9]*$/.test(update.key) || !validJson(update.value)
+            !/^[a-zA-Z][a-zA-Z0-9]*$/.test(update.key) ||
+            !validJson(update.value)
         ) {
             throw new Error("Invalid settings update");
         }
     } else if (update.kind === "model") {
         if (
             Object.keys(update).sort().join(",") !== "kind,model,provider" ||
-            typeof update.model !== "string" || typeof update.provider !== "string"
+            typeof update.model !== "string" ||
+            typeof update.provider !== "string"
         ) {
             throw new Error("Invalid model update");
         }
@@ -116,11 +122,9 @@ export function startRemoteControlService(
     target?: LaptopSessionTarget,
 ): RemoteControlService {
     if (!validIdentity(identity)) throw new Error("Invalid remote control identity");
-    const credential = Array.from(
-        crypto.getRandomValues(new Uint8Array(32)),
-        (byte) => byte.toString(16).padStart(2, "0"),
-    )
-        .join("");
+    const credential = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+    ).join("");
     let connected = false;
     let ready = false;
     let shutdown = false;
@@ -260,12 +264,12 @@ export function startRemoteControlService(
     let modelBridge: Promise<LocalModelBridge> | undefined;
     const getModelBridge = () => {
         if (!modelBridge) {
-            const loading = createRunWieldModelRuntime().then((runtime) => new LocalModelBridge(runtime)).catch(
-                (error) => {
+            const loading = createRunWieldModelRuntime()
+                .then((runtime) => new LocalModelBridge(runtime))
+                .catch((error) => {
                     if (modelBridge === loading) modelBridge = undefined;
                     throw error;
-                },
-            );
+                });
             modelBridge = loading;
         }
         return modelBridge;

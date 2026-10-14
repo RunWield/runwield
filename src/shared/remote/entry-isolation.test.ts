@@ -80,23 +80,8 @@ async function nativeTerminalSession(project: string, home: string): Promise<{ c
                 readiness: "No user turns",
             }) + (process.platform === "win32" ? "\r" : "\n"),
         );
-        const deadline = Date.now() + 20_000;
-        while (!screen.includes("Press q") && !exited && Date.now() < deadline) {
-            await new Promise((resolve) => setTimeout(resolve, 20));
-        }
-        if (!screen.includes("Press q")) throw new Error(`Remote view did not become ready: ${screen}`);
-        for (const input of [
-            "hello\r",
-            "\x1b[200~pasted text\x1b[201~",
-            "/settings\r",
-            "! touch BAD\r",
-            "@secret.txt\r",
-        ]) {
-            child.terminal.write(input);
-            await new Promise((resolve) => setTimeout(resolve, 200));
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        child.terminal.write("q");
+        // Stale status-only data must be rejected before any ordinary TUI input is consumed.
+        child.terminal.write("hello\r/settings\r! touch BAD\r@secret.txt\r");
         const code = await finished;
         screen += decoder.decode();
         return { code, screen };

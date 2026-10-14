@@ -1,4 +1,4 @@
-/** Separate remote process: all Session, tool and save behavior is production code. */
+import { stdinStream } from "../../testing/stdin-stream.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { configureRemoteModelConnection } from "../models/model-registry.ts";
@@ -11,6 +11,7 @@ import { buildAgentSession } from "../session/session.js";
 import { createRemoteRootSessionManager } from "../session/root-session.js";
 import { readImageRef } from "../session/image-attachments.ts";
 import { runResumeCommand } from "../../cmd/resume/index.ts";
+/** Separate remote process: all Session, tool and save behavior is production code. */
 
 export interface RuntimeClientInput {
     connection: RemoteSessionControlConnection;
@@ -58,7 +59,7 @@ export interface RuntimeClientReport {
     closed?: boolean;
     preparedModelOverride?: string;
 }
-const lines = processLines(Deno.stdin.readable);
+const lines = processLines(stdinStream());
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
 configureRemotePersonalResources({ globalRoot: input.resources });
 configureRemoteSettingsConnection(input.connection);
@@ -184,19 +185,22 @@ try {
                     },
                 });
                 const snapshot = runtime.getSessionSnapshot(sessionId);
-                console.log(JSON.stringify({
-                    kind: "resume-command",
-                    ok: true,
-                    selectedId,
-                    notices,
-                    savedId: snapshot?.managed?.runwieldSessionId,
-                }));
+                console.log(
+                    JSON.stringify({
+                        kind: "resume-command",
+                        ok: true,
+                        selectedId,
+                        notices,
+                        savedId: snapshot?.managed?.runwieldSessionId,
+                    }),
+                );
             } else if (command.kind === "image-preflight-turn") {
-                const initialImages = [{
-                    base64:
-                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-                    mimeType: "image/png",
-                }];
+                const initialImages = [
+                    {
+                        base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                        mimeType: "image/png",
+                    },
+                ];
                 const preflight = await runtime.preflightUserTurnImages(sessionId, {
                     initialRequest: command.text || "Describe this image.",
                     agentName: "remote-runtime",
@@ -204,9 +208,8 @@ try {
                     modelOverride: command.modelOverride,
                 });
                 if (!preflight.ok) throw new Error(preflight.message);
-                const preparedModelOverride = "preparedModelOverride" in preflight
-                    ? preflight.preparedModelOverride
-                    : undefined;
+                const preparedModelOverride =
+                    "preparedModelOverride" in preflight ? preflight.preparedModelOverride : undefined;
                 console.log(JSON.stringify({ kind: "image-preflight", ok: true, preparedModelOverride }));
                 const result = await runtime.promptUserTurn(sessionId, {
                     initialRequest: command.text || "Describe this image.",
@@ -217,19 +220,20 @@ try {
                 report("turn", result.ok, result.error);
             } else if (command.kind === "load") {
                 await runtime.closeAllSessionsWhenIdle();
-                sessionId =
-                    (await runtime.loadSession({ cwd: input.cwd, sessionId: command.sessionId || "" })).sessionId;
+                sessionId = (await runtime.loadSession({ cwd: input.cwd, sessionId: command.sessionId || "" }))
+                    .sessionId;
                 report("load", true);
             } else {
                 const result = await runtime.promptUserTurn(sessionId, {
                     initialRequest: command.text || "Read and write the remote project.",
                     agentName: "remote-runtime",
                     initialImages: command.image
-                        ? [{
-                            base64:
-                                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-                            mimeType: "image/png",
-                        }]
+                        ? [
+                              {
+                                  base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                                  mimeType: "image/png",
+                              },
+                          ]
                         : [],
                 });
                 report("turn", result.ok, result.error);

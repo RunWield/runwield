@@ -1,3 +1,4 @@
+import { stdinStream } from "../../../testing/stdin-stream.ts";
 import { processLines } from "../../../shared/remote/remote-runtime-lines.ts";
 import { configureRemotePersonalResources } from "../../../shared/remote/personal-resources.ts";
 import { configureRemoteSettingsConnection } from "../../../shared/remote/settings-bridge.ts";
@@ -30,7 +31,7 @@ export interface RemoteSubmitReport {
     processing: boolean;
     sessionId: string;
 }
-const lines = processLines(Deno.stdin.readable);
+const lines = processLines(stdinStream());
 const input: RemoteSubmitInput = JSON.parse((await lines.read()).value || "{}");
 configureRemotePersonalResources({ globalRoot: input.resources });
 configureRemoteSettingsConnection(input.connection);
@@ -55,9 +56,9 @@ try {
     await startInteractiveSession(null, {
         remoteSessionControl: new RemoteSessionControl(input.connection),
         browser: NO_OPEN_BROWSER_PORT,
-        onLifecycleReady: (handle) => lifecycle = handle,
-        onSessionReady: (id) => sessionId = id,
-        onSessionReplaced: (id) => sessionId = id,
+        onLifecycleReady: (handle) => (lifecycle = handle),
+        onSessionReady: (id) => (sessionId = id),
+        onSessionReplaced: (id) => (sessionId = id),
     });
     await report();
     while (true) {

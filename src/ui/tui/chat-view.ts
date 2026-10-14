@@ -153,9 +153,8 @@ class MeasuredContainer extends Container {
     }
 
     override render(width: number): string[] {
-        const cachedContent = this.cacheAllChildren && this.renderedContent?.width === width
-            ? this.renderedContent
-            : undefined;
+        const cachedContent =
+            this.cacheAllChildren && this.renderedContent?.width === width ? this.renderedContent : undefined;
         if (cachedContent) {
             this.renderedChildren = cachedContent.children;
             Reflect.set(this, "mouseLayout", { width, children: this.renderedChildren });
@@ -237,7 +236,8 @@ export function findVisibleToolBlocks(
     for (const child of messageLayout) {
         const childBottom = childTop + child.height;
         if (
-            childBottom > scrollTop && childTop < viewportBottom &&
+            childBottom > scrollTop &&
+            childTop < viewportBottom &&
             (child.component instanceof ToolExecutionGroupBlock || child.component instanceof ToolExecutionBlock)
         ) {
             visibleBlocks.push(child.component);
@@ -277,9 +277,10 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const tui = options.tui;
     const container = new MeasuredContainer(undefined, false);
     if (!options.suppressStartupHeader) {
-        const titleLine = `${theme.fg("accent", theme.bold("RunWield ─ Plan-by-Default Harness"))} ${
-            theme.fg("dim", `${VERSION}`)
-        }`;
+        const titleLine = `${theme.fg("accent", theme.bold("RunWield ─ Plan-by-Default Harness"))} ${theme.fg(
+            "dim",
+            `${VERSION}`,
+        )}`;
         const compactHelp = theme.fg(
             "muted",
             ["? help", "esc interrupt", "ctrl+c clear/exit", "/ commands", "! bash", "ctrl+o tool groups"].join(" · "),
@@ -294,14 +295,14 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
                 updateNoticeText.setText(renderUpdateNoticeLine(cachedUpdateAvailability.latestVersion));
             }
         } else {
-            void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS).then(
-                (availability) => {
+            void refreshUpdateCheckCache({ currentVersion: VERSION }, SYSTEM_UPDATE_CHECK_PORTS)
+                .then((availability) => {
                     updateNoticeText.setText(
                         availability.available ? renderUpdateNoticeLine(availability.latestVersion) : "",
                     );
                     tui.requestRender();
-                },
-            ).catch(() => {});
+                })
+                .catch(() => {});
         }
         renderBootLogo(container);
         container.addChild(new Text(titleLine, 0, 0));
@@ -356,10 +357,7 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         });
     };
     let liveValidationProgress: TuiSessionSidebarSnapshot["validationProgress"] = null;
-    const sessionSidebar = new TuiSessionSidebar(
-        options.getSessionId,
-        () => snapshotWindow?.read() ?? null,
-    );
+    const sessionSidebar = new TuiSessionSidebar(options.getSessionId, () => snapshotWindow?.read() ?? null);
     const bottomDock: Component = {
         invalidate: () => {
             composerContainer.invalidate();
@@ -436,27 +434,30 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             { component: new ScrollView(sidebarArea, { scrollbar: "auto" }), basis: 0, grow: 1, minSize: 0 },
             { component: mascotArea, basis: "auto", shrink: 0 },
         ]);
-        const transcriptLayout = new HStack([
-            {
-                component: transcriptScrollView,
-                basis: 0,
-                grow: 1,
-                minSize: 48,
-            },
-            {
-                component: rail,
-                basis: 22,
-                shrink: 0,
-                visible: (viewport) =>
-                    viewport.width >= MASCOT_RAIL_MIN_WIDTH && viewport.width < SESSION_SIDEBAR_MIN_WIDTH,
-            },
-            {
-                component: rail,
-                basis: 34,
-                shrink: 0,
-                visible: (viewport) => viewport.width >= SESSION_SIDEBAR_MIN_WIDTH,
-            },
-        ], { gap: 1 });
+        const transcriptLayout = new HStack(
+            [
+                {
+                    component: transcriptScrollView,
+                    basis: 0,
+                    grow: 1,
+                    minSize: 48,
+                },
+                {
+                    component: rail,
+                    basis: 22,
+                    shrink: 0,
+                    visible: (viewport) =>
+                        viewport.width >= MASCOT_RAIL_MIN_WIDTH && viewport.width < SESSION_SIDEBAR_MIN_WIDTH,
+                },
+                {
+                    component: rail,
+                    basis: 34,
+                    shrink: 0,
+                    visible: (viewport) => viewport.width >= SESSION_SIDEBAR_MIN_WIDTH,
+                },
+            ],
+            { gap: 1 },
+        );
         tui.setLayoutRoot(
             new VStack([
                 {
@@ -485,15 +486,20 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         if (!snapshot?.artifacts?.length) return;
         selectingArtifact = true;
         try {
-            const artifactId = selectedId || await uiAPI.promptSelect(
-                "Open artifact",
-                snapshot.artifacts.slice().reverse().map((artifact) => ({
-                    value: artifact.artifactId,
-                    label: artifact.title,
-                    description: artifact.path,
-                })),
-                { persistResult: false },
-            );
+            const artifactId =
+                selectedId ||
+                (await uiAPI.promptSelect(
+                    "Open artifact",
+                    snapshot.artifacts
+                        .slice()
+                        .reverse()
+                        .map((artifact) => ({
+                            value: artifact.artifactId,
+                            label: artifact.title,
+                            description: artifact.path,
+                        })),
+                    { persistResult: false },
+                ));
             const artifact = snapshot.artifacts.find((item) => item.artifactId === artifactId);
             if (!artifact || disposed) return;
             const document = await readSessionArtifact(snapshot.cwd, artifact);
@@ -512,10 +518,13 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
             }
             artifactReaders.add(surface);
             if (!surface.opened) uiAPI.appendSystemMessage(`Open artifact: ${surface.url}`);
-            void surface.waitForDecision().finally(async () => {
-                artifactReaders.delete(surface);
-                await surface.stop();
-            }).catch(() => {});
+            void surface
+                .waitForDecision()
+                .finally(async () => {
+                    artifactReaders.delete(surface);
+                    await surface.stop();
+                })
+                .catch(() => {});
         } catch (error) {
             uiAPI.appendSystemMessage(error instanceof Error ? error.message : String(error), true);
         } finally {
@@ -544,13 +553,13 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         queuedInputContainer,
         transcriptScrollView
             ? () =>
-                findVisibleToolBlocks(
-                    container.renderedChildren,
-                    messageList,
-                    messageList.renderedChildren,
-                    transcriptScrollView.scrollTop,
-                    transcriptScrollView.viewportHeight,
-                )
+                  findVisibleToolBlocks(
+                      container.renderedChildren,
+                      messageList,
+                      messageList.renderedChildren,
+                      transcriptScrollView.scrollTop,
+                      transcriptScrollView.viewportHeight,
+                  )
             : undefined,
         (progress) => {
             liveValidationProgress = progress;
@@ -669,17 +678,23 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
         onFocus: () => {
             try {
                 tui.requestRender();
-            } catch { /* no action */ }
+            } catch {
+                /* no action */
+            }
         },
         onBlur: () => {
             try {
                 tui.requestRender();
-            } catch { /* no action */ }
+            } catch {
+                /* no action */
+            }
         },
         onChange: () => {
             try {
                 tui.requestRender();
-            } catch { /* no action */ }
+            } catch {
+                /* no action */
+            }
         },
     });
     return {

@@ -1,5 +1,11 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { stdinStream } from "../../testing/stdin-stream.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { writeFile as fsWriteFile, readFile as fsReadFile, copyFile as fsCopyFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionRuntime } from "../session/session-runtime.ts";
 import { SessionHost } from "../session/session-host.ts";
@@ -11,6 +17,8 @@ import { RemoteSessionControl } from "./session-control-client.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { type RuntimeClientInput } from "./remote-runtime-test-client.ts";
 import { type RuntimeFixture, within, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
+
+import process from "node:process";
 
 interface SettingsCommand {
     kind: "turn" | "load" | "switch" | "model" | "thinking" | "compact" | "cycle" | "pending" | "close";
@@ -35,7 +43,7 @@ interface SettingsProcess {
 
 // A separate process runs real Runtime operations; only model replies are synthetic.
 async function runSettingsClient() {
-    const lines = processLines(Deno.stdin.readable);
+    const lines = processLines(stdinStream());
     const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
     configureRemotePersonalResources({ globalRoot: input.resources });
     configureRemoteSettingsConnection(input.connection);
@@ -51,15 +59,17 @@ async function runSettingsClient() {
     let id = await runtime.createPromptReadySession({ cwd: input.cwd, agentName: "remote-runtime" });
     function report(ok = true, error?: string) {
         const managed = host.getSession(id)?.getManagedMetadata();
-        console.log(JSON.stringify({
-            ok,
-            error,
-            savedId: managed?.runwieldSessionId,
-            agentName: managed?.activeAgent,
-            model: managed?.model,
-            thinkingLevel: managed?.thinkingLevel,
-            dormant: runtime.isManagedSessionDormant(id),
-        }));
+        console.log(
+            JSON.stringify({
+                ok,
+                error,
+                savedId: managed?.runwieldSessionId,
+                agentName: managed?.activeAgent,
+                model: managed?.model,
+                thinkingLevel: managed?.thinkingLevel,
+                dormant: runtime.isManagedSessionDormant(id),
+            }),
+        );
     }
     try {
         report();
@@ -81,21 +91,22 @@ async function runSettingsClient() {
                         thinkingLevel: command.thinkingLevel,
                     });
                 } else {
-                    const result = command.kind === "turn"
-                        ? await runtime.promptUserTurn(id, { initialRequest: "Remember durable amber-741." })
-                        : command.kind === "switch"
-                        ? await runtime.switchAgent(id, { agentName: command.agentName || "remote-runtime" })
-                        : command.kind === "model"
-                        ? await runtime.reconfigureSessionModel(
-                            id,
-                            command.model || "fixture-model",
-                            "runtime-command-fixture",
-                        )
-                        : command.kind === "thinking"
-                        ? await runtime.setSessionThinkingLevel(id, command.thinkingLevel || "off")
-                        : command.kind === "cycle"
-                        ? await runtime.cycleSessionThinkingLevel(id)
-                        : await runtime.compactSession(id, "Keep durable amber-741.");
+                    const result =
+                        command.kind === "turn"
+                            ? await runtime.promptUserTurn(id, { initialRequest: "Remember durable amber-741." })
+                            : command.kind === "switch"
+                              ? await runtime.switchAgent(id, { agentName: command.agentName || "remote-runtime" })
+                              : command.kind === "model"
+                                ? await runtime.reconfigureSessionModel(
+                                      id,
+                                      command.model || "fixture-model",
+                                      "runtime-command-fixture",
+                                  )
+                                : command.kind === "thinking"
+                                  ? await runtime.setSessionThinkingLevel(id, command.thinkingLevel || "off")
+                                  : command.kind === "cycle"
+                                    ? await runtime.cycleSessionThinkingLevel(id)
+                                    : await runtime.compactSession(id, "Keep durable amber-741.");
                     if ("ok" in result && !result.ok) {
                         report(false, result.error);
                         continue;
@@ -115,8 +126,8 @@ async function runSettingsClient() {
 }
 
 async function startSettingsProcess(f: RuntimeFixture): Promise<SettingsProcess> {
-    const child = new Deno.Command(Deno.execPath(), {
-        args: [
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
             "run",
             "-A",
             "--quiet",
@@ -124,7 +135,7 @@ async function startSettingsProcess(f: RuntimeFixture): Promise<SettingsProcess>
             new URL("../../../deno.json", import.meta.url).pathname,
             new URL(import.meta.url).pathname,
             "--settings-client",
-        ],
+        ]),
         cwd: f.remoteProject,
         env: {
             HOME: f.remoteHome,
@@ -134,7 +145,7 @@ async function startSettingsProcess(f: RuntimeFixture): Promise<SettingsProcess>
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const writer = child.stdin.getWriter();
     const reader = processLines(child.stdout);
     const stderr = new Response(child.stderr).text();
@@ -167,7 +178,9 @@ async function startSettingsProcess(f: RuntimeFixture): Promise<SettingsProcess>
             } finally {
                 try {
                     child.kill("SIGKILL");
-                } catch { /* Already exited. */ }
+                } catch {
+                    /* Already exited. */
+                }
                 await child.status;
                 await reader.cancel().catch(() => {});
                 reader.releaseLock();
@@ -180,49 +193,57 @@ async function startSettingsProcess(f: RuntimeFixture): Promise<SettingsProcess>
 async function withConcurrentSettings(
     run: (f: RuntimeFixture, a: SettingsProcess, b: SettingsProcess, id: string) => Promise<void>,
 ) {
-    await withRemoteRuntimeFixture(async (f) => {
-        await Deno.writeTextFile(
-            join(f.resources, "agents", "remote-new.md"),
-            "---\nname: Remote New\ndescription: New conversation Agent\ntools:\n    - read\n---\nNEW-AGENT-CONTEXT. Keep durable amber-741.\n",
-        );
-        const settings = JSON.parse(await Deno.readTextFile(f.settingsPath));
-        settings.compaction = { enabled: false, keepRecentTokens: 64, reserveTokens: 1024 };
-        await Deno.writeTextFile(f.settingsPath, JSON.stringify(settings));
-        await Deno.copyFile(f.settingsPath, join(f.resources, "settings.json"));
-        f.setModelResponse("Durable amber-741 remains. " + "Earlier conversation context. ".repeat(80));
-        const a = await startSettingsProcess(f);
-        const b = await startSettingsProcess(f);
-        try {
-            const first = await b.command({ kind: "turn" });
-            assert(first.savedId);
-            f.setModelResponse("Durable amber-741 remains.");
-            await b.command({ kind: "turn" });
-            await b.command({ kind: "thinking", thinkingLevel: "low" });
-            const loaded = await a.command({ kind: "load", sessionId: first.savedId });
-            assertEquals(loaded.agentName, "remote-runtime");
-            assertEquals(loaded.thinkingLevel, "low");
-            await b.command({ kind: "switch", agentName: "remote-new" });
-            await b.command({ kind: "model", model: "new-model" });
-            await b.command({ kind: "thinking", thinkingLevel: "medium" });
-            assertEquals(f.store.inspectSessionActivation(first.savedId).activation?.state, "idle");
-            await run(f, a, b, first.savedId);
-        } finally {
-            await a.close();
-            await b.close();
-        }
-    }, { reasoning: true, additionalModels: [{ id: "new-model", name: "New Model", reasoning: true }] });
+    await withRemoteRuntimeFixture(
+        async (f) => {
+            await fsWriteFile(
+                join(f.resources, "agents", "remote-new.md"),
+                "---\nname: Remote New\ndescription: New conversation Agent\ntools:\n    - read\n---\nNEW-AGENT-CONTEXT. Keep durable amber-741.\n",
+            );
+            const settings = JSON.parse(await fsReadFile(f.settingsPath, "utf8"));
+            settings.compaction = { enabled: false, keepRecentTokens: 64, reserveTokens: 1024 };
+            await fsWriteFile(f.settingsPath, JSON.stringify(settings));
+            await fsCopyFile(f.settingsPath, join(f.resources, "settings.json"));
+            f.setModelResponse("Durable amber-741 remains. " + "Earlier conversation context. ".repeat(80));
+            const a = await startSettingsProcess(f);
+            const b = await startSettingsProcess(f);
+            try {
+                const first = await b.command({ kind: "turn" });
+                assert(first.savedId);
+                f.setModelResponse("Durable amber-741 remains.");
+                await b.command({ kind: "turn" });
+                await b.command({ kind: "thinking", thinkingLevel: "low" });
+                const loaded = await a.command({ kind: "load", sessionId: first.savedId });
+                assertEquals(loaded.agentName, "remote-runtime");
+                assertEquals(loaded.thinkingLevel, "low");
+                await b.command({ kind: "switch", agentName: "remote-new" });
+                await b.command({ kind: "model", model: "new-model" });
+                await b.command({ kind: "thinking", thinkingLevel: "medium" });
+                assertEquals(f.store.inspectSessionActivation(first.savedId).activation?.state, "idle");
+                await run(f, a, b, first.savedId);
+            } finally {
+                await a.close();
+                await b.close();
+            }
+        },
+        { reasoning: true, additionalModels: [{ id: "new-model", name: "New Model", reasoning: true }] },
+    );
 }
 
 async function savedSettings(f: RuntimeFixture, id: string) {
     const saved = (await f.control.list(id))[0];
     assert(saved.contents);
-    return summarizeProjectedEntries(saved.contents.trim().split("\n").map((line) => JSON.parse(line)));
+    return summarizeProjectedEntries(
+        saved.contents
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line)),
+    );
 }
 
-if (Deno.args.includes("--settings-client")) {
+if (process.argv.slice(2).includes("--settings-client")) {
     await runSettingsClient();
 } else {
-    Deno.test("stale remote compact uses fresh laptop Agent, manual model and thinking without overwriting them", async () => {
+    test("stale remote compact uses fresh laptop Agent, manual model and thinking without overwriting them", async () => {
         await withConcurrentSettings(async (f, a, _b, id) => {
             const contexts: string[] = [];
             f.setModelResponseFactory((context) => {
@@ -238,9 +259,9 @@ if (Deno.args.includes("--settings-client")) {
             assertStringIncludes(contexts[0], "durable amber-741");
             assertEquals(f.modelRequests.at(-1)?.model, "new-model");
             assert(
-                f.saves.slice(before).some((entry) =>
-                    entry.kind === "append" && entry.contents.includes('"type":"compaction"')
-                ),
+                f.saves
+                    .slice(before)
+                    .some((entry) => entry.kind === "append" && entry.contents.includes('"type":"compaction"')),
             );
             const saved = await savedSettings(f, id);
             assertEquals(saved.activeAgent, "remote-new");
@@ -249,7 +270,7 @@ if (Deno.args.includes("--settings-client")) {
         });
     });
 
-    Deno.test("stale remote thinking cycle starts from the freshly committed laptop level and keeps the new Agent", async () => {
+    test("stale remote thinking cycle starts from the freshly committed laptop level and keeps the new Agent", async () => {
         await withConcurrentSettings(async (f, a, _b, id) => {
             const cycled = await a.command({ kind: "cycle" });
             assertEquals(cycled.agentName, "remote-new");
@@ -261,7 +282,7 @@ if (Deno.args.includes("--settings-client")) {
         });
     });
 
-    Deno.test("fresh remote provider context uses committed settings while explicit pending settings still win", async () => {
+    test("fresh remote provider context uses committed settings while explicit pending settings still win", async () => {
         await withConcurrentSettings(async (f, a, b, id) => {
             // Change the laptop evidence after prompt's metadata read, but before
             // its fresh admission. A pre-admission synchronize is not authority.

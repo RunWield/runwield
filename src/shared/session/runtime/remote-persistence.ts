@@ -23,10 +23,10 @@ export class RemoteSessionPersistence {
     constructor(readonly control: RemoteSessionControl) {}
 
     metadata(sessionId: string, entries: FileEntry[], generation: number | null): ManagedSessionMetadata {
-        const identityEntry = entries.find((entry) =>
-            entry.type === "custom" && entry.customType === REMOTE_SESSION_IDENTITY_ENTRY
+        const identityEntry = entries.find(
+            (entry) => entry.type === "custom" && entry.customType === REMOTE_SESSION_IDENTITY_ENTRY,
         );
-        const identity = identityEntry?.type === "custom" ? identityEntry.data as RemoteIdentity : null;
+        const identity = identityEntry?.type === "custom" ? (identityEntry.data as RemoteIdentity) : null;
         if (!identity?.projectId || !identity.currentSegmentId) {
             throw new Error("Laptop Session identity is unavailable");
         }

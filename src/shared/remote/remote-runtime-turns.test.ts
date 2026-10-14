@@ -1,7 +1,10 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import { type SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
     assertRemoteStorageAbsent,
     assertSmallControlBodies,
@@ -10,7 +13,7 @@ import {
     withRemoteRuntimeFixture,
 } from "./remote-runtime-test-fixture.ts";
 
-Deno.test("remote SessionRuntime stays unsaved until the first submitted message", async () => {
+test("remote SessionRuntime stays unsaved until the first submitted message", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         const child = await f.start();
         const ready = await child.read();
@@ -18,14 +21,17 @@ Deno.test("remote SessionRuntime stays unsaved until the first submitted message
         assertEquals(ready.managed, false);
         assertEquals(await f.control.list(), []);
         assertEquals(f.store.listSessionProjects(), []);
-        assertEquals(f.controls.filter((entry) => entry.request.kind === "create"), []);
+        assertEquals(
+            f.controls.filter((entry) => entry.request.kind === "create"),
+            [],
+        );
         assertEquals(f.saves, []);
         assertSmallControlBodies(f);
         await assertRemoteStorageAbsent(f);
     });
 });
 
-Deno.test("remote normal turns wait for laptop user-save acknowledgement and resume committed context under the same id", async () => {
+test("remote normal turns wait for laptop user-save acknowledgement and resume committed context under the same id", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         const contexts: string[] = [];
         f.setModelResponseFactories([
@@ -56,7 +62,9 @@ Deno.test("remote normal turns wait for laptop user-save acknowledgement and res
         const acknowledge = latch();
         f.policy.handle = async (input, path, response) => {
             if (
-                path === "/session/request" && input.kind === "append" && "contents" in input &&
+                path === "/session/request" &&
+                input.kind === "append" &&
+                "contents" in input &&
                 input.contents.includes('"role":"user"')
             ) {
                 saved.release();
@@ -79,8 +87,11 @@ Deno.test("remote normal turns wait for laptop user-save acknowledgement and res
             await new Promise((resolve) => setTimeout(resolve, 100));
             assertEquals(progressed, false, "The turn must not finish before the user save is acknowledged");
             assertEquals(contexts, []);
-            assertEquals(f.saves.some((entry) => entry.contents.includes('"role":"assistant"')), false);
-            assertEquals(await Deno.readTextFile(join(f.remoteProject, "sentinel.txt")), "remote initial\n");
+            assertEquals(
+                f.saves.some((entry) => entry.contents.includes('"role":"assistant"')),
+                false,
+            );
+            assertEquals(await fsReadFile(join(f.remoteProject, "sentinel.txt"), "utf8"), "remote initial\n");
         } finally {
             acknowledge.release();
         }
@@ -96,8 +107,8 @@ Deno.test("remote normal turns wait for laptop user-save acknowledgement and res
             }`,
         );
         assertStringIncludes(contexts[1], "remote initial");
-        assertEquals(await Deno.readTextFile(join(f.remoteProject, "sentinel.txt")), "remote edited\n");
-        assertEquals(await Deno.readTextFile(join(f.projectRoot, "sentinel.txt")), "laptop initial\n");
+        assertEquals(await fsReadFile(join(f.remoteProject, "sentinel.txt"), "utf8"), "remote edited\n");
+        assertEquals(await fsReadFile(join(f.projectRoot, "sentinel.txt"), "utf8"), "laptop initial\n");
         assertEquals(f.store.inspectSessionActivation(first.savedId).activation?.state, "idle");
         const evidence = (await f.control.list(first.savedId))[0];
         assert(evidence.contents);
@@ -125,17 +136,18 @@ Deno.test("remote normal turns wait for laptop user-save acknowledgement and res
         for (const exchange of f.controls) {
             if (exchange.request.kind !== "list") {
                 const receipt = JSON.parse(exchange.response);
-                assert(Object.keys(receipt).every((key) => ["operation"].includes(key)), exchange.response);
-                for (
-                    const forbidden of [
-                        f.remoteProject,
-                        f.projectRoot,
-                        f.homeDir,
-                        "proof",
-                        "lockHandle",
-                        "transcriptPath",
-                    ]
-                ) {
+                assert(
+                    Object.keys(receipt).every((key) => ["operation"].includes(key)),
+                    exchange.response,
+                );
+                for (const forbidden of [
+                    f.remoteProject,
+                    f.projectRoot,
+                    f.homeDir,
+                    "proof",
+                    "lockHandle",
+                    "transcriptPath",
+                ]) {
                     assertEquals(exchange.response.includes(forbidden), false, exchange.response);
                 }
             }
@@ -144,7 +156,7 @@ Deno.test("remote normal turns wait for laptop user-save acknowledgement and res
     });
 });
 
-Deno.test("fresh remote runtime reads a laptop attachment through attachment-read after resume", async () => {
+test("fresh remote runtime reads a laptop attachment through attachment-read after resume", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         const contexts: string[] = [];
         f.setModelResponseFactory((context) => {
@@ -165,14 +177,22 @@ Deno.test("fresh remote runtime reads a laptop attachment through attachment-rea
         assertStringIncludes(summary.firstMessage, marker);
         const hydrated = (await f.control.list(first.savedId))[0].contents;
         assert(hydrated);
-        const entries: SessionEntry[] = hydrated.trim().split("\n").map((line) => JSON.parse(line));
+        const entries: SessionEntry[] = hydrated
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
         const user = entries.find((entry) => entry.type === "message" && entry.message.role === "user");
         assert(user?.type === "message" && user.message.role === "user");
         assert(Array.isArray(user.message.content));
-        assertEquals(user.message.content.filter((block) => block.type === "text"), [{
-            type: "text",
-            text: `Start a conversation for image storage.\n\n${marker}`,
-        }]);
+        assertEquals(
+            user.message.content.filter((block) => block.type === "text"),
+            [
+                {
+                    type: "text",
+                    text: `Start a conversation for image storage.\n\n${marker}`,
+                },
+            ],
+        );
         assert(user.message.content.some((block) => block.type === "image"));
         assertStringIncludes(contexts[0], marker);
         assertStringIncludes(contexts[0], '"type":"image"');

@@ -97,16 +97,14 @@ export function attachTuiRuntimeAdapter({
     const queueTutorialPresentation = (event, tutorialSessionId = sessionId) => {
         // Capture settlement now: an older idle event waiting behind Tutorial
         // presentation must not consume a later publication's completion.
-        const settlementGeneration = completionPending && !event._meta?.replay &&
-                event.type === RuntimeEventTypes.BUSY_CHANGED && !event.busy
-            ? completionGeneration
-            : null;
+        const settlementGeneration =
+            completionPending && !event._meta?.replay && event.type === RuntimeEventTypes.BUSY_CHANGED && !event.busy
+                ? completionGeneration
+                : null;
         tutorialPresentation = tutorialPresentation
             .then(async () => {
                 await presentTutorialEvent({ runtime, sessionId: tutorialSessionId, uiAPI, event });
-                if (
-                    !disposed && completionPending && settlementGeneration === completionGeneration
-                ) {
+                if (!disposed && completionPending && settlementGeneration === completionGeneration) {
                     completionPending = false;
                     onSessionComplete?.(tutorialSessionId, completionWorkRecordFailed, completionWorkRecordPlanName);
                 }
@@ -115,8 +113,12 @@ export function attachTuiRuntimeAdapter({
     };
     const shouldCacheValidationReport = () => {
         if (validationSessionActive) return true;
-        return currentRoutingIntent === "PLANNED_CHANGE" || currentRoutingIntent === "FEATURE" ||
-            currentRoutingIntent === "PROJECT" || currentRoutingIntent === "QUICK_FIX";
+        return (
+            currentRoutingIntent === "PLANNED_CHANGE" ||
+            currentRoutingIntent === "FEATURE" ||
+            currentRoutingIntent === "PROJECT" ||
+            currentRoutingIntent === "QUICK_FIX"
+        );
     };
     const unsubscribe = runtime.subscribeSessionEvents(sessionId, (event) => {
         if (event.eventId) {
@@ -181,11 +183,7 @@ export function attachTuiRuntimeAdapter({
                     break;
                 }
                 if (value.messageKind === "review_result" && uiAPI.appendReviewResult) {
-                    uiAPI.appendReviewResult(
-                        value.agentName,
-                        value.delta,
-                        value.approved,
-                    );
+                    uiAPI.appendReviewResult(value.agentName, value.delta, value.approved);
                     break;
                 }
                 display.consume(event);
@@ -201,7 +199,8 @@ export function attachTuiRuntimeAdapter({
             case RuntimeEventTypes.SYSTEM_STATUS:
                 if (value.validationProgress) {
                     hiddenValidationReportCached = false;
-                    const completed = value.validationProgress.stage === "terminal" &&
+                    const completed =
+                        value.validationProgress.stage === "terminal" &&
                         value.validationProgress.outcome === "verified";
                     validationSessionActive = !completed;
                     terminalValidationPanelVisible = value.validationProgress.outcome === "failed";
@@ -326,9 +325,8 @@ export function attachTuiRuntimeAdapter({
         }
         if (tutorialPresentationPaused) bufferedTutorialEvents.push(event);
         else {
-            const tutorialSessionId = event.type === RuntimeEventTypes.SESSION_REPLACED
-                ? value.newSessionId
-                : sessionId;
+            const tutorialSessionId =
+                event.type === RuntimeEventTypes.SESSION_REPLACED ? value.newSessionId : sessionId;
             queueTutorialPresentation(event, tutorialSessionId);
         }
     });

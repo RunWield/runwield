@@ -1,5 +1,12 @@
-import { join } from "@std/path";
-import type { RemoteControlService } from "./control.ts";
+import { decodeTextStream } from "../../testing/decode-text-stream.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { tmpdir } from "node:os";
+import { mkdtemp as fsMkdtemp, writeFile as fsWriteFile, chmod as fsChmod, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
+import { getCwd } from "../../constants.js";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { type RemoteControlService } from "./control.ts";
+import process from "node:process";
 
 export const clipboardIdentity = { buildId: "c".repeat(64), protocol: 1 };
 export const clipboardImage = {
@@ -22,12 +29,15 @@ export async function readyClipboardService(service: RemoteControlService) {
 
 /** A real service in a separate laptop process, with only osascript hardware replaced. */
 export async function laptopClipboardFixture(mode = "image", selectRemote = false) {
-    const root = await Deno.makeTempDir({ prefix: "laptop-clipboard-" });
+    const root = await fsMkdtemp(join(tmpdir(), "laptop-clipboard-"));
     const modePath = join(root, "mode");
     const pngPath = join(root, "clipboard.png");
-    await Deno.writeTextFile(modePath, mode);
-    await Deno.writeFile(pngPath, Uint8Array.from(atob(clipboardImage.base64), (char) => char.charCodeAt(0)));
-    await Deno.writeTextFile(
+    await fsWriteFile(modePath, mode);
+    await fsWriteFile(
+        pngPath,
+        Uint8Array.from(atob(clipboardImage.base64), (char) => char.charCodeAt(0)),
+    );
+    await fsWriteFile(
         join(root, "osascript"),
         String.raw`#!/bin/sh
 [ "$1" = "-e" ] || exit 1
@@ -51,37 +61,45 @@ case "$2" in
 esac
 `,
     );
-    await Deno.chmod(join(root, "osascript"), 0o755);
+    await fsChmod(join(root, "osascript"), 0o755);
     const script = join(root, "service.ts");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         script,
         `
 import { startRemoteControlService } from ${JSON.stringify(new URL("./control.ts", import.meta.url).href)};
 const service = startRemoteControlService(${JSON.stringify(clipboardIdentity)});
 if (${selectRemote}) {
-    const { configureRemoteClipboardConnection } = await import(${
-            JSON.stringify(new URL("../../ui/tui/clipboard.ts", import.meta.url).href)
-        });
+    const { configureRemoteClipboardConnection } = await import(${JSON.stringify(
+        new URL("../../ui/tui/clipboard.ts", import.meta.url).href,
+    )});
     configureRemoteClipboardConnection({ port: 1, credential: "a".repeat(64) });
 }
 console.log(JSON.stringify({ port: service.port, credential: service.credential }));
-await Deno.stdin.read(new Uint8Array(1));
+await new Promise((resolve) => { process.stdin.once("data", resolve); process.stdin.once("end", resolve); });
 await service.close();
 `,
     );
-    const child = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "--quiet", "--config", new URL("../../../deno.json", import.meta.url).pathname, script],
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
+            "run",
+            "-A",
+            "--quiet",
+            "--config",
+            new URL("../../../deno.json", import.meta.url).pathname,
+            script,
+        ]),
         env: {
-            PATH: `${root}:${Deno.env.get("PATH")}`,
+            PATH: `${root}:${process.env["PATH"]}`,
             CLIPBOARD_MODE_PATH: modePath,
             CLIPBOARD_PNG_PATH: pngPath,
         },
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+        cwd: getCwd(),
+    });
     const stderr = new Response(child.stderr).text();
-    const reader = child.stdout.pipeThrough(new TextDecoderStream()).getReader();
+    const reader = child.stdout.pipeThrough(decodeTextStream()).getReader();
     const line = await reader.read();
     const connection: { port: number; credential: string } = JSON.parse(line.value ?? "{}");
     return {
@@ -89,23 +107,30 @@ await service.close();
         modePath,
         connection,
         async ready() {
-            for (const [path, body] of [["/handshake", JSON.stringify(clipboardIdentity)], ["/readiness", undefined]]) {
-                await (await fetch(`http://127.0.0.1:${connection.port}${path}`, {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${connection.credential}` },
-                    body,
-                })).text();
+            for (const [path, body] of [
+                ["/handshake", JSON.stringify(clipboardIdentity)],
+                ["/readiness", undefined],
+            ]) {
+                await (
+                    await fetch(`http://127.0.0.1:${connection.port}${path}`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${connection.credential}` },
+                        body,
+                    })
+                ).text();
             }
         },
         async close() {
-            await Deno.writeTextFile(modePath, "none");
+            await fsWriteFile(modePath, "none");
             await child.stdin.close();
-            while (!(await reader.read()).done) { /* Drain. */ }
+            while (!(await reader.read()).done) {
+                /* Drain. */
+            }
             reader.releaseLock();
             const status = await child.status;
             if (!status.success) throw new Error(await stderr);
             await stderr;
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         },
     };
 }

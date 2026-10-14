@@ -22,8 +22,8 @@ export async function makeSaveModelRuntime(contexts: string[] = []) {
     const stream: ProviderStreams["streamSimple"] = (_model, context) => {
         const result = createAssistantMessageEventStream();
         contexts.push(JSON.stringify(context));
-        const isTurn = context.messages.some((message) =>
-            message.role === "system" && Boolean(message.toolsAdded?.length)
+        const isTurn = context.messages.some(
+            (message) => message.role === "system" && Boolean(message.toolsAdded?.length),
         );
         const hasResult = context.messages.some((message) => message.role === "toolResult");
         const message = fauxAssistantMessage(
@@ -43,30 +43,34 @@ export async function makeSaveModelRuntime(contexts: string[] = []) {
         allowModelNetwork: false,
         refreshOnCreate: false,
     });
-    runtime.registerNativeProvider(createProvider({
-        id: "save-verification",
-        name: "Save verification",
-        models: [{
-            provider: "save-verification",
-            id: "synthetic",
-            name: "Synthetic",
-            api: "openai-completions",
-            baseUrl: "https://verification.invalid",
-            reasoning: false,
-            input: ["text"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 128000,
-            maxTokens: 1000,
-        }],
-        auth: {
-            apiKey: {
-                name: "Verification",
-                check: () => Promise.resolve({ type: "api_key" }),
-                resolve: () => Promise.resolve({ auth: {} }),
+    runtime.registerNativeProvider(
+        createProvider({
+            id: "save-verification",
+            name: "Save verification",
+            models: [
+                {
+                    provider: "save-verification",
+                    id: "synthetic",
+                    name: "Synthetic",
+                    api: "openai-completions",
+                    baseUrl: "https://verification.invalid",
+                    reasoning: false,
+                    input: ["text"],
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                    contextWindow: 128000,
+                    maxTokens: 1000,
+                },
+            ],
+            auth: {
+                apiKey: {
+                    name: "Verification",
+                    check: () => Promise.resolve({ type: "api_key" }),
+                    resolve: () => Promise.resolve({ auth: {} }),
+                },
             },
-        },
-        api: { stream, streamSimple: stream },
-    }));
+            api: { stream, streamSimple: stream },
+        }),
+    );
     await runtime.refresh({ allowNetwork: false });
     return runtime;
 }
@@ -83,9 +87,9 @@ interface SaveAgentOptions {
 export async function makeSaveAgent(options: SaveAgentOptions) {
     const runtime = options.modelConnection
         ? await createRemoteModelRuntime(
-            { ...options.modelConnection, callbackPolicy: "no-extensions" },
-            await fetchRemoteModelCatalog(options.modelConnection),
-        )
+              { ...options.modelConnection, callbackPolicy: "no-extensions" },
+              await fetchRemoteModelCatalog(options.modelConnection),
+          )
         : await makeSaveModelRuntime(options.contexts);
     const settingsManager = SettingsManager.inMemory({
         compaction: { enabled: false, reserveTokens: 100, keepRecentTokens: 1 },
@@ -111,16 +115,18 @@ export async function makeSaveAgent(options: SaveAgentOptions) {
         resourceLoader: loader,
         sessionManager: options.manager,
         tools: ["remote_effect"],
-        customTools: [{
-            name: "remote_effect",
-            label: "Remote effect",
-            description: "Write one owned remote project marker",
-            parameters: { type: "object", properties: {}, additionalProperties: false },
-            execute: async () => ({
-                content: [{ type: "text" as const, text: await options.execute() }],
-                details: null,
-            }),
-        }],
+        customTools: [
+            {
+                name: "remote_effect",
+                label: "Remote effect",
+                description: "Write one owned remote project marker",
+                parameters: { type: "object", properties: {}, additionalProperties: false },
+                execute: async () => ({
+                    content: [{ type: "text" as const, text: await options.execute() }],
+                    details: null,
+                }),
+            },
+        ],
     });
     return session;
 }

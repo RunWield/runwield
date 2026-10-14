@@ -22,11 +22,20 @@ export class RemoteSessionSaveBridge {
         const url = new URL(connection.baseUrl);
         const timeoutMs = connection.timeoutMs ?? 5_000;
         if (
-            url.protocol !== "http:" || url.hostname !== "127.0.0.1" ||
-            url.pathname !== "/" || url.search || url.hash || url.username || url.password ||
-            !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000 ||
-            !connection.credential || !connection.operation
-        ) throw new Error("Invalid remote Session bridge connection");
+            url.protocol !== "http:" ||
+            url.hostname !== "127.0.0.1" ||
+            url.pathname !== "/" ||
+            url.search ||
+            url.hash ||
+            url.username ||
+            url.password ||
+            !Number.isFinite(timeoutMs) ||
+            timeoutMs < 1 ||
+            timeoutMs > 60_000 ||
+            !connection.credential ||
+            !connection.operation
+        )
+            throw new Error("Invalid remote Session bridge connection");
         this.#connection = { ...connection, baseUrl: url.origin, timeoutMs };
         this.#worker = new Worker(new URL("./session-save-worker.ts", import.meta.url).href, { type: "module" });
         this.#worker.onerror = (event) => {
@@ -90,13 +99,14 @@ export class RemoteSessionSaveBridge {
         try {
             validateSessionRequest(input);
             // Attachment reads carry at most MAX_SESSION_BYTES raw bytes, expanded to base64 plus envelope.
-            const capacity = kind === "hydrate" || kind === "inspect"
-                ? MAX_SESSION_BYTES * 6 + 4096
-                : kind === "attachment-read"
-                ? Math.ceil(MAX_SESSION_BYTES / 3) * 4 + 4096
-                : kind === "attachment"
-                ? new TextEncoder().encode(contents).length * 6 + 4096
-                : 4096;
+            const capacity =
+                kind === "hydrate" || kind === "inspect"
+                    ? MAX_SESSION_BYTES * 6 + 4096
+                    : kind === "attachment-read"
+                      ? Math.ceil(MAX_SESSION_BYTES / 3) * 4 + 4096
+                      : kind === "attachment"
+                        ? new TextEncoder().encode(contents).length * 6 + 4096
+                        : 4096;
             const result = new SharedArrayBuffer(8 + capacity);
             const state = new Int32Array(result, 0, 2);
             const deadline = performance.now() + (this.#connection.timeoutMs ?? 5_000);
@@ -120,20 +130,26 @@ export class RemoteSessionSaveBridge {
             if (Atomics.load(state, 0) !== 1) throw new Error(text || "Remote Session save Worker failed");
             const response: RemoteSessionResponse = JSON.parse(text);
             if (
-                response.operation !== input.operation || response.sequence !== input.sequence ||
-                typeof response.contents !== "string" || !response.evidence ||
-                !Number.isSafeInteger(response.evidence.byteLength) || response.evidence.byteLength < 0 ||
+                response.operation !== input.operation ||
+                response.sequence !== input.sequence ||
+                typeof response.contents !== "string" ||
+                !response.evidence ||
+                !Number.isSafeInteger(response.evidence.byteLength) ||
+                response.evidence.byteLength < 0 ||
                 !/^[a-f0-9]{64}$/.test(response.evidence.digestHex)
-            ) throw new Error("Invalid laptop Session acknowledgement");
-            const intended = kind === "hydrate" || kind === "inspect"
-                ? response.contents
-                : kind === "append"
-                ? (this.#savedContents ?? "") + contents
-                : kind === "rewrite"
-                ? contents
-                : this.#savedContents;
+            )
+                throw new Error("Invalid laptop Session acknowledgement");
+            const intended =
+                kind === "hydrate" || kind === "inspect"
+                    ? response.contents
+                    : kind === "append"
+                      ? (this.#savedContents ?? "") + contents
+                      : kind === "rewrite"
+                        ? contents
+                        : this.#savedContents;
             if (
-                intended !== null && (response.evidence.byteLength !== new TextEncoder().encode(intended).length ||
+                intended !== null &&
+                (response.evidence.byteLength !== new TextEncoder().encode(intended).length ||
                     response.evidence.digestHex !== sessionDigest(intended))
             ) {
                 throw new Error("Laptop Session acknowledgement did not match intended bytes");

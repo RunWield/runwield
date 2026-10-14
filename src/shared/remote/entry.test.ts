@@ -1,11 +1,10 @@
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { getCwd } from "../../constants.js";
-import process from "node:process";
 import { test } from "node:test";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { parseRemoteInteractiveConfig } from "./entry.ts";
 
-const decoder = new TextDecoder();
+import process from "node:process";
 
 async function privateEntry(args: string[], input?: string) {
     const child = spawnNativeProcess(process.execPath, {
@@ -77,7 +76,7 @@ test("remote view rejects an unfinished input header", async () => {
     assertStringIncludes(result.stderr, "configuration is missing or incomplete");
 });
 
-Deno.test("remote bootstrap rejects invalid control identity, cwd, and mount roots", async () => {
+test("remote bootstrap rejects invalid control identity, cwd, and mount roots", async () => {
     const config = {
         connection: { port: 1234, credential: "a".repeat(64) },
         cwd: "/remote/project",
@@ -85,16 +84,14 @@ Deno.test("remote bootstrap rejects invalid control identity, cwd, and mount roo
         view: { host: "host", cwd: "/remote/project", status: "Connected", trust: "Trusted", readiness: "Ready" },
     };
     assertEquals(await parseRemoteInteractiveConfig(JSON.stringify(config)), config);
-    for (
-        const invalid of [
-            { ...config, connection: { port: 0, credential: config.connection.credential } },
-            { ...config, connection: { port: 65536, credential: config.connection.credential } },
-            { ...config, connection: { port: 1234, credential: "not-a-credential" } },
-            { ...config, cwd: "relative" },
-            { ...config, cwd: "/another/project" },
-            { ...config, resources: { globalRoot: "relative-mount" } },
-        ]
-    ) {
+    for (const invalid of [
+        { ...config, connection: { port: 0, credential: config.connection.credential } },
+        { ...config, connection: { port: 65536, credential: config.connection.credential } },
+        { ...config, connection: { port: 1234, credential: "not-a-credential" } },
+        { ...config, cwd: "relative" },
+        { ...config, cwd: "/another/project" },
+        { ...config, resources: { globalRoot: "relative-mount" } },
+    ]) {
         await assertRejects(
             () => parseRemoteInteractiveConfig(JSON.stringify(invalid)),
             Error,

@@ -1,12 +1,17 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { test } from "node:test";
+import { writeFile as fsWriteFile } from "node:fs/promises";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { getRunWieldSessionsBaseDir } from "../../shared/session/root-session.js";
 import { startRemoteControlService } from "../../shared/remote/control.ts";
 import { RemoteSessionControl } from "../../shared/remote/session-control-client.ts";
+import process from "node:process";
 
-Deno.test("remote sessions opens committed laptop history offline while its writer remains owned", async () => {
+test("remote sessions opens committed laptop history offline while its writer remains owned", async () => {
     await withRuntimeCommandFixture("remote-offline-command-", async ({ homeDir, projectRoot }) => {
         const store = openFileSessionStore();
         const identity = { buildId: "a".repeat(64), protocol: 1 };
@@ -65,13 +70,14 @@ Deno.test("remote sessions opens committed laptop history offline while its writ
                     operation,
                     sequence: 2,
                     kind: "append",
-                    contents: JSON.stringify({
-                        type: "session_info",
-                        id: "name",
-                        parentId: "user",
-                        name: "Offline Session title",
-                        timestamp: new Date().toISOString(),
-                    }) + "\n",
+                    contents:
+                        JSON.stringify({
+                            type: "session_info",
+                            id: "name",
+                            parentId: "user",
+                            name: "Offline Session title",
+                            timestamp: new Date().toISOString(),
+                        }) + "\n",
                 }),
             );
             await client.checkpoint(operation);
@@ -94,7 +100,7 @@ Deno.test("remote sessions opens committed laptop history offline while its writ
             const command = new URL("./index.ts", import.meta.url).href;
             const tui = new URL("../../ui/tui/tui.ts", import.meta.url).href;
             const virtualTerminal = new URL("../../ui/tui/testing/virtual-terminal.js", import.meta.url).href;
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 script,
                 `
 import { runRemoteCommand } from ${JSON.stringify(command)};
@@ -121,17 +127,16 @@ await running;
 console.log("\\n" + JSON.stringify({ list, replay }));
 `,
             );
-            const result = await new Deno.Command(Deno.execPath(), {
-                args: [
+            const result = await captureForegroundProcess(process.execPath, {
+                args: runtimeSourceArgs([
                     "run",
                     "-A",
                     "--quiet",
                     "--config",
                     new URL("../../../deno.json", import.meta.url).pathname,
                     script,
-                ],
+                ]),
                 cwd: projectRoot,
-                // No SSH executable, artifact, or model service is available to this process.
                 env: {
                     HOME: homeDir,
                     WLD_TEST_SANDBOX_HOME: homeDir,
@@ -139,10 +144,7 @@ console.log("\\n" + JSON.stringify({ list, replay }));
                     PATH: "",
                     MNEMOTECA_DB_PATH: join(homeDir, "offline-memory.db"),
                 },
-                stdin: "null",
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+            });
             assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
             const report = JSON.parse(new TextDecoder().decode(result.stdout).trim().split("\n").at(-1) || "{}");
             assertStringIncludes(report.list, "Offline Session title");

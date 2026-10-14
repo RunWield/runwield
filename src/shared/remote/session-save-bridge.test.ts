@@ -1,9 +1,19 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { serveHttp } from "../http-server.ts";
+import { getCwd } from "../../constants.js";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { readdirSync } from "node:fs";
+import { stat as fsStat, readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { deferred, makeControlFixture, within } from "./session-save-test-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
 import { parseRemoteSessionTranscript, type RemoteSessionRequest } from "./session-protocol.ts";
+import process from "node:process";
 
 type ControlFixture = Awaited<ReturnType<typeof makeControlFixture>>;
 type TransportReply = (input: RemoteSessionRequest, response: Response) => Promise<Response>;
@@ -39,7 +49,7 @@ interface ClientResult {
 
 /** Proxy only the genuine HTTP boundary. All accepted requests reach the actual control service and owner. */
 function startTransport(f: ControlFixture, reply: TransportReply) {
-    const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
         const contents = await request.text();
         const input: RemoteSessionRequest = JSON.parse(contents);
         const response = await fetch(`${f.baseUrl}/session/request`, {
@@ -56,8 +66,8 @@ function startTransport(f: ControlFixture, reply: TransportReply) {
 
 function startClient(f: ControlFixture, baseUrl: string, options: ClientOptions) {
     const marker = join(f.remoteProject, "dependent-marker");
-    const child = new Deno.Command(Deno.execPath(), {
-        args: [
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
             "run",
             "-A",
             "--node-modules-dir=manual",
@@ -75,13 +85,14 @@ function startClient(f: ControlFixture, baseUrl: string, options: ClientOptions)
                 mount: f.mount,
                 ...options,
             }),
-        ],
+        ]),
         env: { HOME: f.home, MNEMOTECA_DB_PATH: join(f.home, "mnemoteca.sqlite3") },
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
-    const output = child.output();
+        cwd: getCwd(),
+    });
+    const output = collectProcessOutput(child);
     return {
         marker,
         async releaseFault() {
@@ -102,21 +113,28 @@ function startClient(f: ControlFixture, baseUrl: string, options: ClientOptions)
         async close() {
             try {
                 child.kill("SIGKILL");
-            } catch { /* Process already exited. */ }
+            } catch {
+                /* Process already exited. */
+            }
             await output;
         },
     };
 }
 
 async function assertFileFree(f: ControlFixture, markerExpected: boolean) {
-    const files = Array.from(Deno.readDirSync(f.remoteProject)).map((entry) => entry.name).sort();
+    const files = Array.from(readdirSync(f.remoteProject, { withFileTypes: true }))
+        .map((entry) => entry.name)
+        .sort();
     assertEquals(files, markerExpected ? ["dependent-marker"] : []);
-    assertEquals(Array.from(Deno.readDirSync(f.mount)).map((entry) => entry.name), []);
-    await assertRejects(() => Deno.stat(join(f.home, ".wld", "sessions")), Deno.errors.NotFound);
-    await assertRejects(() => Deno.stat(join(f.home, ".pi", "agent", "sessions")), Deno.errors.NotFound);
+    assertEquals(
+        Array.from(readdirSync(f.mount, { withFileTypes: true })).map((entry) => entry.name),
+        [],
+    );
+    await assertRejects(() => fsStat(join(f.home, ".wld", "sessions")), Error, "ENOENT");
+    await assertRejects(() => fsStat(join(f.home, ".pi", "agent", "sessions")), Error, "ENOENT");
 }
 
-Deno.test("remote append cannot return or authorize a dependent action before laptop acknowledgement", async () => {
+test("remote append cannot return or authorize a dependent action before laptop acknowledgement", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const saved = deferred();
@@ -137,13 +155,16 @@ Deno.test("remote append cannot return or authorize a dependent action before la
         const entries = parseRemoteSessionTranscript(f.owner.inspect().contents).slice(1);
         assertEquals(entries.length, 1);
         assertEquals(entries[0].type, "custom");
-        await assertRejects(() => Deno.stat(client.marker), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(client.marker), Error, "ENOENT");
         release.resolve();
         const result = await client.result();
         assertEquals(result, { entries: 3, file: null, persisted: false, cwd: f.remoteProject });
         const persisted = parseRemoteSessionTranscript(f.owner.inspect().contents).slice(1);
-        assertEquals(persisted.map((entry) => entry.type), ["custom", "message", "compaction"]);
-        assertEquals(await Deno.readTextFile(client.marker), "dependent action");
+        assertEquals(
+            persisted.map((entry) => entry.type),
+            ["custom", "message", "compaction"],
+        );
+        assertEquals(await fsReadFile(client.marker, "utf8"), "dependent action");
         assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).activation?.state, "idle");
         await assertFileFree(f, true);
     } finally {
@@ -154,7 +175,7 @@ Deno.test("remote append cannot return or authorize a dependent action before la
     }
 });
 
-Deno.test("real HostedSession workflow waiter cannot advance before accepted event save acknowledgement", async () => {
+test("real HostedSession workflow waiter cannot advance before accepted event save acknowledgement", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const saved = deferred();
@@ -173,10 +194,10 @@ Deno.test("real HostedSession workflow waiter cannot advance before accepted eve
     try {
         await within(saved.promise);
         assertStringIncludes(f.owner.inspect().contents, '"state":"accepted"');
-        await assertRejects(() => Deno.stat(client.marker), Deno.errors.NotFound);
+        await assertRejects(() => fsStat(client.marker), Error, "ENOENT");
         release.resolve();
         assertEquals(await client.result(), { kind: "plan_written", pending: 0, file: null });
-        assertEquals(await Deno.readTextFile(client.marker), "plan_written:remote-plan-call");
+        assertEquals(await fsReadFile(client.marker, "utf8"), "plan_written:remote-plan-call");
         assertStringIncludes(f.owner.inspect().contents, '"state":"settled"');
         await assertFileFree(f, true);
     } finally {
@@ -187,7 +208,7 @@ Deno.test("real HostedSession workflow waiter cannot advance before accepted eve
     }
 });
 
-Deno.test("swallowed manual-model save failure leaves retained reads, writes, workflow progress and settlement denied", async () => {
+test("swallowed manual-model save failure leaves retained reads, writes, workflow progress and settlement denied", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const proxy = startTransport(f, async (input, response) => {
@@ -223,7 +244,7 @@ Deno.test("swallowed manual-model save failure leaves retained reads, writes, wo
 });
 
 for (const fault of ["disconnect", "late-ack", "worker-invalid-json", "wrong-evidence"] as const) {
-    Deno.test(`remote ${fault} is sticky and fresh reload uses saved laptop evidence without effect replay`, async () => {
+    test(`remote ${fault} is sticky and fresh reload uses saved laptop evidence without effect replay`, async () => {
         const f = await makeControlFixture();
         await f.ready();
         const saved = deferred();
@@ -259,16 +280,17 @@ for (const fault of ["disconnect", "late-ack", "worker-invalid-json", "wrong-evi
         try {
             await within(saved.promise);
             if (faultGate) {
-                for (let attempt = 0;; attempt++) {
+                for (let attempt = 0; ; attempt++) {
                     try {
-                        await Deno.stat(faultGate);
+                        await fsStat(faultGate);
                         break;
                     } catch (error) {
-                        if (!(error instanceof Deno.errors.NotFound) || attempt >= 1_000) throw error;
+                        if (!(error instanceof Error && "code" in error && error.code === "ENOENT") || attempt >= 1_000)
+                            throw error;
                         await new Promise((resolve) => setTimeout(resolve, 10));
                     }
                 }
-                assertEquals(JSON.parse(await Deno.readTextFile(faultGate)), {
+                assertEquals(JSON.parse(await fsReadFile(faultGate, "utf8")), {
                     failed: true,
                     readStopped: true,
                     writeStopped: true,
@@ -322,7 +344,7 @@ for (const fault of ["disconnect", "late-ack", "worker-invalid-json", "wrong-evi
 }
 
 for (const blockedMethod of ["newSession", "setSessionFile", "createBranchedSession", "constructor", "forkFrom"]) {
-    Deno.test(`remote lifecycle ${blockedMethod} fails closed without a local writer fallback`, async () => {
+    test(`remote lifecycle ${blockedMethod} fails closed without a local writer fallback`, async () => {
         const f = await makeControlFixture();
         await f.ready();
         const client = startClient(f, f.baseUrl, { mode: "lifecycle", blockedMethod });
@@ -337,7 +359,7 @@ for (const blockedMethod of ["newSession", "setSessionFile", "createBranchedSess
     });
 }
 
-Deno.test("detached remote personal mount cannot create a local file store or root Session writer", async () => {
+test("detached remote personal mount cannot create a local file store or root Session writer", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const client = startClient(f, f.baseUrl, { mode: "mount" });
@@ -356,7 +378,7 @@ Deno.test("detached remote personal mount cannot create a local file store or ro
     }
 });
 
-Deno.test("remote save Worker permission failure wakes the caller and leaves the manager permanently denied", async () => {
+test("remote save Worker termination wakes the caller and leaves the manager permanently denied", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const client = startClient(f, f.baseUrl, { mode: "worker-fault" });

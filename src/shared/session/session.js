@@ -2048,7 +2048,9 @@ export async function buildAgentSession({
     if (!sessionCwd) throw new Error("buildAgentSession: cwd or hostedSession cwd is required");
     if (
         remotePersonalResourcesActive() &&
-        (!targetHostedSession || subAgentDefinition || sessionManager !== targetHostedSession.getRootSessionManager() ||
+        (!targetHostedSession ||
+            subAgentDefinition ||
+            sessionManager !== targetHostedSession.getRootSessionManager() ||
             !getRemoteSessionSaveBridge(sessionManager))
     ) {
         throw new Error("Remote managed agent sessions are not approved; use bounded model integration only");
@@ -2282,14 +2284,16 @@ export async function buildAgentSession({
         const remoteFallback = remotePersonalResourcesActive()
             ? await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, sessionCwd)
             : undefined;
-        finalCustomTools.push(createSeeImageTool({
-            cwd: sessionCwd,
-            sessionManager: effectiveSessionManager,
-            remoteModel: remoteFallback?.model,
-            completeSimpleFn: remoteFallback
-                ? (model, context, options) => modelRuntime.streamSimple(model, context, options).result()
-                : completeSimple,
-        }));
+        finalCustomTools.push(
+            createSeeImageTool({
+                cwd: sessionCwd,
+                sessionManager: effectiveSessionManager,
+                remoteModel: remoteFallback?.model,
+                completeSimpleFn: remoteFallback
+                    ? (model, context, options) => modelRuntime.streamSimple(model, context, options).result()
+                    : completeSimple,
+            }),
+        );
     }
 
     // Resolve system prompt placeholders

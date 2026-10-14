@@ -1,13 +1,17 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
-import type { RemoteSessionRequest } from "./session-protocol.ts";
+import { test } from "node:test";
+import { serveHttp } from "../http-server.ts";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
+import { type RemoteSessionRequest } from "./session-protocol.ts";
 import { deferred, makeControlFixture, within } from "./session-save-test-fixture.ts";
 import { verificationClient } from "./session-save-verification-fixture.ts";
 import { makeSaveModelRuntime } from "./session-save-agent-fixture.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 
 for (const barrier of ["user", "toolCall", "toolResult"] as const) {
-    Deno.test(`real Pi ${barrier} save acknowledgement blocks dependent model or remote tool progress`, async () => {
+    test(`real Pi ${barrier} save acknowledgement blocks dependent model or remote tool progress`, async () => {
         const f = await makeControlFixture();
         await f.ready();
         const contexts: string[] = [];
@@ -15,7 +19,7 @@ for (const barrier of ["user", "toolCall", "toolResult"] as const) {
         const saved = deferred();
         const release = deferred();
         let held = false;
-        const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+        const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
             if (request.headers.get("Authorization") !== `Bearer ${f.control.credential}`) {
                 return new Response(null, { status: 401 });
             }
@@ -28,11 +32,12 @@ for (const barrier of ["user", "toolCall", "toolResult"] as const) {
                 headers: request.headers,
                 body,
             });
-            const target = barrier === "user"
-                ? '"role":"user"'
-                : barrier === "toolCall"
-                ? '"type":"toolCall"'
-                : '"role":"toolResult"';
+            const target =
+                barrier === "user"
+                    ? '"role":"user"'
+                    : barrier === "toolCall"
+                      ? '"type":"toolCall"'
+                      : '"role":"toolResult"';
             if (!held && input.kind === "append" && input.contents.includes(target)) {
                 held = true;
                 assertEquals(response.status, 200);
@@ -52,9 +57,9 @@ for (const barrier of ["user", "toolCall", "toolResult"] as const) {
             await within(saved.promise);
             assertEquals(contexts.length, barrier === "user" ? 0 : 1);
             if (barrier === "toolResult") {
-                assertEquals(await Deno.readTextFile(join(f.remoteProject, "dependent-marker")), "effect\n");
+                assertEquals(await fsReadFile(join(f.remoteProject, "dependent-marker"), "utf8"), "effect\n");
             } else {
-                await assertRejects(() => Deno.stat(join(f.remoteProject, "dependent-marker")), Deno.errors.NotFound);
+                await assertRejects(() => fsStat(join(f.remoteProject, "dependent-marker")), Error, "ENOENT");
             }
             assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).generation, null);
             release.resolve();

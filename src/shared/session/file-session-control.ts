@@ -49,13 +49,13 @@ interface FileSessionControlOptions {
 
 function stampPendingPlanAssociations(manifest: FileSessionManifest, generation: number): void {
     manifest.planAssociations = (manifest.planAssociations || []).map((association) =>
-        association.committedGeneration === null ? { ...association, committedGeneration: generation } : association
+        association.committedGeneration === null ? { ...association, committedGeneration: generation } : association,
     );
 }
 
 function dropPendingPlanAssociations(manifest: FileSessionManifest): void {
-    manifest.planAssociations = (manifest.planAssociations || []).filter((association) =>
-        association.committedGeneration !== null
+    manifest.planAssociations = (manifest.planAssociations || []).filter(
+        (association) => association.committedGeneration !== null,
     );
 }
 
@@ -117,7 +117,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 file.unlockSync();
             }
         } finally {
-            closeSync(file);
+            file.close();
         }
     }
 
@@ -169,7 +169,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             return {
                 byteLength: bytes.length,
                 digestHex: createHash("sha256").update(bytes).digest("hex"),
-                terminalEntryId: terminal?.type === "session" ? null : terminal?.id ?? null,
+                terminalEntryId: terminal?.type === "session" ? null : (terminal?.id ?? null),
             };
         },
         migrateActiveSessionTranscript(proof, contents, expectedDigestHex) {
@@ -189,7 +189,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 after: {
                     byteLength: new TextEncoder().encode(contents).length,
                     digestHex: createHash("sha256").update(contents).digest("hex"),
-                    terminalEntryId: terminal?.type === "session" ? null : terminal?.id ?? null,
+                    terminalEntryId: terminal?.type === "session" ? null : (terminal?.id ?? null),
                 },
                 headerVersion: JSON.parse(contents.split("\n", 1)[0]).version,
             };
@@ -225,7 +225,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                         }
                     }
                 } finally {
-                    closeSync(file);
+                    file.close();
                 }
             }
             return { activation: activationView(manifest), generation: generationView(manifest) };
@@ -238,10 +238,11 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             ensurePrivateDir(bundleDir(sessionDir, found.manifest.runwieldSessionId));
             const file = openNativeFileLock(lockPath(sessionDir, found.manifest.runwieldSessionId));
             if (!file.tryLockSync(true)) {
-                closeSync(file);
+                file.close();
                 throw new Error("Session is open in another RunWield surface");
             }
-            const operationId = activationOptions.operationId ||
+            const operationId =
+                activationOptions.operationId ||
                 (activationOptions.idFactory ? activationOptions.idFactory() : crypto.randomUUID());
             try {
                 const manifest = readJson<FileSessionManifest>(found.path);
@@ -262,12 +263,14 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                     throw new Error(`Session requires recovery: ${manifest.activation.blockedReason || "unknown"}`);
                 }
                 const latestGeneration = manifest.generation?.generation ?? null;
-                const expectedGeneration = activationOptions.expectedGeneration === undefined
-                    ? latestGeneration
-                    : activationOptions.expectedGeneration;
-                const expectedSegment = activationOptions.expectedCurrentSegmentId === undefined
-                    ? manifest.currentSegmentId
-                    : activationOptions.expectedCurrentSegmentId;
+                const expectedGeneration =
+                    activationOptions.expectedGeneration === undefined
+                        ? latestGeneration
+                        : activationOptions.expectedGeneration;
+                const expectedSegment =
+                    activationOptions.expectedCurrentSegmentId === undefined
+                        ? manifest.currentSegmentId
+                        : activationOptions.expectedCurrentSegmentId;
                 if (expectedGeneration !== latestGeneration) {
                     throw new Error("Session generation changed; refresh and retry");
                 }
@@ -314,7 +317,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 try {
                     file.unlockSync();
                 } finally {
-                    closeSync(file);
+                    file.close();
                 }
                 throw error;
             }
@@ -344,8 +347,8 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             const manifest = readJson<FileSessionManifest>(held.manifestPath);
             assertProof(manifest, proof);
             const artifacts = manifest.artifacts || [];
-            const existing = artifacts.find((artifact) =>
-                artifact.kind === artifactOptions.kind && artifact.path === artifactOptions.path
+            const existing = artifacts.find(
+                (artifact) => artifact.kind === artifactOptions.kind && artifact.path === artifactOptions.path,
             );
             if (existing) return { ...existing };
             const artifact: SessionArtifactReference = {
@@ -449,7 +452,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             const sessionDir = sessionDirForManifestPath(found.path);
             const file = openNativeFileLock(lockPath(sessionDir, found.manifest.runwieldSessionId));
             if (!file.tryLockSync(true)) {
-                closeSync(file);
+                file.close();
                 throw new Error("Session is still open in another RunWield surface");
             }
             try {
@@ -500,8 +503,8 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 if (bytes.at(-1) !== 10) {
                     const recovered = inspectRecoverableSessionTranscript(bytes);
                     const retained = new TextEncoder().encode(recovered.contents);
-                    const baselineLength = manifest.generation?.byteLength ?? manifest.activation.baselineByteLength ??
-                        0;
+                    const baselineLength =
+                        manifest.generation?.byteLength ?? manifest.activation.baselineByteLength ?? 0;
                     if (retained.length < baselineLength) {
                         throw new Error("Recovery cannot discard saved baseline bytes");
                     }
@@ -513,9 +516,8 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                     };
                 }
                 const now = isoNow(recoveryOptions.now || options.now);
-                const generation = recoveryOptions.expectedGeneration === null
-                    ? 0
-                    : recoveryOptions.expectedGeneration + 1;
+                const generation =
+                    recoveryOptions.expectedGeneration === null ? 0 : recoveryOptions.expectedGeneration + 1;
                 manifest.fence += 1;
                 manifest.generation = {
                     runwieldSessionId: manifest.runwieldSessionId,
@@ -537,7 +539,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 return { activation: activationView(manifest), generation: generationView(manifest) };
             } finally {
                 file.unlockSync();
-                closeSync(file);
+                file.close();
             }
         },
 
@@ -547,7 +549,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
             const sessionDir = sessionDirForManifestPath(found.path);
             const file = openNativeFileLock(lockPath(sessionDir, found.manifest.runwieldSessionId));
             if (!file.tryLockSync(true)) {
-                closeSync(file);
+                file.close();
                 throw new Error("Session is open in another RunWield surface");
             }
             try {
@@ -562,7 +564,7 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 return { activation: activationView(manifest), generation: generationView(manifest) };
             } finally {
                 file.unlockSync();
-                closeSync(file);
+                file.close();
             }
         },
 
@@ -618,8 +620,8 @@ export function createFileSessionControl(options: FileSessionControlOptions): Fi
                 const manifest = readJson<FileSessionManifest>(held.manifestPath);
                 assertProof(manifest, proof);
                 if (proof.phase !== "checkpointing") throw new Error("Segment rollover requires checkpointing");
-                const predecessor = manifest.segments.find((segment) =>
-                    segment.segmentId === rolloverOptions.predecessorSegmentId
+                const predecessor = manifest.segments.find(
+                    (segment) => segment.segmentId === rolloverOptions.predecessorSegmentId,
                 );
                 if (!predecessor || predecessor.segmentId !== manifest.currentSegmentId) {
                     throw new Error("Rollover predecessor is not current");

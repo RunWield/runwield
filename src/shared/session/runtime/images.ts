@@ -38,9 +38,7 @@ export class RuntimeImages {
 
     constructor(private readonly services: RuntimeServices) {}
 
-    connect(
-        managedOperations: RuntimeManagedOperationsDependency,
-    ) {
+    connect(managedOperations: RuntimeManagedOperationsDependency) {
         this.managedOperations = managedOperations;
     }
     async persistSessionImage(
@@ -75,11 +73,7 @@ export class RuntimeImages {
         if (!isRuntimeRootSessionManager(sessionManager)) {
             throw new Error("Cannot persist image attachment: no active session is available.");
         }
-        return await persistImageAttachment(
-            image,
-            sessionManager,
-            session.cwd,
-        );
+        return await persistImageAttachment(image, sessionManager, session.cwd);
     }
 
     async preflightSessionImages(sessionId: string, images: import(".././types.js").ImageAttachment[]) {
@@ -99,8 +93,8 @@ export class RuntimeImages {
         const modelProvider = modelState.provider || managed?.provider || "";
         const modelId = modelState.model || managed?.model || "";
         const modelRegistry = agentSession.modelRegistry || getModelRegistry();
-        const activeModel = agentSession.model ||
-            (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
+        const activeModel =
+            agentSession.model || (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
         const modelProviderName = activeModel?.provider;
         const executionBackend = activeModel?.executionBackend;
         if (images.length > 0 && (modelProviderName === "agy-cli" || executionBackend === "agy-cli")) {
@@ -109,11 +103,9 @@ export class RuntimeImages {
         let fallbackModelRef: string | undefined;
         if (images.length > 0 && !modelSupportsImageInput(activeModel)) {
             try {
-                fallbackModelRef = (await resolveVisionFallbackModel(
-                    modelRegistry,
-                    SYSTEM_MODEL_DISCOVERY_NETWORK,
-                    session.cwd,
-                ))?.modelRef;
+                fallbackModelRef = (
+                    await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, session.cwd)
+                )?.modelRef;
             } catch (error) {
                 return { ok: false as const, message: error instanceof Error ? error.message : String(error) };
             }
@@ -131,8 +123,8 @@ export class RuntimeImages {
         const modelProvider = modelState.provider || managed?.provider || "";
         const modelId = modelState.model || managed?.model || "";
         const modelRegistry = agentSession?.modelRegistry || getModelRegistry();
-        const activeModel = agentSession?.model ||
-            (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
+        const activeModel =
+            agentSession?.model || (modelProvider && modelId ? modelRegistry.find(modelProvider, modelId) : undefined);
         return await this.preflightImagesForModel(session, images, activeModel, modelRegistry);
     }
 
@@ -158,11 +150,9 @@ export class RuntimeImages {
         let fallbackModelRef;
         if (!modelSupportsImageInput(activeModel)) {
             try {
-                fallbackModelRef = (await resolveVisionFallbackModel(
-                    modelRegistry,
-                    SYSTEM_MODEL_DISCOVERY_NETWORK,
-                    session.cwd,
-                ))?.modelRef;
+                fallbackModelRef = (
+                    await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, session.cwd)
+                )?.modelRef;
             } catch (error) {
                 return { ok: false, message: error instanceof Error ? error.message : String(error) };
             }
@@ -181,18 +171,23 @@ export class RuntimeImages {
             images,
         });
         const activeAgentInfo = session.getActiveAgentInfo?.() || null;
-        const agentName = namedInvocation.kind === "prompt_template"
-            ? namedInvocation.agentName || options.agentName || activeAgentInfo?.agentName || AGENTS.OPERATOR
-            : options.agentName || activeAgentInfo?.agentName || session.getRootAgentName?.() || AGENTS.ROUTER;
-        const modelOverride = namedInvocation.kind === "prompt_template"
-            ? options.preparedModelOverride || namedInvocation.model
-            : options.preparedModelOverride || options.modelOverride;
+        const agentName =
+            namedInvocation.kind === "prompt_template"
+                ? namedInvocation.agentName || options.agentName || activeAgentInfo?.agentName || AGENTS.OPERATOR
+                : options.agentName || activeAgentInfo?.agentName || session.getRootAgentName?.() || AGENTS.ROUTER;
+        const modelOverride =
+            namedInvocation.kind === "prompt_template"
+                ? options.preparedModelOverride || namedInvocation.model
+                : options.preparedModelOverride || options.modelOverride;
         const ignoreManualModelOverride = namedInvocation.kind === "prompt_template";
         const agentDef = await loadAgentDef(agentName, session.cwd);
         const modelRegistry = getModelRegistry();
         const currentSessionManager = session.getRootSessionManager?.();
-        let sessionManager: import("./support.ts").RuntimeRootSessionManager | null =
-            isRuntimeRootSessionManager(currentSessionManager) ? currentSessionManager : null;
+        let sessionManager: import("./support.ts").RuntimeRootSessionManager | null = isRuntimeRootSessionManager(
+            currentSessionManager,
+        )
+            ? currentSessionManager
+            : null;
         let openedSessionManager: import("@earendil-works/pi-coding-agent").SessionManager | null = null;
         try {
             if (!sessionManager) {
@@ -201,12 +196,14 @@ export class RuntimeImages {
                     const segment = this.services.sessionStore?.getCurrentSessionSegment(managed.runwieldSessionId);
                     const transcriptPath = segment?.transcriptPath || managed.transcriptPath;
                     const transcriptCwd = segment?.transcriptCwd || session.cwd;
-                    const projectRoot = segment && this.services.sessionStore
-                        ? this.services.sessionStore.requireSessionProjectRoot(managed.projectId)
-                        : null;
-                    const projectSessionDir = projectRoot && this.services.sessionStore
-                        ? sessionDirForRoot(this.services.sessionStore.path, projectRoot)
-                        : null;
+                    const projectRoot =
+                        segment && this.services.sessionStore
+                            ? this.services.sessionStore.requireSessionProjectRoot(managed.projectId)
+                            : null;
+                    const projectSessionDir =
+                        projectRoot && this.services.sessionStore
+                            ? sessionDirForRoot(this.services.sessionStore.path, projectRoot)
+                            : null;
                     const managedProjectSessionDir =
                         projectSessionDir && isPathInside(transcriptPath, projectSessionDir)
                             ? projectSessionDir
@@ -223,19 +220,23 @@ export class RuntimeImages {
                     openedSessionManager = opened.sessionManager;
                 }
             }
-            const templateProfile = namedInvocation.kind === "prompt_template"
-                ? await resolvePromptTemplateSettings(session, {
-                    ...namedInvocation,
-                    model: options.preparedModelOverride || namedInvocation.model,
-                }, sessionManager)
-                : null;
+            const templateProfile =
+                namedInvocation.kind === "prompt_template"
+                    ? await resolvePromptTemplateSettings(
+                          session,
+                          {
+                              ...namedInvocation,
+                              model: options.preparedModelOverride || namedInvocation.model,
+                          },
+                          sessionManager,
+                      )
+                    : null;
             let effectiveModelOverride = templateProfile?.model || modelOverride;
             if (!ignoreManualModelOverride && !effectiveModelOverride && sessionManager) {
                 const resumeAgent = await resolveResumeAgentName(sessionManager);
                 const persistedManualModel = readPersistedManualModelState(sessionManager, agentName || resumeAgent);
-                const persistedModel = agentName === resumeAgent
-                    ? resolvePersistedResumeModel(sessionManager)
-                    : undefined;
+                const persistedModel =
+                    agentName === resumeAgent ? resolvePersistedResumeModel(sessionManager) : undefined;
                 effectiveModelOverride = persistedManualModel
                     ? persistedManualModel.provider
                         ? `${persistedManualModel.provider}/${persistedManualModel.model}`

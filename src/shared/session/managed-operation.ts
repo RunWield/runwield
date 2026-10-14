@@ -40,13 +40,15 @@ export type ManagedOperationInternalFacade = {
     getRootAgentSession(): import("@earendil-works/pi-coding-agent").AgentSession | null;
 };
 
-export type ManagedOperationResult<T> = {
-    ok: true;
-    value: T;
-} | {
-    ok: false;
-    error: "refresh_required" | "reconcile_required" | "managed_operation_in_progress";
-};
+export type ManagedOperationResult<T> =
+    | {
+          ok: true;
+          value: T;
+      }
+    | {
+          ok: false;
+          error: "refresh_required" | "reconcile_required" | "managed_operation_in_progress";
+      };
 
 export type ManagedOperationCapability = {
     readonly runtimeSessionId: string;

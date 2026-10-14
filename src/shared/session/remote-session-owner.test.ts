@@ -1,10 +1,13 @@
-import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { customEntry, makeSessionFixture } from "../remote/session-save-test-fixture.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { RemoteSessionOwner } from "./remote-session-owner.ts";
 import { parseRemoteSessionTranscript, sessionDigest } from "../remote/session-protocol.ts";
 
-Deno.test("remote owner hydrates exact laptop evidence under a real exclusive activation", async () => {
+test("remote owner hydrates exact laptop evidence under a real exclusive activation", async () => {
     const f = await makeSessionFixture();
     const contender = openFileSessionStore({ baseDir: f.baseDir });
     try {
@@ -14,21 +17,24 @@ Deno.test("remote owner hydrates exact laptop evidence under a real exclusive ac
         assertEquals(response.evidence.digestHex, sessionDigest(f.initial));
         assertEquals(response.evidence.byteLength, new TextEncoder().encode(f.initial).length);
         assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).activation?.phase, "hydrated");
-        assertThrows(() =>
-            contender.acquireSessionActivation({
-                runwieldSessionId: f.session.runwieldSessionId,
-                projectId: f.session.projectId,
-                ownerInstanceId: "contender",
-                ownerProcessKind: "test",
-                expectedGeneration: null,
-            }), Error);
+        assertThrows(
+            () =>
+                contender.acquireSessionActivation({
+                    runwieldSessionId: f.session.runwieldSessionId,
+                    projectId: f.session.projectId,
+                    ownerInstanceId: "contender",
+                    ownerProcessKind: "test",
+                    expectedGeneration: null,
+                }),
+            Error,
+        );
     } finally {
         contender.close();
         await f.close();
     }
 });
 
-Deno.test("remote owner rejects saves before hydration and skipped sequence identities", async () => {
+test("remote owner rejects saves before hydration and skipped sequence identities", async () => {
     const f = await makeSessionFixture();
     try {
         assertThrows(() => f.owner.handle(f.request("append", 0, customEntry())), Error, "not been hydrated");
@@ -41,7 +47,7 @@ Deno.test("remote owner rejects saves before hydration and skipped sequence iden
     }
 });
 
-Deno.test("remote owner retries one identity without duplicating or normalizing exact bytes", async () => {
+test("remote owner retries one identity without duplicating or normalizing exact bytes", async () => {
     const f = await makeSessionFixture();
     try {
         f.owner.handle(f.request("hydrate", 0));
@@ -59,7 +65,7 @@ Deno.test("remote owner retries one identity without duplicating or normalizing 
     }
 });
 
-Deno.test("remote owner rejects a conflicting retry without changing committed bytes", async () => {
+test("remote owner rejects a conflicting retry without changing committed bytes", async () => {
     const f = await makeSessionFixture();
     try {
         f.owner.handle(f.request("hydrate", 0));
@@ -73,7 +79,7 @@ Deno.test("remote owner rejects a conflicting retry without changing committed b
     }
 });
 
-Deno.test("remote owner rejects foreign operation and expired native-lock authority", async () => {
+test("remote owner rejects foreign operation and expired native-lock authority", async () => {
     const f = await makeSessionFixture();
     try {
         assertThrows(
@@ -84,24 +90,24 @@ Deno.test("remote owner rejects foreign operation and expired native-lock author
         f.owner.handle(f.request("hydrate", 0));
         f.store.close();
         assertThrows(() => f.owner.handle(f.request("hydrate", 0)), Error);
-        assertEquals(await Deno.readTextFile(f.transcriptPath), f.initial);
+        assertEquals(await fsReadFile(f.transcriptPath, "utf8"), f.initial);
     } finally {
         await f.close();
     }
 });
 
-Deno.test("remote owner rechecks laptop evidence even on duplicate requests", async () => {
+test("remote owner rechecks laptop evidence even on duplicate requests", async () => {
     const f = await makeSessionFixture();
     try {
         f.owner.handle(f.request("hydrate", 0));
-        await Deno.writeTextFile(f.transcriptPath, f.initial + customEntry("outside-writer"));
+        await fsWriteFile(f.transcriptPath, f.initial + customEntry("outside-writer"));
         assertThrows(() => f.owner.handle(f.request("hydrate", 0)), Error, "evidence changed");
     } finally {
         await f.close();
     }
 });
 
-Deno.test("remote owner refuses malformed identities and history replacement", async () => {
+test("remote owner refuses malformed identities and history replacement", async () => {
     const f = await makeSessionFixture();
     try {
         f.owner.handle(f.request("hydrate", 0));
@@ -122,7 +128,7 @@ Deno.test("remote owner refuses malformed identities and history replacement", a
     }
 });
 
-Deno.test("remote owner checkpoint publishes digest and releases for a fresh operation", async () => {
+test("remote owner checkpoint publishes digest and releases for a fresh operation", async () => {
     const f = await makeSessionFixture();
     try {
         f.owner.handle(f.request("hydrate", 0));
@@ -155,7 +161,7 @@ Deno.test("remote owner checkpoint publishes digest and releases for a fresh ope
     }
 });
 
-Deno.test("remote owner uncertainty recovers saved evidence without replaying the effect", async () => {
+test("remote owner uncertainty recovers saved evidence without replaying the effect", async () => {
     const f = await makeSessionFixture();
     const reloaded = openFileSessionStore({ baseDir: f.baseDir });
     try {
@@ -188,7 +194,7 @@ Deno.test("remote owner uncertainty recovers saved evidence without replaying th
     }
 });
 
-Deno.test("remote owner requires trusted preparing proof instead of a hydrated activation", async () => {
+test("remote owner requires trusted preparing proof instead of a hydrated activation", async () => {
     const f = await makeSessionFixture();
     try {
         const proof = f.store.changeSessionActivationPhase(f.proof, "hydrated");

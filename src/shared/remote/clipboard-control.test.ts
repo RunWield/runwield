@@ -1,4 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals } from "../../testing/assertions.ts";
 import { startRemoteControlService } from "./control.ts";
 import {
     clipboardIdentity,
@@ -7,15 +9,18 @@ import {
     laptopClipboardFixture,
     readyClipboardService,
 } from "./clipboard-test-fixture.ts";
+import process from "node:process";
 
-Deno.test("laptop clipboard requires authentication, handshake, and readiness without a transcript owner", async () => {
+test("laptop clipboard requires authentication, handshake, and readiness without a transcript owner", async () => {
     const service = startRemoteControlService(clipboardIdentity);
     try {
         assertEquals((await fetch(`http://127.0.0.1:${service.port}/clipboard/image`)).status, 401);
         assertEquals(
-            (await fetch(`http://127.0.0.1:${service.port}/clipboard/image`, {
-                headers: { Authorization: `Bearer ${"d".repeat(64)}` },
-            })).status,
+            (
+                await fetch(`http://127.0.0.1:${service.port}/clipboard/image`, {
+                    headers: { Authorization: `Bearer ${"d".repeat(64)}` },
+                })
+            ).status,
             401,
         );
         assertEquals((await controlRequest(service, "/clipboard/image")).status, 403);
@@ -30,7 +35,7 @@ Deno.test("laptop clipboard requires authentication, handshake, and readiness wi
     }
 });
 
-Deno.test("laptop clipboard reports no image as null", async () => {
+test("laptop clipboard reports no image as null", async () => {
     const fixture = await laptopClipboardFixture("none");
     try {
         await fixture.ready();
@@ -44,10 +49,10 @@ Deno.test("laptop clipboard reports no image as null", async () => {
     }
 });
 
-Deno.test({
-    name: "laptop clipboard exports local image bytes before the first message, never its selected remote reader",
-    ignore: Deno.build.os !== "darwin",
-    async fn() {
+test(
+    "laptop clipboard exports local image bytes before the first message, never its selected remote reader",
+    { skip: (process.platform === "win32" ? "windows" : process.platform) !== "darwin" },
+    async () => {
         const fixture = await laptopClipboardFixture("image", true);
         try {
             await fixture.ready();
@@ -60,12 +65,12 @@ Deno.test({
             await fixture.close();
         }
     },
-});
+);
 
-Deno.test({
-    name: "laptop clipboard rejects an image above the body limit",
-    ignore: Deno.build.os !== "darwin",
-    async fn() {
+test(
+    "laptop clipboard rejects an image above the body limit",
+    { skip: (process.platform === "win32" ? "windows" : process.platform) !== "darwin" },
+    async () => {
         const fixture = await laptopClipboardFixture("large");
         try {
             await fixture.ready();
@@ -78,12 +83,12 @@ Deno.test({
             await fixture.close();
         }
     },
-});
+);
 
-Deno.test({
-    name: "laptop clipboard discards an in-flight image after shutdown",
-    ignore: Deno.build.os !== "darwin",
-    async fn() {
+test(
+    "laptop clipboard discards an in-flight image after shutdown",
+    { skip: (process.platform === "win32" ? "windows" : process.platform) !== "darwin" },
+    async () => {
         const fixture = await laptopClipboardFixture("wait");
         try {
             await fixture.ready();
@@ -93,21 +98,23 @@ Deno.test({
             const deadline = Date.now() + 4000;
             while (Date.now() < deadline) {
                 try {
-                    await Deno.stat(`${fixture.modePath}.started`);
+                    await fsStat(`${fixture.modePath}.started`);
                     break;
                 } catch {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
             }
-            await Deno.stat(`${fixture.modePath}.started`);
-            await (await fetch(`http://127.0.0.1:${fixture.connection.port}/shutdown`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${fixture.connection.credential}` },
-            })).text();
-            await Deno.writeTextFile(fixture.modePath, "image");
+            await fsStat(`${fixture.modePath}.started`);
+            await (
+                await fetch(`http://127.0.0.1:${fixture.connection.port}/shutdown`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${fixture.connection.credential}` },
+                })
+            ).text();
+            await fsWriteFile(fixture.modePath, "image");
             assertEquals((await pending).status, 403);
         } finally {
             await fixture.close();
         }
     },
-});
+);

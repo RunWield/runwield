@@ -1,6 +1,11 @@
-import { join } from "@std/path";
+import { openSync, readSync, closeSync } from "node:fs";
+import { join } from "node:path";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
-import type { FileSessionManifest, FileSessionProject, FileSessionStore } from "../session/file-session-store-types.ts";
+import {
+    type FileSessionManifest,
+    type FileSessionProject,
+    type FileSessionStore,
+} from "../session/file-session-store-types.ts";
 import { recoverRemoteSession, RemoteSessionOwner } from "../session/remote-session-owner.ts";
 import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
 import {
@@ -22,7 +27,7 @@ import {
     sessionDigest,
     validateSessionControlRequest,
 } from "./session-protocol.ts";
-import type { ResolvedRemoteTarget } from "./target.ts";
+import { type ResolvedRemoteTarget } from "./target.ts";
 
 export interface LaptopSessionTarget {
     store: FileSessionStore;
@@ -41,17 +46,17 @@ function savedSession(project: FileSessionProject, manifest: FileSessionManifest
     if (!project.remote || manifest.archivedAt || !generation) return null;
     const segment = manifest.segments.find((item) => item.segmentId === generation.currentSegmentId);
     if (!segment) return null;
-    const file = Deno.openSync(segment.transcriptPath, { read: true });
+    const file = openSync(segment.transcriptPath, "r");
     const bytes = new Uint8Array(generation.byteLength);
     try {
         let offset = 0;
         while (offset < bytes.length) {
-            const count = file.readSync(bytes.subarray(offset));
-            if (count === null) return null;
+            const count = readSync(file, bytes, offset, bytes.length - offset, offset);
+            if (count === 0) return null;
             offset += count;
         }
     } finally {
-        file.close();
+        closeSync(file);
     }
     if (sessionDigest(bytes) !== generation.digestHex) return null;
     const contents = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -72,7 +77,8 @@ function savedSession(project: FileSessionProject, manifest: FileSessionManifest
             modified: generation.committedAt,
             generation: generation.generation,
         },
-        targetLabel: project.remote.targetLabel ||
+        targetLabel:
+            project.remote.targetLabel ||
             `${project.remote.host.user}@${project.remote.host.hostname}:${project.remote.root}`,
         contents,
     };
@@ -127,27 +133,31 @@ export class LaptopSessionControl {
         if (admissionId) this.#settleAdmission(admissionId);
     }
 
-    constructor(readonly connection: LaptopSessionTarget, readonly owners: Map<string, RemoteSessionOwner>) {}
+    constructor(
+        readonly connection: LaptopSessionTarget,
+        readonly owners: Map<string, RemoteSessionOwner>,
+    ) {}
 
     #projectMatches(project: FileSessionProject): boolean {
         const remote = project.remote;
         const target = this.connection.target;
         return Boolean(
-            remote && remote.root === remoteProjectRoot(target) &&
-                remote.host.hostname === target.host.hostname && remote.host.user === target.host.user &&
-                remote.host.port === target.host.port &&
-                remote.host.hostKeyFingerprint === target.host.hostKeyFingerprint,
+            remote &&
+            remote.root === remoteProjectRoot(target) &&
+            remote.host.hostname === target.host.hostname &&
+            remote.host.user === target.host.user &&
+            remote.host.port === target.host.port &&
+            remote.host.hostKeyFingerprint === target.host.hostKeyFingerprint,
         );
     }
 
     #locate(sessionId: string) {
-        for (
-            const project of listProjectsFromDisk(this.connection.store.path).filter((project) =>
-                this.#projectMatches(project)
-            )
-        ) {
-            const found = listManifests(sessionDirForProject(this.connection.store.path, project), false)
-                .find(({ manifest }) => manifest.runwieldSessionId === sessionId);
+        for (const project of listProjectsFromDisk(this.connection.store.path).filter((project) =>
+            this.#projectMatches(project),
+        )) {
+            const found = listManifests(sessionDirForProject(this.connection.store.path, project), false).find(
+                ({ manifest }) => manifest.runwieldSessionId === sessionId,
+            );
             if (found) return { project, ...found };
         }
         throw new Error("Session does not belong to this remote target");
@@ -164,7 +174,7 @@ export class LaptopSessionControl {
             const projects = listProjectsFromDisk(store.path).filter((project) => this.#projectMatches(project));
             for (const project of projects) {
                 for (const { manifest } of listManifests(sessionDirForProject(store.path, project), false)) {
-                    if (manifest.generation || input.sessionId && input.sessionId !== manifest.runwieldSessionId) {
+                    if (manifest.generation || (input.sessionId && input.sessionId !== manifest.runwieldSessionId)) {
                         continue;
                     }
                     const state = store.inspectSessionActivation(manifest.runwieldSessionId).activation?.state;
@@ -174,18 +184,21 @@ export class LaptopSessionControl {
                 }
             }
             const matchingIds = new Set(
-                listProjectsFromDisk(store.path).filter((project) => this.#projectMatches(project))
+                listProjectsFromDisk(store.path)
+                    .filter((project) => this.#projectMatches(project))
                     .flatMap((project) =>
-                        listManifests(sessionDirForProject(store.path, project), false).map(({ manifest }) =>
-                            manifest.runwieldSessionId
-                        )
+                        listManifests(sessionDirForProject(store.path, project), false).map(
+                            ({ manifest }) => manifest.runwieldSessionId,
+                        ),
                     ),
             );
             if (input.sessionId) this.#locate(input.sessionId);
             return {
                 sessions: listSavedRemoteSessions(store.path)
-                    .filter((saved) =>
-                        matchingIds.has(saved.summary.id) && (!input.sessionId || saved.summary.id === input.sessionId)
+                    .filter(
+                        (saved) =>
+                            matchingIds.has(saved.summary.id) &&
+                            (!input.sessionId || saved.summary.id === input.sessionId),
                     )
                     .map((saved) => ({ ...saved.summary, ...(input.sessionId ? { contents: saved.contents } : {}) })),
             };
@@ -247,8 +260,8 @@ export class LaptopSessionControl {
                     );
                     const directory = sessionDirForProject(store.path, project);
                     if (
-                        listManifests(directory, false).some(({ manifest }) =>
-                            manifest.runwieldSessionId === input.sessionId
+                        listManifests(directory, false).some(
+                            ({ manifest }) => manifest.runwieldSessionId === input.sessionId,
                         )
                     ) {
                         throw new Error("Session already exists");
@@ -288,14 +301,16 @@ export class LaptopSessionControl {
                     const initial = store.readActiveSessionTranscript(proof);
                     store.writeActiveSessionTranscript(
                         proof,
-                        initial + JSON.stringify({
-                            type: "custom",
-                            id: crypto.randomUUID(),
-                            parentId: null,
-                            timestamp,
-                            customType: REMOTE_SESSION_IDENTITY_ENTRY,
-                            data: { projectId: project.projectId, currentSegmentId: acquired.segment.segmentId },
-                        }) + "\n",
+                        initial +
+                            JSON.stringify({
+                                type: "custom",
+                                id: crypto.randomUUID(),
+                                parentId: null,
+                                timestamp,
+                                customType: REMOTE_SESSION_IDENTITY_ENTRY,
+                                data: { projectId: project.projectId, currentSegmentId: acquired.segment.segmentId },
+                            }) +
+                            "\n",
                         sessionDigest(initial),
                     );
                 } catch (error) {
@@ -328,7 +343,9 @@ export class LaptopSessionControl {
             } catch (error) {
                 try {
                     store.markSessionUncertain(proof, { reason: "remote_save_uncertain" });
-                } catch { /* Preserve acquisition failure. */ }
+                } catch {
+                    /* Preserve acquisition failure. */
+                }
                 throw error;
             }
         } finally {

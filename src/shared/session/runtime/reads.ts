@@ -73,21 +73,17 @@ interface ReplayOptions {
 interface CommittedProjectionOptions extends ReplayOptions {
     completeHistory?: boolean;
 }
-type ProjectedSessionInfo =
-    & Omit<
-        ReturnType<typeof buildProjectedSessionInfo>,
-        "compactionSettings" | "contextUsage"
-    >
-    & {
-        ok?: true;
-        compactionSettings?: import("./types.ts").RuntimeCompactionSettings | null;
-        contextUsage?: import("../../types.js").ContextUsageSnapshot | null;
-    };
+type ProjectedSessionInfo = Omit<
+    ReturnType<typeof buildProjectedSessionInfo>,
+    "compactionSettings" | "contextUsage"
+> & {
+    ok?: true;
+    compactionSettings?: import("./types.ts").RuntimeCompactionSettings | null;
+    contextUsage?: import("../../types.js").ContextUsageSnapshot | null;
+};
 type SessionInfoResult = ProjectedSessionInfo | ManagedProjectionFailure | null;
 type SessionContextReportResult =
-    | (ReturnType<typeof buildSessionContextReport> & { ok?: true })
-    | ManagedProjectionFailure
-    | null;
+    (ReturnType<typeof buildSessionContextReport> & { ok?: true }) | ManagedProjectionFailure | null;
 
 type RuntimeEventsDependency = Pick<RuntimeEvents, "consumePendingReplayEvents" | "emitSessionEvent" | "isBusy">;
 type RuntimeQueuesDependency = Pick<RuntimeQueues, "getQueuedMessages">;
@@ -100,11 +96,7 @@ export class RuntimeReads {
 
     constructor(private readonly services: RuntimeServices) {}
 
-    connect(
-        events: RuntimeEventsDependency,
-        queues: RuntimeQueuesDependency,
-        lifecycle: RuntimeLifecycleDependency,
-    ) {
+    connect(events: RuntimeEventsDependency, queues: RuntimeQueuesDependency, lifecycle: RuntimeLifecycleDependency) {
         this.events = events;
         this.queues = queues;
         this.lifecycle = lifecycle;
@@ -118,7 +110,8 @@ export class RuntimeReads {
         return tasks ? { active: tasks.activeCount, pending: tasks.pendingCompletions().length } : null;
     }
     listSessions() {
-        return this.services.sessionHost.listSessions()
+        return this.services.sessionHost
+            .listSessions()
             .map((session) => this.getSessionSnapshot(session.id))
             .filter((snapshot) => snapshot !== null);
     }
@@ -129,7 +122,8 @@ export class RuntimeReads {
     ) {
         const fallbackEntries = sessionManager.getLeafId ? null : sessionManager.getEntries?.() || [];
         const fallbackLeaf = fallbackEntries?.at(-1);
-        const leafId = sessionManager.getLeafId?.() ??
+        const leafId =
+            sessionManager.getLeafId?.() ??
             (fallbackLeaf && typeof fallbackLeaf === "object" && "id" in fallbackLeaf
                 ? String(fallbackLeaf.id)
                 : `entries:${fallbackEntries?.length || 0}`);
@@ -158,55 +152,57 @@ export class RuntimeReads {
         const sessionManagerId = managed
             ? managed.piSessionId
             : typeof rawSessionManagerId === "string" && rawSessionManagerId
-            ? rawSessionManagerId
-            : null;
+              ? rawSessionManagerId
+              : null;
         const activeExecutionWorkflow = session.getActiveExecutionWorkflow();
-        const baseWorkflowContext = session.getWorkflowContext() ||
+        const baseWorkflowContext =
+            session.getWorkflowContext() ||
             (managedDormant ? managed?.workflowContext : null) ||
-            deriveWorkflowContextFromExecutionWorkflow(activeExecutionWorkflow) || null;
+            deriveWorkflowContextFromExecutionWorkflow(activeExecutionWorkflow) ||
+            null;
         const activeInteractions = [...session.getActiveInteractions().values()];
-        const liveQuestion = activeInteractions.some((record) =>
-            record.request && record.request.type !== "plan_review" && record.request.type !== "code_review"
+        const liveQuestion = activeInteractions.some(
+            (record) =>
+                record.request && record.request.type !== "plan_review" && record.request.type !== "code_review",
         );
         const livePlanReview = activeInteractions.some((record) => record.request?.type === "plan_review");
         const liveCodeReview = activeInteractions.some((record) => record.request?.type === "code_review");
-        const liveReview = activeInteractions.find((record) =>
-            record.request?.type === "plan_review" || record.request?.type === "code_review"
+        const liveReview = activeInteractions.find(
+            (record) => record.request?.type === "plan_review" || record.request?.type === "code_review",
         );
         const workflowProgressFacts = activeExecutionWorkflow
             ? workflowProgressFactsFromActiveMeta(activeExecutionWorkflow.triageMeta || {})
             : Array.isArray(baseWorkflowContext?.progressFacts)
-            ? baseWorkflowContext.progressFacts.map((fact) => ({ ...fact }))
-            : [];
+              ? baseWorkflowContext.progressFacts.map((fact) => ({ ...fact }))
+              : [];
         const activeWorkflowMeta = activeExecutionWorkflow?.triageMeta || {};
         const hasValidationCheckpoint = workflowProgressFacts.some((fact) => fact.kind === "validation_checkpoint");
-        const hasRepairCheckpoint = workflowProgressFacts.some((fact) =>
-            fact.kind === "validation_checkpoint" && (fact.state === "awaiting_repair" || Boolean(fact.repairKind))
+        const hasRepairCheckpoint = workflowProgressFacts.some(
+            (fact) =>
+                fact.kind === "validation_checkpoint" && (fact.state === "awaiting_repair" || Boolean(fact.repairKind)),
         );
-        const tutorialContext = session.getTutorialContext?.() ||
-            (managedDormant ? managed?.tutorialContext || null : null);
+        const tutorialContext =
+            session.getTutorialContext?.() || (managedDormant ? managed?.tutorialContext || null : null);
         const workflowContext = baseWorkflowContext
             ? {
-                ...baseWorkflowContext,
-                ...(typeof activeWorkflowMeta.planId === "string" ? { planId: activeWorkflowMeta.planId } : {}),
-                ...(typeof activeWorkflowMeta.status === "string" ? { status: activeWorkflowMeta.status } : {}),
-                ...(workflowProgressFacts.length ? { progressFacts: workflowProgressFacts } : {}),
-                canReopenPlanReview: Boolean(
-                    managed && this.services.sessionStore?.getLastPlanReview(
-                        managed.runwieldSessionId,
-                        managed.projectId,
-                    ),
-                ),
-                liveQuestion,
-                livePlanReview,
-                liveCodeReview,
-                liveReviewUrl: liveReview?.request?.reviewUrl,
-                ...(baseWorkflowContext.canRun === true || activeWorkflowMeta.status === "ready_for_work"
-                    ? { canRun: true }
-                    : {}),
-                ...(baseWorkflowContext.canResume === true || hasValidationCheckpoint ? { canResume: true } : {}),
-                ...(baseWorkflowContext.canRecover === true || hasRepairCheckpoint ? { canRecover: true } : {}),
-            }
+                  ...baseWorkflowContext,
+                  ...(typeof activeWorkflowMeta.planId === "string" ? { planId: activeWorkflowMeta.planId } : {}),
+                  ...(typeof activeWorkflowMeta.status === "string" ? { status: activeWorkflowMeta.status } : {}),
+                  ...(workflowProgressFacts.length ? { progressFacts: workflowProgressFacts } : {}),
+                  canReopenPlanReview: Boolean(
+                      managed &&
+                      this.services.sessionStore?.getLastPlanReview(managed.runwieldSessionId, managed.projectId),
+                  ),
+                  liveQuestion,
+                  livePlanReview,
+                  liveCodeReview,
+                  liveReviewUrl: liveReview?.request?.reviewUrl,
+                  ...(baseWorkflowContext.canRun === true || activeWorkflowMeta.status === "ready_for_work"
+                      ? { canRun: true }
+                      : {}),
+                  ...(baseWorkflowContext.canResume === true || hasValidationCheckpoint ? { canResume: true } : {}),
+                  ...(baseWorkflowContext.canRecover === true || hasRepairCheckpoint ? { canRecover: true } : {}),
+              }
             : null;
         const contextCapacity = getRuntimeContextCapacity(session);
         const systemContextTokens = getRootSessionStaticContextTokens(session);
@@ -216,14 +212,17 @@ export class RuntimeReads {
         const managedModel = managedDormant ? managed?.model || "" : "";
         const managedProvider = managedDormant ? managed?.provider || "" : "";
         const managedThinkingLevel = managedDormant ? managed?.thinkingLevel || "" : "";
-        const artifacts = managed && this.services.sessionStore
-            ? this.services.sessionStore.listSessionArtifacts(managed.runwieldSessionId, managed.projectId)
-            : [];
-        const planAssociations = activeSessionInfo?.planAssociations ||
+        const artifacts =
+            managed && this.services.sessionStore
+                ? this.services.sessionStore.listSessionArtifacts(managed.runwieldSessionId, managed.projectId)
+                : [];
+        const planAssociations =
+            activeSessionInfo?.planAssociations ||
             (managed && this.services.sessionStore
-                ? this.services.sessionStore.listSessionPlanAssociations(managed.runwieldSessionId, managed.projectId)
-                    .filter((association) => Number.isInteger(association.committedGeneration))
-                    .map(({ committedGeneration: _committedGeneration, ...association }) => association)
+                ? this.services.sessionStore
+                      .listSessionPlanAssociations(managed.runwieldSessionId, managed.projectId)
+                      .filter((association) => Number.isInteger(association.committedGeneration))
+                      .map(({ committedGeneration: _committedGeneration, ...association }) => association)
                 : []);
         return {
             id: session.id,
@@ -232,36 +231,39 @@ export class RuntimeReads {
             name: liveSessionName || activeSessionInfo?.name || managed?.name || pendingCreation?.name || null,
             sessionStats: activeSessionInfo
                 ? {
-                    userMessages: activeSessionInfo.userMessages,
-                    assistantMessages: activeSessionInfo.assistantMessages,
-                    toolCalls: activeSessionInfo.toolCalls,
-                    compactionCount: activeSessionInfo.compactionCount,
-                }
+                      userMessages: activeSessionInfo.userMessages,
+                      assistantMessages: activeSessionInfo.assistantMessages,
+                      toolCalls: activeSessionInfo.toolCalls,
+                      compactionCount: activeSessionInfo.compactionCount,
+                  }
                 : null,
             disposed: session.disposed,
             managed: managed
                 ? {
-                    runwieldSessionId: managed.runwieldSessionId,
-                    projectId: managed.projectId,
-                    currentSegmentId: managed.currentSegmentId,
-                    generation: managed.generation,
-                    acknowledgedGeneration: managed.acknowledgedGeneration ?? managed.generation ?? null,
-                    acknowledgedEventId: managed.acknowledgedEventId ?? null,
-                    syncState: managed.syncState
-                        ? {
-                            status: managed.syncState.status,
-                            localGeneration: managed.syncState.localGeneration,
-                            latestGeneration: managed.syncState.latestGeneration,
-                            ...(managed.syncState.owningSurfaceKind
-                                ? { owningSurfaceKind: managed.syncState.owningSurfaceKind }
-                                : {}),
-                            ...(managed.syncState.message ? { message: managed.syncState.message } : {}),
-                        }
-                        : null,
-                    dormant: managedDormant,
-                }
+                      runwieldSessionId: managed.runwieldSessionId,
+                      projectId: managed.projectId,
+                      currentSegmentId: managed.currentSegmentId,
+                      generation: managed.generation,
+                      acknowledgedGeneration: managed.acknowledgedGeneration ?? managed.generation ?? null,
+                      acknowledgedEventId: managed.acknowledgedEventId ?? null,
+                      syncState: managed.syncState
+                          ? {
+                                status: managed.syncState.status,
+                                localGeneration: managed.syncState.localGeneration,
+                                latestGeneration: managed.syncState.latestGeneration,
+                                ...(managed.syncState.owningSurfaceKind
+                                    ? { owningSurfaceKind: managed.syncState.owningSurfaceKind }
+                                    : {}),
+                                ...(managed.syncState.message ? { message: managed.syncState.message } : {}),
+                            }
+                          : null,
+                      dormant: managedDormant,
+                  }
                 : null,
-            activeAgent: pendingAgentName || session.getRootAgentName() || activeAgentInfo?.agentName ||
+            activeAgent:
+                pendingAgentName ||
+                session.getRootAgentName() ||
+                activeAgentInfo?.agentName ||
                 (managedDormant ? managed?.activeAgent || null : null),
             activeAgentInfo: pendingAgentName
                 ? { displayName: pendingAgentName, model: "", provider: "", agentName: pendingAgentName }
@@ -378,7 +380,8 @@ export class RuntimeReads {
             const events = [...projection.events];
             while (options.completeHistory && !projection.complete) {
                 if (
-                    options.signal?.aborted || session.disposed ||
+                    options.signal?.aborted ||
+                    session.disposed ||
                     this.services.sessionHost.getSession(sessionId) !== session
                 ) {
                     return { ok: false, error: "replay_canceled", message: "Session replay was canceled." };
@@ -408,8 +411,7 @@ export class RuntimeReads {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, replayed: 0, error: "not_found" };
         const canceled = () =>
-            options.signal?.aborted || session.disposed ||
-            this.services.sessionHost.getSession(sessionId) !== session;
+            options.signal?.aborted || session.disposed || this.services.sessionHost.getSession(sessionId) !== session;
         if (canceled()) return { ok: false, replayed: 0, error: "replay_canceled" };
         const emit = (events: Parameters<RuntimeEvents["emitSessionEvent"]>[1][]) => {
             let replayed = 0;
@@ -454,18 +456,20 @@ export class RuntimeReads {
         }
         if (managed && !session?.getRootSessionManager?.()) {
             const projected = await this.readManagedCommittedProjection(sessionId);
-            return projected.ok ? getProjectedLastAssistantText(projected.entries) : {
-                ok: false,
-                error: projected.error,
-                message: projected.message,
-            };
+            return projected.ok
+                ? getProjectedLastAssistantText(projected.entries)
+                : {
+                      ok: false,
+                      error: projected.error,
+                      message: projected.message,
+                  };
         }
         const messages = (session ? getRuntimeRootAgentSession(session) : null)?.agent?.state?.messages || [];
         for (let index = messages.length - 1; index >= 0; index--) {
             const message = messages[index];
             if (message?.role !== "assistant" || !Array.isArray(message.content)) continue;
             const text = message.content
-                .map((block) => block.type === "text" ? block.text : "")
+                .map((block) => (block.type === "text" ? block.text : ""))
                 .filter(Boolean)
                 .join("\n")
                 .trim();
@@ -491,19 +495,19 @@ export class RuntimeReads {
             const projected = await this.readManagedCommittedProjection(sessionId);
             return projected.ok
                 ? buildProjectedSessionInfo(projected.entries, {
-                    sessionId: managed.piSessionId,
-                    cwd: session.cwd,
-                    transcriptPath: managed.transcriptPath,
-                })
+                      sessionId: managed.piSessionId,
+                      cwd: session.cwd,
+                      transcriptPath: managed.transcriptPath,
+                  })
                 : { ok: false, error: projected.error, message: projected.message };
         }
         const info: ProjectedSessionInfo = manager
             ? { ...this.getActiveSessionInfo(session, manager) }
             : buildProjectedSessionInfo([], {
-                sessionId: session.id,
-                cwd: session.cwd,
-                transcriptPath: "In-memory",
-            });
+                  sessionId: session.id,
+                  cwd: session.cwd,
+                  transcriptPath: "In-memory",
+              });
         const rootAgentSession = getRuntimeRootAgentSession(session);
         info.compactionSettings = rootAgentSession?.settingsManager?.getCompactionSettings?.() || null;
         info.contextUsage = getRuntimeContextCapacity(session).contextUsage;
@@ -528,8 +532,8 @@ export class RuntimeReads {
                 model: { provider: managed?.provider || "", model: managed?.model || "" },
                 projection: buildProjectedSessionContextProjection(projected.entries),
                 contextUsage: null,
-                activeMessageTokens: info.inputTokens + info.outputTokens + info.cacheReadTokens +
-                    info.cacheWriteTokens,
+                activeMessageTokens:
+                    info.inputTokens + info.outputTokens + info.cacheReadTokens + info.cacheWriteTokens,
                 contextWindow: null,
             });
         }
@@ -589,9 +593,10 @@ export class RuntimeReads {
 
     async inspectUnmanagedResumableSession(options: { cwd: string; sessionId: string; sessionPath?: string }) {
         const { locators } = await listCatalogSafeRootSessionLocators(options.cwd);
-        const locator = locators.find((candidate) =>
-            candidate.piSessionId === options.sessionId &&
-            (!options.sessionPath || candidate.sessionPath === options.sessionPath)
+        const locator = locators.find(
+            (candidate) =>
+                candidate.piSessionId === options.sessionId &&
+                (!options.sessionPath || candidate.sessionPath === options.sessionPath),
         );
         if (!locator) throw new Error("The Session transcript is unavailable");
         const evidence = await captureTranscriptEvidence({
@@ -698,10 +703,14 @@ export class RuntimeReads {
             const projected = await this.readManagedCommittedProjection(sessionId);
             if (!projected.ok) throw new Error(projected.message);
             if (!session) throw new Error("Runtime session has no persistence store.");
-            return await exportProjectedTranscript(projected.entries, {
-                cwd: session.cwd,
-                sessionId: managed.piSessionId,
-            }, outputPath);
+            return await exportProjectedTranscript(
+                projected.entries,
+                {
+                    cwd: session.cwd,
+                    sessionId: managed.piSessionId,
+                },
+                outputPath,
+            );
         }
         if (!isRuntimeRootSessionManager(manager)) {
             throw new Error("Runtime session has no persistence store.");

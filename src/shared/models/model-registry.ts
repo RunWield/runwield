@@ -230,7 +230,7 @@ function readOpenAiModelIds(payload: JsonValue): string[] {
     const data = isJsonRecord(payload) ? payload.data : undefined;
     const models = Array.isArray(data) ? data : Array.isArray(payload) ? payload : [];
     return models
-        .map((item) => isJsonRecord(item) ? item.id : undefined)
+        .map((item) => (isJsonRecord(item) ? item.id : undefined))
         .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
         .map((id) => id.trim());
 }
@@ -390,11 +390,11 @@ function readConfiguredModels(providerId: string, providerConfig: ConfiguredProv
     const entries: ConfiguredModelInput[] = Array.isArray(models)
         ? models.filter(isJsonRecord).map((item) => item as ConfiguredModelInput)
         : isJsonRecord(models)
-        ? Object.entries(models).map(([id, value]) => ({
-            ...(isJsonRecord(value) ? value : {}),
-            id,
-        })) as ConfiguredModelInput[]
-        : [];
+          ? (Object.entries(models).map(([id, value]) => ({
+                ...(isJsonRecord(value) ? value : {}),
+                id,
+            })) as ConfiguredModelInput[])
+          : [];
     return entries
         .filter((item): item is ConfiguredModelInput & { id: string } => typeof item.id === "string")
         .map((item) => ({
@@ -444,9 +444,7 @@ function isExternalCliBackend(backend: string | undefined): backend is ExternalC
     return backend === CLAUDE_CLI_PROVIDER || backend === AGY_CLI_PROVIDER;
 }
 
-export function isExternalCliModel(
-    model: Pick<RunWieldModel, "provider" | "executionBackend"> | undefined,
-): boolean {
+export function isExternalCliModel(model: Pick<RunWieldModel, "provider" | "executionBackend"> | undefined): boolean {
     if (!model) return false;
     return isExternalCliProvider(model.provider) || isExternalCliBackend(model.executionBackend);
 }
@@ -478,13 +476,14 @@ function getExternalCliAliasModels(): RunWieldModel[] {
     return Object.values(EXTERNAL_CLI_PROVIDER_DEFINITIONS).flatMap((definition) =>
         [...(definition.aliases || []), ...(definition.supportedModels || [])]
             .map((selector) => createExternalCliModelDescriptor(definition.provider, selector))
-            .filter((model): model is RunWieldModel => Boolean(model))
+            .filter((model): model is RunWieldModel => Boolean(model)),
     );
 }
 
 function dedupeModels(models: RunWieldModel[]): RunWieldModel[] {
-    return models.filter((model, index) =>
-        index === models.findIndex((item) => item.provider === model.provider && item.id === model.id)
+    return models.filter(
+        (model, index) =>
+            index === models.findIndex((item) => item.provider === model.provider && item.id === model.id),
     );
 }
 
@@ -506,15 +505,17 @@ export class RunWieldModelRegistry {
         this.configDir = options.configDir || getRunWieldModelConfigDir();
         this.credentialStore = options.credentialStore || getRunWieldCredentialStore(this.configDir);
         if (this.runtimePromise && !this.runtime) {
-            this.runtimePromise.then((runtime) => {
-                this.runtime = runtime;
-            }).catch(() => {});
+            this.runtimePromise
+                .then((runtime) => {
+                    this.runtime = runtime;
+                })
+                .catch(() => {});
         }
     }
 
     async getRuntime(): Promise<ModelRuntime> {
         if (this.remote) return this.runtime!;
-        const runtime = this.runtime || await (this.runtimePromise || getModelRuntime());
+        const runtime = this.runtime || (await (this.runtimePromise || getModelRuntime()));
         this.runtime = runtime;
         return runtime;
     }
@@ -576,7 +577,7 @@ export class RunWieldModelRegistry {
     getAll(): RunWieldModel[] {
         if (this.remote) return Array.from(this.runtime!.getModels()) as RunWieldModel[];
         const runtimeModels = this.runtime
-            ? Array.from(this.runtime.getModels()) as RunWieldModel[]
+            ? (Array.from(this.runtime.getModels()) as RunWieldModel[])
             : readBuiltinModels();
         return dedupeModels([
             ...runtimeModels.filter((model) => !isExternalCliModel(model)),
@@ -593,11 +594,9 @@ export class RunWieldModelRegistry {
 
     getAvailable(): RunWieldModel[] {
         const models = this.runtime
-            ? Array.from(this.runtime.getAvailableSnapshot()) as RunWieldModel[]
+            ? (Array.from(this.runtime.getAvailableSnapshot()) as RunWieldModel[])
             : this.getAll().filter((model) => this.hasConfiguredAuth(model));
-        return dedupeModels(
-            models.filter((model) => !isExternalCliModel(model)),
-        );
+        return dedupeModels(models.filter((model) => !isExternalCliModel(model)));
     }
 
     find(provider: string, modelId: string): RunWieldModel | undefined {
@@ -608,10 +607,12 @@ export class RunWieldModelRegistry {
                 : undefined;
         }
         if (isExternalCliProvider(provider)) return createExternalCliModelDescriptor(provider, modelId);
-        return this.runtime?.getModel(provider, modelId) as RunWieldModel | undefined ||
+        return (
+            (this.runtime?.getModel(provider, modelId) as RunWieldModel | undefined) ||
             this.registeredModels.get(`${provider}/${modelId}`) ||
             this.getConfiguredModels().find((model) => model.provider === provider && model.id === modelId) ||
-            readBuiltinModels().find((model) => model.provider === provider && model.id === modelId);
+            readBuiltinModels().find((model) => model.provider === provider && model.id === modelId)
+        );
     }
 
     isSelectable(model: RunWieldModel | undefined): boolean {
@@ -633,22 +634,24 @@ export class RunWieldModelRegistry {
     }
 
     async getApiKeyAndHeaders(model: RunWieldModel): Promise<
-        { ok: true; apiKey?: string; headers?: Record<string, string>; env?: Record<string, string> } | {
-            ok: false;
-            error: string;
-        }
+        | { ok: true; apiKey?: string; headers?: Record<string, string>; env?: Record<string, string> }
+        | {
+              ok: false;
+              error: string;
+          }
     > {
         if (this.remote) return { ok: false, error: "Remote model credentials stay on the laptop" };
         if (isExternalCliModel(model)) {
             return { ok: false, error: `No API auth for external CLI provider ${model.provider}` };
         }
-        const runtime = this.runtime || await (this.runtimePromise || getModelRuntime());
+        const runtime = this.runtime || (await (this.runtimePromise || getModelRuntime()));
         this.runtime = runtime;
-        const auth = await runtime.getAuth(model) as AuthResultValue | undefined;
+        const auth = (await runtime.getAuth(model)) as AuthResultValue | undefined;
         if (auth) return { ok: true, apiKey: auth.auth.apiKey, headers: auth.auth.headers, env: auth.env };
-        const compatibility = typeof runtime.getCompatibilityRequestConfig === "function"
-            ? runtime.getCompatibilityRequestConfig(model) as CompatibilityRequestConfig
-            : undefined;
+        const compatibility =
+            typeof runtime.getCompatibilityRequestConfig === "function"
+                ? (runtime.getCompatibilityRequestConfig(model) as CompatibilityRequestConfig)
+                : undefined;
         const providerConfig = this.getProviderConfig(model.provider);
         const apiKey = resolveLiteralConfigValue(providerConfig?.apiKey);
         const headers = compatibility?.headers;
@@ -674,23 +677,29 @@ export class RunWieldModelRegistry {
     getProvider(provider: string): Provider | ConfiguredProviderInput | undefined {
         if (this.remote) return this.runtime!.getProvider(provider);
         if (isExternalCliProvider(provider)) return undefined;
-        return this.runtime?.getProvider(provider) || builtinProviders().find((item) => item.id === provider) ||
-            this.getProviderConfig(provider);
+        return (
+            this.runtime?.getProvider(provider) ||
+            builtinProviders().find((item) => item.id === provider) ||
+            this.getProviderConfig(provider)
+        );
     }
 
     getProviderDisplayName(provider: string): string {
         if (this.remote) return this.runtime!.getProvider(provider)?.name || provider;
         if (isExternalCliProvider(provider)) return EXTERNAL_CLI_PROVIDER_DEFINITIONS[provider].displayName;
-        return this.runtime?.getProvider(provider)?.name ||
-            this.getProviderConfig(provider)?.name as string | undefined || provider;
+        return (
+            this.runtime?.getProvider(provider)?.name ||
+            (this.getProviderConfig(provider)?.name as string | undefined) ||
+            provider
+        );
     }
 
     async getProviderAuth(provider: string): Promise<AuthResultValue | undefined> {
         if (this.remote) return undefined;
         if (isExternalCliProvider(provider)) return undefined;
-        const runtime = this.runtime || await (this.runtimePromise || getModelRuntime());
+        const runtime = this.runtime || (await (this.runtimePromise || getModelRuntime()));
         this.runtime = runtime;
-        return await runtime.getAuth(provider) as AuthResultValue | undefined;
+        return (await runtime.getAuth(provider)) as AuthResultValue | undefined;
     }
 
     async getApiKeyForProvider(provider: string): Promise<string | undefined> {
@@ -711,9 +720,14 @@ export class RunWieldModelRegistry {
         if (!providerId || !providerConfig || isExternalCliProvider(providerId)) return;
         this.runtime?.registerProvider(providerId, providerConfig as Parameters<ModelRuntime["registerProvider"]>[1]);
         if (this.runtimePromise && !this.runtime) {
-            this.runtimePromise.then((runtime) =>
-                runtime.registerProvider(providerId, providerConfig as Parameters<ModelRuntime["registerProvider"]>[1])
-            ).catch(() => {});
+            this.runtimePromise
+                .then((runtime) =>
+                    runtime.registerProvider(
+                        providerId,
+                        providerConfig as Parameters<ModelRuntime["registerProvider"]>[1],
+                    ),
+                )
+                .catch(() => {});
         }
         for (const model of readConfiguredModels(providerId, providerConfig)) {
             this.registeredModels.set(`${providerId}/${model.id}`, model);
@@ -730,8 +744,10 @@ export class RunWieldModelRegistry {
 
     getRegisteredProviderConfig(provider: string): ConfiguredProviderInput | undefined {
         if (isExternalCliProvider(provider)) return undefined;
-        return this.runtime?.getRegisteredProviderConfig(provider) as ConfiguredProviderInput | undefined ||
-            this.getProviderConfig(provider);
+        return (
+            (this.runtime?.getRegisteredProviderConfig(provider) as ConfiguredProviderInput | undefined) ||
+            this.getProviderConfig(provider)
+        );
     }
 
     getRegisteredNativeProvider(provider: string): Provider | undefined {
@@ -741,18 +757,18 @@ export class RunWieldModelRegistry {
 
     getRegisteredProviderIds(): readonly string[] {
         const providers = this.readModelsConfig().providers;
-        const configured = Object.keys(isJsonRecord(providers) ? providers : {}).filter((provider) =>
-            !isExternalCliProvider(provider)
+        const configured = Object.keys(isJsonRecord(providers) ? providers : {}).filter(
+            (provider) => !isExternalCliProvider(provider),
         );
-        const runtime = (this.runtime?.getRegisteredProviderIds() || []).filter((provider) =>
-            !isExternalCliProvider(provider)
+        const runtime = (this.runtime?.getRegisteredProviderIds() || []).filter(
+            (provider) => !isExternalCliProvider(provider),
         );
         return [...new Set([...runtime, ...configured])];
     }
 
     readModelsConfig(): ModelsConfig {
         if (this.remote) return {};
-        return readJsoncObject(join(this.configDir, "models.json")) as ModelsConfig || {};
+        return (readJsoncObject(join(this.configDir, "models.json")) as ModelsConfig) || {};
     }
 
     getProviderConfig(provider: string): ConfiguredProviderInput | undefined {
@@ -760,7 +776,7 @@ export class RunWieldModelRegistry {
         if (isExternalCliProvider(provider)) return undefined;
         const providers = this.readModelsConfig().providers;
         const config = isJsonRecord(providers) ? providers[provider] : undefined;
-        return isJsonRecord(config) ? config as ConfiguredProviderInput : undefined;
+        return isJsonRecord(config) ? (config as ConfiguredProviderInput) : undefined;
     }
 
     getConfiguredModels(): RunWieldModel[] {
@@ -770,7 +786,7 @@ export class RunWieldModelRegistry {
         return Object.entries(providers).flatMap(([provider, config]) =>
             !isExternalCliProvider(provider) && isJsonRecord(config)
                 ? readConfiguredModels(provider, config as ConfiguredProviderInput)
-                : []
+                : [],
         );
     }
 }
@@ -788,9 +804,10 @@ export async function discoverProviderModel(
 
     const runwieldDir = options.runwieldDir ?? getRunWieldModelConfigDir();
     const modelsConfig = readJsoncObject(join(runwieldDir, "models.json"));
-    const providerConfig = isJsonRecord(modelsConfig?.providers) && isJsonRecord(modelsConfig.providers[provider])
-        ? modelsConfig.providers[provider] as ConfiguredProviderInput
-        : undefined;
+    const providerConfig =
+        isJsonRecord(modelsConfig?.providers) && isJsonRecord(modelsConfig.providers[provider])
+            ? (modelsConfig.providers[provider] as ConfiguredProviderInput)
+            : undefined;
     if (!providerConfig) return undefined;
 
     const baseUrl = typeof providerConfig.baseUrl === "string" ? providerConfig.baseUrl.trim() : "";
@@ -807,7 +824,7 @@ export async function discoverProviderModel(
         );
     }
 
-    const ids = readOpenAiModelIds(await response.json() as JsonValue);
+    const ids = readOpenAiModelIds((await response.json()) as JsonValue);
     if (!ids.includes(modelId)) return undefined;
 
     const imageInputModels = Array.isArray(providerConfig.imageInputModels) ? providerConfig.imageInputModels : [];
@@ -820,17 +837,19 @@ export async function discoverProviderModel(
         api,
         authHeader: providerConfig.authHeader,
         headers: providerConfig.headers,
-        models: [{
-            id: modelId,
-            name: modelId,
-            api,
-            baseUrl,
-            reasoning: false,
-            input: resolvedInput,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 128000,
-            maxTokens: 16384,
-        }],
+        models: [
+            {
+                id: modelId,
+                name: modelId,
+                api,
+                baseUrl,
+                reasoning: false,
+                input: resolvedInput,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 128000,
+                maxTokens: 16384,
+            },
+        ],
     });
 
     return modelRegistry.find(provider, modelId);
@@ -841,9 +860,10 @@ function getPiConfigMigrationCandidates(fileName: string, homeDir: string): stri
     return [join(homeDir, ".pi", "agent", fileName), join(homeDir, ".pi", fileName)];
 }
 
-function migrateModelConfigFilesOnce(
-    options: { targetDir: string; sourceCandidatesByFile: (fileName: string) => string[] },
-): {
+function migrateModelConfigFilesOnce(options: {
+    targetDir: string;
+    sourceCandidatesByFile: (fileName: string) => string[];
+}): {
     copied: string[];
     skipped: string[];
     failed: Array<{ file: string; error: string }>;
@@ -910,9 +930,14 @@ export async function createRunWieldModelRuntime(): Promise<ModelRuntime> {
  */
 export async function configureRemoteModelConnection(connection: RemoteModelConnection): Promise<() => void> {
     if (
-        !remotePersonalResourcesActive() || remoteModelConnectionToken || !Number.isInteger(connection.port) ||
-        connection.port < 1 || connection.port > 65535 || !/^[a-f0-9]{64}$/.test(connection.credential)
-    ) throw new Error("Remote model composition requires a mounted context and a fresh valid control connection");
+        !remotePersonalResourcesActive() ||
+        remoteModelConnectionToken ||
+        !Number.isInteger(connection.port) ||
+        connection.port < 1 ||
+        connection.port > 65535 ||
+        !/^[a-f0-9]{64}$/.test(connection.credential)
+    )
+        throw new Error("Remote model composition requires a mounted context and a fresh valid control connection");
     const token = Symbol("remote model connection");
     remoteModelConnectionToken = token;
     try {

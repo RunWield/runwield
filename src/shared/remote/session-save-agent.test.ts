@@ -1,10 +1,14 @@
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { test } from "node:test";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { readdirSync } from "node:fs";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { makeControlFixture } from "./session-save-test-fixture.ts";
 import { verificationClient, verificationTransport } from "./session-save-verification-fixture.ts";
 import { parseRemoteSessionTranscript } from "./session-protocol.ts";
 
-Deno.test("bound real Pi AgentSession saves a complete tool turn, metadata and actual compaction on the laptop", async () => {
+test("bound real Pi AgentSession saves a complete tool turn, metadata and actual compaction on the laptop", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const client = verificationClient(f, f.baseUrl, { mode: "turn" });
@@ -18,10 +22,16 @@ Deno.test("bound real Pi AgentSession saves a complete tool turn, metadata and a
         assert(result.types?.includes("compaction"));
         const saved = parseRemoteSessionTranscript(f.owner.inspect().contents).slice(1);
         assertEquals(saved.length, result.entries);
-        assertEquals(saved.map((entry) => entry.type), result.types);
-        assertEquals(await Deno.readTextFile(join(f.remoteProject, "dependent-marker")), "effect\n");
-        assertEquals([...Deno.readDirSync(f.mount)], []);
-        assertEquals([...Deno.readDirSync(f.remoteProject)].map((entry) => entry.name), ["dependent-marker"]);
+        assertEquals(
+            saved.map((entry) => entry.type),
+            result.types,
+        );
+        assertEquals(await fsReadFile(join(f.remoteProject, "dependent-marker"), "utf8"), "effect\n");
+        assertEquals([...readdirSync(f.mount, { withFileTypes: true })], []);
+        assertEquals(
+            [...readdirSync(f.remoteProject, { withFileTypes: true })].map((entry) => entry.name),
+            ["dependent-marker"],
+        );
     } finally {
         await client.close();
         await f.close();
@@ -29,7 +39,7 @@ Deno.test("bound real Pi AgentSession saves a complete tool turn, metadata and a
 });
 
 for (const faultPoint of ["before-prompt", "before-tool", "after-tool", "tool-hook"] as const) {
-    Deno.test(`bound real Pi AgentSession stops ${faultPoint} progress after swallowed recorder failure`, async () => {
+    test(`bound real Pi AgentSession stops ${faultPoint} progress after swallowed recorder failure`, async () => {
         const f = await makeControlFixture();
         await f.ready();
         const proxy = verificationTransport(f, async (input, response) => {
@@ -55,7 +65,7 @@ for (const faultPoint of ["before-prompt", "before-tool", "after-tool", "tool-ho
             assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).generation, null);
             f.owner.markUncertain();
             if (faultPoint !== "after-tool") {
-                await assertRejects(() => Deno.stat(join(f.remoteProject, "dependent-marker")), Deno.errors.NotFound);
+                await assertRejects(() => fsStat(join(f.remoteProject, "dependent-marker")), Error, "ENOENT");
             }
         } finally {
             await client.close();
@@ -65,7 +75,7 @@ for (const faultPoint of ["before-prompt", "before-tool", "after-tool", "tool-ho
     });
 }
 
-Deno.test("remote attachment manager saves laptop bytes and stores only a path-free durable reference", async () => {
+test("remote attachment manager saves laptop bytes and stores only a path-free durable reference", async () => {
     const f = await makeControlFixture();
     await f.ready();
     const client = verificationClient(f, f.baseUrl, { mode: "attachment" });
@@ -78,15 +88,15 @@ Deno.test("remote attachment manager saves laptop bytes and stores only a path-f
         const segment = f.store.getCurrentSessionSegment(f.session.runwieldSessionId);
         assert(segment);
         const directory = join(dirname(segment.transcriptPath), `${segment.piSessionId}_images`);
-        const files = [...Deno.readDirSync(directory)];
+        const files = [...readdirSync(directory, { withFileTypes: true })];
         assertEquals(files.length, 1);
-        assertEquals(await Deno.readFile(join(directory, files[0].name)), new Uint8Array([1, 2, 3, 4]));
+        assertEquals(new Uint8Array(await fsReadFile(join(directory, files[0].name))), new Uint8Array([1, 2, 3, 4]));
         const saved = f.owner.inspect().contents;
         assertStringIncludes(saved, image.ref ?? "missing");
         assert(!saved.includes(f.mount));
         assert(!saved.includes(f.remoteProject));
-        assertEquals([...Deno.readDirSync(f.remoteProject)], []);
-        assertEquals([...Deno.readDirSync(f.mount)], []);
+        assertEquals([...readdirSync(f.remoteProject, { withFileTypes: true })], []);
+        assertEquals([...readdirSync(f.mount, { withFileTypes: true })], []);
     } finally {
         await client.close();
         await f.close();

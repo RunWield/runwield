@@ -1,10 +1,13 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { assertRemoteStorageAbsent, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 
 for (const fault of ["append", "checkpoint"] as const) {
-    Deno.test(`remote ${fault} interruption marks laptop ownership uncertain and resumes without repeating a project write`, async () => {
+    test(`remote ${fault} interruption marks laptop ownership uncertain and resumes without repeating a project write`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
             const contexts: string[] = [];
             f.setModelResponseFactories([
@@ -28,7 +31,9 @@ for (const fault of ["append", "checkpoint"] as const) {
                 // The owner has durably saved the tool result; only its network acknowledgement is lost.
                 f.policy.handle = async (input, path, response) => {
                     if (
-                        path === "/session/request" && input.kind === "append" && "contents" in input &&
+                        path === "/session/request" &&
+                        input.kind === "append" &&
+                        "contents" in input &&
                         input.contents.includes('"toolName":"write"')
                     ) {
                         interrupted = true;
@@ -62,12 +67,12 @@ for (const fault of ["append", "checkpoint"] as const) {
             );
             assertEquals(failed.ok, false, JSON.stringify(failed));
             assertEquals(f.store.inspectSessionActivation(failed.savedId).activation?.state, "idle");
-            assertEquals(await Deno.readTextFile(join(f.remoteProject, "sentinel.txt")), "one durable effect\n");
-            assertEquals(await Deno.readTextFile(join(f.projectRoot, "sentinel.txt")), "laptop initial\n");
+            assertEquals(await fsReadFile(join(f.remoteProject, "sentinel.txt"), "utf8"), "one durable effect\n");
+            assertEquals(await fsReadFile(join(f.projectRoot, "sentinel.txt"), "utf8"), "laptop initial\n");
             assert(f.controls.some((entry) => entry.request.kind === "markUncertain"));
             f.policy.handle = undefined;
             f.policy.before = undefined;
-            const before = await Deno.stat(join(f.remoteProject, "sentinel.txt"));
+            const before = await fsStat(join(f.remoteProject, "sentinel.txt"));
             const requestCount = contexts.length;
             const fresh = await f.start();
             await fresh.read();
@@ -80,7 +85,7 @@ for (const fault of ["append", "checkpoint"] as const) {
                 requestCount,
                 "Loading committed history must not replay a model or tool call",
             );
-            assertEquals((await Deno.stat(join(f.remoteProject, "sentinel.txt"))).mtime, before.mtime);
+            assertEquals((await fsStat(join(f.remoteProject, "sentinel.txt"))).mtime, before.mtime);
             assertEquals(f.store.inspectSessionActivation(failed.savedId).activation?.state, "idle");
             f.setModelResponseFactory((context) => {
                 contexts.push(JSON.stringify(context));
@@ -98,7 +103,7 @@ for (const fault of ["append", "checkpoint"] as const) {
                     .length,
                 1,
             );
-            assertEquals((await Deno.stat(join(f.remoteProject, "sentinel.txt"))).mtime, before.mtime);
+            assertEquals((await fsStat(join(f.remoteProject, "sentinel.txt"))).mtime, before.mtime);
             await assertRemoteStorageAbsent(f);
         });
     });

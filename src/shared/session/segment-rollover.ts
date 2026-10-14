@@ -80,7 +80,8 @@ export async function rollSessionTranscriptSegment(
     try {
         const managed = options.hostedSession.getManagedMetadata();
         if (!managed) throw new Error("Session metadata is required for transcript rollover");
-        const predecessor = options.ownerCoordinationStore.listSessionTranscriptSegments(managed.runwieldSessionId)
+        const predecessor = options.ownerCoordinationStore
+            .listSessionTranscriptSegments(managed.runwieldSessionId)
             .find((segment) => segment.segmentId === managed.currentSegmentId);
         if (!predecessor) throw new Error("The current Session transcript segment is unavailable");
 
@@ -123,10 +124,7 @@ export async function rollSessionTranscriptSegment(
         proof = options.ownerCoordinationStore.changeSessionActivationPhase(proof, "checkpointing");
         const successorManager = await createRootSessionManager("new", transcriptCwd);
         const successorPiSessionId = successorManager.getSessionId();
-        const successorTranscriptPath = await resolveCreatedRootSessionPath(
-            transcriptCwd,
-            successorManager,
-        );
+        const successorTranscriptPath = await resolveCreatedRootSessionPath(transcriptCwd, successorManager);
         const successorSegmentId = crypto.randomUUID();
         recordSegmentLineageEvidence(successorManager, {
             segmentId: successorSegmentId,

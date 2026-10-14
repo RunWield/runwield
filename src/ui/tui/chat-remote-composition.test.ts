@@ -1,5 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { stat as fsStat } from "node:fs/promises";
+import { readdirSync } from "node:fs";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
@@ -10,9 +13,11 @@ import { RemoteSessionControl } from "../../shared/remote/session-control-client
 import { createInteractiveTuiComposition } from "./interactive-tui-composition.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 
-Deno.test("remote TUI composition stays dormant with a normal composer and creates no laptop Session", async () => {
+import process from "node:process";
+
+test("remote TUI composition stays dormant with a normal composer and creates no laptop Session", async () => {
     await withRuntimeCommandFixture("remote-tui-composition-", async ({ projectRoot }) => {
-        Deno.chdir(projectRoot);
+        process.chdir(projectRoot);
         const baseDir = join(projectRoot, "laptop-history");
         const store = openFileSessionStore({ baseDir });
         const identity = { buildId: "a".repeat(64), protocol: 1 };
@@ -34,7 +39,10 @@ Deno.test("remote TUI composition stays dormant with a normal composer and creat
         });
         const control = new RemoteSessionControl({ port: service.port, credential: service.credential });
         try {
-            for (const [path, body] of [["handshake", JSON.stringify(identity)], ["readiness", ""]]) {
+            for (const [path, body] of [
+                ["handshake", JSON.stringify(identity)],
+                ["readiness", ""],
+            ]) {
                 const response = await fetch(`http://127.0.0.1:${service.port}/${path}`, {
                     method: "POST",
                     headers: { Authorization: `Bearer ${service.credential}` },
@@ -59,8 +67,14 @@ Deno.test("remote TUI composition stays dormant with a normal composer and creat
                 assertEquals(await composition.runtime.listResumableSessions(projectRoot), []);
                 assertEquals(await control.list(), []);
                 assertEquals(listProjectsFromDisk(baseDir), []);
-                assertEquals(await Deno.stat(getRunWieldSessionsBaseDir()).then(() => true, () => false), false);
-                assertEquals(Array.from(Deno.readDirSync(baseDir)), []);
+                assertEquals(
+                    await fsStat(getRunWieldSessionsBaseDir()).then(
+                        () => true,
+                        () => false,
+                    ),
+                    false,
+                );
+                assertEquals(Array.from(readdirSync(baseDir, { withFileTypes: true })), []);
             } finally {
                 await composition.dispose();
             }

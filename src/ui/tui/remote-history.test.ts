@@ -1,39 +1,43 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../theme/theme.js";
 import { RunWieldTui } from "./tui.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { remoteHistoryFooter, showRemoteHistory } from "./remote-history.ts";
-import type { SavedRemoteSession } from "../../shared/remote/laptop-session-control.ts";
+import { type SavedRemoteSession } from "../../shared/remote/laptop-session-control.ts";
 
 function savedSession(): SavedRemoteSession {
     const timestamp = "2026-01-01T00:00:00.000Z";
-    const contents = [
-        { type: "session", version: 3, id: "saved", cwd: "/remote-only/project", timestamp },
-        {
-            type: "message",
-            id: "user",
-            parentId: null,
-            timestamp,
-            message: { role: "user", content: [{ type: "text", text: "Saved remote question" }], timestamp: 1 },
-        },
-        {
-            type: "message",
-            id: "answer",
-            parentId: "user",
-            timestamp,
-            message: {
-                role: "assistant",
-                content: [{ type: "text", text: "Saved remote answer" }],
-                api: "openai-completions",
-                provider: "fixture",
-                model: "fixture",
-                stopReason: "stop",
-                timestamp: 2,
-                usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
+    const contents =
+        [
+            { type: "session", version: 3, id: "saved", cwd: "/remote-only/project", timestamp },
+            {
+                type: "message",
+                id: "user",
+                parentId: null,
+                timestamp,
+                message: { role: "user", content: [{ type: "text", text: "Saved remote question" }], timestamp: 1 },
             },
-        },
-    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+            {
+                type: "message",
+                id: "answer",
+                parentId: "user",
+                timestamp,
+                message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: "Saved remote answer" }],
+                    api: "openai-completions",
+                    provider: "fixture",
+                    model: "fixture",
+                    stopReason: "stop",
+                    timestamp: 2,
+                    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
+                },
+            },
+        ]
+            .map((entry) => JSON.stringify(entry))
+            .join("\n") + "\n";
     return {
         summary: {
             id: "saved",
@@ -56,7 +60,7 @@ async function waitFor(terminal: VirtualTerminal, text: string): Promise<void> {
     throw new Error(`Missing ${text}: ${terminal.getScreenText()}`);
 }
 
-Deno.test("offline history selects a target and replays ordinary messages without a composer", async () => {
+test("offline history selects a target and replays ordinary messages without a composer", async () => {
     await withProcessGlobalTestLock(async () => {
         initRunWieldTheme();
         const terminal = new VirtualTerminal({ columns: 180, rows: 30 });
@@ -88,7 +92,7 @@ Deno.test("offline history selects a target and replays ordinary messages withou
     });
 });
 
-Deno.test("offline history allows scrolling and keeps reconnect instructions pinned", async () => {
+test("offline history allows scrolling and keeps reconnect instructions pinned", async () => {
     await withProcessGlobalTestLock(async () => {
         initRunWieldTheme();
         const session = savedSession();
@@ -120,7 +124,7 @@ Deno.test("offline history allows scrolling and keeps reconnect instructions pin
     });
 });
 
-Deno.test("offline history footer strips terminal controls from target labels", () => {
+test("offline history footer strips terminal controls from target labels", () => {
     assertEquals(
         remoteHistoryFooter("host:\u001b[31m/project\n"),
         "Saved on host: [31m/project. Connect with wld remote host: [31m/project, then /resume. · q exit",

@@ -22,7 +22,7 @@ async function productionSourceFiles(path) {
         const entryPath = join(path, entry.name);
         if (entry.isDirectory()) {
             if (SKIPPED_SOURCE_DIRECTORIES.has(entry.name)) continue;
-            files.push(...await productionSourceFiles(entryPath));
+            files.push(...(await productionSourceFiles(entryPath)));
             continue;
         }
         if (!entry.isFile() || !/\.[jt]sx?$/.test(entry.name)) continue;
@@ -107,11 +107,15 @@ function sourceWithoutApprovedWorkspaceRootSessionDirImport(path, source) {
 }
 
 test("core has no consumer presentation knowledge", async () => {
-    const violations = await findViolations(["src/shared", "src/tools"], [
-        { label: "UI API reference", pattern: /\buiAPI\b|\bUiAPI\b|SessionUiPort/ },
-        { label: "consumer name", pattern: /\bTUI\b|\bACP\b|Plannotator/ },
-        { label: "consumer import", pattern: /(?:from|import\()\s*["'][^"']*(?:\/ui\/|\/acp\/)/ },
-    ], { javascriptOnly: true });
+    const violations = await findViolations(
+        ["src/shared", "src/tools"],
+        [
+            { label: "UI API reference", pattern: /\buiAPI\b|\bUiAPI\b|SessionUiPort/ },
+            { label: "consumer name", pattern: /\bTUI\b|\bACP\b|Plannotator/ },
+            { label: "consumer import", pattern: /(?:from|import\()\s*["'][^"']*(?:\/ui\/|\/acp\/)/ },
+        ],
+        { javascriptOnly: true },
+    );
     assertEquals(violations, []);
 });
 
@@ -139,19 +143,23 @@ test("TUI, ACP, and Workspace remain sibling Runtime consumers", async () => {
 });
 
 test("Core session surfaces do not open or import the Workspace database", async () => {
-    const violations = await findViolations(["src/ui/tui", "src/acp"], [
-        {
-            label: "Workspace database dependency",
-            pattern: /shared\/owner-coordination|openOwnerCoordination|owner-coordination\.sqlite3/,
-        },
-    ]);
+    const violations = await findViolations(
+        ["src/ui/tui", "src/acp"],
+        [
+            {
+                label: "Workspace database dependency",
+                pattern: /shared\/owner-coordination|openOwnerCoordination|owner-coordination\.sqlite3/,
+            },
+        ],
+    );
     const runtimeSources = await Promise.all(
         (await productionSourceFiles(join(REPO_ROOT, "src/shared/session/runtime"))).map((file) =>
-            fsReadFile(file, "utf8")
+            fsReadFile(file, "utf8"),
         ),
     );
     const runtimeSource = runtimeSources.join("\n");
-    const runtimeImportsWorkspaceStore = /from\s+["'][^"']*owner-coordination\/index\.js["']/.test(runtimeSource) ||
+    const runtimeImportsWorkspaceStore =
+        /from\s+["'][^"']*owner-coordination\/index\.js["']/.test(runtimeSource) ||
         /openOwnerCoordinationStore\s*\(/.test(runtimeSource);
     if (runtimeImportsWorkspaceStore) {
         violations.push("src/shared/session/session-runtime.ts: Workspace database dependency");
@@ -160,41 +168,45 @@ test("Core session surfaces do not open or import the Workspace database", async
 });
 
 test("TUI, ACP, Workspace, commands, and scripts use the public Runtime surface only", async () => {
-    const violations = await findViolations(["src/ui/tui", "src/acp", "src/ui/workspace", "src/cmd", "scripts"], [
-        {
-            label: "HostedSession reference",
-            pattern: /HostedSession|hosted-session/,
-            allowPath: (path) => path === "src/ui/tui/testing/session-view-fixture.ts",
-        },
-        {
-            label: "SessionHost reference",
-            pattern: /SessionHost|session-host/,
-            allowPath: (path) => path === "src/ui/tui/testing/session-view-fixture.ts",
-        },
-        {
-            label: "root-session internal access",
-            pattern: /getRootAgentSession|getRootSessionManager|createRootSessionManager|openPersistedRootSession/,
-        },
-        { label: "session implementation import", pattern: /shared\/session\/session\.js/ },
-        {
-            label: "session internal import",
-            pattern: /shared\/session\/(?:agent-handler|agent-switching|root-session|hosted-session|session-host)\.js/,
-            sourceForRule: sourceWithoutApprovedWorkspaceRootSessionDirImport,
-            allowPath: (path) => path === "src/ui/tui/testing/session-view-fixture.ts",
-        },
-        { label: "Runtime host escape", pattern: /\.sessionHost\b|\.getSession\s*\(/ },
-        { label: "Runtime event producer escape", pattern: /\.emitSessionEvent\s*\(/ },
-        { label: "Runtime transcript-internal escape", pattern: /\.recordLocalToolExchange\s*\(/ },
-        {
-            label: "consumer-side Runtime event production or normalization",
-            pattern:
-                /createSessionRuntimeEvent|emitHostedSessionRuntimeEvent|normalizeRuntimeToolResult|normalizeRuntimeUsage|describeRuntimeTool|formatToolEventTitle/,
-        },
-        {
-            label: "parallel operation-cancellation seam",
-            pattern: /registerOperationCancel|cancelSessionCompaction/,
-        },
-    ]);
+    const violations = await findViolations(
+        ["src/ui/tui", "src/acp", "src/ui/workspace", "src/cmd", "scripts"],
+        [
+            {
+                label: "HostedSession reference",
+                pattern: /HostedSession|hosted-session/,
+                allowPath: (path) => path === "src/ui/tui/testing/session-view-fixture.ts",
+            },
+            {
+                label: "SessionHost reference",
+                pattern: /SessionHost|session-host/,
+                allowPath: (path) => path === "src/ui/tui/testing/session-view-fixture.ts",
+            },
+            {
+                label: "root-session internal access",
+                pattern: /getRootAgentSession|getRootSessionManager|createRootSessionManager|openPersistedRootSession/,
+            },
+            { label: "session implementation import", pattern: /shared\/session\/session\.js/ },
+            {
+                label: "session internal import",
+                pattern:
+                    /shared\/session\/(?:agent-handler|agent-switching|root-session|hosted-session|session-host)\.js/,
+                sourceForRule: sourceWithoutApprovedWorkspaceRootSessionDirImport,
+                allowPath: (path) => path === "src/ui/tui/testing/session-view-fixture.ts",
+            },
+            { label: "Runtime host escape", pattern: /\.sessionHost\b|\.getSession\s*\(/ },
+            { label: "Runtime event producer escape", pattern: /\.emitSessionEvent\s*\(/ },
+            { label: "Runtime transcript-internal escape", pattern: /\.recordLocalToolExchange\s*\(/ },
+            {
+                label: "consumer-side Runtime event production or normalization",
+                pattern:
+                    /createSessionRuntimeEvent|emitHostedSessionRuntimeEvent|normalizeRuntimeToolResult|normalizeRuntimeUsage|describeRuntimeTool|formatToolEventTitle/,
+            },
+            {
+                label: "parallel operation-cancellation seam",
+                pattern: /registerOperationCancel|cancelSessionCompaction/,
+            },
+        ],
+    );
     assertEquals(violations, []);
 });
 
@@ -207,40 +219,46 @@ test("writable transcript hydration stays inside SessionRuntime lease enforcemen
         "src/shared/session/runtime/lifecycle.ts",
         "src/shared/session/runtime/managed-operations.ts",
     ]);
-    const violations = await findViolations(["src", "scripts"], [
-        {
-            label: "writable transcript open outside SessionRuntime and root-session helpers",
-            pattern: /SessionManager\.open|openPersistedRootSession|createRootSessionManager/,
-            allowPath: (path) => allowed.has(path),
-        },
-    ]);
+    const violations = await findViolations(
+        ["src", "scripts"],
+        [
+            {
+                label: "writable transcript open outside SessionRuntime and root-session helpers",
+                pattern: /SessionManager\.open|openPersistedRootSession|createRootSessionManager/,
+                allowPath: (path) => allowed.has(path),
+            },
+        ],
+    );
     assertEquals(violations, []);
 });
 
 test("Session writer mutators stay behind approved state-machine seams", async () => {
-    const violations = await findViolations(["src", "scripts"], [
-        {
-            label: "Session Activation Lease mutator outside Runtime or approved coordination service",
-            pattern:
-                /\b(?:acquireSessionActivation|changeSessionActivationPhase|heartbeatSessionActivation|publishGenerationAndRelease|releaseUnchangedActivation|markSessionUncertain|markSessionReconcileRequired)\s*\(/,
-            allowPath: (path) =>
-                path.startsWith("src/shared/owner-coordination/") ||
-                path === "src/shared/session/file-session-store.ts" ||
-                path === "src/shared/session/file-session-control.ts" ||
-                path === "src/shared/session/file-session-store-types.ts" ||
-                path === "src/shared/session/segment-rollover.ts" ||
-                // ADR-015: the laptop owner coordinates remote saves with its native writer proof.
-                path === "src/shared/session/remote-session-owner.ts" ||
-                // ADR-018: connection-scoped laptop control admits native remote writers.
-                path === "src/shared/remote/laptop-session-control.ts" ||
-                path === "src/shared/session/runtime/lifecycle-loading.ts" ||
-                path === "src/shared/session/runtime/lifecycle.ts" ||
-                path === "src/shared/session/runtime/managed-operations.ts" ||
-                path === "src/shared/session/runtime/managed-sync.ts" ||
-                path === "src/ui/workspace/server/session-continuation.js" ||
-                path === "src/ui/workspace/server/owner-plan-actions.ts",
-        },
-    ]);
+    const violations = await findViolations(
+        ["src", "scripts"],
+        [
+            {
+                label: "Session Activation Lease mutator outside Runtime or approved coordination service",
+                pattern:
+                    /\b(?:acquireSessionActivation|changeSessionActivationPhase|heartbeatSessionActivation|publishGenerationAndRelease|releaseUnchangedActivation|markSessionUncertain|markSessionReconcileRequired)\s*\(/,
+                allowPath: (path) =>
+                    path.startsWith("src/shared/owner-coordination/") ||
+                    path === "src/shared/session/file-session-store.ts" ||
+                    path === "src/shared/session/file-session-control.ts" ||
+                    path === "src/shared/session/file-session-store-types.ts" ||
+                    path === "src/shared/session/segment-rollover.ts" ||
+                    // ADR-015: the laptop owner coordinates remote saves with its native writer proof.
+                    path === "src/shared/session/remote-session-owner.ts" ||
+                    // ADR-018: connection-scoped laptop control admits native remote writers.
+                    path === "src/shared/remote/laptop-session-control.ts" ||
+                    path === "src/shared/session/runtime/lifecycle-loading.ts" ||
+                    path === "src/shared/session/runtime/lifecycle.ts" ||
+                    path === "src/shared/session/runtime/managed-operations.ts" ||
+                    path === "src/shared/session/runtime/managed-sync.ts" ||
+                    path === "src/ui/workspace/server/session-continuation.js" ||
+                    path === "src/ui/workspace/server/owner-plan-actions.ts",
+            },
+        ],
+    );
     assertEquals(violations, []);
 });
 
@@ -281,10 +299,9 @@ test("non-owning Session generation synchronization remains read-only", async ()
             violations.push(`${path}: managed Session synchronization opens writable transcript state`);
         }
         if (
-            /\b(?:runtime|sessionRuntime|options\.runtime)\.(?:loadSession|adoptManagedSession|promptSession|promptManagedSession)\s*\(/
-                .test(
-                    source,
-                )
+            /\b(?:runtime|sessionRuntime|options\.runtime)\.(?:loadSession|adoptManagedSession|promptSession|promptManagedSession)\s*\(/.test(
+                source,
+            )
         ) {
             violations.push(`${path}: managed Session synchronization hydrates or prompts through Runtime`);
         }
@@ -294,16 +311,19 @@ test("non-owning Session generation synchronization remains read-only", async ()
 });
 
 test("stable RunWield Session IDs are not confused with Hosted or Pi session ids", async () => {
-    const violations = await findViolations(["src", "scripts"], [
-        {
-            label: "stable runwieldSessionId assigned from in-process or Pi session id",
-            pattern: /\brunwieldSessionId\s*:\s*(?:session\.id|runtimeSessionId|sessionManagerId|piSessionId)\b/,
-        },
-        {
-            label: "owner Session id assigned from in-process session id",
-            pattern: /\bownerSessionId\s*:\s*session\.id\b/,
-        },
-    ]);
+    const violations = await findViolations(
+        ["src", "scripts"],
+        [
+            {
+                label: "stable runwieldSessionId assigned from in-process or Pi session id",
+                pattern: /\brunwieldSessionId\s*:\s*(?:session\.id|runtimeSessionId|sessionManagerId|piSessionId)\b/,
+            },
+            {
+                label: "owner Session id assigned from in-process session id",
+                pattern: /\bownerSessionId\s*:\s*session\.id\b/,
+            },
+        ],
+    );
     assertEquals(violations, []);
 });
 
@@ -377,16 +397,19 @@ test("active and isolated Agents have exactly one production lifecycle boundary 
 });
 
 test("command surfaces do not use SessionSnapshot as active runtime authority", async () => {
-    const violations = await findViolations(["src/cmd"], [
-        {
-            label: "active Agent read from display SessionSnapshot",
-            pattern: /getSessionSnapshot\s*\([^)]*\)\?\.activeAgent\b/,
-        },
-        {
-            label: "active execution workflow read from display SessionSnapshot",
-            pattern: /getSessionSnapshot\s*\([^)]*\)\?\.activeExecutionWorkflow\b/,
-        },
-    ]);
+    const violations = await findViolations(
+        ["src/cmd"],
+        [
+            {
+                label: "active Agent read from display SessionSnapshot",
+                pattern: /getSessionSnapshot\s*\([^)]*\)\?\.activeAgent\b/,
+            },
+            {
+                label: "active execution workflow read from display SessionSnapshot",
+                pattern: /getSessionSnapshot\s*\([^)]*\)\?\.activeExecutionWorkflow\b/,
+            },
+        ],
+    );
 
     assertEquals(violations, []);
 });
@@ -511,49 +534,45 @@ test("SessionRuntime public surface remains adapter-neutral and explicit", () =>
     assertEquals(methods, allowedMethods);
 
     const runtime = createSessionRuntime();
-    for (
-        const internal of [
-            "engine",
-            "sessionHost",
-            "switchActiveAgent",
-            "abortActiveSession",
-            "createRootSessionManager",
-            "openPersistedRootSession",
-            "resolveResumeAgentName",
-            "createAgentHandler",
-            "ensureRootAgentSession",
-            "steerRootSessionWithTarget",
-            "eventListeners",
-            "turnSettlements",
-            "queuedMessages",
-            "queueSourceSubscriptions",
-            "getHostedSession",
-            "getSession",
-            "getActivationProof",
-            "withSessionManager",
-            "attachRuntimeEventSink",
-            "emitSessionEvent",
-            "recordLocalToolExchange",
-            "setSessionHandler",
-            "ensureSessionReady",
-        ]
-    ) {
+    for (const internal of [
+        "engine",
+        "sessionHost",
+        "switchActiveAgent",
+        "abortActiveSession",
+        "createRootSessionManager",
+        "openPersistedRootSession",
+        "resolveResumeAgentName",
+        "createAgentHandler",
+        "ensureRootAgentSession",
+        "steerRootSessionWithTarget",
+        "eventListeners",
+        "turnSettlements",
+        "queuedMessages",
+        "queueSourceSubscriptions",
+        "getHostedSession",
+        "getSession",
+        "getActivationProof",
+        "withSessionManager",
+        "attachRuntimeEventSink",
+        "emitSessionEvent",
+        "recordLocalToolExchange",
+        "setSessionHandler",
+        "ensureSessionReady",
+    ]) {
         assertEquals(Object.hasOwn(runtime, internal), false, `${internal} must remain private`);
         assertEquals(methods.includes(internal), false, `${internal} must not be a public Runtime method`);
     }
 });
 
-for (
-    const deletedPath of [
-        "src/shared/session/presentation-messages.js",
-        "src/shared/session/session-runtime-ui.js",
-        "src/ui/tui/message-hydration.js",
-        "src/ui/tui/task-completed-message.js",
-        "src/shared/workflow/code-review.js",
-        "src/shared/workflow/review-launcher.js",
-        "src/shared/workflow/submit-plan.js",
-    ]
-) {
+for (const deletedPath of [
+    "src/shared/session/presentation-messages.js",
+    "src/shared/session/session-runtime-ui.js",
+    "src/ui/tui/message-hydration.js",
+    "src/ui/tui/task-completed-message.js",
+    "src/shared/workflow/code-review.js",
+    "src/shared/workflow/review-launcher.js",
+    "src/shared/workflow/submit-plan.js",
+]) {
     test(`removed compatibility seam stays deleted: ${deletedPath}`, async () => {
         await assertRejects(() => fsStat(join(REPO_ROOT, deletedPath)), Error, "ENOENT");
     });

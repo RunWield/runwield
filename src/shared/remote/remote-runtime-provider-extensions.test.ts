@@ -1,13 +1,16 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { type RuntimeFixture, withRemoteRuntimeFixture } from "./remote-runtime-test-fixture.ts";
 
 async function installExtension(f: RuntimeFixture, body: string) {
     const root = join(f.remoteProject, "fixture-extension");
-    await Deno.mkdir(root);
-    await Deno.mkdir(join(f.remoteProject, ".wld"), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(root);
+    await fsMkdir(join(f.remoteProject, ".wld"), { recursive: true });
+    await fsWriteFile(
         join(root, "package.json"),
         JSON.stringify({
             name: "remote-hook-fixture",
@@ -19,8 +22,8 @@ async function installExtension(f: RuntimeFixture, body: string) {
             },
         }),
     );
-    await Deno.writeTextFile(join(root, "index.js"), `export default (pi) => { ${body} };\n`);
-    await Deno.writeTextFile(
+    await fsWriteFile(join(root, "index.js"), `export default (pi) => { ${body} };\n`);
+    await fsWriteFile(
         join(f.remoteProject, ".wld", "settings.json"),
         JSON.stringify({ packages: ["../fixture-extension"] }),
     );
@@ -34,7 +37,7 @@ const providerHooks = [
 ] as const;
 
 for (const [event, option] of providerHooks) {
-    Deno.test(`remote root fails closed instead of discarding ${event} extension callbacks`, async () => {
+    test(`remote root fails closed instead of discarding ${event} extension callbacks`, async () => {
         await withRemoteRuntimeFixture(async (f) => {
             await installExtension(f, `pi.on("${event}", () => {});`);
             let executed = false;
@@ -53,7 +56,7 @@ for (const [event, option] of providerHooks) {
     });
 }
 
-Deno.test("remote root keeps core and package tool and Agent lifecycle extensions active", async () => {
+test("remote root keeps core and package tool and Agent lifecycle extensions active", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         await installExtension(
             f,
@@ -68,7 +71,7 @@ Deno.test("remote root keeps core and package tool and Agent lifecycle extension
             }));
         `,
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(f.resources, "agents", "remote-runtime.md"),
             "---\nname: Remote Runtime\ndescription: Lifecycle conversation\ntools:\n    - read\n    - memory\n---\nUse project tools when asked.\n",
         );
