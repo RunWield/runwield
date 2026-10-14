@@ -55,7 +55,9 @@ test("Claude fixture keeps local alternatives but exports one aggregate generati
             await fsWriteFile(
                 script,
                 `
-for await (const _chunk of (await import("node:process")).stdin) { /* drain fixture input */ }
+const lines = (await import("node:readline")).createInterface({ input: (await import("node:process")).stdin });
+await new Promise((resolve) => lines.once("line", resolve));
+lines.close();
 console.log(await (await import("node:fs/promises")).readFile(${JSON.stringify(stream)}, "utf8"));
 await new Promise((resolve) => setTimeout(resolve, 30));
 `,

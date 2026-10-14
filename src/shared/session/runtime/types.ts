@@ -1,4 +1,4 @@
-import type { SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, SessionManager, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ContextUsageSnapshot } from "../../types.js";
 import type { McpServerDefinition } from "../../mcp/config.ts";
 import type { FileSessionStore } from "../file-session-store-types.ts";
@@ -9,6 +9,15 @@ import type { NamedInvocationPayload } from "../named-invocation.ts";
 import type { SessionHost } from "../session-host.ts";
 
 export type OwnerProcessKind = "workspace" | "tui" | "acp" | "test";
+
+export interface RuntimeSteeringResult {
+    taskId: string;
+    text: string;
+    target: AgentSession;
+    queueIndex: number | null;
+    queueLength: number;
+    unsubscribe: () => void;
+}
 
 export interface SessionRuntimeComposition {
     sessionHost: SessionHost;

@@ -17,7 +17,7 @@ import {
     SessionTurnInProgressError,
 } from "./support.ts";
 import { isManagedOperationFailure } from "./types.ts";
-import type { PromptSessionOptions, PromptTurnContext } from "./types.ts";
+import type { PromptSessionOptions, PromptTurnContext, RuntimeSteeringResult } from "./types.ts";
 import { SlashCommandMetricsTracker } from "../../workflow/command-metrics.ts";
 
 interface TaskTranscriptEntry {
@@ -128,17 +128,7 @@ export class RuntimeTurns {
     private turnSettlements = new Map<string, Promise<void>>();
     private resultDrains = new Map<string, Promise<void>>();
     private resultAcquisitions = new Set<string>();
-    private steeringResults = new Map<
-        string,
-        {
-            taskId: string;
-            text: string;
-            target: import("@earendil-works/pi-coding-agent").AgentSession;
-            queueIndex: number | null;
-            queueLength: number;
-            unsubscribe: () => void;
-        }
-    >();
+    private steeringResults = new Map<string, RuntimeSteeringResult>();
     private steeringInFlight = new Map<
         string,
         Promise<import("@earendil-works/pi-coding-agent").AgentSession | null>
