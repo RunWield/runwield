@@ -1,10 +1,14 @@
+import { getCwd } from "../src/constants.js";
+import { readFile as fsReadFile } from "node:fs/promises";
+import process from "node:process";
 /**
  * Assert that the built Workspace runtime renders the real Astro review pages.
  * This is a release quality gate: Plan/Code review must not silently degrade to
  * a missing-assets or fallback page in standalone binaries.
  */
 
-import { dirname, extname, join, resolve, toFileUrl } from "@std/path";
+import { dirname, extname, join, resolve } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { collectNestedReviewAssetUrls, collectReviewAssetUrls } from "./release-check.js";
 
 const DEFAULT_RUNTIME_ENTRY = "dist/workspace-runtime/server.mjs";
@@ -68,25 +72,27 @@ function getOpaqueWorkspaceAssetName(name) {
 /**
  * @param {string} assetUrl
  * @param {string} runtimeClientAssetDir
+ * @param {boolean} [opaqueAssets]
  * @returns {string}
  */
-function runtimeAssetPathForUrl(assetUrl, runtimeClientAssetDir) {
+function runtimeAssetPathForUrl(assetUrl, runtimeClientAssetDir, opaqueAssets) {
     const url = new URL(assetUrl);
     const encodedName = url.pathname.slice("/_astro/".length);
     const assetName = decodeURIComponent(encodedName);
     if (!assetName || assetName.includes("..") || assetName.includes("/")) {
         fail(`Unsafe Workspace review asset path: ${url.pathname}`);
     }
-    return join(runtimeClientAssetDir, getOpaqueWorkspaceAssetName(assetName));
+    return join(runtimeClientAssetDir, opaqueAssets ? getOpaqueWorkspaceAssetName(assetName) : assetName);
 }
 
 /**
  * @param {string} html
  * @param {string} baseUrl
  * @param {string} runtimeClientAssetDir
+ * @param {boolean} [opaqueAssets]
  * @returns {Promise<void>}
  */
-export async function assertReviewAssetsAvailableInRuntime(html, baseUrl, runtimeClientAssetDir) {
+export async function assertReviewAssetsAvailableInRuntime(html, baseUrl, runtimeClientAssetDir, opaqueAssets = true) {
     const pending = collectReviewAssetUrls(html, baseUrl);
     const seen = new Set();
 
@@ -95,9 +101,9 @@ export async function assertReviewAssetsAvailableInRuntime(html, baseUrl, runtim
         if (!assetUrl || seen.has(assetUrl)) continue;
         seen.add(assetUrl);
 
-        const assetPath = runtimeAssetPathForUrl(assetUrl, runtimeClientAssetDir);
-        const body = await Deno.readFile(assetPath).catch((error) => {
-            if (error instanceof Deno.errors.NotFound) {
+        const assetPath = runtimeAssetPathForUrl(assetUrl, runtimeClientAssetDir, opaqueAssets);
+        const body = await fsReadFile(assetPath).catch((error) => {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") {
                 throw new Error(`Workspace review runtime asset is missing: ${assetPath}`);
             }
             throw error;
@@ -118,15 +124,16 @@ export async function assertReviewAssetsAvailableInRuntime(html, baseUrl, runtim
  * @param {string} runtimeEntry
  * @param {string} route
  * @param {Record<string, unknown>} payload
+ * @param {boolean} [bunRuntime]
  */
-async function assertReviewRoute(runtimeEntry, route, payload) {
+async function assertReviewRoute(runtimeEntry, route, payload, bunRuntime = false) {
     const absoluteRuntimeEntry = resolve(runtimeEntry);
     const entry = await import(toFileUrl(absoluteRuntimeEntry).href);
     if (typeof entry.handle !== "function") fail(`${runtimeEntry} does not export handle().`);
 
     const token = String(payload.token || "review-runtime-token");
     const headers = new Headers();
-    headers.set("x-runwield-workspace-cwd", Deno.cwd());
+    headers.set("x-runwield-workspace-cwd", getCwd());
     headers.set("x-runwield-review-payload", encodeURIComponent(JSON.stringify(payload)));
     const url = `http://localhost${route}?token=${encodeURIComponent(token)}`;
     const response = await entry.handle(new Request(url, { headers }));
@@ -134,30 +141,46 @@ async function assertReviewRoute(runtimeEntry, route, payload) {
     if (response.status !== 200) fail(`${route} returned ${response.status}: ${html.slice(0, 200)}`);
     assertRealReviewHtml(html, route);
     assertEmbeddedPayloadRoundTrips(html, route, payload);
-    await assertReviewAssetsAvailableInRuntime(html, url, join(dirname(absoluteRuntimeEntry), "client", "_astro"));
+    await assertReviewAssetsAvailableInRuntime(
+        html,
+        url,
+        join(dirname(absoluteRuntimeEntry), ...(bunRuntime ? ["..", "client", "_astro"] : ["client", "_astro"])),
+        !bunRuntime,
+    );
 }
 
 /** @param {string[]} [args] */
-export async function main(args = Deno.args) {
-    const runtimeEntry = args[0] || DEFAULT_RUNTIME_ENTRY;
-    await assertReviewRoute(runtimeEntry, "/review/plan", {
-        plan: "# Release quality gate Plan\n\n`</script><div data-runwield-review-breakout>source</div>`\n",
-        planPath: "docs/plans/release-quality-gate.md",
-        token: "plan-review-runtime-token",
-        mode: "workflow",
-    });
-    await assertReviewRoute(runtimeEntry, "/review/code", {
-        rawPatch:
-            'diff --git a/src/example.js b/src/example.js\n--- a/src/example.js\n+++ b/src/example.js\n@@ -1 +1,3 @@\n export const a = 1;\n+export const b = 2;\n+const closingTag = "</script><div data-runwield-review-breakout>source</div>";\n',
-        gitRef: "release quality gate diff",
-        agentCwd: Deno.cwd(),
-        token: "code-review-runtime-token",
-        mode: "workflow",
-    });
-    console.log(`Workspace review runtime quality gate passed for ${join(Deno.cwd(), runtimeEntry)}.`);
+export async function main(args = process.argv.slice(2)) {
+    const bunRuntime = args[0] === "--bun";
+    const runtimeEntry = bunRuntime ? "dist/workspace-bun/server/entry.mjs" : args[0] || DEFAULT_RUNTIME_ENTRY;
+    await assertReviewRoute(
+        runtimeEntry,
+        "/review/plan",
+        {
+            plan: "# Release quality gate Plan\n\n`</script><div data-runwield-review-breakout>source</div>`\n",
+            planPath: "docs/plans/release-quality-gate.md",
+            token: "plan-review-runtime-token",
+            mode: "workflow",
+        },
+        bunRuntime,
+    );
+    await assertReviewRoute(
+        runtimeEntry,
+        "/review/code",
+        {
+            rawPatch:
+                'diff --git a/src/example.js b/src/example.js\n--- a/src/example.js\n+++ b/src/example.js\n@@ -1 +1,3 @@\n export const a = 1;\n+export const b = 2;\n+const closingTag = "</script><div data-runwield-review-breakout>source</div>";\n',
+            gitRef: "release quality gate diff",
+            agentCwd: getCwd(),
+            token: "code-review-runtime-token",
+            mode: "workflow",
+        },
+        bunRuntime,
+    );
+    console.log(`Workspace review runtime quality gate passed for ${join(getCwd(), runtimeEntry)}.`);
 }
 
 if (import.meta.main) {
     await main();
-    Deno.exit(0);
+    process.exit(0);
 }

@@ -1,3 +1,4 @@
+import { captureForegroundProcess } from "./captured-process.ts";
 import {
     PROJECT_INTERNAL_RUNTIME_DIR_NAME,
     PROJECT_SECRET_STORE_RELATIVE_PATH,
@@ -37,13 +38,11 @@ function runtimeRemovalWarning(paths: string[]): string {
 }
 
 async function runGitResult(cwd: string, args: string[]): Promise<CommandResult> {
-    const output = await new Deno.Command("git", {
+    const output = await captureForegroundProcess("git", {
         cwd,
         args,
         env: { GIT_LITERAL_PATHSPECS: "1" },
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    });
     const decoder = new TextDecoder();
     return {
         code: output.code,

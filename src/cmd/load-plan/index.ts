@@ -1,3 +1,4 @@
+import process from "node:process";
 import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
 /**
  * @module cmd/load-plan
@@ -6,7 +7,7 @@ import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
  * previous chat session.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { AGENTS, CLI_BIN, getCwd } from "../../constants.js";
 import {
     archivePlan,
@@ -153,7 +154,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             planArg = chosen;
         } else {
             console.error(`Usage: ${CLI_BIN} load-plan <plan-name-or-path>`);
-            Deno.exit(1);
+            process.exit(1);
         }
     }
 

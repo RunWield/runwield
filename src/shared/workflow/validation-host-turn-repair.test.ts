@@ -1,5 +1,9 @@
-import { assertEquals, assertExists, assertNotEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { writeFile as fsWriteFile, mkdtemp as fsMkdtemp, symlink as fsSymlink, rm as fsRm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { updatePlanFrontMatter } from "../../plan-store.js";
@@ -9,16 +13,24 @@ import { captureWorktreeTree } from "./git-snapshot.ts";
 import { applyRoundFindings, createLedger } from "./review-ledger.ts";
 import { complete, hostFixture, hostRequest } from "./testing/validation-host-fixture.ts";
 
-Deno.test("host reclaims the existing semantic repair handoff without another check or receipt", async () => {
+import process from "node:process";
+
+test("host reclaims the existing semantic repair handoff without another check or receipt", async () => {
     const fixture = await hostFixture();
     try {
         const plan = await fixture.plan();
-        const ledger = applyRoundFindings(createLedger(), [{
-            title: "Value",
-            resolved: false,
-            requirement: "Value",
-            evidence: "Missing",
-        }], 1).ledger;
+        const ledger = applyRoundFindings(
+            createLedger(),
+            [
+                {
+                    title: "Value",
+                    resolved: false,
+                    requirement: "Value",
+                    evidence: "Missing",
+                },
+            ],
+            1,
+        ).ledger;
         await updatePlanFrontMatter(
             fixture.cwd,
             "p",
@@ -48,7 +60,7 @@ Deno.test("host reclaims the existing semantic repair handoff without another ch
         assertEquals(await fixture.evidence(), []);
         assertEquals(hostRequest(await fixture.processTurn(), "repair").identity, repair.identity);
         assertEquals(await fixture.evidence(), []);
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+        await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
         const reviewer = hostRequest(await fixture.processTurn(complete(repair)), "reviewer");
         assertEquals(
             (await fixture.plan()).attrs.validationCheckpoint?.reviewState?.reviewLedger.items[0].status,
@@ -63,7 +75,7 @@ Deno.test("host reclaims the existing semantic repair handoff without another ch
         await fixture.close();
     }
 });
-Deno.test("a consumed repair cannot rerun CI even when its check requires another repair", async () => {
+test("a consumed repair cannot rerun CI even when its check requires another repair", async () => {
     const fixture = await hostFixture();
     try {
         const repair = hostRequest(await fixture.processTurn(), "repair");
@@ -82,7 +94,7 @@ Deno.test("a consumed repair cannot rerun CI even when its check requires anothe
 });
 
 for (const legacyReceipt of [false, true]) {
-    Deno.test(`process loss before a new repair settles preserves its pending request (${legacyReceipt ? "old receipt" : "new checkpoint"})`, async () => {
+    test(`process loss before a new repair settles preserves its pending request (${legacyReceipt ? "old receipt" : "new checkpoint"})`, async () => {
         const fixture = await hostFixture();
         try {
             const first = hostRequest(await fixture.processTurn(), "repair");
@@ -119,7 +131,7 @@ for (const legacyReceipt of [false, true]) {
     });
 }
 
-Deno.test("a consumed CI repair returns its pending decision without another CI run or checkpoint write", async () => {
+test("a consumed CI repair returns its pending decision without another CI run or checkpoint write", async () => {
     const fixture = await hostFixture({ attrs: { validationCiAttempts: 2 } });
     try {
         const repair = hostRequest(await fixture.processTurn(), "repair");
@@ -137,16 +149,16 @@ Deno.test("a consumed CI repair returns its pending decision without another CI 
     }
 });
 
-Deno.test("a consumed repair cannot repeat a failed CI process start", async () => {
+test("a consumed repair cannot repeat a failed CI process start", async () => {
     await withProcessGlobalTestLock(async () => {
         const fixture = await hostFixture();
-        const path = Deno.env.get("PATH");
-        const bin = await Deno.makeTempDir({ prefix: "host-git-only-" });
+        const path = process.env["PATH"];
+        const bin = await fsMkdtemp(join(tmpdir(), "host-git-only-"));
         try {
             const repair = hostRequest(await fixture.processTurn(), "repair");
             const execPath = (await git(fixture.cwd, ["--exec-path"])).trim();
-            await Deno.symlink(join(execPath, "git"), join(bin, "git"));
-            Deno.env.set("PATH", bin);
+            await fsSymlink(join(execPath, "git"), join(bin, "git"));
+            process.env["PATH"] = bin;
             assertEquals((await fixture.processTurn(complete(repair))).kind, "paused");
             const evidence = await fixture.evidence();
             assertEquals(evidence.at(-1)?.kind, "ci");
@@ -157,20 +169,20 @@ Deno.test("a consumed repair cannot repeat a failed CI process start", async () 
             assertEquals(await fixture.checkpointBytes(), checkpoint);
             assertEquals(await fixture.ciCount(), 1);
         } finally {
-            if (path === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", path);
-            await Deno.remove(bin, { recursive: true });
+            if (path === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = path;
+            await fsRm(bin, { recursive: true });
             await fixture.close();
         }
     });
 });
 
 for (const resumeWithCompletion of [true, false]) {
-    Deno.test(`process loss after a ready repair receipt resumes CI once (${resumeWithCompletion ? "completion" : "no answer"})`, async () => {
+    test(`process loss after a ready repair receipt resumes CI once (${resumeWithCompletion ? "completion" : "no answer"})`, async () => {
         const fixture = await hostFixture();
         try {
             const repair = hostRequest(await fixture.processTurn(), "repair");
-            await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+            await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
             await recordValidationRepairCompletion({
                 projectRoot: fixture.cwd,
                 planName: "p",

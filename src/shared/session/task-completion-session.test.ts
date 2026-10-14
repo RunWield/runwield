@@ -1,5 +1,8 @@
-import { assertEquals, assertExists } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createTaskCompletedTool } from "../../tools/task-completed.ts";
@@ -33,7 +36,7 @@ function executionWorkflow(planName: string): import("../types.js").ActiveExecut
     };
 }
 
-Deno.test("task completion claim survives process resume until validation handles it", async () => {
+test("task completion claim survives process resume until validation handles it", async () => {
     const sessionManager = SessionManager.inMemory(TASK_COMPLETION_PROJECT_ROOT);
     const original = new HostedSession({
         id: "durable-completion-original",
@@ -83,11 +86,11 @@ Deno.test("task completion claim survives process resume until validation handle
     assertEquals(journalEntries.length, 2);
 });
 
-Deno.test("accepted task completion is recovered from a reopened session JSONL", async () => {
-    const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-task-completion-jsonl-" });
+test("accepted task completion is recovered from a reopened session JSONL", async () => {
+    const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-task-completion-jsonl-"));
     const projectRoot = join(fixtureRoot, "project");
     const sessionDir = join(fixtureRoot, "sessions");
-    await Deno.mkdir(projectRoot, { recursive: true });
+    await fsMkdir(projectRoot, { recursive: true });
     try {
         const sessionManager = SessionManager.create(projectRoot, sessionDir, { id: "durable-jsonl" });
         sessionManager.appendMessage({
@@ -114,7 +117,7 @@ Deno.test("accepted task completion is recovered from a reopened session JSONL",
         );
         const sessionPath = exportRootSessionToJsonl(sessionManager, sessionManager.getSessionFile());
         assertExists(sessionPath);
-        assertEquals((await Deno.readTextFile(sessionPath)).includes(TASK_COMPLETION_CUSTOM_TYPE), true);
+        assertEquals((await fsReadFile(sessionPath, "utf8")).includes(TASK_COMPLETION_CUSTOM_TYPE), true);
 
         const reopenedManager = SessionManager.open(sessionPath, sessionDir, projectRoot);
         const resumed = new HostedSession({
@@ -140,11 +143,11 @@ Deno.test("accepted task completion is recovered from a reopened session JSONL",
         });
         assertEquals(listPendingTaskCompletions(afterAcknowledgment), []);
     } finally {
-        await Deno.remove(fixtureRoot, { recursive: true });
+        await fsRm(fixtureRoot, { recursive: true });
     }
 });
 
-Deno.test("isolated task completion remains outside the root JSONL outbox", async () => {
+test("isolated task completion remains outside the root JSONL outbox", async () => {
     const sessionManager = SessionManager.inMemory(TASK_COMPLETION_PROJECT_ROOT);
     const hostedSession = new HostedSession({
         id: "isolated-completion",
@@ -183,7 +186,7 @@ Deno.test("isolated task completion remains outside the root JSONL outbox", asyn
     );
 });
 
-Deno.test("durable completion does not cross into a different active workflow", async () => {
+test("durable completion does not cross into a different active workflow", async () => {
     const sessionManager = SessionManager.inMemory(TASK_COMPLETION_PROJECT_ROOT);
     const original = new HostedSession({
         id: "completion-scope-original",
@@ -216,7 +219,7 @@ Deno.test("durable completion does not cross into a different active workflow", 
     assertEquals(listPendingTaskCompletions(resumed).length, 1);
 });
 
-Deno.test("acknowledging one completion consumes only that completion", async () => {
+test("acknowledging one completion consumes only that completion", async () => {
     const sessionManager = SessionManager.inMemory(TASK_COMPLETION_PROJECT_ROOT);
     const original = new HostedSession({
         id: "duplicate-completion-original",

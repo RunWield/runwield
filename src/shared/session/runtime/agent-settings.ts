@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs";
 import { AGENTS } from "../../../constants.js";
 import { recordManualModelSelection } from ".././active-agent-session.js";
 import { resolveActiveWorkflowRuntimeAgent } from "../../workflow/execution-agent.ts";
@@ -19,7 +20,7 @@ import { resolveMcpConfig } from "../../mcp/config.ts";
 import { startMcpIntegration } from "../../mcp/integration.ts";
 import { ensureAgyCliMcpSetup } from ".././backends/agy-cli/mcp-setup.ts";
 import { readCurrentPairCheckpoint, recordPairCheckpointSnapshot } from ".././pair-checkpoint-session.ts";
-import { recordExecutionWorkflowSnapshot } from "../execution-workflow-session.js";
+import { recordExecutionWorkflowSnapshot } from "../execution-workflow-session.ts";
 import { resolvePersistedExecutionRootConfiguration } from "./support.ts";
 
 import {
@@ -628,9 +629,9 @@ export class RuntimeAgentSettings {
     ensureSessionProjectForCwd(cwd: string) {
         if (!this.services.sessionStore) return null;
         try {
-            Deno.mkdirSync(cwd, { recursive: true });
+            mkdirSync(cwd, { recursive: true });
         } catch (error) {
-            if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
         }
         return this.services.sessionStore.ensureRuntimeProject({ root: cwd });
     }

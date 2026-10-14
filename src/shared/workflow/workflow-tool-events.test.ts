@@ -1,4 +1,5 @@
-import { assertEquals, assertExists, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";
@@ -36,7 +37,7 @@ function makeHostedSession(id: string) {
     return { hostedSession, sessionManager, root };
 }
 
-Deno.test("concurrent isolated completion keeps its caller even when another Agent owns the footer", async () => {
+test("concurrent isolated completion keeps its caller even when another Agent owns the footer", async () => {
     const { hostedSession } = makeHostedSession("concurrent-tool-source");
     const first = { sessionManager: SessionManager.inMemory(PROJECT_ROOT), dispose() {} };
     const second = { sessionManager: SessionManager.inMemory(PROJECT_ROOT), dispose() {} };
@@ -72,7 +73,7 @@ Deno.test("concurrent isolated completion keeps its caller even when another Age
     assertEquals(listPendingWorkflowToolEvents(hostedSession), []);
 });
 
-Deno.test("Workflow Tool Event is consume-once and settled through the root outbox", () => {
+test("Workflow Tool Event is consume-once and settled through the root outbox", () => {
     const { hostedSession, sessionManager, root } = makeHostedSession("workflow-event-root");
     hostedSession.beginTurn("turn-1");
     publishWorkflowToolEvent({
@@ -100,7 +101,7 @@ Deno.test("Workflow Tool Event is consume-once and settled through the root outb
     assertEquals(journalEntries.length, 2);
 });
 
-Deno.test("Workflow Tool Event waiters receive events published before turn completion", async () => {
+test("Workflow Tool Event waiters receive events published before turn completion", async () => {
     const { hostedSession, root } = makeHostedSession("workflow-event-waiter");
     const waited = waitForWorkflowToolEvent(hostedSession, { kinds: ["plan_written"], owningSession: root });
     publishWorkflowToolEvent({
@@ -117,7 +118,7 @@ Deno.test("Workflow Tool Event waiters receive events published before turn comp
     assertEquals(claimWorkflowToolEvent(hostedSession, { kinds: ["plan_written"], owningSession: root }), null);
 });
 
-Deno.test("Workflow Tool Event rejects duplicate tool calls after settlement", () => {
+test("Workflow Tool Event rejects duplicate tool calls after settlement", () => {
     const { hostedSession, root } = makeHostedSession("workflow-event-duplicate-settled");
     hostedSession.beginTurn("turn-1");
     const event = publishWorkflowToolEvent({
@@ -149,7 +150,7 @@ Deno.test("Workflow Tool Event rejects duplicate tool calls after settlement", (
     assertEquals(event.eventId, "plan_written:turn-1:duplicate-call");
 });
 
-Deno.test("Workflow Tool Event rejects stale workflow attempts", () => {
+test("Workflow Tool Event rejects stale workflow attempts", () => {
     const { hostedSession, root } = makeHostedSession("workflow-event-stale-attempt");
     hostedSession.setActiveExecutionWorkflow({
         planName: "same-plan",

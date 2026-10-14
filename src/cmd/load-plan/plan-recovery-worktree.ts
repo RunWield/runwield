@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 /**
  * @module cmd/load-plan/plan-recovery-worktree
  * Reading, reporting on, and detaching the worktree generation a Plan records.
@@ -17,7 +19,8 @@ import {
 } from "../../shared/workflow/validation-user-messages.ts";
 import { runPlanFrontMatterTransition, runReviewReopenTransition } from "../../shared/workflow/state-transition.ts";
 import { getWorkflowDiff } from "../../shared/workflow/git-snapshot.ts";
-import { getWorktreeStatus } from "../../shared/worktree.js";
+import { getWorktreeStatus, slugify } from "../../shared/worktree.js";
+import { WORKTREE_BRANCH_PREFIX } from "../../constants.js";
 import {
     findActiveByPlanName as findWorktreeByPlanName,
     findById as findWorktreeById,
@@ -75,20 +78,15 @@ interface ResolveRecoveryWorktreeOptions {
 
 async function canonicalPath(path: string): Promise<string | null> {
     try {
-        return await Deno.realPath(path);
+        return await fsRealpath(path);
     } catch {
         return null;
     }
 }
 
 async function listAttachedWorktrees(projectRoot: string): Promise<AttachedWorktreeRecord[]> {
-    const command = new Deno.Command("git", {
-        args: ["worktree", "list", "--porcelain"],
-        cwd: projectRoot,
-        stdout: "piped",
-        stderr: "null",
-    });
-    const output = await command.output();
+    const command = captureForegroundProcess("git", { args: ["worktree", "list", "--porcelain"], cwd: projectRoot });
+    const output = await command;
     if (output.code !== 0) return [];
     return new TextDecoder().decode(output.stdout).trim().split("\n\n").filter(Boolean).map((block) => {
         const lines = block.split("\n");
@@ -105,7 +103,16 @@ async function discoverAttachedPlanWorktree(
 ): Promise<RecoveryWorktreeContext | null> {
     const projectPath = await canonicalPath(projectRoot);
     const matches: RecoveryWorktreeContext[] = [];
+    // Execution branches are created only as `worktree/<plan-slug>-<attempt-id>`, a
+    // prefix target branches may not use, and attempt IDs contain no dash. A child
+    // Plan's slug extends its Epic's with another dash, so only this Plan's own
+    // attempts can match; reading every other checkout's Plan would cost a runtime
+    // entry each.
+    const executionBranchPrefix = `refs/heads/${WORKTREE_BRANCH_PREFIX}${slugify(plan.planName)}-`;
+    const isOwnExecutionBranch = (branch: string) =>
+        branch.startsWith(executionBranchPrefix) && !branch.slice(executionBranchPrefix.length).includes("-");
     for (const record of await listAttachedWorktrees(projectRoot)) {
+        if (!isOwnExecutionBranch(record.branch)) continue;
         const recordPath = await canonicalPath(record.path);
         if (!recordPath || recordPath === projectPath) continue;
         const executionPlan = await loadPlan(record.path, plan.planName).catch(() => null);
@@ -345,8 +352,8 @@ export function getRecordedWorktreeRecreateBase(context: RecoveryWorktreeContext
 export async function pathExists(path: string | undefined): Promise<boolean> {
     if (!path) return false;
     try {
-        const stat = await Deno.stat(path);
-        return stat.isDirectory;
+        const stat = await fsStat(path);
+        return stat.isDirectory();
     } catch {
         return false;
     }

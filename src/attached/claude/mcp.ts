@@ -1,3 +1,11 @@
+import { readFile as fsReadFile } from "node:fs/promises";
+import { Server } from "@modelcontextprotocol/sdk/server";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio";
+import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from "@modelcontextprotocol/sdk/types";
+import { runAttachedOperation } from "../../shared/attached/coordinator.ts";
+import { ensureReviewHosted, stopHostedAttachedReviews } from "../../shared/attached/review-host.ts";
+import { ATTACHED_OPERATIONS } from "../../shared/attached/operations.ts";
+
 /**
  * @module attached/claude/mcp
  * MCP stdio carrier for the Attached Workflow Coordinator, used by RunWield Connect for
@@ -5,19 +13,14 @@
  */
 
 import process from "node:process";
-import { Server } from "@modelcontextprotocol/sdk/server";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio";
-import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from "@modelcontextprotocol/sdk/types";
-import { runAttachedOperation } from "../../shared/attached/coordinator.ts";
-import { ensureReviewHosted, stopHostedAttachedReviews } from "../../shared/attached/review-host.ts";
-import { ATTACHED_OPERATIONS } from "../../shared/attached/operations.ts";
+
 import plugin from "./plugin/.claude-plugin/plugin.json" with { type: "json" };
 
 /** Serve coordinator operations over stdio until the host closes the stream. */
 export async function runAttachedMcpServer(projectRoot: string, version: string): Promise<void> {
-    const pluginRoot = Deno.env.get("RUNWIELD_ATTACHED_PLUGIN_ROOT");
+    const pluginRoot = process.env["RUNWIELD_ATTACHED_PLUGIN_ROOT"];
     const manifest = pluginRoot
-        ? JSON.parse(await Deno.readTextFile(`${pluginRoot}/.claude-plugin/plugin.json`))
+        ? JSON.parse(await fsReadFile(`${pluginRoot}/.claude-plugin/plugin.json`, "utf8"))
         : plugin;
     if (typeof manifest.version !== "string" || !manifest.version.trim()) {
         throw new Error("RunWield plugin manifest must provide a version.");
@@ -43,14 +46,17 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
         const operation = ATTACHED_OPERATIONS.find((entry) => entry.name === request.params.name);
         if (!operation) throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
         const client = server.getClientVersion();
-        const argumentsWithEvidence = operation.name === "status" ? request.params.arguments ?? {} : {
-            ...request.params.arguments,
-            evidence: {
-                host: client?.name ?? "claude-code",
-                hostVersion: client?.version ?? "not-reported",
-                adapterVersion,
-            },
-        };
+        const argumentsWithEvidence =
+            operation.name === "status"
+                ? (request.params.arguments ?? {})
+                : {
+                      ...request.params.arguments,
+                      evidence: {
+                          host: client?.name ?? "claude-code",
+                          hostVersion: client?.version ?? "not-reported",
+                          adapterVersion,
+                      },
+                  };
         const inputText = JSON.stringify(argumentsWithEvidence);
         const progressToken = request.params._meta?.progressToken;
         let progress = 0;
@@ -58,12 +64,13 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
             if (closing) return;
             const message =
                 "RunWield Core validation is still running. Waiting for the current check; no host action is needed.";
-            const notification = progressToken !== undefined
-                ? server.notification({
-                    method: "notifications/progress",
-                    params: { progressToken, progress: ++progress, message },
-                })
-                : server.sendLoggingMessage({ level: "info", logger: "runwield", data: message });
+            const notification =
+                progressToken !== undefined
+                    ? server.notification({
+                          method: "notifications/progress",
+                          params: { progressToken, progress: ++progress, message },
+                      })
+                    : server.sendLoggingMessage({ level: "info", logger: "runwield", data: message });
             void notification.catch(() => {});
         }, 30_000);
         let coordinated;
@@ -73,16 +80,16 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
             clearInterval(timer);
         }
         const canHost = !closing && (operation.name === "plan_written" || operation.name === "status");
-        const review = canHost && coordinated.workflow
-            ? await ensureReviewHosted(projectRoot, coordinated.workflow)
-            : null;
-        const refreshed = canHost && coordinated.workflow?.review?.status === "pending"
-            ? await runAttachedOperation(
-                "status",
-                projectRoot,
-                JSON.stringify({ workflowId: coordinated.workflow.workflowId }),
-            )
-            : null;
+        const review =
+            canHost && coordinated.workflow ? await ensureReviewHosted(projectRoot, coordinated.workflow) : null;
+        const refreshed =
+            canHost && coordinated.workflow?.review?.status === "pending"
+                ? await runAttachedOperation(
+                      "status",
+                      projectRoot,
+                      JSON.stringify({ workflowId: coordinated.workflow.workflowId }),
+                  )
+                : null;
         const result = {
             ...coordinated,
             ...(refreshed?.workflow && { workflow: refreshed.workflow }),

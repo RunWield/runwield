@@ -1,6 +1,9 @@
 {
     "private": true,
     "type": "module",
+    "packageManager": "bun@1.4.3",
+    "engines": { "bun": "1.4.3" },
+    "trustedDependencies": [],
     "dependencies": {
         "@astrojs/check": "0.9.10",
         "@astrojs/starlight": "0.42.2",
@@ -9,5 +12,6 @@
         "clsx": "2.1.1",
         "pagefind": "1.5.2",
         "typescript": "5.9.3"
-    }
+    },
+    "name": "@runwield/docs"
 }

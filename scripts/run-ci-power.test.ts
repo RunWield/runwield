@@ -1,26 +1,27 @@
-import { assertEquals } from "@std/assert";
+import { getCwd } from "../src/constants.js";
+import { captureForegroundProcess } from "../src/shared/captured-process.ts";
+import { test } from "node:test";
+import { assertEquals } from "../src/testing/assertions.ts";
 import { runCi } from "./run-ci.ts";
 
+import process from "node:process";
+
 async function ciSleepAssertions(): Promise<number[]> {
-    const output = await new Deno.Command("/usr/bin/pmset", {
-        args: ["-g", "assertions"],
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    const output = await captureForegroundProcess("/usr/bin/pmset", { args: ["-g", "assertions"], cwd: getCwd() });
     assertEquals(output.code, 0);
     const text = new TextDecoder().decode(output.stdout);
-    const processes = await new Deno.Command("/bin/ps", {
-        args: ["-axo", "pid,ppid"],
-        stdout: "piped",
-        stderr: "piped",
-    }).output();
+    const processes = await captureForegroundProcess("/bin/ps", { args: ["-axo", "pid,ppid"], cwd: getCwd() });
     assertEquals(processes.code, 0);
-    const children = new TextDecoder().decode(processes.stdout).split("\n").flatMap((line) => {
-        const [pid, parent] = line.trim().split(/\s+/).map(Number);
-        return parent === Deno.pid ? [pid] : [];
-    });
+    const children = new TextDecoder()
+        .decode(processes.stdout)
+        .split("\n")
+        .flatMap((line) => {
+            const [pid, parent] = line.trim().split(/\s+/).map(Number);
+            return parent === process.pid ? [pid] : [];
+        });
     return [...text.matchAll(/pid (\d+)\(caffeinate\):.*PreventUserIdleSystemSleep/g)]
-        .map((match) => Number(match[1])).filter((pid) => children.includes(pid));
+        .map((match) => Number(match[1]))
+        .filter((pid) => children.includes(pid));
 }
 
 async function waitForCiAssertion(previous: number[]): Promise<number> {
@@ -33,11 +34,15 @@ async function waitForCiAssertion(previous: number[]): Promise<number> {
     throw new Error("CI did not prevent automatic idle sleep");
 }
 
-for (const [taskName, code, exitCode] of [["test:all", 0, 0], ["test:all", 7, 7], ["lint", 2, 1]] as const) {
-    Deno.test({
-        name: `CI prevents macOS idle sleep and releases its assertion after ${taskName} exit ${code}`,
-        ignore: Deno.build.os !== "darwin",
-        async fn() {
+for (const [taskName, code, exitCode] of [
+    ["test:all:suite", 0, 0],
+    ["test:all:suite", 7, 7],
+    ["lint", 2, 1],
+] as const) {
+    test(
+        `CI prevents macOS idle sleep and releases its assertion after ${taskName} exit ${code}`,
+        { skip: (process.platform === "win32" ? "windows" : process.platform) !== "darwin" },
+        async () => {
             const previous = await ciSleepAssertions();
             const gate = Promise.withResolvers<void>();
             const run = runCi(async (name) => {
@@ -53,5 +58,5 @@ for (const [taskName, code, exitCode] of [["test:all", 0, 0], ["test:all", 7, 7]
             }
             assertEquals((await ciSleepAssertions()).includes(inhibitorPid), false);
         },
-    });
+    );
 }

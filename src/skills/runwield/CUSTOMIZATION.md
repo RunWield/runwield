@@ -15,8 +15,10 @@ Resolution lists:
 
 ## Agent overrides
 
-Agent definition scalar Front Matter values override by precedence. A `tools` key fully replaces the lower-layer tool
-list. Agent prompts append by default; set `promptOverride: true` when the higher layer must replace the lower prompt
+Agent definition scalar Front Matter values override by precedence. `toolSets` names tool groups (`read`, `write`,
+`docs`, `shell`, `web`) and `tools` names individual tools; a layer that sets either fully replaces the lower-layer tool
+list with its expanded sets followed by its tools. Omit both for a conversation-only Agent. `delegate_agent_read` or
+`delegate_agent_write` limit delegation to one mode (in the `read` and `write` sets); `delegate_agent` allows both. Agent prompts append by default; set `promptOverride: true` when the higher layer must replace the lower prompt
 instead.
 
 ## Prompt templates

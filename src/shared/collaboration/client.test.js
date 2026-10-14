@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { createCollaborationClient } from "./client.js";
 
 /**
@@ -9,7 +11,7 @@ function fakeFetch(handler) {
     return /** @type {typeof fetch} */ ((input, init) => Promise.resolve(handler(String(input), init ?? {})));
 }
 
-Deno.test("client sends JSON requests to fragment-free endpoint URLs", async () => {
+test("client sends JSON requests to fragment-free endpoint URLs", async () => {
     let seenUrl = "";
     let seenInit = /** @type {RequestInit | undefined} */ (undefined);
     const client = createCollaborationClient({
@@ -31,7 +33,7 @@ Deno.test("client sends JSON requests to fragment-free endpoint URLs", async () 
     assertEquals(seenInit?.body, JSON.stringify({ planId: "plan" }));
 });
 
-Deno.test("client rejects absolute endpoint URLs before attaching capabilities", async () => {
+test("client rejects absolute endpoint URLs before attaching capabilities", async () => {
     let fetchCalled = false;
     const client = createCollaborationClient({
         serverUrl: "https://plans.example.test",
@@ -49,7 +51,7 @@ Deno.test("client rejects absolute endpoint URLs before attaching capabilities",
     assertEquals(fetchCalled, false);
 });
 
-Deno.test("client surfaces JSON API errors with redacted messages and payloads", async () => {
+test("client surfaces JSON API errors with redacted messages and payloads", async () => {
     const client = createCollaborationClient({
         serverUrl: "https://plans.example.test",
         bearerCapability: "secret-cap",
@@ -69,7 +71,7 @@ Deno.test("client surfaces JSON API errors with redacted messages and payloads",
     assert(!JSON.stringify(/** @type {any} */ (error).payload).includes("secret-cap"));
 });
 
-Deno.test("client handles non-JSON errors", async () => {
+test("client handles non-JSON errors", async () => {
     const client = createCollaborationClient({
         serverUrl: "https://plans.example.test",
         bearerCapability: "secret-cap",
@@ -78,7 +80,7 @@ Deno.test("client handles non-JSON errors", async () => {
     await assertRejects(async () => await client.requestJson("/api"), Error, "plain failure");
 });
 
-Deno.test("client redacts network failure messages", async () => {
+test("client redacts network failure messages", async () => {
     const client = createCollaborationClient({
         serverUrl: "https://plans.example.test",
         bearerCapability: "secret-cap",
@@ -91,7 +93,7 @@ Deno.test("client redacts network failure messages", async () => {
     assert(!error.message.includes("secret-cap"));
 });
 
-Deno.test("client typed methods use Shared Space API paths", async () => {
+test("client typed methods use Shared Space API paths", async () => {
     /** @type {{ url: string, method: string, body: BodyInit | null | undefined, authorization?: string }[]} */
     const calls = [];
     const client = createCollaborationClient({

@@ -1,3 +1,14 @@
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /**
  * Regression tests for Plan-scoped transition healing.
  *
@@ -6,8 +17,7 @@
  * a journal that belongs to another Plan.
  */
 
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { getTransitionJournalPath } from "./state-transition.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -19,43 +29,43 @@ async function writeJournal(
 ): Promise<string> {
     await enterProjectRuntime(projectRoot);
     const path = getTransitionJournalPath(projectRoot, record.transitionId);
-    await Deno.mkdir(join(path, ".."), { recursive: true });
-    await Deno.writeTextFile(path, `${JSON.stringify(record, null, 2)}\n`);
+    await fsMkdir(join(path, ".."), { recursive: true });
+    await fsWriteFile(path, `${JSON.stringify(record, null, 2)}\n`);
     return path;
 }
 
 async function journalExists(projectRoot: string, transitionId: string): Promise<boolean> {
     try {
-        await Deno.stat(getTransitionJournalPath(projectRoot, transitionId));
+        await fsStat(getTransitionJournalPath(projectRoot, transitionId));
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
         throw error;
     }
 }
 
-Deno.test("healing a Plan with no journals returns empty without starting Git", async () => {
+test("healing a Plan with no journals returns empty without starting Git", async () => {
     await withProcessGlobalTestLock(async () => {
-        const projectRoot = await Deno.makeTempDir({ prefix: "runwield-heal-nogit-" });
-        const emptyBin = await Deno.makeTempDir({ prefix: "runwield-heal-emptybin-" });
-        const previousPath = Deno.env.get("PATH");
+        const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-heal-nogit-"));
+        const emptyBin = await fsMkdtemp(join(tmpdir(), "runwield-heal-emptybin-"));
+        const previousPath = process.env["PATH"];
         try {
             // Remove git from PATH. If the heal tried to gather Git worktree
             // evidence, spawning `git` would now fail and the heal would throw.
-            Deno.env.set("PATH", emptyBin);
+            process.env["PATH"] = emptyBin;
             const result = await healSettledTransitionRecords(projectRoot, { planName: "nothing-to-heal" });
             assertEquals(result, { closed: [], remaining: [] });
         } finally {
-            if (previousPath === undefined) Deno.env.delete("PATH");
-            else Deno.env.set("PATH", previousPath);
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
-            await Deno.remove(emptyBin, { recursive: true }).catch(() => {});
+            if (previousPath === undefined) delete process.env["PATH"];
+            else process.env["PATH"] = previousPath;
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
+            await fsRm(emptyBin, { recursive: true }).catch(() => {});
         }
     });
 });
 
-Deno.test("healing one Plan does not remove another Plan's settled journal", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-heal-isolation-" });
+test("healing one Plan does not remove another Plan's settled journal", async () => {
+    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-heal-isolation-"));
     try {
         const selectedPath = await writeJournal(projectRoot, {
             transitionId: "selected-record",
@@ -84,6 +94,6 @@ Deno.test("healing one Plan does not remove another Plan's settled journal", asy
         assertEquals(typeof selectedPath, "string");
         assertEquals(typeof otherPath, "string");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });

@@ -3,7 +3,10 @@
  * Detect package-manager-owned RunWield installs from metadata beside the executable.
  */
 
-import { dirname, isAbsolute, join } from "@std/path";
+import { dirname, isAbsolute, join } from "node:path";
+
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { env as processEnv, execPath as runtimeExecutable, platform } from "node:process";
 
 export type RunWieldPackageManager = "homebrew" | "winget";
 
@@ -65,17 +68,17 @@ export function packageMetadataPathForExecutablePath(execPath: string): string |
     const path = String(execPath || "");
     if (!path) return null;
     try {
-        return join(dirname(Deno.realPathSync(path)), RUNWIELD_PACKAGE_METADATA_FILE);
+        return join(dirname(realpathSync(path)), RUNWIELD_PACKAGE_METADATA_FILE);
     } catch {
         return join(dirname(path), RUNWIELD_PACKAGE_METADATA_FILE);
     }
 }
 
-export function readRunWieldPackageInstallSync(execPath = Deno.execPath()): RunWieldPackageInstall | null {
+export function readRunWieldPackageInstallSync(execPath = runtimeExecutable): RunWieldPackageInstall | null {
     const metadataPath = packageMetadataPathForExecutablePath(execPath);
     if (!metadataPath) return null;
     try {
-        const install = parsePackageMetadata(Deno.readTextFileSync(metadataPath));
+        const install = parsePackageMetadata(readFileSync(metadataPath, "utf8"));
         if (!install) return null;
         return {
             ...install,
@@ -90,11 +93,11 @@ export function readRunWieldPackageInstallSync(execPath = Deno.execPath()): RunW
 
 export function bundledHelperDirectoryForInstall(install: RunWieldPackageInstall): string | null {
     const helpers = join(install.installDirectory, "runtime", "helpers");
-    const executableSuffix = Deno.build.os === "windows" ? ".exe" : "";
+    const executableSuffix = platform === "win32" ? ".exe" : "";
     for (const name of ["mnemoteca", "cymbal", "ketch", "agent-browser"]) {
         try {
-            const stat = Deno.statSync(join(helpers, `${name}${executableSuffix}`));
-            if (!stat.isFile) return null;
+            const stat = statSync(join(helpers, `${name}${executableSuffix}`));
+            if (!stat.isFile()) return null;
         } catch {
             return null;
         }
@@ -103,7 +106,7 @@ export function bundledHelperDirectoryForInstall(install: RunWieldPackageInstall
 }
 
 function pathEnvironmentKey(env: Record<string, string>): string {
-    if (Deno.build.os !== "windows") return "PATH";
+    if (platform !== "win32") return "PATH";
     const existing = Object.keys(env).find((key) => key.toLowerCase() === "path");
     return existing || "Path";
 }
@@ -111,17 +114,22 @@ function pathEnvironmentKey(env: Record<string, string>): string {
 export function prependToPathEnv(env: Record<string, string>, directory: string): Record<string, string> {
     const key = pathEnvironmentKey(env);
     const current = env[key] || "";
-    const separator = Deno.build.os === "windows" ? ";" : ":";
+    const separator = platform === "win32" ? ";" : ":";
     return { ...env, [key]: current ? `${directory}${separator}${current}` : directory };
 }
 
-export function exposeBundledHelpersSync(execPath = Deno.execPath()): string | null {
+export function exposeBundledHelpersSync(execPath = runtimeExecutable): string | null {
     const install = readRunWieldPackageInstallSync(execPath);
     if (!install) return null;
     const helpers = bundledHelperDirectoryForInstall(install);
     if (!helpers) return null;
-    const env = prependToPathEnv(Deno.env.toObject(), helpers);
+    const env = prependToPathEnv(
+        Object.fromEntries(
+            Object.entries(processEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
+        ),
+        helpers,
+    );
     const key = pathEnvironmentKey(env);
-    Deno.env.set(key, env[key]);
+    processEnv[key] = env[key];
     return helpers;
 }

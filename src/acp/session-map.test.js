@@ -1,11 +1,13 @@
+import { assertEquals } from "../testing/assertions.ts";
+import { test } from "node:test";
 /**
  * @module acp/session-map.test
  */
 
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { AcpSessionMap } from "./session-map.ts";
 
-Deno.test("AcpSessionMap correlates runtime-owned turns without enforcing exclusion", () => {
+test("AcpSessionMap correlates runtime-owned turns without enforcing exclusion", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ id: "hosted-1", cwd: "/repo" }), {
         acpSessionId: "acp-1",
@@ -23,7 +25,7 @@ Deno.test("AcpSessionMap correlates runtime-owned turns without enforcing exclus
     assertEquals(sessionMap.endPrompt("acp-1", second), true);
 });
 
-Deno.test("AcpSessionMap leaves prompt completion to the caller, not a cancellation promise", () => {
+test("AcpSessionMap leaves prompt completion to the caller, not a cancellation promise", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
 
@@ -36,7 +38,7 @@ Deno.test("AcpSessionMap leaves prompt completion to the caller, not a cancellat
     assertEquals(prompt.cancelled, true);
 });
 
-Deno.test("AcpSessionMap accumulates usage cost across a Session's turns", () => {
+test("AcpSessionMap accumulates usage cost across a Session's turns", () => {
     const sessionMap = new AcpSessionMap();
     const record = sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), {
         acpSessionId: "acp-1",
@@ -47,7 +49,7 @@ Deno.test("AcpSessionMap accumulates usage cost across a Session's turns", () =>
     assertEquals(sessionMap.addUsageCost("acp-1", 0.25), 0.5);
 });
 
-Deno.test("AcpSessionMap keeps the cost total with the ACP session, not the runtime session", () => {
+test("AcpSessionMap keeps the cost total with the ACP session, not the runtime session", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
     sessionMap.addUsageCost("acp-1", 0.4);
@@ -61,7 +63,7 @@ Deno.test("AcpSessionMap keeps the cost total with the ACP session, not the runt
     assertEquals(sessionMap.addUsageCost("acp-1", 0.1), 0);
 });
 
-Deno.test("AcpSessionMap ignores usage events that carry no usable cost", () => {
+test("AcpSessionMap ignores usage events that carry no usable cost", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), { acpSessionId: "acp-1" });
 
@@ -70,7 +72,7 @@ Deno.test("AcpSessionMap ignores usage events that carry no usable cost", () => 
     assertEquals(sessionMap.addUsageCost("acp-1", 0.25), 0.25);
 });
 
-Deno.test("AcpSessionMap remaps a stable ACP session to a replacement runtime session", () => {
+test("AcpSessionMap remaps a stable ACP session to a replacement runtime session", () => {
     const sessionMap = new AcpSessionMap();
     sessionMap.createRecord(/** @type {any} */ ({ sessionId: "runtime-1", cwd: "/repo" }), {
         acpSessionId: "acp-1",

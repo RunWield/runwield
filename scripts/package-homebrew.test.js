@@ -1,5 +1,16 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../src/shared/http-server.ts";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import {
+    copyFile as fsCopyFile,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { packageHomebrew, parsePackageHomebrewArgs } from "./package-homebrew.js";
 
 /** @param {Uint8Array} bytes */
@@ -17,12 +28,12 @@ async function sha256Text(bytes) {
  */
 async function writeAsset(root, name, text) {
     const bytes = new TextEncoder().encode(text);
-    await Deno.writeFile(join(root, name), bytes);
+    await fsWriteFile(join(root, name), bytes);
     return await sha256Text(bytes);
 }
 
 async function makeReleaseFixture() {
-    const root = await Deno.makeTempDir({ prefix: "runwield-homebrew-release-" });
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-homebrew-release-"));
     /**
      * @param {string} name
      * @param {string} text
@@ -39,12 +50,12 @@ async function makeReleaseFixture() {
     const memX64 = await add("mnemoteca_0.3.1_darwin_amd64.tar.gz", "memory x64");
 
     const abort = new AbortController();
-    const server = Deno.serve(
+    const server = serveHttp(
         { port: 0, hostname: "127.0.0.1", signal: abort.signal, onListen() {} },
         async (request) => {
             const path = new URL(request.url).pathname.slice(1);
             try {
-                return new Response(await Deno.readFile(join(root, path)));
+                return new Response(await fsReadFile(join(root, path)));
             } catch {
                 return new Response("not found", { status: 404 });
             }
@@ -53,7 +64,7 @@ async function makeReleaseFixture() {
     const port = server.addr.port;
     const baseUrl = `http://127.0.0.1:${port}`;
     const inputsPath = join(root, "inputs.json");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         inputsPath,
         JSON.stringify({
             mnemoteca: {
@@ -83,12 +94,12 @@ async function makeReleaseFixture() {
         close: async () => {
             abort.abort();
             await server.finished.catch(() => {});
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         },
     };
 }
 
-Deno.test("package:homebrew renders formulas from verified immutable assets", async () => {
+test("package:homebrew renders formulas from verified immutable assets", async () => {
     const fixture = await makeReleaseFixture();
     try {
         const output = join(fixture.root, "tap");
@@ -102,8 +113,8 @@ Deno.test("package:homebrew renders formulas from verified immutable assets", as
             testOnly: true,
         });
 
-        const wld = await Deno.readTextFile(join(output, "Formula", "wld.rb"));
-        const mnemoteca = await Deno.readTextFile(join(output, "Formula", "mnemoteca.rb"));
+        const wld = await fsReadFile(join(output, "Formula", "wld.rb"), "utf8");
+        const mnemoteca = await fsReadFile(join(output, "Formula", "mnemoteca.rb"), "utf8");
         assertStringIncludes(wld, "class Wld < Formula");
         assertStringIncludes(wld, '  version "1.2.3"\n');
         assertStringIncludes(wld, 'depends_on "gandazgul/tap/mnemoteca"');
@@ -120,7 +131,7 @@ Deno.test("package:homebrew renders formulas from verified immutable assets", as
         assertStringIncludes(mnemoteca, '  version "0.3.1"\n');
         assertStringIncludes(mnemoteca, "depends_on :macos");
         assertStringIncludes(mnemoteca, "mnemoteca_0.3.1_darwin_arm64.tar.gz");
-        const manifest = JSON.parse(await Deno.readTextFile(join(output, "runwield-homebrew-package.json")));
+        const manifest = JSON.parse(await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"));
         assertEquals(manifest.testOnly, true);
         assertEquals(manifest.formulas, ["Formula/wld.rb", "Formula/mnemoteca.rb"]);
     } finally {
@@ -128,7 +139,7 @@ Deno.test("package:homebrew renders formulas from verified immutable assets", as
     }
 });
 
-Deno.test("package:homebrew rejects publishable RC tags before emitting output", async () => {
+test("package:homebrew rejects publishable RC tags before emitting output", async () => {
     const fixture = await makeReleaseFixture();
     try {
         await assertRejects(
@@ -148,16 +159,16 @@ Deno.test("package:homebrew rejects publishable RC tags before emitting output",
     }
 });
 
-Deno.test("package:homebrew validates Candidate bytes only as test output", async () => {
+test("package:homebrew validates Candidate bytes only as test output", async () => {
     const fixture = await makeReleaseFixture();
     try {
         for (const arch of ["darwin-arm64", "darwin-x64"]) {
             const oldName = `wld-v1.2.3-${arch}.tar.gz`;
             const name = `wld-v1.2.3-rc.1-${arch}.tar.gz`;
-            await Deno.copyFile(join(fixture.root, oldName), join(fixture.root, name));
-            await Deno.writeTextFile(
+            await fsCopyFile(join(fixture.root, oldName), join(fixture.root, name));
+            await fsWriteFile(
                 join(fixture.root, `${name}.sha256`),
-                (await Deno.readTextFile(join(fixture.root, `${oldName}.sha256`))).replace(oldName, name),
+                (await fsReadFile(join(fixture.root, `${oldName}.sha256`), "utf8")).replace(oldName, name),
             );
         }
         const output = join(fixture.root, "tap");
@@ -170,9 +181,9 @@ Deno.test("package:homebrew validates Candidate bytes only as test output", asyn
             wldBaseUrl: fixture.baseUrl,
             mnemotecaBaseUrl: fixture.baseUrl,
         });
-        const manifest = JSON.parse(await Deno.readTextFile(join(output, "runwield-homebrew-package.json")));
+        const manifest = JSON.parse(await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"));
         assertEquals(manifest.wldTag, "v1.2.3-rc.1");
-        const wld = await Deno.readTextFile(join(output, "Formula", "wld.rb"));
+        const wld = await fsReadFile(join(output, "Formula", "wld.rb"), "utf8");
         assertStringIncludes(wld, "wld-v1.2.3-rc.1-darwin-arm64.tar.gz");
         assertEquals(/^ {2}version /m.test(wld), false, "Candidate URL already gives Homebrew the exact version");
         assertEquals(manifest.testOnly, true);
@@ -181,10 +192,10 @@ Deno.test("package:homebrew validates Candidate bytes only as test output", asyn
     }
 });
 
-Deno.test("package:homebrew rejects corrupt release bytes", async () => {
+test("package:homebrew rejects corrupt release bytes", async () => {
     const fixture = await makeReleaseFixture();
     try {
-        await Deno.writeTextFile(join(fixture.root, "wld-v1.2.3-darwin-arm64.tar.gz"), "corrupt");
+        await fsWriteFile(join(fixture.root, "wld-v1.2.3-darwin-arm64.tar.gz"), "corrupt");
         await assertRejects(
             () =>
                 packageHomebrew({
@@ -204,12 +215,12 @@ Deno.test("package:homebrew rejects corrupt release bytes", async () => {
     }
 });
 
-Deno.test("package:homebrew rejects incomplete platform assets", async () => {
+test("package:homebrew rejects incomplete platform assets", async () => {
     const fixture = await makeReleaseFixture();
     try {
-        const inputs = JSON.parse(await Deno.readTextFile(fixture.inputsPath));
+        const inputs = JSON.parse(await fsReadFile(fixture.inputsPath, "utf8"));
         delete inputs.mnemoteca.assets["darwin-x64"];
-        await Deno.writeTextFile(fixture.inputsPath, JSON.stringify(inputs));
+        await fsWriteFile(fixture.inputsPath, JSON.stringify(inputs));
         await assertRejects(
             () =>
                 packageHomebrew({
@@ -229,7 +240,7 @@ Deno.test("package:homebrew rejects incomplete platform assets", async () => {
     }
 });
 
-Deno.test("package:homebrew rejects base URL overrides for publishable output", async () => {
+test("package:homebrew rejects base URL overrides for publishable output", async () => {
     const fixture = await makeReleaseFixture();
     try {
         await assertRejects(
@@ -250,12 +261,12 @@ Deno.test("package:homebrew rejects base URL overrides for publishable output", 
     }
 });
 
-Deno.test("package:homebrew rejects missing publishable license metadata", async () => {
+test("package:homebrew rejects missing publishable license metadata", async () => {
     const fixture = await makeReleaseFixture();
     try {
-        const inputs = JSON.parse(await Deno.readTextFile(fixture.inputsPath));
+        const inputs = JSON.parse(await fsReadFile(fixture.inputsPath, "utf8"));
         delete inputs.mnemoteca.license;
-        await Deno.writeTextFile(fixture.inputsPath, JSON.stringify(inputs));
+        await fsWriteFile(fixture.inputsPath, JSON.stringify(inputs));
         await assertRejects(
             () =>
                 packageHomebrew({
@@ -274,16 +285,16 @@ Deno.test("package:homebrew rejects missing publishable license metadata", async
     }
 });
 
-Deno.test("package:homebrew rejects publishable Mnemoteca refresh over test-only RunWield", async () => {
+test("package:homebrew rejects publishable Mnemoteca refresh over test-only RunWield", async () => {
     const fixture = await makeReleaseFixture();
     try {
         const output = join(fixture.root, "tap");
-        await Deno.mkdir(join(output, "Formula"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(output, "Formula"), { recursive: true });
+        await fsWriteFile(
             join(output, "Formula", "wld.rb"),
             'url "http://127.0.0.1/wld-v1.2.3-darwin-arm64.tar.gz"\n# test-only artifact; do not publish this formula\n',
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(output, "runwield-homebrew-package.json"),
             JSON.stringify({ testOnly: true, wldTag: "v1.2.3", formulas: ["Formula/wld.rb"] }),
         );
@@ -305,13 +316,13 @@ Deno.test("package:homebrew rejects publishable Mnemoteca refresh over test-only
     }
 });
 
-Deno.test("package:homebrew refreshes only Mnemoteca when wld tag is omitted", async () => {
+test("package:homebrew refreshes only Mnemoteca when wld tag is omitted", async () => {
     const fixture = await makeReleaseFixture();
     try {
         const output = join(fixture.root, "tap");
-        await Deno.mkdir(join(output, "Formula"), { recursive: true });
-        await Deno.writeTextFile(join(output, "Formula", "wld.rb"), "preserved wld formula\n");
-        await Deno.writeTextFile(
+        await fsMkdir(join(output, "Formula"), { recursive: true });
+        await fsWriteFile(join(output, "Formula", "wld.rb"), "preserved wld formula\n");
+        await fsWriteFile(
             join(output, "runwield-homebrew-package.json"),
             JSON.stringify({ testOnly: true, wldTag: "v1.2.3", formulas: ["Formula/wld.rb"] }),
         );
@@ -324,11 +335,11 @@ Deno.test("package:homebrew refreshes only Mnemoteca when wld tag is omitted", a
             testOnly: true,
         });
 
-        assertEquals(await Deno.readTextFile(join(output, "Formula", "wld.rb")), "preserved wld formula\n");
-        const mnemoteca = await Deno.readTextFile(join(output, "Formula", "mnemoteca.rb"));
+        assertEquals(await fsReadFile(join(output, "Formula", "wld.rb"), "utf8"), "preserved wld formula\n");
+        const mnemoteca = await fsReadFile(join(output, "Formula", "mnemoteca.rb"), "utf8");
         assertStringIncludes(mnemoteca, "class Mnemoteca < Formula");
         assertStringIncludes(mnemoteca, '  version "0.3.1"\n');
-        const manifest = JSON.parse(await Deno.readTextFile(join(output, "runwield-homebrew-package.json")));
+        const manifest = JSON.parse(await fsReadFile(join(output, "runwield-homebrew-package.json"), "utf8"));
         assertEquals(manifest.testOnly, true);
         assertEquals(manifest.wldTag, "v1.2.3");
         assertEquals(manifest.formulas, ["Formula/wld.rb", "Formula/mnemoteca.rb"]);
@@ -337,11 +348,12 @@ Deno.test("package:homebrew refreshes only Mnemoteca when wld tag is omitted", a
     }
 });
 
-Deno.test("package:homebrew release workflow mixed URLs and publication versions", async () => {
+test("package:homebrew release workflow mixed URLs and publication versions", async () => {
     const fixture = await makeReleaseFixture();
     const realFetch = globalThis.fetch;
     // Keep release URLs in generated formulas; serve verified fixture bytes at the network boundary.
-    globalThis.fetch = (input, init) => {
+    /** @type {import("../src/shared/fetch-request.ts").FetchRequest} */
+    const fixtureFetch = (input, init) => {
         const url = String(input);
         const name = url.slice(url.lastIndexOf("/") + 1).replace("0.3.3", "0.3.1").replace("-rc.1", "");
         if (url.endsWith(".sha256")) {
@@ -353,10 +365,11 @@ Deno.test("package:homebrew release workflow mixed URLs and publication versions
         }
         return realFetch(`${fixture.baseUrl}/${name}`, init);
     };
+    globalThis.fetch = Object.assign(fixtureFetch, realFetch);
     try {
-        await Deno.writeTextFile(
+        await fsWriteFile(
             fixture.inputsPath,
-            (await Deno.readTextFile(fixture.inputsPath)).replaceAll("0.3.1", "0.3.3"),
+            (await fsReadFile(fixture.inputsPath, "utf8")).replaceAll("0.3.1", "0.3.3"),
         );
         for (const tag of ["v1.2.3", "v1.2.3-rc.1"]) {
             for (const mode of ["mixed", "remote-test", "publication"]) {
@@ -372,8 +385,8 @@ Deno.test("package:homebrew release workflow mixed URLs and publication versions
                     continue;
                 }
                 await packageHomebrew(options);
-                const wld = await Deno.readTextFile(join(output, "Formula", "wld.rb"));
-                const mnemoteca = await Deno.readTextFile(join(output, "Formula", "mnemoteca.rb"));
+                const wld = await fsReadFile(join(output, "Formula", "wld.rb"), "utf8");
+                const mnemoteca = await fsReadFile(join(output, "Formula", "mnemoteca.rb"), "utf8");
                 assertEquals(wld.includes('  version "'), mode === "mixed" && tag === "v1.2.3");
                 assertEquals(mnemoteca.includes('  version "'), false);
                 assertStringIncludes(mnemoteca, "https://github.com/gandazgul/mnemoteca/releases/download/v0.3.3/");

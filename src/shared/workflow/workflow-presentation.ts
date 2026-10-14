@@ -93,7 +93,7 @@ type StageDefinition = { id: string; label: string };
 const EXECUTABLE_STAGES: StageDefinition[] = [
     { id: "planning", label: "Planning" },
     { id: "execution", label: "Execution" },
-    { id: "mechanical", label: "Tests and CI" },
+    { id: "mechanical", label: "Verification Command" },
     { id: "semantic", label: "AI review" },
     { id: "repair", label: "Repair" },
     { id: "code_review", label: "Code Review" },
@@ -103,7 +103,7 @@ const EXECUTABLE_STAGES: StageDefinition[] = [
 
 const QUICK_FIX_STAGES: StageDefinition[] = [
     { id: "execution", label: "Implementation" },
-    { id: "mechanical", label: "Tests and CI" },
+    { id: "mechanical", label: "Verification Command" },
     { id: "repair", label: "Repair" },
     { id: "manual_qa", label: "Manual QA" },
     { id: "completion", label: "Completion" },
@@ -228,27 +228,52 @@ function stageStateFromCheckpoint(state: string): string {
     return "pending";
 }
 
+function latestProgressFacts(facts: WorkflowProgressFact[] = []): WorkflowProgressFact[] {
+    const latest = new Map<WorkflowProgressFact["kind"], WorkflowProgressFact>();
+    for (const fact of facts) {
+        const previous = latest.get(fact.kind);
+        if (!previous?.updatedAt || !fact.updatedAt || fact.updatedAt >= previous.updatedAt) {
+            latest.set(fact.kind, fact);
+        }
+    }
+    return [...latest.values()];
+}
+
 function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefinition[]): Map<string, string> {
     const states = baseStates(input, stages);
+    if (
+        ["verified", "user_verified", "closed_without_verification"].includes(clean(input.status)) ||
+        input.liveValidationProgress?.outcome === "verified"
+    ) {
+        for (const stage of stages) states.set(stage.id, stage.id === "repair" ? "not_required" : "completed");
+        return states;
+    }
     for (const fact of input.progressFacts || []) {
         const kind = clean(fact.kind);
         const phase = clean(fact.phase);
         if (kind === "validation_checkpoint") {
+            states.set("planning", "completed");
+            states.set("execution", "completed");
             if (phase === "semantic" || phase === "delivery") states.set("mechanical", "completed");
             if (phase === "delivery") states.set("semantic", "completed");
             const stageId = stageForValidationPhase(phase);
             if (stageId && states.has(stageId)) states.set(stageId, stageStateFromCheckpoint(clean(fact.state)));
             if ((clean(fact.state) === "awaiting_repair" || clean(fact.repairKind)) && states.has("repair")) {
-                states.set("repair", clean(fact.state) === "paused" ? "paused" : "running");
+                states.set("repair", "paused");
             }
         } else if (kind === "publication") {
             if (states.has("code_review")) states.set("code_review", "completed");
             if (states.has("delivery")) states.set("delivery", "running");
             if (fact.failure && states.has("delivery")) states.set("delivery", "needs_attention");
             else if (["publication_verified", "cleanup_complete"].includes(phase) && states.has("delivery")) {
-                states.set("delivery", "completed");
+                for (const stage of stages) states.set(stage.id, stage.id === "repair" ? "not_required" : "completed");
             }
-        } else if (kind === "registry") {
+        } else if (
+            kind === "registry" &&
+            !(input.progressFacts || []).some((item) =>
+                item.kind === "validation_checkpoint" || item.kind === "publication"
+            )
+        ) {
             const status = clean(fact.status);
             if (status === "execution_failed" && states.has("execution")) states.set("execution", "needs_attention");
             if (status === "validation_failed") {
@@ -270,7 +295,11 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
         }
     }
     if (input.hasPlanReview && states.has("planning")) states.set("planning", "running");
-    if (input.hasCodeReview && states.has("code_review")) states.set("code_review", "running");
+    if (input.hasCodeReview && states.has("code_review")) {
+        for (const id of ["planning", "execution", "mechanical", "semantic"]) states.set(id, "completed");
+        states.set("repair", "not_required");
+        states.set("code_review", "running");
+    }
     const live = input.liveValidationProgress;
     if (live?.kind === "mechanical" && clean(input.intent) === "QUICK_FIX") {
         states.set("execution", "completed");
@@ -278,25 +307,31 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
             "mechanical",
             live.checks.ci === "passed"
                 ? "completed"
-                : live.stage === "engineer_repair"
-                ? "pending"
+                : live.checks.ci === "failed"
+                ? "needs_attention"
                 : live.outcome === "paused"
                 ? "paused"
                 : live.outcome === "failed"
                 ? "needs_attention"
                 : "running",
         );
-        states.set("repair", live.stage === "engineer_repair" ? "running" : "not_required");
+        states.set(
+            "repair",
+            live.stage === "engineer_repair" ? (live.outcome === "paused" ? "paused" : "running") : "not_required",
+        );
         if (live.stage === "manual_qa") states.set("manual_qa", "running");
         if (live.outcome === "verified") {
             states.set("manual_qa", "completed");
             states.set("completion", "completed");
         }
-    } else if (live?.outcome === "running" && states.has("mechanical")) {
+    } else if (live && states.has("mechanical")) {
         // Live work supersedes a saved checkpoint from before Resume was pressed.
         states.set("planning", "completed");
         states.set("execution", "completed");
-        states.set("repair", live.stage === "engineer_repair" ? "running" : "not_required");
+        states.set(
+            "repair",
+            live.stage === "engineer_repair" ? (live.outcome === "paused" ? "paused" : "running") : "not_required",
+        );
         for (
             const [check, stage] of Object.entries({
                 ci: "mechanical",
@@ -306,7 +341,14 @@ function mergedRawStates(input: WorkflowPresentationInput, stages: StageDefiniti
             })
         ) {
             const state = live.checks[check as keyof typeof live.checks];
-            states.set(stage, state === "canceled" ? "paused" : state === "failed" ? "pending" : state);
+            states.set(
+                stage,
+                state === "canceled" || (live.outcome === "paused" && state === "pending")
+                    ? "paused"
+                    : state === "failed"
+                    ? "needs_attention"
+                    : state,
+            );
         }
     }
     return states;
@@ -318,16 +360,26 @@ function repairReturnTarget(input: WorkflowPresentationInput): string {
             const target = stageForValidationPhase(clean(fact.phase));
             if (target) return target;
         }
-        if (clean(fact.kind) === "registry" && clean(fact.status) === "validation_failed") {
-            const status = clean(input.status).toLowerCase();
-            return status === "implemented" ? "mechanical" : status === "validated_ci" ? "semantic" : "code_review";
-        }
+    }
+    if (input.liveValidationProgress?.stage === "engineer_repair") {
+        const checks = input.liveValidationProgress.checks;
+        if (checks.humanReview === "failed") return "code_review";
+        if (checks.semanticReview === "failed") return "semantic";
+        if (checks.ci === "failed") return "mechanical";
     }
     const status = clean(input.status).toLowerCase();
+    if ((input.progressFacts || []).some((fact) => fact.kind === "registry" && fact.status === "validation_failed")) {
+        return status === "implemented" ? "mechanical" : status === "validated_ci" ? "semantic" : "code_review";
+    }
     return status === "implemented" ? "mechanical" : status === "validated_ci" ? "semantic" : "";
 }
 
 function currentStageIndex(stages: StageDefinition[], rawStates: Map<string, string>): number {
+    const repair = stages.findIndex((stage) =>
+        stage.id === "repair" &&
+        (ACTIVE_STATES.has(rawStates.get(stage.id) || "") || PAUSED_STATES.has(rawStates.get(stage.id) || ""))
+    );
+    if (repair >= 0) return repair;
     const urgent = stages.findIndex((stage) => {
         const raw = rawStates.get(stage.id) || "pending";
         return BLOCKED_STATES.has(raw) || PAUSED_STATES.has(raw);
@@ -344,7 +396,8 @@ function currentStageIndex(stages: StageDefinition[], rawStates: Map<string, str
 }
 
 function detailFor(stage: WorkflowPresentationStage, input: WorkflowPresentationInput): string {
-    if (stage.current && input.liveValidationProgress?.outcome === "running" && input.liveValidationProgress.message) {
+    if (stage.current && input.hasLiveQuestion) return "The agent needs your answer in the Session before continuing.";
+    if (stage.current && input.liveValidationProgress?.message) {
         return input.liveValidationProgress.message;
     }
     const fact = (input.progressFacts || []).find((item) =>
@@ -355,11 +408,6 @@ function detailFor(stage: WorkflowPresentationStage, input: WorkflowPresentation
             : item.kind === "registry" && stage.id === "execution"
     );
     if (fact?.failure && clean(fact.message)) return clean(fact.message);
-    if (
-        stage.current && input.hasLiveQuestion &&
-        !(clean(input.intent) === "QUICK_FIX" && input.liveValidationProgress?.stage === "ci" &&
-            input.liveValidationProgress.outcome === "running")
-    ) return "The agent needs your answer in the Session before continuing.";
     if (stage.current && clean(input.degradedMessage)) return clean(input.degradedMessage);
     if (stage.id === "planning" && input.hasPlanReview) {
         return "Review the proposed Plan, then approve it or send feedback.";
@@ -395,7 +443,7 @@ function detailFor(stage: WorkflowPresentationStage, input: WorkflowPresentation
         const results: Record<string, string> = {
             planning: "The Plan is ready for implementation.",
             execution: "Implementation is recorded; validation checks the resulting changes.",
-            mechanical: "The required tests and CI checks passed.",
+            mechanical: "The configured verification command passed.",
             semantic: "The AI review checks passed.",
             code_review: "The code review and delivery checks are satisfied.",
             delivery: "The changes reached their publication target.",
@@ -413,7 +461,7 @@ function detailFor(stage: WorkflowPresentationStage, input: WorkflowPresentation
     const descriptions: Record<string, string> = {
         planning: "Define the scope, approach, and verification steps before implementation.",
         execution: "Implement the Plan and record the changes for validation.",
-        mechanical: "Run the required tests, lint, type checks, and CI validation.",
+        mechanical: "Run the configured verification command.",
         semantic: "Review the implementation against the Plan and check for correctness issues.",
         repair: "Fix the reported issues, then rerun the failed check.",
         manual_qa: "Prepare the manual QA checklist for the quick fix.",
@@ -431,11 +479,7 @@ function actionFor(
     _stage: WorkflowPresentationStage,
     input: WorkflowPresentationInput,
 ): WorkflowPresentationAction | null {
-    if (
-        input.hasLiveQuestion &&
-        !(clean(input.intent) === "QUICK_FIX" && input.liveValidationProgress?.stage === "ci" &&
-            input.liveValidationProgress.outcome === "running")
-    ) {
+    if (input.hasLiveQuestion) {
         return {
             kind: "answer_agent",
             label: "Answer agent",
@@ -492,6 +536,7 @@ function actionFor(
 }
 
 export function buildWorkflowPresentation(input: WorkflowPresentationInput): WorkflowPresentation {
+    input = { ...input, progressFacts: latestProgressFacts(input.progressFacts) };
     const plan = clean(input.planName);
     const epic = clean(input.epicName);
     const intent = clean(input.intent || input.projectPlanType).replaceAll("_", " ");
@@ -535,7 +580,7 @@ export function buildWorkflowPresentation(input: WorkflowPresentationInput): Wor
         plan: epic && plan.startsWith(`${epic}/`) ? plan.slice(epic.length + 1) : plan || "No active Plan",
         intent: intent || (isProject(input) ? "Container workflow" : "Plan workflow"),
         stages,
-        connections: connectionDefinitions(definitions, repairReturnTarget(input)),
+        connections: connectionDefinitions(stages, repairReturnTarget(input)),
         currentStage,
         blocker,
         action: currentStage ? actionFor(currentStage, input) : null,

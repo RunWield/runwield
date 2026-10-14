@@ -8,8 +8,9 @@
  * model/tools.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { dirname, fromFileUrl } from "@std/path";
+import { parseArgs } from "../../shared/cli-args.ts";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { AGENTS, getCwd, SUBAGENTS } from "../../constants.js";
 import { COMMAND_NAMES } from "../registry.js";
 import { EMPTY_PROJECT_DIRECTORY_INIT_NOOP_BODY, isEmptyProjectDirectory } from "../../shared/project-state.ts";

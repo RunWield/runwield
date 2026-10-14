@@ -127,6 +127,17 @@ Tracked legacy runtime files require explicit repository cleanup. RunWield does 
 or claim that `.gitignore` can untrack files. Secrets already committed to Git cause a security warning and require
 credential or capability rotation as applicable.
 
+### Repeated entry
+
+Every project entry repeats preflight, because older writers, users, and Git can change runtime evidence between reads.
+Nested reads in one bounded operation share one verification; nothing RunWield owns is retained across operations.
+Preflight's two Git questions, attached worktrees and tracked runtime paths, are answered only from repository metadata.
+Entry reuses an earlier Git answer while a stat fingerprint of that metadata is unchanged: `.git`, the index, `HEAD`,
+config, and each linked worktree's administrative files. A result is not reused when its metadata changed within the
+timestamp-resolution window or while Git ran, when Git location is overridden through the environment, or when the
+metadata cannot be located or names a symlink instead of a regular metadata file. RunWield-owned markers, journals,
+locks, legacy paths, and symlink checks stay live on every entry.
+
 ## Consequences
 
 - A new project runtime capability can stay Git-safe by storing its data under one reserved root.
@@ -140,6 +151,8 @@ credential or capability rotation as applicable.
 - A populated project-local fallback worktree directory is preserved and blocks adoption. RunWield does not move its Git
   worktrees or rewrite their recorded paths. An absent or empty fallback directory does not block adoption.
 - Documentation and recovery messages must use the new paths while explaining the one-way 0.11.0 boundary.
+- Repeated entry costs filesystem checks rather than Git processes while repository metadata is unchanged. A Git change
+  that rewrites the index, `HEAD`, config, or worktree metadata is seen on the next entry.
 
 ## Options Not Taken
 
@@ -163,3 +176,9 @@ risk.
 
 This requires both legacy ignore entries and two compatible lock namespaces. It permits old processes to recreate old
 authorities after migration and defeats the single-root result. Version 0.11.0 is an explicit breaking boundary instead.
+
+### Retain verified entry for the process lifetime
+
+Long-lived TUI and Workspace processes would stop noticing recreated legacy files, planted symlinks, newer layout
+markers, newly tracked runtime paths, and newly attached worktrees. Fingerprinting only Git's metadata keeps the Git
+process savings while leaving every RunWield-owned check live.

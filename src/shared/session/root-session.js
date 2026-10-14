@@ -3,10 +3,13 @@
  * Root interactive session lifecycle helpers (persisted in ~/.wld/sessions).
  */
 
-import { basename, dirname, isAbsolute, join, relative, resolve, SEPARATOR } from "@std/path";
+import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
+export { encodeCwdForSessionDir } from "../project-directory-key.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
 import { getHomeDir } from "../../constants.js";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 
 /**
  * Resolve the root RunWield sessions base directory.
@@ -26,7 +29,7 @@ export function getRunWieldSessionsBaseDir() {
 function canonicalizeCwd(cwd) {
     let canonicalCwd = resolve(cwd);
     try {
-        canonicalCwd = Deno.realPathSync(canonicalCwd);
+        canonicalCwd = realpathSync.native(canonicalCwd);
     } catch {
         // A not-yet-created cwd still gets a stable absolute locator.
     }
@@ -71,7 +74,7 @@ export function getRunWieldSessionMemoryBackupDir(cwd, sessionId) {
  * @param {string} dir
  */
 function ensureDir(dir) {
-    Deno.mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true });
 }
 
 /**
@@ -91,10 +94,11 @@ export async function createRootSessionManager(mode, cwd) {
     const sessionDir = getRunWieldSessionDir(canonicalCwd);
     ensureDir(sessionDir);
 
-    const manager = mode === "continue"
-        ? SessionManager.continueRecent(canonicalCwd, sessionDir)
-        : SessionManager.create(canonicalCwd, sessionDir);
-    return installDenoSessionPersistence(manager);
+    const manager =
+        mode === "continue"
+            ? SessionManager.continueRecent(canonicalCwd, sessionDir)
+            : SessionManager.create(canonicalCwd, sessionDir);
+    return installSessionPersistence(manager);
 }
 
 /** @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager */
@@ -109,12 +113,12 @@ function getSessionManagerFileContents(sessionManager) {
  * @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager
  * @returns {import('@earendil-works/pi-coding-agent').SessionManager}
  */
-function installDenoSessionPersistence(sessionManager) {
+function installSessionPersistence(sessionManager) {
     function rewriteFile() {
         const transcriptPath = sessionManager.getSessionFile?.();
         const contents = getSessionManagerFileContents(sessionManager);
         if (!transcriptPath || contents === null) return;
-        Deno.writeTextFileSync(transcriptPath, contents);
+        writeFileSync(transcriptPath, contents);
     }
 
     /** @param {import('@earendil-works/pi-coding-agent').SessionEntry} entry */
@@ -122,13 +126,13 @@ function installDenoSessionPersistence(sessionManager) {
         const transcriptPath = sessionManager.getSessionFile?.();
         if (!transcriptPath) return;
         try {
-            Deno.statSync(transcriptPath);
-            Deno.writeTextFileSync(transcriptPath, `${JSON.stringify(entry)}\n`, { append: true });
+            statSync(transcriptPath);
+            writeFileSync(transcriptPath, `${JSON.stringify(entry)}\n`, { flag: "a" });
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             const contents = getSessionManagerFileContents(sessionManager);
             if (contents === null) return;
-            Deno.writeTextFileSync(transcriptPath, contents, { createNew: true });
+            writeFileSync(transcriptPath, contents, { flag: "wx" });
         }
         Reflect.set(sessionManager, "flushed", true);
     }
@@ -145,10 +149,10 @@ function installDenoSessionPersistence(sessionManager) {
 /** @param {any} sessionManager @param {string} transcriptPath */
 async function ensureCreatedSessionTranscriptFile(sessionManager, transcriptPath) {
     try {
-        const stat = await Deno.stat(transcriptPath);
-        if (stat.isFile) return;
+        const stat = await fsStat(transcriptPath);
+        if (stat.isFile()) return;
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     const header = sessionManager.getHeader?.();
     const entries = sessionManager.getEntries?.();
@@ -156,10 +160,10 @@ async function ensureCreatedSessionTranscriptFile(sessionManager, transcriptPath
         throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
     }
     const contents = [header, ...entries].map((entry) => `${JSON.stringify(entry)}\n`).join("");
-    await Deno.writeTextFile(transcriptPath, contents, { createNew: true });
+    await writeFile(transcriptPath, contents, { flag: "wx" });
     if ("flushed" in sessionManager) sessionManager.flushed = true;
-    const stat = await Deno.stat(transcriptPath);
-    if (!stat.isFile) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
+    const stat = await fsStat(transcriptPath);
+    if (!stat.isFile()) throw new Error(`Created Session transcript was not persisted: ${transcriptPath}`);
 }
 
 /** @param {string} cwd @param {any} sessionManager */
@@ -172,8 +176,11 @@ export async function resolveCreatedRootSessionPath(cwd, sessionManager) {
     const transcriptPath = sessionManager.getSessionFile?.();
     const sessionDir = getRunWieldSessionDir(cwd);
     if (
-        !transcriptPath || typeof transcriptPath !== "string" || !isAbsolute(transcriptPath) ||
-        !isPathInside(transcriptPath, sessionDir) || !basename(transcriptPath).includes(piSessionId)
+        !transcriptPath ||
+        typeof transcriptPath !== "string" ||
+        !isAbsolute(transcriptPath) ||
+        !isPathInside(transcriptPath, sessionDir) ||
+        !basename(transcriptPath).includes(piSessionId)
     ) {
         throw new Error(`Created Session transcript was not found: ${piSessionId}`);
     }
@@ -219,8 +226,8 @@ export function isPathInside(path, baseDir) {
 
 /** @param {string} path @param {string} baseDir */
 async function assertRealPathInside(path, baseDir) {
-    const realPath = await Deno.realPath(path);
-    const realBase = await Deno.realPath(baseDir);
+    const realPath = await realpath(path);
+    const realBase = await realpath(baseDir);
     if (!isPathInside(realPath, realBase)) {
         throw new Error("Persisted session path resolves outside the RunWield session directory for cwd");
     }
@@ -262,7 +269,7 @@ export async function classifyRootSessionLocator(options) {
     if (!store) return { kind: "blocked", reason: "session_store_unavailable" };
     let realCwd;
     try {
-        realCwd = await Deno.realPath(options.cwd);
+        realCwd = await realpath(options.cwd);
     } catch {
         realCwd = resolve(options.cwd);
     }
@@ -281,17 +288,17 @@ export async function classifyRootSessionLocator(options) {
     const canonicalHistoricalProjects = [];
     for (const project of projects) {
         const roots = store.listProjectRootEvidence(project.projectId);
-        const exactCurrent = roots.some((root) =>
-            root.rootState === "current" && requestedCwd === resolve(root.enteredRoot)
+        const exactCurrent = roots.some(
+            (root) => root.rootState === "current" && requestedCwd === resolve(root.enteredRoot),
         );
-        const canonicalCurrent = roots.some((root) =>
-            root.rootState === "current" && isSameOrInsidePath(realCwd, root.canonicalRoot)
+        const canonicalCurrent = roots.some(
+            (root) => root.rootState === "current" && isSameOrInsidePath(realCwd, root.canonicalRoot),
         );
-        const exactHistorical = roots.some((root) =>
-            root.rootState === "historical" && requestedCwd === resolve(root.enteredRoot)
+        const exactHistorical = roots.some(
+            (root) => root.rootState === "historical" && requestedCwd === resolve(root.enteredRoot),
         );
-        const canonicalHistorical = roots.some((root) =>
-            root.rootState === "historical" && isSameOrInsidePath(realCwd, root.canonicalRoot)
+        const canonicalHistorical = roots.some(
+            (root) => root.rootState === "historical" && isSameOrInsidePath(realCwd, root.canonicalRoot),
         );
         if (exactCurrent) exactCurrentProjects.push(project);
         else if (canonicalCurrent) canonicalCurrentProjects.push(project);
@@ -299,9 +306,8 @@ export async function classifyRootSessionLocator(options) {
         else if (canonicalHistorical) canonicalHistoricalProjects.push(project);
     }
     const currentProjects = exactCurrentProjects.length > 0 ? exactCurrentProjects : canonicalCurrentProjects;
-    const historicalProjects = exactHistoricalProjects.length > 0
-        ? exactHistoricalProjects
-        : canonicalHistoricalProjects;
+    const historicalProjects =
+        exactHistoricalProjects.length > 0 ? exactHistoricalProjects : canonicalHistoricalProjects;
     if (currentProjects.length > 1 || historicalProjects.length > 1) {
         return { kind: "blocked", reason: "locator_conflict" };
     }
@@ -310,14 +316,16 @@ export async function classifyRootSessionLocator(options) {
     }
     const project = currentProjects[0] || null;
     if (!project) return { kind: "uncataloged", reason: "session_project_absent" };
-    const currentRoots = store.listProjectRootEvidence(project.projectId)
-        .filter((root) =>
-            root.rootState === "current" &&
-            (isSameOrInsidePath(realCwd, root.canonicalRoot) || isSameOrInsidePath(requestedCwd, root.enteredRoot))
+    const currentRoots = store
+        .listProjectRootEvidence(project.projectId)
+        .filter(
+            (root) =>
+                root.rootState === "current" &&
+                (isSameOrInsidePath(realCwd, root.canonicalRoot) || isSameOrInsidePath(requestedCwd, root.enteredRoot)),
         );
     if (
-        currentRoots.some((root) =>
-            resolve(realCwd) !== resolve(root.canonicalRoot) && requestedCwd !== resolve(root.enteredRoot)
+        currentRoots.some(
+            (root) => resolve(realCwd) !== resolve(root.canonicalRoot) && requestedCwd !== resolve(root.enteredRoot),
         )
     ) {
         return { kind: "blocked", reason: "nested_project_root" };
@@ -341,7 +349,20 @@ export async function classifyRootSessionLocator(options) {
     const requestedSessionPath = resolve(String(options.sessionPath));
     const projectRoot = store.requireSessionProjectRoot(project.projectId);
     const projectSessionDir = join(store.path, encodeCwdForSessionDir(canonicalizeCwd(projectRoot)));
-    const locatorSessionDir = isPathInside(requestedSessionPath, projectSessionDir) ? projectSessionDir : undefined;
+    const catalogedByPath = store.findSessionByLocator({
+        projectId: project.projectId,
+        transcriptPath: requestedSessionPath,
+    });
+    const catalogedSegment = catalogedByPath
+        ? store
+              .listSessionTranscriptSegments(catalogedByPath.runwieldSessionId)
+              .find((segment) => resolve(segment.transcriptPath) === requestedSessionPath)
+        : null;
+    const locatorSessionDir = isPathInside(requestedSessionPath, projectSessionDir)
+        ? projectSessionDir
+        : catalogedSegment
+          ? getRunWieldSessionDir(catalogedSegment.transcriptCwd)
+          : undefined;
     let locator;
     try {
         locator = await readCatalogSafeRootSessionLocator({
@@ -397,8 +418,9 @@ export async function listPersistedRootSessions(cwd) {
     const sessionDir = getRunWieldSessionDir(canonicalCwd);
     const sessions = /** @type {PersistedRootSessionInfo[]} */ (await SessionManager.list(canonicalCwd, sessionDir));
     if (enteredCwd !== canonicalCwd) {
-        const legacySessions =
-            /** @type {PersistedRootSessionInfo[]} */ (await SessionManager.list(enteredCwd, sessionDir));
+        const legacySessions = /** @type {PersistedRootSessionInfo[]} */ (
+            await SessionManager.list(enteredCwd, sessionDir)
+        );
         const seen = new Set(sessions.map((session) => `${session.id}:${resolve(session.path)}`));
         for (const session of legacySessions) {
             const key = `${session.id}:${resolve(session.path)}`;
@@ -498,7 +520,7 @@ export async function openPersistedRootSession(options) {
         }
         throw new Error("Persisted session cwd does not match requested cwd");
     }
-    return { sessionManager: installDenoSessionPersistence(sessionManager), resolved };
+    return { sessionManager: installSessionPersistence(sessionManager), resolved };
 }
 
 /**
@@ -548,12 +570,12 @@ export async function readCatalogSafeRootSessionLocator(options) {
     }
     if (!sessionPath.endsWith(".jsonl")) throw new Error("Persisted session path must be a JSONL file");
     await assertRealPathInside(sessionPath, sessionDir);
-    const file = await Deno.open(sessionPath, { read: true });
+    const file = await open(sessionPath, "r");
     try {
         const fileInfo = await file.stat();
         const maxHeaderBytes = Math.max(128, options.maxHeaderBytes || 65536);
         const buffer = new Uint8Array(maxHeaderBytes);
-        const bytesRead = await file.read(buffer);
+        const { bytesRead } = await file.read(buffer);
         if (!bytesRead) throw new Error("Persisted session file is empty");
         const chunk = new TextDecoder().decode(buffer.subarray(0, bytesRead));
         const newlineIndex = chunk.indexOf("\n");
@@ -572,9 +594,7 @@ export async function readCatalogSafeRootSessionLocator(options) {
         if (!headerCwd || !isAbsolute(headerCwd)) {
             throw new Error("Persisted session header is missing an absolute cwd");
         }
-        const match = basename(sessionPath).match(
-            /^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)_(.+)\.jsonl$/,
-        );
+        const match = basename(sessionPath).match(/^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)_(.+)\.jsonl$/);
         if (!match || match[2] !== piSessionId) {
             throw new Error("Persisted session filename does not exactly match the Pi session id");
         }
@@ -593,7 +613,7 @@ export async function readCatalogSafeRootSessionLocator(options) {
             modified: fileInfo.mtime,
         };
     } finally {
-        file.close();
+        await file.close();
     }
 }
 
@@ -625,19 +645,20 @@ export async function listCatalogSafeRootSessionLocators(cwd, options = {}) {
     const diagnostics = [];
     /** @type {CatalogSafeRootSessionCandidate[]} */
     const candidates = [];
-    const recentLimit = typeof options.recentLimit === "number" && Number.isFinite(options.recentLimit)
-        ? Math.max(0, Math.floor(options.recentLimit))
-        : null;
+    const recentLimit =
+        typeof options.recentLimit === "number" && Number.isFinite(options.recentLimit)
+            ? Math.max(0, Math.floor(options.recentLimit))
+            : null;
     try {
-        for await (const entry of Deno.readDir(sessionDir)) {
-            if (!entry.isFile || !entry.name.endsWith(".jsonl")) continue;
+        for (const entry of await readdir(sessionDir, { withFileTypes: true })) {
+            if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
             const sessionPath = join(sessionDir, entry.name);
             if (recentLimit === null) {
                 candidates.push({ sessionPath, modified: null });
                 continue;
             }
             try {
-                const fileInfo = await Deno.stat(sessionPath);
+                const fileInfo = await fsStat(sessionPath);
                 candidates.push({ sessionPath, modified: fileInfo.mtime });
             } catch (error) {
                 diagnostics.push({
@@ -648,13 +669,18 @@ export async function listCatalogSafeRootSessionLocators(cwd, options = {}) {
             }
         }
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return { locators, diagnostics };
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return { locators, diagnostics };
         throw error;
     }
-    const candidatesToRead = recentLimit === null ? candidates : candidates.toSorted((left, right) => {
-        const timeDifference = (right.modified?.getTime() || 0) - (left.modified?.getTime() || 0);
-        return timeDifference || right.sessionPath.localeCompare(left.sessionPath);
-    }).slice(0, recentLimit);
+    const candidatesToRead =
+        recentLimit === null
+            ? candidates
+            : candidates
+                  .toSorted((left, right) => {
+                      const timeDifference = (right.modified?.getTime() || 0) - (left.modified?.getTime() || 0);
+                      return timeDifference || right.sessionPath.localeCompare(left.sessionPath);
+                  })
+                  .slice(0, recentLimit);
     for (const candidate of candidatesToRead) {
         try {
             locators.push(
@@ -697,23 +723,25 @@ function escapeHtml(value) {
 function toDisplayText(value) {
     if (typeof value === "string") return value;
     if (Array.isArray(value)) {
-        return value.map((block) => {
-            if (!block || typeof block !== "object") return "";
-            const typedBlock =
-                /** @type {{ type?: string, text?: string, name?: string, input?: unknown, content?: unknown }} */ (
-                    block
-                );
+        return value
+            .map((block) => {
+                if (!block || typeof block !== "object") return "";
+                const typedBlock =
+                    /** @type {{ type?: string, text?: string, name?: string, input?: unknown, content?: unknown }} */ (
+                        block
+                    );
 
-            if (typedBlock.type === "text") return typedBlock.text || "";
-            if (typedBlock.type === "tool_use") {
-                return `[tool_use:${typedBlock.name || "unknown"}] ${JSON.stringify(typedBlock.input || {})}`;
-            }
-            if (typedBlock.type === "tool_result") {
-                const contentText = toDisplayText(typedBlock.content || "");
-                return `[tool_result] ${contentText}`;
-            }
-            return JSON.stringify(block);
-        }).join("\n");
+                if (typedBlock.type === "text") return typedBlock.text || "";
+                if (typedBlock.type === "tool_use") {
+                    return `[tool_use:${typedBlock.name || "unknown"}] ${JSON.stringify(typedBlock.input || {})}`;
+                }
+                if (typedBlock.type === "tool_result") {
+                    const contentText = toDisplayText(typedBlock.content || "");
+                    return `[tool_result] ${contentText}`;
+                }
+                return JSON.stringify(block);
+            })
+            .join("\n");
     }
 
     if (value === null || value === undefined) return "";
@@ -748,7 +776,7 @@ export function exportRootSessionToJsonl(sessionManager, outputPath) {
         prevId = entry.id;
     }
 
-    Deno.writeTextFileSync(filePath, `${lines.join("\n")}\n`);
+    writeFileSync(filePath, `${lines.join("\n")}\n`);
     return filePath;
 }
 
@@ -765,80 +793,81 @@ export async function exportRootSessionToHtml(sessionManager, outputPath) {
 
     const entries = sessionManager.getBranch();
     let skipNextNamedInvocation = "";
-    const rows = entries.flatMap((entry) => {
-        const timestamp = entry.timestamp || "";
+    const rows = entries
+        .flatMap((entry) => {
+            const timestamp = entry.timestamp || "";
 
-        if (entry.type === "message") {
-            const role = entry.message?.role || "unknown";
-            const message = /** @type {{ content?: unknown }} */ (entry.message);
-            const textValue = toDisplayText(message.content || "");
-            if (skipNextNamedInvocation && role === "user" && textValue === skipNextNamedInvocation) {
+            if (entry.type === "message") {
+                const role = entry.message?.role || "unknown";
+                const message = /** @type {{ content?: unknown }} */ (entry.message);
+                const textValue = toDisplayText(message.content || "");
+                if (skipNextNamedInvocation && role === "user" && textValue === skipNextNamedInvocation) {
+                    skipNextNamedInvocation = "";
+                    return [];
+                }
                 skipNextNamedInvocation = "";
-                return [];
+                const text = escapeHtml(textValue);
+                return [
+                    `<section class=\"entry message ${escapeHtml(role)}\"><header>${escapeHtml(timestamp)} — ${escapeHtml(
+                        role,
+                    )}</header><pre>${text}</pre></section>`,
+                ];
             }
-            skipNextNamedInvocation = "";
-            const text = escapeHtml(textValue);
-            return [
-                `<section class=\"entry message ${escapeHtml(role)}\"><header>${escapeHtml(timestamp)} — ${
-                    escapeHtml(role)
-                }</header><pre>${text}</pre></section>`,
-            ];
-        }
 
-        const customEntry =
-            /** @type {{ type?: string, customType?: string, data?: { compactInvocation?: string } }} */ (
-                entry
-            );
-        const namedInvocationData = customEntry.data;
-        const namedInvocationText =
-            customEntry.type === "custom" && customEntry.customType === "runwield.named_invocation" &&
+            const customEntry =
+                /** @type {{ type?: string, customType?: string, data?: { compactInvocation?: string } }} */ (entry);
+            const namedInvocationData = customEntry.data;
+            const namedInvocationText =
+                customEntry.type === "custom" &&
+                customEntry.customType === "runwield.named_invocation" &&
                 typeof namedInvocationData?.compactInvocation === "string"
-                ? namedInvocationData.compactInvocation
-                : "";
-        if (namedInvocationText) {
-            skipNextNamedInvocation = namedInvocationText;
-            const text = escapeHtml(namedInvocationText);
-            return `<section class=\"entry message user\"><header>${
-                escapeHtml(timestamp)
-            } — user</header><pre>${text}</pre></section>`;
-        }
+                    ? namedInvocationData.compactInvocation
+                    : "";
+            if (namedInvocationText) {
+                skipNextNamedInvocation = namedInvocationText;
+                const text = escapeHtml(namedInvocationText);
+                return `<section class=\"entry message user\"><header>${escapeHtml(
+                    timestamp,
+                )} — user</header><pre>${text}</pre></section>`;
+            }
 
-        if (entry.type === "custom_message") {
-            const text = escapeHtml(toDisplayText(entry.content || ""));
-            return `<section class=\"entry custom\"><header>${escapeHtml(timestamp)} — custom_message:${
-                escapeHtml(entry.customType || "")
-            }</header><pre>${text}</pre></section>`;
-        }
+            if (entry.type === "custom_message") {
+                const text = escapeHtml(toDisplayText(entry.content || ""));
+                return `<section class=\"entry custom\"><header>${escapeHtml(timestamp)} — custom_message:${escapeHtml(
+                    entry.customType || "",
+                )}</header><pre>${text}</pre></section>`;
+            }
 
-        if (entry.type === "compaction") {
-            return `<section class=\"entry system\"><header>${escapeHtml(timestamp)} — compaction</header><pre>${
-                escapeHtml(entry.summary || "")
-            }</pre></section>`;
-        }
+            if (entry.type === "compaction") {
+                return `<section class=\"entry system\"><header>${escapeHtml(timestamp)} — compaction</header><pre>${escapeHtml(
+                    entry.summary || "",
+                )}</pre></section>`;
+            }
 
-        if (entry.type === "branch_summary") {
-            return `<section class=\"entry system\"><header>${escapeHtml(timestamp)} — branch_summary</header><pre>${
-                escapeHtml(entry.summary || "")
-            }</pre></section>`;
-        }
+            if (entry.type === "branch_summary") {
+                return `<section class=\"entry system\"><header>${escapeHtml(timestamp)} — branch_summary</header><pre>${escapeHtml(
+                    entry.summary || "",
+                )}</pre></section>`;
+            }
 
-        if (entry.type === "model_change") {
-            const text = `${entry.provider || ""}/${entry.modelId || ""}`;
-            return `<section class=\"entry meta\"><header>${escapeHtml(timestamp)} — model_change</header><pre>${
-                escapeHtml(text)
-            }</pre></section>`;
-        }
+            if (entry.type === "model_change") {
+                const text = `${entry.provider || ""}/${entry.modelId || ""}`;
+                return `<section class=\"entry meta\"><header>${escapeHtml(timestamp)} — model_change</header><pre>${escapeHtml(
+                    text,
+                )}</pre></section>`;
+            }
 
-        if (entry.type === "thinking_level_change") {
-            return `<section class=\"entry meta\"><header>${
-                escapeHtml(timestamp)
-            } — thinking_level_change</header><pre>${escapeHtml(entry.thinkingLevel || "")}</pre></section>`;
-        }
+            if (entry.type === "thinking_level_change") {
+                return `<section class=\"entry meta\"><header>${escapeHtml(
+                    timestamp,
+                )} — thinking_level_change</header><pre>${escapeHtml(entry.thinkingLevel || "")}</pre></section>`;
+            }
 
-        return `<section class=\"entry meta\"><header>${escapeHtml(timestamp)} — ${
-            escapeHtml(entry.type || "entry")
-        }</header><pre>${escapeHtml(JSON.stringify(entry, null, 2))}</pre></section>`;
-    }).join("\n");
+            return `<section class=\"entry meta\"><header>${escapeHtml(timestamp)} — ${escapeHtml(
+                entry.type || "entry",
+            )}</header><pre>${escapeHtml(JSON.stringify(entry, null, 2))}</pre></section>`;
+        })
+        .join("\n");
 
     const title = `RunWield Session Export — ${sessionManager.getSessionId()}`;
     const html = [
@@ -868,6 +897,6 @@ export async function exportRootSessionToHtml(sessionManager, outputPath) {
         "",
     ].join("\n");
 
-    await Deno.writeTextFile(filePath, html);
+    await writeFile(filePath, html);
     return filePath;
 }

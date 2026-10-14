@@ -3,6 +3,7 @@
  * Strict transcript lineage parsing and manifest reconstruction.
  */
 
+import { readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import {
     normalizeSegmentLineageEvidence,
@@ -19,7 +20,7 @@ import type {
 } from "./file-session-store-types.ts";
 
 function readJsonlPrefix(path: string, currentSegment: boolean) {
-    const text = Deno.readTextFileSync(path);
+    const text = readFileSync(path, "utf8");
     const lines = text.split("\n").filter(Boolean);
     let prefixLength = lines.length;
     if (currentSegment) {
@@ -52,7 +53,7 @@ function readJsonlPrefix(path: string, currentSegment: boolean) {
 
 export function readLineage(path: string): LineageReadResult {
     try {
-        const lines = Deno.readTextFileSync(path).split("\n").filter(Boolean);
+        const lines = readFileSync(path, "utf8").split("\n").filter(Boolean);
         const lineageEntries = [];
         for (let index = 1; index < lines.length; index += 1) {
             const entry = JSON.parse(lines[index]);
@@ -161,9 +162,9 @@ export function reconstructManifestFromLineage(
         lineageParentPiSessionId: item.lineage.parentPiSessionId ?? null,
         lineageGroupKey: item.lineage.lineageGroupKey ?? null,
         lineageRecordedAt: timestamp,
-        sealedByteLength: ordinal < ordered.length - 1 ? Deno.statSync(item.locator.sessionPath).size : null,
+        sealedByteLength: ordinal < ordered.length - 1 ? statSync(item.locator.sessionPath).size : null,
         sealedDigestHex: ordinal < ordered.length - 1
-            ? createHash("sha256").update(Deno.readFileSync(item.locator.sessionPath)).digest("hex")
+            ? createHash("sha256").update(readFileSync(item.locator.sessionPath)).digest("hex")
             : null,
         sealedTerminalEntryId: null,
     }));

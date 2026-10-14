@@ -1,3 +1,4 @@
+import { serveHttp } from "../../http-server.ts";
 /**
  * @module shared/session/bridged-tools/mcp-bridge
  *
@@ -110,8 +111,8 @@ export interface RunWieldMcpBridgeOptions {
     provenance: BridgedToolProvenance;
     /** Optional host-specific notice when the listener ends before close(). */
     onUnexpectedDisconnect?: () => void;
-    /** Consume live user steering before a lifecycle call is accepted. */
-    consumePendingSteering?: () => string[];
+    /** Keep lifecycle calls gated until the execution backend receives live user steering. */
+    readPendingSteering?: () => string[];
     /** Stop the external backend immediately after a terminating lifecycle result. */
     onTerminalAccepted?: (internalName: string) => void;
 }
@@ -231,9 +232,7 @@ function mergeAbortSignals(first?: AbortSignal, second?: AbortSignal): AbortSign
  * passes it to a compatible external CLI; `close()` must run in the
  * `finally` of the turn, after the prompt file and config file are removed.
  */
-export async function startRunWieldMcpBridge(
-    options: RunWieldMcpBridgeOptions,
-): Promise<RunWieldMcpBridgeHandle> {
+export async function startRunWieldMcpBridge(options: RunWieldMcpBridgeOptions): Promise<RunWieldMcpBridgeHandle> {
     if (!options.tools || options.tools.length === 0) {
         throw new Error("startRunWieldMcpBridge: at least one eligible Tool Definition is required");
     }
@@ -243,7 +242,7 @@ export async function startRunWieldMcpBridge(
         if (!alias.trim()) {
             throw new Error(`startRunWieldMcpBridge: "${internalName}" resolved to an empty MCP alias`);
         }
-        const kind = isLifecycleTool(internalName) ? "lifecycle" as const : "capability" as const;
+        const kind = isLifecycleTool(internalName) ? ("lifecycle" as const) : ("capability" as const);
         return { alias, internalName, definition, kind };
     });
     const byAlias = new Map<string, BridgeToolEntry>();
@@ -258,10 +257,7 @@ export async function startRunWieldMcpBridge(
     const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
     });
-    const mcpServer = new Server(
-        { name: "runwield", version: "1.0.0" },
-        { capabilities: { tools: {} } },
-    );
+    const mcpServer = new Server({ name: "runwield", version: "1.0.0" }, { capabilities: { tools: {} } });
 
     let terminal = false;
     let callQueue: Promise<void> = Promise.resolve();
@@ -331,11 +327,7 @@ export async function startRunWieldMcpBridge(
         emitToolStart(internalName, callId, args);
     }
 
-    function recordToolResult(
-        internalName: string,
-        callId: string,
-        result: DelegatedToolResult,
-    ): void {
+    function recordToolResult(internalName: string, callId: string, result: DelegatedToolResult): void {
         appendMessage({
             role: "toolResult",
             toolCallId: callId,
@@ -348,12 +340,7 @@ export async function startRunWieldMcpBridge(
         emitToolEnd(internalName, callId, result);
     }
 
-    function rejectedResult(
-        reason: string,
-        entry: BridgeToolEntry,
-        callId: string,
-        args: JsonObject,
-    ): McpToolResult {
+    function rejectedResult(reason: string, entry: BridgeToolEntry, callId: string, args: JsonObject): McpToolResult {
         const text = rejectionText(reason);
         // No `outcome` key: plan outcome readers treat any truthy outcome as a
         // decision, so a rejection must stay invisible to them.
@@ -389,7 +376,7 @@ export async function startRunWieldMcpBridge(
                 args ?? {},
             );
         }
-        const pendingSteering = entry.kind === "lifecycle" ? options.consumePendingSteering?.() || [] : [];
+        const pendingSteering = entry.kind === "lifecycle" ? options.readPendingSteering?.() || [] : [];
         if (pendingSteering.length > 0) {
             return rejectedResult(formatPendingSteeringRejection(pendingSteering), entry, callId, args ?? {});
         }
@@ -397,11 +384,13 @@ export async function startRunWieldMcpBridge(
         let params: JsonObject;
         try {
             params = validateToolCall(
-                [{
-                    name: alias,
-                    description: entry.definition.description,
-                    parameters: entry.definition.parameters,
-                }],
+                [
+                    {
+                        name: alias,
+                        description: entry.definition.description,
+                        parameters: entry.definition.parameters,
+                    },
+                ],
                 { type: "toolCall", id: callId, name: alias, arguments: args ?? {} },
             ) as JsonObject;
         } catch (error) {
@@ -479,13 +468,11 @@ export async function startRunWieldMcpBridge(
 
     await mcpServer.connect(transport);
     let url = "";
-    const serveServer = Deno.serve(
+    const serveServer = serveHttp(
         {
             hostname: "127.0.0.1",
             port: 0,
-            onListen: (addr) => {
-                url = `http://127.0.0.1:${addr.port}`;
-            },
+            onListen: () => {},
         },
         (request) => {
             const origin = request.headers.get("origin");
@@ -505,10 +492,7 @@ export async function startRunWieldMcpBridge(
             return transport.handleRequest(request);
         },
     );
-    if (!url) {
-        await serveServer.shutdown();
-        throw new Error("startRunWieldMcpBridge: loopback listener did not report its port");
-    }
+    url = `http://127.0.0.1:${serveServer.addr.port}`;
     const config = buildMcpConfigJson(url, token);
 
     let closed = false;

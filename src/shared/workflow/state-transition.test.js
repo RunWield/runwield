@@ -1,5 +1,18 @@
-import { assert, assertEquals } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { realpathSync as fsRealpathSync } from "node:fs";
+import {
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { dirname, join } from "node:path";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME } from "../../constants.js";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import {
@@ -23,13 +36,13 @@ import { enterProjectRuntime } from "../project-runtime-layout.ts";
 const linkedCheckoutFixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// app\n" });
 
 async function makeProject() {
-    return await Deno.makeTempDir({ prefix: "runwield-state-transition-" });
+    return await fsMkdtemp(join(tmpdir(), "runwield-state-transition-"));
 }
 
 /** @param {string} projectRoot @param {string} transitionId */
 function selectedJournalPath(projectRoot, transitionId) {
     return join(
-        getRunWieldRuntimeDir(Deno.realPathSync(projectRoot)),
+        getRunWieldRuntimeDir(fsRealpathSync(projectRoot)),
         PROJECT_INTERNAL_RUNTIME_DIR_NAME,
         "plan-transitions",
         `${transitionId}.json`,
@@ -39,7 +52,7 @@ function selectedJournalPath(projectRoot, transitionId) {
 /** @param {string} projectRoot @param {string} fileName */
 function selectedLockPath(projectRoot, fileName) {
     return join(
-        getRunWieldRuntimeDir(Deno.realPathSync(projectRoot)),
+        getRunWieldRuntimeDir(fsRealpathSync(projectRoot)),
         PROJECT_INTERNAL_RUNTIME_DIR_NAME,
         "plan-locks",
         fileName,
@@ -48,7 +61,7 @@ function selectedLockPath(projectRoot, fileName) {
 
 /** @param {string} path */
 async function pathExists(path) {
-    return await Deno.stat(path).then(() => true).catch(() => false);
+    return await fsStat(path).then(() => true).catch(() => false);
 }
 
 const PLAN_EVENT_TRANSITION_INVENTORY = [
@@ -365,7 +378,7 @@ const SEMANTIC_WRITER_TRANSITION_INVENTORY = [
     ],
 ];
 
-Deno.test("checked-in transition inventory covers Plan Events and semantic writers", () => {
+test("checked-in transition inventory covers Plan Events and semantic writers", () => {
     const expectedEvents = [
         "review_feedback",
         "review_approved",
@@ -396,7 +409,7 @@ Deno.test("checked-in transition inventory covers Plan Events and semantic write
     }
 });
 
-Deno.test("ordered transition resources use each selected checkout root", async () => {
+test("ordered transition resources use each selected checkout root", async () => {
     const operationRoot = await makeProject();
     const resourceRoot = await makeProject();
     try {
@@ -409,23 +422,23 @@ Deno.test("ordered transition resources use each selected checkout root", async 
                 { kind: "catalog", root: operationRoot },
             ],
             async () => {
-                await Deno.lstat(selectedLockPath(operationRoot, "catalog.lock"));
-                await Deno.lstat(selectedLockPath(operationRoot, "__target_ref-main.lock"));
-                await Deno.lstat(selectedLockPath(resourceRoot, "__attempt-attempt-one.lock"));
-                await Deno.lstat(selectedLockPath(resourceRoot, "demo.lock"));
+                await fsLstat(selectedLockPath(operationRoot, "catalog.lock"));
+                await fsLstat(selectedLockPath(operationRoot, "__target_ref-main.lock"));
+                await fsLstat(selectedLockPath(resourceRoot, "__attempt-attempt-one.lock"));
+                await fsLstat(selectedLockPath(resourceRoot, "demo.lock"));
                 assertEquals(await pathExists(selectedLockPath(operationRoot, "__attempt-attempt-one.lock")), false);
                 assertEquals(await pathExists(selectedLockPath(operationRoot, "demo.lock")), false);
             },
         );
     } finally {
-        await Deno.remove(operationRoot, { recursive: true }).catch(() => {});
-        await Deno.remove(resourceRoot, { recursive: true }).catch(() => {});
+        await fsRm(operationRoot, { recursive: true }).catch(() => {});
+        await fsRm(resourceRoot, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("failed transitions leave populated journals in the linked checkout that owns the Plan", async () => {
+test("failed transitions leave populated journals in the linked checkout that owns the Plan", async () => {
     const root = await linkedCheckoutFixture.checkout({ prefix: "rw-transition-journal-primary-" });
-    const container = await Deno.makeTempDir({ prefix: "rw-transition-journal-tree-" });
+    const container = await fsMkdtemp(join(tmpdir(), "rw-transition-journal-tree-"));
     const selected = join(container, "selected");
     try {
         await savePlan(root, "demo", "# Demo\n", { status: "implemented", classification: "FEATURE" });
@@ -446,7 +459,7 @@ Deno.test("failed transitions leave populated journals in the linked checkout th
                     'status: "implemented"',
                     'status: "implemented"\nfailureReason: "hand edited"',
                 );
-                await Deno.writeTextFile(beforePlan.path, externalMarkdown);
+                await fsWriteFile(beforePlan.path, externalMarkdown);
                 throw new Error("interrupted after an outside edit");
             },
         });
@@ -457,14 +470,14 @@ Deno.test("failed transitions leave populated journals in the linked checkout th
         assertEquals(record.planName, "demo");
         assertEquals(record.uncertainty, "plan_bytes_changed");
         assertEquals(
-            await Deno.readTextFile(selectedJournalPath(selected, record.transitionId)),
+            await fsReadFile(selectedJournalPath(selected, record.transitionId), "utf8"),
             JSON.stringify(record, null, 2) + "\n",
         );
         assertEquals(await pathExists(selectedJournalPath(root, record.transitionId)), false);
         assertEquals(
             await pathExists(
                 join(
-                    getRunWieldRuntimeDir(Deno.realPathSync(selected)),
+                    getRunWieldRuntimeDir(fsRealpathSync(selected)),
                     "plan-transitions",
                     `${record.transitionId}.json`,
                 ),
@@ -473,12 +486,12 @@ Deno.test("failed transitions leave populated journals in the linked checkout th
         );
     } finally {
         await git(root, ["worktree", "remove", "--force", selected]).catch(() => {});
-        await Deno.remove(container, { recursive: true }).catch(() => {});
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(container, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("Plan front matter transition commits and removes settled journal", async () => {
+test("Plan front matter transition commits and removes settled journal", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo", { status: "draft", classification: "FEATURE" });
@@ -492,11 +505,11 @@ Deno.test("Plan front matter transition commits and removes settled journal", as
         assertEquals((await loadPlan(cwd, "demo"))?.attrs.status, "approved");
         assertEquals(await listTransitionRecoveryRecords(cwd), []);
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("Plan front matter transition records its committed metric through the real recorder", async () => {
+test("Plan front matter transition records its committed metric through the real recorder", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         await savePlan(projectRoot, "metric-demo", "# Metric demo", {
             status: "draft",
@@ -524,7 +537,7 @@ Deno.test("Plan front matter transition records its committed metric through the
     });
 });
 
-Deno.test("stale transition preconditions block without leaving unresolved recovery journals", async () => {
+test("stale transition preconditions block without leaving unresolved recovery journals", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo", { status: "draft", classification: "FEATURE" });
@@ -540,11 +553,11 @@ Deno.test("stale transition preconditions block without leaving unresolved recov
         assertEquals(result.status, "blocked");
         assertEquals(await listTransitionRecoveryRecords(cwd), []);
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("execution preparation transition locks resources and journals blocked effects", async () => {
+test("execution preparation transition locks resources and journals blocked effects", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo", { status: "ready_for_work", classification: "FEATURE" });
@@ -567,17 +580,17 @@ Deno.test("execution preparation transition locks resources and journals blocked
         assertEquals(records[0].operation, "execution_preparation");
         assertEquals(records[0].state, "needs_recovery");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("Plan front matter transition preserves malformed bytes and stays retryable", async () => {
+test("Plan front matter transition preserves malformed bytes and stays retryable", async () => {
     const cwd = await makeProject();
     try {
-        await Deno.mkdir(join(cwd, "docs", "plans"), { recursive: true });
+        await fsMkdir(join(cwd, "docs", "plans"), { recursive: true });
         const path = join(cwd, "docs", "plans", "bad.md");
         const malformed = "---\n: bad\n---\n# Bad";
-        await Deno.writeTextFile(path, malformed);
+        await fsWriteFile(path, malformed);
         const result = await runPlanFrontMatterTransition({
             projectRoot: cwd,
             planName: "bad",
@@ -585,7 +598,7 @@ Deno.test("Plan front matter transition preserves malformed bytes and stays retr
             updates: { status: "approved" },
         });
         assertEquals(result.status, "blocked");
-        assertEquals(await Deno.readTextFile(path), malformed, "malformed bytes are evidence and must survive");
+        assertEquals(await fsReadFile(path, "utf8"), malformed, "malformed bytes are evidence and must survive");
         // Unreadable Plan bytes are a precondition, not partial work. Journaling it
         // would leave a record carrying no before-revision — nothing could ever prove
         // it settled — so the Plan would stay blocked even after the file was fixed.
@@ -600,7 +613,7 @@ Deno.test("Plan front matter transition preserves malformed bytes and stays retr
         );
 
         // Fixing the file is all it takes: no recovery step, no leftover state.
-        await Deno.writeTextFile(path, '---\nstatus: "draft"\n---\n# Bad\n');
+        await fsWriteFile(path, '---\nstatus: "draft"\n---\n# Bad\n');
         const retried = await runPlanFrontMatterTransition({
             projectRoot: cwd,
             planName: "bad",
@@ -609,11 +622,11 @@ Deno.test("Plan front matter transition preserves malformed bytes and stays retr
         });
         assertEquals(retried.status, "committed");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("implementation checkpoint failure before any effect leaves no recovery journal", async () => {
+test("implementation checkpoint failure before any effect leaves no recovery journal", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo", { status: "in_progress" });
@@ -626,11 +639,11 @@ Deno.test("implementation checkpoint failure before any effect leaves no recover
         assertEquals((await listTransitionRecoveryRecords(cwd)).length, 0);
         assertEquals((await loadPlan(cwd, "demo"))?.attrs.status, "in_progress");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("semantic transition matrix records operation-specific resources, effects, proof, and recovery", async () => {
+test("semantic transition matrix records operation-specific resources, effects, proof, and recovery", async () => {
     /** @type {Array<{ name: string, operation: string, run: (cwd: string) => Promise<any>, expectedResources: string[], expectedEffect: string }>} */
     const cases = [
         {
@@ -705,7 +718,7 @@ Deno.test("semantic transition matrix records operation-specific resources, effe
             assertEquals(result.status, "committed", testCase.name);
             assertEquals(await listTransitionRecoveryRecords(cwd), []);
         } finally {
-            await Deno.remove(cwd, { recursive: true }).catch(() => {});
+            await fsRm(cwd, { recursive: true }).catch(() => {});
         }
 
         const failedCwd = await makeProject();
@@ -729,7 +742,7 @@ Deno.test("semantic transition matrix records operation-specific resources, effe
             assertEquals(record.state, "needs_recovery");
             assert(Array.isArray(record.recoveryActions));
         } finally {
-            await Deno.remove(failedCwd, { recursive: true }).catch(() => {});
+            await fsRm(failedCwd, { recursive: true }).catch(() => {});
         }
 
         // The same fault raised before any effect is a plain rejection: it must
@@ -746,12 +759,12 @@ Deno.test("semantic transition matrix records operation-specific resources, effe
             assertEquals(cleanFailure.status, "rolled_back");
             assertEquals((await listTransitionRecoveryRecords(cleanCwd)).length, 0);
         } finally {
-            await Deno.remove(cleanCwd, { recursive: true }).catch(() => {});
+            await fsRm(cleanCwd, { recursive: true }).catch(() => {});
         }
     }
 });
 
-Deno.test("semantic transitions allow nested same-Plan lifecycle events they own", async () => {
+test("semantic transitions allow nested same-Plan lifecycle events they own", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "nested", "# Nested", {
@@ -790,17 +803,17 @@ Deno.test("semantic transitions allow nested same-Plan lifecycle events they own
         assertEquals((await loadPlan(cwd, "nested"))?.attrs.status, "in_progress");
         assertEquals(await listTransitionRecoveryRecords(cwd), []);
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("transitions block unresolved journals even when the Plan file is missing", async () => {
+test("transitions block unresolved journals even when the Plan file is missing", async () => {
     const cwd = await makeProject();
     try {
         await enterProjectRuntime(cwd);
         const journalPath = getTransitionJournalPath(cwd, "existing-transition");
-        await Deno.mkdir(dirname(journalPath), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(journalPath), { recursive: true });
+        await fsWriteFile(
             journalPath,
             JSON.stringify({
                 version: 1,
@@ -826,11 +839,11 @@ Deno.test("transitions block unresolved journals even when the Plan file is miss
         });
         assertEquals(planOnly.status, "blocked");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a rejected precondition leaves no journal and the Plan stays usable", async () => {
+test("a rejected precondition leaves no journal and the Plan stays usable", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n", {
@@ -857,11 +870,11 @@ Deno.test("a rejected precondition leaves no journal and the Plan stays usable",
         });
         assertEquals(attrs.status, "approved");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("Plan Recovery supersedes an unresolved journal and clears it", async () => {
+test("Plan Recovery supersedes an unresolved journal and clears it", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n", {
@@ -872,8 +885,8 @@ Deno.test("Plan Recovery supersedes an unresolved journal and clears it", async 
             affectedPaths: [],
         });
         const journalPath = getTransitionJournalPath(cwd, "stranded-transition");
-        await Deno.mkdir(dirname(journalPath), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(journalPath), { recursive: true });
+        await fsWriteFile(
             journalPath,
             JSON.stringify({
                 version: 1,
@@ -903,11 +916,11 @@ Deno.test("Plan Recovery supersedes an unresolved journal and clears it", async 
         assertEquals(recovery.status, "committed", "recovery must not be blocked by the record it resolves");
         assertEquals((await listTransitionRecoveryRecords(cwd)).length, 0, "recovery retires what it superseded");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("reconciliation closes settled journals but keeps ones with durable effects", async () => {
+test("reconciliation closes settled journals but keeps ones with durable effects", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n", {
@@ -919,9 +932,9 @@ Deno.test("reconciliation closes settled journals but keeps ones with durable ef
         });
         const plan = await loadPlan(cwd, "demo");
         const dir = dirname(getTransitionJournalPath(cwd, "x"));
-        await Deno.mkdir(dir, { recursive: true });
+        await fsMkdir(dir, { recursive: true });
         const write = async (/** @type {string} */ id, /** @type {Record<string, unknown>} */ record) =>
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 getTransitionJournalPath(cwd, id),
                 JSON.stringify({ version: 1, transitionId: id, planName: "demo", ...record }),
             );
@@ -949,11 +962,11 @@ Deno.test("reconciliation closes settled journals but keeps ones with durable ef
         assertEquals(remaining.length, 1);
         assertEquals(remaining[0].transitionId, "durable-effect");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a transition undoes the Plan write it can prove it made", async () => {
+test("a transition undoes the Plan write it can prove it made", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "FEATURE" });
@@ -979,11 +992,11 @@ Deno.test("a transition undoes the Plan write it can prove it made", async () =>
         assertEquals(after?.attrs.failureReason ?? null, null);
         assertEquals((await listTransitionRecoveryRecords(cwd)).length, 0);
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a transition refuses to undo Front Matter written outside RunWield", async () => {
+test("a transition refuses to undo Front Matter written outside RunWield", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "FEATURE" });
@@ -1007,32 +1020,32 @@ Deno.test("a transition refuses to undo Front Matter written outside RunWield", 
                     'status: "implemented"',
                     'status: "implemented"\nfailureReason: "hand edited"',
                 );
-                await Deno.writeTextFile(before.path, externalMarkdown);
+                await fsWriteFile(before.path, externalMarkdown);
                 throw new Error("interrupted after an outside edit");
             },
         });
 
         assertEquals(failure.status, "needs_recovery", "unproven authorship must fail closed");
-        assertEquals(await Deno.readTextFile(before.path), externalMarkdown, "the outside edit survives untouched");
+        assertEquals(await fsReadFile(before.path, "utf8"), externalMarkdown, "the outside edit survives untouched");
         const [record] = await listTransitionRecoveryRecords(cwd);
         assertEquals(record.uncertainty, "plan_bytes_changed");
         assertEquals(
-            await Deno.readTextFile(selectedJournalPath(cwd, record.transitionId)),
+            await fsReadFile(selectedJournalPath(cwd, record.transitionId), "utf8"),
             JSON.stringify(record, null, 2) + "\n",
         );
         assertEquals(
             await pathExists(
-                join(getRunWieldRuntimeDir(Deno.realPathSync(cwd)), "plan-transitions", `${record.transitionId}.json`),
+                join(getRunWieldRuntimeDir(fsRealpathSync(cwd)), "plan-transitions", `${record.transitionId}.json`),
             ),
             false,
             "normal transitions must not leave legacy journals",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a failed transition reverts its own Front Matter without touching an edited body", async () => {
+test("a failed transition reverts its own Front Matter without touching an edited body", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n\noriginal prose\n", {
@@ -1056,7 +1069,7 @@ Deno.test("a failed transition reverts its own Front Matter without touching an 
                 const current = await loadPlan(cwd, "demo");
                 assert(current);
                 const rewritten = current.markdown.replace("original prose", "prose the user rewrote in vim");
-                await Deno.writeTextFile(before.path, rewritten);
+                await fsWriteFile(before.path, rewritten);
                 userBody = rewritten.slice(rewritten.indexOf("# Demo"));
                 throw new Error("interrupted after the user edited the body");
             },
@@ -1072,11 +1085,11 @@ Deno.test("a failed transition reverts its own Front Matter without touching an 
             "a body edit must not leave the Plan blocked behind a recovery record",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a user body edit does not block a Front Matter transition", async () => {
+test("a user body edit does not block a Front Matter transition", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n\noriginal prose\n", {
@@ -1088,7 +1101,7 @@ Deno.test("a user body edit does not block a Front Matter transition", async () 
         // The Plan RunWield read is the Plan RunWield is about to change — except the
         // user rewrote the prose in between, which is theirs to do.
         const rewritten = before.markdown.replace("original prose", "prose the user rewrote in vim");
-        await Deno.writeTextFile(before.path, rewritten);
+        await fsWriteFile(before.path, rewritten);
 
         const result = await runPlanFrontMatterTransition({
             projectRoot: cwd,
@@ -1103,11 +1116,11 @@ Deno.test("a user body edit does not block a Front Matter transition", async () 
         assertEquals(after?.attrs.status, "on_hold");
         assert(after?.body.includes("rewrote in vim"), "the user's prose survives the lifecycle change");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a stranded Plan does not block lifecycle work on unrelated Plans", async () => {
+test("a stranded Plan does not block lifecycle work on unrelated Plans", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "alpha", "# A\n", { status: "implemented", classification: "FEATURE", planId: "p-a" });
@@ -1148,11 +1161,11 @@ Deno.test("a stranded Plan does not block lifecycle work on unrelated Plans", as
             "a block on RunWield's own bookkeeping has to name the command that clears it",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("reconciliation closes a record whose effects a prover accounts for", async () => {
+test("reconciliation closes a record whose effects a prover accounts for", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n", { status: "verified", classification: "FEATURE", planId: "p-1" });
@@ -1184,11 +1197,11 @@ Deno.test("reconciliation closes a record whose effects a prover accounts for", 
         assertEquals(resolved[0].effects?.[0].verdict?.settled, true);
         assertEquals((await listTransitionRecoveryRecords(cwd)).length, 0, "RunWield closes its own bookkeeping");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("an execution start cancelled mid-apply does not strand the Plan", async () => {
+test("an execution start cancelled mid-apply does not strand the Plan", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n", { status: "ready_for_work", classification: "FEATURE" });
@@ -1206,8 +1219,8 @@ Deno.test("an execution start cancelled mid-apply does not strand the Plan", asy
         // Even a record written at "applying" keeps the before-facts prepare recorded, so
         // reconciliation can prove it settled. Without that the Plan is blocked forever:
         // no effect to prove, no revision to compare, no way back.
-        await Deno.mkdir(dirname(getTransitionJournalPath(cwd, "x")), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(getTransitionJournalPath(cwd, "x")), { recursive: true });
+        await fsWriteFile(
             getTransitionJournalPath(cwd, "stranded"),
             JSON.stringify({
                 version: 1,
@@ -1239,11 +1252,11 @@ Deno.test("an execution start cancelled mid-apply does not strand the Plan", asy
         });
         assertEquals(after.status, "committed", "and the Plan works again afterwards");
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("a journal keeps its before-facts across state changes", async () => {
+test("a journal keeps its before-facts across state changes", async () => {
     const cwd = await makeProject();
     try {
         await savePlan(cwd, "demo", "# Demo\n", { status: "implemented", classification: "FEATURE" });
@@ -1267,19 +1280,19 @@ Deno.test("a journal keeps its before-facts across state changes", async () => {
             "the before-revision recorded at prepare survives later state writes",
         );
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("an unprovable record can be closed on user attestation without destroying it", async () => {
+test("an unprovable record can be closed on user attestation without destroying it", async () => {
     // The last resort in the never-strand chain. RunWield must not close a record it
     // cannot prove, but refusing forever leaves `rm` on a JSON file as the only exit.
-    const cwd = await Deno.makeTempDir();
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
     try {
         await enterProjectRuntime(cwd);
         const path = getTransitionJournalPath(cwd, "stuck-1");
-        await Deno.mkdir(dirname(path), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(dirname(path), { recursive: true });
+        await fsWriteFile(
             path,
             JSON.stringify({
                 transitionId: "stuck-1",
@@ -1298,16 +1311,16 @@ Deno.test("an unprovable record can be closed on user attestation without destro
         assertEquals(await listTransitionRecoveryRecords(cwd), [], "the record no longer blocks the Plan");
         // ...but not destroyed. An attestation can be wrong, so the evidence survives.
         const archivePath = join(
-            getRunWieldRuntimeDir(Deno.realPathSync(cwd)),
+            getRunWieldRuntimeDir(fsRealpathSync(cwd)),
             PROJECT_INTERNAL_RUNTIME_DIR_NAME,
             "plan-transitions",
             "attested",
             "stuck-1.json",
         );
-        const archived = JSON.parse(await Deno.readTextFile(archivePath));
+        const archived = JSON.parse(await fsReadFile(archivePath, "utf8"));
         assertEquals(
             await pathExists(
-                join(getRunWieldRuntimeDir(Deno.realPathSync(cwd)), "plan-transitions", "attested", "stuck-1.json"),
+                join(getRunWieldRuntimeDir(fsRealpathSync(cwd)), "plan-transitions", "attested", "stuck-1.json"),
             ),
             false,
         );
@@ -1319,6 +1332,6 @@ Deno.test("an unprovable record can be closed on user attestation without destro
         const missing = await closeTransitionRecordByAttestation(cwd, "not-there");
         assertEquals(missing.closed, false);
     } finally {
-        await Deno.remove(cwd, { recursive: true }).catch(() => {});
+        await fsRm(cwd, { recursive: true }).catch(() => {});
     }
 });

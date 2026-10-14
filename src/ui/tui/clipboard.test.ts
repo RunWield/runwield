@@ -1,4 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import process from "node:process";
+import { test } from "node:test";
 import { type ClipboardSystemPort, createClipboardReader } from "./clipboard.ts";
 
 interface FixtureOutput {
@@ -8,7 +10,7 @@ interface FixtureOutput {
 
 function makeClipboardPort(
     outputs: Array<FixtureOutput | Error>,
-    os: typeof Deno.build.os = "darwin",
+    os: typeof process.platform = "darwin",
 ): ClipboardSystemPort & { calls: Array<{ command: string; args: string[] }>; removed: string[] } {
     const calls: Array<{ command: string; args: string[] }> = [];
     const removed: string[] = [];
@@ -34,7 +36,7 @@ function makeClipboardPort(
     };
 }
 
-Deno.test("clipboard images are unavailable outside macOS", async () => {
+test("clipboard images are unavailable outside macOS", async () => {
     const port = makeClipboardPort([], "linux");
     const reader = createClipboardReader(port);
     assertEquals(await reader.hasClipboardImage(), false);
@@ -42,7 +44,7 @@ Deno.test("clipboard images are unavailable outside macOS", async () => {
     assertEquals(port.calls, []);
 });
 
-Deno.test("clipboard image detection reflects the AppleScript result", async () => {
+test("clipboard image detection reflects the AppleScript result", async () => {
     const imagePort = makeClipboardPort([{ success: true, stdout: "image\n" }]);
     assertEquals(await createClipboardReader(imagePort).hasClipboardImage(), true);
     assertEquals(imagePort.calls.map(({ command }) => command), ["osascript"]);
@@ -51,7 +53,7 @@ Deno.test("clipboard image detection reflects the AppleScript result", async () 
     assertEquals(await createClipboardReader(emptyPort).hasClipboardImage(), false);
 });
 
-Deno.test("clipboard image reads extract, encode, and clean up the png", async () => {
+test("clipboard image reads extract, encode, and clean up the png", async () => {
     const port = makeClipboardPort([
         { success: true, stdout: "image\n" },
         { success: true },
@@ -65,7 +67,7 @@ Deno.test("clipboard image reads extract, encode, and clean up the png", async (
     assertEquals(port.removed, ["/fixture/runwield-clip.png"]);
 });
 
-Deno.test("clipboard image reads clean up after extraction and encoding failures", async () => {
+test("clipboard image reads clean up after extraction and encoding failures", async () => {
     const extractFailure = makeClipboardPort([
         { success: true, stdout: "image\n" },
         { success: false },

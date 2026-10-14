@@ -7,7 +7,7 @@ import {
     devOwnerPlanProgress,
     devOwnerProjects,
 } from "./dev-owner-fixtures.ts";
-import { currentWorkspaceCwd } from "./cwd.js";
+import { currentWorkspaceCwd } from "./cwd.ts";
 import { listOwnerProjects, requireOwnerProjectRoot, sessionBelongsToOwnerProject } from "./owner-projects.ts";
 import { loadCanonicalBoard, loadCanonicalWorkspaceDetail } from "./astro-canonical-data.js";
 import { readSessionArtifact } from "../../../shared/session/read-session-artifact.ts";

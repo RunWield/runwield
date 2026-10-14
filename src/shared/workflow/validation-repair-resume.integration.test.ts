@@ -1,19 +1,21 @@
-import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile, stat as fsStat, utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertExists, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { getLockHostname } from "../process-liveness.ts";
 import { recordValidationRepairCompletion } from "./validation-supervisor.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { TASK_COMPLETION_CUSTOM_TYPE } from "../session/task-completion-session.ts";
 import { setExactProjectCustomSetting } from "../settings.js";
 import { makeValidationCheckpoint } from "./validation-checkpoint.ts";
-import type { SemanticReviewPort } from "./validation-session-adapter.ts";
+import { type SemanticReviewPort } from "./validation-session-adapter.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { runLocalCI } from "./validation-local-ci.ts";
 import { attachRecorder, makeStubGitPort, makeUi, makeValidationProjectRoot } from "./validation-test-helpers.js";
+import process from "node:process";
 
 type HostedSessionManager = NonNullable<ConstructorParameters<typeof HostedSession>[0]["sessionManager"]>;
 
@@ -32,10 +34,12 @@ function makeRepairPort(options: RepairPortOptions, counter: { runs: number }): 
             counter.runs += 1;
             await options.onRun?.();
             if (options.completed !== false) {
-                await executeWorkflowTestTools(request, [{
-                    name: "task_completed",
-                    arguments: { message: "- Repair completed." },
-                }]);
+                await executeWorkflowTestTools(request, [
+                    {
+                        name: "task_completed",
+                        arguments: { message: "- Repair completed." },
+                    },
+                ]);
             }
             return [];
         },
@@ -84,10 +88,10 @@ async function runValidation(args: {
             | { kind: "completed"; exitCode: number; output: string }
             | { kind: "canceled"; output: string }
             | {
-                kind: "operational_failure";
-                failure: import("./validation-operational-errors.ts").ValidationOperationalFailure;
-                output: string;
-            }
+                  kind: "operational_failure";
+                  failure: import("./validation-operational-errors.ts").ValidationOperationalFailure;
+                  output: string;
+              }
         >;
     };
     semanticReviewPort?: SemanticReviewPort;
@@ -117,22 +121,28 @@ async function runValidation(args: {
 async function saveRunningMechanicalCheckpoint(projectRoot: string, attrs: Record<string, unknown> = {}) {
     const plan = await loadPlan(projectRoot, "p");
     assertExists(plan);
-    await savePlan(projectRoot, "p", plan.body, {
-        ...plan.attrs,
-        ...attrs,
-        validationCheckpoint: makeValidationCheckpoint({
-            attemptId: "in-place",
-            generation: crypto.randomUUID(),
-            status: "implemented",
-            phase: "mechanical",
-            state: "running",
-            ownerHostname: "not-this-host",
-            ownerPid: 1,
-        }),
-    }, { expectedRevision: plan.revision });
+    await savePlan(
+        projectRoot,
+        "p",
+        plan.body,
+        {
+            ...plan.attrs,
+            ...attrs,
+            validationCheckpoint: makeValidationCheckpoint({
+                attemptId: "in-place",
+                generation: crypto.randomUUID(),
+                status: "implemented",
+                phase: "mechanical",
+                state: "running",
+                ownerHostname: "not-this-host",
+                ownerPid: 1,
+            }),
+        },
+        { expectedRevision: plan.revision },
+    );
 }
 
-Deno.test("human-review change repair resumes through CI and returns to Code Review", async () => {
+test("human-review change repair resumes through CI and returns to Code Review", async () => {
     const projectRoot = await makeImplementedPlan({
         humanReviewMode: "always",
         humanReviewDecision: "changes_requested",
@@ -178,14 +188,14 @@ Deno.test("human-review change repair resumes through CI and returns to Code Rev
     assertEquals(result.kind, "paused");
     assertStringIncludes(ui.messages.join("\n"), "Need your review: http://127.0.0.1/review/code?token=test");
     assertEquals(
-        sessionManager.getBranch().some((entry) =>
-            entry.type === "custom" && entry.customType === TASK_COMPLETION_CUSTOM_TYPE
-        ),
+        sessionManager
+            .getBranch()
+            .some((entry) => entry.type === "custom" && entry.customType === TASK_COMPLETION_CUSTOM_TYPE),
         false,
     );
 });
 
-Deno.test("mechanical failure state is durable before CI repair dispatch", async () => {
+test("mechanical failure state is durable before CI repair dispatch", async () => {
     const projectRoot = await makeImplementedPlan();
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
     attachWorkflow(hostedSession, projectRoot);
@@ -195,39 +205,42 @@ Deno.test("mechanical failure state is durable before CI repair dispatch", async
         hostedSession,
         projectRoot,
         localCI: { run: () => Promise.resolve({ kind: "completed", exitCode: 1, output: "type error" }) },
-        semanticReviewPort: makeRepairPort({
-            completed: false,
-            onRun: async () => {
-                const saved = await loadPlan(projectRoot, "p");
-                assertExists(saved);
-                const checkpoint = saved.attrs.validationCheckpoint;
-                assertExists(checkpoint);
-                assertEquals(checkpoint.state, "awaiting_repair");
-                assertEquals(checkpoint.ownerPid, Deno.pid);
-                assertEquals(checkpoint.ownerHostname, getLockHostname());
-                const repairGeneration = checkpoint.repairGeneration;
-                assertExists(repairGeneration);
-                await assertRejects(() =>
-                    recordValidationRepairCompletion({
+        semanticReviewPort: makeRepairPort(
+            {
+                completed: false,
+                onRun: async () => {
+                    const saved = await loadPlan(projectRoot, "p");
+                    assertExists(saved);
+                    const checkpoint = saved.attrs.validationCheckpoint;
+                    assertExists(checkpoint);
+                    assertEquals(checkpoint.state, "awaiting_repair");
+                    assertEquals(checkpoint.ownerPid, process.pid);
+                    assertEquals(checkpoint.ownerHostname, getLockHostname());
+                    const repairGeneration = checkpoint.repairGeneration;
+                    assertExists(repairGeneration);
+                    await assertRejects(() =>
+                        recordValidationRepairCompletion({
+                            projectRoot,
+                            planName: "p",
+                            repairGeneration,
+                            report: "A second caller must not complete an inline repair.",
+                        }),
+                    );
+                    const active = await runValidation({
+                        hostedSession,
                         projectRoot,
-                        planName: "p",
-                        repairGeneration,
-                        report: "A second caller must not complete an inline repair.",
-                    })
-                );
-                const active = await runValidation({
-                    hostedSession,
-                    projectRoot,
-                    localCI: {
-                        run: () => {
-                            throw new Error("A second validation owner must not run CI.");
+                        localCI: {
+                            run: () => {
+                                throw new Error("A second validation owner must not run CI.");
+                            },
                         },
-                    },
-                });
-                assertEquals(active.recovery?.code, "validation_owner_active");
-                assertEquals((await loadPlan(projectRoot, "p"))?.controllerRevision, saved.controllerRevision);
+                    });
+                    assertEquals(active.recovery?.code, "validation_owner_active");
+                    assertEquals((await loadPlan(projectRoot, "p"))?.controllerRevision, saved.controllerRevision);
+                },
             },
-        }, repairCounter),
+            repairCounter,
+        ),
     });
 
     const plan = await loadPlan(projectRoot, "p");
@@ -242,14 +255,18 @@ Deno.test("mechanical failure state is durable before CI repair dispatch", async
     assertEquals(plan.attrs.validationCheckpoint?.nextPhase, "mechanical");
 });
 
-Deno.test("CI repair completion reloads the execution-tree settings command before validation advances", async () => {
+test("CI repair completion reloads the execution-tree settings command before validation advances", async () => {
     const projectRoot = await makeImplementedPlan();
     const settingsPath = join(projectRoot, ".wld", "settings.json");
-    setExactProjectCustomSetting("verification_command", "printf first; exit 1", projectRoot);
+    setExactProjectCustomSetting(
+        "verification_command",
+        process.platform === "win32" ? "echo first & exit /b 1" : "printf first; exit 1",
+        projectRoot,
+    );
     const ui = makeUi();
     const hostedSession = attachRecorder(new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot }), ui);
     attachWorkflow(hostedSession, projectRoot);
-    const beforeRepairStat = await Deno.stat(settingsPath);
+    const beforeRepairStat = await fsStat(settingsPath);
     const repairCounter = { runs: 0 };
 
     const result = await runValidation({
@@ -260,23 +277,30 @@ Deno.test("CI repair completion reloads the execution-tree settings command befo
                 if (repairCounter.runs > 0) {
                     const repaired = await loadPlan(projectRoot, "p");
                     assertEquals(repaired?.attrs.validationCheckpoint?.state, "ready");
-                    assertEquals(repaired?.attrs.validationCheckpoint?.ownerPid, Deno.pid);
+                    assertEquals(repaired?.attrs.validationCheckpoint?.ownerPid, process.pid);
                     assertEquals(repaired?.attrs.validationCheckpoint?.ownerHostname, getLockHostname());
                 }
                 return await runLocalCI(args);
             },
         },
-        semanticReviewPort: makeRepairPort({
-            completed: true,
-            onRun: async () => {
-                setExactProjectCustomSetting("verification_command", "printf fixed; exit 0", projectRoot);
-                await Deno.utime(
-                    settingsPath,
-                    beforeRepairStat.atime ?? new Date(0),
-                    beforeRepairStat.mtime ?? new Date(0),
-                );
+        semanticReviewPort: makeRepairPort(
+            {
+                completed: true,
+                onRun: async () => {
+                    setExactProjectCustomSetting(
+                        "verification_command",
+                        process.platform === "win32" ? "echo fixed & exit /b 0" : "printf fixed; exit 0",
+                        projectRoot,
+                    );
+                    await fsUtimes(
+                        settingsPath,
+                        beforeRepairStat.atime ?? new Date(0),
+                        beforeRepairStat.mtime ?? new Date(0),
+                    );
+                },
             },
-        }, repairCounter),
+            repairCounter,
+        ),
     });
 
     const plan = await loadPlan(projectRoot, "p");
@@ -289,7 +313,7 @@ Deno.test("CI repair completion reloads the execution-tree settings command befo
     assertEquals(plan.attrs.status, "verified");
 });
 
-Deno.test("process loss before CI repair dispatch reclaims the checkpoint and reruns Mechanical Validation", async () => {
+test("process loss before CI repair dispatch reclaims the checkpoint and reruns Mechanical Validation", async () => {
     const projectRoot = await makeImplementedPlan();
     await saveRunningMechanicalCheckpoint(projectRoot);
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
@@ -314,7 +338,7 @@ Deno.test("process loss before CI repair dispatch reclaims the checkpoint and re
     assertEquals(repairCounter.runs, 1, "recovery may dispatch a new bounded repair only after fresh CI fails");
 });
 
-Deno.test("process loss during CI repair reruns checks and may dispatch a new repair without replaying the old turn", async () => {
+test("process loss during CI repair reruns checks and may dispatch a new repair without replaying the old turn", async () => {
     const projectRoot = await makeImplementedPlan({ validationCiAttempts: 1, failureReason: "old failure" });
     await saveRunningMechanicalCheckpoint(projectRoot, { validationCiAttempts: 1, failureReason: "old failure" });
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
@@ -340,10 +364,10 @@ Deno.test("process loss during CI repair reruns checks and may dispatch a new re
     assertEquals(repairCounter.runs, 1);
 });
 
-Deno.test("process loss after repair changes the worktree reruns checks and does not replay the repair turn", async () => {
+test("process loss after repair changes the worktree reruns checks and does not replay the repair turn", async () => {
     const projectRoot = await makeImplementedPlan({ humanReviewMode: "always" });
     const marker = `${projectRoot}/repair-marker.txt`;
-    await Deno.writeTextFile(marker, "fixed\n");
+    await fsWriteFile(marker, "fixed\n");
     await saveRunningMechanicalCheckpoint(projectRoot, { validationCiAttempts: 1, failureReason: "old failure" });
     const hostedSession = attachRecorder(new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot }), makeUi());
     attachWorkflow(hostedSession, projectRoot, { validationCiAttempts: 1, humanReviewMode: "always" });
@@ -357,7 +381,9 @@ Deno.test("process loss after repair changes the worktree reruns checks and does
         localCI: {
             run: async () => {
                 ciRuns += 1;
-                const fixed = await Deno.readTextFile(marker).then(() => true).catch(() => false);
+                const fixed = await fsReadFile(marker, "utf8")
+                    .then(() => true)
+                    .catch(() => false);
                 return fixed
                     ? { kind: "completed", exitCode: 0, output: "ok" }
                     : { kind: "completed", exitCode: 1, output: "still failing" };
@@ -374,7 +400,7 @@ Deno.test("process loss after repair changes the worktree reruns checks and does
     assertEquals(plan.attrs.status, "reviewed");
 });
 
-Deno.test("repair turn without task_completed settles paused and retry starts from Mechanical Validation", async () => {
+test("repair turn without task_completed settles paused and retry starts from Mechanical Validation", async () => {
     const projectRoot = await makeImplementedPlan();
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
     attachWorkflow(hostedSession, projectRoot);

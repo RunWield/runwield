@@ -1,4 +1,6 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../testing/assertions.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { startRunWieldAcpServer } from "./server.js";
@@ -6,7 +8,7 @@ import { startRunWieldAcpServer } from "./server.js";
 /** @typedef {{ id?: string, method?: string, params?: { sessionId?: string, update?: { sessionUpdate?: string, content?: { text?: string } } }, result?: { sessionId?: string, stopReason?: string, protocolVersion?: number } }} WireFrame */
 /** @typedef {{ cwd?: string, mcpServers?: string[], sessionId?: string, prompt?: Array<{type: string, text: string}>, protocolVersion?: number, clientCapabilities?: { elicitation?: { form?: Record<string, string> } }, clientInfo?: { name: string, version: string } }} WireParams */
 
-Deno.test("ACP sends an automatic task result after the original end_turn response", async () => {
+test("ACP sends an automatic task result after the original end_turn response", async () => {
     await withRuntimeCommandFixture("acp-background-wire-", async ({ projectRoot, setModelResponseFactories }) => {
         let generatedInput = "";
         setModelResponseFactories([

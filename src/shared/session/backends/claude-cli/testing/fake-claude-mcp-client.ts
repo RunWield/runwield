@@ -1,3 +1,7 @@
+import { text as readStreamText } from "node:stream/consumers";
+import { createInterface } from "node:readline";
+import process from "node:process";
+import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/session/backends/claude-cli/testing/fake-claude-mcp-client
  *
@@ -62,16 +66,16 @@ interface FixtureOutput {
 async function readTextFile(path: string | undefined): Promise<string> {
     if (!path) return "";
     try {
-        return await Deno.readTextFile(path);
+        return await fsReadFile(path, "utf8");
     } catch {
         return "";
     }
 }
 
 async function appendLogLine(entry: JsonObject): Promise<void> {
-    const logPath = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_LOG");
+    const logPath = process.env["RUNWIELD_CLAUDE_FIXTURE_LOG"];
     if (!logPath) return;
-    await Deno.writeTextFile(logPath, JSON.stringify(entry) + "\n", { append: true });
+    await fsWriteFile(logPath, JSON.stringify(entry) + "\n", { flag: "a" });
 }
 
 async function runMcpCalls(configPath: string): Promise<void> {
@@ -83,7 +87,7 @@ async function runMcpCalls(configPath: string): Promise<void> {
     }
     let configMode: number | null = null;
     try {
-        configMode = (await Deno.stat(configPath)).mode;
+        configMode = (await fsStat(configPath)).mode;
     } catch {
         // Mode unavailable on this platform.
     }
@@ -115,7 +119,7 @@ async function runMcpCalls(configPath: string): Promise<void> {
         await client.connect(transport);
         const listed = await client.listTools();
         await appendLogLine({ mcp: { tools: listed.tools.map((tool) => tool.name) } });
-        const callsJson = await readTextFile(Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_MCP_CALLS"));
+        const callsJson = await readTextFile(process.env["RUNWIELD_CLAUDE_FIXTURE_MCP_CALLS"]);
         const calls = (callsJson ? JSON.parse(callsJson) : []) as FixtureMcpCall[];
         const results: JsonValue[] = [];
         for (const call of calls) {
@@ -154,10 +158,12 @@ async function runMcpCalls(configPath: string): Promise<void> {
 
 function extractCallResultText(content: ToolResultContentBlock[]): string {
     if (!Array.isArray(content)) return "";
-    return content.flatMap((block) => {
-        if (block.type !== "text") return [];
-        return typeof block.text === "string" ? [block.text] : [];
-    }).join("\n");
+    return content
+        .flatMap((block) => {
+            if (block.type !== "text") return [];
+            return typeof block.text === "string" ? [block.text] : [];
+        })
+        .join("\n");
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -165,89 +171,149 @@ async function sleep(ms: number): Promise<void> {
 }
 
 try {
-    Deno.addSignalListener("SIGTERM", () => {
-        appendLogLine({ signal: "SIGTERM" }).finally(() => Deno.exit(143));
+    process.on("SIGTERM", () => {
+        appendLogLine({ signal: "SIGTERM" }).finally(() => process.exit(143));
     });
 } catch {
     // Signal listeners are unavailable on some platforms.
 }
 
 async function main(): Promise<void> {
-    const stdin = await new Response(Deno.stdin.readable).text();
-    const promptIndex = Deno.args.indexOf("--append-system-prompt-file");
-    const promptPath = promptIndex >= 0 ? Deno.args[promptIndex + 1] : "";
+    const streamed = process.argv.includes("--input-format");
+    const lines = streamed ? createInterface({ input: process.stdin })[Symbol.asyncIterator]() : null;
+    const initialLine = lines ? (await lines.next()).value || "" : "";
+    const initial = initialLine ? (JSON.parse(initialLine) as JsonObject) : null;
+    const initialMessage = initial?.message as JsonObject | undefined;
+    const stdin = streamed ? String(initialMessage?.content || "") : await readStreamText(process.stdin);
+    let replayEnabled = false;
+    const pendingReplays: JsonObject[] = [];
+    let completedText: string | null = null;
+    const replay = async (message: JsonObject) => {
+        await appendLogLine({ consumed: message });
+        console.log(JSON.stringify({ ...message, isReplay: true }));
+        if (completedText !== null) {
+            console.log(
+                JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: completedText }] } }),
+            );
+            console.log(
+                JSON.stringify({ type: "result", result: completedText, usage: { input_tokens: 1, output_tokens: 2 } }),
+            );
+        }
+    };
+    const inputDone = lines
+        ? (async () => {
+              for await (const line of { [Symbol.asyncIterator]: () => lines }) {
+                  const message = JSON.parse(line) as JsonObject;
+                  if (message.type === "control_request") {
+                      const request = message.request as JsonObject;
+                      const index = pendingReplays.findIndex((pending) => pending.uuid === request.message_uuid);
+                      if (index >= 0) pendingReplays.splice(index, 1);
+                      console.log(
+                          JSON.stringify({
+                              type: "control_response",
+                              response: {
+                                  subtype: "success",
+                                  request_id: message.request_id,
+                                  response: { cancelled: index >= 0 },
+                              },
+                          }),
+                      );
+                      continue;
+                  }
+                  await appendLogLine({ steering: message });
+                  if (replayEnabled) await replay(message);
+                  else pendingReplays.push(message);
+              }
+          })()
+        : Promise.resolve();
+    const promptIndex = process.argv.slice(2).indexOf("--append-system-prompt-file");
+    const promptPath = promptIndex >= 0 ? process.argv.slice(2)[promptIndex + 1] : "";
     const promptText = await readTextFile(promptPath);
-    await appendLogLine({ args: Deno.args, stdin, promptText });
+    await appendLogLine({ args: process.argv.slice(2), stdin, promptText });
 
-    const exitCodeText = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_EXIT_CODE");
+    const exitCodeText = process.env["RUNWIELD_CLAUDE_FIXTURE_EXIT_CODE"];
     if (exitCodeText) {
-        const stderrText = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_STDERR") || "fixture stderr";
-        await Deno.stderr.write(new TextEncoder().encode(stderrText));
-        Deno.exit(Number.parseInt(exitCodeText, 10));
+        const stderrText = process.env["RUNWIELD_CLAUDE_FIXTURE_STDERR"] || "fixture stderr";
+        await process.stderr.write(new TextEncoder().encode(stderrText));
+        process.exit(Number.parseInt(exitCodeText, 10));
     }
 
-    const mcpConfigIndex = Deno.args.indexOf("--mcp-config");
+    const mcpConfigIndex = process.argv.slice(2).indexOf("--mcp-config");
     if (mcpConfigIndex >= 0) {
-        const beforeMcpSleepMsText = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_BEFORE_MCP_SLEEP_MS");
+        const beforeMcpSleepMsText = process.env["RUNWIELD_CLAUDE_FIXTURE_BEFORE_MCP_SLEEP_MS"];
         if (beforeMcpSleepMsText) await sleep(Number.parseInt(beforeMcpSleepMsText, 10));
-        await runMcpCalls(Deno.args[mcpConfigIndex + 1]);
+        await runMcpCalls(process.argv.slice(2)[mcpConfigIndex + 1]);
     }
 
-    const sleepMsText = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_SLEEP_MS");
+    const sleepMsText = process.env["RUNWIELD_CLAUDE_FIXTURE_SLEEP_MS"];
     if (sleepMsText) await sleep(Number.parseInt(sleepMsText, 10));
-    if (Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_MALFORMED")) {
+    replayEnabled = true;
+    for (const message of pendingReplays.splice(0)) await replay(message);
+    if (process.env["RUNWIELD_CLAUDE_FIXTURE_MALFORMED"]) {
         console.log("{malformed-stream-line");
         return;
     }
 
-    const capturedStream = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_STREAM_FILE");
+    const capturedStream = process.env["RUNWIELD_CLAUDE_FIXTURE_STREAM_FILE"];
     if (capturedStream) {
-        await Deno.stdout.write(new TextEncoder().encode(await Deno.readTextFile(capturedStream)));
+        await process.stdout.write(new TextEncoder().encode(await fsReadFile(capturedStream, "utf8")));
         return;
     }
-    const output = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_OUTPUT") || "";
-    const parsedOutput = output ? JSON.parse(output) as FixtureOutput : null;
+    const output = process.env["RUNWIELD_CLAUDE_FIXTURE_OUTPUT"] || "";
+    const parsedOutput = output ? (JSON.parse(output) as FixtureOutput) : null;
     const text = parsedOutput
         ? parsedOutput.result || "fixture"
-        : Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_TEXT") || "fixture reply";
-    if (Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_PARTIAL_STREAM")) {
+        : process.env["RUNWIELD_CLAUDE_FIXTURE_TEXT"] || "fixture reply";
+    if (process.env["RUNWIELD_CLAUDE_FIXTURE_PARTIAL_STREAM"]) {
         const half = Math.max(1, Math.ceil(text.length / 2));
         for (const thinking of ["thinking about it", "..."]) {
-            console.log(JSON.stringify({
-                type: "stream_event",
-                event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking } },
-            }));
+            console.log(
+                JSON.stringify({
+                    type: "stream_event",
+                    event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking } },
+                }),
+            );
         }
-        const textChunks = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_PARTIAL_CHARS")
+        const textChunks = process.env["RUNWIELD_CLAUDE_FIXTURE_PARTIAL_CHARS"]
             ? Array.from(text)
             : [text.slice(0, half), text.slice(half)];
         for (const chunk of textChunks) {
             if (!chunk) continue;
-            console.log(JSON.stringify({
-                type: "stream_event",
-                event: { type: "content_block_delta", delta: { type: "text_delta", text: chunk } },
-            }));
+            console.log(
+                JSON.stringify({
+                    type: "stream_event",
+                    event: { type: "content_block_delta", delta: { type: "text_delta", text: chunk } },
+                }),
+            );
         }
     }
-    console.log(JSON.stringify({
-        type: "assistant",
-        message: { content: [{ type: "text", text }] },
-    }));
-    const postTerminalText = Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_POST_TERMINAL_TEXT") || "";
-    if (postTerminalText) {
-        console.log(JSON.stringify({
+    console.log(
+        JSON.stringify({
             type: "assistant",
-            message: { content: [{ type: "text", text: postTerminalText }] },
-        }));
+            message: { content: [{ type: "text", text }] },
+        }),
+    );
+    const postTerminalText = process.env["RUNWIELD_CLAUDE_FIXTURE_POST_TERMINAL_TEXT"] || "";
+    if (postTerminalText) {
+        console.log(
+            JSON.stringify({
+                type: "assistant",
+                message: { content: [{ type: "text", text: postTerminalText }] },
+            }),
+        );
     }
-    if (Deno.env.get("RUNWIELD_CLAUDE_FIXTURE_NO_RESULT")) return;
-    console.log(JSON.stringify({
-        type: "result",
-        result: text,
-        ...(parsedOutput?.isError ? { is_error: true } : {}),
-        session_id: "external-1",
-        usage: { input_tokens: 1, output_tokens: 2 },
-    }));
+    if (process.env["RUNWIELD_CLAUDE_FIXTURE_NO_RESULT"]) return;
+    completedText = text;
+    console.log(
+        JSON.stringify({
+            type: "result",
+            result: text,
+            ...(parsedOutput?.isError ? { is_error: true } : {}),
+            session_id: "external-1",
+            usage: { input_tokens: 1, output_tokens: 2 },
+        }),
+    );
+    await inputDone;
 }
 
 await main();

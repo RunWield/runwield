@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     applyTutorialContextUpdate,
     normalizeTutorialContext,
@@ -24,7 +25,7 @@ const ENABLED_CONTEXT = {
     planId: null,
 };
 
-Deno.test("tutorial context normalizes and deduplicates explanation ids", () => {
+test("tutorial context normalizes and deduplicates explanation ids", () => {
     assertEquals(
         normalizeTutorialContext({
             ...ENABLED_CONTEXT,
@@ -53,7 +54,7 @@ Deno.test("tutorial context normalizes and deduplicates explanation ids", () => 
     );
 });
 
-Deno.test("tutorial context latest valid entry wins and duplicate records are suppressed", () => {
+test("tutorial context latest valid entry wins and duplicate records are suppressed", () => {
     /** @type {Array<Record<string, unknown>>} */
     const entries = [];
     const manager = makeSessionManager(entries);
@@ -70,7 +71,7 @@ Deno.test("tutorial context latest valid entry wins and duplicate records are su
     });
 });
 
-Deno.test("tutorial context fails closed for unsupported or invalid latest matching entry", () => {
+test("tutorial context fails closed for unsupported or invalid latest matching entry", () => {
     const older = { type: "custom", customType: TUTORIAL_CONTEXT_CUSTOM_TYPE, data: ENABLED_CONTEXT };
     assertEquals(
         readPersistedTutorialContext(makeSessionManager([
@@ -92,7 +93,7 @@ Deno.test("tutorial context fails closed for unsupported or invalid latest match
     );
 });
 
-Deno.test("tutorial context is absent for legacy transcripts and rejects incomplete data", () => {
+test("tutorial context is absent for legacy transcripts and rejects incomplete data", () => {
     assertEquals(
         readPersistedTutorialContext(makeSessionManager([
             { type: "custom", customType: "runwield.workflow_context", data: { planName: "legacy" } },

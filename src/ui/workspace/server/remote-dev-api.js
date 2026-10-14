@@ -1,4 +1,5 @@
 // @ts-nocheck: tiny Astro-dev-only router mirrors the server wrapper route shape.
+import process from "node:process";
 import { DEFAULT_REMOTE_MAX_REQUEST_BYTES, registerRemoteApiRoutes } from "../routes/remote-api.js";
 import { openRemoteWorkspaceAdapter } from "./remote-adapter.js";
 import { isRemoteDevelopmentModeEnabled } from "./remote-mode.ts";
@@ -13,7 +14,7 @@ export async function handleRemoteSpaceApi(context) {
     if (
         !isRemoteDevelopmentModeEnabled({
             isDevelopment: isAstroDevelopmentMode(),
-            workspaceMode: Deno.env.get("RUNWIELD_WORKSPACE_MODE"),
+            workspaceMode: process.env["RUNWIELD_WORKSPACE_MODE"],
         })
     ) {
         return Response.json({ error: "Not found" }, { status: 404 });
@@ -24,10 +25,10 @@ export async function handleRemoteSpaceApi(context) {
 
 function getRemoteDevApp() {
     const runtime = /** @type {any} */ (globalThis);
-    const dbPath = Deno.env.get("RUNWIELD_REMOTE_DB_PATH") || Deno.env.get("RUNWIELD_WORKSPACE_REMOTE_DB_PATH") ||
+    const dbPath = process.env["RUNWIELD_REMOTE_DB_PATH"] || process.env["RUNWIELD_WORKSPACE_REMOTE_DB_PATH"] ||
         undefined;
-    const maxRequestBytes = parseMaxRequestBytes(Deno.env.get("RUNWIELD_REMOTE_MAX_REQUEST_BYTES"));
-    const retentionDays = parseRetentionDays(Deno.env.get("RUNWIELD_REMOTE_RETENTION_DAYS"));
+    const maxRequestBytes = parseMaxRequestBytes(process.env["RUNWIELD_REMOTE_MAX_REQUEST_BYTES"]);
+    const retentionDays = parseRetentionDays(process.env["RUNWIELD_REMOTE_RETENTION_DAYS"]);
     const configKey = JSON.stringify({ dbPath, maxRequestBytes, retentionDays });
     if (
         !runtime[REMOTE_DEV_APP_KEY] || runtime[REMOTE_DEV_DB_PATH_KEY] !== dbPath ||

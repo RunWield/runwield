@@ -1,5 +1,6 @@
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { buildPlanEventUpdates, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { runRecoveryTransition } from "../../shared/workflow/state-transition.ts";
 import { buildPlanRecoveryUserMessage, planRecoveryMessage } from "../../shared/workflow/validation-user-messages.ts";
@@ -253,8 +254,8 @@ async function recreateRecoveryWorktree(context: RecoveryActionContext): Promise
                     branch: nextWorktree.branch,
                 });
                 const nextPlanPath = join(nextWorktree.path, "docs", "plans", `${plan.planName}.md`);
-                await Deno.mkdir(dirname(nextPlanPath), { recursive: true });
-                await Deno.writeTextFile(nextPlanPath, plan.markdown);
+                await fsMkdir(dirname(nextPlanPath), { recursive: true });
+                await fsWriteFile(nextPlanPath, plan.markdown);
                 const nextPlan = await loadPlan(nextWorktree.path, plan.planName);
                 if (!nextPlan) throw new Error(`Recreated execution Plan is missing: ${plan.planName}`);
                 const resetUpdates = buildPlanEventUpdates("recovery_reset", plan.attrs.status, {

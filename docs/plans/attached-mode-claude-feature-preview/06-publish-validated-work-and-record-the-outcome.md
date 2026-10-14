@@ -225,13 +225,13 @@ Left out on purpose: review chat (child 07), and Workspace Plan and Session page
 - Automated: run
   `bun scripts/run-tests.js src/shared/attached/ src/attached/claude/ src/shared/workflow/validation-publication.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/workflow/publication-revalidation.test.ts src/shared/workflow/validation-work-record-handoff.test.ts src/ui/review/code-review.test.ts src/ui/workspace/workspace-code-review.integration.test.ts`.
 - New Attached tests through the real coordinator and record store (fake only the Claude turn boundary):
-  - Delivery: a FEATURE goes from `start_validation` to `delivered` closure with a merged commit in the fixture repo.
-    This test fails if `awaiting_delivery` is still returned.
-  - No Core model turns: instrument `HostedSession` and `runIsolatedAgentSession` creation; the count is zero for the
-    whole Attached delivery.
-  - Stale approval: change the worktree after the page opens; the approval is rejected.
-  - Recorder: valid sections produce a Work Record equal in shape to a Core record; two invalid submissions produce a
-    recorded failure and publication still completes.
+    - Delivery: a FEATURE goes from `start_validation` to `delivered` closure with a merged commit in the fixture repo.
+      This test fails if `awaiting_delivery` is still returned.
+    - No Core model turns: instrument `HostedSession` and `runIsolatedAgentSession` creation; the count is zero for the
+      whole Attached delivery.
+    - Stale approval: change the worktree after the page opens; the approval is rejected.
+    - Recorder: valid sections produce a Work Record equal in shape to a Core record; two invalid submissions produce a
+      recorded failure and publication still completes.
 - Recovery: kill Core before and after each saved point in step 9. Resume in a fresh process and compare publication
   evidence, Plan lifecycle, Work Record identity, and index state. Accepted work is not repeated.
 - Headed browser: with the MCP-hosted code review page, submit feedback, see the refreshed diff, approve, and restore a

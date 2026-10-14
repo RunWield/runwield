@@ -1,11 +1,13 @@
-import { assert, assertEquals, assertMatch, assertRejects } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { createTriageReportTool } from "../triage-report.ts";
 import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
 const TRIAGE_PROJECT_ROOT = makeToolProjectFixture("runwield-triage-report-");
 
-Deno.test("createTriageReportTool exposes expected metadata", () => {
+test("createTriageReportTool exposes expected metadata", () => {
     const tool = createTriageReportTool();
     assertEquals(tool.name, "triage_report");
     assertEquals(tool.label, "Routing Intent Report");
@@ -18,13 +20,13 @@ Deno.test("createTriageReportTool exposes expected metadata", () => {
     assert(!tool.parameters.required.includes("sessionName"));
 });
 
-Deno.test("createTriageReportTool called with no opts produces valid tool shape", () => {
+test("createTriageReportTool called with no opts produces valid tool shape", () => {
     const tool = createTriageReportTool({});
     assertEquals(tool.name, "triage_report");
     assertEquals(typeof tool.execute, "function");
 });
 
-Deno.test("createTriageReportTool instances are independent", () => {
+test("createTriageReportTool instances are independent", () => {
     const t1 = createTriageReportTool();
     const t2 = createTriageReportTool();
     assertEquals(t1.name, t2.name);
@@ -32,7 +34,7 @@ Deno.test("createTriageReportTool instances are independent", () => {
     assertEquals(typeof t1.execute, typeof t2.execute);
 });
 
-Deno.test("triage_report execute returns canonical routingIntent details for INQUIRY", async () => {
+test("triage_report execute returns canonical routingIntent details for INQUIRY", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         /** @type {any[]} */
         const events = [];
@@ -63,7 +65,7 @@ Deno.test("triage_report execute returns canonical routingIntent details for INQ
     });
 });
 
-Deno.test("triage_report execute records workflow context when a HostedSession is available", async () => {
+test("triage_report execute records workflow context when a HostedSession is available", async () => {
     const hostedSession = new HostedSession({ id: "triage-context", cwd: TRIAGE_PROJECT_ROOT });
     const tool = createTriageReportTool({ hostedSession });
 
@@ -81,7 +83,7 @@ Deno.test("triage_report execute records workflow context when a HostedSession i
     });
 });
 
-Deno.test("triage_report accepts documentation Work Kind only for planned changes", async () => {
+test("triage_report accepts documentation Work Kind only for planned changes", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         /** @type {any[]} */
         const events = [];
@@ -117,7 +119,7 @@ Deno.test("triage_report accepts documentation Work Kind only for planned change
     });
 });
 
-Deno.test("triage_report execute preserves plan classification only for PLANNED_CHANGE and PROJECT", async () => {
+test("triage_report execute preserves plan classification only for PLANNED_CHANGE and PROJECT", async () => {
     const tool = createTriageReportTool();
 
     const feature = await /** @type {any} */ (tool.execute)("call-1", {
@@ -147,7 +149,7 @@ Deno.test("triage_report execute preserves plan classification only for PLANNED_
     assert(!("classification" in quickFix.details));
 });
 
-Deno.test("triage_report execute normalizes legacy classification params", async () => {
+test("triage_report execute normalizes legacy classification params", async () => {
     const tool = createTriageReportTool();
 
     const legacyFeature = await /** @type {any} */ (tool.execute)("call-0", {
@@ -169,7 +171,7 @@ Deno.test("triage_report execute normalizes legacy classification params", async
     assertEquals(result.details.classification, "PROJECT");
 });
 
-Deno.test("triage_report execute sanitizes sessionName when provided and omits it when absent", async () => {
+test("triage_report execute sanitizes sessionName when provided and omits it when absent", async () => {
     const tool = createTriageReportTool();
 
     const sanitized = await /** @type {any} */ (tool.execute)("call-1", {
@@ -188,7 +190,7 @@ Deno.test("triage_report execute sanitizes sessionName when provided and omits i
     assertEquals(omitted.details.sessionName, undefined);
 });
 
-Deno.test("triage_report execute rejects params without canonical or legacy intent", async () => {
+test("triage_report execute rejects params without canonical or legacy intent", async () => {
     const tool = createTriageReportTool();
 
     await assertRejects(

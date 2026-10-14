@@ -1,6 +1,16 @@
+import { mkdtemp as fsMkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { AGENTS } from "../constants.js";
+import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.js";
 import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.js";
 import { openOwnerCoordinationStore } from "../shared/owner-coordination/index.js";
 import { encodeCwdForSessionDir } from "../shared/project-directory-key.ts";
@@ -11,6 +21,8 @@ type ManagedSessionFixtureOptions = {
     home?: string;
     projectRoot?: string;
     dbPath?: string;
+    assistantMessages?: string[];
+    workflowContext?: WorkflowContext;
 };
 type RecordedModelRequest = {
     messages: string;
@@ -34,13 +46,15 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     const digestInput = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(digestInput).set(bytes);
     const digest = await crypto.subtle.digest("SHA-256", digestInput);
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 export async function readTranscriptEvidence(transcriptPath: string) {
-    const bytes = await Deno.readFile(transcriptPath);
+    const bytes = await fsReadFile(transcriptPath);
     const lines = new TextDecoder().decode(bytes).trim().split("\n").filter(Boolean);
-    const last = lines.length > 0 ? JSON.parse(lines.at(-1) ?? "{}") as { id?: string } : {};
+    const last = lines.length > 0 ? (JSON.parse(lines.at(-1) ?? "{}") as { id?: string }) : {};
     return {
         byteLength: bytes.length,
         digestHex: await sha256Hex(bytes),
@@ -55,13 +69,19 @@ export async function appendTranscriptEntry(transcriptPath: string, entryId: str
         timestamp: "2026-01-01T00:00:01.000Z",
         message: { role: "assistant", content: [{ type: "text", text: content }] },
     };
-    await Deno.writeTextFile(transcriptPath, `${JSON.stringify(entry)}\n`, { append: true });
+    await fsWriteFile(transcriptPath, `${JSON.stringify(entry)}\n`, { flag: "a" });
 }
 
-async function writeManagedTranscript(sessionBaseDir: string, root: string, piSessionId: string): Promise<string> {
-    const canonicalRoot = await Deno.realPath(root);
+async function writeManagedTranscript(
+    sessionBaseDir: string,
+    root: string,
+    piSessionId: string,
+    assistantMessages: string[] = [],
+    workflowContext?: WorkflowContext,
+): Promise<string> {
+    const canonicalRoot = await fsRealpath(root);
     const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalRoot));
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     const timestamp = "2026-01-01T00:00:00.000Z";
     const transcriptPath = join(sessionDir, `${timestamp.replace(/[:.]/g, "-")}_${piSessionId}.jsonl`);
     const entries = [
@@ -80,25 +100,57 @@ async function writeManagedTranscript(sessionBaseDir: string, root: string, piSe
             timestamp,
             message: { role: "assistant", content: [{ type: "text", text: "Committed hello." }] },
         },
+        ...(workflowContext
+            ? [
+                  {
+                      type: "custom",
+                      id: "entry-workflow",
+                      timestamp,
+                      customType: WORKFLOW_CONTEXT_CUSTOM_TYPE,
+                      data: workflowContext,
+                  },
+              ]
+            : []),
     ];
-    await Deno.writeTextFile(transcriptPath, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    const savedEntries = assistantMessages.length
+        ? [
+              ...entries.map((entry, index) => ({
+                  ...entry,
+                  ...(index === 0 ? { version: 3 } : { parentId: index === 1 ? null : entries[index - 1].id }),
+              })),
+              ...assistantMessages.map((text, index) => ({
+                  type: "message",
+                  id: `saved-reply-${index}`,
+                  parentId: index === 0 ? entries.at(-1)?.id : `saved-reply-${index - 1}`,
+                  timestamp: "2026-01-01T00:00:05.000Z",
+                  message: fauxAssistantMessage(fauxText(text)),
+              })),
+          ]
+        : entries;
+    await fsWriteFile(transcriptPath, `${savedEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
     return transcriptPath;
 }
 
 export async function makeManagedSessionFixture(options: ManagedSessionFixtureOptions = {}) {
-    const createdHome = options.home ? null : await Deno.makeTempDir({ prefix: "runwield-managed-session-fixture-" });
+    const createdHome = options.home ? null : await fsMkdtemp(join(tmpdir(), "runwield-managed-session-fixture-"));
     const home = options.home ?? createdHome ?? "";
     const projectRoot = options.projectRoot ?? join(home, "project");
     const dbPath = options.dbPath ?? join(home, ".wld", "owner-coordination.sqlite3");
     const sessionBaseDir = join(home, ".wld", "sessions");
-    await Deno.mkdir(projectRoot, { recursive: true });
-    const canonicalProjectRoot = await Deno.realPath(projectRoot);
+    await fsMkdir(projectRoot, { recursive: true });
+    const canonicalProjectRoot = await fsRealpath(projectRoot);
     const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
     const modelRequests: RecordedModelRequest[] = [];
     const store = openOwnerCoordinationStore({ dbPath, sessionBaseDir });
     const project = store.registerProject({ root: projectRoot, idFactory: idFactory("project"), now: () => "t0" });
     const piSessionId = "pi-managed-fixture";
-    const transcriptPath = await writeManagedTranscript(sessionBaseDir, projectRoot, piSessionId);
+    const transcriptPath = await writeManagedTranscript(
+        sessionBaseDir,
+        projectRoot,
+        piSessionId,
+        options.assistantMessages,
+        options.workflowContext,
+    );
     const session = await store.ensureSessionCatalogRecord({
         projectId: project.projectId,
         piSessionId,
@@ -122,13 +174,17 @@ export async function makeManagedSessionFixture(options: ManagedSessionFixtureOp
         now: () => "2026-01-01T00:00:03.000Z",
     });
     const evidence = await readTranscriptEvidence(transcriptPath);
-    store["publishGenerationAndRelease"](proof, {
-        generation: 0,
-        currentSegmentId: store.getCurrentSessionSegment(session.runwieldSessionId)?.segmentId ?? null,
-        ...evidence,
-    }, {
-        now: () => "2026-01-01T00:00:04.000Z",
-    });
+    store["publishGenerationAndRelease"](
+        proof,
+        {
+            generation: 0,
+            currentSegmentId: store.getCurrentSessionSegment(session.runwieldSessionId)?.segmentId ?? null,
+            ...evidence,
+        },
+        {
+            now: () => "2026-01-01T00:00:04.000Z",
+        },
+    );
 
     const openStore = () => openOwnerCoordinationStore({ dbPath, sessionBaseDir });
     const openRuntime = (
@@ -213,7 +269,13 @@ export async function makeManagedSessionFixture(options: ManagedSessionFixtureOp
         },
         async cleanup() {
             store.close();
-            if (createdHome) await Deno.remove(createdHome, { recursive: true });
+            if (createdHome) await fsRm(createdHome, { recursive: true });
         },
     };
+}
+
+export async function makeLongReplayFixture(home: string, projectRoot: string) {
+    const texts = Array.from({ length: 450 }, (_, index) => `Saved reply ${String(index + 1).padStart(3, "0")}.`);
+    const fixture = await makeManagedSessionFixture({ home, projectRoot, assistantMessages: texts });
+    return { ...fixture, texts };
 }

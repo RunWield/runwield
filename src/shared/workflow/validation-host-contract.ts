@@ -23,32 +23,32 @@ export type ValidationRepairIdentity = ValidationHostIdentity & {
 };
 export type ValidationHostRequest =
     | {
-        kind: "reviewer";
-        identity: ValidationReviewerIdentity;
-        prompt: string;
-        cwd: string;
-        reviewMode: "discovery" | "verify";
-        requiredScope: ReviewDiffScope;
-        fullDiff: string;
-        repairDiff: string;
-    }
+          kind: "reviewer";
+          identity: ValidationReviewerIdentity;
+          prompt: string;
+          cwd: string;
+          reviewMode: "discovery" | "verify";
+          requiredScope: ReviewDiffScope;
+          fullDiff: string;
+          repairDiff: string;
+      }
     | {
-        kind: "repair";
-        identity: ValidationRepairIdentity;
-        repairGeneration: string;
-        prompt: string;
-        cwd: string;
-        role: string;
-    }
+          kind: "repair";
+          identity: ValidationRepairIdentity;
+          repairGeneration: string;
+          prompt: string;
+          cwd: string;
+          role: string;
+      }
     | { kind: "decision"; identity: ValidationDecisionIdentity; interaction: ValidationInteractionRequest };
 export type ValidationHostResume =
     | {
-        kind: "reviewer";
-        identity: ValidationReviewerIdentity;
-        outcome: ReviewCompletePayload | null;
-        coverage: ReviewDiffSpan[];
-        failure?: import("./validation-operational-errors.ts").ValidationOperationalFailure;
-    }
+          kind: "reviewer";
+          identity: ValidationReviewerIdentity;
+          outcome: ReviewCompletePayload | null;
+          coverage: ReviewDiffSpan[];
+          failure?: import("./validation-operational-errors.ts").ValidationOperationalFailure;
+      }
     | { kind: "decision"; identity: ValidationDecisionIdentity; answer: ValidationInteractionResponse }
     | { kind: "task_completed"; identity: ValidationRepairIdentity; report: string };
 export type HostTurnValidationResult =

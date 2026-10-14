@@ -1,5 +1,16 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import {
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -15,7 +26,7 @@ import {
 
 const planId = "11111111-1111-4111-8111-111111111111";
 const repository = defineGitFixture(async (root) => {
-    await Deno.writeTextFile(join(root, ".gitignore"), ".wld/\n");
+    await fsWriteFile(join(root, ".gitignore"), ".wld/\n");
     await savePlan(root, "delivery", "# Reviewed delivery\n", {
         planId,
         classification: "PLANNED_CHANGE",
@@ -25,10 +36,10 @@ const repository = defineGitFixture(async (root) => {
     await git(root, ["commit", "-m", "Reviewed Plan"]);
 });
 
-Deno.test("published Session restart restores project cwd while retaining removed repair segment origin", async () => {
+test("published Session restart restores project cwd while retaining removed repair segment origin", async () => {
     await withRuntimeCommandFixture("published-session-restart-", async ({ homeDir, setModelResponseFactory }) => {
         const root = await repository.checkout();
-        const temporary = await Deno.makeTempDir({ prefix: "published-session-worktree-" });
+        const temporary = await fsMkdtemp(join(tmpdir(), "published-session-worktree-"));
         const fixture = await makeManagedSessionFixture({ home: homeDir, projectRoot: root });
         let handle = fixture.openRuntime("test", "before-publication");
         try {
@@ -43,7 +54,7 @@ Deno.test("published Session restart restores project cwd while retaining remove
                 planName: "delivery",
                 planId,
             });
-            const origin = await Deno.realPath(entry.path);
+            const origin = await fsRealpath(entry.path);
             await handle.runtime.rollManagedSessionSegment(handle.adoptedSessionId, {
                 kind: "semantic_repair",
                 transcriptCwd: origin,
@@ -59,7 +70,7 @@ Deno.test("published Session restart restores project cwd while retaining remove
             await handle.runtime.synchronizeManagedSession(handle.adoptedSessionId);
             assertEquals(handle.runtime.getSessionSnapshot(handle.adoptedSessionId)?.cwd, origin);
 
-            await Deno.writeTextFile(join(entry.path, "feature.txt"), "Delivered implementation\n");
+            await fsWriteFile(join(entry.path, "feature.txt"), "Delivered implementation\n");
             await git(entry.path, ["add", "."]);
             await git(entry.path, ["commit", "-m", "Seal implementation"]);
             const commit = await git(entry.path, ["rev-parse", "HEAD"]);
@@ -95,15 +106,15 @@ Deno.test("published Session restart restores project cwd while retaining remove
             });
             const cleanup = await cleanupStoredPublication(root, attempt);
             assert(cleanup.complete);
-            assertEquals(await Deno.stat(origin).catch(() => null), null);
+            assertEquals(await fsStat(origin).catch(() => null), null);
             assertEquals(await git(root, ["rev-parse", "HEAD"]), primaryHead);
             assertEquals((await loadPlan(root, "delivery"))?.attrs.status, "verified");
 
             handle = await fixture.restartRuntime(handle, "after-publication");
             await handle.runtime.synchronizeManagedSession(handle.adoptedSessionId);
             assertEquals(
-                await Deno.realPath(handle.runtime.getSessionSnapshot(handle.adoptedSessionId)!.cwd),
-                await Deno.realPath(root),
+                await fsRealpath(handle.runtime.getSessionSnapshot(handle.adoptedSessionId)!.cwd),
+                await fsRealpath(root),
             );
             setModelResponseFactory(() => fauxAssistantMessage(fauxText("The delivered Session remains usable.")));
             const followup = await handle.runtime.promptUserTurn(handle.adoptedSessionId, {
@@ -111,24 +122,24 @@ Deno.test("published Session restart restores project cwd while retaining remove
             });
             assertEquals(followup.ok, true);
             assertEquals(
-                await Deno.realPath(handle.runtime.getSessionSnapshot(handle.adoptedSessionId)!.cwd),
-                await Deno.realPath(root),
+                await fsRealpath(handle.runtime.getSessionSnapshot(handle.adoptedSessionId)!.cwd),
+                await fsRealpath(root),
             );
             assertEquals(
-                await Deno.stat(origin).catch(() => null),
+                await fsStat(origin).catch(() => null),
                 null,
                 "Resume must not recreate the removed checkout.",
             );
             const segment = handle.store.getCurrentSessionSegment(fixture.session.runwieldSessionId);
             assert(segment);
             assertEquals(segment.transcriptCwd, origin);
-            const header = JSON.parse((await Deno.readTextFile(segment.transcriptPath)).split("\n")[0]);
+            const header = JSON.parse((await fsReadFile(segment.transcriptPath, "utf8")).split("\n")[0]);
             assertEquals(header.cwd, origin);
         } finally {
             await handle.close();
             await fixture.cleanup();
-            await Deno.remove(root, { recursive: true });
-            await Deno.remove(temporary, { recursive: true });
+            await fsRm(root, { recursive: true });
+            await fsRm(temporary, { recursive: true });
         }
     });
 });

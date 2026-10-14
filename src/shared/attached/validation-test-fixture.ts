@@ -1,13 +1,13 @@
-import { assert } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { hostFixture, type HostFixtureOptions } from "../workflow/testing/validation-host-fixture.ts";
 import { activate, runAttachedOperation } from "./coordinator.ts";
 import { EVIDENCE } from "./attached-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
-import type {
-    AttachedJsonObject,
-    AttachedOperationName,
-    AttachedOperationResult,
-    AttachedWorkflowView,
+import {
+    type AttachedJsonObject,
+    type AttachedOperationName,
+    type AttachedOperationResult,
+    type AttachedWorkflowView,
 } from "./operations.ts";
 
 /** Real implemented Plan and worktree; only the carrier's pre-validation record is seeded. */

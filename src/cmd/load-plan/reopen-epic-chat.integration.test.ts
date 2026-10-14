@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
@@ -17,7 +19,7 @@ async function decide(url: string, route: "deny" | "decision", body: Record<stri
     assertEquals(response.status, 200, await response.text());
 }
 
-Deno.test("saved Epic chat review keeps one conversation and live page across two runtime review rounds", async () => {
+test("saved Epic chat review keeps one conversation and live page across two runtime review rounds", async () => {
     await withRuntimeCommandFixture("saved-epic-chat-", async ({ homeDir, projectRoot }) => {
         await savePlan(projectRoot, "epic", "# Epic\n\n## Context\n\nOriginal delivery boundary.\n", {
             classification: "PROJECT",

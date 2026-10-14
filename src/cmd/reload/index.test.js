@@ -1,13 +1,15 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
 import { runReloadCommand } from "./index.ts";
 
-Deno.test("runReloadCommand reloads only through SessionRuntime", async () => {
+test("runReloadCommand reloads only through SessionRuntime", async () => {
     const messages = /** @type {string[]} */ ([]);
     await runReloadCommand([], {
         sessionId: "reload-test",
         sessionRuntime: /** @type {any} */ ({
             reloadSession: () => Promise.resolve({ ok: false }),
-            getSessionSnapshot: () => ({ cwd: Deno.cwd() }),
+            getSessionSnapshot: () => ({ cwd: getCwd() }),
         }),
         uiAPI: /** @type {any} */ ({
             appendSystemMessage: (/** @type {string} */ message) => messages.push(message),
@@ -16,13 +18,13 @@ Deno.test("runReloadCommand reloads only through SessionRuntime", async () => {
     assertEquals(messages, ["Reload skipped (no active root session found)."]);
 });
 
-Deno.test("runReloadCommand reports deferred managed dormant reload", async () => {
+test("runReloadCommand reports deferred managed dormant reload", async () => {
     const messages = /** @type {string[]} */ ([]);
     await runReloadCommand([], {
         sessionId: "reload-test",
         sessionRuntime: /** @type {any} */ ({
             reloadSession: () => Promise.resolve({ ok: true, deferred: true }),
-            getSessionSnapshot: () => ({ cwd: Deno.cwd() }),
+            getSessionSnapshot: () => ({ cwd: getCwd() }),
         }),
         uiAPI: /** @type {any} */ ({
             appendSystemMessage: (/** @type {string} */ message) => messages.push(message),

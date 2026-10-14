@@ -1,7 +1,8 @@
+import { readFile as fsReadFile } from "node:fs/promises";
 import { Window } from "happy-dom";
 
-const dashboard = await Deno.readTextFile(new URL("./components/OwnerDashboard.astro", import.meta.url));
-const section = await Deno.readTextFile(new URL("./components/DashboardSection.astro", import.meta.url));
+const dashboard = await fsReadFile(new URL("./components/OwnerDashboard.astro", import.meta.url), "utf8");
+const section = await fsReadFile(new URL("./components/DashboardSection.astro", import.meta.url), "utf8");
 const coordinatorScript = dashboard.match(/<script is:inline data-astro-rerun>([\s\S]*?)<\/script>/)?.[1];
 const islandScript = section.match(/<script is:inline data-astro-rerun>([\s\S]*?)<\/script>/)?.[1];
 export const markup = dashboard.slice(

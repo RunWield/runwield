@@ -1,3 +1,7 @@
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/workflow/epic-sibling-drafts
  * Scope moves between Epic children.
@@ -20,7 +24,7 @@ import {
     withPlanCatalogLock,
     withPlanLock,
 } from "../../plan-store.js";
-import { join } from "@std/path";
+import { join } from "node:path";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import { EPIC_ARTIFACT_FILE_NAMES } from "../epic-artifacts.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
@@ -40,7 +44,7 @@ interface GitResult {
 }
 
 async function runGitResult(cwd: string, args: string[]): Promise<GitResult> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     const decoder = new TextDecoder();
     return {
         success: output.success,
@@ -74,10 +78,10 @@ function scopeMarkdown(markdown: string): string {
 async function mergeSiblingScope(cwd: string, name: string, current: string, base: string, incoming: string) {
     if (current === base || current === incoming) return incoming;
     if (incoming === base) return current;
-    const directory = await Deno.makeTempDir({ prefix: "runwield-sibling-scope-" });
+    const directory = await mkdtemp(join(tmpdir(), "runwield-sibling-scope-"));
     try {
         const paths = ["current", "base", "incoming"].map((name) => join(directory, name));
-        await Promise.all(paths.map((path, index) => Deno.writeTextFile(path, [current, base, incoming][index])));
+        await Promise.all(paths.map((path, index) => fsWriteFile(path, [current, base, incoming][index])));
         const merged = await runGitResult(cwd, ["merge-file", "-p", ...paths]);
         if (merged.code > 127) throw new Error(`Cannot reconcile ${name}: ${merged.stderr.trim()}`);
         if (!merged.success) {
@@ -88,7 +92,7 @@ async function mergeSiblingScope(cwd: string, name: string, current: string, bas
         }
         return merged.stdout;
     } finally {
-        await Deno.remove(directory, { recursive: true });
+        await fsRm(directory, { recursive: true });
     }
 }
 
@@ -149,7 +153,7 @@ export async function prepareEditedSiblingPlans(
                             `Cannot confirm the authoritative Plan identity for ${siblingName}. Both copies are preserved.`,
                         );
                     }
-                    const sameWorktree = await Deno.realPath(authorityRoot) === await Deno.realPath(worktreePath);
+                    const sameWorktree = await fsRealpath(authorityRoot) === await fsRealpath(worktreePath);
                     const currentScope = scopeMarkdown(authoritative.markdown);
                     // A previous attempt may already have synchronized this scope and the
                     // sibling may since have started. Refresh the copy without reshaping it.

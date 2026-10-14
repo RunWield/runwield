@@ -1,14 +1,17 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { HostedSession } from "./hosted-session.js";
 
-Deno.test("an unwritable log location fails before spawning and frees the slot", async () => {
-    const cwd = await Deno.makeTempDir();
+test("an unwritable log location fails before spawning and frees the slot", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
     const id = crypto.randomUUID();
     const blocked = join(getHomeDir(), ".wld", "sessions", "local", id);
-    await Deno.mkdir(join(getHomeDir(), ".wld", "sessions", "local"), { recursive: true });
-    await Deno.writeTextFile(blocked, "not a directory");
+    await fsMkdir(join(getHomeDir(), ".wld", "sessions", "local"), { recursive: true });
+    await fsWriteFile(blocked, "not a directory");
     const session = new HostedSession({ id, cwd });
     try {
         const status = await session.backgroundTasks.wait(
@@ -19,7 +22,7 @@ Deno.test("an unwritable log location fails before spawning and frees the slot",
         assertEquals(session.backgroundTasks.activeCount, 0);
     } finally {
         await session.backgroundTasks.cancelAllAndSuppress();
-        await Deno.remove(blocked);
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(blocked);
+        await fsRm(cwd, { recursive: true });
     }
 });

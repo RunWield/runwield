@@ -31,9 +31,7 @@ jobs:
             matrix:
                 shard: [1, 2, 3, 4]
         env:
-            DENO_DIR: /tmp/runwield-deno-dir
             WLD_TEST_SHARD: ${{ matrix.shard }}/4
-            WLD_TEST_DENO_DIR: /tmp/runwield-deno-dir
 
         steps:
             - name: Checkout
@@ -41,10 +39,10 @@ jobs:
               with:
                   submodules: recursive
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
 
             - name: Restore Snip binary
               id: snip-cache
@@ -60,11 +58,8 @@ jobs:
                   go-version: "1.25.x"
                   cache: false
 
-            - name: Restore Deno dependency cache
-              uses: actions/cache@v4
-              with:
-                  path: /tmp/runwield-deno-dir
-                  key: deno-tests-${{ runner.os }}-${{ hashFiles('deno.lock') }}
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Restore Golden timing history
               uses: actions/cache/restore@v4
@@ -95,7 +90,7 @@ jobs:
             - name: Run Golden TUI gate
               env:
                   WLD_TEST_CONCURRENCY: ${{ inputs.concurrency || '3' }}
-              run: deno task test:golden-tui --timings-file .ci-cache/golden-timings.json
+              run: bun run test:golden-tui --timings-file .ci-cache/golden-timings.json
 
             - name: Save Golden timing history
               if: always() && hashFiles('.ci-cache/golden-timings.json') != ''
@@ -116,7 +111,7 @@ jobs:
             - name: Print Golden failure logs
               if: failure()
               run: |
-                  for log in /tmp/tests-failure-*.log; do
+                  for log in /tmp/*-failure-*.log; do
                     if [[ -f "$log" ]]; then
                       echo "::group::$log"
                       cat "$log"
@@ -131,7 +126,7 @@ jobs:
                   name: golden-failure-${{ matrix.shard }}-${{ github.run_attempt }}
                   include-hidden-files: true
                   path: |
-                      /tmp/tests-failure-*.log
+                      /tmp/*-failure-*.log
                       /tmp/runwield-test-sandboxes-*-evidence/**
 
     golden:

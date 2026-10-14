@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     getPlanRevisionForText,
     getStoredPlanPath,
@@ -39,7 +42,7 @@ async function makePlanFile(attrs: Partial<PlanFrontMatter> = {}): Promise<PlanR
         ...attrs,
     });
     const planPath = getStoredPlanPath(dir, "plan");
-    const markdown = await Deno.readTextFile(planPath);
+    const markdown = await fsReadFile(planPath, "utf8");
     return {
         dir,
         planPath,
@@ -79,7 +82,7 @@ for (
         { status: "in_progress", reopenFirst: true },
     ] as const
 ) {
-    Deno.test(`reapproval reuses ${status} commits and dirty files (reopen first: ${reopenFirst})`, async () => {
+    test(`reapproval reuses ${status} commits and dirty files (reopen first: ${reopenFirst})`, async () => {
         const fixture = await makePlanFile({
             status,
             planId: "plan-id",
@@ -90,17 +93,17 @@ for (
         const executionDir = await addActiveWorktree(fixture.dir);
         const hostedSession = new HostedSession({ id: "reapproval", cwd: fixture.dir });
         try {
-            await Deno.writeTextFile(join(executionDir, "implementation.ts"), "export const done = true;\n");
+            await fsWriteFile(join(executionDir, "implementation.ts"), "export const done = true;\n");
             await git(executionDir, ["add", "implementation.ts"]);
             await git(executionDir, ["commit", "-m", "First implementation"]);
             const implementationCommit = await git(executionDir, ["rev-parse", "HEAD"]);
-            await Deno.writeTextFile(join(executionDir, "implementation.ts"), "export const done = 'repair';\n");
-            await Deno.writeTextFile(join(executionDir, "pending.ts"), "// untracked repair\n");
-            await Deno.writeTextFile(join(executionDir, "staged.ts"), "// staged repair\n");
+            await fsWriteFile(join(executionDir, "implementation.ts"), "export const done = 'repair';\n");
+            await fsWriteFile(join(executionDir, "pending.ts"), "// untracked repair\n");
+            await fsWriteFile(join(executionDir, "staged.ts"), "// staged repair\n");
             await git(executionDir, ["add", "staged.ts"]);
             const stagedDiff = await git(executionDir, ["diff", "--cached"]);
             await updateEntry(fixture.dir, "wt-prior", { status: "completed" });
-            const primaryBytes = await Deno.readTextFile(fixture.planPath);
+            const primaryBytes = await fsReadFile(fixture.planPath, "utf8");
             if (reopenFirst) {
                 await recordPlanEvent({
                     cwd: fixture.dir,
@@ -153,30 +156,30 @@ for (
             assertEquals((await listEntries(fixture.dir)).length, 1);
             assertEquals(await git(executionDir, ["rev-parse", "HEAD"]), implementationCommit);
             assertEquals(
-                await Deno.readTextFile(join(executionDir, "implementation.ts")),
+                await fsReadFile(join(executionDir, "implementation.ts"), "utf8"),
                 "export const done = 'repair';\n",
             );
-            assertEquals(await Deno.readTextFile(join(executionDir, "pending.ts")), "// untracked repair\n");
+            assertEquals(await fsReadFile(join(executionDir, "pending.ts"), "utf8"), "// untracked repair\n");
             assertEquals(await git(executionDir, ["diff", "--cached"]), stagedDiff);
             assertStringIncludes(
                 (await loadPlan(executionDir, "plan"))?.body || "",
                 "Continue the existing implementation",
             );
-            assertEquals(await Deno.readTextFile(fixture.planPath), primaryBytes);
+            assertEquals(await fsReadFile(fixture.planPath, "utf8"), primaryBytes);
             await updateEntry(fixture.dir, "wt-prior", { status: "abandoned" });
             assertEquals(
                 await findReusableWorktree({ projectRoot: fixture.dir, planName: "plan", planId: "plan-id" }),
                 null,
             );
-            assertEquals(await Deno.readTextFile(join(executionDir, "pending.ts")), "// untracked repair\n");
+            assertEquals(await fsReadFile(join(executionDir, "pending.ts"), "utf8"), "// untracked repair\n");
         } finally {
             hostedSession.dispose();
-            await Deno.remove(fixture.dir, { recursive: true });
+            await fsRm(fixture.dir, { recursive: true });
         }
     });
 }
 
-Deno.test("shared Plan review rejects stale revision status and worktree before mutation", async () => {
+test("shared Plan review rejects stale revision status and worktree before mutation", async () => {
     const fixture = await makePlanFile({
         status: "ready_for_work",
         planId: "plan-id",
@@ -187,7 +190,7 @@ Deno.test("shared Plan review rejects stale revision status and worktree before 
     const executionPlanPath = getStoredPlanPath(executionDir, "plan");
     try {
         const currentPlan = injectFrontMatter(fixture.markdown, { status: "feedback", worktreeId: "other" });
-        await Deno.writeTextFile(executionPlanPath, currentPlan);
+        await fsWriteFile(executionPlanPath, currentPlan);
 
         const result = await applySharedPlanReviewDecision({
             cwd: fixture.dir,
@@ -209,15 +212,15 @@ Deno.test("shared Plan review rejects stale revision status and worktree before 
         assertEquals(result.cancellationReason, "stale_plan_review");
         assertEquals((await loadPlan(executionDir, "plan"))?.attrs.status, "feedback");
         assertEquals((await loadPlan(executionDir, "plan"))?.attrs.worktreeId, "wt-prior");
-        assertEquals(await Deno.readTextFile(executionPlanPath), currentPlan);
-        assertEquals(await Deno.readTextFile(fixture.planPath), fixture.markdown);
+        assertEquals(await fsReadFile(executionPlanPath, "utf8"), currentPlan);
+        assertEquals(await fsReadFile(fixture.planPath, "utf8"), fixture.markdown);
         assertEquals((await findRegistryEntryById(fixture.dir, "wt-prior"))?.status, "active");
     } finally {
-        await Deno.remove(fixture.dir, { recursive: true });
+        await fsRm(fixture.dir, { recursive: true });
     }
 });
 
-Deno.test("shared Plan review automatically applies an old primary review to the current workflow Plan", async () => {
+test("shared Plan review automatically applies an old primary review to the current workflow Plan", async () => {
     const fixture = await makePlanFile({
         status: "ready_for_work",
         planId: "plan-id",
@@ -248,11 +251,11 @@ Deno.test("shared Plan review automatically applies an old primary review to the
         assertEquals((await loadPlan(executionDir, "plan"))?.attrs.status, "approved");
         assertEquals((await loadPlan(fixture.dir, "plan"))?.attrs.status, "ready_for_work");
     } finally {
-        await Deno.remove(fixture.dir, { recursive: true });
+        await fsRm(fixture.dir, { recursive: true });
     }
 });
 
-Deno.test("shared Plan review still rejects an old primary review when the current workflow Plan changed", async () => {
+test("shared Plan review still rejects an old primary review when the current workflow Plan changed", async () => {
     const fixture = await makePlanFile({
         status: "ready_for_work",
         planId: "plan-id",
@@ -262,7 +265,7 @@ Deno.test("shared Plan review still rejects an old primary review when the curre
     const executionDir = await addActiveWorktree(fixture.dir);
     try {
         const executionPlanPath = getStoredPlanPath(executionDir, "plan");
-        await Deno.writeTextFile(executionPlanPath, fixture.markdown.replace("Do the thing.", "Do another thing."));
+        await fsWriteFile(executionPlanPath, fixture.markdown.replace("Do the thing.", "Do another thing."));
 
         const result = await applySharedPlanReviewDecision({
             cwd: fixture.dir,
@@ -286,11 +289,11 @@ Deno.test("shared Plan review still rejects an old primary review when the curre
         assertEquals((result.feedback || "").includes("execution Plan"), false);
         assertEquals((result.feedback || "").includes("editable copy"), false);
     } finally {
-        await Deno.remove(fixture.dir, { recursive: true });
+        await fsRm(fixture.dir, { recursive: true });
     }
 });
 
-Deno.test("shared Plan review approval accepts every execution policy combination", async () => {
+test("shared Plan review approval accepts every execution policy combination", async () => {
     const combinations = [
         { executionAgent: "engineer", collaborationRecommendation: "autonomous" },
         { executionAgent: "engineer", collaborationRecommendation: "pair" },
@@ -324,12 +327,12 @@ Deno.test("shared Plan review approval accepts every execution policy combinatio
             assertEquals(attrs?.executionAgent, combination.executionAgent);
             assertEquals(attrs?.collaborationRecommendation, combination.collaborationRecommendation);
         } finally {
-            await Deno.remove(fixture.dir, { recursive: true });
+            await fsRm(fixture.dir, { recursive: true });
         }
     }
 });
 
-Deno.test("shared Plan review commits edited Feedback and approval notes with classification-correct outcomes", async () => {
+test("shared Plan review commits edited Feedback and approval notes with classification-correct outcomes", async () => {
     const feedbackFixture = await makePlanFile();
     const approvalFixture = await makePlanFile({ classification: "PROJECT" });
     try {
@@ -348,7 +351,7 @@ Deno.test("shared Plan review commits edited Feedback and approval notes with cl
                     `---\nclassification: FEATURE\nexecutionAgent: frontend-engineer\ncollaborationRecommendation: pair\n---\n# Edited Feedback\n`,
             },
         });
-        const feedbackMarkdown = await Deno.readTextFile(feedbackFixture.planPath);
+        const feedbackMarkdown = await fsReadFile(feedbackFixture.planPath, "utf8");
         const feedbackAttrs = parsePlanFrontMatter(feedbackMarkdown).attrs;
 
         assertEquals(feedback.approved, false);
@@ -382,8 +385,8 @@ Deno.test("shared Plan review commits edited Feedback and approval notes with cl
         assertEquals(approvalAttrs?.executionAgent, undefined);
         assertEquals(approvalAttrs?.collaborationRecommendation, undefined);
     } finally {
-        await Deno.remove(feedbackFixture.dir, { recursive: true });
-        await Deno.remove(approvalFixture.dir, { recursive: true });
+        await fsRm(feedbackFixture.dir, { recursive: true });
+        await fsRm(approvalFixture.dir, { recursive: true });
     }
 });
 
@@ -425,7 +428,7 @@ for (
         { name: "table content", original: "| A |\n| - |\n| x |\n", current: "| A |\n| - |\n| y |\n", matches: false },
     ]
 ) {
-    Deno.test(`Plan review source comparison preserves ${name}`, () => {
+    test(`Plan review source comparison preserves ${name}`, () => {
         const attrs = parsePlanFrontMatter("# Plan\n").attrs;
         assertEquals(reviewSourceStillMatches({ attrs, body: current }, attrs, original), matches);
     });

@@ -1,12 +1,19 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { test } from "node:test";
+import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-Deno.test("Astro dev toolbar remains loadable after Workspace navigation modules load", async () => {
-    const scratch = await Deno.makeTempDir({ prefix: "workspace-toolbar-test-" });
+test("Astro dev toolbar remains loadable after Workspace navigation modules load", async () => {
+    const scratch = await fsMkdtemp(join(tmpdir(), "workspace-toolbar-test-"));
     const repoRoot = new URL("../../../", import.meta.url);
     const script = `
-        import { dev } from "astro";
-        import { assertEquals, assertExists } from "@std/assert";
+        import { dev } from ${JSON.stringify(import.meta.resolve("astro"))};
+        import { assertEquals, assertExists } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};
         const server = await dev({
             root: ${JSON.stringify(fileURLToPath(new URL("src/ui/workspace/", repoRoot)))},
             configFile: "astro.config.mjs",
@@ -52,17 +59,15 @@ Deno.test("Astro dev toolbar remains loadable after Workspace navigation modules
         }
     `;
     try {
-        const output = await new Deno.Command(Deno.execPath(), {
-            args: ["eval", "--config", fileURLToPath(new URL("deno.json", repoRoot)), script],
+        const output = await captureForegroundProcess(process.execPath, {
+            args: runtimeSourceArgs(["eval", "--config", fileURLToPath(new URL("deno.json", repoRoot)), script]),
             cwd: scratch,
             env: { ASTRO_TELEMETRY_DISABLED: "1" },
-            stdout: "piped",
-            stderr: "piped",
             signal: AbortSignal.timeout(180_000),
-        }).output();
+        });
         const decoder = new TextDecoder();
         assertEquals(output.success, true, decoder.decode(output.stdout) + decoder.decode(output.stderr));
     } finally {
-        await Deno.remove(scratch, { recursive: true });
+        await fsRm(scratch, { recursive: true });
     }
 });

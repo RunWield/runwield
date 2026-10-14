@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module ui/tui/keybindings
  *
@@ -104,7 +105,7 @@ export function installKeybindings(ctx: KeybindingsContext): (data: string) => v
             if (isCtrlCPendingExit()) {
                 stopTUI();
                 cleanupAgentBrowserSessionSync();
-                setTimeout(() => Deno.exit(0), 100);
+                setTimeout(() => process.exit(0), 100);
                 return;
             }
             editor.setText("");

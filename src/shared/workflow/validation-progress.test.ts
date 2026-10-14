@@ -1,4 +1,6 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 
 import { HostedSession } from "../session/hosted-session.js";
 import { createSessionRuntimeEvent } from "../session/session-runtime-events.js";
@@ -8,8 +10,8 @@ import {
     getCurrentValidationProgress,
 } from "./validation-progress.ts";
 
-Deno.test("rejected validation progress is not cached for later status events", () => {
-    const hostedSession = new HostedSession({ id: "rejected-validation-progress", cwd: Deno.cwd() });
+test("rejected validation progress is not cached for later status events", () => {
+    const hostedSession = new HostedSession({ id: "rejected-validation-progress", cwd: getCwd() });
     hostedSession.setEventSink((event: Parameters<typeof createSessionRuntimeEvent>[1]) => {
         createSessionRuntimeEvent(hostedSession.id, event);
     });

@@ -585,7 +585,9 @@ async function createChatViewInternal(options: ChatViewOptions): Promise<ChatVie
     const removeSidebarActionListener = tui.addInputListener((data) => {
         if (!isSessionSidebarActionKey(data)) return undefined;
         const snapshot = options.sessionRuntime?.getSessionSnapshot(options.getSessionId());
-        const action = sessionSidebar.currentAction(snapshot || undefined);
+        const action = sessionSidebar.currentAction(
+            snapshot ? { ...snapshot, validationProgress: liveValidationProgress } : undefined,
+        );
         if (!snapshot || !action) return undefined;
         void Promise.resolve(options.onWorkflowAction?.(action, snapshot)).catch((error) => {
             uiAPI.appendSystemMessage(error instanceof Error ? error.message : String(error), true, "Workflow action");

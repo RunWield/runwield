@@ -176,8 +176,8 @@ export function createChatInputController(options: ChatInputControllerOptions): 
                     completionWorkRecordFailed
                         ? "Code delivered; Work Record failed.\nRetry regenerates this record.\nwld wr backfill regenerates missing or failed records across completed Plans."
                         : snapshot.tutorialContext?.recapShown
-                        ? "Tutorial complete"
-                        : "Session complete"
+                          ? "Tutorial complete"
+                          : "Session complete"
                 }\nWhat would you like to do next?`,
                 [
                     ...(completionWorkRecordFailed && completionWorkRecordPlanName
@@ -193,7 +193,9 @@ export function createChatInputController(options: ChatInputControllerOptions): 
             if (choice === "retry-record") {
                 const result = await runtime.retryWorkRecord(sessionId, completionWorkRecordPlanName);
                 uiAPI.appendSystemMessage(result.message, result.status === "failed", "RunWield");
-                completionWorkRecordFailed = result.status !== "generated" && result.status !== "linked" &&
+                completionWorkRecordFailed =
+                    result.status !== "generated" &&
+                    result.status !== "linked" &&
                     !(result.status === "skipped" && result.reason === "existing_backlink");
                 completionSessionId = sessionId;
                 return;
@@ -228,17 +230,27 @@ export function createChatInputController(options: ChatInputControllerOptions): 
     async function recallQueuedSubmissionsToEditor(): Promise<void> {
         const queuedMessages = runtime.getQueuedMessages(options.getSessionId());
         if (queuedMessages.length === 0) return;
+        const recalled: QueuedInput[] = [];
         for (let index = 0; index < queuedMessages.length; index += 1) {
-            await runtime.dequeueLastQueuedMessage(options.getSessionId());
+            const result = await runtime.dequeueLastQueuedMessage(options.getSessionId());
+            if (!result.ok || !result.message) break;
+            recalled.unshift(result.message);
         }
+        if (recalled.length === 0) return;
+        const draft = editor.getExpandedText();
         restoreQueuedItemToEditor({
-            text: queuedMessages.map((message) => message.text).join("\n"),
-            images: queuedMessages.flatMap((message) => message.images),
+            text: [...recalled.map((message) => message.text), ...(draft ? [draft] : [])].join("\n"),
+            images: recalled.flatMap((message) => message.images),
         });
     }
     async function dequeueLastSubmission(): Promise<boolean> {
         const dequeued = await runtime.dequeueLastQueuedMessage(options.getSessionId());
-        if (!dequeued.ok || !dequeued.message) return false;
+        if (!dequeued.ok) {
+            uiAPI.appendSystemMessage(`Cannot recall queued message: ${dequeued.error}`);
+            view.requestRender();
+            return runtime.getQueuedMessages(options.getSessionId()).length > 0;
+        }
+        if (!dequeued.message) return runtime.getQueuedMessages(options.getSessionId()).length > 0;
         restoreQueuedItemToEditor(dequeued.message);
         view.requestRender();
         return true;
@@ -272,8 +284,10 @@ export function createChatInputController(options: ChatInputControllerOptions): 
                 preparedModelOverride,
                 ...promptOptions,
             });
+            if (!generationStillCurrent(thisGen)) return;
             if (result?.error === "refresh_required") {
                 await runtime.synchronizeManagedSession(options.getSessionId());
+                if (!generationStillCurrent(thisGen)) return;
                 restoreQueuedItemToEditor({ text: result.submittedRequest, images: savedImages });
                 editor.disableSubmit = false;
                 view.focusEditor();
@@ -288,8 +302,8 @@ export function createChatInputController(options: ChatInputControllerOptions): 
                 recordUserInputHistory(editor, result.historyText);
             }
         } catch (err) {
-            restoreQueuedItemToEditor({ text: userRequest, images: savedImages });
             if (generationStillCurrent(thisGen)) {
+                restoreQueuedItemToEditor({ text: userRequest, images: savedImages });
                 const message = userTurnFailureMessage(err instanceof Error ? err : String(err));
                 if (message) uiAPI.appendSystemMessage(message, true, "RunWield");
             }
@@ -308,26 +322,26 @@ export function createChatInputController(options: ChatInputControllerOptions): 
         if (userRequest.startsWith("/")) recordUserInputHistory(editor, userRequest);
         const handledSlash = userRequest
             ? await handleSlashCommand({
-                userRequest,
-                savedImages,
-                sessionId: options.getSessionId(),
-                sessionRuntime: runtime,
-                uiAPI,
-                editor,
-                tui: view.tui,
-                sessionStartedAt: options.sessionStartedAt,
-                originalHandleInput,
-                initCommandAvailable: options.isInitCommandAvailable(),
-                promptTemplateByName: options.getPromptTemplateByName(),
-                skills: options.getSkills(),
-                chatPromptAgentName: options.chatPromptAgentName,
-                resolveTemplateModel,
-                dispatchExpandedUserRequest: (request, images) =>
-                    submitToActiveRoot(request, images, preparedModelOverride),
-                beginOnboarding: options.beginOnboarding,
-                replaceRuntimeSession: options.replaceRuntimeSession,
-                generationGuard,
-            })
+                  userRequest,
+                  savedImages,
+                  sessionId: options.getSessionId(),
+                  sessionRuntime: runtime,
+                  uiAPI,
+                  editor,
+                  tui: view.tui,
+                  sessionStartedAt: options.sessionStartedAt,
+                  originalHandleInput,
+                  initCommandAvailable: options.isInitCommandAvailable(),
+                  promptTemplateByName: options.getPromptTemplateByName(),
+                  skills: options.getSkills(),
+                  chatPromptAgentName: options.chatPromptAgentName,
+                  resolveTemplateModel,
+                  dispatchExpandedUserRequest: (request, images) =>
+                      submitToActiveRoot(request, images, preparedModelOverride),
+                  beginOnboarding: options.beginOnboarding,
+                  replaceRuntimeSession: options.replaceRuntimeSession,
+                  generationGuard,
+              })
             : false;
         if (handledSlash) return;
         await submitToActiveRoot(text, savedImages, preparedModelOverride);
@@ -443,7 +457,8 @@ export function createChatInputController(options: ChatInputControllerOptions): 
         const activeElsewhere = managedSnapshot?.managed?.syncState?.status === "active_elsewhere";
         const managedBlockMessage = runtime.getUserTurnSubmissionBlockMessage(options.getSessionId());
         if (
-            managedBlockMessage && (!activeElsewhere || userRequest.startsWith("/")) &&
+            managedBlockMessage &&
+            (!activeElsewhere || userRequest.startsWith("/")) &&
             !(userRequest.startsWith("/") && options.isModelSetupRecoveryCommand(userRequest))
         ) {
             uiAPI.appendSystemMessage(managedBlockMessage, true, "RunWield");
@@ -513,15 +528,18 @@ export function createChatInputController(options: ChatInputControllerOptions): 
                 queueForNextTurn(userRequest, images);
                 return;
             }
-            runtime.steerSession(options.getSessionId(), userRequest, images).then((result) => {
-                if (!result.queued) queueForNextTurn(userRequest, images);
-                view.requestRender();
-            }).catch((error) => {
-                restoreQueuedItemToEditor({ text: restoreText, images });
-                const message = userTurnFailureMessage(error instanceof Error ? error : String(error));
-                if (message) uiAPI.appendSystemMessage(message, true, "RunWield");
-                forceResetUI();
-            });
+            runtime
+                .steerSession(options.getSessionId(), userRequest, images)
+                .then((result) => {
+                    if (!result.queued) queueForNextTurn(userRequest, images);
+                    view.requestRender();
+                })
+                .catch((error) => {
+                    restoreQueuedItemToEditor({ text: restoreText, images });
+                    const message = userTurnFailureMessage(error instanceof Error ? error : String(error));
+                    if (message) uiAPI.appendSystemMessage(message, true, "RunWield");
+                    forceResetUI();
+                });
             return;
         }
         await processSubmissions({ text, images, preparedModelOverride });

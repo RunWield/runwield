@@ -1,6 +1,7 @@
 /** @module shared/workspace-search-refresh */
 
-import { join } from "@std/path";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { getHomeDir } from "../constants.js";
 
 function refreshDirectory() {
@@ -16,7 +17,7 @@ function refreshDirectory() {
 export async function getWorkspaceSearchRefreshMarker(root: string) {
     let canonical = root;
     try {
-        canonical = await Deno.realPath(root);
+        canonical = await realpath(root);
     } catch {
         // An unresolvable root still gets a stable marker key.
     }
@@ -34,8 +35,8 @@ export async function getWorkspaceSearchRefreshMarker(root: string) {
 export async function requestWorkspaceSearchRefresh(root: string) {
     try {
         const path = await getWorkspaceSearchRefreshMarker(root);
-        await Deno.mkdir(refreshDirectory(), { recursive: true });
-        await Deno.writeTextFile(path, `${Date.now()}\n`);
+        await mkdir(refreshDirectory(), { recursive: true });
+        await writeFile(path, `${Date.now()}\n`);
     } catch {
         // Search is derived data. The bounded background scan remains the fallback.
     }

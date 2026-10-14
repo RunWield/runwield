@@ -1,3 +1,40 @@
+import type { Dirent } from "node:fs";
+import { writeJsonAtomically } from "../private-json-file.ts";
+import { realpathSync } from "node:fs";
+import {
+    readFile as fsReadFile,
+    readdir as fsReaddir,
+    writeFile as fsWriteFile,
+    rm as fsRm,
+    mkdir as fsMkdir,
+    stat as fsStat,
+} from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
+import {
+    getHomeDir,
+    getRunWieldRuntimeDir,
+    PROJECT_INTERNAL_RUNTIME_DIR_NAME,
+    RUNWIELD_DIR_NAME,
+} from "../../constants.js";
+import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
+import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
+import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
+import { encodeCwdForSessionDir } from "../project-directory-key.ts";
+import { type TriageOutcome } from "../workflow/triage-outcome.ts";
+import {
+    type AttachedExecution,
+    type AttachedOperationName,
+    type AttachedOperationResult,
+    type AttachedPendingConsent,
+    type AttachedPlanReference,
+    type AttachedReviewRound,
+    type AttachedWorkflowClosure,
+    type AttachedWorkflowState,
+    type PendingHostAction,
+    type RecordedEvidence,
+} from "./operations.ts";
+
+import process from "node:process";
 /**
  * @module shared/attached/record-store
  * Durable Attached Workflow Records under `~/.wld/attached/`.
@@ -10,31 +47,6 @@
  * Every write holds a per-workflow lock file, checks the expected revision, and
  * replaces the file atomically. A lock left by a dead process is reclaimed.
  */
-
-import { basename, dirname, join, resolve } from "@std/path";
-import {
-    getHomeDir,
-    getRunWieldRuntimeDir,
-    PROJECT_INTERNAL_RUNTIME_DIR_NAME,
-    RUNWIELD_DIR_NAME,
-} from "../../constants.js";
-import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
-import { getLockHostname, isLockHolderGone, isLockHolderUnattributable } from "../process-liveness.ts";
-import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
-import { encodeCwdForSessionDir } from "../project-directory-key.ts";
-import type { TriageOutcome } from "../workflow/triage-outcome.ts";
-import type {
-    AttachedExecution,
-    AttachedOperationName,
-    AttachedOperationResult,
-    AttachedPendingConsent,
-    AttachedPlanReference,
-    AttachedReviewRound,
-    AttachedWorkflowClosure,
-    AttachedWorkflowState,
-    PendingHostAction,
-    RecordedEvidence,
-} from "./operations.ts";
 
 const ATTACHED_DIR_NAME = "attached";
 const WORKFLOWS_DIR_NAME = "workflows";
@@ -85,15 +97,13 @@ export type LoadedAttachedWorkflow =
     | { status: "missing" };
 
 export type AttachedRecordWriteResult =
-    | { status: "written" }
-    | { status: "conflict"; current: AttachedWorkflowRecord | null }
-    | { status: "busy" };
+    { status: "written" } | { status: "conflict"; current: AttachedWorkflowRecord | null } | { status: "busy" };
 
 function canonicalPath(path: string): string {
     try {
-        return Deno.realPathSync(path);
+        return realpathSync(path);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return resolve(path);
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return resolve(path);
         throw error;
     }
 }
@@ -127,7 +137,7 @@ function recordPath(workflowsDir: string, workflowId: string): string {
 
 async function readRecordAt(path: string): Promise<AttachedWorkflowRecord | null> {
     try {
-        const record: AttachedWorkflowRecord = JSON.parse(await Deno.readTextFile(path));
+        const record: AttachedWorkflowRecord = JSON.parse(await fsReadFile(path, "utf8"));
         return {
             ...record,
             execution: record.execution ?? null,
@@ -135,7 +145,7 @@ async function readRecordAt(path: string): Promise<AttachedWorkflowRecord | null
             validation: record.validation ?? null,
         };
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
@@ -146,15 +156,15 @@ async function findMovedRecord(
     workflowId: string,
 ): Promise<AttachedWorkflowRecord | null> {
     if (!location.homeBaseDir) return null;
-    let entries: Deno.DirEntry[];
+    let entries: Dirent[];
     try {
-        entries = await Array.fromAsync(Deno.readDir(location.homeBaseDir));
+        entries = await Array.fromAsync(await fsReaddir(location.homeBaseDir, { withFileTypes: true }));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
     for (const entry of entries) {
-        if (!entry.isDirectory) continue;
+        if (!entry.isDirectory()) continue;
         const workflowsDir = join(location.homeBaseDir, entry.name, WORKFLOWS_DIR_NAME);
         if (workflowsDir === location.workflowsDir) continue;
         const record = await readRecordAt(recordPath(workflowsDir, workflowId));
@@ -180,17 +190,21 @@ export async function loadLatestAttachedWorkflowRecord(
 ): Promise<AttachedWorkflowRecord | null> {
     let latest: AttachedWorkflowRecord | null = null;
     try {
-        for await (const entry of Deno.readDir(location.workflowsDir)) {
-            if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+        for await (const entry of await fsReaddir(location.workflowsDir, { withFileTypes: true })) {
+            if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
             const record = await readRecordAt(join(location.workflowsDir, entry.name));
             if (
-                record && record.projectRoot === location.projectRoot && record.state !== "closed" &&
-                (!latest || record.updatedAt > latest.updatedAt ||
+                record &&
+                record.projectRoot === location.projectRoot &&
+                record.state !== "closed" &&
+                (!latest ||
+                    record.updatedAt > latest.updatedAt ||
                     (record.updatedAt === latest.updatedAt && record.workflowId > latest.workflowId))
-            ) latest = record;
+            )
+                latest = record;
         }
     } catch (error) {
-        if (!(error instanceof Deno.errors.NotFound)) throw error;
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
     return latest;
 }
@@ -211,16 +225,16 @@ async function isReclaimable(lockText: string, mtime: number): Promise<boolean> 
 async function acquireLock(lockPath: string): Promise<string | null> {
     const deadline = Date.now() + LOCK_WAIT_MS;
     const token = crypto.randomUUID();
-    const document: LockDocument = { pid: Deno.pid, hostname: getLockHostname(), token, createdAt: Date.now() };
+    const document: LockDocument = { pid: process.pid, hostname: getLockHostname(), token, createdAt: Date.now() };
     while (true) {
         try {
-            await Deno.writeTextFile(lockPath, JSON.stringify(document), { createNew: true });
+            await fsWriteFile(lockPath, JSON.stringify(document), { flag: "wx" });
             return token;
         } catch (error) {
-            if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
         }
         const snapshot = await readLockFileSnapshot(lockPath);
-        if (snapshot && await isReclaimable(snapshot.text, snapshot.mtime)) {
+        if (snapshot && (await isReclaimable(snapshot.text, snapshot.mtime))) {
             await removeLockFileIfSnapshotMatches(lockPath, snapshot);
             continue;
         }
@@ -237,39 +251,21 @@ async function releaseLock(lockPath: string, token: string): Promise<void> {
 /** Temporary files from a writer that died before its rename. Only safe to remove under the lock. */
 async function removeAbandonedTemporaryFiles(path: string): Promise<void> {
     const prefix = `${basename(path)}.`;
-    for await (const entry of Deno.readDir(dirname(path))) {
-        if (entry.isFile && entry.name.startsWith(prefix) && entry.name.endsWith(".tmp")) {
-            await Deno.remove(join(dirname(path), entry.name)).catch((error) => {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
+    for await (const entry of await fsReaddir(dirname(path), { withFileTypes: true })) {
+        if (
+            entry.isFile() &&
+            entry.name.startsWith(prefix) &&
+            (entry.name.endsWith(".tmp") || entry.name.startsWith(`${basename(path)}.tmp-`))
+        ) {
+            await fsRm(join(dirname(path), entry.name)).catch((error) => {
+                if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
             });
         }
     }
 }
 
-async function atomicWrite(path: string, record: AttachedWorkflowRecord): Promise<void> {
-    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-    const data = new TextEncoder().encode(`${JSON.stringify(record, null, 2)}\n`);
-    try {
-        const file = await Deno.open(temporary, { createNew: true, write: true });
-        try {
-            let offset = 0;
-            while (offset < data.length) offset += await file.write(data.subarray(offset));
-            await file.sync();
-        } finally {
-            file.close();
-        }
-        await Deno.rename(temporary, path);
-        const directory = await Deno.open(dirname(path), { read: true });
-        try {
-            await directory.sync();
-        } finally {
-            directory.close();
-        }
-    } finally {
-        await Deno.remove(temporary).catch((error) => {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
-        });
-    }
+function atomicWrite(path: string, record: AttachedWorkflowRecord): void {
+    writeJsonAtomically(path, record);
 }
 
 /**
@@ -306,7 +302,7 @@ export async function transactAttachedWorkflowRecord<Result>(
     workflowId: string,
     decide: (current: AttachedWorkflowRecord | null) => Promise<AttachedRecordDecision<Result>>,
 ): Promise<{ status: "committed"; result: Result } | { status: "busy" }> {
-    await Deno.mkdir(location.workflowsDir, { recursive: true });
+    await fsMkdir(location.workflowsDir, { recursive: true });
     const path = recordPath(location.workflowsDir, workflowId);
     const lockPath = join(location.workflowsDir, `${workflowId}.lock`);
     const token = await acquireLock(lockPath);
@@ -348,8 +344,8 @@ export interface AttachedValidationHolder {
  * This receipt uses the claim token, independently of a contended workflow lock.
  */
 export async function settleAttachedValidationHolder(location: AttachedWorkflowLocation, token: string): Promise<void> {
-    await Deno.writeTextFile(join(location.workflowsDir, `validation-${token}.settled`), "settled\n", {
-        createNew: true,
+    await fsWriteFile(join(location.workflowsDir, `validation-${token}.settled`), "settled\n", {
+        flag: "wx",
     });
 }
 
@@ -359,10 +355,10 @@ export async function attachedValidationHolderSettled(
 ): Promise<boolean> {
     if (!holder.token) return false;
     try {
-        await Deno.stat(join(location.workflowsDir, `validation-${holder.token}.settled`));
+        await fsStat(join(location.workflowsDir, `validation-${holder.token}.settled`));
         return true;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return false;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
         throw error;
     }
 }

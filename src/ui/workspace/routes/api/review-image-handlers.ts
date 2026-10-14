@@ -1,5 +1,6 @@
 /** Image upload and read handlers for Workspace-hosted review surfaces. */
 
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { getCwd } from "../../../../constants.js";
@@ -40,9 +41,9 @@ export async function reviewImageUploadApi(request: Request): Promise<Response> 
         const bytes = new Uint8Array(await file.arrayBuffer());
         if (!hasValidImageMagic(bytes, extension)) return new Response("Invalid image content.", { status: 400 });
 
-        await Deno.mkdir(REVIEW_UPLOAD_DIR, { recursive: true });
+        await mkdir(REVIEW_UPLOAD_DIR, { recursive: true });
         const path = join(REVIEW_UPLOAD_DIR, `${crypto.randomUUID()}${extension}`);
-        await Deno.writeFile(path, bytes);
+        await writeFile(path, bytes);
         return Response.json({ path, originalName: file.name }, {
             headers: { "cache-control": "no-store" },
         });
@@ -80,7 +81,7 @@ export async function reviewImageApi(request: Request, options: ReviewImageOptio
                 if (
                     isAbsolute(value) || value.includes("\0") || value.includes("\\") ||
                     /^[a-z][a-z\d+.-]*:/i.test(value)
-                ) throw new Deno.errors.PermissionDenied();
+                ) throw Object.assign(new Error("Image path is outside this review workspace."), { code: "EACCES" });
             }
         }
         // Relative image bases are Project-relative, never process-relative.
@@ -90,25 +91,27 @@ export async function reviewImageApi(request: Request, options: ReviewImageOptio
             : !options.projectOnly && isPathInside(path, REVIEW_UPLOAD_DIR)
             ? REVIEW_UPLOAD_DIR
             : null;
-        if (!root) throw new Deno.errors.PermissionDenied();
+        if (!root) throw Object.assign(new Error("Image path is outside this review workspace."), { code: "EACCES" });
         const file = resolveWorkspaceFile(root, relative(root, path).replaceAll("\\", "/"), {
             allowRelativeTraversal: true,
         });
         if (!file) return new Response("Image not found.", { status: 404, headers });
         const finalExtension = normalizedImageExtension(file.absolutePath);
         if (!finalExtension) return new Response("Unsupported image type.", { status: 400, headers });
-        const bytes = await Deno.readFile(file.absolutePath);
-        return new Response(bytes, {
+        const bytes = await readFile(file.absolutePath);
+        return new Response(new Uint8Array(bytes), {
             headers: {
                 "content-type": IMAGE_CONTENT_TYPES.get(finalExtension) || "application/octet-stream",
                 ...headers,
             },
         });
     } catch (error) {
-        if (error instanceof Deno.errors.PermissionDenied) {
+        if (error instanceof Error && ["EACCES", "EPERM"].includes(Reflect.get(error, "code"))) {
             return new Response("Image path is outside this review workspace.", { status: 403, headers });
         }
-        if (error instanceof Deno.errors.NotFound) return new Response("Image not found.", { status: 404, headers });
+        if (error instanceof Error && Reflect.get(error, "code") === "ENOENT") {
+            return new Response("Image not found.", { status: 404, headers });
+        }
         return new Response("Unable to read image.", { status: 500, headers });
     }
 }

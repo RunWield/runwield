@@ -1,14 +1,17 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { versions } from "node:process";
+import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
 
 for (const kind of ["plan", "prd", "adr", "work-record", "epic-artifact", "report"] as const) {
-    Deno.test(`registered ${kind} artifacts share the reader and reject unrelated Sessions`, async () => {
+    test(`registered ${kind} artifacts share the reader and reject unrelated Sessions`, async () => {
         const fixture = await makeManagedSessionFixture();
         const store = fixture.openStore();
         const app = createOwnerWorkspaceApp({ mode: "owner", publicOrigin: "http://127.0.0.1:8787", store });
         try {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 `${fixture.projectRoot}/artifact.md`,
                 "# Saved Plan\n\nArtifact route regression.\n",
             );
@@ -37,7 +40,12 @@ for (const kind of ["plan", "prd", "adr", "work-record", "epic-artifact", "repor
             );
             // Without an Astro build the route must report the build requirement, never a missing route.
             assertEquals([200, 503].includes(response.status), true);
-            const built = await Deno.stat(new URL("../../../dist/workspace/server/entry.mjs", import.meta.url))
+            const built = await fsStat(
+                new URL(
+                    `../../../dist/${versions.bun ? "workspace-bun" : "workspace"}/server/entry.mjs`,
+                    import.meta.url,
+                ),
+            )
                 .then(() => true).catch(() => false);
             if (built) assertEquals(response.status, 200);
             const html = await response.text();

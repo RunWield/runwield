@@ -1,5 +1,9 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { test } from "node:test";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { archivePlan, loadPlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";
@@ -20,7 +24,7 @@ import {
 import { completionInput, executionInput, implementing, readyPlan } from "./execution-test-fixture.ts";
 import { locateAttachedWorkflows } from "./record-store.ts";
 
-Deno.test("start rejects preapproval and stale revisions; completion requires the issued action and report envelope", async () => {
+test("start rejects preapproval and stale revisions; completion requires the issued action and report envelope", async () => {
     await withProject(async (root) => {
         const planning = await reachPlanning(root);
         assert(planning.result.ok);
@@ -62,7 +66,7 @@ Deno.test("start rejects preapproval and stale revisions; completion requires th
     });
 });
 
-Deno.test("fresh start heals an unsettled preparation journal and adopts the same authority after a lost Attached write", async () => {
+test("fresh start heals an unsettled preparation journal and adopts the same authority after a lost Attached write", async () => {
     await withProject(async (root) => {
         const ready = await readyPlan(root);
         const oldRecord = await readRecordBytes(root, ready.workflowId);
@@ -71,15 +75,18 @@ Deno.test("fresh start heals an unsettled preparation journal and adopts the sam
         const execution = started.workflow.execution;
         assert(execution?.executionCwd && execution.worktreeId);
         const transitionId = crypto.randomUUID();
-        await Deno.mkdir(getTransitionJournalDir(execution.executionCwd), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(getTransitionJournalDir(execution.executionCwd), { recursive: true });
+        await fsWriteFile(
             getTransitionJournalPath(execution.executionCwd, transitionId),
             JSON.stringify({
                 version: 1,
                 transitionId,
                 operation: "execution_preparation",
                 planName: "dark-mode-toggle",
-                resources: [{ kind: "plan", id: "dark-mode-toggle" }, { kind: "attempt", id: execution.worktreeId }],
+                resources: [
+                    { kind: "plan", id: "dark-mode-toggle" },
+                    { kind: "attempt", id: execution.worktreeId },
+                ],
                 state: "applying",
                 intendedPostconditions: { status: "in_progress" },
                 completedEffects: [
@@ -98,10 +105,7 @@ Deno.test("fresh start heals an unsettled preparation journal and adopts the sam
             }),
         );
         assertEquals((await listTransitionRecoveryRecords(execution.executionCwd)).length, 1);
-        await Deno.writeTextFile(
-            join(locateAttachedWorkflows(root).workflowsDir, `${ready.workflowId}.json`),
-            oldRecord,
-        );
+        await fsWriteFile(join(locateAttachedWorkflows(root).workflowsDir, `${ready.workflowId}.json`), oldRecord);
         const projected = await runOperation("status", root, { workflowId: ready.workflowId });
         assert(projected.ok);
         assertEquals(projected.workflow.execution, null, "Projection must not fabricate execution authority.");
@@ -115,7 +119,7 @@ Deno.test("fresh start heals an unsettled preparation journal and adopts the sam
     });
 });
 
-Deno.test("completion retry settles the Attached result after Core committed before the record write", async () => {
+test("completion retry settles the Attached result after Core committed before the record write", async () => {
     await withProject(async (root) => {
         const started = await implementing(root);
         const execution = started.workflow.execution;
@@ -138,19 +142,25 @@ Deno.test("completion retry settles the Attached result after Core committed bef
     });
 });
 
-Deno.test("status retains the pending implementation action and resolves frontend role layers on each result", async () => {
+test("status retains the pending implementation action and resolves frontend role layers on each result", async () => {
     await withProject(async (root) => {
         const ready = await readyPlan(root);
         const plan = await loadPlan(root, "dark-mode-toggle");
         assert(plan);
-        await updatePlanFrontMatter(root, "dark-mode-toggle", { executionAgent: "frontend-engineer" }, {}, {
-            expectedRevision: plan.revision,
-        });
+        await updatePlanFrontMatter(
+            root,
+            "dark-mode-toggle",
+            { executionAgent: "frontend-engineer" },
+            {},
+            {
+                expectedRevision: plan.revision,
+            },
+        );
         const started = await runOperation("start_execution", root, executionInput(ready, "constructor"));
         assert(started.ok && started.workflow.nextAction.kind === "implementation");
         assertEquals(started.workflow.nextAction.role, "frontend-engineer");
-        await Deno.mkdir(join(root, ".wld/agents"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(root, ".wld/agents"), { recursive: true });
+        await fsWriteFile(
             join(root, ".wld/agents/frontend-engineer.md"),
             "---\npromptOverride: true\n---\nProject frontend override after handoff\n",
         );
@@ -168,25 +178,37 @@ Deno.test("status retains the pending implementation action and resolves fronten
     });
 });
 
-Deno.test("execution evidence projects Core feedback and later AI review from the worker Plan, not the invoking Plan", async () => {
+test("execution evidence projects Core feedback and later AI review from the worker Plan, not the invoking Plan", async () => {
     await withProject(async (root) => {
         const started = await implementing(root);
         const execution = started.workflow.execution;
         assert(execution?.executionCwd);
         const plan = await loadPlan(execution.executionCwd, "dark-mode-toggle");
         assert(plan);
-        await updatePlanFrontMatter(execution.executionCwd, "dark-mode-toggle", { status: "feedback" }, {}, {
-            expectedRevision: plan.revision,
-        });
+        await updatePlanFrontMatter(
+            execution.executionCwd,
+            "dark-mode-toggle",
+            { status: "feedback" },
+            {},
+            {
+                expectedRevision: plan.revision,
+            },
+        );
         const feedback = await runOperation("status", root, { workflowId: started.workflow.workflowId });
         assert(feedback.ok && feedback.workflow.nextAction.kind === "plan");
         assertEquals(feedback.workflow.state, "awaiting_planning");
         const current = await loadPlan(execution.executionCwd, "dark-mode-toggle");
         assert(current);
         // Core now keeps mechanical validation at implemented; AI review advances to reviewed.
-        await updatePlanFrontMatter(execution.executionCwd, "dark-mode-toggle", { status: "reviewed" }, {}, {
-            expectedRevision: current.revision,
-        });
+        await updatePlanFrontMatter(
+            execution.executionCwd,
+            "dark-mode-toggle",
+            { status: "reviewed" },
+            {},
+            {
+                expectedRevision: current.revision,
+            },
+        );
         const advanced = await runOperation("status", root, { workflowId: started.workflow.workflowId });
         assert(advanced.ok && advanced.workflow.nextAction.kind === "return_to_host");
         assertEquals(advanced.workflow.state, "closed");
@@ -194,14 +216,14 @@ Deno.test("execution evidence projects Core feedback and later AI review from th
     });
 });
 
-Deno.test("partial Core completion retains the handoff and retry finishes checkpoint and registry settlement", async () => {
+test("partial Core completion retains the handoff and retry finishes checkpoint and registry settlement", async () => {
     await withProject(async (root) => {
         const started = await implementing(root);
         const execution = started.workflow.execution;
         assert(execution?.executionCwd && execution.worktreeId && started.workflow.plan);
         const before = await loadPlan(execution.executionCwd, "dark-mode-toggle");
         assert(before);
-        await Deno.writeTextFile(join(execution.executionCwd, "toggle.ts"), "export const enabled = true;\n");
+        await fsWriteFile(join(execution.executionCwd, "toggle.ts"), "export const enabled = true;\n");
         await recordPlanEvent({
             cwd: execution.executionCwd,
             planName: "dark-mode-toggle",
@@ -210,15 +232,18 @@ Deno.test("partial Core completion retains the handoff and retry finishes checkp
             details: { executionReport: "- Finished before the process stopped" },
         });
         const transitionId = crypto.randomUUID();
-        await Deno.mkdir(getTransitionJournalDir(execution.executionCwd), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(getTransitionJournalDir(execution.executionCwd), { recursive: true });
+        await fsWriteFile(
             getTransitionJournalPath(execution.executionCwd, transitionId),
             JSON.stringify({
                 version: 1,
                 transitionId,
                 operation: "implementation_checkpoint",
                 planName: "dark-mode-toggle",
-                resources: [{ kind: "plan", id: "dark-mode-toggle" }, { kind: "attempt", id: execution.worktreeId }],
+                resources: [
+                    { kind: "plan", id: "dark-mode-toggle" },
+                    { kind: "attempt", id: execution.worktreeId },
+                ],
                 state: "applying",
                 beforeFacts: { plan: { path: before.path, revision: before.revision, status: before.attrs.status } },
                 intendedPostconditions: {},
@@ -235,24 +260,20 @@ Deno.test("partial Core completion retains the handoff and retry finishes checkp
         assertEquals(finished.result.workflow.state, "implemented");
         assertEquals((await findById(root, execution.worktreeId))?.status, "completed");
         assertEquals((await listTransitionRecoveryRecords(execution.executionCwd)).length, 0);
-        const diff = await new Deno.Command("git", {
+        const diff = await captureForegroundProcess("git", {
             args: ["status", "--porcelain"],
             cwd: execution.executionCwd,
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
         assertEquals(new TextDecoder().decode(diff.stdout).trim(), "");
-        const committed = await new Deno.Command("git", {
+        const committed = await captureForegroundProcess("git", {
             args: ["show", "HEAD:toggle.ts"],
             cwd: execution.executionCwd,
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        });
         assert(committed.success, "Core must commit the worker changes, not only change registry status.");
     });
 });
 
-Deno.test("first preparation retry heals its source journal before selecting an unmaterialized worktree", async () => {
+test("first preparation retry heals its source journal before selecting an unmaterialized worktree", async () => {
     await withProject(async (root) => {
         const ready = await readyPlan(root);
         const source = await loadPlan(root, "dark-mode-toggle");
@@ -268,15 +289,18 @@ Deno.test("first preparation retry heals its source journal before selecting an 
         const entry = await settleWorktreeAttempt(root, artifacts);
         assertEquals(await loadPlan(entry.path, "dark-mode-toggle"), null);
         const transitionId = crypto.randomUUID();
-        await Deno.mkdir(getTransitionJournalDir(root), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(getTransitionJournalDir(root), { recursive: true });
+        await fsWriteFile(
             getTransitionJournalPath(root, transitionId),
             JSON.stringify({
                 version: 1,
                 transitionId,
                 operation: "execution_preparation",
                 planName: "dark-mode-toggle",
-                resources: [{ kind: "plan", id: "dark-mode-toggle" }, { kind: "attempt", id: entry.id }],
+                resources: [
+                    { kind: "plan", id: "dark-mode-toggle" },
+                    { kind: "attempt", id: entry.id },
+                ],
                 state: "applying",
                 beforeFacts: { plan: { path: source.path, revision: source.revision, status: "ready_for_work" } },
                 intendedPostconditions: {},
@@ -303,7 +327,7 @@ Deno.test("first preparation retry heals its source journal before selecting an 
     });
 });
 
-Deno.test("status closes an execution workflow when Core archives its authoritative Plan", async () => {
+test("status closes an execution workflow when Core archives its authoritative Plan", async () => {
     await withProject(async (root) => {
         const started = await implementing(root);
         const execution = started.workflow.execution;
@@ -331,7 +355,7 @@ Deno.test("status closes an execution workflow when Core archives its authoritat
 });
 
 for (const checkpoint of ["retained", "missing"] as const) {
-    Deno.test(`fresh preparation reconciles its source journal only when the checkpoint is ${checkpoint}`, async () => {
+    test(`fresh preparation reconciles its source journal only when the checkpoint is ${checkpoint}`, async () => {
         await withProject(async (root) => {
             const ready = await readyPlan(root);
             const oldRecord = await readRecordBytes(root, ready.workflowId);
@@ -339,47 +363,48 @@ for (const checkpoint of ["retained", "missing"] as const) {
             assert(started.ok);
             const execution = started.workflow.execution;
             assert(execution?.executionCwd && execution.worktreeId && execution.worktreeBranch);
-            const git = await new Deno.Command("git", {
+            const git = await captureForegroundProcess("git", {
                 args: ["rev-parse", "HEAD"],
                 cwd: execution.executionCwd,
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+            });
             assert(git.success);
-            const preparationCommit = checkpoint === "retained"
-                ? new TextDecoder().decode(git.stdout).trim()
-                : "0000000000000000000000000000000000000000";
+            const preparationCommit =
+                checkpoint === "retained"
+                    ? new TextDecoder().decode(git.stdout).trim()
+                    : "0000000000000000000000000000000000000000";
             const transitionId = crypto.randomUUID();
-            await Deno.mkdir(getTransitionJournalDir(root), { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(getTransitionJournalDir(root), { recursive: true });
+            await fsWriteFile(
                 getTransitionJournalPath(root, transitionId),
                 JSON.stringify({
                     version: 1,
                     transitionId,
                     operation: "execution_preparation",
                     planName: "dark-mode-toggle",
-                    resources: [{ kind: "plan", id: "dark-mode-toggle" }, {
-                        kind: "attempt",
-                        id: execution.worktreeId,
-                    }],
+                    resources: [
+                        { kind: "plan", id: "dark-mode-toggle" },
+                        {
+                            kind: "attempt",
+                            id: execution.worktreeId,
+                        },
+                    ],
                     state: "applying",
                     intendedPostconditions: { status: "in_progress" },
-                    completedEffects: [{
-                        effect: "execution_preparation_checkpoint_settled",
-                        proof: {
-                            preparationCommit,
-                            worktreeId: execution.worktreeId,
-                            worktreeBranch: execution.worktreeBranch,
+                    completedEffects: [
+                        {
+                            effect: "execution_preparation_checkpoint_settled",
+                            proof: {
+                                preparationCommit,
+                                worktreeId: execution.worktreeId,
+                                worktreeBranch: execution.worktreeBranch,
+                            },
+                            completedAt: new Date().toISOString(),
                         },
-                        completedAt: new Date().toISOString(),
-                    }],
+                    ],
                     updatedAt: new Date().toISOString(),
                 }),
             );
-            await Deno.writeTextFile(
-                join(locateAttachedWorkflows(root).workflowsDir, `${ready.workflowId}.json`),
-                oldRecord,
-            );
+            await fsWriteFile(join(locateAttachedWorkflows(root).workflowsDir, `${ready.workflowId}.json`), oldRecord);
             const retry = await spawnAttachedCli("start_execution", root, executionInput(ready, "retry-start"));
             assertEquals(retry.result.ok, checkpoint === "retained", JSON.stringify(retry.result));
             assertEquals((await listTransitionRecoveryRecords(root)).length, checkpoint === "retained" ? 0 : 1);

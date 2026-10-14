@@ -34,13 +34,13 @@ backend module → logic; a page or component → UI) and state the assumption a
      directory.
 2. **Use one local folder shape:**
    - `README.md` — question, assumptions, run command, and eventual answer.
-   - project-native local task config — `deno.json` in RunWield, `package.json` in npm projects, `Makefile`/`justfile`
+   - project-native local task config — `package.json` in RunWield and npm projects, `Makefile`/`justfile`
      where that is the existing convention.
    - source files for the UI or logic branch.
-3. **Launch with one command.** In RunWield, create a local `deno.json` with a `dev` task and run:
+3. **Launch with one command.** In RunWield, create a local `package.json` with a `scripts.dev` command and run:
 
    ```bash
-   deno task prototype <slug>
+   bun run prototype <slug>
    ```
 
    In other projects, use the equivalent committed generic launcher or document the project-native command in the

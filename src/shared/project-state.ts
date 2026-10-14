@@ -1,9 +1,10 @@
+import fsPromises from "node:fs/promises";
 /**
  * @module shared/project-state
  * Shared project-state detection and user-facing text.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 
 export const EMPTY_PROJECT_DIRECTORY_HEADER = "Empty directory detected";
 export const EMPTY_PROJECT_DIRECTORY_WELCOME_BODY =
@@ -35,8 +36,8 @@ function isDotPrefixedSegment(name: string) {
  */
 export async function isEmptyProjectDirectory(cwd: string) {
     try {
-        const rootInfo = await Deno.lstat(cwd);
-        if (!rootInfo.isDirectory || rootInfo.isSymlink) return false;
+        const rootInfo = await fsPromises.lstat(cwd);
+        if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) return false;
     } catch {
         return false;
     }
@@ -48,7 +49,7 @@ export async function isEmptyProjectDirectory(cwd: string) {
     async function containsMeaningfulFile(dir: string) {
         let entries;
         try {
-            entries = Deno.readDir(dir);
+            entries = await fsPromises.opendir(dir);
         } catch {
             return true;
         }
@@ -60,13 +61,13 @@ export async function isEmptyProjectDirectory(cwd: string) {
                 const path = join(dir, entry.name);
                 let info;
                 try {
-                    info = await Deno.lstat(path);
+                    info = await fsPromises.lstat(path);
                 } catch {
                     return true;
                 }
 
-                if (info.isFile && info.size > 0) return true;
-                if (info.isDirectory && !info.isSymlink) {
+                if (info.isFile() && info.size > 0) return true;
+                if (info.isDirectory() && !info.isSymbolicLink()) {
                     if (await containsMeaningfulFile(path)) return true;
                 }
             }

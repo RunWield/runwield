@@ -1,3 +1,4 @@
+import { serveHttp } from "../../shared/http-server.ts";
 import { createRemoteWorkspaceApp } from "../../ui/workspace/server.js";
 import { createRemoteWorkspaceAdapter } from "../../ui/workspace/server/remote-adapter.js";
 
@@ -14,7 +15,7 @@ export async function withCollaborationServer(
     const app = createRemoteWorkspaceApp({ mode: "remote" });
     const adapter = app.adapter;
     const handler = app.handler();
-    const server = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen: () => {} }, handler);
+    const server = serveHttp({ hostname: "127.0.0.1", port: 0, onListen: () => {} }, handler);
     const address = server.addr;
     if (address.transport !== "tcp") {
         await server.shutdown();

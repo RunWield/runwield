@@ -1,4 +1,10 @@
-import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
+import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertExists, assertRejects } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
@@ -31,18 +37,18 @@ const PRODUCTION_ENTRY_FILES = [
     "../../cmd/load-plan/plan-execution.ts",
 ];
 
-Deno.test("every production entry uses one validation owner", async () => {
+test("every production entry uses one validation owner", async () => {
     for (const relativePath of PRODUCTION_ENTRY_FILES) {
         const path = new URL(relativePath, import.meta.url);
-        const source = await Deno.readTextFile(path);
+        const source = await fsReadFile(path, "utf8");
         assert(
             source.includes("continueWorkflowValidation") || source.includes("runWorkflowValidationToStableBoundary"),
             `${relativePath} does not use the supervisor`,
         );
         assertEquals(source.includes("runValidationLoop"), false, `${relativePath} bypasses the supervisor`);
     }
-    const supervisor = await Deno.readTextFile(new URL("./validation-supervisor.ts", import.meta.url));
-    const composition = await Deno.readTextFile(new URL("./validation.ts", import.meta.url));
+    const supervisor = await fsReadFile(new URL("./validation-supervisor.ts", import.meta.url), "utf8");
+    const composition = await fsReadFile(new URL("./validation.ts", import.meta.url), "utf8");
     assert(composition.includes("export async function continueWorkflowValidation"));
     assert(composition.includes("export async function runWorkflowValidationToStableBoundary"));
     assert(composition.includes("await runValidationAttempt"));
@@ -50,12 +56,12 @@ Deno.test("every production entry uses one validation owner", async () => {
     assert(supervisor.includes("await runValidationLoop"));
     assert(supervisor.includes("continuationPhase: claim.checkpoint.nextPhase"));
     assert(supervisor.includes("prior.lastSettledOperationId === args.taskCompletionId"));
-    const handler = await Deno.readTextFile(new URL("../session/agent-handler.ts", import.meta.url));
+    const handler = await fsReadFile(new URL("../session/agent-handler.ts", import.meta.url), "utf8");
     assert(handler.includes("taskCompletionId: acceptedCompletion.completionId"));
 });
 
-Deno.test("validation checkpoint survives a new Plan load", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-validation-checkpoint-" });
+test("validation checkpoint survives a new Plan load", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-checkpoint-"));
     try {
         await savePlan(root, "demo", "# Demo\n", {
             planId: "plan-demo",
@@ -86,11 +92,11 @@ Deno.test("validation checkpoint survives a new Plan load", async () => {
         assertEquals(value.generation, "generation-one");
         assertEquals(value.repairGeneration, "repair-one");
     } finally {
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("an earlier validation checkpoint remains authoritative only for the same attempt", () => {
+test("an earlier validation checkpoint remains authoritative only for the same attempt", () => {
     const checkpoint = makeValidationCheckpoint({
         attemptId: "wt-demo",
         generation: "generation-one",
@@ -114,8 +120,8 @@ Deno.test("an earlier validation checkpoint remains authoritative only for the s
     assertEquals(validationCheckpointCanResume(futureCheckpoint, "wt-demo", "validated_ci"), false);
 });
 
-Deno.test("semantic feedback commits open Review Issues with the lifecycle transition", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-validation-review-authority-" });
+test("semantic feedback commits open Review Issues with the lifecycle transition", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-review-authority-"));
     try {
         await savePlan(root, "demo", "# Demo\n", {
             planId: "plan-demo",
@@ -137,14 +143,16 @@ Deno.test("semantic feedback commits open Review Issues with the lifecycle trans
                 semanticRound: 1,
                 reviewLedger: {
                     sequence: 1,
-                    items: [{
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        title: "Keep the saved candidate",
-                        requirement: "Non-success outcomes preserve work.",
-                        evidence: "The cleanup path removed it.",
-                    }],
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            title: "Keep the saved candidate",
+                            requirement: "Non-success outcomes preserve work.",
+                            evidence: "The cleanup path removed it.",
+                        },
+                    ],
                 },
                 repairBaselineTree: "tree-before-repair",
             },
@@ -167,12 +175,12 @@ Deno.test("semantic feedback commits open Review Issues with the lifecycle trans
         assertEquals(reopened.attrs.validationCheckpoint?.state, "awaiting_repair");
         assertEquals(readValidationReviewState(reopened.attrs.validationCheckpoint)?.reviewLedger.items[0].id, "R1-1");
     } finally {
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("semantic repair completion is an idempotent mechanical receipt", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-validation-repair-receipt-" });
+test("semantic repair completion is an idempotent mechanical receipt", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-validation-repair-receipt-"));
     try {
         await savePlan(root, "demo", "# Demo\n", {
             planId: "plan-demo",
@@ -194,15 +202,17 @@ Deno.test("semantic repair completion is an idempotent mechanical receipt", asyn
                 semanticRound: 1,
                 reviewLedger: {
                     sequence: 1,
-                    items: [{
-                        id: "R1-1",
-                        openedInRound: 1,
-                        resolvedInRound: null,
-                        status: "new",
-                        title: "Missing guard",
-                        requirement: "Step 1",
-                        evidence: "a.ts",
-                    }],
+                    items: [
+                        {
+                            id: "R1-1",
+                            openedInRound: 1,
+                            resolvedInRound: null,
+                            status: "new",
+                            title: "Missing guard",
+                            requirement: "Step 1",
+                            evidence: "a.ts",
+                        },
+                    ],
                 },
                 repairBaselineTree: "tree-before-repair",
             },
@@ -246,12 +256,12 @@ Deno.test("semantic repair completion is an idempotent mechanical receipt", asyn
             "does not match",
         );
     } finally {
-        await Deno.remove(root, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true }).catch(() => {});
     }
 });
 
-Deno.test("repair completion survives process loss and resumes once", () => {
-    const root = Deno.makeTempDirSync({ prefix: "runwield-validation-owner-" });
+test("repair completion survives process loss and resumes once", () => {
+    const root = fsMkdtempSync(join(tmpdir(), "runwield-validation-owner-"));
     try {
         const manager = SessionManager.inMemory(root);
         const first = new HostedSession({ id: "first", cwd: root, sessionManager: hostedSessionManager(manager) });
@@ -297,6 +307,6 @@ Deno.test("repair completion survives process loss and resumes once", () => {
         assertEquals(listPendingTaskCompletions(resumed), []);
         assertEquals(claimPendingTaskCompletion(resumed, rootAgent), null);
     } finally {
-        Deno.removeSync(root, { recursive: true });
+        fsRmSync(root, { recursive: true });
     }
 });

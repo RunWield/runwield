@@ -1,14 +1,20 @@
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { rm as fsRm, readFile as fsReadFile } from "node:fs/promises";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
+import { defineCommittedGitFixture } from "../git-test-fixture.ts";
+import { savePlan } from "../../plan-store.js";
+import { runAttachedOperation } from "./coordinator.ts";
+import { type AttachedJsonObject, type AttachedOperationName, type AttachedOperationResult } from "./operations.ts";
+import { locateAttachedWorkflows } from "./record-store.ts";
+import process from "node:process";
+
 /**
  * @module shared/attached/attached-test-fixture
  * Operation inputs and a real `wld attached` subprocess runner for Attached tests.
  */
-
-import { fromFileUrl, join } from "@std/path";
-import { defineCommittedGitFixture } from "../git-test-fixture.ts";
-import { savePlan } from "../../plan-store.js";
-import { runAttachedOperation } from "./coordinator.ts";
-import type { AttachedJsonObject, AttachedOperationName, AttachedOperationResult } from "./operations.ts";
-import { locateAttachedWorkflows } from "./record-store.ts";
 
 export const REPO_ROOT = fromFileUrl(new URL("../../../", import.meta.url));
 export const CLI_PATH = join(REPO_ROOT, "src", "cli.ts");
@@ -43,8 +49,12 @@ export function triageReportInput(options: TriageReportInputOptions): AttachedJs
         evidence: EVIDENCE,
         payload: {
             actionId: options.actionId,
-            outcome: options.outcome ??
-                { routingIntent: "PLANNED_CHANGE", workKind: "FEATURE", complexity: "MEDIUM", summary: "Add a toggle" },
+            outcome: options.outcome ?? {
+                routingIntent: "PLANNED_CHANGE",
+                workKind: "FEATURE",
+                complexity: "MEDIUM",
+                summary: "Add a toggle",
+            },
         },
     };
 }
@@ -71,7 +81,7 @@ export async function withProject(fn: (projectRoot: string) => Promise<void>): P
     try {
         await fn(projectRoot);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => undefined);
+        await fsRm(projectRoot, { recursive: true }).catch(() => undefined);
     }
 }
 
@@ -126,7 +136,7 @@ export function planWrittenInput(options: PlanWrittenInputOptions): AttachedJson
 }
 
 export async function readRecordBytes(projectRoot: string, workflowId: string): Promise<string> {
-    return await Deno.readTextFile(join(locateAttachedWorkflows(projectRoot).workflowsDir, `${workflowId}.json`));
+    return await fsReadFile(join(locateAttachedWorkflows(projectRoot).workflowsDir, `${workflowId}.json`), "utf8");
 }
 
 export interface CliRun {
@@ -141,17 +151,27 @@ export async function spawnAttachedCli(
     projectRoot: string,
     input: AttachedJsonObject,
 ): Promise<CliRun> {
-    const child = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "--quiet", "--no-check", "--config", DENO_CONFIG_PATH, CLI_PATH, "attached", operation],
+    const child = spawnNativeProcess(process.execPath, {
+        args: runtimeSourceArgs([
+            "run",
+            "-A",
+            "--quiet",
+            "--no-check",
+            "--config",
+            DENO_CONFIG_PATH,
+            CLI_PATH,
+            "attached",
+            operation,
+        ]),
         cwd: projectRoot,
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     const writer = child.stdin.getWriter();
     await writer.write(new TextEncoder().encode(JSON.stringify(input)));
     await writer.close();
-    const finished = await child.output();
+    const finished = await collectProcessOutput(child);
     const stdout = new TextDecoder().decode(finished.stdout);
     const stderr = new TextDecoder().decode(finished.stderr);
     try {

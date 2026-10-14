@@ -147,10 +147,15 @@ export function parseDiffFiles(diffText: string): DiffFileEntry[] {
 
 function decodeDiffPath(path: string): string {
     if (!path.startsWith('"')) return path;
-    const escapes = new Map([["a", "\x07"], ["b", "\b"], ["t", "\t"], ["n", "\n"], ["v", "\v"], ["f", "\f"], [
-        "r",
-        "\r",
-    ]]);
+    const escapes = new Map([
+        ["a", "\x07"],
+        ["b", "\b"],
+        ["t", "\t"],
+        ["n", "\n"],
+        ["v", "\v"],
+        ["f", "\f"],
+        ["r", "\r"],
+    ]);
     const bytes = (path.slice(1, -1).match(/\\[0-7]{3}|\\.|[^\\]+/g) || []).flatMap((part) => {
         if (/^\\[0-7]{3}$/.test(part)) return [parseInt(part.slice(1), 8)];
         const text = part.startsWith("\\") ? escapes.get(part.slice(1)) || part.slice(1) : part;
@@ -178,9 +183,9 @@ export function formatChangedFileList(entries: DiffFileEntry[]): string {
     const totalAdded = entries.reduce((sum, e) => sum + e.hunkLines.added, 0);
     const totalRemoved = entries.reduce((sum, e) => sum + e.hunkLines.removed, 0);
     const lines = [
-        `**Total:** ${entries.length} file(s), ${
-            formatByteSize(totalBytes)
-        } diff, ${totalAdded} added, ${totalRemoved} removed lines.`,
+        `**Total:** ${entries.length} file(s), ${formatByteSize(
+            totalBytes,
+        )} diff, ${totalAdded} added, ${totalRemoved} removed lines.`,
         "",
     ];
 
@@ -205,14 +210,17 @@ const LOW_REVIEW_SIGNAL_PATTERNS = [
 
 export function summarizeDiffForReview(entries: DiffFileEntry[]): DiffReviewStats {
     const paths = entries.map((entry) => entry.path);
-    const lowSignalOnly = entries.length > 0 &&
+    const lowSignalOnly =
+        entries.length > 0 &&
         entries.every((entry) => LOW_REVIEW_SIGNAL_PATTERNS.some((pattern) => pattern.test(entry.path)));
     const meaningfulAreas = [
-        ...new Set(entries.flatMap((entry) => {
-            if (LOW_REVIEW_SIGNAL_PATTERNS.some((pattern) => pattern.test(entry.path))) return [];
-            const [first, second] = entry.path.split("/");
-            return first === "src" && second ? [`src/${second}`] : [first || entry.path];
-        })),
+        ...new Set(
+            entries.flatMap((entry) => {
+                if (LOW_REVIEW_SIGNAL_PATTERNS.some((pattern) => pattern.test(entry.path))) return [];
+                const [first, second] = entry.path.split("/");
+                return first === "src" && second ? [`src/${second}`] : [first || entry.path];
+            }),
+        ),
     ].sort();
     const addedLines = entries.reduce((sum, entry) => sum + entry.hunkLines.added, 0);
     const removedLines = entries.reduce((sum, entry) => sum + entry.hunkLines.removed, 0);
@@ -234,7 +242,7 @@ export function getFileDiff(entries: DiffFileEntry[], path: string, options: Dif
     }
 
     const offsetBytes = options.offsetBytes || 0;
-    const maxBytes = options.maxBytes || (64 * 1024);
+    const maxBytes = options.maxBytes || 64 * 1024;
 
     if (offsetBytes >= entry.byteLength) {
         return {
@@ -291,10 +299,9 @@ export function buildDiffInspectionSection(diffText: string, options: DiffInspec
     const lines = [
         "### Changed Files",
         "",
-        `The ${options.scope === "repair" ? "repair" : "workflow"} diff is ${
-            formatByteSize(totalBytes)
-        } across ${entries.length} file(s). It is not inlined here —` +
-        " read it with `review_diff`.",
+        `The ${options.scope === "repair" ? "repair" : "workflow"} diff is ${formatByteSize(
+            totalBytes,
+        )} across ${entries.length} file(s). It is not inlined here —` + " read it with `review_diff`.",
         "",
         formatChangedFileList(entries),
         "",
@@ -302,9 +309,9 @@ export function buildDiffInspectionSection(diffText: string, options: DiffInspec
         "",
         `1. Start with \`review_diff(command: "list"${scopeArg})\` to see everything in this scope.`,
         `2. Read every listed file with \`review_diff(command: "show"${scopeArg}, path: "<file>")\`. Large per-file diffs come back in` +
-        " bounded chunks; page through them with `offsetBytes`.",
+            " bounded chunks; page through them with `offsetBytes`.",
         "3. Use `read`, `grep`, `find`, and `ls` for surrounding context: the current contents around changed lines," +
-        " related modules, type definitions, and tests the change touches.",
+            " related modules, type definitions, and tests the change touches.",
     ];
 
     if (options.hasRepairScope) {
@@ -354,8 +361,7 @@ function readParsedReviewDiff(
     const details: ReviewDiffDetails = { command: params.command || "", scope };
     if (scope === "repair" && !hasRepairScope) {
         return {
-            text:
-                "No repair scope in this round: nothing has been repaired yet, so there is no repair diff to inspect. Use scope 'full'.",
+            text: "No repair scope in this round: nothing has been repaired yet, so there is no repair diff to inspect. Use scope 'full'.",
             details: { ...details, available: false },
         };
     }
@@ -377,9 +383,9 @@ function readParsedReviewDiff(
         for (const s of summaries) {
             const status = s.truncated ? `Trucated (max ${formatByteSize(64 * 1024)} shown)` : "Yes";
             lines.push(
-                `| \`${s.path}\` | ${s.changeType} | ${s.hunkLines.added} | ${s.hunkLines.removed} | ${
-                    formatByteSize(s.byteLength)
-                } | ${status} |`,
+                `| \`${s.path}\` | ${s.changeType} | ${s.hunkLines.added} | ${s.hunkLines.removed} | ${formatByteSize(
+                    s.byteLength,
+                )} | ${status} |`,
             );
         }
         lines.push(
@@ -399,11 +405,11 @@ function readParsedReviewDiff(
         if (page.truncated) {
             content.push(
                 "",
-                `[Diff truncated at ${
-                    formatByteSize(maxBytes)
-                }. Use offsetBytes=${page.nextOffsetBytes} to read next chunk. ${
-                    formatByteSize(page.remainingBytes)
-                } remaining.]`,
+                `[Diff truncated at ${formatByteSize(
+                    maxBytes,
+                )}. Use offsetBytes=${page.nextOffsetBytes} to read next chunk. ${formatByteSize(
+                    page.remainingBytes,
+                )} remaining.]`,
             );
         }
         content.push("", "```diff", page.content, "```");

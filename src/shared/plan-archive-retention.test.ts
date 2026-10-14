@@ -1,5 +1,8 @@
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../testing/assertions.ts";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { archivePlan, savePlan } from "../plan-store.js";
 import {
     type ArchivedPlanUnit,
@@ -11,7 +14,7 @@ function unit(name: string, planId: string | undefined, archivedAt: string | und
     return { name, planId, archivedAt, paths: [] };
 }
 
-Deno.test("archive retention selection excludes ineligible units from deletion and keepLast slots", () => {
+test("archive retention selection excludes ineligible units from deletion and keepLast slots", () => {
     const now = new Date("2026-09-01T00:00:00Z");
     const old = "2026-08-01T00:00:00Z";
     const recent = "2026-08-30T00:00:00Z";
@@ -34,7 +37,7 @@ Deno.test("archive retention selection excludes ineligible units from deletion a
     assertEquals(selection.ineligible.map((entry) => entry.name), ["no-work-record-a", "no-plan-id"]);
 });
 
-Deno.test("archive retention selection supports zero-day retention and missing archivedAt", () => {
+test("archive retention selection supports zero-day retention and missing archivedAt", () => {
     const now = new Date("2026-09-01T00:00:00Z");
 
     const selection = selectArchivedPlansForPrune({
@@ -50,8 +53,8 @@ Deno.test("archive retention selection supports zero-day retention and missing a
     assertEquals(selection.due.map((entry) => entry.name), ["just-now", "missing-date"]);
 });
 
-Deno.test("collectArchivedPlanUnits groups an Epic parent, child Plans, and manual QA artifact", async () => {
-    const cwd = await Deno.makeTempDir({ prefix: "runwield-archive-retention-units-" });
+test("collectArchivedPlanUnits groups an Epic parent, child Plans, and manual QA artifact", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-archive-retention-units-"));
     try {
         await savePlan(cwd, "epic", "# Epic", {
             classification: "PROJECT",
@@ -64,8 +67,8 @@ Deno.test("collectArchivedPlanUnits groups an Epic parent, child Plans, and manu
             status: "verified",
             planId: "child-id",
         });
-        await Deno.mkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
-        await Deno.writeTextFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "# QA\n");
+        await fsMkdir(join(cwd, "docs", "plans", "epic"), { recursive: true });
+        await fsWriteFile(join(cwd, "docs", "plans", "epic", "manual-qa.md"), "# QA\n");
 
         await archivePlan(cwd, "epic/01-child", { now: "2026-08-01T00:00:00Z" });
         await archivePlan(cwd, "epic", { now: "2026-08-01T00:00:00Z" });
@@ -82,6 +85,6 @@ Deno.test("collectArchivedPlanUnits groups an Epic parent, child Plans, and manu
             ],
         }]);
     } finally {
-        await Deno.remove(cwd, { recursive: true });
+        await fsRm(cwd, { recursive: true });
     }
 });

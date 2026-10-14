@@ -1,16 +1,20 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { captureForegroundProcess } from "../../shared/captured-process.ts";
+import { test } from "node:test";
+import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { runIsolatedAgentSession } from "../../shared/session/session.js";
 import { createDelegateAgentTool } from "../delegate-agent.ts";
 
-Deno.test("foreground and background delegated model turns inherit parent bash limits", async () => {
+test("foreground and background delegated model turns inherit parent bash limits", async () => {
     await withRuntimeCommandFixture("delegate-bash-policy-", async ({ projectRoot, setModelResponseFactories }) => {
-        const init = await new Deno.Command("git", { cwd: projectRoot, args: ["init", "-b", "main"] }).output();
+        const init = await captureForegroundProcess("git", { cwd: projectRoot, args: ["init", "-b", "main"] });
         assert(init.success);
-        await Deno.writeTextFile(join(projectRoot, "inspect-me.txt"), "inspect marker\n");
+        await fsWriteFile(join(projectRoot, "inspect-me.txt"), "inspect marker\n");
         const session = new HostedSession({ id: crypto.randomUUID(), cwd: projectRoot });
         const makeTool = (bashAllowedCommands?: readonly string[]) =>
             createDelegateAgentTool({
@@ -45,7 +49,7 @@ Deno.test("foreground and background delegated model turns inherit parent bash l
                     assert(result.details?.task_id);
                     const settled = await session.backgroundTasks.wait(result.details.task_id);
                     assertEquals(settled.state, "completed", JSON.stringify(settled));
-                    assertStringIncludes(await Deno.readTextFile(settled.log_path), "inspection complete");
+                    assertStringIncludes(await fsReadFile(settled.log_path, "utf8"), "inspection complete");
                 }
                 assertStringIncludes(toolResult, "inspect-me.txt");
             }
@@ -82,7 +86,7 @@ Deno.test("foreground and background delegated model turns inherit parent bash l
                 {} as Parameters<typeof unrestricted.execute>[4],
             );
             assertEquals(write.details?.ok, true, JSON.stringify(write.details));
-            assertEquals((await Deno.stat(join(projectRoot, "write-result"))).isFile, true);
+            assertEquals((await fsStat(join(projectRoot, "write-result"))).isFile(), true);
         } finally {
             await session.dispose();
         }

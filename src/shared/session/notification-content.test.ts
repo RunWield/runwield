@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     buildSharedNotificationTitle,
     getNotificationBaseMessage,
@@ -9,7 +10,7 @@ import {
     normalizeNotificationPolicy,
 } from "./notification-content.ts";
 
-Deno.test("notification content owns all event labels and base messages", () => {
+test("notification content owns all event labels and base messages", () => {
     assertEquals(getNotificationEventLabel("agentStopped"), "Agent stopped");
     assertEquals(getNotificationEventLabel("planWritten"), "Plan ready");
     assertEquals(getNotificationEventLabel("userInterview"), "Input requested");
@@ -23,7 +24,7 @@ Deno.test("notification content owns all event labels and base messages", () => 
     );
 });
 
-Deno.test("notification policy defaults on and only literal false disables", () => {
+test("notification policy defaults on and only literal false disables", () => {
     const malformed = JSON.parse('{"enabled":"no","events":{"planWritten":false}}');
     assertEquals(normalizeNotificationPolicy(malformed), {
         enabled: true,
@@ -39,7 +40,7 @@ Deno.test("notification policy defaults on and only literal false disables", () 
     assertEquals(normalizeNotificationPolicy({ suppressWhenFocused: false }).suppressWhenFocused, false);
 });
 
-Deno.test("browser notification policy exposes only browser-applicable settings", () => {
+test("browser notification policy exposes only browser-applicable settings", () => {
     assertEquals(
         normalizeBrowserNotificationPolicy({
             enabled: false,
@@ -50,13 +51,13 @@ Deno.test("browser notification policy exposes only browser-applicable settings"
     );
 });
 
-Deno.test("runtime attention vocabulary excludes TUI-only compaction events", () => {
+test("runtime attention vocabulary excludes TUI-only compaction events", () => {
     assertEquals(isNotificationEventName("compactionFinished"), true);
     assertEquals(isRuntimeAttentionNotificationEventName("agentStopped"), true);
     assertEquals(isRuntimeAttentionNotificationEventName("compactionFinished"), false);
 });
 
-Deno.test("shared title composes agent, label, and Session name", () => {
+test("shared title composes agent, label, and Session name", () => {
     assertEquals(
         buildSharedNotificationTitle("agentStopped", "Demo Session", "Guide"),
         "Guide: Agent stopped — Demo Session",

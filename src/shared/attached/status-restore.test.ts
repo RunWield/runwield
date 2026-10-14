@@ -1,4 +1,6 @@
-import { assert, assertEquals } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
 import {
     activateInput,
     pendingTriage,
@@ -9,7 +11,7 @@ import {
     withProject,
 } from "./attached-test-fixture.ts";
 
-Deno.test("status without a workflowId finds the latest open workflow and skips closed requests", async () => {
+test("status without a workflowId finds the latest open workflow and skips closed requests", async () => {
     await withProject(async (root) => {
         const review = await submitReview(root);
         const input = activateInput("second-activation");
@@ -35,7 +37,7 @@ Deno.test("status without a workflowId finds the latest open workflow and skips 
     });
 });
 
-Deno.test("status without a workflowId never restores another project's request", async () => {
+test("status without a workflowId never restores another project's request", async () => {
     await withProject(async (first) => {
         await submitReview(first);
         await withProject(async (other) => {

@@ -1,5 +1,9 @@
-import { parse as parseJsonc } from "@std/jsonc";
-import { join } from "@std/path";
+import { platform } from "node:process";
+import { captureForegroundProcess } from "../captured-process.ts";
+import { type Stats } from "node:fs";
+import { lstat as fsLstat, readFile as fsReadFile } from "node:fs/promises";
+import { parse as parseJsonc } from "../jsonc.ts";
+import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
@@ -47,7 +51,9 @@ function isJsonMap(value: JsonValue): value is JsonMap {
 }
 
 function isOwnerOnlyMode(mode: number | null): boolean {
-    if (mode === null) return true;
+    // Windows node:fs exposes synthetic mode bits, unlike Deno's null mode.
+    // The POSIX permission gate cannot infer Windows ACL access from those bits.
+    if (platform === "win32" || mode === null) return true;
     return (mode & 0o077) === 0;
 }
 
@@ -61,19 +67,19 @@ function warning(
     return { source, stage, message, ...(filePath ? { filePath } : {}), ...(serverName ? { serverName } : {}) };
 }
 
-async function safeFileInfo(path: string): Promise<Deno.FileInfo | null> {
+async function safeFileInfo(path: string): Promise<Stats | null> {
     try {
-        const info = await Deno.lstat(path);
+        const info = await fsLstat(path);
         return info;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
 
 async function runGit(cwd: string, args: string[]): Promise<boolean> {
     try {
-        const output = await new Deno.Command("git", { cwd, args, stdout: "null", stderr: "null" }).output();
+        const output = await captureForegroundProcess("git", { cwd, args });
         return output.code === 0;
     } catch {
         return false;
@@ -86,7 +92,7 @@ async function isSafeProjectMcpFile(
 ): Promise<{ ok: boolean; warning?: McpWarning }> {
     const info = await safeFileInfo(filePath);
     if (!info) return { ok: false };
-    if (!info.isFile || info.isSymlink) {
+    if (!info.isFile() || info.isSymbolicLink()) {
         return {
             ok: false,
             warning: warning("project", "file", "Project MCP configuration is not a regular file.", filePath),
@@ -183,7 +189,7 @@ async function readConfigFile(
 ): Promise<{ entries: Map<string, ParsedServerEntry>; warning?: McpWarning }> {
     const info = await safeFileInfo(path);
     if (!info) return { entries: new Map() };
-    if (!info.isFile || info.isSymlink) {
+    if (!info.isFile() || info.isSymbolicLink()) {
         return {
             entries: new Map(),
             warning: warning(source, "file", "MCP configuration is not a regular file.", path),
@@ -196,7 +202,7 @@ async function readConfigFile(
         };
     }
     try {
-        const text = await Deno.readTextFile(path);
+        const text = await fsReadFile(path, "utf8");
         const parsed = parseJsonc(text) as JsonValue;
         if (!isJsonMap(parsed)) throw new Error(`${path} must contain an object`);
         const servers = parsed.mcpServers;

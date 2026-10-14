@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import stripAnsi from "strip-ansi";
 import {
     composePinnedSessionSidebar,
@@ -22,7 +23,7 @@ const ARTIFACT = {
     sourceSegmentId: "segment-1",
 };
 
-Deno.test("TUI Session Sidebar defaults to workflow and cycles through shared tabs", () => {
+test("TUI Session Sidebar defaults to workflow and cycles through shared tabs", () => {
     const snapshot = {
         name: "Demo Session",
         busy: true,
@@ -73,7 +74,7 @@ Deno.test("TUI Session Sidebar defaults to workflow and cycles through shared ta
     assertStringIncludes(artifacts, "alt+] open artifact");
 });
 
-Deno.test("TUI Session Sidebar shows the saved triage type and full summary", () => {
+test("TUI Session Sidebar shows the saved triage type and full summary", () => {
     const sidebar = new TuiSessionSidebar(
         () => "triaged-session",
         () => ({
@@ -94,11 +95,11 @@ Deno.test("TUI Session Sidebar shows the saved triage type and full summary", ()
     assertStringIncludes(session, "without changing other fields.");
 });
 
-Deno.test("TUI quick fix workflow shows its current CI step without Plan stages or an unrelated prompt", () => {
+test("TUI quick fix workflow shows its current CI step without Plan stages or an unrelated prompt", () => {
     const snapshot = {
         managed: { generation: 1 },
         busy: true,
-        workflowContext: { routingIntent: "QUICK_FIX", liveQuestion: true },
+        workflowContext: { routingIntent: "QUICK_FIX", liveQuestion: false },
         validationProgress: {
             kind: "mechanical",
             outcome: "running",
@@ -108,17 +109,17 @@ Deno.test("TUI quick fix workflow shows its current CI step without Plan stages 
     } as const;
     const sidebar = new TuiSessionSidebar(() => "quick-fix-session", () => snapshot);
     const projection = tuiSessionSidebarProjection(snapshot);
-    assertEquals(projection.workflow.currentStage?.label, "Tests and CI");
-    assertEquals(projection.workflow.action?.kind, "open_session");
+    assertEquals(projection.workflow.currentStage?.label, "Verification Command");
+    assertEquals(projection.workflow.action, null);
     const workflow = stripAnsi(sidebar.render(34).join("\n"));
     assertStringIncludes(workflow, "QUICK FIX");
-    assertStringIncludes(workflow, "● Tests and CI");
+    assertStringIncludes(workflow, "● Verification Command");
     assertEquals(workflow.includes("Planning"), false);
     assertEquals(workflow.includes("AI review"), false);
     assertEquals(workflow.includes("Answer agent"), false);
 });
 
-Deno.test("quick fix workflow follows repair and manual QA progress", () => {
+test("quick fix workflow follows repair and manual QA progress", () => {
     const base = {
         managed: { generation: 1 },
         busy: true,
@@ -147,13 +148,45 @@ Deno.test("quick fix workflow follows repair and manual QA progress", () => {
     );
 });
 
-Deno.test("artifact reader shortcut does not consume the sidebar cycle key or ordinary typing", () => {
+test("workflow sidebar follows question state independently of running CI", () => {
+    for (const routingIntent of ["QUICK_FIX", "PLANNED_CHANGE"]) {
+        const snapshot = {
+            managed: { generation: 1 },
+            busy: true,
+            workflowContext: { routingIntent, planName: "example", liveQuestion: true },
+            validationProgress: {
+                kind: "workflow",
+                outcome: "running",
+                stage: "ci",
+                checks: { ci: "running", semanticReview: "pending", humanReview: "pending", merge: "pending" },
+            },
+        } as const;
+        const waiting = tuiSessionSidebarProjection(snapshot);
+        assertEquals(waiting.workflow.action, null);
+        assertEquals(
+            waiting.workflow.currentStage?.detail,
+            "The agent needs your answer in the Session before continuing.",
+        );
+        const answered = tuiSessionSidebarProjection({
+            ...snapshot,
+            workflowContext: { ...snapshot.workflowContext, liveQuestion: false },
+        });
+        assertEquals(answered.workflow.currentStage?.id, "mechanical");
+        assertEquals(answered.workflow.action, null);
+        assertEquals(
+            answered.workflow.currentStage?.detail,
+            "Run the configured verification command.",
+        );
+    }
+});
+
+test("artifact reader shortcut does not consume the sidebar cycle key or ordinary typing", () => {
     assertEquals(isSessionArtifactOpenKey("\u001b]"), true);
     assertEquals(isSessionArtifactOpenKey("\u001d"), false);
     assertEquals(isSessionArtifactOpenKey("]"), false);
 });
 
-Deno.test("TUI Session Sidebar reuses the snapshot already loaded for the frame", () => {
+test("TUI Session Sidebar reuses the snapshot already loaded for the frame", () => {
     let snapshotReads = 0;
     const sidebar = new TuiSessionSidebar(
         () => "session-1",
@@ -167,7 +200,7 @@ Deno.test("TUI Session Sidebar reuses the snapshot already loaded for the frame"
     assertStringIncludes(stripAnsi(lines.join("\n")), "Cached Session");
 });
 
-Deno.test("shared TUI projection defaults idle Sessions without a Plan to Session", () => {
+test("shared TUI projection defaults idle Sessions without a Plan to Session", () => {
     const projection = tuiSessionSidebarProjection({ managed: { generation: 0 }, artifacts: [] });
     assertEquals(projection.defaultTab, "session");
     assertEquals(projection.workflow.active, false);
@@ -175,7 +208,7 @@ Deno.test("shared TUI projection defaults idle Sessions without a Plan to Sessio
     assertEquals(projection.session.generation, "0");
 });
 
-Deno.test("TUI Session Sidebar hides Epic for a standalone Plan", () => {
+test("TUI Session Sidebar hides Epic for a standalone Plan", () => {
     const sidebar = new TuiSessionSidebar(
         () => "session-standalone",
         () => ({
@@ -190,7 +223,7 @@ Deno.test("TUI Session Sidebar hides Epic for a standalone Plan", () => {
     assertEquals(workflow.includes("EPIC"), false);
 });
 
-Deno.test("TUI Session Sidebar cycles once for ctrl+] key-down only", () => {
+test("TUI Session Sidebar cycles once for ctrl+] key-down only", () => {
     assertEquals(isSessionSidebarCycleKey("\x1d"), true);
     assertEquals(isSessionSidebarCycleKey("\x1b[93;5u"), true);
     assertEquals(isSessionSidebarCycleKey("\x1b[93;5:1u"), true);
@@ -199,7 +232,7 @@ Deno.test("TUI Session Sidebar cycles once for ctrl+] key-down only", () => {
     assertEquals(isSessionSidebarCycleKey("]"), false);
 });
 
-Deno.test("TUI Session Sidebar exposes a keyboard action without changing draft keys", () => {
+test("TUI Session Sidebar exposes a keyboard action without changing draft keys", () => {
     assertEquals(isSessionSidebarActionKey("\x1b[13;5u"), true);
     assertEquals(isSessionSidebarActionKey("\r"), false);
     const sidebar = new TuiSessionSidebar(
@@ -209,11 +242,11 @@ Deno.test("TUI Session Sidebar exposes a keyboard action without changing draft 
             workflowContext: { planName: "needs-answer", liveQuestion: true },
         }),
     );
-    assertEquals(sidebar.currentAction()?.kind, "answer_agent");
-    assertStringIncludes(stripAnsi(sidebar.render(42).join("\n")), "ctrl+enter runs this action");
+    assertEquals(sidebar.currentAction(), null);
+    assertEquals(stripAnsi(sidebar.render(42).join("\n")).includes("ctrl+enter"), false);
 });
 
-Deno.test("TUI Session Sidebar stays at the top of the visible transcript viewport", () => {
+test("TUI Session Sidebar stays at the top of the visible transcript viewport", () => {
     const mainLines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
     const lines = composePinnedSessionSidebar(mainLines, ["sidebar top", "sidebar detail"], 12, 5);
 
@@ -224,7 +257,7 @@ Deno.test("TUI Session Sidebar stays at the top of the visible transcript viewpo
     assertEquals(lines[8].endsWith("sidebar detail"), true);
 });
 
-Deno.test("TUI Session Sidebar reserves a full-width composer and footer below both panes", () => {
+test("TUI Session Sidebar reserves a full-width composer and footer below both panes", () => {
     const mainLines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
     const lines = composePinnedSessionSidebar(
         mainLines,

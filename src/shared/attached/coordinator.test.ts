@@ -1,9 +1,21 @@
-import { assert, assertEquals } from "@std/assert";
-import { dirname, join } from "@std/path";
+import process from "node:process";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { hostname } from "node:os";
+import { test } from "node:test";
+import {
+    stat as fsStat,
+    writeFile as fsWriteFile,
+    rename as fsRename,
+    realpath as fsRealpath,
+    rm as fsRm,
+} from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { WORK_KINDS } from "../../constants.js";
 import { git } from "../git-test-fixture.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
-import type { AttachedJsonObject } from "./operations.ts";
+import { type AttachedJsonObject } from "./operations.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows, writeAttachedWorkflowRecord } from "./record-store.ts";
 import {
     activateInput,
@@ -21,7 +33,7 @@ async function activated(projectRoot: string) {
     return { result, ...pendingTriage(result) };
 }
 
-Deno.test("activate saves revision 1 with a pending Router Triage action", async () => {
+test("activate saves revision 1 with a pending Router Triage action", async () => {
     await withProject(async (projectRoot) => {
         const { result } = await activated(projectRoot);
         assert(result.ok);
@@ -38,7 +50,7 @@ Deno.test("activate saves revision 1 with a pending Router Triage action", async
 });
 
 for (const workKind of WORK_KINDS) {
-    Deno.test(`a PLANNED_CHANGE ${workKind} outcome moves the workflow to planning`, async () => {
+    test(`a PLANNED_CHANGE ${workKind} outcome moves the workflow to planning`, async () => {
         await withProject(async (projectRoot) => {
             const triage = await activated(projectRoot);
             const outcome = { routingIntent: "PLANNED_CHANGE", workKind, complexity: "LOW", summary: "planned" };
@@ -60,7 +72,7 @@ for (const workKind of WORK_KINDS) {
 }
 
 for (const routingIntent of ["INQUIRY", "QUICK_FIX", "PROJECT"]) {
-    Deno.test(`a ${routingIntent} outcome closes the workflow as unsupported in this Preview`, async () => {
+    test(`a ${routingIntent} outcome closes the workflow as unsupported in this Preview`, async () => {
         await withProject(async (projectRoot) => {
             const triage = await activated(projectRoot);
             const outcome = { routingIntent, complexity: "LOW", summary: "not planned here" };
@@ -73,7 +85,7 @@ for (const routingIntent of ["INQUIRY", "QUICK_FIX", "PROJECT"]) {
     });
 }
 
-Deno.test("repeating an accepted triage_report returns the saved result and changes nothing", async () => {
+test("repeating an accepted triage_report returns the saved result and changes nothing", async () => {
     await withProject(async (projectRoot) => {
         const triage = await activated(projectRoot);
         const first = await run("triage_report", projectRoot, triageReportInput(triage));
@@ -84,7 +96,7 @@ Deno.test("repeating an accepted triage_report returns the saved result and chan
     });
 });
 
-Deno.test("repeating an accepted activation returns the same workflow", async () => {
+test("repeating an accepted activation returns the same workflow", async () => {
     await withProject(async (projectRoot) => {
         const first = await run("activate", projectRoot, activateInput("op-retry"));
         const repeated = await run("activate", projectRoot, activateInput("op-retry"));
@@ -92,7 +104,7 @@ Deno.test("repeating an accepted activation returns the same workflow", async ()
     });
 });
 
-Deno.test("a different operation against an old revision is rejected", async () => {
+test("a different operation against an old revision is rejected", async () => {
     await withProject(async (projectRoot) => {
         const triage = await activated(projectRoot);
         await run("triage_report", projectRoot, triageReportInput(triage));
@@ -164,7 +176,7 @@ const REJECTION_CASES: RejectionCase[] = [
 ];
 
 for (const rejectionCase of REJECTION_CASES) {
-    Deno.test(`triage_report rejects ${rejectionCase.name} and leaves the record unchanged`, async () => {
+    test(`triage_report rejects ${rejectionCase.name} and leaves the record unchanged`, async () => {
         await withProject(async (projectRoot) => {
             const triage = await activated(projectRoot);
             const bytes = await readRecordBytes(projectRoot, triage.workflowId);
@@ -175,7 +187,7 @@ for (const rejectionCase of REJECTION_CASES) {
     });
 }
 
-Deno.test("a record write with a stale expected revision is a conflict and leaves the file unchanged", async () => {
+test("a record write with a stale expected revision is a conflict and leaves the file unchanged", async () => {
     await withProject(async (projectRoot) => {
         const triage = await activated(projectRoot);
         const location = locateAttachedWorkflows(projectRoot);
@@ -189,7 +201,7 @@ Deno.test("a record write with a stale expected revision is a conflict and leave
     });
 });
 
-Deno.test("concurrent triage_report calls in one process accept exactly one outcome", async () => {
+test("concurrent triage_report calls in one process accept exactly one outcome", async () => {
     await withProject(async (projectRoot) => {
         const triage = await activated(projectRoot);
         const results = await Promise.all(
@@ -202,7 +214,7 @@ Deno.test("concurrent triage_report calls in one process accept exactly one outc
                         operationId: `op-concurrent-${index}`,
                         outcome: { routingIntent, complexity: "LOW", summary: routingIntent },
                     }),
-                )
+                ),
             ),
         );
         assertEquals(results.filter((result) => result.ok).length, 1, JSON.stringify(results));
@@ -212,54 +224,72 @@ Deno.test("concurrent triage_report calls in one process accept exactly one outc
     });
 });
 
-Deno.test("activate and Triage write nothing to an uninitialized repository", async () => {
+test("activate and Triage write nothing to an uninitialized repository", async () => {
     await withProject(async (projectRoot) => {
         const triage = await activated(projectRoot);
         await run("triage_report", projectRoot, triageReportInput(triage));
         await run("status", projectRoot, { workflowId: triage.workflowId });
         assertEquals(await git(projectRoot, ["status", "--porcelain", "--ignored"]), "");
-        assertEquals(await Deno.stat(join(projectRoot, ".wld")).then(() => true, () => false), false);
+        assertEquals(
+            await fsStat(join(projectRoot, ".wld")).then(
+                () => true,
+                () => false,
+            ),
+            false,
+        );
     });
 });
 
-Deno.test("a lock from a dead process and a leftover temporary file do not block the next operation", async () => {
+test("a lock from a dead process and a leftover temporary file do not block the next operation", async () => {
     await withProject(async (projectRoot) => {
         const triage = await activated(projectRoot);
         const workflowsDir = locateAttachedWorkflows(projectRoot).workflowsDir;
-        const exited = new Deno.Command("true").spawn();
+        const exited = spawnNativeProcess(process.execPath, {
+            args: ["--eval", "process.exit(0)"],
+            cwd: projectRoot,
+            stdin: "null",
+            stdout: "piped",
+            stderr: "piped",
+        });
         await exited.status;
-        const deadLock = { pid: exited.pid, hostname: Deno.hostname(), token: "dead", createdAt: Date.now() };
-        await Deno.writeTextFile(join(workflowsDir, `${triage.workflowId}.lock`), JSON.stringify(deadLock));
+        const deadLock = { pid: exited.pid, hostname: hostname(), token: "dead", createdAt: Date.now() };
+        await fsWriteFile(join(workflowsDir, `${triage.workflowId}.lock`), JSON.stringify(deadLock));
         const leftover = join(workflowsDir, `${triage.workflowId}.json.crashed-writer.tmp`);
-        await Deno.writeTextFile(leftover, "{ partial");
+        await fsWriteFile(leftover, "{ partial");
 
         const before = await run("status", projectRoot, { workflowId: triage.workflowId });
         assertEquals(before.ok && before.workflow.revision, 1);
         const submitted = await run("triage_report", projectRoot, triageReportInput(triage));
         assertEquals(submitted.ok && submitted.workflow.revision, 2, JSON.stringify(submitted));
-        assertEquals(await Deno.stat(leftover).then(() => true, () => false), false);
+        assertEquals(
+            await fsStat(leftover).then(
+                () => true,
+                () => false,
+            ),
+            false,
+        );
     });
 });
 
-Deno.test("status reports a moved project folder instead of matching the record elsewhere", async () => {
+test("status reports a moved project folder instead of matching the record elsewhere", async () => {
     await withProject(async (projectRoot) => {
         const triage = await activated(projectRoot);
         const movedRoot = join(dirname(projectRoot), `${projectRoot.split("/").at(-1)}-moved`);
-        await Deno.rename(projectRoot, movedRoot);
+        await fsRename(projectRoot, movedRoot);
         try {
             const status = await run("status", movedRoot, { workflowId: triage.workflowId });
             assert(status.ok, JSON.stringify(status));
             assertEquals(status.workflow.recovery?.case, "project_moved");
-            assertEquals(status.workflow.recovery?.currentProjectRoot, await Deno.realPath(movedRoot));
+            assertEquals(status.workflow.recovery?.currentProjectRoot, await fsRealpath(movedRoot));
             const submitted = await run("triage_report", movedRoot, triageReportInput(triage));
             assertEquals(rejectionCode(submitted), "project_moved");
         } finally {
-            await Deno.rename(movedRoot, projectRoot);
+            await fsRename(movedRoot, projectRoot);
         }
     });
 });
 
-Deno.test("a linked worktree finds the records of its primary checkout", async () => {
+test("a linked worktree finds the records of its primary checkout", async () => {
     await withProject(async (projectRoot) => {
         const triage = await activated(projectRoot);
         const worktree = `${projectRoot}-linked`;
@@ -268,15 +298,15 @@ Deno.test("a linked worktree finds the records of its primary checkout", async (
             const status = await run("status", worktree, { workflowId: triage.workflowId });
             assertEquals(status.ok && status.workflow.recovery, null, JSON.stringify(status));
         } finally {
-            await Deno.remove(worktree, { recursive: true }).catch(() => undefined);
+            await fsRm(worktree, { recursive: true }).catch(() => undefined);
         }
     });
 });
 
-Deno.test("without a home directory records fall back to the project internal runtime directory", async () => {
+test("without a home directory records fall back to the project internal runtime directory", async () => {
     await withProcessGlobalTestLock(async () => {
-        const home = Deno.env.get("HOME");
-        Deno.env.delete("HOME");
+        const home = process.env["HOME"];
+        delete process.env["HOME"];
         try {
             await withProject(async (projectRoot) => {
                 assertEquals(locateAttachedWorkflows(projectRoot).homeBaseDir, null);
@@ -285,13 +315,13 @@ Deno.test("without a home directory records fall back to the project internal ru
                 assertEquals(submitted.ok && submitted.workflow.revision, 2);
             });
         } finally {
-            if (home !== undefined) Deno.env.set("HOME", home);
+            if (home !== undefined) process.env["HOME"] = home;
         }
     });
 });
 
 for (const operationId of ["constructor", "toString"]) {
-    Deno.test(`triage_report accepts and replays the valid operation ID ${operationId}`, async () => {
+    test(`triage_report accepts and replays the valid operation ID ${operationId}`, async () => {
         await withProject(async (projectRoot) => {
             const triage = await activated(projectRoot);
             const input = triageReportInput({ ...triage, operationId });

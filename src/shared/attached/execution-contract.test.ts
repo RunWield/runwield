@@ -1,5 +1,7 @@
-import { assert, assertEquals } from "@std/assert";
-import { fromFileUrl } from "@std/path";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { ENGINEER_MESSAGE_DESCRIPTION, IMPLEMENTATION_REPORT_MIN_LENGTH } from "../workflow/implementation-report.ts";
 import { EVIDENCE } from "./attached-test-fixture.ts";
 import {
@@ -12,7 +14,7 @@ import {
 const root = fromFileUrl(new URL("./", import.meta.url));
 const envelope = { workflowId: "workflow", operationId: "operation", expectedRevision: 1, evidence: EVIDENCE };
 
-Deno.test("Attached task_completed keeps the exact Core name, message schema, and whitespace report contract", () => {
+test("Attached task_completed keeps the exact Core name, message schema, and whitespace report contract", () => {
     const tool = ATTACHED_OPERATIONS.find((entry) => entry.name === "task_completed");
     assert(tool);
     const payload = tool.inputSchema.properties.payload;
@@ -32,7 +34,7 @@ Deno.test("Attached task_completed keeps the exact Core name, message schema, an
     assert(whitespace.ok, "Core checks length, not trimmed length or Markdown shape.");
 });
 
-Deno.test("start_execution accepts only an empty start or a complete proceed/decline consent answer", () => {
+test("start_execution accepts only an empty start or a complete proceed/decline consent answer", () => {
     assert(parseStartExecutionInput(root, { ...envelope, payload: {} }).ok);
     for (const consent of ["proceed", "decline"]) {
         assert(parseStartExecutionInput(root, { ...envelope, payload: { actionId: "action", consent } }).ok);

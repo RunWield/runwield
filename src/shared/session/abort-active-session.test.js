@@ -1,10 +1,12 @@
+import { assertEquals } from "../../testing/assertions.ts";
+import { getCwd } from "../../constants.js";
+import { test } from "node:test";
 /**
  * Regression tests for HostedSession-scoped abort behavior. The root
  * AgentSession is long-lived, so abortActiveSession(hostedSession) must abort
  * only streaming roots and transient sub-agents owned by the target HostedSession.
  */
 
-import { assertEquals } from "@std/assert";
 import { abortActiveSession } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
 
@@ -12,7 +14,7 @@ import { HostedSession } from "./hosted-session.js";
  * @param {string} id
  */
 function makeHostedSession(id) {
-    return new HostedSession({ id, cwd: Deno.cwd() });
+    return new HostedSession({ id, cwd: getCwd() });
 }
 
 /**
@@ -44,7 +46,7 @@ function makeFakeSession(opts = {}) {
     });
 }
 
-Deno.test("abortActiveSession returns false when target root exists but is idle", () => {
+test("abortActiveSession returns false when target root exists but is idle", () => {
     const hostedSession = makeHostedSession("abort-idle");
     const otherHostedSession = makeHostedSession("abort-idle-other");
     const idleRoot = makeFakeSession({ isStreaming: false });
@@ -61,7 +63,7 @@ Deno.test("abortActiveSession returns false when target root exists but is idle"
     assertEquals(otherRoot._clearQueueCalls, 0, "other HostedSession queue must not be cleared");
 });
 
-Deno.test("abortActiveSession aborts only the streaming root in the target HostedSession", () => {
+test("abortActiveSession aborts only the streaming root in the target HostedSession", () => {
     const hostedSession = makeHostedSession("abort-streaming");
     const otherHostedSession = makeHostedSession("abort-streaming-other");
     const streamingRoot = makeFakeSession({ isStreaming: true });
@@ -76,7 +78,7 @@ Deno.test("abortActiveSession aborts only the streaming root in the target Hoste
     assertEquals(otherStreamingRoot._clearQueueCalls, 0);
 });
 
-Deno.test("abortActiveSession scopes transient sub-agents to the target HostedSession", () => {
+test("abortActiveSession scopes transient sub-agents to the target HostedSession", () => {
     const hostedSession = makeHostedSession("abort-sub");
     const otherHostedSession = makeHostedSession("abort-sub-other");
     const idleRoot = makeFakeSession({ isStreaming: false });
@@ -93,11 +95,11 @@ Deno.test("abortActiveSession scopes transient sub-agents to the target HostedSe
     assertEquals(otherSub._abortCalls, 0, "other HostedSession sub-agent must not be aborted");
 });
 
-Deno.test("abortActiveSession returns false when target HostedSession has no sessions", () => {
+test("abortActiveSession returns false when target HostedSession has no sessions", () => {
     assertEquals(abortActiveSession(makeHostedSession("abort-empty")), false);
 });
 
-Deno.test("abortActiveSession swallows errors thrown by abort() and still reports true", () => {
+test("abortActiveSession swallows errors thrown by abort() and still reports true", () => {
     const hostedSession = makeHostedSession("abort-error");
     const root = makeFakeSession({
         isStreaming: true,
@@ -110,7 +112,7 @@ Deno.test("abortActiveSession swallows errors thrown by abort() and still report
     assertEquals(abortActiveSession(hostedSession), true);
 });
 
-Deno.test("^abortActiveSession unwraps claude-cli execution-session wrapper and aborts the inner session$", () => {
+test("^abortActiveSession unwraps claude-cli execution-session wrapper and aborts the inner session$", () => {
     const hostedSession = makeHostedSession("abort-claude-wrapper");
     const inner = makeFakeSession({ isStreaming: true });
     hostedSession.setRootAgentSession(/** @type {any} */ ({ kind: "claude-cli", session: inner }));
@@ -120,7 +122,7 @@ Deno.test("^abortActiveSession unwraps claude-cli execution-session wrapper and 
     assertEquals(inner._clearQueueCalls, 1);
 });
 
-Deno.test("abortActiveSession unwraps agy-cli execution-session wrapper and aborts the inner session", () => {
+test("abortActiveSession unwraps agy-cli execution-session wrapper and aborts the inner session", () => {
     const hostedSession = makeHostedSession("abort-agy-wrapper");
     const inner = makeFakeSession({ isStreaming: true });
     hostedSession.setRootAgentSession(/** @type {any} */ ({ kind: "agy-cli", session: inner }));

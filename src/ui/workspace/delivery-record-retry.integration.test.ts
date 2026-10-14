@@ -1,4 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -11,7 +13,7 @@ import { retainPublishedWorkRecordSource } from "../../shared/work-records/publi
 
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n" });
 for (const missing of [false, true]) {
-    Deno.test(`Work Record retry resolves retained publication with ${missing ? "missing" : "stale"} primary Plan`, async () => {
+    test(`Work Record retry resolves retained publication with ${missing ? "missing" : "stale"} primary Plan`, async () => {
         await withRuntimeCommandFixture("delivery-record-retry-", async ({ setModelResponseFactory }) => {
             const root = await repository.checkout();
             const store = openOwnerCoordinationStore();
@@ -52,8 +54,8 @@ for (const missing of [false, true]) {
                 const created = await runtime.createInteractiveSession({ cwd: root });
                 const sessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
                 await runtime.closeAllSessionsWhenIdle();
-                if (missing) await Deno.remove(`${root}/docs/plans/delivered.md`);
-                else {await Deno.writeTextFile(
+                if (missing) await fsRm(`${root}/docs/plans/delivered.md`);
+                else {await fsWriteFile(
                         `${root}/docs/plans/delivered.md`,
                         "---\nplanId: delivered-id\nclassification: QUICK_FIX\nstatus: ready_for_work\n---\n# Primary edit\n",
                     );}
@@ -89,7 +91,7 @@ for (const missing of [false, true]) {
                 service.close();
                 await runtime.closeAllSessionsWhenIdle();
                 store.close();
-                await Deno.remove(root, { recursive: true });
+                await fsRm(root, { recursive: true });
             }
         });
     });

@@ -1,4 +1,6 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
@@ -13,7 +15,7 @@ import { ownerSessionPlanWorkflowApi } from "./routes/owner-session-api.js";
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n" });
 
 for (const withSession of [false, true]) {
-    Deno.test(`Workspace resumes a held Plan ${withSession ? "with" : "without"} a Session, then offers review`, async () => {
+    test(`Workspace resumes a held Plan ${withSession ? "with" : "without"} a Session, then offers review`, async () => {
         await withRuntimeCommandFixture("workspace-held-", async () => {
             const root = await repository.checkout();
             const store = openOwnerCoordinationStore();
@@ -97,13 +99,13 @@ for (const withSession of [false, true]) {
                 service.close();
                 await runtime.closeAllSessionsWhenIdle();
                 store.close();
-                await Deno.remove(root, { recursive: true });
+                await fsRm(root, { recursive: true });
             }
         });
     });
 }
 
-Deno.test("Workspace opens saved Plan review without a Session, deduplicates concurrent requests, and remembers retries", async () => {
+test("Workspace opens saved Plan review without a Session, deduplicates concurrent requests, and remembers retries", async () => {
     await withRuntimeCommandFixture("workspace-unassociated-", async ({ setModelResponseFactory }) => {
         const root = await repository.checkout();
         const store = openOwnerCoordinationStore();
@@ -181,7 +183,7 @@ Deno.test("Workspace opens saved Plan review without a Session, deduplicates con
             await restarted.runtime.closeAllSessions();
             restarted.close();
             store.close();
-            await Deno.remove(root, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 });

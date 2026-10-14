@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { type Annotation, AnnotationType, type CodeAnnotation } from "@plannotator/ui/types.ts";
 import {
     createPlanReviewDraft,
@@ -30,7 +31,7 @@ const codeAnnotation: CodeAnnotation = {
     createdAt: 2,
 };
 
-Deno.test("Plan Review drafts round-trip annotations, attachments, and direct edits", () => {
+test("Plan Review drafts round-trip annotations, attachments, and direct edits", () => {
     const draft = createPlanReviewDraft({
         basePlan: "# Initial Plan\n",
         annotations: [annotation],
@@ -48,7 +49,7 @@ Deno.test("Plan Review drafts round-trip annotations, attachments, and direct ed
     assertStringIncludes(planReviewDraftDescription(draft), "direct Plan edits");
 });
 
-Deno.test("Plan Review drafts reject malformed data and a different submitted Plan", () => {
+test("Plan Review drafts reject malformed data and a different submitted Plan", () => {
     const draft = createPlanReviewDraft({
         basePlan: "# Initial Plan\n",
         annotations: [],

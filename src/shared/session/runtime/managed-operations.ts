@@ -1,3 +1,4 @@
+import { stat as fsStat } from "node:fs/promises";
 import { restoreExecutionWorkflow } from "../execution-workflow-recovery.ts";
 import {
     readPersistedActiveAgentName,
@@ -594,7 +595,7 @@ export class RuntimeManagedOperations {
                     transcriptCwd: generationSegment.transcriptCwd,
                     byteLength: state.generation.byteLength,
                 });
-                const stat = await Deno.stat(generationSegment.transcriptPath);
+                const stat = await fsStat(generationSegment.transcriptPath);
                 if (
                     stat.size !== state.generation.byteLength ||
                     currentEvidence.digestHex !== state.generation.digestHex ||

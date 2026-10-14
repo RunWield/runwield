@@ -1,8 +1,10 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { ExecutionMetricsRecorder } from "./execution-metrics.ts";
 
-Deno.test("saved latency, retry, compaction, and multibyte result measurements keep their sources", async () => {
+test("saved latency, retry, compaction, and multibyte result measurements keep their sources", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const recorder = new ExecutionMetricsRecorder({
             projectRoot,

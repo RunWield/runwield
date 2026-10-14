@@ -1,3 +1,13 @@
+import { captureScriptProcess } from "./script-process.ts";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /**
  * @module scripts/run-router-golden-set
  *
@@ -5,10 +15,10 @@
  * triage_report decision to humanJudgement.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../src/shared/cli-args.ts";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { AGENTS, getCwd, getHomeDir } from "../src/constants.js";
 import { createSessionRuntime } from "../src/shared/session/session-runtime.ts";
 import { readLatestTriageOutcome as readLatestTriageOutcomeFn } from "../src/shared/workflow/orchestrator.ts";
@@ -102,16 +112,19 @@ export function createBenchmarkBashNudgeTool() {
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
             callCount++;
             const command = typeof params?.command === "string" ? params.command : "";
-            const repeatedCallNudge = callCount > 1
-                ? `\n\nRepeated bash attempt #${callCount}: stop calling bash in this benchmark row. Call triage_report now unless one non-bash read tool is essential.`
-                : "";
+            const repeatedCallNudge =
+                callCount > 1
+                    ? `\n\nRepeated bash attempt #${callCount}: stop calling bash in this benchmark row. Call triage_report now unless one non-bash read tool is essential.`
+                    : "";
             return {
-                content: [{
-                    type: "text",
-                    text: command
-                        ? `${BENCHMARK_BASH_NUDGE}${repeatedCallNudge}\n\nRequested command: ${command}`
-                        : `${BENCHMARK_BASH_NUDGE}${repeatedCallNudge}`,
-                }],
+                content: [
+                    {
+                        type: "text",
+                        text: command
+                            ? `${BENCHMARK_BASH_NUDGE}${repeatedCallNudge}\n\nRequested command: ${command}`
+                            : `${BENCHMARK_BASH_NUDGE}${repeatedCallNudge}`,
+                    },
+                ],
                 details: {
                     blocked: true,
                     callCount,
@@ -230,9 +243,9 @@ export function mergeGoldenRowsWithResultRows(goldenRows, resultRows) {
  */
 async function readExistingCsv(path) {
     try {
-        return parseCsv(await Deno.readTextFile(path));
+        return parseCsv(await fsReadFile(path, "utf8"));
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return [];
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
         throw error;
     }
 }
@@ -243,7 +256,7 @@ async function readExistingCsv(path) {
  * @returns {Promise<string>}
  */
 async function runContextGit(cwd, args) {
-    const result = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureScriptProcess("git", { cwd, args, stdout: "piped", stderr: "piped" });
     const decoder = new TextDecoder();
     if (!result.success) {
         throw new Error(`Context Git failed: ${decoder.decode(result.stderr).trim()}`);
@@ -297,7 +310,11 @@ export async function runRouterForGoldenRequest(requestText, options = {}) {
 
     try {
         const messages = options.rowTimeoutMs
-            ? await withAbortTimeout(messagesPromise.then((result) => result), options.rowTimeoutMs, cancel)
+            ? await withAbortTimeout(
+                  messagesPromise.then((result) => result),
+                  options.rowTimeoutMs,
+                  cancel,
+              )
             : await messagesPromise;
         if (!Array.isArray(messages)) throw new Error(messages.error || "Router operation was refused.");
         const triage = readLatestTriageOutcomeFn(messages);
@@ -378,7 +395,7 @@ export async function runRouterGoldenSetWithSelection(rows, options = {}) {
         }
         const commit = await runContextGit(sourceCwd, ["rev-parse", "--verify", `${contextCommit}^{commit}`]);
         if (!worktreeAdded) {
-            tempDir ||= await Deno.makeTempDir({ prefix: "runwield-router-context-" });
+            tempDir ||= await fsMkdtemp(join(tmpdir(), "runwield-router-context-"));
             worktree = join(tempDir, "checkout");
             await runContextGit(sourceCwd, ["worktree", "add", "--detach", worktree, commit]);
             worktreeAdded = true;
@@ -427,7 +444,7 @@ export async function runRouterGoldenSetWithSelection(rows, options = {}) {
         // Remove only this benchmark's worktree, including generated files, when the run ends.
         // If Git cleanup fails, preserve the directory and surface the failure.
         if (worktreeAdded) await runContextGit(sourceCwd, ["worktree", "remove", "--force", worktree]);
-        if (tempDir) await Deno.remove(tempDir, { recursive: true });
+        if (tempDir) await fsRm(tempDir, { recursive: true });
     }
 
     return { rows: normalized, selectedIndexes };
@@ -461,23 +478,25 @@ export async function main(argv) {
     });
 
     if (args.help) {
-        console.log([
-            "Usage: deno run -A scripts/run-router-golden-set.js [options]",
-            "",
-            "Runs the real Router against labelled Router judgement rows.",
-            "",
-            "Options:",
-            `  --csv <path>          Golden CSV input (default: ${getDefaultRouterGoldenCsvPath()})`,
-            `  --out, -o <path>     CSV output (default: ${getDefaultRouterResultCsvPath()})`,
-            "  --limit <n>          Run only the first n selected rows",
-            "  --model, -m <ref>    Override Router model, e.g. provider/model",
-            "  --thinking-level <level> Override thinking: off, minimal, low, medium, high, xhigh, max",
-            "  --temperature <n>    Override sampling temperature (0–2; provider support varies)",
-            "  --cwd <path>         Discovery cwd and source repository for contextCommit pins",
-            "  CSV contextCommit    Optional full commit hash; discovery uses a detached temporary worktree",
-            `  --row-timeout-ms <n> Per-row timeout (default: ${DEFAULT_ROW_TIMEOUT_MS})`,
-            "  --rerun              Rerun selected rows instead of resuming unfinished rows",
-        ].join("\n"));
+        console.log(
+            [
+                "Usage: bun scripts/run-router-golden-set.js [options]",
+                "",
+                "Runs the real Router against labelled Router judgement rows.",
+                "",
+                "Options:",
+                `  --csv <path>          Golden CSV input (default: ${getDefaultRouterGoldenCsvPath()})`,
+                `  --out, -o <path>     CSV output (default: ${getDefaultRouterResultCsvPath()})`,
+                "  --limit <n>          Run only the first n selected rows",
+                "  --model, -m <ref>    Override Router model, e.g. provider/model",
+                "  --thinking-level <level> Override thinking: off, minimal, low, medium, high, xhigh, max",
+                "  --temperature <n>    Override sampling temperature (0–2; provider support varies)",
+                "  --cwd <path>         Discovery cwd and source repository for contextCommit pins",
+                "  CSV contextCommit    Optional full commit hash; discovery uses a detached temporary worktree",
+                `  --row-timeout-ms <n> Per-row timeout (default: ${DEFAULT_ROW_TIMEOUT_MS})`,
+                "  --rerun              Rerun selected rows instead of resuming unfinished rows",
+            ].join("\n"),
+        );
         return;
     }
 
@@ -490,7 +509,9 @@ export async function main(argv) {
     const temperatureOverride = temperatureText === undefined ? undefined : Number(temperatureText);
     if (
         temperatureOverride !== undefined &&
-        (temperatureText === "" || !Number.isFinite(temperatureOverride) || temperatureOverride < 0 ||
+        (temperatureText === "" ||
+            !Number.isFinite(temperatureOverride) ||
+            temperatureOverride < 0 ||
             temperatureOverride > 2)
     ) {
         throw new Error("Invalid --temperature. Use a finite number from 0 to 2.");
@@ -499,10 +520,10 @@ export async function main(argv) {
     const csvPath = args.csv || getDefaultRouterGoldenCsvPath();
     const outputPath = args.out || getDefaultRouterResultCsvPath();
     const resume = !args.rerun;
-    const goldenRows = parseCsv(await Deno.readTextFile(csvPath));
+    const goldenRows = parseCsv(await fsReadFile(csvPath, "utf8"));
     const priorResultRows = resume ? await readExistingCsv(outputPath) : [];
     const rows = resume ? mergeGoldenRowsWithResultRows(goldenRows, priorResultRows) : goldenRows;
-    await Deno.mkdir(dirname(outputPath), { recursive: true });
+    await fsMkdir(dirname(outputPath), { recursive: true });
     const result = await runRouterGoldenSetWithSelection(rows, {
         limit: parsePositiveInt(args.limit),
         cwd: args.cwd,
@@ -512,17 +533,17 @@ export async function main(argv) {
         rowTimeoutMs: parsePositiveInt(args["row-timeout-ms"]) || DEFAULT_ROW_TIMEOUT_MS,
         resume,
         onRowComplete: async (checkpointRows) => {
-            await Deno.writeTextFile(outputPath, toCsv(ROUTER_JUDGEMENT_COLUMNS, checkpointRows));
+            await fsWriteFile(outputPath, toCsv(ROUTER_JUDGEMENT_COLUMNS, checkpointRows));
         },
         onProgress: (message) => console.error(message),
     });
     const resultRows = result.rows;
 
-    await Deno.writeTextFile(outputPath, toCsv(ROUTER_JUDGEMENT_COLUMNS, resultRows));
+    await fsWriteFile(outputPath, toCsv(ROUTER_JUDGEMENT_COLUMNS, resultRows));
     const scoredRows = args.limit ? result.selectedIndexes.map((index) => resultRows[index]) : resultRows;
     console.log(JSON.stringify(buildRouterGoldenReport(scoredRows), null, 2));
 }
 
 if (import.meta.main) {
-    await main(Deno.args);
+    await main(process.argv.slice(2));
 }

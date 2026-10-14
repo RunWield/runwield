@@ -32,8 +32,11 @@ export class ReviewInspection {
             const file = files.find((file) => file.scope === requiredScope && file.path === span.path);
             if (!file) throw new Error(`Invalid review coverage path: ${span.path}.`);
             if (
-                !Number.isSafeInteger(span.start) || !Number.isSafeInteger(span.end) ||
-                span.start < 0 || span.end < span.start || span.end > file.byteLength
+                !Number.isSafeInteger(span.start) ||
+                !Number.isSafeInteger(span.end) ||
+                span.start < 0 ||
+                span.end < span.start ||
+                span.end > file.byteLength
             ) {
                 throw new Error(`Invalid review coverage range for ${span.path}: ${span.start}–${span.end}.`);
             }
@@ -49,7 +52,8 @@ export class ReviewInspection {
 
     unread(): ReviewDiffSpan[] {
         return this.files.flatMap((file) => {
-            const spans = this.reads.filter((read) => read.scope === file.scope && read.path === file.path)
+            const spans = this.reads
+                .filter((read) => read.scope === file.scope && read.path === file.path)
                 .sort((a, b) => a.start - b.start);
             const missing: ReviewDiffSpan[] = [];
             let cursor = 0;
@@ -67,16 +71,17 @@ export class ReviewInspection {
         if (!unread.length) return "";
         return [
             "Review is incomplete. Read every remaining diff chunk before approving or rejecting. Keep findings already collected.",
-            ...unread.map((span) =>
-                `${span.path} (${span.scope}), unread bytes ${span.start}–${span.end - 1}: review_diff(${
-                    JSON.stringify({
-                        command: "show",
-                        scope: span.scope,
-                        path: span.path,
-                        offsetBytes: span.start,
-                        maxBytes: Math.max(256, Math.min(65536, span.end - span.start)),
-                    })
-                })`
+            ...unread.map(
+                (span) =>
+                    `${span.path} (${span.scope}), unread bytes ${span.start}–${span.end - 1}: review_diff(${JSON.stringify(
+                        {
+                            command: "show",
+                            scope: span.scope,
+                            path: span.path,
+                            offsetBytes: span.start,
+                            maxBytes: Math.max(256, Math.min(65536, span.end - span.start)),
+                        },
+                    )})`,
             ),
             "After reading these chunks, call review_complete again. Listing files does not count as reading them.",
         ].join("\n");

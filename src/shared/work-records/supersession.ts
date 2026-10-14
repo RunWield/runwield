@@ -1,4 +1,8 @@
-import { dirname } from "@std/path";
+import { platform } from "node:process";
+import { clearInterval, setInterval } from "node:timers";
+import { type NativeFileLock, openNativeFileLock } from "../native-file-lock.ts";
+import { mkdir as fsMkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { type LockFileSnapshot, readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "../lock-file-snapshot.ts";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./markdown.js";
@@ -41,11 +45,11 @@ export class WorkRecordSupersessionRollbackError extends Error {
 
     constructor(originalError: Error, uncertainRelativePaths: string[], rollbackErrors: string[]) {
         super(
-            `Work Record supersession failed and rollback was incomplete. Uncertain canonical paths: ${
-                uncertainRelativePaths.join(", ")
-            }. Original error: ${originalError.message}. Rollback errors: ${
-                rollbackErrors.join("; ")
-            }. Inspect these files before retrying; do not delete the successor blindly.`,
+            `Work Record supersession failed and rollback was incomplete. Uncertain canonical paths: ${uncertainRelativePaths.join(
+                ", ",
+            )}. Original error: ${originalError.message}. Rollback errors: ${rollbackErrors.join(
+                "; ",
+            )}. Inspect these files before retrying; do not delete the successor blindly.`,
             { cause: originalError },
         );
         this.name = "WorkRecordSupersessionRollbackError";
@@ -72,11 +76,16 @@ interface LockSnapshot extends LockFileSnapshot {
 }
 
 async function readLockSnapshot(lockPath: string): Promise<LockSnapshot | undefined> {
-    const snapshot = await readLockFileSnapshot(lockPath);
+    const snapshot = await readLockFileSnapshot(lockPath).catch((error: NodeJS.ErrnoException) => {
+        // An active Windows holder prevents reads; no snapshot permits retirement.
+        if (platform === "win32" && error.code === "EBUSY") return null;
+        throw error;
+    });
     if (!snapshot) return undefined;
-    const record = snapshot.token && snapshot.createdAt !== undefined && snapshot.updatedAt !== undefined
-        ? { token: snapshot.token, createdAt: snapshot.createdAt, updatedAt: snapshot.updatedAt }
-        : undefined;
+    const record =
+        snapshot.token && snapshot.createdAt !== undefined && snapshot.updatedAt !== undefined
+            ? { token: snapshot.token, createdAt: snapshot.createdAt, updatedAt: snapshot.updatedAt }
+            : undefined;
     return { ...snapshot, ...(record ? { record } : {}) };
 }
 
@@ -84,12 +93,12 @@ async function readLockRecord(lockPath: string): Promise<LockRecord | undefined>
     return (await readLockSnapshot(lockPath))?.record;
 }
 
-async function createLock(lockPath: string, token: string): Promise<Deno.FsFile> {
-    const file = await Deno.open(lockPath, { createNew: true, read: true, write: true });
+function createLock(lockPath: string, token: string): NativeFileLock {
+    const file = openNativeFileLock(lockPath, "exclusive");
     try {
         file.lockSync(true);
         const now = Date.now();
-        await writeLockRecord(file, { token, createdAt: now, updatedAt: now });
+        writeLockRecord(file, { token, createdAt: now, updatedAt: now });
         return file;
     } catch (error) {
         file.close();
@@ -97,11 +106,8 @@ async function createLock(lockPath: string, token: string): Promise<Deno.FsFile>
     }
 }
 
-async function writeLockRecord(file: Deno.FsFile, record: LockRecord): Promise<void> {
-    await file.truncate(0);
-    await file.seek(0, Deno.SeekMode.Start);
-    await file.write(new TextEncoder().encode(JSON.stringify(record)));
-    await file.sync();
+function writeLockRecord(file: NativeFileLock, record: LockRecord): void {
+    file.replaceTextSync(JSON.stringify(record));
 }
 
 async function removeLockIfOwned(lockPath: string, token: string): Promise<void> {
@@ -111,7 +117,7 @@ async function removeLockIfOwned(lockPath: string, token: string): Promise<void>
 }
 
 function startLockHeartbeat(
-    file: Deno.FsFile,
+    file: NativeFileLock,
     lockPath: string,
     token: string,
     intervalMs: number,
@@ -120,18 +126,18 @@ function startLockHeartbeat(
         try {
             const current = await readLockRecord(lockPath);
             if (current?.token !== token) return;
-            await writeLockRecord(file, { ...current, updatedAt: Date.now() });
+            writeLockRecord(file, { ...current, updatedAt: Date.now() });
         } catch {
             // A release or replacement can race with a heartbeat.
         }
     }, intervalMs);
-    Deno.unrefTimer(timer);
+    timer.unref();
     return timer;
 }
 
 function lockRelease(
     lockPath: string,
-    file: Deno.FsFile,
+    file: NativeFileLock,
     token: string,
     heartbeat: ReturnType<typeof setInterval>,
 ): () => Promise<void> {
@@ -144,12 +150,12 @@ function lockRelease(
 
 export async function acquireRecoveryLock(cwd: string): Promise<() => Promise<void>> {
     const lockPath = (await enterProjectRuntime(cwd)).selected.workRecordSupersessionRecoveryLockPath;
-    await Deno.mkdir(dirname(lockPath), { recursive: true });
+    await fsMkdir(dirname(lockPath), { recursive: true });
     const deadline = Date.now() + LOCK_WAIT_TIMEOUT_MS;
     const token = crypto.randomUUID();
     while (true) {
         try {
-            const file = await createLock(lockPath, token);
+            const file = createLock(lockPath, token);
             return lockRelease(
                 lockPath,
                 file,
@@ -157,14 +163,15 @@ export async function acquireRecoveryLock(cwd: string): Promise<() => Promise<vo
                 startLockHeartbeat(file, lockPath, token, RECOVERY_LOCK_HEARTBEAT_MS),
             );
         } catch (error) {
-            if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
             const snapshot = await readLockSnapshot(lockPath);
             if (Date.now() >= deadline) {
                 throw new Error(`Timed out waiting for the Work Record supersession recovery lock: ${lockPath}`);
             }
             if (
-                snapshot && Date.now() - (snapshot.record?.updatedAt ?? snapshot.mtime) > RECOVERY_LOCK_STALE_MS &&
-                await removeLockFileIfSnapshotMatches(lockPath, snapshot)
+                snapshot &&
+                Date.now() - (snapshot.record?.updatedAt ?? snapshot.mtime) > RECOVERY_LOCK_STALE_MS &&
+                (await removeLockFileIfSnapshotMatches(lockPath, snapshot))
             ) {
                 continue;
             }
@@ -175,14 +182,14 @@ export async function acquireRecoveryLock(cwd: string): Promise<() => Promise<vo
 
 export async function acquireSupersessionLock(cwd: string): Promise<() => Promise<void>> {
     const lockPath = (await enterProjectRuntime(cwd)).selected.workRecordSupersessionLockPath;
-    await Deno.mkdir(dirname(lockPath), { recursive: true });
+    await fsMkdir(dirname(lockPath), { recursive: true });
     const deadline = Date.now() + LOCK_WAIT_TIMEOUT_MS;
     const token = crypto.randomUUID();
     while (true) {
         const releaseRecovery = await acquireRecoveryLock(cwd);
         try {
             try {
-                const file = await createLock(lockPath, token);
+                const file = createLock(lockPath, token);
                 const heartbeat = startLockHeartbeat(file, lockPath, token, LOCK_HEARTBEAT_MS);
                 return async () => {
                     clearInterval(heartbeat);
@@ -195,7 +202,7 @@ export async function acquireSupersessionLock(cwd: string): Promise<() => Promis
                     }
                 };
             } catch (error) {
-                if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
                 const snapshot = await readLockSnapshot(lockPath);
                 if (snapshot && Date.now() - (snapshot.record?.updatedAt ?? snapshot.mtime) > LOCK_STALE_MS) {
                     await removeLockFileIfSnapshotMatches(lockPath, snapshot);
@@ -229,7 +236,7 @@ function requestedIds(options: WorkRecordSupersessionOptions): { successorId: st
         throw new Error("predecessorRecordIds must contain at least one Work Record UUID.");
     }
     const predecessorIds = options.predecessorRecordIds.map((id, index) =>
-        validateId(id, `predecessorRecordIds[${index}]`)
+        validateId(id, `predecessorRecordIds[${index}]`),
     );
     if (new Set(predecessorIds.map((id) => id.toLowerCase())).size !== predecessorIds.length) {
         throw new Error("predecessorRecordIds must not contain duplicates.");
@@ -321,10 +328,10 @@ async function projectFreshCanonicalRecords(
             records,
             ...(failures.length
                 ? {
-                    warning: `Canonical Work Records were updated, but index sync failed: ${
-                        failures.join("; ")
-                    } ${INDEX_GUIDANCE}`,
-                }
+                      warning: `Canonical Work Records were updated, but index sync failed: ${failures.join(
+                          "; ",
+                      )} ${INDEX_GUIDANCE}`,
+                  }
                 : {}),
         };
     } catch (error) {
@@ -382,7 +389,7 @@ async function applyLocked(
     const replacements = [
         prepareReplacement(successor, successorAttrs),
         ...predecessors.map((record) =>
-            prepareReplacement(record, supersedeWorkRecord(record.attrs, successor.attrs.recordId))
+            prepareReplacement(record, supersedeWorkRecord(record.attrs, successor.attrs.recordId)),
         ),
     ];
     await writePrepared(cwd, replacements);
@@ -415,7 +422,7 @@ export async function listWorkRecordSupersessionProposals(cwd: string): Promise<
             successorRecordId: record.attrs.recordId,
             predecessorRecordId: candidate.recordId,
             reason: candidate.reason,
-        }))
+        })),
     );
 }
 

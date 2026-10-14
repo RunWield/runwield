@@ -1,3 +1,7 @@
+import type { FetchRequest } from "../fetch-request.ts";
+import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync as fsReadFileSync, statSync as fsStatSync } from "node:fs";
+import { env } from "node:process";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
@@ -10,8 +14,8 @@ import type {
     Model,
     Provider,
 } from "@earendil-works/pi-ai";
-import { dirname, join } from "@std/path";
-import { parse as parseJsonc } from "@std/jsonc";
+import { dirname, join } from "node:path";
+import { parse as parseJsonc } from "../jsonc.ts";
 import { getSettingsDir } from "../settings.js";
 import { getHomeDir } from "../../constants.js";
 import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
@@ -99,7 +103,7 @@ interface DiscoverProviderModelOptions {
 }
 
 export interface ModelDiscoveryNetworkPort {
-    fetch: typeof fetch;
+    fetch: FetchRequest;
 }
 
 export const SYSTEM_MODEL_DISCOVERY_NETWORK: ModelDiscoveryNetworkPort = Object.freeze({
@@ -181,7 +185,7 @@ export function getRunWieldModelConfigDir(): string {
 
 function fileExists(path: string): boolean {
     try {
-        return Deno.statSync(path).isFile;
+        return fsStatSync(path).isFile();
     } catch {
         return false;
     }
@@ -193,7 +197,7 @@ function isJsonRecord(value: JsonValue | undefined): value is JsonObject {
 
 function readJsoncObject(path: string): JsonObject | null {
     try {
-        const parsed = parseJsonc(Deno.readTextFileSync(path)) as JsonValue;
+        const parsed = parseJsonc(fsReadFileSync(path, "utf8")) as JsonValue;
         return isJsonRecord(parsed) ? parsed : null;
     } catch {
         return null;
@@ -204,7 +208,7 @@ function resolveLiteralConfigValue(value: ConfigValue): string | undefined {
     if (typeof value === "string" && value.trim()) return value.trim();
     if (isJsonRecord(value)) {
         const envName = value.env;
-        if (typeof envName === "string" && envName.trim()) return Deno.env.get(envName.trim());
+        if (typeof envName === "string" && envName.trim()) return env[envName.trim()];
     }
     return undefined;
 }
@@ -231,11 +235,11 @@ export class RunWieldCredentialStore {
     }
 
     ensureFile(): void {
-        Deno.mkdirSync(dirname(this.authPath), { recursive: true, mode: 0o700 });
+        mkdirSync(dirname(this.authPath), { recursive: true, mode: 0o700 });
         try {
-            Deno.statSync(this.authPath);
+            fsStatSync(this.authPath);
         } catch {
-            Deno.writeTextFileSync(this.authPath, "{}", { mode: 0o600 });
+            writeFileSync(this.authPath, "{}", { mode: 0o600 });
         }
     }
 
@@ -256,9 +260,9 @@ export class RunWieldCredentialStore {
 
     writeData(data: CredentialData): void {
         this.ensureFile();
-        Deno.writeTextFileSync(this.authPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+        writeFileSync(this.authPath, JSON.stringify(data, null, 2), { mode: 0o600 });
         try {
-            Deno.chmodSync(this.authPath, 0o600);
+            chmodSync(this.authPath, 0o600);
         } catch {
             // Best effort on platforms that do not support chmod.
         }
@@ -846,8 +850,8 @@ function migrateModelConfigFilesOnce(
             continue;
         }
         try {
-            Deno.mkdirSync(options.targetDir, { recursive: true });
-            Deno.copyFileSync(sourcePath, targetPath);
+            mkdirSync(options.targetDir, { recursive: true });
+            copyFileSync(sourcePath, targetPath);
             copied.push(fileName);
         } catch (error) {
             failed.push({ file: fileName, error: errorMessage(error as Error | string) });

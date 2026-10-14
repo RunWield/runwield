@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../src/testing/assertions.ts";
+import { test } from "node:test";
 import { extractRelativeLinks, findBrokenLinks, headingSlug, headingSlugs } from "./check-doc-links.js";
 
 /**
@@ -8,7 +9,7 @@ function fakeRepo(files) {
     return {
         /** @param {string} path */
         readTextFile: (path) => {
-            if (!(path in files)) throw new Deno.errors.NotFound(path);
+            if (!(path in files)) throw Object.assign(new Error(path), { code: "ENOENT" });
             return Promise.resolve(files[path]);
         },
         /** @param {string} path */
@@ -16,7 +17,7 @@ function fakeRepo(files) {
     };
 }
 
-Deno.test("extractRelativeLinks ignores absolute, anchor-only, front matter, and fenced links", () => {
+test("extractRelativeLinks ignores absolute, anchor-only, front matter, and fenced links", () => {
     const markdown = [
         "---",
         'failureReason: "[captured](docs/not-documentation.md)"',
@@ -33,13 +34,13 @@ Deno.test("extractRelativeLinks ignores absolute, anchor-only, front matter, and
     assertEquals(extractRelativeLinks(markdown), [{ line: 4, target: "docs/thing.md" }]);
 });
 
-Deno.test("headingSlug matches GitHub-style anchors", () => {
+test("headingSlug matches GitHub-style anchors", () => {
     assertEquals(headingSlug("## Plan Workflow Model"), "-plan-workflow-model");
     assertEquals(headingSlug("Execution, Validation, and Delivery Model"), "execution-validation-and-delivery-model");
     assertEquals(headingSlug("`code` and *emphasis*"), "code-and-emphasis");
 });
 
-Deno.test("headingSlugs skips front matter, fenced code, and disambiguates duplicates", () => {
+test("headingSlugs skips front matter, fenced code, and disambiguates duplicates", () => {
     const slugs = headingSlugs([
         "---",
         'summary: "# Not A Heading"',
@@ -53,7 +54,7 @@ Deno.test("headingSlugs skips front matter, fenced code, and disambiguates dupli
     assertEquals([...slugs], ["title", "title-1"]);
 });
 
-Deno.test("findBrokenLinks resolves relative to the linking file, not the repo root", async () => {
+test("findBrokenLinks resolves relative to the linking file, not the repo root", async () => {
     // The exact defect this ratchet exists for: docs/architecture.md linking
     // "docs/entity-model.md" resolves to docs/docs/entity-model.md.
     const repo = fakeRepo({
@@ -66,7 +67,7 @@ Deno.test("findBrokenLinks resolves relative to the linking file, not the repo r
     assertEquals(broken[0].reason, "no such file: docs/docs/entity-model.md");
 });
 
-Deno.test("findBrokenLinks accepts a correctly resolved sibling link", async () => {
+test("findBrokenLinks accepts a correctly resolved sibling link", async () => {
     const repo = fakeRepo({
         "docs/architecture.md": "[model](entity-model.md)",
         "docs/entity-model.md": "# Model",
@@ -74,7 +75,7 @@ Deno.test("findBrokenLinks accepts a correctly resolved sibling link", async () 
     assertEquals(await findBrokenLinks(["docs/architecture.md"], repo.readTextFile, repo.pathExists), []);
 });
 
-Deno.test("findBrokenLinks ignores tracked files deleted from the working tree", async () => {
+test("findBrokenLinks ignores tracked files deleted from the working tree", async () => {
     const repo = fakeRepo({ "docs/present.md": "# Present" });
 
     assertEquals(
@@ -83,7 +84,7 @@ Deno.test("findBrokenLinks ignores tracked files deleted from the working tree",
     );
 });
 
-Deno.test("findBrokenLinks rejects a fragment with no matching heading", async () => {
+test("findBrokenLinks rejects a fragment with no matching heading", async () => {
     const repo = fakeRepo({
         "docs/a.md": "[gone](b.md#removed-section)",
         "docs/b.md": "# Present Section",
@@ -94,7 +95,7 @@ Deno.test("findBrokenLinks rejects a fragment with no matching heading", async (
     assertEquals(broken[0].reason, 'no heading "#removed-section" in docs/b.md');
 });
 
-Deno.test("findBrokenLinks accepts a fragment that matches a heading", async () => {
+test("findBrokenLinks accepts a fragment that matches a heading", async () => {
     const repo = fakeRepo({
         "docs/a.md": "[there](b.md#present-section)",
         "docs/b.md": "# Present Section",
@@ -102,7 +103,7 @@ Deno.test("findBrokenLinks accepts a fragment that matches a heading", async () 
     assertEquals(await findBrokenLinks(["docs/a.md"], repo.readTextFile, repo.pathExists), []);
 });
 
-Deno.test("findBrokenLinks flags links that escape the repository", async () => {
+test("findBrokenLinks flags links that escape the repository", async () => {
     const repo = fakeRepo({ "docs/a.md": "[out](../../elsewhere.md)" });
     const broken = await findBrokenLinks(["docs/a.md"], repo.readTextFile, repo.pathExists);
 

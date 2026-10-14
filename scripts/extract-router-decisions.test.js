@@ -1,11 +1,12 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../src/testing/assertions.ts";
+import { test } from "node:test";
 import {
     extractRouterDecisionsFromEntries,
     extractToolCallNames,
     normalizeTriageDetails,
 } from "./extract-router-decisions.js";
 
-Deno.test("normalizeTriageDetails preserves canonical routing intent", () => {
+test("normalizeTriageDetails preserves canonical routing intent", () => {
     assertEquals(
         normalizeTriageDetails({
             routingIntent: "FEATURE",
@@ -24,7 +25,7 @@ Deno.test("normalizeTriageDetails preserves canonical routing intent", () => {
     );
 });
 
-Deno.test("normalizeTriageDetails accepts legacy classification", () => {
+test("normalizeTriageDetails accepts legacy classification", () => {
     assertEquals(
         normalizeTriageDetails({
             classification: "QUICK_FIX",
@@ -42,7 +43,7 @@ Deno.test("normalizeTriageDetails accepts legacy classification", () => {
     );
 });
 
-Deno.test("extractToolCallNames handles persisted Pi tool-call shapes", () => {
+test("extractToolCallNames handles persisted Pi tool-call shapes", () => {
     assertEquals(
         extractToolCallNames([
             { type: "toolCall", name: "grep" },
@@ -53,7 +54,7 @@ Deno.test("extractToolCallNames handles persisted Pi tool-call shapes", () => {
     );
 });
 
-Deno.test("extractRouterDecisionsFromEntries pairs router user request with triage_report", () => {
+test("extractRouterDecisionsFromEntries pairs router user request with triage_report", () => {
     const rows = extractRouterDecisionsFromEntries([
         { type: "session", id: "s1" },
         { type: "model_change", provider: "ollama-cloud", modelId: "gemma4:31b-cloud" },
@@ -124,7 +125,7 @@ Deno.test("extractRouterDecisionsFromEntries pairs router user request with tria
     });
 });
 
-Deno.test("extractRouterDecisionsFromEntries ignores sessions without active-agent router markers", () => {
+test("extractRouterDecisionsFromEntries ignores sessions without active-agent router markers", () => {
     const entries = [
         { type: "session", id: "s1" },
         {

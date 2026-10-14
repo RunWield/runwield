@@ -1,5 +1,17 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { serveHttp } from "../http-server.ts";
+import process from "node:process";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";
 import { startRemoteControlService } from "./control.ts";
@@ -17,27 +29,27 @@ interface HttpDelta {
     tool_calls?: HttpToolCallDelta[];
 }
 
-Deno.test("remote Pi tool result reaches a laptop-authenticated HTTP model provider", async () => {
+test("remote Pi tool result reaches a laptop-authenticated HTTP model provider", async () => {
     await withProcessGlobalTestLock(async () => {
-        const root = await Deno.makeTempDir();
-        const previousHome = Deno.env.get("HOME");
-        Deno.env.set("HOME", root);
+        const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
+        const previousHome = process.env["HOME"];
+        process.env["HOME"] = root;
         const project = join(root, "project");
         const globalRoot = join(root, "laptop-global");
-        await Deno.mkdir(join(project, ".wld"), { recursive: true });
-        await Deno.mkdir(globalRoot);
+        await fsMkdir(join(project, ".wld"), { recursive: true });
+        await fsMkdir(globalRoot);
         const remoteSecret = `remote-account-only-${crypto.randomUUID()}`;
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(globalRoot, "auth.json"),
             JSON.stringify({
                 "laptop-http": { type: "api_key", key: remoteSecret },
             }),
         );
         const sentinel = `project-only-${crypto.randomUUID()}`;
-        await Deno.writeTextFile(join(project, "sentinel.txt"), sentinel);
+        await fsWriteFile(join(project, "sentinel.txt"), sentinel);
         const secret = `laptop-only-${crypto.randomUUID()}`;
         const requests: string[] = [];
-        const provider = Deno.serve({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
+        const provider = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
             assertEquals(request.headers.get("Authorization"), `Bearer ${secret}`);
             assert(!request.headers.get("Authorization")?.includes(remoteSecret));
             assert(!request.headers.get("Authorization")?.includes(control.credential));
@@ -72,8 +84,8 @@ Deno.test("remote Pi tool result reaches a laptop-authenticated HTTP model provi
             });
         });
         const providerPort = provider.addr.transport === "tcp" ? provider.addr.port : 0;
-        await Deno.mkdir(join(root, ".wld"));
-        await Deno.writeTextFile(
+        await fsMkdir(join(root, ".wld"));
+        await fsWriteFile(
             join(root, ".wld", "models.json"),
             JSON.stringify({
                 providers: {
@@ -85,7 +97,7 @@ Deno.test("remote Pi tool result reaches a laptop-authenticated HTTP model provi
                 },
             }),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(root, ".wld", "auth.json"),
             JSON.stringify({
                 "laptop-http": { type: "api_key", key: secret },
@@ -130,7 +142,7 @@ Deno.test("remote Pi tool result reaches a laptop-authenticated HTTP model provi
                     execute: async () => ({
                         content: [{
                             type: "text" as const,
-                            text: await Deno.readTextFile(join(project, "sentinel.txt")),
+                            text: await fsReadFile(join(project, "sentinel.txt"), "utf8"),
                         }],
                         details: null,
                     }),
@@ -153,9 +165,9 @@ Deno.test("remote Pi tool result reaches a laptop-authenticated HTTP model provi
         } finally {
             await control.close();
             await provider.shutdown();
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            await Deno.remove(root, { recursive: true });
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            await fsRm(root, { recursive: true });
         }
     });
 });

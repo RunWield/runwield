@@ -1,14 +1,28 @@
+import { captureForegroundProcess } from "../../../shared/captured-process.ts";
+import { tmpdir } from "node:os";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { readdirSync as fsReaddirSync, readFileSync as fsReadFileSync, realpathSync as fsRealpathSync } from "node:fs";
+import process from "node:process";
 /**
  * @module ui/tui/testing/scenario-runner
  * Golden TUI scenario action runner and diagnostics helpers.
  */
 
-import { dirname, join, relative } from "@std/path";
+import { dirname, join, relative } from "node:path";
 import { createSessionRuntime } from "../../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../../shared/session/session-runtime-events.js";
 import { openFileSessionStore } from "../../../shared/session/file-session-store.ts";
-import { assert } from "@std/assert";
-import { extractYaml } from "@std/front-matter";
+import { ok as assert } from "node:assert/strict";
+import { extractYaml } from "../../../shared/front-matter.ts";
 import { PLAN_RUNTIME_FIELDS } from "../../../shared/workflow/controller-state.ts";
 import { readControllerRecord } from "../../../shared/workflow/controller-registry.ts";
 import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
@@ -32,7 +46,13 @@ import {
 } from "./scripted-review-surface.js";
 import { normalizeScreenText, VirtualTerminal } from "./virtual-terminal.js";
 import { NO_OPEN_BROWSER_PORT } from "../../../shared/browser-port.ts";
-import { getCwd } from "../../../constants.js";
+import {
+    getCwd,
+    getHomeDir,
+    getRunWieldRuntimeDir,
+    PROJECT_INTERNAL_RUNTIME_DIR_NAME,
+    WORKTREE_REGISTRY_FILE,
+} from "../../../constants.js";
 import { getWorktreeRegistryPath } from "../../../shared/worktree-registry.js";
 import { enterProjectRuntime } from "../../../shared/project-runtime-layout.ts";
 import { isCurrentProjectRuntimePath } from "../../../shared/runwield-owned-paths.ts";
@@ -94,22 +114,25 @@ function createGoldenReviewBrowser(
             }
             if (!reviewSurface) throw new Error("Unexpected Plan Review interaction.");
             const response = reviewSurface.submit(request);
-            const editedPlan = typeof reviewedPlan === "string"
-                ? reviewedPlan
-                : typeof response.plan === "string"
-                ? response.plan
-                : undefined;
+            const editedPlan =
+                typeof reviewedPlan === "string"
+                    ? reviewedPlan
+                    : typeof response.plan === "string"
+                      ? response.plan
+                      : undefined;
             /** @type {"run" | "decompose" | "later" | undefined} */
-            const approvalAction = response.approvalAction === "run" || response.approvalAction === "decompose" ||
-                    response.approvalAction === "later"
-                ? response.approvalAction
-                : undefined;
+            const approvalAction =
+                response.approvalAction === "run" ||
+                response.approvalAction === "decompose" ||
+                response.approvalAction === "later"
+                    ? response.approvalAction
+                    : undefined;
             const classification = planReviewClassification(editedPlan);
-            const includeExecutionPolicy = response.approved && approvalAction === "run" &&
-                classification !== "PROJECT";
+            const includeExecutionPolicy =
+                response.approved && approvalAction === "run" && classification !== "PROJECT";
             const executionAgent = response.executionAgent || (includeExecutionPolicy ? "engineer" : undefined);
-            const collaborationRecommendation = response.collaborationRecommendation ||
-                (includeExecutionPolicy ? "autonomous" : undefined);
+            const collaborationRecommendation =
+                response.collaborationRecommendation || (includeExecutionPolicy ? "autonomous" : undefined);
             const body = {
                 approved: response.approved,
                 feedback: response.feedback,
@@ -118,8 +141,10 @@ function createGoldenReviewBrowser(
                 ...(collaborationRecommendation ? { collaborationRecommendation } : {}),
                 ...(editedPlan ? { plan: editedPlan } : {}),
             };
-            const opened = await createScriptedReviewBrowser(response.approved ? "decision" : "deny", body).browser
-                .open(url);
+            const opened = await createScriptedReviewBrowser(
+                response.approved ? "decision" : "deny",
+                body,
+            ).browser.open(url);
             onDecision?.(response);
             return opened;
         },
@@ -136,13 +161,13 @@ function createGoldenReviewBrowser(
  */
 function findFixturePlanLifecycle(directory, expectedStatus) {
     try {
-        for (const entry of Deno.readDirSync(directory)) {
+        for (const entry of fsReaddirSync(directory, { withFileTypes: true })) {
             const path = join(directory, entry.name);
-            if (entry.isDirectory) {
+            if (entry.isDirectory()) {
                 const nested = findFixturePlanLifecycle(path, expectedStatus);
                 if (nested.status === expectedStatus) return nested;
-            } else if (entry.isFile && entry.name.endsWith(".md")) {
-                const attrs = parsePlanFrontMatter(Deno.readTextFileSync(path)).attrs;
+            } else if (entry.isFile() && entry.name.endsWith(".md")) {
+                const attrs = parsePlanFrontMatter(fsReadFileSync(path, "utf8")).attrs;
                 if (attrs.status === expectedStatus) return { status: attrs.status, updatedAt: attrs.updatedAt };
             }
         }
@@ -241,7 +266,9 @@ function findFixturePlanLifecycle(directory, expectedStatus) {
 async function sha256Hex(bytes) {
     const copy = new Uint8Array(bytes);
     const hash = await crypto.subtle.digest("SHA-256", copy.buffer);
-    return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 /**
@@ -254,24 +281,24 @@ async function snapshotProjectRoot(projectRoot) {
     /** @param {string} directory */
     async function visit(directory) {
         try {
-            for await (const entry of Deno.readDir(directory)) {
+            for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
                 if (entry.name === ".git") continue;
                 const path = join(directory, entry.name);
-                const relativePath = relative(projectRoot, path);
+                const relativePath = relative(projectRoot, path).replaceAll("\\", "/");
                 if (isCurrentProjectRuntimePath(relativePath)) continue;
-                if (entry.isDirectory) {
+                if (entry.isDirectory()) {
                     snapshot[relativePath] = { kind: "dir" };
                     await visit(path);
-                } else if (entry.isFile) {
-                    const bytes = await Deno.readFile(path).catch((error) => {
-                        if (error instanceof Deno.errors.NotFound) return null;
+                } else if (entry.isFile()) {
+                    const bytes = await fsReadFile(path).catch((error) => {
+                        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
                         throw error;
                     });
                     if (bytes) snapshot[relativePath] = { kind: "file", hash: await sha256Hex(bytes) };
                 }
             }
         } catch (error) {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         }
     }
     await visit(projectRoot);
@@ -316,7 +343,7 @@ function getContextSystemPrompt(context) {
  * @param {string} cwd
  */
 async function runGoldenGit(args, cwd) {
-    const output = await new Deno.Command("git", { args, cwd }).output();
+    const output = await captureForegroundProcess("git", { args, cwd });
     const stdout = new TextDecoder().decode(output.stdout).trim();
     const stderr = new TextDecoder().decode(output.stderr).trim();
     if (!output.success) throw new Error(`git ${args.join(" ")} failed: ${stderr || stdout}`);
@@ -417,7 +444,7 @@ async function registerGoldenFauxProviderForEnvironment(options = {}) {
  * @returns {Promise<GoldenScenarioResult>}
  */
 export async function runGoldenScenario(scenario, options = {}) {
-    if (scenario.composedTui && Deno.env.get("WLD_GOLDEN_TUI_CHILD") !== "1") {
+    if (scenario.composedTui && process.env["WLD_GOLDEN_TUI_CHILD"] !== "1") {
         throw new Error(
             "Composed Golden TUI scenarios must run through runGoldenScenarioChildProcess for subprocess isolation.",
         );
@@ -433,10 +460,10 @@ export async function runGoldenScenario(scenario, options = {}) {
     let artifactDir = null;
     const timeoutMs = scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
     options.onReady?.();
-    const startedAt = Date.now();
+    const startedAt = performance.now();
     try {
         for (const action of scenario.actions || []) {
-            if (Date.now() - startedAt > timeoutMs) throw new Error(`Scenario timed out after ${timeoutMs}ms.`);
+            if (performance.now() - startedAt > timeoutMs) throw new Error(`Scenario timed out after ${timeoutMs}ms.`);
             if (!isObject(action)) continue;
             const typed = /** @type {any} */ (action);
             if (typed.type === "modelTurn" || typed.type === "modelProviderTurn") {
@@ -494,11 +521,11 @@ export async function runGoldenScenario(scenario, options = {}) {
             if (typed.type === "planReviewTransaction") {
                 const decisions = typed.decisions || [];
                 const reviewSurface = new ScriptedReviewSurface(decisions);
-                const planDir = await Deno.makeTempDir({ prefix: "runwield-golden-plan-review-" });
+                const planDir = await fsMkdtemp(join(tmpdir(), "runwield-golden-plan-review-"));
                 const plansDir = join(planDir, "docs", "plans");
-                await Deno.mkdir(plansDir, { recursive: true });
+                await fsMkdir(plansDir, { recursive: true });
                 const planPath = join(plansDir, "plan.md");
-                await Deno.writeTextFile(planPath, typed.plan || "# Plan\n\nDo the thing.\n");
+                await fsWriteFile(planPath, typed.plan || "# Plan\n\nDo the thing.\n");
                 const lifecycleEvents = [];
                 try {
                     for (let reviewIndex = 0; reviewIndex < decisions.length; reviewIndex += 1) {
@@ -525,11 +552,11 @@ export async function runGoldenScenario(scenario, options = {}) {
                         events.push(lifecycleEvent);
                     }
                     reviewSurface.assertComplete();
-                    const parsed = parsePlanFrontMatter(await Deno.readTextFile(planPath));
+                    const parsed = parsePlanFrontMatter(await fsReadFile(planPath, "utf8"));
                     state.planReview = { attrs: parsed.attrs, lifecycleEvents, consumed: reviewSurface.consumed };
                     state.screen = `${state.screen || ""}\n${lifecycleEvents.map((event) => event.event).join("\n")}`;
                 } finally {
-                    await Deno.remove(planDir, { recursive: true }).catch(() => {});
+                    await fsRm(planDir, { recursive: true }).catch(() => {});
                 }
                 continue;
             }
@@ -538,9 +565,9 @@ export async function runGoldenScenario(scenario, options = {}) {
         actor.assertComplete();
         if (expectedInteractions.length) {
             throw new Error(
-                `Missing expected interactions: ${
-                    expectedInteractions.map((item) => `${item.interactionType}:${item.decision || ""}`).join(",")
-                }`,
+                `Missing expected interactions: ${expectedInteractions
+                    .map((item) => `${item.interactionType}:${item.decision || ""}`)
+                    .join(",")}`,
             );
         }
         const result = {
@@ -555,11 +582,8 @@ export async function runGoldenScenario(scenario, options = {}) {
         return result;
     } catch (error) {
         if (options.keepArtifacts !== false) {
-            artifactDir = await Deno.makeTempDir({
-                dir: options.artifactRoot,
-                prefix: "runwield-golden-tui-failure-",
-            });
-            await Deno.writeTextFile(
+            artifactDir = await fsMkdtemp(join(options.artifactRoot ?? tmpdir(), "runwield-golden-tui-failure-"));
+            await fsWriteFile(
                 join(artifactDir, "diagnostics.json"),
                 JSON.stringify(
                     {
@@ -597,16 +621,18 @@ async function seedGoldenPriorSession(priorSession, fauxProvider) {
                     text: priorSession.assistantText,
                 }),
             ...(priorSession.planName
-                ? [() =>
-                    createFauxMessageForTurn({
-                        id: "prior-session-plan-context",
-                        agent: "planner",
-                        phase: "plan_review",
-                        text: "Persisted the Plan context for a later resumed turn.",
-                    })]
+                ? [
+                      () =>
+                          createFauxMessageForTurn({
+                              id: "prior-session-plan-context",
+                              agent: "planner",
+                              phase: "plan_review",
+                              text: "Persisted the Plan context for a later resumed turn.",
+                          }),
+                  ]
                 : []),
         ]);
-        const created = await runtime.createInteractiveSession({ cwd: Deno.cwd(), mode: "new" });
+        const created = await runtime.createInteractiveSession({ cwd: getCwd(), mode: "new" });
         if (priorSession.agentName) await runtime.switchAgent(created.sessionId, { agentName: priorSession.agentName });
         await runtime.promptSession(created.sessionId, { initialRequest: priorSession.userText });
         if (priorSession.planName) {
@@ -635,13 +661,15 @@ async function seedGoldenPriorSession(priorSession, fauxProvider) {
         }
         let interrupted = false;
         if (priorSession.interrupted) {
-            fauxProvider.setResponses([() =>
-                createFauxMessageForTurn({
-                    id: "prior-session-interrupted-turn",
-                    agent: priorSession.agentName || "guide",
-                    phase: priorSession.agentName || "guide",
-                    text: "This response should be interrupted before it completes. ".repeat(200),
-                })]);
+            fauxProvider.setResponses([
+                () =>
+                    createFauxMessageForTurn({
+                        id: "prior-session-interrupted-turn",
+                        agent: priorSession.agentName || "guide",
+                        phase: priorSession.agentName || "guide",
+                        text: "This response should be interrupted before it completes. ".repeat(200),
+                    }),
+            ]);
             let resolveStreaming = () => {};
             const streaming = new Promise((resolve) => {
                 resolveStreaming = () => resolve(undefined);
@@ -656,7 +684,7 @@ async function seedGoldenPriorSession(priorSession, fauxProvider) {
                 await Promise.race([
                     streaming,
                     new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error("Golden interrupted turn did not start streaming.")), 3_000)
+                        setTimeout(() => reject(new Error("Golden interrupted turn did not start streaming.")), 3_000),
                     ),
                 ]);
                 const cancellation = runtime.cancelSession(created.sessionId);
@@ -691,26 +719,65 @@ async function seedGoldenCorruptSession(fauxProvider) {
     const sessionStore = openFileSessionStore();
     const runtime = createSessionRuntime({ sessionStore, ownerProcessKind: "tui" });
     try {
-        fauxProvider.setResponses([() =>
-            createFauxMessageForTurn({
-                id: "corrupt-session-seed",
-                agent: "guide",
-                phase: "inquiry",
-                text: "This transcript will be corrupted after it is safely closed.",
-            })]);
-        const created = await runtime.createInteractiveSession({ cwd: Deno.cwd(), mode: "new" });
+        fauxProvider.setResponses([
+            () =>
+                createFauxMessageForTurn({
+                    id: "corrupt-session-seed",
+                    agent: "guide",
+                    phase: "inquiry",
+                    text: "This transcript will be corrupted after it is safely closed.",
+                }),
+        ]);
+        const created = await runtime.createInteractiveSession({ cwd: getCwd(), mode: "new" });
         await runtime.switchAgent(created.sessionId, { agentName: "guide" });
         await runtime.promptSession(created.sessionId, { initialRequest: "seed corrupt resume fixture" });
         const sessionManagerId = runtime.getSessionSnapshot(created.sessionId)?.sessionManagerId;
-        const sessions = await runtime.listResumableSessions(Deno.cwd());
+        const sessions = await runtime.listResumableSessions(getCwd());
         const persisted = sessions.find((session) => session.id === sessionManagerId);
         await runtime.closeAllSessionsWhenIdle();
         if (!persisted) throw new Error("Golden corrupt Session fixture was not persisted.");
-        await Deno.writeTextFile(persisted.path, "{corrupt-json\n");
+        await fsWriteFile(persisted.path, "{corrupt-json\n");
         return { id: persisted.id, path: persisted.path };
     } finally {
         sessionStore.close?.();
     }
+}
+
+/** Failure-only reads of real fixture evidence; never acquire a registry lock or repair state.
+ * @param {string} projectRoot
+ * @param {string} home
+ */
+async function captureNativeFailureEvidence(projectRoot, home) {
+    /** @param {string[]} args */
+    const git = async (args) => {
+        try {
+            const result = await captureForegroundProcess("git", {
+                cwd: projectRoot,
+                args: ["--no-optional-locks", ...args],
+                timeoutMs: 1000,
+            });
+            return {
+                code: result.code,
+                stdout: new TextDecoder().decode(result.stdout).slice(-16384),
+                stderr: new TextDecoder().decode(result.stderr).slice(-4096),
+            };
+        } catch (error) {
+            return { error: String(error) };
+        }
+    };
+    /** @param {string} path */
+    const tail = (path) =>
+        fsReadFile(path, "utf8")
+            .then((text) => text.slice(-16384))
+            .catch((error) => String(error));
+    const [status, planDiff, registry, externalCalls, unsupportedCalls] = await Promise.all([
+        git(["status", "--porcelain=v1", "--untracked-files=all"]),
+        git(["diff", "--no-ext-diff", "--no-textconv", "HEAD", "--", "docs/plans"]),
+        tail(join(getRunWieldRuntimeDir(projectRoot), PROJECT_INTERNAL_RUNTIME_DIR_NAME, WORKTREE_REGISTRY_FILE)),
+        tail(join(dirname(home), "bin", "calls.log")),
+        tail(join(dirname(home), "bin", "unexpected.log")),
+    ]);
+    return { projectRoot, status, planDiff, registry, externalCalls, unsupportedCalls };
 }
 
 /**
@@ -720,17 +787,17 @@ async function seedGoldenCorruptSession(fauxProvider) {
  */
 async function runComposedTuiScenario(scenario, options) {
     return await withProcessGlobalTestLock(async () => {
-        const useCurrentEnvironment = Deno.env.get("WLD_GOLDEN_TUI_CHILD") === "1";
-        const previousHome = Deno.env.get("HOME");
-        const previousCwd = Deno.cwd();
+        const useCurrentEnvironment = process.env["WLD_GOLDEN_TUI_CHILD"] === "1";
+        const previousHome = process.env["HOME"];
+        const previousCwd = getCwd();
         const env = useCurrentEnvironment
             ? null
             : await createGoldenIsolatedEnvironment({ keep: options.keepArtifacts });
         if (env) {
-            for (const [key, value] of Object.entries(env.env)) Deno.env.set(key, value);
-            Deno.chdir(env.projectRoot);
+            for (const [key, value] of Object.entries(env.env)) process.env[key] = value;
+            process.chdir(env.projectRoot);
         }
-        const runwieldDir = env?.runwieldDir || Deno.env.get("RUNWIELD_HOME") || null;
+        const runwieldDir = env?.runwieldDir || process.env["RUNWIELD_HOME"] || null;
         const initStatePath = runwieldDir ? join(runwieldDir, "init-state.json") : null;
         if (initStatePath) {
             const { _setTestStatePath } = await import("../../../cmd/init/init-state.ts");
@@ -738,9 +805,9 @@ async function runComposedTuiScenario(scenario, options) {
         }
         for (const fixture of scenario.initialProjectFiles || []) {
             if (!isObject(fixture)) continue;
-            const path = join(Deno.cwd(), String(/** @type {any} */ (fixture).path || ""));
-            await Deno.mkdir(join(path, ".."), { recursive: true });
-            await Deno.writeTextFile(path, String(/** @type {any} */ (fixture).text || ""));
+            const path = join(getCwd(), String(/** @type {any} */ (fixture).path || ""));
+            await fsMkdir(join(path, ".."), { recursive: true });
+            await fsWriteFile(path, String(/** @type {any} */ (fixture).text || ""));
         }
         // Committed baseline state, as opposed to `initialProjectFiles`, which stay
         // dirty in the primary checkout. Publication runs in an isolated clone and
@@ -750,34 +817,34 @@ async function runComposedTuiScenario(scenario, options) {
         if (committedProjectFiles.length > 0) {
             for (const fixture of committedProjectFiles) {
                 if (!isObject(fixture)) continue;
-                const path = join(Deno.cwd(), String(/** @type {any} */ (fixture).path || ""));
-                await Deno.mkdir(join(path, ".."), { recursive: true });
-                await Deno.writeTextFile(path, String(/** @type {any} */ (fixture).text || ""));
+                const path = join(getCwd(), String(/** @type {any} */ (fixture).path || ""));
+                await fsMkdir(join(path, ".."), { recursive: true });
+                await fsWriteFile(path, String(/** @type {any} */ (fixture).text || ""));
             }
-            await runGoldenGit(["add", "-A"], Deno.cwd());
-            await runGoldenGit(["commit", "-m", "Golden fixture baseline"], Deno.cwd());
-            await runGoldenGit(["push", "origin", "main"], Deno.cwd());
+            await runGoldenGit(["add", "-A"], getCwd());
+            await runGoldenGit(["commit", "-m", "Golden fixture baseline"], getCwd());
+            await runGoldenGit(["push", "origin", "main"], getCwd());
         }
         if (scenario.nonGitProject) {
-            await Deno.remove(join(Deno.cwd(), ".git"), { recursive: true }).catch(() => {});
+            await fsRm(join(getCwd(), ".git"), { recursive: true }).catch(() => {});
         }
         if (runwieldDir && scenario.modelSetup === "none") {
-            await Deno.remove(join(runwieldDir, "models.json")).catch(() => {});
-            await Deno.writeTextFile(
+            await fsRm(join(runwieldDir, "models.json")).catch(() => {});
+            await fsWriteFile(
                 join(runwieldDir, "settings.json"),
                 JSON.stringify({ theme: "default", notifications: { enabled: false } }),
             );
         } else if (runwieldDir && scenario.modelSetup === "provider-without-models") {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(runwieldDir, "models.json"),
                 JSON.stringify({ providers: { empty: { name: "Empty Golden Provider", apiKey: "golden-test-key" } } }),
             );
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(runwieldDir, "settings.json"),
                 JSON.stringify({ theme: "default", notifications: { enabled: false } }),
             );
         } else if (runwieldDir && scenario.globalSettings) {
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 join(runwieldDir, "settings.json"),
                 JSON.stringify({
                     theme: "default",
@@ -790,11 +857,11 @@ async function runComposedTuiScenario(scenario, options) {
             const settingsPath = join(runwieldDir, "settings.json");
             let settings = {};
             try {
-                settings = JSON.parse(await Deno.readTextFile(settingsPath));
+                settings = JSON.parse(await fsReadFile(settingsPath, "utf8"));
             } catch {
                 settings = {};
             }
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 settingsPath,
                 JSON.stringify({
                     ...settings,
@@ -805,20 +872,20 @@ async function runComposedTuiScenario(scenario, options) {
         // Runtime entry is startup state, not a scenario mutation. Complete it
         // before concurrent UI reads begin and before the project baseline is saved.
         await enterProjectRuntime(getCwd());
-        const projectSnapshotBefore = await snapshotProjectRoot(Deno.cwd());
-        const fauxProvider = scenario.modelSetup === "none" || scenario.modelSetup === "provider-without-models"
-            ? null
-            : await registerGoldenFauxProviderForEnvironment({
-                runwieldDir: runwieldDir || undefined,
-                models: scenario.models,
-                tokensPerSecond: scenario.modelTokensPerSecond,
-            });
+        const projectSnapshotBefore = await snapshotProjectRoot(getCwd());
+        const fauxProvider =
+            scenario.modelSetup === "none" || scenario.modelSetup === "provider-without-models"
+                ? null
+                : await registerGoldenFauxProviderForEnvironment({
+                      runwieldDir: runwieldDir || undefined,
+                      models: scenario.models,
+                      tokensPerSecond: scenario.modelTokensPerSecond,
+                  });
         const priorSessionState = fauxProvider
             ? await seedGoldenPriorSession(scenario.priorSession, fauxProvider)
             : null;
-        const corruptSessionState = scenario.corruptSession && fauxProvider
-            ? await seedGoldenCorruptSession(fauxProvider)
-            : null;
+        const corruptSessionState =
+            scenario.corruptSession && fauxProvider ? await seedGoldenCorruptSession(fauxProvider) : null;
         const actor = new GoldenScenarioActor(scenario.script || []);
         /** @type {Map<string, number>} */
         const turnOrdinals = new Map();
@@ -852,8 +919,8 @@ async function runComposedTuiScenario(scenario, options) {
         const persistedLifecycleEvents = [];
         const writeHeartbeat = async () => {
             if (!options.heartbeatPath) return;
-            await Deno.mkdir(join(options.heartbeatPath, ".."), { recursive: true }).catch(() => {});
-            await Deno.writeTextFile(
+            await fsMkdir(join(options.heartbeatPath, ".."), { recursive: true }).catch(() => {});
+            await fsWriteFile(
                 options.heartbeatPath,
                 JSON.stringify(
                     {
@@ -863,9 +930,15 @@ async function runComposedTuiScenario(scenario, options) {
                         events,
                         state,
                         actor: actor.diagnostics(),
+                        validationErrors: await fsReadFile(
+                            join(getHomeDir(), ".wld", "debug", "validation-errors.jsonl"),
+                            "utf8",
+                        )
+                            .then((text) => text.slice(-65_536))
+                            .catch(() => ""),
                         runtime: composition?.runtime.getSessionSnapshot(composition.sessionId),
-                        cwd: Deno.cwd(),
-                        home: Deno.env.get("HOME"),
+                        cwd: getCwd(),
+                        home: getHomeDir(),
                     },
                     null,
                     2,
@@ -900,25 +973,22 @@ async function runComposedTuiScenario(scenario, options) {
             consumedHumanReviews.push(response);
         };
         const interactionSurface = scenario.scriptedInteractions
-            ? new ScriptedInteractionSurface(
-                /** @type {any[]} */ (scenario.scriptedInteractions),
-                (planName) => {
-                    const activeComposition = composition;
-                    const executionCwd = activeComposition?.runtime.getSessionSnapshot(activeComposition.sessionId)
-                        ?.activeExecutionWorkflow?.executionCwd;
-                    if (typeof executionCwd === "string" && executionCwd) return executionCwd;
-                    if (planName) {
-                        const registryText = Deno.readTextFileSync(getWorktreeRegistryPath(getCwd()));
-                        const parsed = /** @type {{ entries?: Array<{ planName?: string, path?: string }> }} */ (
-                            JSON.parse(registryText)
-                        );
-                        const matches = (parsed.entries || []).filter((entry) => entry.planName === planName);
-                        const durablePath = matches.at(-1)?.path;
-                        if (durablePath) return durablePath;
-                    }
-                    return getCwd();
-                },
-            )
+            ? new ScriptedInteractionSurface(/** @type {any[]} */ (scenario.scriptedInteractions), (planName) => {
+                  const activeComposition = composition;
+                  const executionCwd = activeComposition?.runtime.getSessionSnapshot(activeComposition.sessionId)
+                      ?.activeExecutionWorkflow?.executionCwd;
+                  if (typeof executionCwd === "string" && executionCwd) return executionCwd;
+                  if (planName) {
+                      const registryText = fsReadFileSync(getWorktreeRegistryPath(getCwd()), "utf8");
+                      const parsed = /** @type {{ entries?: Array<{ planName?: string, path?: string }> }} */ (
+                          JSON.parse(registryText)
+                      );
+                      const matches = (parsed.entries || []).filter((entry) => entry.planName === planName);
+                      const durablePath = matches.at(-1)?.path;
+                      if (durablePath) return durablePath;
+                  }
+                  return getCwd();
+              })
             : null;
         if (interactionSurface) state.scriptedInteractions = interactionSurface.consumed;
         /** @type {"select"|"text"|"approval"|null} */
@@ -945,14 +1015,16 @@ async function runComposedTuiScenario(scenario, options) {
                 if (scenario.interactiveSelectPrompts?.some((fragment) => prompt.includes(fragment))) {
                     const type = activeScriptedInteractionType || "select";
                     const next = interactionSurface.interactions[0];
-                    const expected = next?.type === type && next.promptIncludes && prompt.includes(next.promptIncludes)
-                        ? next
-                        : null;
+                    const expected =
+                        next?.type === type && next.promptIncludes && prompt.includes(next.promptIncludes)
+                            ? next
+                            : null;
                     return originalPromptSelect(prompt, options, hooks).then((value) => {
                         if (expected) {
-                            const expectedValue = expected.value === "__first_option__"
-                                ? options?.[0]?.value ?? null
-                                : expected.value ?? null;
+                            const expectedValue =
+                                expected.value === "__first_option__"
+                                    ? (options?.[0]?.value ?? null)
+                                    : (expected.value ?? null);
                             if (value !== expectedValue) {
                                 throw new Error(`Interactive select returned ${value}; expected ${expectedValue}`);
                             }
@@ -989,140 +1061,155 @@ async function runComposedTuiScenario(scenario, options) {
             // transaction never ran in any Golden scenario.
             // Extra slots allow ancillary Recorder calls; they must still pass
             // through the same strict actor dispatch as every other model turn.
-            const scriptedResponseFactories = Array.from({ length: (scenario.script || []).length + 8 }, () =>
-            (
-                /** @type {import('@earendil-works/pi-ai').TranscriptContext} */ context,
-                /** @type {unknown} */ _options,
-                /** @type {unknown} */ _providerState,
-                /** @type {{ id?: string, provider?: string }} */ model,
-            ) => {
-                let snapshot = composition?.runtime.getSessionSnapshot(composition.sessionId);
-                const availableTools = getContextToolNames(context);
-                const systemPrompt = getContextSystemPrompt(context);
-                // Route the external model fixture by the request's real working
-                // directory. Concurrent sessions must never borrow the first TUI's
-                // Plan identity or consume its scripted turns.
-                if (concurrentSessions.size > 0) {
-                    const requestCwd = systemPrompt.match(/^Current working directory: (.+)$/m)?.[1]?.trim() ||
-                        systemPrompt.match(/<cwd>\s*([\s\S]*?)\s*<\/cwd>/)?.[1]?.trim();
-                    const snapshots = [
-                        snapshot,
-                        ...[...concurrentSessions.values()].map(({ composition: sessionComposition }) =>
-                            sessionComposition.runtime.getSessionSnapshot(sessionComposition.sessionId)
-                        ),
-                    ].filter((candidate) =>
-                        candidate && requestCwd && Deno.realPathSync(candidate.cwd) === Deno.realPathSync(requestCwd)
-                    );
-                    if (snapshots.length === 1) snapshot = snapshots[0];
-                    else if (availableTools.includes("task_completed") || availableTools.includes("review_complete")) {
-                        const message = `Cannot route concurrent model request for ${requestCwd || "missing cwd"}`;
-                        events.push(`model:fixture-error:${message}`);
-                        void writeHeartbeat().catch(() => {});
-                        throw new Error(message);
-                    }
-                }
-                const { agent, phase } = inferGoldenTurnIdentity(
-                    snapshot?.activeAgent || undefined,
-                    availableTools,
-                    systemPrompt,
-                );
-                const checklistTool = availableTools.includes("manual_qa_completed")
-                    ? "manual_qa_completed"
-                    : availableTools.includes("qa_checklist_generated")
-                    ? "qa_checklist_generated"
-                    : null;
-                if (
-                    checklistTool &&
-                    !actor.remaining.some((turn) => turn.toolCalls?.some((call) => call.name === checklistTool))
-                ) {
-                    events.push("model:faux-provider:manual-qa:manual_qa");
-                    return createFauxMessageForTurn({
-                        id: "golden-default-manual-qa",
-                        agent: "manual-qa",
-                        phase: "manual_qa",
-                        toolCalls: [{
-                            name: checklistTool,
-                            arguments: {
-                                checklistMarkdown: `Manual verification steps for ${
-                                    lastWorkflowPlanName || "the completed Plan"
-                                }\n\n- [ ] Verify the completed behavior.`,
-                            },
-                        }],
-                    });
-                }
-                // Most scenarios do not prescribe prose for the Work Record.
-                // Only that ancillary model response has a default: persistence,
-                // indexing, and linking still run through the production tool.
-                if (
-                    availableTools.includes("work_record_completed") &&
-                    !actor.remaining.some((turn) => turn.agent === "recorder")
-                ) {
-                    events.push("model:faux-provider:recorder:work_record");
-                    return createFauxMessageForTurn({
-                        id: "golden-default-work-record",
-                        agent: "recorder",
-                        phase: "work_record",
-                        toolCalls: [{
-                            name: "work_record_completed",
-                            arguments: {
-                                title: "Golden Work Record",
-                                summary: "Recorded the completed Golden Planned Change for planning memory.",
-                                deviationsFromPlan: "None.",
-                            },
-                        }],
-                    });
-                }
-                if (scenario.captureModelTurns) {
-                    const modelTurns = Array.isArray(state.modelTurns) ? state.modelTurns : [];
-                    modelTurns.push({
-                        agent,
-                        phase,
-                        runtimeAgent: snapshot?.activeAgent || "",
-                        model: model?.id || "",
-                        provider: model?.provider || "",
-                        systemPrompt,
-                    });
-                    state.modelTurns = modelTurns;
-                }
-                // The Runtime's own view of which Plan is executing. An Epic drives
-                // several child Plans through the same Agent and phase, so execution
-                // and review turns count ordinals per Plan: one child's turn count
-                // then cannot shift the next child's script. Planning turns are not
-                // scoped this way — a Planner turn runs before its Plan exists, and
-                // the Runtime still reports whichever Plan came before.
-                const reportedPlanName = String(
-                    /** @type {{ workflowContext?: { planName?: unknown }, activeExecutionWorkflow?: { planName?: unknown } }} */ (
-                        snapshot || {}
-                    ).workflowContext?.planName ||
-                        /** @type {{ activeExecutionWorkflow?: { planName?: unknown } }} */ (snapshot || {})
-                            .activeExecutionWorkflow?.planName ||
-                        "",
-                );
-                // The Runtime clears workflowContext between phases while retaining
-                // activeExecutionWorkflow. An empty reading must not open a second
-                // ordinal series for the same Plan — that silently shifts later
-                // turns. Carry the last Plan the Runtime named until it names another.
-                if (reportedPlanName) lastWorkflowPlanName = reportedPlanName;
-                const planName = reportedPlanName || lastWorkflowPlanName;
-                const planScoped = agent === "engineer" || agent === "reviewer";
-                const ordinalKey = planScoped ? `${agent}:${phase}:${planName}` : `${agent}:${phase}`;
-                const ordinal = (turnOrdinals.get(ordinalKey) || 0) + 1;
-                turnOrdinals.set(ordinalKey, ordinal);
-                // Recorded before dispatch so a failing turn still appears: the
-                // identity/ordinal a turn was offered under is the one fact needed to
-                // script agent loops that run to a text-only answer, and it is
-                // invisible from events alone.
-                turnSequence.push(`${agent}:${phase}:${planScoped ? planName || "-" : "*"}:${ordinal}`);
-                const response = actor.next({
-                    agent,
-                    phase,
-                    ordinal,
-                    planName: planScoped ? planName : undefined,
-                    availableTools,
-                });
-                events.push(`model:faux-provider:${agent}:${phase}`);
-                return createFauxMessageForTurn(actor.consumed.at(-1) || /** @type {any} */ ({ response }));
-            });
+            const scriptedResponseFactories = Array.from(
+                { length: (scenario.script || []).length + 8 },
+                () =>
+                    (
+                        /** @type {import('@earendil-works/pi-ai').TranscriptContext} */ context,
+                        /** @type {unknown} */ _options,
+                        /** @type {unknown} */ _providerState,
+                        /** @type {{ id?: string, provider?: string }} */ model,
+                    ) => {
+                        let snapshot = composition?.runtime.getSessionSnapshot(composition.sessionId);
+                        const availableTools = getContextToolNames(context);
+                        const systemPrompt = getContextSystemPrompt(context);
+                        // Route the external model fixture by the request's real working
+                        // directory. Concurrent sessions must never borrow the first TUI's
+                        // Plan identity or consume its scripted turns.
+                        if (concurrentSessions.size > 0) {
+                            const requestCwd =
+                                systemPrompt.match(/^Current working directory: (.+)$/m)?.[1]?.trim() ||
+                                systemPrompt.match(/<cwd>\s*([\s\S]*?)\s*<\/cwd>/)?.[1]?.trim();
+                            const snapshots = [
+                                snapshot,
+                                ...[...concurrentSessions.values()].map(({ composition: sessionComposition }) =>
+                                    sessionComposition.runtime.getSessionSnapshot(sessionComposition.sessionId),
+                                ),
+                            ].filter(
+                                (candidate) =>
+                                    candidate &&
+                                    requestCwd &&
+                                    fsRealpathSync(candidate.cwd) === fsRealpathSync(requestCwd),
+                            );
+                            if (snapshots.length === 1) snapshot = snapshots[0];
+                            else if (
+                                availableTools.includes("task_completed") ||
+                                availableTools.includes("review_complete")
+                            ) {
+                                const message = `Cannot route concurrent model request for ${requestCwd || "missing cwd"}`;
+                                events.push(`model:fixture-error:${message}`);
+                                void writeHeartbeat().catch(() => {});
+                                throw new Error(message);
+                            }
+                        }
+                        const { agent, phase } = inferGoldenTurnIdentity(
+                            snapshot?.activeAgent || undefined,
+                            availableTools,
+                            systemPrompt,
+                        );
+                        const checklistTool = availableTools.includes("manual_qa_completed")
+                            ? "manual_qa_completed"
+                            : availableTools.includes("qa_checklist_generated")
+                              ? "qa_checklist_generated"
+                              : null;
+                        if (
+                            checklistTool &&
+                            !actor.remaining.some((turn) => turn.toolCalls?.some((call) => call.name === checklistTool))
+                        ) {
+                            events.push("model:faux-provider:manual-qa:manual_qa");
+                            return createFauxMessageForTurn({
+                                id: "golden-default-manual-qa",
+                                agent: "manual-qa",
+                                phase: "manual_qa",
+                                toolCalls: [
+                                    {
+                                        name: checklistTool,
+                                        arguments: {
+                                            checklistMarkdown: `Manual verification steps for ${
+                                                lastWorkflowPlanName || "the completed Plan"
+                                            }\n\n- [ ] Verify the completed behavior.`,
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                        // Most scenarios do not prescribe prose for the Work Record.
+                        // Only that ancillary model response has a default: persistence,
+                        // indexing, and linking still run through the production tool.
+                        if (
+                            availableTools.includes("work_record_completed") &&
+                            !actor.remaining.some((turn) => turn.agent === "recorder")
+                        ) {
+                            events.push("model:faux-provider:recorder:work_record");
+                            return createFauxMessageForTurn({
+                                id: "golden-default-work-record",
+                                agent: "recorder",
+                                phase: "work_record",
+                                toolCalls: [
+                                    {
+                                        name: "work_record_completed",
+                                        arguments: {
+                                            title: "Golden Work Record",
+                                            summary:
+                                                "Recorded the completed Golden Planned Change for planning memory.",
+                                            deviationsFromPlan: "None.",
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                        if (scenario.captureModelTurns) {
+                            const modelTurns = Array.isArray(state.modelTurns) ? state.modelTurns : [];
+                            modelTurns.push({
+                                agent,
+                                phase,
+                                runtimeAgent: snapshot?.activeAgent || "",
+                                model: model?.id || "",
+                                provider: model?.provider || "",
+                                systemPrompt,
+                            });
+                            state.modelTurns = modelTurns;
+                        }
+                        // The Runtime's own view of which Plan is executing. An Epic drives
+                        // several child Plans through the same Agent and phase, so execution
+                        // and review turns count ordinals per Plan: one child's turn count
+                        // then cannot shift the next child's script. Planning turns are not
+                        // scoped this way — a Planner turn runs before its Plan exists, and
+                        // the Runtime still reports whichever Plan came before.
+                        const reportedPlanName = String(
+                            /** @type {{ workflowContext?: { planName?: unknown }, activeExecutionWorkflow?: { planName?: unknown } }} */ (
+                                snapshot || {}
+                            ).workflowContext?.planName ||
+                                /** @type {{ activeExecutionWorkflow?: { planName?: unknown } }} */ (snapshot || {})
+                                    .activeExecutionWorkflow?.planName ||
+                                "",
+                        );
+                        // The Runtime clears workflowContext between phases while retaining
+                        // activeExecutionWorkflow. An empty reading must not open a second
+                        // ordinal series for the same Plan — that silently shifts later
+                        // turns. Carry the last Plan the Runtime named until it names another.
+                        if (reportedPlanName) lastWorkflowPlanName = reportedPlanName;
+                        const planName = reportedPlanName || lastWorkflowPlanName;
+                        const planScoped = agent === "engineer" || agent === "reviewer";
+                        const ordinalKey = planScoped ? `${agent}:${phase}:${planName}` : `${agent}:${phase}`;
+                        const ordinal = (turnOrdinals.get(ordinalKey) || 0) + 1;
+                        turnOrdinals.set(ordinalKey, ordinal);
+                        // Recorded before dispatch so a failing turn still appears: the
+                        // identity/ordinal a turn was offered under is the one fact needed to
+                        // script agent loops that run to a text-only answer, and it is
+                        // invisible from events alone.
+                        turnSequence.push(`${agent}:${phase}:${planScoped ? planName || "-" : "*"}:${ordinal}`);
+                        const response = actor.next({
+                            agent,
+                            phase,
+                            ordinal,
+                            planName: planScoped ? planName : undefined,
+                            availableTools,
+                        });
+                        events.push(`model:faux-provider:${agent}:${phase}`);
+                        return createFauxMessageForTurn(actor.consumed.at(-1) || /** @type {any} */ ({ response }));
+                    },
+            );
             fauxProvider?.setResponses(scriptedResponseFactories);
             // The welcome prompt blocks inside createInteractiveTuiComposition while
             // scenario actions only run after it resolves, so startup-declared input
@@ -1136,9 +1223,9 @@ async function runComposedTuiScenario(scenario, options) {
             const startupInputPromise = (async () => {
                 for (const step of startupInputSteps) {
                     const marker = String(step.marker || "");
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let markerObserved = false;
-                    while (Date.now() - startedAt < (scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS)) {
+                    while (performance.now() - startedAt < (scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS)) {
                         await terminal.flush();
                         const screen = terminal.getScreenText();
                         if (screen.includes(marker)) {
@@ -1152,24 +1239,26 @@ async function runComposedTuiScenario(scenario, options) {
                             // pre-exit report is the parent's only evidence.
                             if (scenario.expectedCleanExit) {
                                 await writeHeartbeat();
-                                console.log(JSON.stringify({
-                                    ok: true,
-                                    expectedCleanExit: true,
-                                    result: {
-                                        name: scenario.name,
-                                        state,
-                                        events,
-                                        screenText: screen,
-                                        scrollbackText: state.startupScrollback,
-                                        actor: actor.diagnostics(),
-                                        artifactDir: null,
-                                    },
-                                    env: {
-                                        root: runwieldDir ? join(runwieldDir, "..", "..") : null,
-                                        projectRoot: Deno.cwd(),
-                                    },
-                                    heartbeatArtifactDir: options.artifactRoot || null,
-                                }));
+                                console.log(
+                                    JSON.stringify({
+                                        ok: true,
+                                        expectedCleanExit: true,
+                                        result: {
+                                            name: scenario.name,
+                                            state,
+                                            events,
+                                            screenText: screen,
+                                            scrollbackText: state.startupScrollback,
+                                            actor: actor.diagnostics(),
+                                            artifactDir: null,
+                                        },
+                                        env: {
+                                            root: runwieldDir ? join(runwieldDir, "..", "..") : null,
+                                            projectRoot: getCwd(),
+                                        },
+                                        heartbeatArtifactDir: options.artifactRoot || null,
+                                    }),
+                                );
                             }
                             if (step.keys) terminal.input(String(step.keys));
                             else if (step.text) terminal.typeText(String(step.text));
@@ -1180,9 +1269,9 @@ async function runComposedTuiScenario(scenario, options) {
                     }
                     if (!markerObserved) {
                         throw new Error(
-                            `Startup input marker never appeared: ${
-                                JSON.stringify(marker)
-                            }. Screen:\n${terminal.getScreenText()}`,
+                            `Startup input marker never appeared: ${JSON.stringify(
+                                marker,
+                            )}. Screen:\n${terminal.getScreenText()}`,
                         );
                     }
                 }
@@ -1191,21 +1280,23 @@ async function runComposedTuiScenario(scenario, options) {
                 terminal,
                 sessionStartMode: scenario.sessionStartMode || "new",
                 initialAgentName: scenario.initialAgentName || "router",
-                initialAgentModel: scenario.modelSetup === "none" || scenario.modelSetup === "provider-without-models"
-                    ? undefined
-                    : `${GOLDEN_FAUX_PROVIDER}/${GOLDEN_FAUX_MODEL}`,
+                initialAgentModel:
+                    scenario.modelSetup === "none" || scenario.modelSetup === "provider-without-models"
+                        ? undefined
+                        : `${GOLDEN_FAUX_PROVIDER}/${GOLDEN_FAUX_MODEL}`,
                 skipModelWelcome: scenario.skipModelWelcome === true,
                 configureUiAPI: configureScriptedUiAPI,
-                browser: reviewSurface || humanReviewSurface
-                    ? createGoldenReviewBrowser(
-                        reviewSurface,
-                        humanReviewSurface,
-                        {},
-                        scenario.reviewedPlan,
-                        observeReviewDecision,
-                        observeHumanReviewDecision,
-                    )
-                    : NO_OPEN_BROWSER_PORT,
+                browser:
+                    reviewSurface || humanReviewSurface
+                        ? createGoldenReviewBrowser(
+                              reviewSurface,
+                              humanReviewSurface,
+                              {},
+                              scenario.reviewedPlan,
+                              observeReviewDecision,
+                              observeHumanReviewDecision,
+                          )
+                        : NO_OPEN_BROWSER_PORT,
             });
             composition = await compositionPromise;
             await startupInputPromise;
@@ -1243,9 +1334,7 @@ async function runComposedTuiScenario(scenario, options) {
                 if (event.type === "queued_message_changed") events.push("runtime:queue");
                 if (event.type === "interaction_resolved") {
                     const interaction =
-                        /** @type {{ interactionType?: string, outcome?: string, message?: string }} */ (
-                            event
-                        );
+                        /** @type {{ interactionType?: string, outcome?: string, message?: string }} */ (event);
                     events.push(
                         `runtime:interaction:${interaction.interactionType || "unknown"}:${
                             interaction.outcome || "unknown"
@@ -1257,10 +1346,7 @@ async function runComposedTuiScenario(scenario, options) {
                         if (response) {
                             const eventName = response.approved ? "review_approved" : "review_feedback";
                             const expectedStatus = response.approved ? "approved" : "feedback";
-                            const lifecycle = findFixturePlanLifecycle(
-                                join(Deno.cwd(), "docs", "plans"),
-                                expectedStatus,
-                            );
+                            const lifecycle = findFixturePlanLifecycle(join(getCwd(), "docs", "plans"), expectedStatus);
                             persistedLifecycleEvents.push({
                                 event: eventName,
                                 status: lifecycle.status,
@@ -1271,7 +1357,9 @@ async function runComposedTuiScenario(scenario, options) {
                 }
                 if (event.type === "session_replaced") {
                     const replaced =
-                        /** @type {{ oldSessionId?: string, newSessionId?: string, reason?: string, childPlanName?: string, action?: string }} */ (event);
+                        /** @type {{ oldSessionId?: string, newSessionId?: string, reason?: string, childPlanName?: string, action?: string }} */ (
+                            event
+                        );
                     state.replacedSession = {
                         previousSessionId: replaced.oldSessionId,
                         currentSessionId: replaced.newSessionId,
@@ -1297,6 +1385,15 @@ async function runComposedTuiScenario(scenario, options) {
             for (const action of scenario.actions || []) {
                 if (!isObject(action)) continue;
                 const typed = /** @type {any} */ (action);
+                // Real terminals retain input while a command temporarily stops the TUI.
+                // Wait for its real restart before injecting the next scripted key.
+                if (["type", "clearEditor", "enter", "escape", "ctrlC"].includes(typed.type)) {
+                    const deadline = Date.now() + (scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS);
+                    while (!terminal.started || terminal.stopped) {
+                        if (Date.now() >= deadline) throw new Error("TUI did not restart before scripted input.");
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                    }
+                }
                 if (typed.type === "type") {
                     const text = String(typed.text || "");
                     terminal.typeText(text);
@@ -1371,11 +1468,9 @@ async function runComposedTuiScenario(scenario, options) {
                     );
                     events.push("tui:concurrent-screens:captured");
                 } else if (typed.type === "restartTui") {
-                    restartedTuiHistory = [
-                        restartedTuiHistory,
-                        terminal.getScrollbackText(),
-                        terminal.getScreenText(),
-                    ].filter(Boolean).join("\n");
+                    restartedTuiHistory = [restartedTuiHistory, terminal.getScrollbackText(), terminal.getScreenText()]
+                        .filter(Boolean)
+                        .join("\n");
                     unsubscribe();
                     await composition?.dispose?.();
                     terminal = new VirtualTerminal(typed.terminal || scenario.terminal);
@@ -1415,17 +1510,19 @@ async function runComposedTuiScenario(scenario, options) {
                     }
                     events.push(`terminal:size:${typed.columns}x${typed.rows}`);
                 } else if (typed.type === "writeProjectFile") {
-                    const path = join(Deno.cwd(), typed.path || "");
-                    await Deno.mkdir(join(path, ".."), { recursive: true });
-                    await Deno.writeTextFile(path, String(typed.text || ""));
+                    const path = join(getCwd(), typed.path || "");
+                    await fsMkdir(join(path, ".."), { recursive: true });
+                    await fsWriteFile(path, String(typed.text || ""));
                     events.push(`project:write:${typed.path || ""}`);
                 } else if (typed.type === "deleteProjectFile") {
-                    const path = join(Deno.cwd(), typed.path || "");
-                    await Deno.remove(path);
+                    const path = join(getCwd(), typed.path || "");
+                    await fsRm(path);
                     events.push(`project:delete:${typed.path || ""}`);
                 } else if (typed.type === "assertProjectFile") {
-                    const path = join(Deno.cwd(), typed.path || "");
-                    const exists = await Deno.stat(path).then(() => true).catch(() => false);
+                    const path = join(getCwd(), typed.path || "");
+                    const exists = await fsStat(path)
+                        .then(() => true)
+                        .catch(() => false);
                     state.projectMutation = exists ? "mutated" : "clean";
                     if (exists !== Boolean(typed.exists)) {
                         throw new Error(`Project mutation assertion failed for ${typed.path || ""}: exists=${exists}`);
@@ -1433,78 +1530,79 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push("project:file-checked");
                 } else if (typed.type === "captureProjectFileText") {
                     const key = String(typed.key || typed.path || "projectFileText");
-                    const path = join(Deno.cwd(), typed.path || "");
-                    state[key] = await Deno.readTextFile(path).catch(() => null);
+                    const path = join(getCwd(), typed.path || "");
+                    state[key] = await fsReadFile(path, "utf8").catch(() => null);
                     events.push(`project:file-text:${typed.path || ""}`);
                 } else if (typed.type === "assertProjectUnchanged") {
-                    const changes = diffProjectSnapshots(projectSnapshotBefore, await snapshotProjectRoot(Deno.cwd()));
+                    const changes = diffProjectSnapshots(projectSnapshotBefore, await snapshotProjectRoot(getCwd()));
                     state.projectMutation = changes.length ? "mutated" : "clean";
                     state.projectMutationChanges = changes;
                     if (changes.length) throw new Error(`Project mutation assertion failed: ${changes.join(", ")}`);
                     events.push("project:mutation-checked");
                 } else if (typed.type === "assertOnlyProjectChanges") {
                     const expected = new Set(Array.isArray(typed.paths) ? typed.paths : []);
-                    const changes = diffProjectSnapshots(projectSnapshotBefore, await snapshotProjectRoot(Deno.cwd()));
+                    const changes = diffProjectSnapshots(projectSnapshotBefore, await snapshotProjectRoot(getCwd()));
                     state.projectMutation = changes.length ? "mutated" : "clean";
                     state.projectMutationChanges = changes;
-                    const unexpected = changes.filter((change) =>
-                        !expected.has(change.replace(/^(added|deleted|modified):/, ""))
+                    const unexpected = changes.filter(
+                        (change) => !expected.has(change.replace(/^(added|deleted|modified):/, "")),
                     );
                     if (unexpected.length || changes.length !== expected.size) {
                         throw new Error(
-                            `Project mutation assertion failed: expected ${[...expected].join(", ")}; got ${
-                                changes.join(", ")
-                            }`,
+                            `Project mutation assertion failed: expected ${[...expected].join(", ")}; got ${changes.join(
+                                ", ",
+                            )}`,
                         );
                     }
                     events.push("project:mutation-policy:only-requested");
                 } else if (typed.type === "assertWorkflowDurability") {
                     const registryRoot = join(
-                        Deno.env.get("RUNWIELD_HOME") || join(Deno.env.get("HOME") || "", ".wld"),
+                        process.env["RUNWIELD_HOME"] || join(getHomeDir() || "", ".wld"),
                         "registry",
                     );
                     const registryEntries = [];
                     try {
-                        for await (const entry of Deno.readDir(registryRoot)) registryEntries.push(entry.name);
+                        for await (const entry of await fsReaddir(registryRoot, { withFileTypes: true })) {
+                            registryEntries.push(entry.name);
+                        }
                     } catch (error) {
-                        if (!(error instanceof Deno.errors.NotFound)) throw error;
+                        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                     }
                     const { inspectWorktreeRegistry } = await import("../../../shared/worktree-registry.js");
-                    const projectWorktreeRegistry = await inspectWorktreeRegistry(Deno.cwd());
-                    const plan = await loadPlan(Deno.cwd(), "plan");
+                    const projectWorktreeRegistry = await inspectWorktreeRegistry(getCwd());
+                    const plan = await loadPlan(getCwd(), "plan");
                     if (!plan) throw new Error("Expected the primary Plan locator for publication proof.");
                     const targetBranch = String(plan.attrs.targetBranch || plan.attrs.worktreeBaseBranch || "main");
-                    const remote = await runGoldenGit(
-                        ["config", "--get", `branch.${targetBranch}.remote`],
-                        Deno.cwd(),
-                    ) || "origin";
-                    const remotePath = await runGoldenGit(["remote", "get-url", remote], Deno.cwd());
+                    const remote =
+                        (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd())) ||
+                        "origin";
+                    const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
                     const deliveredHead = await runGoldenGit(
                         ["--git-dir", remotePath, "rev-parse", `refs/heads/${targetBranch}`],
-                        Deno.cwd(),
+                        getCwd(),
                     );
                     const trackedFiles = await runGoldenGit(
                         ["--git-dir", remotePath, "ls-tree", "-r", "--name-only", deliveredHead],
-                        Deno.cwd(),
+                        getCwd(),
                     );
                     const goldenFileExists = trackedFiles.split("\n").includes("golden-planned-change.txt");
                     const deliveryLog = goldenFileExists
                         ? await runGoldenGit(
-                            [
-                                "--git-dir",
-                                remotePath,
-                                "log",
-                                "--format=%H",
-                                deliveredHead,
-                                "--",
-                                "golden-planned-change.txt",
-                            ],
-                            Deno.cwd(),
-                        )
+                              [
+                                  "--git-dir",
+                                  remotePath,
+                                  "log",
+                                  "--format=%H",
+                                  deliveredHead,
+                                  "--",
+                                  "golden-planned-change.txt",
+                              ],
+                              getCwd(),
+                          )
                         : "";
                     const publishedPlanText = await runGoldenGit(
                         ["--git-dir", remotePath, "show", `${deliveredHead}:docs/plans/plan.md`],
-                        Deno.cwd(),
+                        getCwd(),
                     );
                     const publishedPlan = parsePlanFrontMatter(publishedPlanText);
                     const publishedDeliveryEvidence = plan.attrs.deliveryEvidence;
@@ -1521,25 +1619,27 @@ async function runComposedTuiScenario(scenario, options) {
                     );
                     const executionCommitPublished = validatedExecutionCommit
                         ? await runGoldenGit(
-                            [
-                                "--git-dir",
-                                remotePath,
-                                "merge-base",
-                                "--is-ancestor",
-                                validatedExecutionCommit,
-                                deliveredHead,
-                            ],
-                            Deno.cwd(),
-                        ).then(() => true).catch(() => false)
+                              [
+                                  "--git-dir",
+                                  remotePath,
+                                  "merge-base",
+                                  "--is-ancestor",
+                                  validatedExecutionCommit,
+                                  deliveredHead,
+                              ],
+                              getCwd(),
+                          )
+                              .then(() => true)
+                              .catch(() => false)
                         : false;
                     const deliveryEvidence = goldenFileExists
                         ? await runGoldenGit(
-                            ["--git-dir", remotePath, "show", `${deliveredHead}:golden-planned-change.txt`],
-                            Deno.cwd(),
-                        )
+                              ["--git-dir", remotePath, "show", `${deliveredHead}:golden-planned-change.txt`],
+                              getCwd(),
+                          )
                         : "";
-                    const branch = await runGoldenGit(["branch", "--show-current"], Deno.cwd());
-                    const status = await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], Deno.cwd());
+                    const branch = await runGoldenGit(["branch", "--show-current"], getCwd());
+                    const status = await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], getCwd());
                     const snapshot = composition.runtime.getSessionSnapshot(composition.sessionId);
                     const editorUsable = snapshot?.busy === false;
                     state.editorUsable = editorUsable;
@@ -1594,9 +1694,9 @@ async function runComposedTuiScenario(scenario, options) {
                     }
                     if (projectWorktreeRegistry.entries.length) {
                         throw new Error(
-                            `Expected clean project worktree registry; got ${
-                                JSON.stringify(projectWorktreeRegistry.entries)
-                            }`,
+                            `Expected clean project worktree registry; got ${JSON.stringify(
+                                projectWorktreeRegistry.entries,
+                            )}`,
                         );
                     }
                     events.push("workflow:durability:terminal-ready");
@@ -1614,7 +1714,7 @@ async function runComposedTuiScenario(scenario, options) {
                     // Plan files itself — a harness that materialized children would be
                     // testing its own mirror of decomposition instead of the product's.
                     const epicPlanName = String(typed.planName || "epic");
-                    const epic = await loadPlan(Deno.cwd(), epicPlanName);
+                    const epic = await loadPlan(getCwd(), epicPlanName);
                     if (!epic) throw new Error(`Expected PROJECT Epic Plan ${epicPlanName} to exist.`);
                     if (epic.attrs.classification !== "PROJECT") {
                         throw new Error(
@@ -1630,7 +1730,7 @@ async function runComposedTuiScenario(scenario, options) {
                     if (!slicerResult?.ok) {
                         throw new Error(`Slicer decomposition failed: ${slicerResult?.error || "unknown error"}`);
                     }
-                    const materialized = (await findPlansByParent(Deno.cwd(), epicPlanName))
+                    const materialized = (await findPlansByParent(getCwd(), epicPlanName))
                         .filter((child) => child.attrs.classification === "PLANNED_CHANGE")
                         .sort((left, right) => Number(left.attrs.order || 0) - Number(right.attrs.order || 0));
                     if (materialized.length < 2) {
@@ -1654,86 +1754,87 @@ async function runComposedTuiScenario(scenario, options) {
                     // lifecycle, so the assertions describe what the product did rather
                     // than what the harness arranged.
                     const epicPlanName = String(typed.planName || "epic");
-                    const localParent = await loadPlan(Deno.cwd(), epicPlanName);
-                    const localChildren = (await findPlansByParent(Deno.cwd(), epicPlanName))
+                    const localParent = await loadPlan(getCwd(), epicPlanName);
+                    const localChildren = (await findPlansByParent(getCwd(), epicPlanName))
                         .filter((child) => child.attrs.classification === "PLANNED_CHANGE")
                         .sort((left, right) => Number(left.attrs.order || 0) - Number(right.attrs.order || 0));
-                    const branch = await runGoldenGit(["branch", "--show-current"], Deno.cwd());
-                    const remote = await runGoldenGit(
-                        ["config", "--get", `branch.${branch}.remote`],
-                        Deno.cwd(),
-                    ).catch(() => "origin");
-                    const remotePath = await runGoldenGit(["remote", "get-url", remote], Deno.cwd()).catch(() => "");
+                    const branch = await runGoldenGit(["branch", "--show-current"], getCwd());
+                    const remote = await runGoldenGit(["config", "--get", `branch.${branch}.remote`], getCwd()).catch(
+                        () => "origin",
+                    );
+                    const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd()).catch(() => "");
                     const primaryHead = remotePath
-                        ? await runGoldenGit(
-                            ["--git-dir", remotePath, "rev-parse", `refs/heads/${branch}`],
-                            Deno.cwd(),
-                        )
+                        ? await runGoldenGit(["--git-dir", remotePath, "rev-parse", `refs/heads/${branch}`], getCwd())
                         : "";
                     // Children of an Epic with its own branch are delivered there, not to the
                     // checked-out primary branch, so delivery evidence is read from that branch.
-                    const epicBranch = typeof localParent?.attrs.targetBranch === "string"
-                        ? localParent.attrs.targetBranch
-                        : "";
-                    const remoteHead = remotePath && epicBranch
-                        ? await runGoldenGit(
-                            ["--git-dir", remotePath, "rev-parse", `refs/heads/${epicBranch}`],
-                            Deno.cwd(),
-                        ).catch(() => primaryHead)
-                        : primaryHead;
+                    const epicBranch =
+                        typeof localParent?.attrs.targetBranch === "string" ? localParent.attrs.targetBranch : "";
+                    const remoteHead =
+                        remotePath && epicBranch
+                            ? await runGoldenGit(
+                                  ["--git-dir", remotePath, "rev-parse", `refs/heads/${epicBranch}`],
+                                  getCwd(),
+                              ).catch(() => primaryHead)
+                            : primaryHead;
                     /** @param {string} name @param {string} head */
                     const loadRemotePlanAttrsAt = async (name, head) => {
                         if (!remotePath || !head) return null;
                         const markdown = await runGoldenGit(
                             ["--git-dir", remotePath, "show", `${head}:docs/plans/${name}.md`],
-                            Deno.cwd(),
+                            getCwd(),
                         ).catch(() => "");
                         return markdown ? parsePlanFrontMatter(markdown).attrs : null;
                     };
                     /** @param {string} name */
                     const loadRemotePlanAttrs = (name) => loadRemotePlanAttrsAt(name, remoteHead);
                     state.projectPlans = {
-                        parent: await loadRemotePlanAttrsAt(epicPlanName, primaryHead) || localParent?.attrs,
+                        parent: (await loadRemotePlanAttrsAt(epicPlanName, primaryHead)) || localParent?.attrs,
                         firstChild: localChildren[0]
-                            ? await loadRemotePlanAttrs(localChildren[0].name) || localChildren[0].attrs
+                            ? (await loadRemotePlanAttrs(localChildren[0].name)) || localChildren[0].attrs
                             : undefined,
                         secondChild: localChildren[1]
-                            ? await loadRemotePlanAttrs(localChildren[1].name) || localChildren[1].attrs
+                            ? (await loadRemotePlanAttrs(localChildren[1].name)) || localChildren[1].attrs
                             : undefined,
                     };
                     const registryPath = getWorktreeRegistryPath(getCwd());
-                    const registryText = await Deno.readTextFile(registryPath).catch(() => "");
+                    const registryText = await fsReadFile(registryPath, "utf8").catch(() => "");
                     /** @type {import('../../../shared/worktree-registry.js').WorktreeRegistryEntry[]} */
-                    const registryEntries = registryText ? (JSON.parse(registryText).entries || []) : [];
+                    const registryEntries = registryText ? JSON.parse(registryText).entries || [] : [];
                     state.projectDurability = {
                         branch,
                         epicBranch,
-                        primaryTrackedFiles: remotePath && primaryHead
-                            ? await runGoldenGit(
-                                ["--git-dir", remotePath, "ls-tree", "-r", "--name-only", primaryHead],
-                                Deno.cwd(),
+                        primaryTrackedFiles:
+                            remotePath && primaryHead
+                                ? await runGoldenGit(
+                                      ["--git-dir", remotePath, "ls-tree", "-r", "--name-only", primaryHead],
+                                      getCwd(),
+                                  )
+                                : "",
+                        deliveryLog:
+                            remotePath && remoteHead
+                                ? await runGoldenGit(
+                                      ["--git-dir", remotePath, "log", "--oneline", "-12", remoteHead],
+                                      getCwd(),
+                                  )
+                                : await runGoldenGit(["log", "--oneline", "-12"], getCwd()),
+                        trackedFiles:
+                            remotePath && remoteHead
+                                ? await runGoldenGit(
+                                      ["--git-dir", remotePath, "ls-tree", "-r", "--name-only", remoteHead],
+                                      getCwd(),
+                                  )
+                                : await runGoldenGit(["ls-files"], getCwd()),
+                        status: await runGoldenGit(["status", "--porcelain"], getCwd()),
+                        liveRegistryEntries: registryEntries
+                            .filter((entry) =>
+                                ["active", "execution_failed", "validation_failed", "merge_conflict"].includes(
+                                    String(entry.status || ""),
+                                ),
                             )
-                            : "",
-                        deliveryLog: remotePath && remoteHead
-                            ? await runGoldenGit(
-                                ["--git-dir", remotePath, "log", "--oneline", "-12", remoteHead],
-                                Deno.cwd(),
-                            )
-                            : await runGoldenGit(["log", "--oneline", "-12"], Deno.cwd()),
-                        trackedFiles: remotePath && remoteHead
-                            ? await runGoldenGit(
-                                ["--git-dir", remotePath, "ls-tree", "-r", "--name-only", remoteHead],
-                                Deno.cwd(),
-                            )
-                            : await runGoldenGit(["ls-files"], Deno.cwd()),
-                        status: await runGoldenGit(["status", "--porcelain"], Deno.cwd()),
-                        liveRegistryEntries: registryEntries.filter((entry) =>
-                            ["active", "execution_failed", "validation_failed", "merge_conflict"].includes(
-                                String(entry.status || ""),
-                            )
-                        ).map((entry) => `${entry.planName || "?"}:${entry.status || "?"}`),
-                        registryStatuses: registryEntries.map((entry) =>
-                            `${entry.planName || "?"}:${entry.status || "?"}`
+                            .map((entry) => `${entry.planName || "?"}:${entry.status || "?"}`),
+                        registryStatuses: registryEntries.map(
+                            (entry) => `${entry.planName || "?"}:${entry.status || "?"}`,
                         ),
                         registryEntryCount: registryEntries.length,
                     };
@@ -1747,69 +1848,76 @@ async function runComposedTuiScenario(scenario, options) {
                     const finalTarget = plan?.attrs.epicDeliveryTargetBranch;
                     const reviewedCommit = plan?.attrs.validatedCommit;
                     if (
-                        plan?.attrs.status !== "reviewed" || !epicBranch || !finalTarget ||
-                        !reviewedCommit || epicBranch === finalTarget
+                        plan?.attrs.status !== "reviewed" ||
+                        !epicBranch ||
+                        !finalTarget ||
+                        !reviewedCommit ||
+                        epicBranch === finalTarget
                     ) {
                         throw new Error("Expected a reviewed Epic with distinct recorded source and final target.");
                     }
-                    const remote = await runGoldenGit(
-                        ["config", "--get", `branch.${finalTarget}.remote`],
-                        projectRoot,
-                    ).catch(() => "origin") || "origin";
+                    const remote =
+                        (await runGoldenGit(["config", "--get", `branch.${finalTarget}.remote`], projectRoot).catch(
+                            () => "origin",
+                        )) || "origin";
                     const remotePath = await runGoldenGit(["remote", "get-url", remote], projectRoot);
-                    const mergeRoot = await Deno.makeTempDir({ prefix: "golden-user-epic-merge-" });
+                    const mergeRoot = await fsMkdtemp(join(tmpdir(), "golden-user-epic-merge-"));
                     try {
                         await runGoldenGit(["clone", remotePath, mergeRoot], projectRoot);
                         await runGoldenGit(["checkout", "-B", finalTarget, `origin/${finalTarget}`], mergeRoot);
-                        await runGoldenGit([
-                            "-c",
-                            "user.name=Golden User",
-                            "-c",
-                            "user.email=golden@example.test",
-                            "merge",
-                            "--no-ff",
-                            `origin/${epicBranch}`,
-                            "-m",
-                            `Merge reviewed Epic ${planName}`,
-                        ], mergeRoot);
+                        await runGoldenGit(
+                            [
+                                "-c",
+                                "user.name=Golden User",
+                                "-c",
+                                "user.email=golden@example.test",
+                                "merge",
+                                "--no-ff",
+                                `origin/${epicBranch}`,
+                                "-m",
+                                `Merge reviewed Epic ${planName}`,
+                            ],
+                            mergeRoot,
+                        );
                         await runGoldenGit(["push", "origin", `HEAD:refs/heads/${finalTarget}`], mergeRoot);
                         const deliveredCommit = await runGoldenGit(["rev-parse", "HEAD"], mergeRoot);
                         await runGoldenGit(["merge-base", "--is-ancestor", reviewedCommit, deliveredCommit], mergeRoot);
                         state.epicFinalDelivery = { reviewedCommit, deliveredCommit, epicBranch, finalTarget };
                         events.push(`project:epic:user-merged:${planName}:${finalTarget}`);
                     } finally {
-                        await Deno.remove(mergeRoot, { recursive: true });
+                        await fsRm(mergeRoot, { recursive: true });
                     }
                     await writeHeartbeat();
                 } else if (typed.type === "capturePublishedWorkRecords") {
-                    const branch = await runGoldenGit(["branch", "--show-current"], Deno.cwd());
-                    const remote = await runGoldenGit(
-                        ["config", "--get", `branch.${branch}.remote`],
-                        Deno.cwd(),
-                    ).catch(() => "origin");
-                    const remotePath = await runGoldenGit(["remote", "get-url", remote], Deno.cwd());
+                    const branch = await runGoldenGit(["branch", "--show-current"], getCwd());
+                    const remote = await runGoldenGit(["config", "--get", `branch.${branch}.remote`], getCwd()).catch(
+                        () => "origin",
+                    );
+                    const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
                     const remoteHead = await runGoldenGit(
                         ["--git-dir", remotePath, "rev-parse", `refs/heads/${branch}`],
-                        Deno.cwd(),
+                        getCwd(),
                     );
                     const remoteTree = await runGoldenGit(
                         ["--git-dir", remotePath, "ls-tree", "-r", "--name-only", remoteHead],
-                        Deno.cwd(),
+                        getCwd(),
                     );
-                    const publishedNames = remoteTree.split("\n").filter((path) =>
-                        path.startsWith("docs/work-records/") && path.endsWith(".md")
-                    );
+                    const publishedNames = remoteTree
+                        .split("\n")
+                        .filter((path) => path.startsWith("docs/work-records/") && path.endsWith(".md"));
                     // Reloading an Epic after confirmed final delivery writes its record in
                     // the primary checkout, so capture that artifact as well as remote records.
                     const localNames = [];
                     try {
-                        for await (const entry of Deno.readDir(join(Deno.cwd(), "docs", "work-records"))) {
-                            if (entry.isFile && entry.name.endsWith(".md")) {
+                        for await (const entry of await fsReaddir(join(getCwd(), "docs", "work-records"), {
+                            withFileTypes: true,
+                        })) {
+                            if (entry.isFile() && entry.name.endsWith(".md")) {
                                 localNames.push(`docs/work-records/${entry.name}`);
                             }
                         }
                     } catch (error) {
-                        if (!(error instanceof Deno.errors.NotFound)) throw error;
+                        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                     }
                     const status = publishedNames.length > 0 ? "published" : localNames.length > 0 ? "local" : "absent";
                     state.workRecord = {
@@ -1820,71 +1928,70 @@ async function runComposedTuiScenario(scenario, options) {
                     await writeHeartbeat();
                 } else if (typed.type === "deletePlanWorktreeBaseBranch") {
                     const planName = String(typed.planName || "");
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot delete base branch for missing Plan ${planName}`);
                     const baseBranch = String(loaded.attrs.worktreeBaseBranch || "");
                     if (!baseBranch) throw new Error(`Plan ${planName} has no worktreeBaseBranch to delete`);
                     const replacementBranch = String(typed.replacementBranch || `golden-missing-target-${planName}`);
-                    await runGoldenGit(["switch", "-c", replacementBranch], Deno.cwd());
-                    await runGoldenGit(["branch", "-D", baseBranch], Deno.cwd());
+                    await runGoldenGit(["switch", "-c", replacementBranch], getCwd());
+                    await runGoldenGit(["branch", "-D", baseBranch], getCwd());
                     events.push(`project:base-branch-deleted:${planName}:${baseBranch}`);
                     await writeHeartbeat();
                 } else if (typed.type === "commitPlanWorktreeBaseBranchFile") {
                     const planName = String(typed.planName || "");
                     const path = String(typed.path || "");
                     if (!path) throw new Error("commitPlanWorktreeBaseBranchFile needs a path");
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot edit base branch for missing Plan ${planName}`);
                     const baseBranch = String(loaded.attrs.worktreeBaseBranch || "");
                     if (!baseBranch) throw new Error(`Plan ${planName} has no worktreeBaseBranch to edit`);
-                    await runGoldenGit(["switch", baseBranch], Deno.cwd());
-                    await Deno.mkdir(dirname(join(Deno.cwd(), path)), { recursive: true });
-                    await Deno.writeTextFile(join(Deno.cwd(), path), String(typed.text || ""));
-                    await runGoldenGit(["add", path], Deno.cwd());
+                    await runGoldenGit(["switch", baseBranch], getCwd());
+                    await fsMkdir(dirname(join(getCwd(), path)), { recursive: true });
+                    await fsWriteFile(join(getCwd(), path), String(typed.text || ""));
+                    await runGoldenGit(["add", path], getCwd());
                     await runGoldenGit(
                         ["commit", "-m", String(typed.message || `seed ${planName} base conflict`)],
-                        Deno.cwd(),
+                        getCwd(),
                     );
                     events.push(`project:base-branch-file-committed:${planName}:${baseBranch}:${path}`);
                     await writeHeartbeat();
                 } else if (typed.type === "commitProjectPaths") {
                     const paths = Array.isArray(typed.paths) ? typed.paths.map(String).filter(Boolean) : [];
                     if (paths.length === 0) throw new Error("commitProjectPaths needs at least one path");
-                    await runGoldenGit(["add", "--", ...paths], Deno.cwd());
+                    await runGoldenGit(["add", "--", ...paths], getCwd());
                     await runGoldenGit(
                         ["commit", "-m", String(typed.message || "seed primary checkout changes")],
-                        Deno.cwd(),
+                        getCwd(),
                     );
                     events.push(`project:paths-committed:${paths.join(",")}`);
                     await writeHeartbeat();
                 } else if (typed.type === "appendProjectFile") {
                     const path = String(typed.path || "");
                     if (!path) throw new Error("appendProjectFile needs a path");
-                    const absolutePath = join(Deno.cwd(), path);
-                    const current = await Deno.readTextFile(absolutePath);
-                    await Deno.writeTextFile(absolutePath, `${current}${String(typed.text || "")}`);
+                    const absolutePath = join(getCwd(), path);
+                    const current = await fsReadFile(absolutePath, "utf8");
+                    await fsWriteFile(absolutePath, `${current}${String(typed.text || "")}`);
                     events.push(`project:file-appended:${path}`);
                     await writeHeartbeat();
                 } else if (typed.type === "advancePlanRemoteTarget") {
                     const planName = String(typed.planName || "");
                     const path = String(typed.path || "");
                     if (!path) throw new Error("advancePlanRemoteTarget needs a path");
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot advance target for missing Plan ${planName}`);
                     const targetBranch = String(loaded.attrs.targetBranch || loaded.attrs.worktreeBaseBranch || "main");
-                    const remote = await runGoldenGit(
-                        ["config", "--get", `branch.${targetBranch}.remote`],
-                        Deno.cwd(),
-                    ) || "origin";
-                    const remotePath = await runGoldenGit(["remote", "get-url", remote], Deno.cwd());
-                    const checkout = await Deno.makeTempDir({ prefix: "runwield-golden-remote-advance-" });
+                    const remote =
+                        (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd())) ||
+                        "origin";
+                    const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
+                    const checkout = await fsMkdtemp(join(tmpdir(), "runwield-golden-remote-advance-"));
                     try {
-                        await runGoldenGit(["clone", remotePath, checkout], Deno.cwd());
+                        await runGoldenGit(["clone", remotePath, checkout], getCwd());
                         await runGoldenGit(["config", "user.email", "golden@example.test"], checkout);
                         await runGoldenGit(["config", "user.name", "Golden TUI"], checkout);
                         await runGoldenGit(["switch", targetBranch], checkout);
-                        await Deno.mkdir(dirname(join(checkout, path)), { recursive: true });
-                        await Deno.writeTextFile(join(checkout, path), String(typed.text || ""));
+                        await fsMkdir(dirname(join(checkout, path)), { recursive: true });
+                        await fsWriteFile(join(checkout, path), String(typed.text || ""));
                         await runGoldenGit(["add", path], checkout);
                         await runGoldenGit(
                             ["commit", "-m", String(typed.message || "advance remote target")],
@@ -1892,113 +1999,107 @@ async function runComposedTuiScenario(scenario, options) {
                         );
                         await runGoldenGit(["push", "origin", targetBranch], checkout);
                     } finally {
-                        await Deno.remove(checkout, { recursive: true }).catch(() => {});
+                        await fsRm(checkout, { recursive: true }).catch(() => {});
                     }
                     events.push(`publication:remote-target-advanced:${planName}:${targetBranch}`);
                     await writeHeartbeat();
                 } else if (typed.type === "setPlanRemotePushRejection") {
                     const planName = String(typed.planName || "");
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot configure upstream for missing Plan ${planName}`);
                     const targetBranch = String(loaded.attrs.worktreeBaseBranch || "main");
-                    const remote = await runGoldenGit(
-                        ["config", "--get", `branch.${targetBranch}.remote`],
-                        Deno.cwd(),
-                    ) || "origin";
-                    const remotePath = await runGoldenGit(["remote", "get-url", remote], Deno.cwd());
+                    const remote =
+                        (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd())) ||
+                        "origin";
+                    const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
                     const hookPath = join(remotePath, "hooks", "pre-receive");
                     if (typed.enabled === false) {
-                        await Deno.remove(hookPath).catch((error) => {
-                            if (!(error instanceof Deno.errors.NotFound)) throw error;
+                        await fsRm(hookPath).catch((error) => {
+                            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                         });
                     } else {
-                        await Deno.writeTextFile(
-                            hookPath,
-                            "#!/bin/sh\necho golden upstream rejection >&2\nexit 1\n",
-                        );
-                        await Deno.chmod(hookPath, 0o755);
+                        await fsWriteFile(hookPath, "#!/bin/sh\necho golden upstream rejection >&2\nexit 1\n");
+                        await fsChmod(hookPath, 0o755);
                     }
                     events.push(`publication:remote-push-rejection:${typed.enabled === false ? "off" : "on"}`);
                     await writeHeartbeat();
                 } else if (typed.type === "setPlanRemoteUnavailable") {
                     const planName = String(typed.planName || "");
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot configure upstream for missing Plan ${planName}`);
                     const targetBranch = String(loaded.attrs.worktreeBaseBranch || "main");
-                    const remote = await runGoldenGit(
-                        ["config", "--get", `branch.${targetBranch}.remote`],
-                        Deno.cwd(),
-                    ) || "origin";
+                    const remote =
+                        (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd())) ||
+                        "origin";
                     const savedRemoteUrls = /** @type {Record<string, string>} */ (state.savedRemoteUrls ||= {});
                     if (typed.enabled === false) {
                         const savedUrl = savedRemoteUrls[remote];
                         if (typeof savedUrl !== "string" || !savedUrl) {
                             throw new Error(`No saved URL for temporarily unavailable remote ${remote}`);
                         }
-                        await runGoldenGit(["remote", "set-url", remote, savedUrl], Deno.cwd());
+                        await runGoldenGit(["remote", "set-url", remote, savedUrl], getCwd());
                     } else {
-                        const remoteUrl = await runGoldenGit(["remote", "get-url", remote], Deno.cwd());
+                        const remoteUrl = await runGoldenGit(["remote", "get-url", remote], getCwd());
                         savedRemoteUrls[remote] = remoteUrl;
                         await runGoldenGit(
                             ["remote", "set-url", remote, `${remoteUrl}.temporarily-unavailable`],
-                            Deno.cwd(),
+                            getCwd(),
                         );
                     }
                     events.push(`publication:remote-unavailable:${typed.enabled === false ? "off" : "on"}`);
                     await writeHeartbeat();
                 } else if (typed.type === "removePlanRemote") {
                     const planName = String(typed.planName || "");
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot remove remote for missing Plan ${planName}`);
                     const targetBranch = String(loaded.attrs.worktreeBaseBranch || "main");
-                    const remote = await runGoldenGit(
-                        ["config", "--get", `branch.${targetBranch}.remote`],
-                        Deno.cwd(),
-                    ).catch(() => "origin") || "origin";
-                    await runGoldenGit(["branch", "--unset-upstream", targetBranch], Deno.cwd()).catch(() => {});
-                    await runGoldenGit(["remote", "remove", remote], Deno.cwd());
+                    const remote =
+                        (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd()).catch(
+                            () => "origin",
+                        )) || "origin";
+                    await runGoldenGit(["branch", "--unset-upstream", targetBranch], getCwd()).catch(() => {});
+                    await runGoldenGit(["remote", "remove", remote], getCwd());
                     events.push(`publication:remote-removed:${planName}:${targetBranch}`);
                     await writeHeartbeat();
                 } else if (typed.type === "installPlanWorktreeFailingPreCommitHook") {
                     const planName = String(typed.planName || "");
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot install hook for missing Plan ${planName}`);
                     const worktreePath = String(loaded.attrs.worktreePath || "");
                     if (!worktreePath) throw new Error(`Plan ${planName} has no worktreePath`);
-                    const gitHookPath = (await runGoldenGit(
-                        ["rev-parse", "--git-path", "hooks/pre-commit"],
-                        worktreePath,
-                    )).trim();
+                    const gitHookPath = (
+                        await runGoldenGit(["rev-parse", "--git-path", "hooks/pre-commit"], worktreePath)
+                    ).trim();
                     const hookPath = gitHookPath.startsWith("/") ? gitHookPath : join(worktreePath, gitHookPath);
-                    await Deno.mkdir(dirname(hookPath), { recursive: true });
-                    await Deno.writeTextFile(hookPath, "#!/bin/sh\necho golden publication failure >&2\nexit 1\n");
-                    await Deno.chmod(hookPath, 0o755);
+                    await fsMkdir(dirname(hookPath), { recursive: true });
+                    await fsWriteFile(hookPath, "#!/bin/sh\necho golden publication failure >&2\nexit 1\n");
+                    await fsChmod(hookPath, 0o755);
                     events.push(`project:failing-pre-commit-hook-installed:${planName}`);
                     await writeHeartbeat();
                 } else if (typed.type === "seedActiveWorktree") {
                     const planName = String(typed.planName || "");
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot seed worktree for missing Plan ${planName}`);
                     const { createTestWorktreeAttempt } = await import("../../../shared/worktree-test-helpers.ts");
                     const { updateEntry } = await import("../../../shared/worktree-registry.js");
                     const { updatePlanFrontMatter } = await import("../../../plan-store.js");
                     const entry = await createTestWorktreeAttempt({
-                        projectRoot: Deno.cwd(),
+                        projectRoot: getCwd(),
                         planName,
                         planId: String(loaded.attrs.planId || `golden:${planName}`),
                     });
                     let executionPlan = await loadPlan(entry.path, planName);
                     if (!executionPlan) {
                         const executionPlanPath = join(entry.path, "docs", "plans", `${planName}.md`);
-                        await Deno.mkdir(dirname(executionPlanPath), { recursive: true });
-                        await Deno.writeTextFile(executionPlanPath, loaded.markdown);
+                        await fsMkdir(dirname(executionPlanPath), { recursive: true });
+                        await fsWriteFile(executionPlanPath, loaded.markdown);
                         executionPlan = await loadPlan(entry.path, planName);
                     }
                     if (!executionPlan) throw new Error(`Could not seed execution Plan: ${planName}`);
                     if (Array.isArray(typed.files)) {
                         for (const file of typed.files) {
                             if (!isObject(file) || typeof file.path !== "string") continue;
-                            await Deno.writeTextFile(join(entry.path, file.path), String(file.text || ""));
+                            await fsWriteFile(join(entry.path, file.path), String(file.text || ""));
                         }
                         await runGoldenGit(["add", "."], entry.path);
                         await runGoldenGit(["commit", "-m", `seed ${planName} worktree diff`], entry.path);
@@ -2010,93 +2111,88 @@ async function runComposedTuiScenario(scenario, options) {
                     const status = legacyStrandedPublication
                         ? "verified"
                         : typeof typed.status === "string"
-                        ? typed.status
-                        : "in_progress";
+                          ? typed.status
+                          : "in_progress";
                     const rememberedValidationPhase = ["mechanical", "semantic", "delivery"].includes(
-                            typed.rememberedValidationPhase,
-                        )
+                        typed.rememberedValidationPhase,
+                    )
                         ? typed.rememberedValidationPhase
                         : null;
-                    const rememberedStatus = rememberedValidationPhase === "mechanical"
-                        ? "implemented"
-                        : rememberedValidationPhase === "semantic"
-                        ? "validated_ci"
-                        : "reviewed";
+                    const rememberedStatus =
+                        rememberedValidationPhase === "mechanical"
+                            ? "implemented"
+                            : rememberedValidationPhase === "semantic"
+                              ? "validated_ci"
+                              : "reviewed";
                     const registryStatus = legacyStrandedPublication
                         ? "completed"
                         : typed.registryStatus === "validation_failed"
-                        ? "validation_failed"
-                        : typed.registryStatus === "completed" || status === "implemented"
-                        ? "completed"
-                        : "active";
+                          ? "validation_failed"
+                          : typed.registryStatus === "completed" || status === "implemented"
+                            ? "completed"
+                            : "active";
                     if (registryStatus !== "active") {
-                        await updateEntry(Deno.cwd(), entry.id, { status: registryStatus });
+                        await updateEntry(getCwd(), entry.id, { status: registryStatus });
                     }
-                    const attemptMetadata = legacyStrandedPublication ? {} : {
-                        worktreeId: entry.id,
-                        worktreePath: entry.path,
-                        worktreeBranch: entry.branch,
-                        worktreeBaseBranch: entry.baseBranch,
-                        worktreeStatus: registryStatus,
-                    };
+                    const attemptMetadata = legacyStrandedPublication
+                        ? {}
+                        : {
+                              worktreeId: entry.id,
+                              worktreePath: entry.path,
+                              worktreeBranch: entry.branch,
+                              worktreeBaseBranch: entry.baseBranch,
+                              worktreeStatus: registryStatus,
+                          };
                     const seededPlanUpdates = {
                         status,
                         ...attemptMetadata,
                         ...(legacyStrandedPublication
                             ? {
-                                executionMode: "worktree",
-                                verifiedAt: new Date().toISOString(),
-                                deliveryEvidence: {
-                                    version: 1,
-                                    mode: "worktree_merge",
-                                    executionCommit,
-                                    targetBranch: entry.baseBranch,
-                                    targetHeadBeforeMerge: await runGoldenGit(
-                                        ["rev-parse", entry.baseBranch],
-                                        Deno.cwd(),
-                                    ),
-                                },
-                            }
+                                  executionMode: "worktree",
+                                  verifiedAt: new Date().toISOString(),
+                                  deliveryEvidence: {
+                                      version: 1,
+                                      mode: "worktree_merge",
+                                      executionCommit,
+                                      targetBranch: entry.baseBranch,
+                                      targetHeadBeforeMerge: await runGoldenGit(
+                                          ["rev-parse", entry.baseBranch],
+                                          getCwd(),
+                                      ),
+                                  },
+                              }
                             : {}),
                         ...(status === "validated_ci" || status === "reviewed" ? { validationSemanticRounds: 0 } : {}),
                         ...(status === "implemented" ? { validationCiAttempts: 0 } : {}),
                         ...(rememberedValidationPhase
                             ? {
-                                validationCheckpoint: {
-                                    version: 1,
-                                    attemptId: entry.id,
-                                    generation: `golden-${planName}-remembered-phase`,
-                                    expectedStatus: rememberedStatus,
-                                    nextPhase: rememberedValidationPhase,
-                                    state: "paused",
-                                    updatedAt: new Date().toISOString(),
-                                },
-                            }
+                                  validationCheckpoint: {
+                                      version: 1,
+                                      attemptId: entry.id,
+                                      generation: `golden-${planName}-remembered-phase`,
+                                      expectedStatus: rememberedStatus,
+                                      nextPhase: rememberedValidationPhase,
+                                      state: "paused",
+                                      updatedAt: new Date().toISOString(),
+                                  },
+                              }
                             : {}),
                         ...(isObject(typed.attrs) ? typed.attrs : {}),
                     };
-                    await updatePlanFrontMatter(
-                        Deno.cwd(),
-                        planName,
-                        seededPlanUpdates,
-                        loaded.attrs,
-                        { expectedRevision: loaded.revision },
-                    );
-                    await updatePlanFrontMatter(
-                        entry.path,
-                        planName,
-                        seededPlanUpdates,
-                        executionPlan.attrs,
-                        { expectedRevision: executionPlan.revision },
-                    );
+                    await updatePlanFrontMatter(getCwd(), planName, seededPlanUpdates, loaded.attrs, {
+                        expectedRevision: loaded.revision,
+                    });
+                    await updatePlanFrontMatter(entry.path, planName, seededPlanUpdates, executionPlan.attrs, {
+                        expectedRevision: executionPlan.revision,
+                    });
                     if (legacyStrandedPublication) {
                         const planPath = `docs/plans/${planName}.md`;
-                        await runGoldenGit(["add", planPath], Deno.cwd());
+                        await runGoldenGit(["add", planPath], getCwd());
                         await runGoldenGit(
                             ["commit", "-m", `legacy metadata-only publication for ${planName}`],
-                            Deno.cwd(),
+                            getCwd(),
                         );
-                        await runGoldenGit(["push", "origin", entry.baseBranch], Deno.cwd());
+                        await runGoldenGit(["push", "origin", entry.baseBranch], getCwd());
                     }
                     events.push(`project:worktree-seeded:${planName}`);
                     events.push(`project:worktree-seeded:${planName}:${status}`);
@@ -2114,27 +2210,27 @@ async function runComposedTuiScenario(scenario, options) {
                     const status = /** @type {import('../../../shared/workflow/plan-lifecycle.js').PlanStatus} */ (
                         rawStatus
                     );
-                    const loaded = await loadPlan(Deno.cwd(), planName);
+                    const loaded = await loadPlan(getCwd(), planName);
                     if (!loaded) throw new Error(`Cannot update missing primary Plan ${planName}`);
                     const { updatePlanFrontMatter } = await import("../../../plan-store.js");
                     const clearWorktreeEvidence = typed.clearWorktreeEvidence === true;
-                    const clearPrimaryWorktreeEvidence = clearWorktreeEvidence ||
-                        typed.clearPrimaryWorktreeEvidence === true;
+                    const clearPrimaryWorktreeEvidence =
+                        clearWorktreeEvidence || typed.clearPrimaryWorktreeEvidence === true;
                     await updatePlanFrontMatter(
-                        Deno.cwd(),
+                        getCwd(),
                         planName,
                         {
                             status,
                             ...(clearPrimaryWorktreeEvidence
                                 ? {
-                                    executionMode: null,
-                                    executionBaselineTree: null,
-                                    worktreeId: null,
-                                    worktreePath: null,
-                                    worktreeBranch: null,
-                                    worktreeBaseBranch: null,
-                                    worktreeStatus: null,
-                                }
+                                      executionMode: null,
+                                      executionBaselineTree: null,
+                                      worktreeId: null,
+                                      worktreePath: null,
+                                      worktreeBranch: null,
+                                      worktreeBaseBranch: null,
+                                      worktreeStatus: null,
+                                  }
                                 : {}),
                         },
                         loaded.attrs,
@@ -2142,7 +2238,7 @@ async function runComposedTuiScenario(scenario, options) {
                     );
                     if (clearWorktreeEvidence && loaded.attrs.worktreeId) {
                         const { pruneEntry } = await import("../../../shared/worktree-registry.js");
-                        await pruneEntry(Deno.cwd(), loaded.attrs.worktreeId);
+                        await pruneEntry(getCwd(), loaded.attrs.worktreeId);
                     }
                     events.push(`project:primary-plan-status:${planName}:${status}`);
                     await writeHeartbeat();
@@ -2150,12 +2246,12 @@ async function runComposedTuiScenario(scenario, options) {
                     const paths = Array.isArray(typed.paths) ? typed.paths.map(String) : [];
                     const pathArgs = paths.length ? ["--", ...paths] : [];
                     state.gitState = {
-                        branch: await runGoldenGit(["branch", "--show-current"], Deno.cwd()),
-                        status: await runGoldenGit(["status", "--porcelain", ...pathArgs], Deno.cwd()),
+                        branch: await runGoldenGit(["branch", "--show-current"], getCwd()),
+                        status: await runGoldenGit(["status", "--porcelain", ...pathArgs], getCwd()),
                         trackedFiles: paths.length
-                            ? await runGoldenGit(["ls-files", ...paths], Deno.cwd())
-                            : await runGoldenGit(["ls-files"], Deno.cwd()),
-                        head: await runGoldenGit(["rev-parse", "HEAD"], Deno.cwd()),
+                            ? await runGoldenGit(["ls-files", ...paths], getCwd())
+                            : await runGoldenGit(["ls-files"], getCwd()),
+                        head: await runGoldenGit(["rev-parse", "HEAD"], getCwd()),
                     };
                     events.push("project:git-state:captured");
                     await writeHeartbeat();
@@ -2165,15 +2261,15 @@ async function runComposedTuiScenario(scenario, options) {
                         Array.isArray(typed.primaryPlanNames) ? typed.primaryPlanNames.map(String) : [],
                     );
                     const { inspectWorktreeRegistry } = await import("../../../shared/worktree-registry.js");
-                    const registry = await inspectWorktreeRegistry(Deno.cwd());
-                    const branch = await runGoldenGit(["branch", "--show-current"], Deno.cwd()).catch(() => "");
+                    const registry = await inspectWorktreeRegistry(getCwd());
+                    const branch = await runGoldenGit(["branch", "--show-current"], getCwd()).catch(() => "");
                     const remote = branch
-                        ? await runGoldenGit(["config", "--get", `branch.${branch}.remote`], Deno.cwd()).catch(
-                            () => "origin",
-                        )
+                        ? await runGoldenGit(["config", "--get", `branch.${branch}.remote`], getCwd()).catch(
+                              () => "origin",
+                          )
                         : "";
                     const remotePath = remote
-                        ? await runGoldenGit(["remote", "get-url", remote], Deno.cwd()).catch(() => "")
+                        ? await runGoldenGit(["remote", "get-url", remote], getCwd()).catch(() => "")
                         : "";
                     const plans = [];
                     for (const planName of planNames) {
@@ -2182,29 +2278,34 @@ async function runComposedTuiScenario(scenario, options) {
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
                             : null;
-                        const remotePlanText = !executionPlan && remotePath && branch
-                            ? await runGoldenGit(
-                                [
-                                    "--git-dir",
-                                    remotePath,
-                                    "show",
-                                    `refs/heads/${branch}:docs/plans/${planName}.md`,
-                                ],
-                                Deno.cwd(),
-                            ).catch(() => "")
-                            : "";
-                        const localPlan = !executionPlan && !remotePlanText
-                            ? await loadPlan(Deno.cwd(), planName).catch(() => null)
-                            : null;
-                        const attrs = primaryPlan?.attrs || executionPlan?.attrs ||
-                            (remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : localPlan?.attrs) || null;
+                        const remotePlanText =
+                            !executionPlan && remotePath && branch
+                                ? await runGoldenGit(
+                                      [
+                                          "--git-dir",
+                                          remotePath,
+                                          "show",
+                                          `refs/heads/${branch}:docs/plans/${planName}.md`,
+                                      ],
+                                      getCwd(),
+                                  ).catch(() => "")
+                                : "";
+                        const localPlan =
+                            !executionPlan && !remotePlanText
+                                ? await loadPlan(getCwd(), planName).catch(() => null)
+                                : null;
+                        const attrs =
+                            primaryPlan?.attrs ||
+                            executionPlan?.attrs ||
+                            (remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : localPlan?.attrs) ||
+                            null;
                         const controller = attrs
                             ? await readControllerRecord(getCwd(), { planName, planId: attrs.planId })
                             : null;
                         plans.push({ name: planName, attrs, controllerState: controller?.state || null });
                     }
                     const { listWorkRecords } = await import("../../../shared/work-records/store.js");
-                    const records = await listWorkRecords(Deno.cwd(), { createDir: false }).catch(() => []);
+                    const records = await listWorkRecords(getCwd(), { createDir: false }).catch(() => []);
                     const capturedProjectState = {
                         runtimeSnapshot: composition.runtime.getSessionSnapshot(composition.sessionId),
                         plans,
@@ -2212,7 +2313,7 @@ async function runComposedTuiScenario(scenario, options) {
                         nonTerminalRegistryEntries: registry.entries.filter((entry) =>
                             ["active", "execution_failed", "validation_failed", "merge_conflict"].includes(
                                 String(entry.status || ""),
-                            )
+                            ),
                         ),
                         registryIntegrityIssues: registry.integrityIssues,
                         workRecordNames: records.map((record) => record.relativePath),
@@ -2222,24 +2323,26 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push("project:state:captured");
                     await writeHeartbeat();
                 } else if (typed.type === "assertNoPlanFile") {
-                    const plansRoot = join(Deno.cwd(), "docs", "plans");
+                    const plansRoot = join(getCwd(), "docs", "plans");
                     const planPath = join(plansRoot, `${String(typed.planName || "")}.md`);
-                    const exists = await Deno.stat(planPath).then(() => true).catch(() => false);
+                    const exists = await fsStat(planPath)
+                        .then(() => true)
+                        .catch(() => false);
                     if (exists) throw new Error(`Expected no Plan file at ${planPath}`);
                     /** @type {string[]} */
                     const planFiles = [];
                     /** @type {(directory: string) => Promise<void>} */
                     const collectPlanFiles = async (directory) => {
                         try {
-                            for await (const entry of Deno.readDir(directory)) {
+                            for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
                                 const child = join(directory, entry.name);
-                                if (entry.isDirectory) await collectPlanFiles(child);
-                                else if (entry.isFile && entry.name.endsWith(".md")) {
+                                if (entry.isDirectory()) await collectPlanFiles(child);
+                                else if (entry.isFile() && entry.name.endsWith(".md")) {
                                     planFiles.push(relative(plansRoot, child));
                                 }
                             }
                         } catch (error) {
-                            if (!(error instanceof Deno.errors.NotFound)) throw error;
+                            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
                         }
                     };
                     await collectPlanFiles(plansRoot);
@@ -2251,7 +2354,12 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "uiPresentationState") {
                     composition.uiAPI.setBusy?.(true);
                     events.push("ui:spinner:busy");
-                    composition.uiAPI.setManagedSyncStatus?.({ status: "stale", owningSurfaceKind: "tui" });
+                    composition.uiAPI.setManagedSyncStatus?.({
+                        status: "degraded",
+                        localGeneration: 1,
+                        latestGeneration: 2,
+                        owningSurfaceKind: "tui",
+                    });
                     events.push("ui:managed-sync:stale");
                     composition.uiAPI.appendQueuedMessage?.("golden-queued", "Queued steering message");
                     events.push("ui:queued-steering:add");
@@ -2277,7 +2385,8 @@ async function runComposedTuiScenario(scenario, options) {
                             screen.includes("Steering: Queued steering message") &&
                             (terminal.writes.includes("iVBORw0KGgoAAA") ||
                                 terminal.getScrollbackText().includes("[Image: [image/png]"))
-                        ) break;
+                        )
+                            break;
                         await new Promise((resolve) => setTimeout(resolve, 20));
                     }
                     const presentationScreen = terminal.getScreenText();
@@ -2289,10 +2398,9 @@ async function runComposedTuiScenario(scenario, options) {
                     // Capable terminals receive image bytes. Headless/unsupported
                     // terminals receive pi-tui's visible image fallback instead. Both
                     // are real rendered outcomes, unlike merely recording the API call.
-                    const presentationWrites = String(
-                        /** @type {{ writes?: string }} */ (terminal).writes || "",
-                    );
-                    state.presentationImageRendered = presentationWrites.includes("iVBORw0KGgoAAA") ||
+                    const presentationWrites = String(/** @type {{ writes?: string }} */ (terminal).writes || "");
+                    state.presentationImageRendered =
+                        presentationWrites.includes("iVBORw0KGgoAAA") ||
                         presentationScreen.includes("[Image: [image/png]") ||
                         presentationScrollback.includes("[Image: [image/png]");
                     composition.uiAPI.removeQueuedMessage?.("golden-queued");
@@ -2315,13 +2423,11 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push("terminal:autocomplete:/he");
                 } else if (typed.type === "runtimeInteraction") {
                     const request =
-                        /** @type {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} */ (typed
-                            .request || {});
-                    activeScriptedInteractionType = request.type === "approval"
-                        ? "approval"
-                        : request.type === "text"
-                        ? "text"
-                        : "select";
+                        /** @type {import('../../../shared/session/session-runtime-interactions.js').RuntimeInteractionRequest} */ (
+                            typed.request || {}
+                        );
+                    activeScriptedInteractionType =
+                        request.type === "approval" ? "approval" : request.type === "text" ? "text" : "select";
                     try {
                         const response = await composition.runtime.requestInteraction(composition.sessionId, request);
                         state.lastInteraction = response;
@@ -2339,9 +2445,9 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "waitForEvent") {
                     const expected = String(typed.event || "");
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     while (!events.includes(expected)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(`Timed out waiting for event: ${expected}`);
                         }
                         await terminal.flush();
@@ -2351,9 +2457,9 @@ async function runComposedTuiScenario(scenario, options) {
                     const expected = String(typed.event || "");
                     const expectedCount = Number(typed.count || 1);
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     while (events.filter((event) => event === expected).length < expectedCount) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for ${expectedCount} occurrences of event: ${expected}; got ${
                                     events.filter((event) => event === expected).length
@@ -2368,58 +2474,65 @@ async function runComposedTuiScenario(scenario, options) {
                     const expectedStatuses = new Set((Array.isArray(typed.statuses) ? typed.statuses : []).map(String));
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
                     const planPath = `docs/plans/${planName}.md`;
-                    const localBranch = await runGoldenGit(["branch", "--show-current"], Deno.cwd()).catch(() => "");
+                    const localBranch = await runGoldenGit(["branch", "--show-current"], getCwd()).catch(() => "");
                     const remoteName = localBranch
-                        ? await runGoldenGit(["config", "--get", `branch.${localBranch}.remote`], Deno.cwd()).catch(
-                            () => "origin",
-                        )
+                        ? await runGoldenGit(["config", "--get", `branch.${localBranch}.remote`], getCwd()).catch(
+                              () => "origin",
+                          )
                         : "origin";
-                    const remotePath = await runGoldenGit(["remote", "get-url", remoteName], Deno.cwd()).catch(
-                        () => "",
-                    );
-                    const startedAt = Date.now();
+                    const remotePath = await runGoldenGit(["remote", "get-url", remoteName], getCwd()).catch(() => "");
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     let matchedStatus = false;
                     while (!matchedStatus) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
-                                `Timed out waiting for Plan ${planName} status ${
-                                    [...expectedStatuses].join(" or ")
-                                }; latest=${latestStatus || "unreadable"}`,
+                                `Timed out waiting for Plan ${planName} status ${[...expectedStatuses].join(
+                                    " or ",
+                                )}; latest=${latestStatus || "unreadable"}`,
                             );
                         }
-                        const localPlan = await loadPlan(Deno.cwd(), planName).catch(() => null);
-                        const registry = await (await import("../../../shared/worktree-registry.js"))
-                            .inspectWorktreeRegistry(Deno.cwd());
+                        const localPlan = await loadPlan(getCwd(), planName).catch(() => null);
+                        const registry = await (
+                            await import("../../../shared/worktree-registry.js")
+                        ).inspectWorktreeRegistry(getCwd());
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
                             : null;
                         const targetBranch = entry?.baseBranch || localBranch;
-                        const remotePlanText = remotePath && targetBranch
-                            ? await runGoldenGit(
-                                ["--git-dir", remotePath, "show", `refs/heads/${targetBranch}:${planPath}`],
-                                Deno.cwd(),
-                            ).catch(() => "")
-                            : "";
+                        const remotePlanText =
+                            remotePath && targetBranch
+                                ? await runGoldenGit(
+                                      ["--git-dir", remotePath, "show", `refs/heads/${targetBranch}:${planPath}`],
+                                      getCwd(),
+                                  ).catch(() => "")
+                                : "";
                         const candidateAttrs = [
                             executionPlan?.attrs,
                             remotePlanText ? parsePlanFrontMatter(remotePlanText).attrs : null,
                             localPlan?.attrs,
                         ].filter((attrs) => attrs != null);
-                        const matching = candidateAttrs.find((attrs) =>
-                            expectedStatuses.has(String(attrs.status || "")) &&
-                            (!typed.validationPhase || attrs.validationPhase === typed.validationPhase) &&
-                            (!typed.workRecordStatus || attrs.workRecord?.status === typed.workRecordStatus)
+                        const matching = candidateAttrs.find(
+                            (attrs) =>
+                                expectedStatuses.has(String(attrs.status || "")) &&
+                                (!typed.validationPhase || attrs.validationPhase === typed.validationPhase) &&
+                                (!typed.workRecordStatus || attrs.workRecord?.status === typed.workRecordStatus),
                         );
                         matchedStatus = Boolean(matching);
-                        latestStatus = matching ? String(matching.status) : candidateAttrs.map((attrs) =>
-                            [
-                                attrs.status,
-                                typed.validationPhase ? attrs.validationPhase : "",
-                                typed.workRecordStatus ? attrs.workRecord?.status : "",
-                            ].filter(Boolean).join(":")
-                        ).join("/");
+                        latestStatus = matching
+                            ? String(matching.status)
+                            : candidateAttrs
+                                  .map((attrs) =>
+                                      [
+                                          attrs.status,
+                                          typed.validationPhase ? attrs.validationPhase : "",
+                                          typed.workRecordStatus ? attrs.workRecord?.status : "",
+                                      ]
+                                          .filter(Boolean)
+                                          .join(":"),
+                                  )
+                                  .join("/");
                         await terminal.flush();
                         await new Promise((resolve) => setTimeout(resolve, 20));
                     }
@@ -2428,18 +2541,19 @@ async function runComposedTuiScenario(scenario, options) {
                     const planName = String(typed.planName || "");
                     const expectedStatuses = new Set((Array.isArray(typed.statuses) ? typed.statuses : []).map(String));
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     while (!expectedStatuses.has(latestStatus)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
-                                `Timed out waiting for execution Plan ${planName} status ${
-                                    [...expectedStatuses].join(" or ")
-                                }; latest=${latestStatus || "unreadable"}`,
+                                `Timed out waiting for execution Plan ${planName} status ${[...expectedStatuses].join(
+                                    " or ",
+                                )}; latest=${latestStatus || "unreadable"}`,
                             );
                         }
-                        const registry = await (await import("../../../shared/worktree-registry.js"))
-                            .inspectWorktreeRegistry(Deno.cwd());
+                        const registry = await (
+                            await import("../../../shared/worktree-registry.js")
+                        ).inspectWorktreeRegistry(getCwd());
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         const executionPlan = entry?.path
                             ? await loadPlan(entry.path, planName).catch(() => null)
@@ -2451,8 +2565,9 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push(`project:execution-plan-status:${planName}:${latestStatus}`);
                 } else if (typed.type === "captureExecutionPlanState") {
                     const planName = String(typed.planName || "");
-                    const registry = await (await import("../../../shared/worktree-registry.js"))
-                        .inspectWorktreeRegistry(Deno.cwd());
+                    const registry = await (
+                        await import("../../../shared/worktree-registry.js")
+                    ).inspectWorktreeRegistry(getCwd());
                     const entry = registry.entries.find((candidate) => candidate.planName === planName);
                     const executionPlan = entry?.path ? await loadPlan(entry.path, planName).catch(() => null) : null;
                     state.executionPlan = {
@@ -2465,7 +2580,7 @@ async function runComposedTuiScenario(scenario, options) {
                     /** @type {Record<string, string | null>} */
                     const files = {};
                     for (const path of paths) {
-                        files[path] = await Deno.readTextFile(join(Deno.cwd(), path)).catch(() => null);
+                        files[path] = await fsReadFile(join(getCwd(), path), "utf8").catch(() => null);
                     }
                     const executionWorktrees = (await runGoldenGit(["worktree", "list", "--porcelain"], getCwd()))
                         .split("\n")
@@ -2477,9 +2592,9 @@ async function runComposedTuiScenario(scenario, options) {
                         executionCommits: await Promise.all(
                             executionWorktrees.map((path) => runGoldenGit(["rev-parse", "HEAD"], path)),
                         ),
-                        head: await runGoldenGit(["rev-parse", "HEAD"], Deno.cwd()),
-                        branch: await runGoldenGit(["branch", "--show-current"], Deno.cwd()),
-                        status: await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], Deno.cwd()),
+                        head: await runGoldenGit(["rev-parse", "HEAD"], getCwd()),
+                        branch: await runGoldenGit(["branch", "--show-current"], getCwd()),
+                        status: await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], getCwd()),
                         files,
                     };
                     events.push("publication:primary-baseline-captured");
@@ -2487,18 +2602,19 @@ async function runComposedTuiScenario(scenario, options) {
                     const planName = String(typed.planName || "");
                     const expectedStatuses = new Set((Array.isArray(typed.statuses) ? typed.statuses : []).map(String));
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     while (!expectedStatuses.has(latestStatus)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
-                                `Timed out waiting for ${planName} worktree status ${
-                                    [...expectedStatuses].join(" or ")
-                                }; latest=${latestStatus || "missing"}`,
+                                `Timed out waiting for ${planName} worktree status ${[...expectedStatuses].join(
+                                    " or ",
+                                )}; latest=${latestStatus || "missing"}`,
                             );
                         }
-                        const registry = await (await import("../../../shared/worktree-registry.js"))
-                            .inspectWorktreeRegistry(Deno.cwd());
+                        const registry = await (
+                            await import("../../../shared/worktree-registry.js")
+                        ).inspectWorktreeRegistry(getCwd());
                         const entry = registry.entries.find((candidate) => candidate.planName === planName);
                         latestStatus = entry ? String(entry.status || "") : "absent";
                         await terminal.flush();
@@ -2507,31 +2623,33 @@ async function runComposedTuiScenario(scenario, options) {
                     events.push(`publication:registry-status:${planName}:${latestStatus}`);
                 } else if (typed.type === "capturePendingPublicationState") {
                     const planName = String(typed.planName || "");
-                    const registry = await (await import("../../../shared/worktree-registry.js"))
-                        .inspectWorktreeRegistry(Deno.cwd());
+                    const registry = await (
+                        await import("../../../shared/worktree-registry.js")
+                    ).inspectWorktreeRegistry(getCwd());
                     const entry = registry.entries.find((candidate) => candidate.planName === planName);
                     if (!entry) throw new Error(`Expected pending publication entry for ${planName}`);
                     const executionPlan = await loadPlan(entry.path, planName);
                     const branchExists = await runGoldenGit(
                         ["show-ref", "--verify", `refs/heads/${entry.branch}`],
-                        Deno.cwd(),
-                    ).then(() => true).catch(() => false);
+                        getCwd(),
+                    )
+                        .then(() => true)
+                        .catch(() => false);
                     const baselineFiles = state.publicationBaseline?.files || {};
                     /** @type {Record<string, string | null>} */
                     const currentFiles = {};
                     for (const path of Object.keys(baselineFiles)) {
-                        currentFiles[path] = await Deno.readTextFile(join(Deno.cwd(), path)).catch(() => null);
+                        currentFiles[path] = await fsReadFile(join(getCwd(), path), "utf8").catch(() => null);
                     }
                     state.pendingPublication = {
                         registryStatus: entry.status,
                         executionPlanStatus: executionPlan?.attrs.status,
-                        worktreeExists: await Deno.stat(entry.path).then(() => true).catch(() => false),
+                        worktreeExists: await fsStat(entry.path)
+                            .then(() => true)
+                            .catch(() => false),
                         branchExists,
-                        primaryHead: await runGoldenGit(["rev-parse", "HEAD"], Deno.cwd()),
-                        primaryStatus: await runGoldenGit(
-                            ["status", "--porcelain", "--untracked-files=all"],
-                            Deno.cwd(),
-                        ),
+                        primaryHead: await runGoldenGit(["rev-parse", "HEAD"], getCwd()),
+                        primaryStatus: await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], getCwd()),
                         primaryFiles: currentFiles,
                     };
                     events.push(`publication:pending-state-captured:${planName}`);
@@ -2539,28 +2657,28 @@ async function runComposedTuiScenario(scenario, options) {
                     const planName = String(typed.planName || "");
                     const expectedStatuses = new Set((Array.isArray(typed.statuses) ? typed.statuses : []).map(String));
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
-                    const primaryPlan = await loadPlan(Deno.cwd(), planName);
+                    const primaryPlan = await loadPlan(getCwd(), planName);
                     const targetBranch = String(
                         primaryPlan?.attrs.targetBranch || primaryPlan?.attrs.worktreeBaseBranch || "main",
                     );
                     const remote =
-                        await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], Deno.cwd()) ||
+                        (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd())) ||
                         "origin";
-                    const remotePath = await runGoldenGit(["remote", "get-url", remote], Deno.cwd());
+                    const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
                     const planPath = `docs/plans/${planName}.md`;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestStatus = "";
                     while (!expectedStatuses.has(latestStatus)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
-                                `Timed out waiting for published Plan ${planName} status ${
-                                    [...expectedStatuses].join(" or ")
-                                }; latest=${latestStatus || "unreadable"}`,
+                                `Timed out waiting for published Plan ${planName} status ${[...expectedStatuses].join(
+                                    " or ",
+                                )}; latest=${latestStatus || "unreadable"}`,
                             );
                         }
                         const remoteText = await runGoldenGit(
                             ["--git-dir", remotePath, "show", `refs/heads/${targetBranch}:${planPath}`],
-                            Deno.cwd(),
+                            getCwd(),
                         ).catch(() => "");
                         latestStatus = remoteText ? String(parsePlanFrontMatter(remoteText).attrs.status || "") : "";
                         await terminal.flush();
@@ -2570,94 +2688,106 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "capturePublicationState") {
                     const planName = String(typed.planName || "");
                     const deliveredPath = String(typed.deliveredPath || "");
-                    const primaryPlan = await loadPlan(Deno.cwd(), planName);
+                    const primaryPlan = await loadPlan(getCwd(), planName);
                     const targetBranch = String(
                         primaryPlan?.attrs.targetBranch || primaryPlan?.attrs.worktreeBaseBranch || "main",
                     );
                     const remote =
-                        await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], Deno.cwd()) ||
+                        (await runGoldenGit(["config", "--get", `branch.${targetBranch}.remote`], getCwd())) ||
                         "origin";
-                    const remotePath = await runGoldenGit(["remote", "get-url", remote], Deno.cwd());
+                    const remotePath = await runGoldenGit(["remote", "get-url", remote], getCwd());
                     const remoteHead = await runGoldenGit(
                         ["--git-dir", remotePath, "rev-parse", `refs/heads/${targetBranch}`],
-                        Deno.cwd(),
+                        getCwd(),
                     );
                     const remotePlanText = await runGoldenGit(
                         ["--git-dir", remotePath, "show", `${remoteHead}:docs/plans/${planName}.md`],
-                        Deno.cwd(),
+                        getCwd(),
                     );
                     const remoteTree = await runGoldenGit(
                         ["--git-dir", remotePath, "ls-tree", "-r", "--name-only", remoteHead],
-                        Deno.cwd(),
+                        getCwd(),
                     );
-                    const registry = await (await import("../../../shared/worktree-registry.js"))
-                        .inspectWorktreeRegistry(Deno.cwd());
+                    const registry = await (
+                        await import("../../../shared/worktree-registry.js")
+                    ).inspectWorktreeRegistry(getCwd());
                     const baselineFiles = state.publicationBaseline?.files || {};
                     /** @type {Record<string, string | null>} */
                     const currentFiles = {};
                     for (const path of Object.keys(baselineFiles)) {
-                        currentFiles[path] = await Deno.readTextFile(join(Deno.cwd(), path)).catch(() => null);
+                        currentFiles[path] = await fsReadFile(join(getCwd(), path), "utf8").catch(() => null);
                     }
                     // Query Git even after the registry entry has been removed. An
                     // absent pointer is not proof that the branch was deleted.
                     const branchExists = Boolean(
-                        await runGoldenGit(
-                            ["for-each-ref", "--format=%(refname)", "refs/heads/worktree/"],
-                            getCwd(),
-                        ),
+                        await runGoldenGit(["for-each-ref", "--format=%(refname)", "refs/heads/worktree/"], getCwd()),
                     );
                     const remotePlanAttrs = parsePlanFrontMatter(remotePlanText).attrs;
                     const capturedPublication = {
-                        validatedCommitPublished: Boolean(remotePlanAttrs.validatedCommit) && await runGoldenGit(
-                            [
-                                "--git-dir",
-                                remotePath,
-                                "merge-base",
-                                "--is-ancestor",
-                                remotePlanAttrs.validatedCommit || "",
-                                remoteHead,
-                            ],
-                            getCwd(),
-                        ).then(() => true).catch(() => false),
+                        validatedCommitPublished:
+                            Boolean(remotePlanAttrs.validatedCommit) &&
+                            (await runGoldenGit(
+                                [
+                                    "--git-dir",
+                                    remotePath,
+                                    "merge-base",
+                                    "--is-ancestor",
+                                    remotePlanAttrs.validatedCommit || "",
+                                    remoteHead,
+                                ],
+                                getCwd(),
+                            )
+                                .then(() => true)
+                                .catch(() => false)),
                         executionCommitsPublished: await Promise.all(
                             (state.publicationBaseline?.executionCommits || []).map((commit) =>
                                 runGoldenGit(
                                     ["--git-dir", remotePath, "merge-base", "--is-ancestor", commit, remoteHead],
                                     getCwd(),
-                                ).then(() => true).catch(() => false)
+                                )
+                                    .then(() => true)
+                                    .catch(() => false),
                             ),
                         ),
                         registeredWorktrees: (await runGoldenGit(["worktree", "list", "--porcelain"], getCwd()))
                             .split("\n")
                             .filter((line) => line.startsWith("worktree ")),
-                        remainingExecutionWorktrees: (await Promise.all(
-                            (state.publicationBaseline?.executionWorktrees || []).map(async (path) =>
-                                await Deno.stat(path).then(() => path).catch((error) => {
-                                    if (error instanceof Deno.errors.NotFound) return null;
-                                    throw error;
-                                })
-                            ),
-                        )).filter((path) => path !== null),
-                        primaryHead: await runGoldenGit(["rev-parse", "HEAD"], Deno.cwd()),
-                        primaryBranch: await runGoldenGit(["branch", "--show-current"], Deno.cwd()),
-                        primaryStatus: await runGoldenGit(
-                            ["status", "--porcelain", "--untracked-files=all"],
-                            Deno.cwd(),
-                        ),
+                        remainingExecutionWorktrees: (
+                            await Promise.all(
+                                (state.publicationBaseline?.executionWorktrees || []).map(
+                                    async (path) =>
+                                        await fsStat(path)
+                                            .then(() => path)
+                                            .catch((error) => {
+                                                if (
+                                                    error instanceof Error &&
+                                                    "code" in error &&
+                                                    error.code === "ENOENT"
+                                                ) {
+                                                    return null;
+                                                }
+                                                throw error;
+                                            }),
+                                ),
+                            )
+                        ).filter((path) => path !== null),
+                        primaryHead: await runGoldenGit(["rev-parse", "HEAD"], getCwd()),
+                        primaryBranch: await runGoldenGit(["branch", "--show-current"], getCwd()),
+                        primaryStatus: await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], getCwd()),
                         primaryFiles: currentFiles,
                         remoteHead,
                         remotePlanStatus: parsePlanFrontMatter(remotePlanText).attrs.status,
                         remotePlanAttrs,
                         remotePlanFields: Object.keys(extractYaml(remotePlanText).attrs),
-                        controllerState:
-                            (await readControllerRecord(getCwd(), { planName, planId: primaryPlan?.attrs.planId }))
-                                ?.state,
+                        controllerState: (
+                            await readControllerRecord(getCwd(), { planName, planId: primaryPlan?.attrs.planId })
+                        )?.state,
                         remoteTree,
                         deliveredText: deliveredPath
                             ? await runGoldenGit(
-                                ["--git-dir", remotePath, "show", `${remoteHead}:${deliveredPath}`],
-                                Deno.cwd(),
-                            ).catch(() => "")
+                                  ["--git-dir", remotePath, "show", `${remoteHead}:${deliveredPath}`],
+                                  getCwd(),
+                              ).catch(() => "")
                             : "",
                         registryEntries: registry.entries,
                         worktreeBranchExists: branchExists,
@@ -2668,23 +2798,24 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "captureLocalPublicationState") {
                     const planName = String(typed.planName || "");
                     const deliveredPath = String(typed.deliveredPath || "");
-                    const plan = await loadPlan(Deno.cwd(), planName);
-                    const registry = await (await import("../../../shared/worktree-registry.js"))
-                        .inspectWorktreeRegistry(Deno.cwd());
+                    const plan = await loadPlan(getCwd(), planName);
+                    const registry = await (
+                        await import("../../../shared/worktree-registry.js")
+                    ).inspectWorktreeRegistry(getCwd());
                     const baselineFiles = state.publicationBaseline?.files || {};
                     /** @type {Record<string, string | null>} */
                     const currentFiles = {};
                     for (const path of Object.keys(baselineFiles)) {
-                        currentFiles[path] = await Deno.readTextFile(join(Deno.cwd(), path)).catch(() => null);
+                        currentFiles[path] = await fsReadFile(join(getCwd(), path), "utf8").catch(() => null);
                     }
                     state.localPublication = {
-                        head: await runGoldenGit(["rev-parse", "HEAD"], Deno.cwd()),
-                        branch: await runGoldenGit(["branch", "--show-current"], Deno.cwd()),
-                        status: await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], Deno.cwd()),
+                        head: await runGoldenGit(["rev-parse", "HEAD"], getCwd()),
+                        branch: await runGoldenGit(["branch", "--show-current"], getCwd()),
+                        status: await runGoldenGit(["status", "--porcelain", "--untracked-files=all"], getCwd()),
                         files: currentFiles,
                         planStatus: plan?.attrs.status,
                         deliveredText: deliveredPath
-                            ? await Deno.readTextFile(join(Deno.cwd(), deliveredPath)).catch(() => "")
+                            ? await fsReadFile(join(getCwd(), deliveredPath), "utf8").catch(() => "")
                             : "",
                         registryEntries: registry.entries,
                     };
@@ -2692,17 +2823,17 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "waitForPlanAbsent") {
                     const planName = String(typed.planName || "");
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || 3000;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     let latestAttrs = null;
                     while (true) {
-                        const loaded = await loadPlan(Deno.cwd(), planName).catch(() => null);
+                        const loaded = await loadPlan(getCwd(), planName).catch(() => null);
                         latestAttrs = loaded?.attrs || null;
                         if (!latestAttrs) break;
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
-                                `Timed out waiting for Plan ${planName} to leave active storage; latest=${
-                                    JSON.stringify(latestAttrs)
-                                }`,
+                                `Timed out waiting for Plan ${planName} to leave active storage; latest=${JSON.stringify(
+                                    latestAttrs,
+                                )}`,
                             );
                         }
                         await terminal.flush();
@@ -2714,9 +2845,9 @@ async function runComposedTuiScenario(scenario, options) {
                 } else if (typed.type === "waitForScriptedInteractions") {
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
                     const expectedRemaining = Number(typed.remaining || 0);
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     while ((interactionSurface?.interactions.length || 0) > expectedRemaining) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(
                                 `Timed out waiting for scripted Runtime interactions; remaining=${
                                     interactionSurface?.interactions.length || 0
@@ -2728,21 +2859,23 @@ async function runComposedTuiScenario(scenario, options) {
                     }
                 } else if (typed.type === "setNextModelResponse") {
                     const responseText = String(typed.text || "");
-                    const nextAgent = composition?.runtime.getSessionSnapshot(composition.sessionId)?.activeAgent ||
-                        "guide";
-                    fauxProvider?.setResponses([() =>
-                        createFauxMessageForTurn({
-                            id: "golden-next-model-response",
-                            agent: nextAgent,
-                            phase: "inquiry",
-                            text: responseText,
-                        })]);
+                    const nextAgent =
+                        composition?.runtime.getSessionSnapshot(composition.sessionId)?.activeAgent || "guide";
+                    fauxProvider?.setResponses([
+                        () =>
+                            createFauxMessageForTurn({
+                                id: "golden-next-model-response",
+                                agent: nextAgent,
+                                phase: "inquiry",
+                                text: responseText,
+                            }),
+                    ]);
                 } else if (typed.type === "waitForScreen") {
                     const expected = String(typed.text || "");
                     const timeoutMs = typed.timeoutMs || scenario.timeoutMs || DEFAULT_WAIT_TIMEOUT_MS;
-                    const startedAt = Date.now();
+                    const startedAt = performance.now();
                     while (!terminal.getScreenText().includes(expected)) {
-                        if (Date.now() - startedAt > timeoutMs) {
+                        if (performance.now() - startedAt > timeoutMs) {
                             throw new Error(`Timed out waiting for screen marker: ${JSON.stringify(expected)}`);
                         }
                         await terminal.flush();
@@ -2765,7 +2898,7 @@ async function runComposedTuiScenario(scenario, options) {
             state.activeAgent = snapshot?.activeAgent || state.activeAgent;
             state.editorUsable = snapshot?.busy === false;
             if (scenario.captureGlobalSettings && runwieldDir) {
-                state.globalSettings = JSON.parse(await Deno.readTextFile(join(runwieldDir, "settings.json")));
+                state.globalSettings = JSON.parse(await fsReadFile(join(runwieldDir, "settings.json"), "utf8"));
             }
             if (interactionSurface) {
                 interactionSurface.assertComplete();
@@ -2784,12 +2917,15 @@ async function runComposedTuiScenario(scenario, options) {
                     `Expected every real Plan Review decision to resolve; pending=${pendingReviewLifecycleObservations.length}`,
                 );
                 reviewSurface.assertComplete();
-                let parsedPlan = await Deno.readTextFile(join(Deno.cwd(), "docs", "plans", "plan.md"))
-                    .catch(() => Deno.readTextFile(join(Deno.cwd(), "docs", "plans", "epic.md"))).catch(() => "");
+                let parsedPlan = await fsReadFile(join(getCwd(), "docs", "plans", "plan.md"), "utf8")
+                    .catch(() => fsReadFile(join(getCwd(), "docs", "plans", "epic.md"), "utf8"))
+                    .catch(() => "");
                 if (!parsedPlan) {
-                    for await (const entry of Deno.readDir(join(Deno.cwd(), "docs", "plans"))) {
-                        if (entry.isFile && entry.name.endsWith(".md")) {
-                            parsedPlan = await Deno.readTextFile(join(Deno.cwd(), "docs", "plans", entry.name));
+                    for await (const entry of await fsReaddir(join(getCwd(), "docs", "plans"), {
+                        withFileTypes: true,
+                    })) {
+                        if (entry.isFile() && entry.name.endsWith(".md")) {
+                            parsedPlan = await fsReadFile(join(getCwd(), "docs", "plans", entry.name), "utf8");
                             break;
                         }
                     }
@@ -2815,30 +2951,37 @@ async function runComposedTuiScenario(scenario, options) {
             return result;
         } catch (error) {
             if (options.keepArtifacts !== false) {
-                artifactDir = await Deno.makeTempDir({
-                    dir: options.artifactRoot,
-                    prefix: "runwield-golden-tui-failure-",
-                });
-                /** @type {Error & { artifactDir?: string }} */ (error instanceof Error
-                    ? error
-                    : new Error(String(error))).artifactDir = artifactDir;
+                artifactDir = await fsMkdtemp(join(options.artifactRoot ?? tmpdir(), "runwield-golden-tui-failure-"));
+                /** @type {Error & { artifactDir?: string }} */ (
+                    error instanceof Error ? error : new Error(String(error))
+                ).artifactDir = artifactDir;
                 if (error && typeof error === "object") {
                     /** @type {{ artifactDir?: string }} */ (error).artifactDir = artifactDir;
                 }
-                await Deno.writeTextFile(
+                await fsWriteFile(
                     join(artifactDir, "diagnostics.json"),
                     JSON.stringify(
                         {
                             scenario: scenario.name,
                             error: error instanceof Error ? error.message : String(error),
+                            nativeFailureEvidence: await captureNativeFailureEvidence(
+                                env?.projectRoot || previousCwd,
+                                getHomeDir(),
+                            ),
                             screenText: terminal.getScreenText(),
                             scrollback: terminal.getScrollbackText?.(),
                             events,
                             state,
                             actor: actor.diagnostics(),
+                            validationErrors: await fsReadFile(
+                                join(getHomeDir(), ".wld", "debug", "validation-errors.jsonl"),
+                                "utf8",
+                            )
+                                .then((text) => text.slice(-65_536))
+                                .catch(() => ""),
                             runtime: composition?.runtime.getSessionSnapshot(composition.sessionId),
-                            cwd: Deno.cwd(),
-                            home: Deno.env.get("HOME"),
+                            cwd: getCwd(),
+                            home: getHomeDir(),
                         },
                         null,
                         2,
@@ -2855,9 +2998,9 @@ async function runComposedTuiScenario(scenario, options) {
             await composition?.dispose?.();
             fauxProvider?.unregister?.();
             if (env) {
-                Deno.chdir(previousCwd);
-                if (previousHome === undefined) Deno.env.delete("HOME");
-                else Deno.env.set("HOME", previousHome);
+                process.chdir(previousCwd);
+                if (previousHome === undefined) delete process.env["HOME"];
+                else process.env["HOME"] = previousHome;
                 await env.cleanup();
                 state.cleanupSucceeded = true;
             }

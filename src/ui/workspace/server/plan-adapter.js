@@ -27,7 +27,7 @@ import {
     isSharedPlanLocked,
     SHARED_PLAN_LOCK_REPAIR,
     SharedPlanLockError,
-} from "../../../shared/collaboration/lock.js";
+} from "../../../shared/collaboration/lock.ts";
 import { getWorktreeStatus, inspectExecutionWorktreeMergeRisk } from "../../../shared/worktree.js";
 import {
     autoGenerateWorkRecordForCompletedPlan,

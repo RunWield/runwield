@@ -1,3 +1,5 @@
+import { writeSync } from "node:fs";
+import process from "node:process";
 /**
  * @module ui/tui/system-notifications
  * Best-effort terminal bell and native terminal OSC notifications for TUI attention events.
@@ -76,12 +78,17 @@ interface TerminalProcessSnapshot {
 }
 
 function writeTerminal(bytes: Uint8Array): void {
-    Deno.stdout.writeSync(bytes);
+    let offset = 0;
+    while (offset < bytes.length) {
+        const written = writeSync(process.stdout.fd, bytes, offset, bytes.length - offset);
+        if (written === 0) throw new Error("Terminal notification write made no progress");
+        offset += written;
+    }
 }
 
 const systemNotificationPort: SystemNotificationPort = {
-    readEnvironment: () => Deno.env.toObject(),
-    getProcessId: () => Deno.pid,
+    readEnvironment: () => ({ ...process.env }),
+    getProcessId: () => process.pid,
     readNotificationSetting: () => getMergedCustomSetting("notifications"),
     writeTerminal,
 };
@@ -160,9 +167,10 @@ export function notifyRunWieldEventQuietly(eventName: string, options: NotifyRun
 
 export function resolveNotificationSettings(raw: ReturnType<typeof getMergedCustomSetting>): NotificationSettings {
     const common = normalizeNotificationPolicy(raw as NotificationSettingsRecord | null | undefined);
-    const record = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as NotificationSettingsRecord & { activation?: string; terminalBell?: boolean }
-        : {};
+    const record =
+        raw && typeof raw === "object" && !Array.isArray(raw)
+            ? (raw as NotificationSettingsRecord & { activation?: string; terminalBell?: boolean })
+            : {};
     return {
         ...common,
         activation: normalizeActivation(record.activation),
@@ -170,10 +178,7 @@ export function resolveNotificationSettings(raw: ReturnType<typeof getMergedCust
     };
 }
 
-export function detectTerminalIdentity(
-    sessionLabel: string,
-    process: TerminalProcessSnapshot,
-): TerminalIdentity {
+export function detectTerminalIdentity(sessionLabel: string, process: TerminalProcessSnapshot): TerminalIdentity {
     const env = process.env;
     const terminalTitle = formatSessionTerminalTitle(sessionLabel);
     return {
@@ -253,7 +258,9 @@ function normalizeActivation(value: string | undefined): NotificationActivationM
 }
 
 function normalizeLabel(value: string | undefined): string {
-    return String(value || "").replace(/\s+/g, " ").trim();
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
 function buildNotificationTitle(eventName: string, terminal: TerminalIdentity, agentName: string | undefined): string {
@@ -293,11 +300,17 @@ function isWezTerm(terminal: TerminalIdentity): boolean {
 }
 
 function isKitty(terminal: TerminalIdentity): boolean {
-    return terminal.termProgram === "kitty" || terminal.termProgram === "Kitty" || terminal.term === "xterm-kitty" ||
-        !!terminal.kittyListenOn || !!terminal.kittyWindowId;
+    return (
+        terminal.termProgram === "kitty" ||
+        terminal.termProgram === "Kitty" ||
+        terminal.term === "xterm-kitty" ||
+        !!terminal.kittyListenOn ||
+        !!terminal.kittyWindowId
+    );
 }
 
 function isGhostty(terminal: TerminalIdentity): boolean {
-    return terminal.termProgram === "ghostty" || terminal.termProgram === "Ghostty" ||
-        terminal.term === "xterm-ghostty";
+    return (
+        terminal.termProgram === "ghostty" || terminal.termProgram === "Ghostty" || terminal.term === "xterm-ghostty"
+    );
 }

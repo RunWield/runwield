@@ -1,4 +1,5 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createReviewCompletedTool } from "../../tools/review-complete.ts";
@@ -54,7 +55,7 @@ function setup(scope: "full" | "repair" = "full") {
 }
 
 for (const approved of [true, false]) {
-    Deno.test(`completion refuses ${approved ? "approval" : "rejection"} until every chunk is read`, async () => {
+    test(`completion refuses ${approved ? "approval" : "rejection"} until every chunk is read`, async () => {
         const { files, inspection, hostedSession, diff, complete } = setup();
         try {
             await diff.execute("list", { command: "list" });
@@ -80,7 +81,10 @@ for (const approved of [true, false]) {
             await diff.execute("head", { command: "show", path: "a.ts", maxBytes: size });
             result = await complete.execute("still-incomplete", args);
             assertEquals(result.terminate, false);
-            assertEquals(inspection.unread().map((span) => span.path), ["b.ts"]);
+            assertEquals(
+                inspection.unread().map((span) => span.path),
+                ["b.ts"],
+            );
             await diff.execute("deleted-file", { command: "show", path: "b.ts" });
             result = await complete.execute("done", args);
             assertEquals(result.terminate, true);
@@ -90,7 +94,7 @@ for (const approved of [true, false]) {
     });
 }
 
-Deno.test("repair coverage requires repair reads, with precise 64KiB continuation", async () => {
+test("repair coverage requires repair reads, with precise 64KiB continuation", async () => {
     const large = DIFF + "+" + "é".repeat(40000) + "\n";
     const files = parseDiffFiles(large);
     const inspection = new ReviewInspection(
@@ -117,7 +121,7 @@ Deno.test("repair coverage requires repair reads, with precise 64KiB continuatio
     assertEquals(inspection.unread(), []);
 });
 
-Deno.test("coverage includes quoted paths and prefers exact paths over suffix matches", async () => {
+test("coverage includes quoted paths and prefers exact paths over suffix matches", async () => {
     const quoted = String.raw`diff --git "a/caf\303\251.ts" "b/caf\303\251.ts"
 --- "a/caf\303\251.ts"
 +++ "b/caf\303\251.ts"
@@ -127,50 +131,77 @@ Deno.test("coverage includes quoted paths and prefers exact paths over suffix ma
 `;
     const diffText = DIFF.replaceAll("a.ts", "nested/a.ts").replaceAll("b.ts", "nested/b.ts") + DIFF + quoted;
     const files = parseDiffFiles(diffText);
-    assertEquals(files.map((file) => file.path), ["nested/a.ts", "nested/b.ts", "a.ts", "b.ts", "café.ts"]);
+    assertEquals(
+        files.map((file) => file.path),
+        ["nested/a.ts", "nested/b.ts", "a.ts", "b.ts", "café.ts"],
+    );
     const inspection = new ReviewInspection(
         files.map((file) => ({ scope: "full", path: file.path, byteLength: file.byteLength })),
     );
     const tool = diffTool({ full: diffText }, { inspection });
     await tool.execute("exact", { command: "show", path: "a.ts" });
-    assertEquals(inspection.unread().some((span) => span.path === "a.ts"), false);
-    assertEquals(inspection.unread().some((span) => span.path === "nested/a.ts"), true);
+    assertEquals(
+        inspection.unread().some((span) => span.path === "a.ts"),
+        false,
+    );
+    assertEquals(
+        inspection.unread().some((span) => span.path === "nested/a.ts"),
+        true,
+    );
     for (const file of files) await tool.execute("read", { command: "show", path: file.path });
     assertEquals(inspection.unread(), []);
 });
 
-Deno.test("issue state retains its identity across claimed, rejected, reclaimed and confirmed repairs", () => {
-    const initial = applyRoundFindings(createLedger(), [{
-        title: "Missing guard",
-        requirement: "Step 1",
-        evidence: "a.ts",
-        resolved: false,
-    }], 1).ledger;
+test("issue state retains its identity across claimed, rejected, reclaimed and confirmed repairs", () => {
+    const initial = applyRoundFindings(
+        createLedger(),
+        [
+            {
+                title: "Missing guard",
+                requirement: "Step 1",
+                evidence: "a.ts",
+                resolved: false,
+            },
+        ],
+        1,
+    ).ledger;
     assertEquals(initial.items[0].status, "new");
     const claimed = claimReviewFixes(initial);
     assertEquals(claimed.items[0].status, "fix_claimed");
     const id = claimed.items[0].id;
-    const rejected = applyRoundFindings(claimed, [{
-        id,
-        resolved: false,
-        status: "fix_rejected",
-        rejectionReason: "The empty case remains unguarded.",
-        title: "Missing guard",
-        requirement: "Step 1",
-        evidence: "a.ts",
-    }], 2).ledger;
+    const rejected = applyRoundFindings(
+        claimed,
+        [
+            {
+                id,
+                resolved: false,
+                status: "fix_rejected",
+                rejectionReason: "The empty case remains unguarded.",
+                title: "Missing guard",
+                requirement: "Step 1",
+                evidence: "a.ts",
+            },
+        ],
+        2,
+    ).ledger;
     const restored = normalizeLedger(JSON.parse(JSON.stringify(rejected)));
     assertEquals(restored.items[0].status, "fix_rejected");
     assertStringIncludes(restored.items[0].rejectionReason || "", "empty case");
     assertEquals(openItems(restored).length, 1);
-    const confirmed = applyRoundFindings(claimReviewFixes(restored), [{
-        id,
-        resolved: true,
-        status: "fix_confirmed",
-        title: "Missing guard",
-        requirement: "Step 1",
-        evidence: "a.ts",
-    }], 3).ledger;
+    const confirmed = applyRoundFindings(
+        claimReviewFixes(restored),
+        [
+            {
+                id,
+                resolved: true,
+                status: "fix_confirmed",
+                title: "Missing guard",
+                requirement: "Step 1",
+                evidence: "a.ts",
+            },
+        ],
+        3,
+    ).ledger;
     assertEquals(confirmed.items.length, 1);
     assertEquals(confirmed.items[0].id, id);
     assertEquals(confirmed.items[0].status, "fix_confirmed");
@@ -178,50 +209,64 @@ Deno.test("issue state retains its identity across claimed, rejected, reclaimed 
     assertEquals(claimReviewFixes(confirmed).items[0].status, "fix_confirmed");
 });
 
-Deno.test("review completion requires valid identities and a reason for rejected fixes", async () => {
+test("review completion requires valid identities and a reason for rejected fixes", async () => {
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: ROOT });
-    const ledger = applyRoundFindings(createLedger(), [{
-        title: "Guard",
-        requirement: "Step 1",
-        evidence: "a.ts",
-        resolved: false,
-    }], 1).ledger;
+    const ledger = applyRoundFindings(
+        createLedger(),
+        [
+            {
+                title: "Guard",
+                requirement: "Step 1",
+                evidence: "a.ts",
+                resolved: false,
+            },
+        ],
+        1,
+    ).ledger;
     const tool = completionTool({ hostedSession, ledger });
     try {
         assertEquals((await tool.execute("omit", { approved: true })).terminate, false);
         assertEquals(
-            (await tool.execute("reason", {
-                approved: false,
-                findings: [{ id: "R1-1", title: "Guard", status: "fix_rejected" }],
-            })).terminate,
+            (
+                await tool.execute("reason", {
+                    approved: false,
+                    findings: [{ id: "R1-1", title: "Guard", status: "fix_rejected" }],
+                })
+            ).terminate,
             false,
         );
         assertEquals(
-            (await tool.execute("identity", {
-                approved: true,
-                findings: [{ id: "R7-9", title: "Guard", status: "fix_confirmed" }],
-            })).terminate,
+            (
+                await tool.execute("identity", {
+                    approved: true,
+                    findings: [{ id: "R7-9", title: "Guard", status: "fix_confirmed" }],
+                })
+            ).terminate,
             false,
         );
         // Diagnostic attribution does not change acceptance or become a ledger state.
         assertEquals(
-            (await tool.execute("classified", {
-                approved: false,
-                findings: [
-                    { id: "R1-1", title: "Guard", status: "fix_confirmed" },
-                    { title: "Old unrelated issue", status: "new", origin: "missed_original" },
-                ],
-            })).terminate,
+            (
+                await tool.execute("classified", {
+                    approved: false,
+                    findings: [
+                        { id: "R1-1", title: "Guard", status: "fix_confirmed" },
+                        { title: "Old unrelated issue", status: "new", origin: "missed_original" },
+                    ],
+                })
+            ).terminate,
             true,
         );
         const result = await tool.execute("reject", {
             approved: false,
-            findings: [{
-                id: "R1-1",
-                title: "Guard",
-                status: "fix_rejected",
-                rejectionReason: "Empty input remains unguarded.",
-            }],
+            findings: [
+                {
+                    id: "R1-1",
+                    title: "Guard",
+                    status: "fix_rejected",
+                    rejectionReason: "Empty input remains unguarded.",
+                },
+            ],
         });
         assertEquals(result.terminate, true);
         assertEquals(result.details.outcome, "feedback");
@@ -230,7 +275,7 @@ Deno.test("review completion requires valid identities and a reason for rejected
     }
 });
 
-Deno.test("normal session binding enforces coverage and supplies the Plan without losing receipts between calls", async () => {
+test("normal session binding enforces coverage and supplies the Plan without losing receipts between calls", async () => {
     const hostedSession = new HostedSession({ id: crypto.randomUUID(), cwd: ROOT });
     const inspection = new ReviewInspection(
         parseDiffFiles(DIFF).map((file) => ({ scope: "full", path: file.path, byteLength: file.byteLength })),
@@ -257,10 +302,13 @@ Deno.test("normal session binding enforces coverage and supplies the Plan withou
             runIsolatedAgentSession: async (options) => {
                 invoked = true;
                 assertStringIncludes(options.userRequest, "Preserve empty selection.");
-                await executeWorkflowTestTools(options, [{ name: "review_diff", arguments: { command: "list" } }, {
-                    name: "review_complete",
-                    arguments: { approved: true },
-                }]);
+                await executeWorkflowTestTools(options, [
+                    { name: "review_diff", arguments: { command: "list" } },
+                    {
+                        name: "review_complete",
+                        arguments: { approved: true },
+                    },
+                ]);
                 assertEquals(inspection.unread().length, 2);
                 await executeWorkflowTestTools(options, [
                     { name: "review_diff", arguments: { command: "show", path: "a.ts" } },
@@ -290,15 +338,18 @@ Deno.test("normal session binding enforces coverage and supplies the Plan withou
     }
 });
 
-Deno.test("finding origin metrics stay separate from repair status", () => {
+test("finding origin metrics stay separate from repair status", () => {
     const base = { title: "Issue", requirement: "Step", evidence: "a.ts", resolved: false };
     assertEquals(
-        reviewFindingMetrics([
-            { ...base, origin: "missed_original" },
-            { ...base, origin: "repair_regression" },
-            { ...base, id: "R1-1", status: "fix_rejected" },
-            { ...base, id: "R1-2", resolved: true },
-        ], 2),
+        reviewFindingMetrics(
+            [
+                { ...base, origin: "missed_original" },
+                { ...base, origin: "repair_regression" },
+                { ...base, id: "R1-1", status: "fix_rejected" },
+                { ...base, id: "R1-2", resolved: true },
+            ],
+            2,
+        ),
         {
             initialFindingCount: 0,
             missedOriginalCount: 1,

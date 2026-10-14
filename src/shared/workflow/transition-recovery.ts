@@ -1,3 +1,5 @@
+import { captureForegroundProcess } from "../captured-process.ts";
+import { stat as fsStat } from "node:fs/promises";
 /**
  * @module shared/workflow/transition-recovery
  * Prove what an interrupted lifecycle transition actually did, and close what is settled.
@@ -92,16 +94,18 @@ export function buildEffectProver(
             if (!group?.plans?.length) {
                 return { settled: false, reason: "Sequence journal has no complete document set" };
             }
-            const states = await Promise.all(group.plans.map(async (plan) => {
-                const loaded = await readPlan(projectRoot, plan.planName);
-                return {
-                    planName: plan.planName,
-                    before: loaded.kind === "loaded" && "revision" in loaded &&
-                        loaded.revision === plan.beforeRevision,
-                    after: loaded.kind === "loaded" && "revision" in loaded &&
-                        loaded.revision === plan.afterRevision,
-                };
-            }));
+            const states = await Promise.all(
+                group.plans.map(async (plan) => {
+                    const loaded = await readPlan(projectRoot, plan.planName);
+                    return {
+                        planName: plan.planName,
+                        before:
+                            loaded.kind === "loaded" && "revision" in loaded && loaded.revision === plan.beforeRevision,
+                        after:
+                            loaded.kind === "loaded" && "revision" in loaded && loaded.revision === plan.afterRevision,
+                    };
+                }),
+            );
             if (states.every((state) => state.before) || states.every((state) => state.after)) {
                 return {
                     settled: true,
@@ -110,19 +114,17 @@ export function buildEffectProver(
             }
             return {
                 settled: false,
-                reason:
-                    `Sequence review is incomplete. Preserve new edits and restore the complete before set or finish the after set recorded in this journal before resuming: ${
-                        states.map((state) =>
-                            `${state.planName} (${state.before ? "before" : state.after ? "after" : "changed"})`
-                        ).join(", ")
-                    }`,
+                reason: `Sequence review is incomplete. Preserve new edits and restore the complete before set or finish the after set recorded in this journal before resuming: ${states
+                    .map(
+                        (state) => `${state.planName} (${state.before ? "before" : state.after ? "after" : "changed"})`,
+                    )
+                    .join(", ")}`,
             };
         }
         if (effect.effect === "sequence_review_accepted") {
             return {
                 settled: true,
-                reason:
-                    "the complete decision was accepted; document proof is checked separately, and dispatch requires transition commit",
+                reason: "the complete decision was accepted; document proof is checked separately, and dispatch requires transition commit",
             };
         }
         if (REGISTRY_STATUS_EFFECTS.has(effect.effect)) {
@@ -131,23 +133,23 @@ export function buildEffectProver(
             if (!entry) {
                 return {
                     settled: true,
-                    reason:
-                        `attempt ${worktreeId} is not in the registry, so the recorded status change has nothing left to apply`,
+                    reason: `attempt ${worktreeId} is not in the registry, so the recorded status change has nothing left to apply`,
                 };
             }
             // The registry is rewritten whole under its own lock, so a status update
             // either landed or never started. Neither leaves a partial row.
             return {
                 settled: true,
-                reason:
-                    `registry attempt ${worktreeId} reads ${entry.status} and registry writes are atomic, so no partial update is outstanding`,
+                reason: `registry attempt ${worktreeId} reads ${entry.status} and registry writes are atomic, so no partial update is outstanding`,
             };
         }
 
         if (WORKTREE_CREATION_EFFECTS.has(effect.effect)) {
             const path = typeof proof.path === "string" ? proof.path : undefined;
             if (!path) return { settled: false, reason: "the record names no worktree path to inspect" };
-            const exists = await Deno.stat(path).then((stat) => stat.isDirectory).catch(() => false);
+            const exists = await fsStat(path)
+                .then((stat) => stat.isDirectory())
+                .catch(() => false);
             if (!exists) {
                 return { settled: true, reason: `worktree ${path} does not exist, so nothing was left behind` };
             }
@@ -188,10 +190,9 @@ export function buildEffectProver(
             }
             return {
                 settled: true,
-                reason:
-                    `the operation had already applied and proved itself when it was interrupted; Plan ${planName} reads ${
-                        loaded.attrs.status ?? "an unset status"
-                    }`,
+                reason: `the operation had already applied and proved itself when it was interrupted; Plan ${planName} reads ${
+                    loaded.attrs.status ?? "an unset status"
+                }`,
             };
         }
 
@@ -200,20 +201,22 @@ export function buildEffectProver(
 }
 
 export async function runGitLines(projectRoot: string, args: string[]) {
-    const command = new Deno.Command("git", { args, cwd: projectRoot, stdout: "piped", stderr: "null" });
-    const { code, stdout } = await command.output();
+    const command = captureForegroundProcess("git", { args, cwd: projectRoot });
+    const { code, stdout } = await command;
     if (code !== 0) return [];
-    return new TextDecoder().decode(stdout).split("\n").map((line) => line.trim()).filter(Boolean);
+    return new TextDecoder()
+        .decode(stdout)
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
 }
 
 export async function isGitAncestor(projectRoot: string, ancestor: string, ref: string) {
-    const command = new Deno.Command("git", {
+    const command = captureForegroundProcess("git", {
         args: ["merge-base", "--is-ancestor", ancestor, ref],
         cwd: projectRoot,
-        stdout: "null",
-        stderr: "null",
     });
-    const { code } = await command.output();
+    const { code } = await command;
     return code === 0;
 }
 

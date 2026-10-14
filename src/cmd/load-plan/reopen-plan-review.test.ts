@@ -1,4 +1,6 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -8,7 +10,7 @@ import { ensurePlanIdentity, loadPlan, savePlan } from "../../plan-store.js";
 import { RuntimeInteractionTypes } from "../../shared/session/session-runtime-interactions.js";
 import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 
-Deno.test("an idle Session reopens the complete saved Sequence and saves approval without a model turn", async () => {
+test("an idle Session reopens the complete saved Sequence and saves approval without a model turn", async () => {
     await withRuntimeCommandFixture("reopen-sequence-", async ({ homeDir, projectRoot, setModelResponseFactory }) => {
         let modelTurns = 0;
         setModelResponseFactory(() => {
@@ -78,7 +80,7 @@ Deno.test("an idle Session reopens the complete saved Sequence and saves approva
     });
 });
 
-Deno.test("a saved review does not open a replacement Plan identity", async () => {
+test("a saved review does not open a replacement Plan identity", async () => {
     await withRuntimeCommandFixture("reopen-identity-", async ({ homeDir, projectRoot }) => {
         await savePlan(projectRoot, "target", "# Target", {
             classification: "PLANNED_CHANGE",

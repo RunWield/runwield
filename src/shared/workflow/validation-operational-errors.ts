@@ -237,6 +237,7 @@ export function classifyValidationOperationalError(
                 default:
                     return assertNever(source);
             }
+            // eslint-disable-next-line no-unreachable -- Deno requires this exhaustive-switch guard.
             break;
         case "local_process":
             switch (source.kind) {
@@ -247,6 +248,7 @@ export function classifyValidationOperationalError(
                 default:
                     return assertNever(source);
             }
+            // eslint-disable-next-line no-unreachable -- Deno requires this exhaustive-switch guard.
             break;
         case "validation_state":
             switch (source.kind) {
@@ -270,6 +272,7 @@ export function classifyValidationOperationalError(
                 default:
                     return assertNever(source);
             }
+            // eslint-disable-next-line no-unreachable -- Deno requires this exhaustive-switch guard.
             break;
         case "worktree":
             switch (source.kind) {
@@ -293,6 +296,7 @@ export function classifyValidationOperationalError(
                 default:
                     return assertNever(source);
             }
+            // eslint-disable-next-line no-unreachable -- Deno requires this exhaustive-switch guard.
             break;
         case "git_publication":
             switch (source.kind) {
@@ -342,6 +346,7 @@ export function classifyValidationOperationalError(
                 default:
                     return assertNever(source);
             }
+            // eslint-disable-next-line no-unreachable -- Deno requires this exhaustive-switch guard.
             break;
         case "reviewer_protocol":
             switch (source.kind) {
@@ -367,6 +372,7 @@ export function classifyValidationOperationalError(
                 default:
                     return assertNever(source);
             }
+            // eslint-disable-next-line no-unreachable -- Deno requires this exhaustive-switch guard.
             break;
         case "policy":
             switch (source.kind) {
@@ -383,6 +389,7 @@ export function classifyValidationOperationalError(
                 default:
                     return assertNever(source);
             }
+            // eslint-disable-next-line no-unreachable -- Deno requires this exhaustive-switch guard.
             break;
         default:
             return assertNever(source);

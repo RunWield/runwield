@@ -1,5 +1,16 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../../testing/assertions.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { findPlanAssociatedSessions } from "./plan-session-lookup.ts";
@@ -8,22 +19,19 @@ import { encodeCwdForSessionDir } from "../project-directory-key.ts";
 const TIMESTAMP = "2026-01-01T00:00:00.000Z";
 
 async function makeFixture() {
-    const rootDir = await Deno.makeTempDir({ prefix: "runwield-plan-session-lookup-" });
+    const rootDir = await fsMkdtemp(join(tmpdir(), "runwield-plan-session-lookup-"));
     const projectRoot = join(rootDir, "project");
     const sessionBaseDir = join(rootDir, "sessions");
-    await Deno.mkdir(projectRoot);
-    const canonicalProjectRoot = await Deno.realPath(projectRoot);
+    await fsMkdir(projectRoot);
+    const canonicalProjectRoot = await fsRealpath(projectRoot);
     const sessionDir = join(sessionBaseDir, encodeCwdForSessionDir(canonicalProjectRoot));
-    await Deno.mkdir(sessionDir, { recursive: true });
+    await fsMkdir(sessionDir, { recursive: true });
     return { rootDir, projectRoot, sessionBaseDir, sessionDir };
 }
 
 async function writeTranscript(sessionDir: string, cwd: string, id: string) {
     const path = join(sessionDir, `${TIMESTAMP.replace(/[:.]/g, "-")}_${id}.jsonl`);
-    await Deno.writeTextFile(
-        path,
-        `${JSON.stringify({ type: "session", version: 3, id, timestamp: TIMESTAMP, cwd })}\n`,
-    );
+    await fsWriteFile(path, `${JSON.stringify({ type: "session", version: 3, id, timestamp: TIMESTAMP, cwd })}\n`);
     return path;
 }
 
@@ -51,7 +59,7 @@ async function publishAssociation(
     });
     proof = store.changeSessionActivationPhase(proof, "hydrated");
     proof = store.changeSessionActivationPhase(proof, "checkpointing");
-    const bytes = await Deno.readFile(session.transcriptPath);
+    const bytes = await fsReadFile(session.transcriptPath);
     store.publishGenerationAndRelease(proof, {
         generation: 0,
         byteLength: bytes.byteLength,
@@ -60,7 +68,7 @@ async function publishAssociation(
     });
 }
 
-Deno.test("findPlanAssociatedSessions returns safe planning candidates from manifests", async () => {
+test("findPlanAssociatedSessions returns safe planning candidates from manifests", async () => {
     const fixture = await makeFixture();
     try {
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -82,44 +90,40 @@ Deno.test("findPlanAssociatedSessions returns safe planning candidates from mani
         assertEquals(candidates[0].safePlanningResume, true);
         assertEquals(candidates[0].reason, null);
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await fsRm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("findPlanAssociatedSessions does not catalog lineage transcripts during lookup", async () => {
+test("findPlanAssociatedSessions does not catalog lineage transcripts during lookup", async () => {
     const fixture = await makeFixture();
     try {
         const planningPath = await writeTranscript(fixture.sessionDir, fixture.projectRoot, "planning");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             planningPath,
-            `${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.segment_lineage",
-                    data: {
-                        runwieldSessionId: "lineage-session",
-                        segmentId: "planning-segment",
-                        parentSegmentId: null,
-                        parentPiSessionId: null,
-                        lineageGroupKey: "planning-segment",
-                        kind: "planning",
-                    },
-                })
-            }\n${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.plan_association",
-                    data: {
-                        planId: "plan-1",
-                        planName: "example-plan",
-                        purpose: "planning",
-                        segmentId: "planning-segment",
-                        segmentKind: "planning",
-                        recordedAt: TIMESTAMP,
-                    },
-                })
-            }\n`,
-            { append: true },
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.segment_lineage",
+                data: {
+                    runwieldSessionId: "lineage-session",
+                    segmentId: "planning-segment",
+                    parentSegmentId: null,
+                    parentPiSessionId: null,
+                    lineageGroupKey: "planning-segment",
+                    kind: "planning",
+                },
+            })}\n${JSON.stringify({
+                type: "custom",
+                customType: "runwield.plan_association",
+                data: {
+                    planId: "plan-1",
+                    planName: "example-plan",
+                    purpose: "planning",
+                    segmentId: "planning-segment",
+                    segmentKind: "planning",
+                    recordedAt: TIMESTAMP,
+                },
+            })}\n`,
+            { flag: "a" },
         );
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         store.ensureRuntimeProject({ root: fixture.projectRoot });
@@ -127,11 +131,11 @@ Deno.test("findPlanAssociatedSessions does not catalog lineage transcripts durin
         assertEquals(await findPlanAssociatedSessions(store, { cwd: fixture.projectRoot, planId: "plan-1" }), []);
         assertEquals(store.getSessionById("lineage-session"), null);
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await fsRm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("findPlanAssociatedSessions ignores raw transcript associations that were not published", async () => {
+test("findPlanAssociatedSessions ignores raw transcript associations that were not published", async () => {
     const fixture = await makeFixture();
     try {
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
@@ -144,32 +148,30 @@ Deno.test("findPlanAssociatedSessions ignores raw transcript associations that w
             transcriptCwd: fixture.projectRoot,
             source: "created",
         });
-        await Deno.writeTextFile(
+        await fsWriteFile(
             transcriptPath,
-            `${
-                JSON.stringify({
-                    type: "custom",
-                    customType: "runwield.plan_association",
-                    data: {
-                        planId: "plan-1",
-                        planName: "example-plan",
-                        purpose: "planning",
-                        segmentId: "segment-tail",
-                        segmentKind: "planning",
-                        recordedAt: TIMESTAMP,
-                    },
-                })
-            }\n`,
-            { append: true },
+            `${JSON.stringify({
+                type: "custom",
+                customType: "runwield.plan_association",
+                data: {
+                    planId: "plan-1",
+                    planName: "example-plan",
+                    purpose: "planning",
+                    segmentId: "segment-tail",
+                    segmentKind: "planning",
+                    recordedAt: TIMESTAMP,
+                },
+            })}\n`,
+            { flag: "a" },
         );
 
         assertEquals(await findPlanAssociatedSessions(store, { cwd: fixture.projectRoot, planId: "plan-1" }), []);
     } finally {
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await fsRm(fixture.rootDir, { recursive: true });
     }
 });
 
-Deno.test("Plan lookup includes archived Sessions and their archive status", async () => {
+test("Plan lookup includes archived Sessions and their archive status", async () => {
     const fixture = await makeFixture();
     const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
     try {
@@ -190,17 +192,15 @@ Deno.test("Plan lookup includes archived Sessions and their archive status", asy
         assertEquals(candidates[0].associations, store.listSessionPlanAssociations(session.runwieldSessionId));
     } finally {
         store.close();
-        await Deno.remove(fixture.rootDir, { recursive: true });
+        await fsRm(fixture.rootDir, { recursive: true });
     }
 });
 
-for (
-    const scenario of [
-        { name: "saved title", title: "Dashboard planning", expected: "Dashboard planning" },
-        { name: "first user message", title: "   ", expected: "Build a reliable usage dashboard" },
-    ]
-) {
-    Deno.test(`Plan Session labels use the ${scenario.name} from committed history`, async () => {
+for (const scenario of [
+    { name: "saved title", title: "Dashboard planning", expected: "Dashboard planning" },
+    { name: "first user message", title: "   ", expected: "Build a reliable usage dashboard" },
+]) {
+    test(`Plan Session labels use the ${scenario.name} from committed history`, async () => {
         const fixture = await makeFixture();
         const store = openFileSessionStore({ baseDir: fixture.sessionBaseDir });
         try {
@@ -212,13 +212,15 @@ for (
                 transcriptPath,
                 transcriptCwd: fixture.projectRoot,
             });
-            await Deno.writeTextFile(
+            await fsWriteFile(
                 transcriptPath,
                 [
                     { type: "session_info", name: scenario.title },
                     { type: "message", message: { role: "user", content: "Build a reliable usage dashboard" } },
-                ].map((entry) => JSON.stringify(entry)).join("\n") + "\n",
-                { append: true },
+                ]
+                    .map((entry) => JSON.stringify(entry))
+                    .join("\n") + "\n",
+                { flag: "a" },
             );
             await publishAssociation(store, session, project.projectId);
 
@@ -227,7 +229,7 @@ for (
             assertEquals(candidates[0].displayName, scenario.expected);
         } finally {
             store.close();
-            await Deno.remove(fixture.rootDir, { recursive: true });
+            await fsRm(fixture.rootDir, { recursive: true });
         }
     });
 }

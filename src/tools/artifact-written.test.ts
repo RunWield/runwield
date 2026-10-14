@@ -1,5 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { HostedSession } from "../shared/session/hosted-session.js";
 import type {
     RegisterSessionArtifactOptions,
@@ -26,11 +29,11 @@ async function executeArtifactTool(
     ) as ToolResult;
 }
 
-Deno.test("artifact_written registers a canonical Project-relative Markdown reference", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-artifact-written-" });
+test("artifact_written registers a canonical Project-relative Markdown reference", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-artifact-written-"));
     try {
-        await Deno.mkdir(join(root, "docs", "prd"), { recursive: true });
-        await Deno.writeTextFile(join(root, "docs", "prd", "sidebar.md"), "# Session Sidebar\n\nDetails.\n");
+        await fsMkdir(join(root, "docs", "prd"), { recursive: true });
+        await fsWriteFile(join(root, "docs", "prd", "sidebar.md"), "# Session Sidebar\n\nDetails.\n");
         const registered: RegisterSessionArtifactOptions[] = [];
         const hostedSession = new HostedSession({ id: "artifact-session", cwd: root });
         hostedSession.setManagedOperationCapability({
@@ -80,14 +83,14 @@ Deno.test("artifact_written registers a canonical Project-relative Markdown refe
             registeredBy: "Ideator",
         }]);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("artifact_written rejects a kind whose file is outside its canonical directory", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-artifact-written-path-" });
+test("artifact_written rejects a kind whose file is outside its canonical directory", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-artifact-written-path-"));
     try {
-        await Deno.writeTextFile(join(root, "sidebar.md"), "# Session Sidebar\n");
+        await fsWriteFile(join(root, "sidebar.md"), "# Session Sidebar\n");
         const hostedSession = new HostedSession({ id: "artifact-session", cwd: root });
         hostedSession.setManagedOperationCapability({
             runtimeSessionId: "artifact-session",
@@ -121,15 +124,15 @@ Deno.test("artifact_written rejects a kind whose file is outside its canonical d
         assertEquals(result.details.outcome, "rejected");
         assertStringIncludes(result.details.reason || "", "docs/prd/");
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });
 
-Deno.test("artifact_written offers PRD review and returns feedback for an in-session revision", async () => {
-    const root = await Deno.makeTempDir({ prefix: "runwield-artifact-review-" });
+test("artifact_written offers PRD review and returns feedback for an in-session revision", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-artifact-review-"));
     try {
-        await Deno.mkdir(join(root, "docs", "prd"), { recursive: true });
-        await Deno.writeTextFile(join(root, "docs", "prd", "sidebar.md"), "# Session Sidebar\n");
+        await fsMkdir(join(root, "docs", "prd"), { recursive: true });
+        await fsWriteFile(join(root, "docs", "prd", "sidebar.md"), "# Session Sidebar\n");
         const hostedSession = new HostedSession({ id: "artifact-session", cwd: root });
         hostedSession.setManagedMetadata({
             runwieldSessionId: "umbrella-session",
@@ -193,6 +196,6 @@ Deno.test("artifact_written offers PRD review and returns feedback for an in-ses
         assertEquals(result.details.feedback, "Clarify the empty state.");
         assertStringIncludes(result.content[0].text, "Revise the artifact");
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true });
     }
 });

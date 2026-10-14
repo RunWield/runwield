@@ -1,3 +1,6 @@
+import process from "node:process";
+import { appendFile } from "node:fs/promises";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import type { JsonMap } from "./config.ts";
 
 interface FixtureRequestMeta {
@@ -21,47 +24,47 @@ const decoder = new TextDecoder();
 const encoder = new TextEncoder();
 
 function getLogPath(): string {
-    return Deno.env.get("RUNWIELD_MCP_FIXTURE_LOG") || "";
+    return process.env.RUNWIELD_MCP_FIXTURE_LOG || "";
 }
 
 async function log(entry: Record<string, string | number | boolean | string[]>): Promise<void> {
     const logPath = getLogPath();
     if (!logPath) return;
-    await Deno.writeTextFile(logPath, `${JSON.stringify(entry)}\n`, { append: true, create: true });
+    await appendFile(logPath, `${JSON.stringify(entry)}\n`);
 }
 
 function logSync(entry: Record<string, string | number | boolean | string[]>): void {
     const logPath = getLogPath();
     if (!logPath) return;
-    Deno.writeTextFileSync(logPath, `${JSON.stringify(entry)}\n`, { append: true, create: true });
+    appendFileSync(logPath, `${JSON.stringify(entry)}\n`);
 }
 
 function send(message: JsonMap): void {
-    Deno.stdout.writeSync(encoder.encode(`${JSON.stringify(message)}\n`));
+    writeFileSync(1, encoder.encode(`${JSON.stringify(message)}\n`));
 }
 
 function fixtureShouldListError(): boolean {
-    return Deno.env.get("RUNWIELD_MCP_FIXTURE_LIST_ERROR") === "1";
+    return process.env.RUNWIELD_MCP_FIXTURE_LIST_ERROR === "1";
 }
 
 function fixtureShouldInitError(): boolean {
-    const path = Deno.env.get("RUNWIELD_MCP_FIXTURE_INIT_ERROR_PATH");
-    return Deno.env.get("RUNWIELD_MCP_FIXTURE_INIT_ERROR") === "1" ||
-        (path !== undefined && Deno.readTextFileSync(path) === "1");
+    const path = process.env.RUNWIELD_MCP_FIXTURE_INIT_ERROR_PATH;
+    return process.env.RUNWIELD_MCP_FIXTURE_INIT_ERROR === "1" ||
+        (path !== undefined && readFileSync(path, "utf8") === "1");
 }
 
 function fixtureHasResources(): boolean {
-    return Deno.env.get("RUNWIELD_MCP_FIXTURE_RESOURCES") === "1";
+    return process.env.RUNWIELD_MCP_FIXTURE_RESOURCES === "1";
 }
 
 function fixtureShouldPaginate(): boolean {
-    return Deno.env.get("RUNWIELD_MCP_FIXTURE_PAGINATED") === "1";
+    return process.env.RUNWIELD_MCP_FIXTURE_PAGINATED === "1";
 }
 
 function fixtureEnvironment(): JsonMap {
     return {
-        inherited: Deno.env.get("RUNWIELD_MCP_UNCONFIGURED_SECRET") ?? null,
-        configured: Deno.env.get("RUNWIELD_MCP_CONFIGURED_SECRET") ?? null,
+        inherited: process.env.RUNWIELD_MCP_UNCONFIGURED_SECRET ?? null,
+        configured: process.env.RUNWIELD_MCP_CONFIGURED_SECRET ?? null,
     };
 }
 
@@ -69,12 +72,12 @@ let changedTools: string | undefined;
 
 // Tests can change the real server's inventory while it has no callable tools.
 function watchToolChanges(): void {
-    const toolsPath = Deno.env.get("RUNWIELD_MCP_FIXTURE_TOOLS_PATH");
+    const toolsPath = process.env.RUNWIELD_MCP_FIXTURE_TOOLS_PATH;
     if (!toolsPath) return;
-    let configuredTools = Deno.readTextFileSync(toolsPath);
+    let configuredTools = readFileSync(toolsPath, "utf8");
     changedTools = configuredTools;
     setInterval(() => {
-        const next = Deno.readTextFileSync(toolsPath);
+        const next = readFileSync(toolsPath, "utf8");
         if (next === configuredTools) return;
         configuredTools = next;
         changedTools = next;
@@ -84,7 +87,7 @@ function watchToolChanges(): void {
 watchToolChanges();
 
 function fixtureTools(): JsonMap[] {
-    const names = (changedTools ?? Deno.env.get("RUNWIELD_MCP_FIXTURE_TOOLS") ?? "fixture_echo")
+    const names = (changedTools ?? process.env.RUNWIELD_MCP_FIXTURE_TOOLS ?? "fixture_echo")
         .split(",")
         .map((name) => name.trim())
         .filter(Boolean);
@@ -101,19 +104,18 @@ function fixtureTools(): JsonMap[] {
 }
 
 let buffer = "";
-await log({ event: "started", pid: Deno.pid });
+await log({ event: "started", pid: process.pid });
 function logShutdown(): void {
-    logSync({ event: "shutdown", pid: Deno.pid });
+    logSync({ event: "shutdown", pid: process.pid });
 }
-addEventListener("unload", logShutdown);
+process.once("exit", logShutdown);
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
-    Deno.addSignalListener(signal, () => {
-        logShutdown();
-        Deno.exit(0);
+    process.on(signal, () => {
+        process.exit(0);
     });
 }
 
-for await (const chunk of Deno.stdin.readable) {
+for await (const chunk of process.stdin) {
     buffer += decoder.decode(chunk, { stream: true });
     let newline = buffer.indexOf("\n");
     while (newline >= 0) {
@@ -188,7 +190,7 @@ for await (const chunk of Deno.stdin.readable) {
                 });
             } else if (message.method === "tools/call") {
                 const marker = message.params?.arguments?.marker || "";
-                await log({ event: "call", pid: Deno.pid, marker });
+                await log({ event: "call", pid: process.pid, marker });
                 if (marker === "change-tools") {
                     changedTools = "replacement";
                     send({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });

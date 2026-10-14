@@ -1,4 +1,6 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { rm as fsRm } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { makeValidationProjectRoot, NO_ISOLATED_AGENT_PORT, runValidationPhase } from "./validation-test-helpers.js";
 
 /** @param {string} projectRoot */
@@ -11,7 +13,7 @@ function makeHostedSession(projectRoot) {
     }));
 }
 
-Deno.test("validated_ci resumes at semantic review without rerunning CI", async () => {
+test("validated_ci resumes at semantic review without rerunning CI", async () => {
     const projectRoot = await makeValidationProjectRoot("demo", {
         status: "validated_ci",
         executionMode: "non_git_in_place",
@@ -36,11 +38,11 @@ Deno.test("validated_ci resumes at semantic review without rerunning CI", async 
         assertEquals(ciCalls, 0);
         assertEquals(result.kind, "paused");
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("reviewed with no human decision runs only the human review phase", async () => {
+test("reviewed with no human decision runs only the human review phase", async () => {
     const projectRoot = await makeValidationProjectRoot("demo", {
         status: "reviewed",
         humanReviewDecision: null,
@@ -70,11 +72,11 @@ Deno.test("reviewed with no human decision runs only the human review phase", as
         );
         assertEquals(ciCalls, 0);
     } finally {
-        await Deno.remove(projectRoot, { recursive: true });
+        await fsRm(projectRoot, { recursive: true });
     }
 });
 
-Deno.test("semantic_review_passed is illegal from implemented and verified", async () => {
+test("semantic_review_passed is illegal from implemented and verified", async () => {
     const { buildPlanEventUpdates } = await import("./plan-lifecycle.js");
     assertThrows(
         () => buildPlanEventUpdates("semantic_review_passed", "implemented"),

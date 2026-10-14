@@ -1,12 +1,14 @@
+import { test } from "node:test";
 import { setCustomSetting } from "../../shared/settings.js";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView } from "./chat-view.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { mascotForAgent } from "../mascot/mascot.ts";
 
-Deno.test("live TUI reserves mascot space and pauses for questions without covering input", async () => {
+test("live TUI reserves mascot space and pauses for questions without covering input", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
         const tui = new TuiAltScreen(terminal);
@@ -57,7 +59,7 @@ Deno.test("live TUI reserves mascot space and pauses for questions without cover
     });
 });
 
-Deno.test("disabling a live TUI mascot removes rail and compact face without losing input", async () => {
+test("disabling a live TUI mascot removes rail and compact face without losing input", async () => {
     await withSessionViewFixture(async ({ runtime, sessionId, session, projectRoot }) => {
         const terminal = new VirtualTerminal({ columns: 150, rows: 45 });
         const tui = new TuiAltScreen(terminal);

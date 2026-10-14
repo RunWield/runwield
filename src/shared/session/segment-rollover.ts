@@ -7,7 +7,7 @@ import type { ManagedSessionMetadata } from "./hosted-session.js";
 import { createRootSessionManager, resolveCreatedRootSessionPath } from "./root-session.js";
 import { captureTranscriptEvidence, syncTranscriptFileAndParent } from "./session-transcript-projection.js";
 import { recordPendingSegmentContinuation, recordSegmentLineageEvidence } from "./workflow-context-session.js";
-import { appendExecutionWorkflowSnapshot } from "./execution-workflow-session.js";
+import { appendExecutionWorkflowSnapshot } from "./execution-workflow-session.ts";
 import { recordTutorialContext } from "./tutorial-context-session.ts";
 import type { SegmentHandoffPayload } from "../workflow/execution-segment-handoff.ts";
 

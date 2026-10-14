@@ -1,7 +1,8 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
 
-Deno.test("artifact conversation keeps the user message and optional review context distinct", () => {
+test("artifact conversation keeps the user message and optional review context distinct", () => {
     const feedback = buildArtifactConversationFeedback({
         message: "Tighten the verification section.",
         attachedFeedback: "Verification Plan: Add one browser annotation.",
@@ -14,7 +15,7 @@ Deno.test("artifact conversation keeps the user message and optional review cont
     assertStringIncludes(feedback, "call `plan_written` again");
 });
 
-Deno.test("artifact conversation collects only new Planner text deltas", () => {
+test("artifact conversation collects only new Planner text deltas", () => {
     const reply = collectArtifactConversationReply([
         { type: "assistant_text_delta", messageId: "old", delta: "Old reply" },
         { type: "tool_start" },
@@ -25,7 +26,7 @@ Deno.test("artifact conversation collects only new Planner text deltas", () => {
     assertEquals(reply, { text: "I tightened the checks.", agentName: "Planner" });
 });
 
-Deno.test("Plan and Code Review conversations accept annotations without a user message", () => {
+test("Plan and Code Review conversations accept annotations without a user message", () => {
     for (const artifactKind of ["plan", "code"] as const) {
         const feedback = buildArtifactConversationFeedback({
             message: "  ",

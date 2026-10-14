@@ -1,8 +1,10 @@
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import process from "node:process";
 /**
  * Render the owner Homebrew tap from immutable RunWield and Mnemoteca release assets.
  */
 
-import { basename, join } from "@std/path";
+import { basename, join } from "node:path";
 import { parseReleaseTag } from "./release.js";
 
 const RUNWIELD_REPO = "gandazgul/runwield";
@@ -315,8 +317,8 @@ The RunWield formula uses Homebrew's \`:cannot_represent\` metadata because the 
 Regenerate from this repository with:
 
 \`\`\`sh
-deno task package:homebrew --wld-tag <stable-tag> --mnemoteca-tag <stable-tag> --output <dir>
-deno task package:homebrew --mnemoteca-tag <stable-tag> --output <existing-tap-dir>
+bun run package:homebrew --wld-tag <stable-tag> --mnemoteca-tag <stable-tag> --output <dir>
+bun run package:homebrew --mnemoteca-tag <stable-tag> --output <existing-tap-dir>
 \`\`\`
 `;
 }
@@ -335,15 +337,15 @@ deno task package:homebrew --mnemoteca-tag <stable-tag> --output <existing-tap-d
 async function readExistingRunWieldPackage(output, requestedTestOnly) {
     const formulaPath = join(output, "Formula", "wld.rb");
     const manifestPath = join(output, "runwield-homebrew-package.json");
-    const formula = await Deno.readTextFile(formulaPath).catch((error) => {
-        if (error instanceof Deno.errors.NotFound) {
+    const formula = await fsReadFile(formulaPath, "utf8").catch((error) => {
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) {
             throw new Error("Mnemoteca-only refresh requires an existing Formula/wld.rb.");
         }
         throw error;
     });
     const manifest = JSON.parse(
-        await Deno.readTextFile(manifestPath).catch((error) => {
-            if (error instanceof Deno.errors.NotFound) {
+        await fsReadFile(manifestPath, "utf8").catch((error) => {
+            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) {
                 throw new Error("Mnemoteca-only refresh requires an existing package manifest.");
             }
             throw error;
@@ -374,7 +376,7 @@ export async function packageHomebrew(options) {
         ? (options.testOnly ? parseReleaseTag(options.wldTag) : assertStableTag(options.wldTag))
         : null;
     const mnemotecaTag = assertStableTag(options.mnemotecaTag);
-    const inputs = /** @type {HomebrewInputs} */ (JSON.parse(await Deno.readTextFile(options.inputsPath)));
+    const inputs = /** @type {HomebrewInputs} */ (JSON.parse(await fsReadFile(options.inputsPath, "utf8")));
     validateInputs(inputs, mnemotecaTag.tag);
     const existingWld = wldTag ? null : await readExistingRunWieldPackage(options.output, options.testOnly);
 
@@ -400,11 +402,11 @@ export async function packageHomebrew(options) {
     const formulaDir = join(options.output, "Formula");
     const readmePath = join(options.output, "README.md");
     if (wldTag) {
-        await Deno.remove(options.output, { recursive: true }).catch((error) => {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+        await fsRm(options.output, { recursive: true }).catch((error) => {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         });
     }
-    await Deno.mkdir(formulaDir, { recursive: true });
+    await fsMkdir(formulaDir, { recursive: true });
 
     const mnemotecaFormula = renderMnemotecaFormula({
         version: mnemotecaTag.tag.slice(1),
@@ -417,12 +419,12 @@ export async function packageHomebrew(options) {
     if (wldTag) {
         const wldFormula = renderWldFormula({ version: wldTag.tag.slice(1), assets: wldAssets }, options.testOnly);
         generatedTexts.unshift(wldFormula);
-        await Deno.writeTextFile(join(formulaDir, "wld.rb"), wldFormula);
+        await fsWriteFile(join(formulaDir, "wld.rb"), wldFormula);
     }
     for (const text of generatedTexts) assertNoPlaceholders(text);
 
-    await Deno.writeTextFile(join(formulaDir, "mnemoteca.rb"), mnemotecaFormula);
-    await Deno.writeTextFile(readmePath, renderReadme());
+    await fsWriteFile(join(formulaDir, "mnemoteca.rb"), mnemotecaFormula);
+    await fsWriteFile(readmePath, renderReadme());
 
     const manifest = {
         testOnly: existingWld?.testOnly || options.testOnly,
@@ -432,13 +434,10 @@ export async function packageHomebrew(options) {
         formulas,
         testedDependencies: inputs.homebrewDependencies,
     };
-    await Deno.writeTextFile(
-        join(options.output, "runwield-homebrew-package.json"),
-        `${JSON.stringify(manifest, null, 4)}\n`,
-    );
+    await fsWriteFile(join(options.output, "runwield-homebrew-package.json"), `${JSON.stringify(manifest, null, 4)}\n`);
 }
 
-export async function main(args = Deno.args) {
+export async function main(args = process.argv.slice(2)) {
     await packageHomebrew(parsePackageHomebrewArgs(args));
 }
 

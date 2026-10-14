@@ -23,7 +23,7 @@ import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { findTargetBranchPlansByParent } from "./planning-worktree.ts";
 import type { ReviewIntegrationNote } from "../../tools/review-complete.ts";
-import { SharedPlanLockError } from "../collaboration/lock.js";
+import { SharedPlanLockError } from "../collaboration/lock.ts";
 
 /** The Epic a child belongs to, and the request section that describes it. */
 export interface EpicReviewContext {

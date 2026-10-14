@@ -1,5 +1,16 @@
+import { tmpdir } from "node:os";
+import {
+    copyFile as fsCopyFile,
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readdir as fsReaddir,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import process from "node:process";
 /** Stage one checked, flat release asset set. Never change published bytes. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import { expectedReleaseAssetNames } from "./release.js";
 import { verifyBuildArtifact } from "./build-metadata.js";
 import { extractReleaseRuntime } from "../src/shared/remote/release-artifact.ts";
@@ -29,10 +40,10 @@ export async function prepareDevelopmentArtifacts(launcher, linuxX64, linuxArm64
     ) {
         throw new Error("Development artifacts have mismatched build/protocol/VERSION or GNU targets");
     }
-    await Deno.mkdir(output);
+    await fsMkdir(output);
     for (const [path, name] of entries) {
-        await Deno.copyFile(path, join(output, name));
-        await Deno.copyFile(`${path}.build.json`, join(output, `${name}.build.json`));
+        await fsCopyFile(path, join(output, name));
+        await fsCopyFile(`${path}.build.json`, join(output, `${name}.build.json`));
     }
 }
 
@@ -57,10 +68,10 @@ export function releaseAssetNames(tag) {
 /** @param {string} directory @returns {Promise<string[]>} */
 async function files(directory) {
     const result = [];
-    for await (const entry of Deno.readDir(directory)) {
+    for await (const entry of await fsReaddir(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
-        if (entry.isDirectory) result.push(...await files(path));
-        else if (entry.isFile) result.push(path);
+        if (entry.isDirectory()) result.push(...await files(path));
+        else if (entry.isFile()) result.push(path);
         else throw new Error(`Unsupported release asset: ${path}`);
     }
     return result;
@@ -68,7 +79,7 @@ async function files(directory) {
 
 /** @param {string} path */
 async function sha256(path) {
-    return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await Deno.readFile(path))))
+    return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await fsReadFile(path))))
         .map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -94,12 +105,12 @@ export async function prepareReleaseAssets(input, output, tag, published = false
     for (const name of names.filter((name) => name.endsWith(".sha256"))) {
         const asset = name.slice(0, -7);
         const expected = `${await sha256(selected.get(asset))}  ${asset}`;
-        const actual = (await Deno.readTextFile(selected.get(name))).trim().replace(/\s+/, "  ");
+        const actual = (await fsReadFile(selected.get(name), "utf8")).trim().replace(/\s+/, "  ");
         if (actual !== expected) throw new Error(`Release checksum mismatch: ${name}`);
         sums.push(expected);
     }
     if (published) {
-        const actual = (await Deno.readTextFile(selected.get("SHA256SUMS"))).trim().split(/\r?\n/)
+        const actual = (await fsReadFile(selected.get("SHA256SUMS"), "utf8")).trim().split(/\r?\n/)
             .map((line) => line.replace(/\s+/, "  ")).sort();
         if (JSON.stringify(actual) !== JSON.stringify([...sums].sort())) {
             throw new Error("Published SHA256SUMS does not match the complete release set");
@@ -109,13 +120,13 @@ export async function prepareReleaseAssets(input, output, tag, published = false
     // identity. Published recovery must still accept immutable legacy assets
     // (which predate embedded metadata) after checking their GitHub digests.
     if (!published) {
-        const stage = await Deno.makeTempDir({ prefix: "wld-release-verify-" });
+        const stage = await fsMkdtemp(join(tmpdir(), "wld-release-verify-"));
         try {
             let launcher = null;
             for (const suffix of ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]) {
                 const name = `wld-${tag}-${suffix}.tar.gz`;
                 const directory = join(stage, suffix);
-                await Deno.mkdir(directory);
+                await fsMkdir(directory);
                 const { metadata } = await extractReleaseRuntime(selected.get(name), suffix, launcher, directory);
                 if (!launcher) {
                     if (metadata.version !== tag) throw new Error("Release launcher VERSION does not match tag");
@@ -123,12 +134,12 @@ export async function prepareReleaseAssets(input, output, tag, published = false
                 }
             }
         } finally {
-            await Deno.remove(stage, { recursive: true });
+            await fsRm(stage, { recursive: true });
         }
     }
     if (publishedMetadata) {
         /** @type {PublishedRelease} */
-        const metadata = JSON.parse(await Deno.readTextFile(publishedMetadata));
+        const metadata = JSON.parse(await fsReadFile(publishedMetadata, "utf8"));
         for (const [name, path] of selected) {
             const asset = metadata.assets.find((asset) => asset.name === name);
             if (asset?.digest !== `sha256:${await sha256(path)}`) {
@@ -136,22 +147,27 @@ export async function prepareReleaseAssets(input, output, tag, published = false
             }
         }
     }
-    await Deno.mkdir(output);
-    for (const [name, path] of selected) await Deno.copyFile(path, join(output, name));
-    if (!published) await Deno.writeTextFile(join(output, "SHA256SUMS"), `${sums.join("\n")}\n`);
+    await fsMkdir(output);
+    for (const [name, path] of selected) await fsCopyFile(path, join(output, name));
+    if (!published) await fsWriteFile(join(output, "SHA256SUMS"), `${sums.join("\n")}\n`);
 }
 
 if (import.meta.main) {
-    if (Deno.args[0] === "development") {
-        if (Deno.args.length !== 5) {
+    if (process.argv.slice(2)[0] === "development") {
+        if (process.argv.slice(2).length !== 5) {
             throw new Error(
                 "Usage: release-assets.js development <launcher> <linux-x64> <linux-arm64> <output-directory>",
             );
         }
-        await prepareDevelopmentArtifacts(Deno.args[1], Deno.args[2], Deno.args[3], Deno.args[4]);
-        Deno.exit(0);
+        await prepareDevelopmentArtifacts(
+            process.argv.slice(2)[1],
+            process.argv.slice(2)[2],
+            process.argv.slice(2)[3],
+            process.argv.slice(2)[4],
+        );
+        process.exit(0);
     }
-    const [input, output, tag, mode, metadata] = Deno.args;
+    const [input, output, tag, mode, metadata] = process.argv.slice(2);
     if (!input || !output || !tag) throw new Error("Usage: release-assets.js <input> <output> <tag> [published]");
     if (mode === "published" && !metadata) throw new Error("Published recovery requires GitHub asset digests");
     await prepareReleaseAssets(input, output, tag, mode === "published", metadata);

@@ -1,4 +1,6 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { mkdir as fsMkdir, readdir as fsReaddir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { archivePlan, listArchivedPlans, listPlans, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
 import { getTransitionJournalDir, getTransitionJournalPath } from "../../shared/workflow/state-transition.ts";
 import { runPlansArchiveCommand } from "./archive.ts";
@@ -17,7 +19,7 @@ async function captureLogs(run: () => Promise<void>): Promise<string[]> {
 }
 
 function archiveTest(name: string, run: (fixture: PlanCommandFixture) => Promise<void>): void {
-    Deno.test(name, () => withPlanCommandFixture("runwield-plans-archive-command-", run));
+    test(name, () => withPlanCommandFixture("runwield-plans-archive-command-", run));
 }
 
 archiveTest("archive command lists archived fixture Plans", async ({ projectRoot }) => {
@@ -50,7 +52,12 @@ archiveTest("archive command resolves a planId and runs the real archive transac
     assertEquals(archived?.attrs.archiveReason, "stale");
     assertEquals(archived?.attrs.archivedFromStatus, "draft");
     assertEquals(logs.some((line) => line.includes("docs/plans/archived/canonical-plan.md")), true);
-    assertEquals(await Array.fromAsync(Deno.readDir(getTransitionJournalDir(projectRoot))).catch(() => []), []);
+    assertEquals(
+        await fsReaddir(getTransitionJournalDir(projectRoot), { withFileTypes: true }).catch(
+            () => [],
+        ),
+        [],
+    );
 });
 
 archiveTest("archive command cannot bypass a stranded lifecycle transaction", async ({ projectRoot }) => {
@@ -58,8 +65,8 @@ archiveTest("archive command cannot bypass a stranded lifecycle transaction", as
         status: "draft",
         planId: "blocked-id",
     });
-    await Deno.mkdir(getTransitionJournalDir(projectRoot), { recursive: true });
-    await Deno.writeTextFile(
+    await fsMkdir(getTransitionJournalDir(projectRoot), { recursive: true });
+    await fsWriteFile(
         getTransitionJournalPath(projectRoot, "stranded-archive"),
         JSON.stringify({
             version: 1,

@@ -1,5 +1,8 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { archivePlan, loadPlan } from "../../plan-store.js";
 import { recordPlanEvent } from "../workflow/plan-lifecycle.js";
 import { openAttachedReviewRound } from "./coordinator.ts";
@@ -13,7 +16,7 @@ import {
 } from "./attached-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
 
-Deno.test("opening and restoring a round pin the current Plan document without changing its review identity", async () => {
+test("opening and restoring a round pin the current Plan document without changing its review identity", async () => {
     await withProject(async (projectRoot) => {
         const submitted = await submitReview(projectRoot);
         const first = await openAttachedReviewRound(projectRoot, submitted.workflowId);
@@ -21,10 +24,7 @@ Deno.test("opening and restoring a round pin the current Plan document without c
         assertEquals(first.basis.review, submitted.review);
         assertStringIncludes(first.basis.markdown, "Add a toggle.");
         const path = join(projectRoot, "docs/plans/dark-mode-toggle.md");
-        await Deno.writeTextFile(
-            path,
-            (await Deno.readTextFile(path)).replace("Add a toggle.", "Add a theme selector."),
-        );
+        await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("Add a toggle.", "Add a theme selector."));
         const restored = await openAttachedReviewRound(projectRoot, submitted.workflowId);
         assert(restored.kind === "opened");
         const actual = await loadPlan(projectRoot, "dark-mode-toggle");
@@ -45,7 +45,7 @@ Deno.test("opening and restoring a round pin the current Plan document without c
 });
 
 for (const canonicalStatus of ["approved", "ready_for_work", "in_progress"] as const) {
-    Deno.test(`status reads Core ${canonicalStatus} without writing; opening reconciles without a review payload`, async () => {
+    test(`status reads Core ${canonicalStatus} without writing; opening reconciles without a review payload`, async () => {
         await withProject(async (projectRoot) => {
             const workflow = await submitReview(projectRoot);
             await recordPlanEvent({
@@ -92,7 +92,7 @@ for (const canonicalStatus of ["approved", "ready_for_work", "in_progress"] as c
     });
 }
 
-Deno.test("Core feedback reconciles to a Planner action; its resubmitted feedback-status Plan can open round two", async () => {
+test("Core feedback reconciles to a Planner action; its resubmitted feedback-status Plan can open round two", async () => {
     await withProject(async (projectRoot) => {
         const workflow = await submitReview(projectRoot);
         await recordPlanEvent({
@@ -130,7 +130,7 @@ Deno.test("Core feedback reconciles to a Planner action; its resubmitted feedbac
     });
 });
 
-Deno.test("an archived Core Plan closes Attached review without a payload", async () => {
+test("an archived Core Plan closes Attached review without a payload", async () => {
     await withProject(async (projectRoot) => {
         const workflow = await submitReview(projectRoot);
         await archivePlan(projectRoot, "dark-mode-toggle", { force: true });

@@ -1,9 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { test } from "node:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import { ArtifactConversationSidebar } from "./ArtifactConversationSidebar.tsx";
 
-Deno.test("review chat enables annotation-only send by click and keyboard, and disables on detach or while busy", async () => {
+test("review chat enables annotation-only send by click and keyboard, and disables on detach or while busy", async () => {
     const browser = new Window({ url: "http://workspace.local" });
     const globals = ["window", "document", "IS_REACT_ACT_ENVIRONMENT"];
     const previous = new Map(globals.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));

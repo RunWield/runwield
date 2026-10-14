@@ -1,10 +1,12 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import { createSessionRuntime } from "./session-runtime.ts";
 
-Deno.test("ManagedOperationCapability has no runtime constructor export", async () => {
+test("ManagedOperationCapability has no runtime constructor export", async () => {
     const managedOperationModule = await import("./managed-operation.ts");
     assertEquals("ManagedOperationCapability" in managedOperationModule, false);
 });
@@ -13,8 +15,8 @@ function delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-Deno.test("managed operation re-entry policy is keyed to capability state, not runtime busy state", async () => {
-    const source = await Deno.readTextFile(new URL("./runtime/managed-operations.ts", import.meta.url));
+test("managed operation re-entry policy is keyed to capability state, not runtime busy state", async () => {
+    const source = await fsReadFile(new URL("./runtime/managed-operations.ts", import.meta.url), "utf8");
     const rejectionStart = source.indexOf(
         "rejectManagedPublicMutation(",
     );
@@ -31,7 +33,7 @@ Deno.test("managed operation re-entry policy is keyed to capability state, not r
     assertEquals(runPrelude.includes("busy"), false);
 });
 
-Deno.test("managed prompt re-entry is rejected while a real operation holds the capability", async () => {
+test("managed prompt re-entry is rejected while a real operation holds the capability", async () => {
     await withRuntimeCommandFixture(
         "managed-operation-boundary-",
         async ({ homeDir: home, projectRoot: cwd, setModelResponseFactories }) => {
@@ -83,7 +85,7 @@ Deno.test("managed prompt re-entry is rejected while a real operation holds the 
                     });
                     assertEquals(runtime.getSessionSnapshot(created.sessionId)?.managed?.generation, 1);
                     const cataloged = store.getSessionById(dormant?.managed?.runwieldSessionId || "");
-                    const transcriptBeforeFirstCompletes = await Deno.readTextFile(cataloged?.transcriptPath || "");
+                    const transcriptBeforeFirstCompletes = await fsReadFile(cataloged?.transcriptPath || "", "utf8");
                     assertEquals(transcriptBeforeFirstCompletes.includes("second managed prompt"), false);
 
                     const first = await firstPrompt;

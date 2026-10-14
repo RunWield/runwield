@@ -10,7 +10,7 @@
 import { AGENTS, CLI_BIN } from "../../constants.js";
 import { resolveActiveWorkflowRuntimeAgent } from "../../shared/workflow/execution-agent.ts";
 import { setTerminalTitleForName } from "../../ui/tui/terminal-title.ts";
-import { resetTuiState as resetTuiStateFn } from "../command-helpers.js";
+import { resetTuiState as resetTuiStateFn } from "../command-helpers.ts";
 import {
     RuntimeInteractionOutcomes,
     RuntimeInteractionTypes,

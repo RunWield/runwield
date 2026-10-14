@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "@earendil-works/pi-ai";
 import { readLatestPlanOutcome, readLatestReviewOutcome, readLatestTaskCompletedReport } from "./workflow-results.js";
@@ -15,7 +16,7 @@ function toolResult(toolName: string, details: JsonValue | undefined): AgentMess
     };
 }
 
-Deno.test("workflow result extraction preserves task completion reports", () => {
+test("workflow result extraction preserves task completion reports", () => {
     const messages: AgentMessage[] = [toolResult("task_completed", {
         outcome: "task_completed",
         message: "- Done.",
@@ -27,7 +28,7 @@ Deno.test("workflow result extraction preserves task completion reports", () => 
     });
 });
 
-Deno.test("workflow result extraction ignores non-record JSON details and searches backward", () => {
+test("workflow result extraction ignores non-record JSON details and searches backward", () => {
     const invalidDetails: Array<JsonValue | undefined> = [undefined, null, true, 7, "text", [], {}];
     const reviewMessages: AgentMessage[] = [toolResult("review_complete", {
         outcome: "approved",
@@ -75,7 +76,7 @@ Deno.test("workflow result extraction ignores non-record JSON details and search
     assertEquals(readLatestTaskCompletedReport(completionMessages, 1), { completed: false, message: "" });
 });
 
-Deno.test("plan result extraction preserves legacy truthy outcomes", () => {
+test("plan result extraction preserves legacy truthy outcomes", () => {
     const messages: AgentMessage[] = [toolResult("plan_written", {
         outcome: 1,
         planName: "legacy-plan",

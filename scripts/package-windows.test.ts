@@ -1,9 +1,20 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join, toFileUrl } from "@std/path";
+import { captureScriptProcess } from "./script-process.ts";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { normalizeGitHubBlobUrl, packageWindows, sha256 } from "./package-windows.js";
 
 async function run(command: string, args: string[], cwd?: string): Promise<string> {
-    const result = await new Deno.Command(command, { args, cwd, stdout: "piped", stderr: "piped" }).output();
+    const result = await captureScriptProcess(command, { args, cwd, stdout: "piped", stderr: "piped" });
     const decoder = new TextDecoder();
     const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
     assertEquals(result.code, 0, output);
@@ -12,28 +23,28 @@ async function run(command: string, args: string[], cwd?: string): Promise<strin
 
 async function makeZip(root: string, name: string, entryName: string): Promise<{ url: string; sha256: string }> {
     const dir = join(root, `${name}-dir`);
-    await Deno.mkdir(dir, { recursive: true });
-    await Deno.writeTextFile(join(dir, entryName), `${name} executable`);
+    await fsMkdir(dir, { recursive: true });
+    await fsWriteFile(join(dir, entryName), `${name} executable`);
     const zip = join(root, `${name}.zip`);
     await run("zip", ["-qr", zip, "."], dir);
-    const bytes = await Deno.readFile(zip);
+    const bytes = await fsReadFile(zip);
     return { url: toFileUrl(zip).href, sha256: await sha256(bytes) };
 }
 
 async function makeFixture() {
-    const root = await Deno.makeTempDir({ prefix: "runwield-windows-package-test-" });
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-windows-package-test-"));
     const binary = join(root, "wld.exe");
-    await Deno.writeTextFile(binary, 'compiledVersion="v1.2.3"; runwield binary');
+    await fsWriteFile(binary, 'compiledVersion="v1.2.3"; runwield binary');
     const mnemoteca = await makeZip(root, "mnemoteca", "mnemoteca.exe");
     const cymbal = await makeZip(root, "cymbal", "cymbal.exe");
     const ketch = await makeZip(root, "ketch", "ketch.exe");
     const agentBrowser = join(root, "agent-browser.exe");
-    await Deno.writeTextFile(agentBrowser, "agent browser exe");
+    await fsWriteFile(agentBrowser, "agent browser exe");
     const licensePath = join(root, "LICENSE.txt");
-    await Deno.writeTextFile(licensePath, "fixture license text");
-    const agentBrowserBytes = await Deno.readFile(agentBrowser);
+    await fsWriteFile(licensePath, "fixture license text");
+    const agentBrowserBytes = await fsReadFile(agentBrowser);
     const inputsPath = join(root, "inputs.json");
-    await Deno.writeTextFile(
+    await fsWriteFile(
         inputsPath,
         JSON.stringify({
             packageIdentifier: "Gandazgul.RunWield",
@@ -74,10 +85,10 @@ async function makeFixture() {
             ],
         }),
     );
-    return { root, binary, inputsPath, close: () => Deno.remove(root, { recursive: true }) };
+    return { root, binary, inputsPath, close: () => fsRm(root, { recursive: true }) };
 }
 
-Deno.test("package:windows creates a complete ZIP with helpers, notices and metadata", async () => {
+test("package:windows creates a complete ZIP with helpers, notices and metadata", async () => {
     const fixture = await makeFixture();
     try {
         const output = join(fixture.root, "out");
@@ -90,24 +101,24 @@ Deno.test("package:windows creates a complete ZIP with helpers, notices and meta
         assertStringIncludes(listing, "runtime/helpers/agent-browser.exe");
         assertStringIncludes(listing, "licenses/RUNWIELD-LICENSE.txt");
         assertStringIncludes(listing, "licenses/mnemoteca-LICENSE.txt");
-        const checksum = await Deno.readTextFile(`${zipPath}.sha256`);
+        const checksum = await fsReadFile(`${zipPath}.sha256`, "utf8");
         assertStringIncludes(checksum, "wld-v1.2.3-windows-x64.zip");
     } finally {
         await fixture.close();
     }
 });
 
-Deno.test("package:windows resolves GitHub blob license URLs to raw upstream files", () => {
+test("package:windows resolves GitHub blob license URLs to raw upstream files", () => {
     assertEquals(
         normalizeGitHubBlobUrl("https://github.com/gandazgul/mnemoteca/blob/v0.3.1/LICENSE"),
         "https://raw.githubusercontent.com/gandazgul/mnemoteca/v0.3.1/LICENSE",
     );
 });
 
-Deno.test("package:windows rejects non-exact binary release identity", async () => {
+test("package:windows rejects non-exact binary release identity", async () => {
     const fixture = await makeFixture();
     try {
-        await Deno.writeTextFile(fixture.binary, 'compiledVersion="v1.2.30"; runwield binary');
+        await fsWriteFile(fixture.binary, 'compiledVersion="v1.2.30"; runwield binary');
         await assertRejects(
             () =>
                 packageWindows({
@@ -124,12 +135,12 @@ Deno.test("package:windows rejects non-exact binary release identity", async () 
     }
 });
 
-Deno.test("package:windows rejects corrupt helper bytes", async () => {
+test("package:windows rejects corrupt helper bytes", async () => {
     const fixture = await makeFixture();
     try {
-        const inputs = JSON.parse(await Deno.readTextFile(fixture.inputsPath));
+        const inputs = JSON.parse(await fsReadFile(fixture.inputsPath, "utf8"));
         inputs.helpers[0].sha256 = "0".repeat(64);
-        await Deno.writeTextFile(fixture.inputsPath, JSON.stringify(inputs));
+        await fsWriteFile(fixture.inputsPath, JSON.stringify(inputs));
         await assertRejects(
             () =>
                 packageWindows({
@@ -146,12 +157,12 @@ Deno.test("package:windows rejects corrupt helper bytes", async () => {
     }
 });
 
-Deno.test("package:windows rejects missing required helper files", async () => {
+test("package:windows rejects missing required helper files", async () => {
     const fixture = await makeFixture();
     try {
-        const inputs = JSON.parse(await Deno.readTextFile(fixture.inputsPath));
+        const inputs = JSON.parse(await fsReadFile(fixture.inputsPath, "utf8"));
         inputs.helpers[1].requiredFiles = ["missing.exe"];
-        await Deno.writeTextFile(fixture.inputsPath, JSON.stringify(inputs));
+        await fsWriteFile(fixture.inputsPath, JSON.stringify(inputs));
         await assertRejects(
             () =>
                 packageWindows({

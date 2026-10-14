@@ -1,5 +1,10 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { spawnNativeProcess } from "../../shared/foreground-process.ts";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
 import {
@@ -10,26 +15,38 @@ import {
     submitReview,
     withProject,
 } from "../../shared/attached/attached-test-fixture.ts";
-import type {
-    AttachedJsonObject,
-    AttachedOperationName,
-    AttachedOperationResult,
+import {
+    type AttachedJsonObject,
+    type AttachedOperationName,
+    type AttachedOperationResult,
 } from "../../shared/attached/operations.ts";
-import type { HostedAttachedReview } from "../../shared/attached/review-host.ts";
+import { type HostedAttachedReview } from "../../shared/attached/review-host.ts";
+
+import process from "node:process";
 
 type McpReviewResult = AttachedOperationResult & { review?: HostedAttachedReview };
 
 async function connect(root: string) {
     const bin = join(root, ".fixture-bin");
-    await Deno.mkdir(bin, { recursive: true });
+    await fsMkdir(bin, { recursive: true });
     for (const name of ["open", "xdg-open"]) {
-        await Deno.writeTextFile(join(bin, name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+        await fsWriteFile(join(bin, name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     }
     const transport = new StdioClientTransport({
-        command: Deno.execPath(),
-        args: ["run", "-A", "--quiet", "--no-check", "--config", DENO_CONFIG_PATH, CLI_PATH, "attached", "mcp"],
+        command: process.execPath,
+        args: runtimeSourceArgs([
+            "run",
+            "-A",
+            "--quiet",
+            "--no-check",
+            "--config",
+            DENO_CONFIG_PATH,
+            CLI_PATH,
+            "attached",
+            "mcp",
+        ]),
         cwd: root,
-        env: { ...Deno.env.toObject(), PATH: `${bin}:${Deno.env.get("PATH")}` },
+        env: { ...{ ...process.env }, PATH: `${bin}:${process.env["PATH"]}` },
         stderr: "pipe",
     });
     const client = new Client({ name: "claude-code", version: "2.1.292" });
@@ -43,25 +60,28 @@ async function call(client: Client, name: AttachedOperationName, input: Attached
     return JSON.parse(JSON.stringify(result.structuredContent));
 }
 
-Deno.test("fresh MCP status restores the same pending round and transport close stops its endpoint", async () => {
+test("fresh MCP status restores the same pending round and transport close stops its endpoint", async () => {
     await withProject(async (root) => {
         const workflow = await submitReview(root);
         const first = await connect(root);
         let original = "";
         try {
             const tools = await first.listTools();
-            assertEquals(tools.tools.map(({ name }) => name), [
-                "activate",
-                "triage_report",
-                "status",
-                "plan_written",
-                "start_execution",
-                "task_completed",
-                "start_validation",
-                "review_diff",
-                "review_complete",
-                "validation_decision",
-            ]);
+            assertEquals(
+                tools.tools.map(({ name }) => name),
+                [
+                    "activate",
+                    "triage_report",
+                    "status",
+                    "plan_written",
+                    "start_execution",
+                    "task_completed",
+                    "start_validation",
+                    "review_diff",
+                    "review_complete",
+                    "validation_decision",
+                ],
+            );
             assertEquals(tools.tools.find(({ name }) => name === "status")?.inputSchema.required, []);
             const status = await call(first, "status", {});
             assert(status.ok && status.review);
@@ -121,7 +141,7 @@ Deno.test("fresh MCP status restores the same pending round and transport close 
 });
 
 for (const closeBeforeStatus of [false, true]) {
-    Deno.test(
+    test(
         closeBeforeStatus
             ? "stdin EOF during status cannot create a late browser daemon"
             : "stdin EOF stops MCP-hosted review without a process signal",
@@ -131,8 +151,8 @@ for (const closeBeforeStatus of [false, true]) {
                 const setup = await connect(root);
                 await setup.close();
                 const bin = join(root, ".fixture-bin");
-                const child = new Deno.Command(Deno.execPath(), {
-                    args: [
+                const child = spawnNativeProcess(process.execPath, {
+                    args: runtimeSourceArgs([
                         "run",
                         "-A",
                         "--quiet",
@@ -142,13 +162,13 @@ for (const closeBeforeStatus of [false, true]) {
                         CLI_PATH,
                         "attached",
                         "mcp",
-                    ],
+                    ]),
                     cwd: root,
-                    env: { ...Deno.env.toObject(), PATH: `${bin}:${Deno.env.get("PATH")}` },
+                    env: { ...{ ...process.env }, PATH: `${bin}:${process.env["PATH"]}` },
                     stdin: "piped",
                     stdout: "piped",
                     stderr: "null",
-                }).spawn();
+                });
                 const writer = child.stdin.getWriter();
                 const reader = child.stdout.getReader();
                 const messages = [
@@ -205,7 +225,9 @@ for (const closeBeforeStatus of [false, true]) {
                     await reader.cancel().catch(() => {});
                     try {
                         child.kill("SIGTERM");
-                    } catch { /* Already exited. */ }
+                    } catch {
+                        /* Already exited. */
+                    }
                     await child.status;
                 }
             });

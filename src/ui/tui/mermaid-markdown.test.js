@@ -1,4 +1,6 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { getCapabilities, Markdown, setCapabilities, visibleWidth } from "@earendil-works/pi-tui";
 import stripAnsi from "strip-ansi";
 
@@ -28,7 +30,7 @@ function fence(body) {
     return `before\n\n\`\`\`mermaid\n${body}\n\`\`\`\n\nafter`;
 }
 
-Deno.test("MermaidMarkdown matches upstream Markdown for non-Mermaid content", () => {
+test("MermaidMarkdown matches upstream Markdown for non-Mermaid content", () => {
     const text = "# Heading\n\nA paragraph with **strong** text and `code`.\n\n- one\n- two";
     const upstream = new Markdown(text, 0, 0, getMarkdownTheme());
     const mermaid = new MermaidMarkdown(text, 0, 0, getMarkdownTheme());
@@ -36,7 +38,7 @@ Deno.test("MermaidMarkdown matches upstream Markdown for non-Mermaid content", (
     assertEquals(mermaid.render(80), upstream.render(80));
 });
 
-Deno.test("MermaidMarkdown renders URLs with BEL-delimited terminal hyperlinks", () => {
+test("MermaidMarkdown renders URLs with BEL-delimited terminal hyperlinks", () => {
     const capabilities = getCapabilities();
     setCapabilities({ ...capabilities, hyperlinks: true });
     try {
@@ -51,7 +53,7 @@ Deno.test("MermaidMarkdown renders URLs with BEL-delimited terminal hyperlinks",
     }
 });
 
-Deno.test("MermaidMarkdown renders a completed top-level flowchart as Unicode", () => {
+test("MermaidMarkdown renders a completed top-level flowchart as Unicode", () => {
     const rendered = plain(renderMermaidMarkdown(fence("graph TD\n  A --> B"), 120));
 
     assertStringIncludes(rendered, "before");
@@ -60,7 +62,7 @@ Deno.test("MermaidMarkdown renders a completed top-level flowchart as Unicode", 
     assert(!rendered.includes("```mermaid"));
 });
 
-Deno.test("MermaidMarkdown keeps source until a closing fence is complete", () => {
+test("MermaidMarkdown keeps source until a closing fence is complete", () => {
     const partial = plain(renderMermaidMarkdown("```mermaid\ngraph TD\n  A --> B\n``", 120));
     assertStringIncludes(partial, "```mermaid");
     assert(!partial.includes("┌"));
@@ -70,7 +72,7 @@ Deno.test("MermaidMarkdown keeps source until a closing fence is complete", () =
     assert(!complete.includes("```mermaid"));
 });
 
-Deno.test("MermaidMarkdown falls back for malformed, empty, unsupported, tilde, extra-info, and nested fences", () => {
+test("MermaidMarkdown falls back for malformed, empty, unsupported, tilde, extra-info, and nested fences", () => {
     const examples = [
         "```mermaid\nthis is not mermaid\n```",
         "```mermaid\n\n```",
@@ -86,7 +88,7 @@ Deno.test("MermaidMarkdown falls back for malformed, empty, unsupported, tilde, 
     }
 });
 
-Deno.test("MermaidMarkdown renders supported Mermaid families", () => {
+test("MermaidMarkdown renders supported Mermaid families", () => {
     const examples = [
         "sequenceDiagram\n  participant A\n  participant B\n  A->>B: Hi",
         "stateDiagram-v2\n  [*] --> Idle\n  Idle --> [*]",
@@ -101,7 +103,7 @@ Deno.test("MermaidMarkdown renders supported Mermaid families", () => {
     }
 });
 
-Deno.test("MermaidMarkdown falls back instead of wrapping diagrams that do not fit", () => {
+test("MermaidMarkdown falls back instead of wrapping diagrams that do not fit", () => {
     const source = "graph LR\n  AlphaLabel --> BetaLabel --> GammaLabel --> DeltaLabel";
     const narrow = renderMermaidMarkdown(`\`\`\`mermaid\n${source}\n\`\`\``, 20);
     const narrowPlain = plain(narrow);
@@ -110,7 +112,7 @@ Deno.test("MermaidMarkdown falls back instead of wrapping diagrams that do not f
     assert(narrow.every((/** @type {string} */ line) => visibleWidth(line) <= 20));
 });
 
-Deno.test("MermaidMarkdown reevaluates cached diagrams when width changes", () => {
+test("MermaidMarkdown reevaluates cached diagrams when width changes", () => {
     let calls = 0;
     const md = new MermaidMarkdown(
         "```mermaid\ngraph TD\n  A --> B\n```",
@@ -138,7 +140,7 @@ Deno.test("MermaidMarkdown reevaluates cached diagrams when width changes", () =
     assertEquals(calls, 1);
 });
 
-Deno.test("MermaidMarkdown renders multiple fences independently", () => {
+test("MermaidMarkdown renders multiple fences independently", () => {
     const text = "```mermaid\ngraph TD\n  A --> B\n```\n\n```mermaid\ngraph TD\n  C --> D\n```";
     const rendered = plain(renderMermaidMarkdown(text, 120));
 
@@ -147,7 +149,7 @@ Deno.test("MermaidMarkdown renders multiple fences independently", () => {
     assert(!rendered.includes("```mermaid"));
 });
 
-Deno.test("MermaidMarkdown caches renderer failures by source", () => {
+test("MermaidMarkdown caches renderer failures by source", () => {
     let calls = 0;
     const md = new MermaidMarkdown(
         "```mermaid\ngraph TD\n  A --> B\n```",

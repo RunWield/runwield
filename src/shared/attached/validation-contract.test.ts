@@ -1,12 +1,13 @@
-import { assert, assertEquals } from "@std/assert";
-import { parseValidationInput } from "./operations.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { parseValidationInput, type AttachedJsonObject } from "./operations.ts";
 import { EVIDENCE } from "./attached-test-fixture.ts";
-import type { AttachedJsonObject } from "./operations.ts";
 
 function input(payload: AttachedJsonObject) {
     return { operationId: "op", workflowId: "workflow", expectedRevision: 1, evidence: EVIDENCE, payload };
 }
-Deno.test("review outcomes reject transcript imports and fabricated coverage", () => {
+test("review outcomes reject transcript imports and fabricated coverage", () => {
     const extras: AttachedJsonObject[] = [{ transcript: "private conversation" }, { coverage: [] }];
     for (const extra of extras) {
         const parsed = parseValidationInput(
@@ -18,19 +19,21 @@ Deno.test("review outcomes reject transcript imports and fabricated coverage", (
         assertEquals(parsed.rejection.code, "transcript" in extra ? "transcript_field" : "unknown_field");
     }
 });
-Deno.test("review outcomes preserve stable finding states and reject malformed finding rows", () => {
+test("review outcomes preserve stable finding states and reject malformed finding rows", () => {
     const parsed = parseValidationInput(
         "/project",
         input({
             actionId: "review",
             ...{
                 approved: false,
-                findings: [{
-                    id: "R1-1",
-                    title: "Wrong value",
-                    status: "fix_rejected",
-                    rejectionReason: "Still wrong",
-                }],
+                findings: [
+                    {
+                        id: "R1-1",
+                        title: "Wrong value",
+                        status: "fix_rejected",
+                        rejectionReason: "Still wrong",
+                    },
+                ],
             },
         }),
         "review_complete",
@@ -44,7 +47,7 @@ Deno.test("review outcomes preserve stable finding states and reject malformed f
     );
     assert(!malformed.ok);
 });
-Deno.test("review_diff accepts candidate-relative paths but rejects host-selected cwd and byte fraud", () => {
+test("review_diff accepts candidate-relative paths but rejects host-selected cwd and byte fraud", () => {
     const parsed = parseValidationInput(
         "/project",
         input({ actionId: "review", command: "show", path: "src/value.ts", offsetBytes: 0, maxBytes: 256 }),
@@ -61,7 +64,7 @@ Deno.test("review_diff accepts candidate-relative paths but rejects host-selecte
         assert(!invalid.ok);
     }
 });
-Deno.test("validation decisions preserve the user's answer without host metadata or history", () => {
+test("validation decisions preserve the user's answer without host metadata or history", () => {
     const parsed = parseValidationInput(
         "/project",
         input({ actionId: "decision", answer: { outcome: "submitted", value: false } }),

@@ -83,8 +83,9 @@ export class RuntimeQueues {
             const hostedSession = this.services.sessionHost.getSession(sessionId);
             const managed = hostedSession?.getManagedMetadata?.() || null;
             if (!hostedSession || !managed || !this.services.sessionStore) return;
-            const queued = (this.queuedMessages.get(sessionId) || [])
-                .filter((message) => message.delivery === "next_turn");
+            const queued = (this.queuedMessages.get(sessionId) || []).filter(
+                (message) => message.delivery === "next_turn",
+            );
             if (queued.length === 0) return;
             const state = this.services.sessionStore.inspectSessionActivation(managed.runwieldSessionId);
             if (state.activation?.state !== "idle" || this.managedOperations.hasOperation(sessionId)) {
@@ -135,8 +136,9 @@ export class RuntimeQueues {
         sourceSession: RuntimeAgentSession,
         steering: readonly string[] | undefined,
     ) {
-        const sourceMessages = (this.queuedMessages.get(hostedSession.id) || [])
-            .filter((message) => message.sourceSession === sourceSession);
+        const sourceMessages = (this.queuedMessages.get(hostedSession.id) || []).filter(
+            (message) => message.sourceSession === sourceSession,
+        );
         const consumedCount = Math.max(0, sourceMessages.length - (steering?.length || 0));
         for (const message of sourceMessages.slice(0, consumedCount)) {
             if (
@@ -153,8 +155,9 @@ export class RuntimeQueues {
             }
             this.transitionQueuedMessage(hostedSession, message, "consumed");
         }
-        const sourceStillQueued = (this.queuedMessages.get(hostedSession.id) || [])
-            .some((message) => message.sourceSession === sourceSession);
+        const sourceStillQueued = (this.queuedMessages.get(hostedSession.id) || []).some(
+            (message) => message.sourceSession === sourceSession,
+        );
         if (!sourceStillQueued) this.removeQueueSourceSubscription(hostedSession.id, sourceSession);
     }
 
@@ -169,10 +172,7 @@ export class RuntimeQueues {
         }
     }
 
-    removeQueueSourceSubscription(
-        sessionId: string,
-        sourceSession: RuntimeAgentSession,
-    ) {
+    removeQueueSourceSubscription(sessionId: string, sourceSession: RuntimeAgentSession) {
         const subscriptions = this.queueSourceSubscriptions.get(sessionId);
         if (!subscriptions) return;
         const subscription = subscriptions.get(sourceSession);
@@ -201,7 +201,8 @@ export class RuntimeQueues {
                 transition.type !== RuntimeEventTypes.QUEUED_MESSAGE_CHANGED ||
                 (transition.status !== "consumed" && transition.status !== "dequeued") ||
                 !transition.message?.id
-            ) return;
+            )
+                return;
             const queue = this.queuedMessages.get(hostedSession.id);
             const message = queue?.find((entry) => entry.id === transition.message?.id);
             if (!queue || !message || message.sourceSession) return;
@@ -249,8 +250,10 @@ export class RuntimeQueues {
     ): Promise<import("./types.ts").SteerSessionResult> {
         const hostedSession = this.services.sessionHost.getSession(sessionId);
         if (!hostedSession) return { ok: false, queued: false, error: "not_found" };
-        const capability = this.managedOperations.currentCapability(sessionId) ||
-            hostedSession.getManagedOperationCapability?.() || null;
+        const capability =
+            this.managedOperations.currentCapability(sessionId) ||
+            hostedSession.getManagedOperationCapability?.() ||
+            null;
         const managedRejection = this.managedOperations.rejectManagedPublicMutation(
             hostedSession,
             "steerSession",
@@ -294,14 +297,7 @@ export class RuntimeQueues {
             }
 
             while (true) {
-                if (
-                    hostedSession.queueAgentTransitionSteering(
-                        text,
-                        images,
-                        publicMessage,
-                        message.submissionOrder,
-                    )
-                ) {
+                if (hostedSession.queueAgentTransitionSteering(text, images, publicMessage, message.submissionOrder)) {
                     delete message.preparing;
                     hostedSession.notificationSurface = inputSurface;
                     return { ok: true, queued: true, message: publicMessage };
@@ -393,8 +389,9 @@ export class RuntimeQueues {
     takeNextTurnMessage(sessionId: string) {
         const hostedSession = this.services.sessionHost.getSession(sessionId);
         if (!hostedSession) return { ok: false, message: null, error: "not_found" };
-        const selected = (this.queuedMessages.get(hostedSession.id) || [])
-            .find((message) => message.delivery === "next_turn");
+        const selected = (this.queuedMessages.get(hostedSession.id) || []).find(
+            (message) => message.delivery === "next_turn",
+        );
         if (!selected) return { ok: true, message: null };
         const publicMessage = this.transitionQueuedMessage(hostedSession, selected, "consumed");
         return { ok: true, message: publicMessage };
@@ -426,12 +423,17 @@ export class RuntimeQueues {
         sourceSession: RuntimeAgentSession,
         queueIndex: number,
     ): Promise<void> {
+        if (sourceSession.removeSteeringMessage) {
+            await sourceSession.removeSteeringMessage(queueIndex);
+            return;
+        }
         if (typeof sourceSession.clearQueue !== "function" || !sourceSession.getSteeringMessages) {
             throw new Error("Background steering queue is not mutable");
         }
         const snapshot = [...sourceSession.getSteeringMessages()];
-        const queued = (this.queuedMessages.get(hostedSession.id) || [])
-            .filter((message) => message.sourceSession === sourceSession);
+        const queued = (this.queuedMessages.get(hostedSession.id) || []).filter(
+            (message) => message.sourceSession === sourceSession,
+        );
         this.removeQueueSourceSubscription(hostedSession.id, sourceSession);
         const cleared = sourceSession.clearQueue();
         try {
@@ -473,10 +475,11 @@ export class RuntimeQueues {
         } finally {
             if (
                 queued.length ||
-                (this.queuedMessages.get(hostedSession.id) || []).some((message) =>
-                    message.sourceSession === sourceSession
+                (this.queuedMessages.get(hostedSession.id) || []).some(
+                    (message) => message.sourceSession === sourceSession,
                 )
-            ) this.ensureQueueSourceSubscription(hostedSession, sourceSession);
+            )
+                this.ensureQueueSourceSubscription(hostedSession, sourceSession);
         }
     }
 
@@ -488,21 +491,11 @@ export class RuntimeQueues {
         if (!selected) return { ok: true, message: null };
 
         if (selected.delivery === "next_turn") {
-            const publicMessage = this.transitionQueuedMessage(
-                hostedSession,
-                selected,
-                "dequeued",
-                "user_recall",
-            );
+            const publicMessage = this.transitionQueuedMessage(hostedSession, selected, "dequeued", "user_recall");
             return { ok: true, message: publicMessage };
         }
         if (selected.preparing) {
-            const publicMessage = this.transitionQueuedMessage(
-                hostedSession,
-                selected,
-                "dequeued",
-                "user_recall",
-            );
+            const publicMessage = this.transitionQueuedMessage(hostedSession, selected, "dequeued", "user_recall");
             return { ok: true, message: publicMessage };
         }
 
@@ -519,18 +512,28 @@ export class RuntimeQueues {
             if (!hostedSession.removeAgentTransitionSteering?.(selected.id)) {
                 return { ok: false, message: null, error: "queue_not_mutable" };
             }
-            const publicMessage = this.transitionQueuedMessage(
-                hostedSession,
-                selected,
-                "dequeued",
-                "user_recall",
-            );
+            const publicMessage = this.transitionQueuedMessage(hostedSession, selected, "dequeued", "user_recall");
             return { ok: true, message: publicMessage };
+        }
+        const sourceMessages = queue.filter((message) => message.sourceSession === sourceSession);
+        if (sourceSession.removeSteeringMessage) {
+            this.removeQueueSourceSubscription(hostedSession.id, sourceSession);
+            try {
+                const removed = await sourceSession.removeSteeringMessage(sourceMessages.indexOf(selected));
+                const message = removed
+                    ? this.transitionQueuedMessage(hostedSession, selected, "dequeued", "user_recall")
+                    : null;
+                return { ok: true, message };
+            } catch (error) {
+                return { ok: false, message: null, error: getRuntimeErrorMessage(error) };
+            } finally {
+                this.ensureQueueSourceSubscription(hostedSession, sourceSession);
+                this.reconcileQueuedMessages(hostedSession, sourceSession, sourceSession.getSteeringMessages?.());
+            }
         }
         if (typeof sourceSession.clearQueue !== "function") {
             return { ok: false, message: null, error: "queue_not_mutable" };
         }
-        const sourceMessages = queue.filter((message) => message.sourceSession === sourceSession);
         this.removeQueueSourceSubscription(hostedSession.id, sourceSession);
         let cleared;
         try {
@@ -573,8 +576,9 @@ export class RuntimeQueues {
         }
 
         this.transitionQueuedMessage(hostedSession, selected, "dequeued", "user_recall");
-        const sourceStillQueued = (this.queuedMessages.get(hostedSession.id) || [])
-            .some((message) => message.sourceSession === sourceSession);
+        const sourceStillQueued = (this.queuedMessages.get(hostedSession.id) || []).some(
+            (message) => message.sourceSession === sourceSession,
+        );
         if (sourceStillQueued) this.ensureQueueSourceSubscription(hostedSession, sourceSession);
         return { ok: true, message: publicMessage };
     }
@@ -614,14 +618,13 @@ export class RuntimeQueues {
             }
         }
         const transitionEntries = hostedSession.clearAgentTransitionSteering?.() || [];
-        const transitionMessageIds = new Set(
-            transitionEntries.map((entry) => entry.message?.id).filter(Boolean),
-        );
-        const clearedMessages = messages.filter((message) =>
-            message.delivery === "next_turn" ||
-            message.preparing ||
-            transitionMessageIds.has(message.id) ||
-            (message.sourceSession && clearedSources.has(message.sourceSession))
+        const transitionMessageIds = new Set(transitionEntries.map((entry) => entry.message?.id).filter(Boolean));
+        const clearedMessages = messages.filter(
+            (message) =>
+                message.delivery === "next_turn" ||
+                message.preparing ||
+                transitionMessageIds.has(message.id) ||
+                (message.sourceSession && clearedSources.has(message.sourceSession)),
         );
         for (const message of clearedMessages) {
             this.transitionQueuedMessage(hostedSession, message, "dequeued", reason);

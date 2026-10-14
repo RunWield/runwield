@@ -1,4 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import process from "node:process";
+import { test } from "node:test";
 import stripAnsi from "strip-ansi";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
@@ -67,27 +69,27 @@ function makeReport(overrides = {}) {
     };
 }
 
-Deno.test("renderUsageBar shows known and unknown context state", () => {
+test("renderUsageBar shows known and unknown context state", () => {
     assertEquals(renderUsageBar(50, 4), "■■□□ 50.0%");
     assertEquals(renderUsageBar(null, 4), "□□□□ unknown");
 });
 
-Deno.test("abbreviateHomePath shortens files under HOME", async () => {
+test("abbreviateHomePath shortens files under HOME", async () => {
     await withProcessGlobalTestLock(async () => {
-        const previous = Deno.env.get("HOME");
+        const previous = process.env["HOME"];
         try {
-            Deno.env.set("HOME", "/home/tester");
+            process.env["HOME"] = "/home/tester";
             assertEquals(abbreviateHomePath("/home/tester/.wld/RUNWIELD.md"), "~/.wld/RUNWIELD.md");
             assertEquals(abbreviateHomePath("/other/file"), "/other/file");
             await Promise.resolve();
         } finally {
-            if (previous === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previous);
+            if (previous === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previous;
         }
     });
 });
 
-Deno.test("formatContextReport renders active model, categories, files, and source-grouped skills", () => {
+test("formatContextReport renders active model, categories, files, and source-grouped skills", () => {
     const plain = stripAnsi(formatContextReport(/** @type {any} */ (makeReport())));
 
     for (
@@ -111,7 +113,7 @@ Deno.test("formatContextReport renders active model, categories, files, and sour
     assertEquals(plain.indexOf("agent-browser-use") < plain.indexOf("write-tests"), true);
 });
 
-Deno.test("formatContextReport makes unavailable and unknown states explicit", () => {
+test("formatContextReport makes unavailable and unknown states explicit", () => {
     const plain = stripAnsi(formatContextReport(
         /** @type {any} */ (makeReport({
             usageState: "unknown_after_compaction",
@@ -130,13 +132,13 @@ Deno.test("formatContextReport makes unavailable and unknown states explicit", (
     assertEquals(plain.includes("- None advertised."), true);
 });
 
-Deno.test("runContextCommand reports missing active Agent Session", async () => {
+test("runContextCommand reports missing active Agent Session", async () => {
     const { uiAPI, messages } = makeUi();
     await runContextCommand([], { uiAPI });
     assertEquals(messages, ["Error: No active Agent Session context is available yet."]);
 });
 
-Deno.test("runContextCommand renders Runtime context report", async () => {
+test("runContextCommand renders Runtime context report", async () => {
     const { uiAPI, messages } = makeUi();
     await runContextCommand([], {
         uiAPI,

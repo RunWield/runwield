@@ -1,9 +1,10 @@
+import { mkdir as fsMkdir, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 /**
  * @module shared/session/image-attachments
  * Helpers for session-scoped image attachments and vision fallback routing.
  */
 
-import { basename, extname, isAbsolute, join, normalize, relative, resolve } from "@std/path";
+import { basename, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { discoverProviderModel } from "../models/model-registry.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";
@@ -107,10 +108,10 @@ export async function persistImageAttachment(
     const ext = extensionForMimeType(image.mimeType);
     const uuid = crypto.randomUUID();
     const dir = getSessionImageDir(sessionManager, cwd);
-    await Deno.mkdir(dir, { recursive: true });
+    await fsMkdir(dir, { recursive: true });
     const path = join(dir, `${uuid}${ext}`);
     const bytes = Uint8Array.from(atob(image.base64), (char) => char.charCodeAt(0));
-    await Deno.writeFile(path, bytes);
+    await fsWriteFile(path, bytes);
     return { ...image, ref: `attachment:${uuid}`, path };
 }
 
@@ -129,8 +130,8 @@ export async function resolveImageRef(imageRef: string, opts: ImageReferenceOpti
         for (const ext of EXT_TO_MIME.keys()) {
             const candidate = join(dir, `${attachmentUuid}${ext}`);
             try {
-                const stat = await Deno.stat(candidate);
-                if (stat.isFile) {
+                const stat = await fsStat(candidate);
+                if (stat.isFile()) {
                     return { path: candidate, mimeType: mimeTypeForImagePath(candidate), refType: "attachment" };
                 }
             } catch (_e) { /* try next extension */ }
@@ -152,8 +153,8 @@ export async function resolveImageRef(imageRef: string, opts: ImageReferenceOpti
     const rel = relative(root, path);
     if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("Local image path escapes the project directory.");
 
-    const stat = await Deno.stat(path).catch(() => null);
-    if (!stat?.isFile) throw new Error(`Image file not found: ${cleaned}`);
+    const stat = await fsStat(path).catch(() => null);
+    if (!stat?.isFile()) throw new Error(`Image file not found: ${cleaned}`);
     return { path, mimeType: mimeTypeForImagePath(path), refType: "local" };
 }
 

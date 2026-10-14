@@ -1,18 +1,29 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals } from "../testing/assertions.ts";
+import { readdirSync } from "node:fs";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { getBundledModelPresets, type ModelPresetsMap } from "./model-presets.ts";
 import { RunWieldCredentialStore, RunWieldModelRegistry } from "./models/model-registry.ts";
 import { getCustomSetting, getMergedCustomSetting, setCustomSetting } from "./settings.js";
 import { getConfiguredAgentModel, getConfiguredAgentThinkingLevel } from "./session/session.js";
 
-Deno.test("bundled presets refresh disposable files and preserve personal settings", async () => {
+test("bundled presets refresh disposable files and preserve personal settings", async () => {
     await withRuntimeCommandFixture("bundled-presets-", async ({ homeDir, projectRoot, settingsPath }) => {
-        const before = await Deno.readTextFile(settingsPath);
+        const before = await fsReadFile(settingsPath, "utf8");
         const directory = join(homeDir, ".wld", "bundled-model-presets");
-        await Deno.mkdir(directory, { recursive: true });
-        await Deno.writeTextFile(join(directory, "codex.json"), "stale");
-        await Deno.writeTextFile(join(directory, "retired.json"), "{}");
+        await fsMkdir(directory, { recursive: true });
+        await fsWriteFile(join(directory, "codex.json"), "stale");
+        await fsWriteFile(join(directory, "retired.json"), "{}");
 
         const presets = getMergedCustomSetting("modelPresets", projectRoot) as ModelPresetsMap;
         assertEquals(Object.keys(presets).sort(), [
@@ -23,29 +34,29 @@ Deno.test("bundled presets refresh disposable files and preserve personal settin
             "codex-claude",
             "opencode",
         ]);
-        assertEquals(JSON.parse(await Deno.readTextFile(join(directory, "codex.json"))), presets.codex);
+        assertEquals(JSON.parse(await fsReadFile(join(directory, "codex.json"), "utf8")), presets.codex);
         assertEquals(
-            Array.from(Deno.readDirSync(directory)).map((entry) => entry.name).sort(),
+            Array.from(readdirSync(directory, { withFileTypes: true })).map((entry) => entry.name).sort(),
             Object.keys(presets).map((name) => `${name}.json`).sort(),
         );
-        assertEquals(await Deno.readTextFile(settingsPath), before);
+        assertEquals(await fsReadFile(settingsPath, "utf8"), before);
         assertEquals(getCustomSetting("modelPresets", "global", projectRoot), undefined);
 
         // Callers and cache edits cannot mutate the bundled source of truth.
         presets.codex.agents = {};
-        await Deno.writeTextFile(join(directory, "codex.json"), "{}");
+        await fsWriteFile(join(directory, "codex.json"), "{}");
         assertEquals(getBundledModelPresets().codex.agents?.engineer.model, "openai-codex/gpt-6.1-sol");
     });
 });
 
-Deno.test("bundled presets remain usable when the extraction cache cannot be created", async () => {
+test("bundled presets remain usable when the extraction cache cannot be created", async () => {
     await withRuntimeCommandFixture("bundled-presets-no-cache-", async ({ homeDir }) => {
-        await Deno.writeTextFile(join(homeDir, ".wld", "bundled-model-presets"), "occupied");
+        await fsWriteFile(join(homeDir, ".wld", "bundled-model-presets"), "occupied");
         assertEquals(getBundledModelPresets()["claude-opus"].agents?.router.model, "claude-cli/opus");
     });
 });
 
-Deno.test("preset names layer project over personal over bundled without inheriting replaced presets", async () => {
+test("preset names layer project over personal over bundled without inheriting replaced presets", async () => {
     await withRuntimeCommandFixture("bundled-presets-layers-", async ({ projectRoot }) => {
         await setCustomSetting("activeModelPreset", "codex", "global", projectRoot);
         assertEquals(getConfiguredAgentModel("engineer", projectRoot), "openai-codex/gpt-6.1-sol");
@@ -84,7 +95,7 @@ Deno.test("preset names layer project over personal over bundled without inherit
     });
 });
 
-Deno.test("bundled presets cover shipped roles using registered models from their advertised providers", async () => {
+test("bundled presets cover shipped roles using registered models from their advertised providers", async () => {
     const providers: Record<string, string[]> = {
         codex: ["openai-codex"],
         agy: ["agy-cli"],
@@ -106,7 +117,7 @@ Deno.test("bundled presets cover shipped roles using registered models from thei
         "router",
         "slicer",
     ];
-    const directory = await Deno.makeTempDir({ prefix: "preset-model-registry-" });
+    const directory = await fsMkdtemp(join(tmpdir(), "preset-model-registry-"));
     const registry = new RunWieldModelRegistry({
         configDir: directory,
         credentialStore: new RunWieldCredentialStore(join(directory, "auth.json")),
@@ -123,6 +134,6 @@ Deno.test("bundled presets cover shipped roles using registered models from thei
             }
         }
     } finally {
-        await Deno.remove(directory, { recursive: true });
+        await fsRm(directory, { recursive: true });
     }
 });

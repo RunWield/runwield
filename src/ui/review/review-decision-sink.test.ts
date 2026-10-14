@@ -1,9 +1,10 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { startPlanReviewSurface } from "./review-launcher.ts";
-import type { ReviewDecision } from "../workspace/routes/api/review-handlers.js";
+import { type ReviewDecision } from "../workspace/routes/api/review-handlers.js";
 import { withProject } from "../../shared/attached/attached-test-fixture.ts";
 
-Deno.test("the review browser acknowledgment and Core waiter both wait for decision acceptance", async () => {
+test("the review browser acknowledgment and Core waiter both wait for decision acceptance", async () => {
     await withProject(async (cwd) => {
         const entered = Promise.withResolvers<void>();
         const accepted = Promise.withResolvers<void>();
@@ -46,7 +47,7 @@ Deno.test("the review browser acknowledgment and Core waiter both wait for decis
     });
 });
 
-Deno.test("a rejected decision offers stale-review reload and leaves the Core waiter available for retry", async () => {
+test("a rejected decision offers stale-review reload and leaves the Core waiter available for retry", async () => {
     await withProject(async (cwd) => {
         const server = await startPlanReviewSurface<ReviewDecision>({
             cwd,
@@ -76,7 +77,7 @@ Deno.test("a rejected decision offers stale-review reload and leaves the Core wa
     });
 });
 
-Deno.test("stopping a review surface does not send a user cancellation to its durable sink", async () => {
+test("stopping a review surface does not send a user cancellation to its durable sink", async () => {
     await withProject(async (cwd) => {
         let accepted = false;
         const server = await startPlanReviewSurface<ReviewDecision>({
@@ -96,7 +97,7 @@ Deno.test("stopping a review surface does not send a user cancellation to its du
 });
 
 for (const initialSink of [false, true]) {
-    Deno.test(`reusing a review page ${initialSink ? "removes" : "adds"} the next round's decision sink`, async () => {
+    test(`reusing a review page ${initialSink ? "removes" : "adds"} the next round's decision sink`, async () => {
         await withProject(async (cwd) => {
             let accepted = "";
             const reviewConversation = {

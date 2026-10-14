@@ -1,7 +1,7 @@
 ---
 import PlanBoardPage from "../components/PlanBoardPage.astro";
 import { loadCanonicalBoard, serializeCanonicalPlanError } from "../server/astro-canonical-data.js";
-import { currentWorkspaceCwd } from "../server/cwd.js";
+import { currentWorkspaceCwd } from "../server/cwd.ts";
 
 const workspaceCwd = Astro.request.headers.get("x-runwield-workspace-cwd") || currentWorkspaceCwd();
 let board = null;

@@ -4,7 +4,7 @@ import { PLAN_SEARCH_QUERY_PARAM, PLAN_UI_TOKEN_QUERY } from "../constants.ts";
 import WorkspaceLayout from "../layouts/WorkspaceLayout.astro";
 import { loadCanonicalBoard, serializeCanonicalPlanError } from "../server/astro-canonical-data.js";
 import { loadOwnerProjectBoard, loadOwnerProjects } from "../server/astro-owner-data.js";
-import { currentWorkspaceCwd } from "../server/cwd.js";
+import { currentWorkspaceCwd } from "../server/cwd.ts";
 import { PlanBoard } from "./Board.tsx";
 import { PlanBoardToolbar } from "./PlanBoardToolbar.tsx";
 

@@ -1,4 +1,9 @@
-import { join } from "@std/path";
+import { mkdtempSync as fsMkdtempSync, rmSync as fsRmSync } from "node:fs";
+import { mkdtemp as fsMkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { join } from "node:path";
 import { setCustomSetting } from "../shared/settings.js";
 import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../shared/workflow/metrics.js";
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
@@ -30,10 +35,10 @@ export interface WorkflowMetricsFixture {
 }
 
 export function makeToolProjectFixture(prefix: string): string {
-    const projectRoot = Deno.makeTempDirSync({ prefix });
-    globalThis.addEventListener("unload", () => {
+    const projectRoot = fsMkdtempSync(join(tmpdir(), prefix));
+    process.once("exit", () => {
         try {
-            Deno.removeSync(projectRoot, { recursive: true });
+            fsRmSync(projectRoot, { recursive: true });
         } catch {
             // The fixture may already have been removed during an interrupted test.
         }
@@ -45,17 +50,17 @@ export async function withWorkflowMetricsFixture(
     run: (fixture: WorkflowMetricsFixture) => Promise<void>,
 ): Promise<void> {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-tool-metrics-" });
+        const previousHome = process.env["HOME"];
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-tool-metrics-"));
         const homeDir = join(fixtureRoot, "home");
         const projectRoot = join(fixtureRoot, "project");
         await Promise.all([
-            Deno.mkdir(homeDir, { recursive: true }),
-            Deno.mkdir(projectRoot, { recursive: true }),
+            fsMkdir(homeDir, { recursive: true }),
+            fsMkdir(projectRoot, { recursive: true }),
         ]);
 
         try {
-            Deno.env.set("HOME", homeDir);
+            process.env["HOME"] = homeDir;
             await setCustomSetting("workflowMetrics", true, "project", projectRoot);
             await run({
                 homeDir,
@@ -63,10 +68,13 @@ export async function withWorkflowMetricsFixture(
                 async readMetrics() {
                     await drainWorkflowMetrics();
                     try {
-                        const contents = await Deno.readTextFile(getWorkflowMetricsFilePath(projectRoot));
+                        const contents = await fsReadFile(getWorkflowMetricsFilePath(projectRoot), "utf8");
                         return contents.trim().split("\n").map((line) => JSON.parse(line));
                     } catch (error) {
-                        if (error instanceof Deno.errors.NotFound || error instanceof Deno.errors.NotADirectory) {
+                        if (
+                            error instanceof Error && "code" in error &&
+                            (error.code === "ENOENT" || error.code === "ENOTDIR")
+                        ) {
                             return [];
                         }
                         throw error;
@@ -74,9 +82,9 @@ export async function withWorkflowMetricsFixture(
                 },
             });
         } finally {
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
         }
     });
 }

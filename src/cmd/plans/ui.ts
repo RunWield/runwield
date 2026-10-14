@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module cmd/plans/ui
  * Secure local Workspace launcher for read-only Plan UI.
@@ -135,8 +136,8 @@ export function printPlansUiHelp(): void {
 
 function installShutdownHandler(controller: AbortController): () => void {
     const handler = () => controller.abort();
-    Deno.addSignalListener("SIGINT", handler);
-    return () => Deno.removeSignalListener("SIGINT", handler);
+    process.on("SIGINT", handler);
+    return () => process.off("SIGINT", handler);
 }
 
 export async function runPlansUiCommand(argv: string[], options: PlansUiCommandOptions): Promise<void> {

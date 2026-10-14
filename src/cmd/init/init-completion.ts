@@ -1,4 +1,5 @@
-import { join } from "@std/path";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { join } from "node:path";
 import { getCwd } from "../../constants.js";
 import { isInitDone } from "./init-state.ts";
 
@@ -7,9 +8,9 @@ export const INIT_DOMAIN_LANGUAGE_PATH = "docs/domain-language.md";
 export async function hasProjectInitArtifact(projectRoot = getCwd()): Promise<boolean> {
     try {
         const path = join(projectRoot, INIT_DOMAIN_LANGUAGE_PATH);
-        const info = await Deno.stat(path);
-        if (!info.isFile) return false;
-        return (await Deno.readTextFile(path)).trim().length > 0;
+        const info = await fsStat(path);
+        if (!info.isFile()) return false;
+        return (await fsReadFile(path, "utf8")).trim().length > 0;
     } catch {
         return false;
     }

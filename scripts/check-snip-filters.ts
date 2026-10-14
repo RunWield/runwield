@@ -1,6 +1,16 @@
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env bun
+import { captureScriptProcess } from "./script-process.ts";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    readFile as fsReadFile,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
 
-import { basename, join } from "@std/path";
+import { basename, join } from "node:path";
 import { SNIP_FILTERS_DIR } from "../src/constants.js";
 
 const FILTERS = ["deno-check.yaml", "deno-fmt.yaml", "deno-lint.yaml", "deno-test.yaml", "deno-task.yaml"];
@@ -14,29 +24,28 @@ function assertGenericFilter(fileName: string, content: string): void {
 }
 
 export async function checkSnipFilters(): Promise<void> {
-    const tempHome = await Deno.makeTempDir({ prefix: "runwield-snip-check-" });
+    const tempHome = await fsMkdtemp(join(tmpdir(), "runwield-snip-check-"));
     try {
         const filtersDir = join(tempHome, ".config", "snip", "filters");
-        await Deno.mkdir(filtersDir, { recursive: true });
+        await fsMkdir(filtersDir, { recursive: true });
         for (const fileName of FILTERS) {
-            const content = await Deno.readTextFile(join(SNIP_FILTERS_DIR, fileName));
+            const content = await fsReadFile(join(SNIP_FILTERS_DIR, fileName), "utf8");
             assertGenericFilter(fileName, content);
-            await Deno.writeTextFile(join(filtersDir, fileName), content);
+            await fsWriteFile(join(filtersDir, fileName), content);
         }
 
         const configPath = join(tempHome, ".config", "snip", "config.toml");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             configPath,
-            `[tracking]\ndb_path = "${
-                join(tempHome, "tracking.db")
-            }"\n\n[filters]\ndir = "${filtersDir}"\n\n[tee]\nenabled = false\n`,
+            `[tracking]\ndb_path = ${JSON.stringify(join(tempHome, "tracking.db"))}\n\n[filters]\ndir = ${JSON.stringify(filtersDir)}\n\n[tee]\nenabled = false\n`,
         );
-        const result = await new Deno.Command("snip", {
+        const result = await captureScriptProcess("snip", {
             args: ["verify"],
-            env: { ...Deno.env.toObject(), HOME: tempHome, SNIP_CONFIG: configPath },
+            // Go resolves the Windows home from USERPROFILE, including Snip's trust root.
+            env: { ...process.env, HOME: tempHome, USERPROFILE: tempHome, SNIP_CONFIG: configPath },
             stdout: "piped",
             stderr: "piped",
-        }).output();
+        });
         const decoder = new TextDecoder();
         const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
         if (!result.success) throw new Error(`Snip filter verification failed:\n${output}`);
@@ -48,7 +57,7 @@ export async function checkSnipFilters(): Promise<void> {
         }
         console.log("Snip verified all generic Deno filters.");
     } finally {
-        await Deno.remove(tempHome, { recursive: true }).catch(() => {});
+        await fsRm(tempHome, { recursive: true }).catch(() => {});
     }
 }
 

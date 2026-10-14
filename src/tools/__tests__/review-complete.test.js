@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { createReviewCompletedTool } from "../review-complete.ts";
@@ -7,7 +8,7 @@ import { makeToolProjectFixture, withWorkflowMetricsFixture } from "../../testin
 const REVIEW_PROJECT_ROOT = makeToolProjectFixture("runwield-review-complete-");
 
 for (const approved of [true, false]) {
-    Deno.test(`review_complete emits one semantic result when approved=${approved}`, async () => {
+    test(`review_complete emits one semantic result when approved=${approved}`, async () => {
         await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
             const events = /** @type {any[]} */ ([]);
             const hostedSession = new HostedSession({ id: `review-${approved}`, cwd: projectRoot });
@@ -43,7 +44,7 @@ function makeReviewTool(id) {
     return { tool, events };
 }
 
-Deno.test("review_complete does not report resolved findings as outstanding issues", async () => {
+test("review_complete does not report resolved findings as outstanding issues", async () => {
     const { tool, events } = makeReviewTool("review-resolved-projection");
 
     // Observed live: the Reviewer narrated a resolved item alongside a new one in
@@ -65,7 +66,7 @@ Deno.test("review_complete does not report resolved findings as outstanding issu
     assertEquals(result.details.findings.length, 2);
 });
 
-Deno.test("review_complete falls back to prose only when no findings are supplied", async () => {
+test("review_complete falls back to prose only when no findings are supplied", async () => {
     const { tool, events } = makeReviewTool("review-prose-fallback");
 
     await /** @type {any} */ (tool.execute)("call", {
@@ -77,7 +78,7 @@ Deno.test("review_complete falls back to prose only when no findings are supplie
     assertEquals(events[0].delta.includes("fix the boundary"), true);
 });
 
-Deno.test("review_complete refuses to approve while a finding is unresolved", async () => {
+test("review_complete refuses to approve while a finding is unresolved", async () => {
     const { tool } = makeReviewTool("review-approve-with-open");
 
     const result = await /** @type {any} */ (tool.execute)("call", {

@@ -1,3 +1,4 @@
+import { getCwd } from "../../constants.js";
 /**
  * @module extensions/cymbal
  * Cymbal code search extension for RunWield agent invocations.
@@ -25,7 +26,7 @@ export {
 export default function cymbalExtension(pi: ExtensionAPI): void {
     const failedToolCalls = new Set<string>();
     const host: CymbalToolHost = {
-        cwd: Deno.cwd(),
+        cwd: getCwd(),
         exec(command, args, options) {
             return pi.exec(command, args, options);
         },

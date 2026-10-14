@@ -43,14 +43,14 @@ Base. Manual QA uses the Operator runtime identity.
 From the repository root:
 
 ```sh
-deno run brand/mascot/loops/terminal.ts reviewer
-deno run brand/mascot/loops/terminal.ts delegated --parent=planner
-deno run brand/mascot/loops/terminal.ts engineer --cycles=2
-deno run brand/mascot/loops/terminal.ts ideator --snapshot
-deno run --allow-read --allow-write brand/mascot/loops/build.ts
+bun brand/mascot/loops/terminal.ts reviewer
+bun brand/mascot/loops/terminal.ts delegated --parent=planner
+bun brand/mascot/loops/terminal.ts engineer --cycles=2
+bun brand/mascot/loops/terminal.ts ideator --snapshot
+bun brand/mascot/loops/build.ts
 ```
 
-The terminal preview takes no filesystem, network, or account permissions. Redirected output is automatically static.
+The terminal preview does not read files, use the network, or access accounts. Redirected output is automatically static.
 Use a terminal at least 20 columns wide with room for ten rows including the label. Typical terminal font metrics can
 change the apparent proportions; the pixel content is identical to the browser version.
 

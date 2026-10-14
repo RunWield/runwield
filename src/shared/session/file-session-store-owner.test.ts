@@ -1,8 +1,9 @@
-import { assertNotStrictEquals, assertStrictEquals } from "@std/assert";
+import { test } from "node:test";
+import { notStrictEqual as assertNotStrictEquals, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { FileSessionStoreOwner } from "./file-session-store-owner.ts";
 
-Deno.test("FileSessionStoreOwner closes and forgets stores it opens", () => {
+test("FileSessionStoreOwner closes and forgets stores it opens", () => {
     const owner = new FileSessionStoreOwner(null);
     const first = owner.ensure();
     owner.closeOwned();
@@ -14,7 +15,7 @@ Deno.test("FileSessionStoreOwner closes and forgets stores it opens", () => {
     }
 });
 
-Deno.test("FileSessionStoreOwner leaves caller-owned stores open", () => {
+test("FileSessionStoreOwner leaves caller-owned stores open", () => {
     const store = openFileSessionStore();
     const owner = new FileSessionStoreOwner(store);
     try {

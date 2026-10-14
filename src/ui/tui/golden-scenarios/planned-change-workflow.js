@@ -1,9 +1,11 @@
+import process from "node:process";
 /**
  * @module ui/tui/golden-scenarios/planned-change-workflow
  * Composed Golden PLANNED_CHANGE workflow scenarios.
  */
 
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
 
@@ -40,8 +42,9 @@ function assertRealPlanReviewRevisionAndApproval(result) {
     assertEventIncludes(result, "review_feedback");
     assertEventIncludes(result, "review_approved");
     const planReview =
-        /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }>, plan?: string } | undefined} */ (result
-            .state.planReview);
+        /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }>, plan?: string } | undefined} */ (
+            result.state.planReview
+        );
     assert(planReview, "Expected production Plan Review transaction state.");
     assert(
         planReview.lifecycleEvents?.map((event) => `${event.event}:${event.status}`).join(",") ===
@@ -67,8 +70,9 @@ function assertRealPlanReviewRevisionAndApproval(result) {
     assertEventIncludes(result, "workflow:durability:evidence-recorded");
     assertEventIncludes(result, "workflow:durability:terminal-ready");
     const durability =
-        /** @type {{ goldenFileExists?: boolean, trackedFiles?: string, deliveryLog?: string, deliveryEvidence?: string, status?: string, validatedExecutionCommit?: string, executionCommitPublished?: boolean, editorUsable?: boolean } | undefined} */ (result
-            .state.workflowDurability);
+        /** @type {{ goldenFileExists?: boolean, trackedFiles?: string, deliveryLog?: string, deliveryEvidence?: string, status?: string, validatedExecutionCommit?: string, executionCommitPublished?: boolean, editorUsable?: boolean } | undefined} */ (
+            result.state.workflowDurability
+        );
     assert(durability?.goldenFileExists === true, "Expected delivered Golden file to exist after Workflow Validation.");
     assert(
         String(durability?.trackedFiles || "").includes("golden-planned-change.txt"),
@@ -87,15 +91,22 @@ function assertRealPlanReviewRevisionAndApproval(result) {
         String(durability?.deliveryEvidence || "").includes("golden"),
         "Expected recorded delivery evidence content.",
     );
-    const statusLines = String(durability?.status || "").split("\n").filter(Boolean);
+    const statusLines = String(durability?.status || "")
+        .split("\n")
+        .filter(Boolean);
     assert(
         // Plus the Work Record the post-verification handoff writes under docs/, which
         // is a product output the user keeps or discards, not publication residue.
         statusLines.every((line) => {
             const path = line.slice(3).trim();
-            return line.endsWith("docs/plans/plan.md") || line.endsWith(".wld/internal/worktrees.json") ||
-                line.endsWith("docs/") || line.includes("docs/work-records/") || path === ".gitignore" ||
-                path === ".wld/settings.json";
+            return (
+                line.endsWith("docs/plans/plan.md") ||
+                line.endsWith(".wld/internal/worktrees.json") ||
+                line.endsWith("docs/") ||
+                line.includes("docs/work-records/") ||
+                path === ".gitignore" ||
+                path === ".wld/settings.json"
+            );
         }),
         `Expected only lifecycle/registry status after Direct Delivery publication; got ${statusLines.join("; ")}`,
     );
@@ -148,12 +159,14 @@ export const plannedChangeReviewRepairValidationScenario = {
             ordinal: 1,
             requiredTools: ["plan_written"],
             thinking: "Submit draft for Plan Review feedback.",
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "plan",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "plan",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "planner-submit-approval-round",
@@ -162,12 +175,14 @@ export const plannedChangeReviewRepairValidationScenario = {
             ordinal: 2,
             requiredTools: ["plan_written"],
             thinking: "Resubmit revised Plan for approval and execution.",
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "plan",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "plan",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "engineer-implements-plan",
@@ -191,10 +206,12 @@ export const plannedChangeReviewRepairValidationScenario = {
             ordinal: 2,
             requiredTools: ["task_completed"],
             thinking: "Report the completed and verified implementation.",
-            toolCalls: [{
-                name: "task_completed",
-                arguments: { message: "- Implemented Golden PLANNED_CHANGE and verified with true." },
-            }],
+            toolCalls: [
+                {
+                    name: "task_completed",
+                    arguments: { message: "- Implemented Golden PLANNED_CHANGE and verified with true." },
+                },
+            ],
         },
         {
             id: "semantic-reviewer-rejects-implementation-inspects-diff",
@@ -232,12 +249,14 @@ export const plannedChangeReviewRepairValidationScenario = {
                     arguments: {
                         approved: false,
                         feedback: "Repair required: add durable evidence.",
-                        findings: [{
-                            status: "new",
-                            title: "Missing durable evidence",
-                            requirement: "Plan",
-                            evidence: "golden-planned-change.txt",
-                        }],
+                        findings: [
+                            {
+                                status: "new",
+                                title: "Missing durable evidence",
+                                requirement: "Plan",
+                                evidence: "golden-planned-change.txt",
+                            },
+                        ],
                     },
                 },
             ],
@@ -249,10 +268,12 @@ export const plannedChangeReviewRepairValidationScenario = {
             ordinal: 3,
             requiredTools: ["write"],
             thinking: "Repair in the same active PLANNED_CHANGE workflow after reviewer rejection.",
-            toolCalls: [{
-                name: "write",
-                arguments: { path: "golden-planned-change.txt", content: "goldenrepaired" },
-            }],
+            toolCalls: [
+                {
+                    name: "write",
+                    arguments: { path: "golden-planned-change.txt", content: "goldenrepaired" },
+                },
+            ],
         },
         {
             id: "engineer-reports-review-repair-complete",
@@ -261,10 +282,12 @@ export const plannedChangeReviewRepairValidationScenario = {
             ordinal: 4,
             requiredTools: ["task_completed"],
             thinking: "Report the completed semantic-review repair.",
-            toolCalls: [{
-                name: "task_completed",
-                arguments: { message: "- Repaired Golden PLANNED_CHANGE after Reviewer rejection." },
-            }],
+            toolCalls: [
+                {
+                    name: "task_completed",
+                    arguments: { message: "- Repaired Golden PLANNED_CHANGE after Reviewer rejection." },
+                },
+            ],
         },
         {
             id: "semantic-reviewer-approves-repair-inspects-diff",
@@ -306,8 +329,7 @@ export const plannedChangeReviewRepairValidationScenario = {
         {
             type: "writeProjectFile",
             path: "docs/plans/plan.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Golden PLANNED_CHANGE\n\nDraft content.\n",
         },
         { type: "type", text: "submit the planned change for review" },
         { type: "enter" },
@@ -343,15 +365,16 @@ export const plannedChangeReviewRepairValidationScenario = {
         assertsGoldenCoverage("context:plan-engineer-identity", (result) => {
             assertEventIncludes(result, "runtime:agent:plan-engineer");
             const turns = Array.isArray(result.state.modelTurns) ? result.state.modelTurns : [];
-            const executionTurn = turns.find((turn) =>
-                turn?.runtimeAgent === "plan-engineer" &&
-                String(turn?.systemPrompt || "").includes("You are the Plan Engineer")
+            const executionTurn = turns.find(
+                (turn) =>
+                    turn?.runtimeAgent === "plan-engineer" &&
+                    String(turn?.systemPrompt || "").includes("You are the Plan Engineer"),
             );
             assert(
                 executionTurn,
-                `Expected actual Plan Engineer system prompt in model turns; got ${
-                    JSON.stringify(turns.map((turn) => ({ agent: turn?.agent, runtimeAgent: turn?.runtimeAgent })))
-                }`,
+                `Expected actual Plan Engineer system prompt in model turns; got ${JSON.stringify(
+                    turns.map((turn) => ({ agent: turn?.agent, runtimeAgent: turn?.runtimeAgent })),
+                )}`,
             );
             assert(
                 !String(executionTurn.systemPrompt || "").includes("Quick Fix Checklist"),
@@ -374,14 +397,16 @@ export const plannedChangeReviewRepairValidationScenario = {
         }),
         assertsGoldenCoverage("durable:plan-lifecycle", (result) => {
             const planReview =
-                /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }> } | undefined} */ (result
-                    .state.planReview);
+                /** @type {{ lifecycleEvents?: Array<{ event: string, status?: unknown }> } | undefined} */ (
+                    result.state.planReview
+                );
             assert(planReview?.lifecycleEvents?.some((event) => event.event === "review_feedback"));
             assert(planReview?.lifecycleEvents?.some((event) => event.event === "review_approved"));
         }),
         assertsGoldenCoverage("durable:worktree-publication", (result) => {
-            const durability =
-                /** @type {{ executionCommitPublished?: boolean } | undefined} */ (result.state.workflowDurability);
+            const durability = /** @type {{ executionCommitPublished?: boolean } | undefined} */ (
+                result.state.workflowDurability
+            );
             assert(durability?.executionCommitPublished === true, "Expected validated commit publication.");
         }),
         assertRuntimeEvent("durable:registry-cleanup", "workflow:durability:registry-clean"),
@@ -424,8 +449,7 @@ export const onboardingTutorialDeliveryScenario = {
     committedProjectFiles: [
         {
             path: "tutorial-behavior.test.ts",
-            text:
-                'import { tutorialLabel } from "./tutorial-behavior.ts";\nDeno.test("tutorial behavior", () => { if (tutorialLabel() !== "ready") throw new Error("not ready"); });\n',
+            text: 'import { test } from "node:test";\nimport { tutorialLabel } from "./tutorial-behavior.ts";\ntest("tutorial behavior", () => { if (tutorialLabel() !== "ready") throw new Error("not ready"); });\n',
         },
     ],
     coverage: [...plannedChangeReviewRepairValidationScenario.coverage, "tutorial:onboarding"],
@@ -434,8 +458,14 @@ export const onboardingTutorialDeliveryScenario = {
         { type: "select", promptIncludes: "Tutorial guidance", value: "continue" },
         ...plannedChangeReviewRepairValidationScenario.scriptedInteractions.map((interaction) =>
             interaction.type === "text" && interaction.promptIncludes.includes("runs this project's tests")
-                ? { ...interaction, value: "sleep 5; deno test tutorial-behavior.test.ts" }
-                : interaction
+                ? {
+                      ...interaction,
+                      value:
+                          process.platform === "win32"
+                              ? `sleep 5 & "${process.execPath}" test tutorial-behavior.test.ts`
+                              : `sleep 5; '${process.execPath.replaceAll("'", "'\\''")}' test tutorial-behavior.test.ts`,
+                  }
+                : interaction,
         ),
         { type: "select", promptIncludes: "were stopped before they finished", value: "stop" },
         { type: "select", promptIncludes: "Resume tutorial guidance", value: "resume" },
@@ -448,8 +478,7 @@ export const onboardingTutorialDeliveryScenario = {
             phase: "plan_review",
             ordinal: 1,
             thinking: "Inspect a bounded area and offer a small set of real improvements.",
-            text:
-                "Choose one small improvement: clarify the Quickstart tutorial, tighten one validation message, or improve one command description.",
+            text: "Choose one small improvement: clarify the Quickstart tutorial, tighten one validation message, or improve one command description.",
         },
         ...plannedChangeReviewRepairValidationScenario.script.map((turn) => {
             if (turn.agent === "planner" && turn.phase === "plan_review") {
@@ -597,16 +626,14 @@ export const onboardingTutorialDeliveryScenario = {
                 publicationBeforeReload?.remoteHead,
                 "Reload after verified delivery must not publish again.",
             );
-            for (
-                const id of [
-                    "choose-improvement",
-                    "plan-review",
-                    "implementation",
-                    "project-checks",
-                    "ai-review",
-                    "delivery",
-                ]
-            ) {
+            for (const id of [
+                "choose-improvement",
+                "plan-review",
+                "implementation",
+                "project-checks",
+                "ai-review",
+                "delivery",
+            ]) {
                 assertEquals(
                     tutorialContext?.shownExplanationIds?.filter((shown) => shown === id).length,
                     1,
@@ -654,7 +681,7 @@ export const plannedChangeCiRepairReentryScenario = {
     committedProjectFiles: [
         {
             path: ".wld/settings.json",
-            text: `${JSON.stringify({ verification_command: "test -f ci-fix.txt" }, null, 4)}\n`,
+            text: `${JSON.stringify({ verification_command: process.platform === "win32" ? "if exist ci-fix.txt (exit /b 0) else (exit /b 1)" : "test -f ci-fix.txt" }, null, 4)}\n`,
         },
     ],
     scriptedInteractions: [],
@@ -742,8 +769,9 @@ export const plannedChangeCiRepairReentryScenario = {
             assertScreenIncludes(result, "found no need for a fix");
             assertScreenIncludes(result, "Merging work into main");
             const durability =
-                /** @type {{ goldenFileExists?: boolean, trackedFiles?: string, executionCommitPublished?: boolean } | undefined} */ (result
-                    .state.workflowDurability);
+                /** @type {{ goldenFileExists?: boolean, trackedFiles?: string, executionCommitPublished?: boolean } | undefined} */ (
+                    result.state.workflowDurability
+                );
             assert(
                 durability?.executionCommitPublished === true,
                 "Expected delivery only after a passing CI run and an approved review.",
@@ -774,12 +802,17 @@ export const plannedChangeNonGitInPlaceScenario = {
     coverage: ["durable:non-git-in-place"],
     reviewDecisions: [{ approved: true, feedback: "Approved for non-Git execution.", approvalAction: "run" }],
     reviewedPlan: "# Non-Git PLANNED_CHANGE\n\nGolden non-Git content.\n",
-    initialProjectFiles: [
-        { path: "deno.json", text: '{"tasks":{"test":"deno eval \\"true\\""}}\n' },
-    ],
+    initialProjectFiles: [{ path: "package.json", text: '{"name":"golden-non-git-fixture","private":true}\n' }],
     scriptedInteractions: [
         { type: "select", promptIncludes: "Git is not available for this project", value: "proceed" },
-        { type: "text", promptIncludes: "Enter the command that runs this project's tests", value: "deno task test" },
+        {
+            type: "text",
+            promptIncludes: "Enter the command that runs this project's tests",
+            value:
+                process.platform === "win32"
+                    ? `"${process.execPath}" ${"-e"} "true"`
+                    : `'${process.execPath.replaceAll("'", "'\\''")}' ${"-e"} 'true'`,
+        },
     ],
     script: [
         {
@@ -789,12 +822,14 @@ export const plannedChangeNonGitInPlaceScenario = {
             ordinal: 1,
             requiredTools: ["plan_written"],
             thinking: "Submit non-Git Plan for approval.",
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "non-git-plan",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "non-git-plan",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "engineer-implements-non-git-plan",
@@ -820,8 +855,7 @@ export const plannedChangeNonGitInPlaceScenario = {
         {
             type: "writeProjectFile",
             path: "docs/plans/non-git-plan.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden non-Git PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Non-Git PLANNED_CHANGE\n\nDraft content.\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Golden non-Git PLANNED_CHANGE\naffectedPaths: []\nstatus: draft\n---\n# Non-Git PLANNED_CHANGE\n\nDraft content.\n",
         },
         { type: "type", text: "submit the non-git planned change for review" },
         { type: "enter" },
@@ -837,15 +871,17 @@ export const plannedChangeNonGitInPlaceScenario = {
     ],
     assertions: [
         assertsGoldenCoverage("durable:non-git-in-place", (result) => {
-            const interactions = /** @type {Array<{ interaction?: { value?: string } }> | undefined} */ (result.state
-                .scriptedInteractions);
+            const interactions = /** @type {Array<{ interaction?: { value?: string } }> | undefined} */ (
+                result.state.scriptedInteractions
+            );
             assert(
                 interactions?.some((entry) => entry.interaction?.value === "proceed"),
                 "Expected non-Git execution prompt to be handled through production interaction.",
             );
             const projectState =
-                /** @type {{ plans?: Array<{ attrs?: Record<string, unknown> | null }>, registryEntries?: unknown[] } | undefined} */ (result
-                    .state.projectState);
+                /** @type {{ plans?: Array<{ attrs?: Record<string, unknown> | null }>, registryEntries?: unknown[] } | undefined} */ (
+                    result.state.projectState
+                );
             const attrs = projectState?.plans?.[0]?.attrs;
             assert(
                 attrs?.executionMode === "non_git_in_place",
@@ -879,13 +915,16 @@ export const plannedChangeValidationFailureRetryScenario = {
     committedProjectFiles: [
         {
             path: ".wld/settings.json",
-            text: `${
-                JSON.stringify(
-                    { verification_command: 'test "$(cat golden-validation-retry.txt)" = repaired' },
-                    null,
-                    4,
-                )
-            }\n`,
+            text: `${JSON.stringify(
+                {
+                    verification_command:
+                        process.platform === "win32"
+                            ? `"${process.execPath}" ${"-e"} "import fs from 'node:fs'; import process from 'node:process'; if (fs.readFileSync('golden-validation-retry.txt', 'utf8') !== 'repaired') process.exit(1);"`
+                            : 'test "$(cat golden-validation-retry.txt)" = repaired',
+                },
+                null,
+                4,
+            )}\n`,
         },
     ],
     reviewDecisions: [{ approved: true, feedback: "Approved for retry coverage.", approvalAction: "run" }],
@@ -897,12 +936,14 @@ export const plannedChangeValidationFailureRetryScenario = {
             phase: "plan_review",
             ordinal: 1,
             requiredTools: ["plan_written"],
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "validation-retry",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "validation-retry",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "engineer-implements-validation-retry-failing",
@@ -934,9 +975,7 @@ export const plannedChangeValidationFailureRetryScenario = {
             planName: "validation-retry",
             ordinal: 3,
             requiredTools: ["bash"],
-            toolCalls: [
-                { name: "bash", arguments: { command: "printf repaired > golden-validation-retry.txt" } },
-            ],
+            toolCalls: [{ name: "bash", arguments: { command: "printf repaired > golden-validation-retry.txt" } }],
         },
         {
             id: "engineer-closes-validation-retry-repair",
@@ -945,10 +984,12 @@ export const plannedChangeValidationFailureRetryScenario = {
             planName: "validation-retry",
             ordinal: 4,
             requiredTools: ["task_completed"],
-            toolCalls: [{
-                name: "task_completed",
-                arguments: { message: "- Repaired retry fixture after CI failure." },
-            }],
+            toolCalls: [
+                {
+                    name: "task_completed",
+                    arguments: { message: "- Repaired retry fixture after CI failure." },
+                },
+            ],
         },
         {
             id: "reviewer-approves-validation-retry-inspects-diff",
@@ -977,17 +1018,14 @@ export const plannedChangeValidationFailureRetryScenario = {
             planName: "validation-retry",
             ordinal: 2,
             requiredTools: ["review_complete"],
-            toolCalls: [
-                { name: "review_complete", arguments: { approved: true, feedback: "Retry repair approved." } },
-            ],
+            toolCalls: [{ name: "review_complete", arguments: { approved: true, feedback: "Retry repair approved." } }],
         },
     ],
     actions: [
         {
             type: "writeProjectFile",
             path: "docs/plans/validation-retry.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation retry\naffectedPaths: []\nstatus: draft\n---\n# Validation retry\n\nDraft content.\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation retry\naffectedPaths: []\nstatus: draft\n---\n# Validation retry\n\nDraft content.\n",
         },
         { type: "type", text: "submit validation retry plan for review" },
         { type: "enter" },
@@ -1013,22 +1051,20 @@ export const plannedChangeValidationFailureRetryScenario = {
             assertScreenIncludes(result, "Running the tests in");
             assertScreenIncludes(result, "Repaired retry fixture after CI failure.");
             const publication =
-                /** @type {{ remotePlanAttrs?: Record<string, unknown>, controllerState?: import('../../../shared/workflow/controller-state.ts').WorkflowControllerState, registryEntries?: Array<unknown> }} */ (result
-                    .state.publication);
+                /** @type {{ remotePlanAttrs?: Record<string, unknown>, controllerState?: import('../../../shared/workflow/controller-state.ts').WorkflowControllerState, registryEntries?: Array<unknown> }} */ (
+                    result.state.publication
+                );
             const attrs = publication.remotePlanAttrs;
             const ciRuns = countVisibleOccurrences(result, "Running the tests in");
             assert(ciRuns >= 2, `Expected failed CI plus retry CI; saw ${ciRuns} CI runs.`);
-            const completedTurns = result.events.filter((event) =>
-                event === "runtime:tool:start:task_completed"
+            const completedTurns = result.events.filter(
+                (event) => event === "runtime:tool:start:task_completed",
             ).length;
             assert(
                 completedTurns >= 2,
                 `Expected initial implementation and repair task_completed turns; saw ${completedTurns}.`,
             );
-            assert(
-                attrs?.status === "verified",
-                `Expected retry scenario verified after repair; got ${attrs?.status}`,
-            );
+            assert(attrs?.status === "verified", `Expected retry scenario verified after repair; got ${attrs?.status}`);
             assert(attrs?.planId, "Expected Plan identity to remain populated after validation retry.");
             assert(
                 publication.controllerState?.validationCiAttempts === 0,
@@ -1054,13 +1090,18 @@ export const plannedChangeValidationExhaustedScenario = {
     timeoutMs: 180000,
     coverage: ["recovery:validation-exhausted"],
     committedProjectFiles: [
-        { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "false" }, null, 4)}\n` },
+        {
+            path: ".wld/settings.json",
+            text: `${JSON.stringify({ verification_command: process.platform === "win32" ? "exit /b 1" : "false" }, null, 4)}\n`,
+        },
     ],
-    reviewDecisions: [{
-        approved: true,
-        feedback: "Approved for exhausted validation coverage.",
-        approvalAction: "run",
-    }],
+    reviewDecisions: [
+        {
+            approved: true,
+            feedback: "Approved for exhausted validation coverage.",
+            approvalAction: "run",
+        },
+    ],
     reviewedPlan: "# Validation exhausted\n\nGolden exhausted validation content.\n",
     scriptedInteractions: [{ type: "select", promptIncludes: "tests for", value: "stop" }],
     script: [
@@ -1070,12 +1111,14 @@ export const plannedChangeValidationExhaustedScenario = {
             phase: "plan_review",
             ordinal: 1,
             requiredTools: ["plan_written"],
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "validation-exhausted",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "validation-exhausted",
+                    },
                 },
-            }],
+            ],
         },
         // The first pair is the implementation Engineer. The next three pairs
         // are the three focused CI repair cycles.
@@ -1101,10 +1144,12 @@ export const plannedChangeValidationExhaustedScenario = {
                 planName: "validation-exhausted",
                 ordinal: attempt * 2,
                 requiredTools: ["task_completed"],
-                toolCalls: [{
-                    name: "task_completed",
-                    arguments: { message: `- Attempt ${attempt} still cannot satisfy CI.` },
-                }],
+                toolCalls: [
+                    {
+                        name: "task_completed",
+                        arguments: { message: `- Attempt ${attempt} still cannot satisfy CI.` },
+                    },
+                ],
             },
         ]),
     ],
@@ -1112,8 +1157,7 @@ export const plannedChangeValidationExhaustedScenario = {
         {
             type: "writeProjectFile",
             path: "docs/plans/validation-exhausted.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation exhausted\naffectedPaths: []\nstatus: draft\n---\n# Validation exhausted\n\nDraft content.\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Validation exhausted\naffectedPaths: []\nstatus: draft\n---\n# Validation exhausted\n\nDraft content.\n",
         },
         { type: "type", text: "submit validation exhausted plan for review" },
         { type: "enter" },
@@ -1140,11 +1184,12 @@ export const plannedChangeValidationExhaustedScenario = {
             assertScreenIncludes(result, "Tests and CI failed");
             assertScreenIncludes(result, "tests for");
             const executionPlan =
-                /** @type {{ attrs?: Record<string, unknown> | null, registryEntry?: { status?: string } | null }} */ (result
-                    .state.executionPlan);
+                /** @type {{ attrs?: Record<string, unknown> | null, registryEntry?: { status?: string } | null }} */ (
+                    result.state.executionPlan
+                );
             const attrs = executionPlan.attrs;
-            const completedTurns = result.events.filter((event) =>
-                event === "runtime:tool:start:task_completed"
+            const completedTurns = result.events.filter(
+                (event) => event === "runtime:tool:start:task_completed",
             ).length;
             assert(
                 completedTurns >= 4,
@@ -1183,13 +1228,15 @@ export const plannedChangeFrontendIdentityScenario = {
     committedProjectFiles: [
         { path: ".wld/settings.json", text: `${JSON.stringify({ verification_command: "true" }, null, 4)}\n` },
     ],
-    reviewDecisions: [{
-        approved: true,
-        feedback: "Approved for Frontend execution.",
-        approvalAction: "run",
-        executionAgent: "frontend-engineer",
-        collaborationRecommendation: "autonomous",
-    }],
+    reviewDecisions: [
+        {
+            approved: true,
+            feedback: "Approved for Frontend execution.",
+            approvalAction: "run",
+            executionAgent: "frontend-engineer",
+            collaborationRecommendation: "autonomous",
+        },
+    ],
     reviewedPlan: "# Frontend identity\n\nGolden frontend identity content.\n",
     script: [
         {
@@ -1198,13 +1245,15 @@ export const plannedChangeFrontendIdentityScenario = {
             phase: "plan_review",
             ordinal: 1,
             requiredTools: ["plan_written"],
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "frontend-identity",
-                    executionAgent: "frontend-engineer",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "frontend-identity",
+                        executionAgent: "frontend-engineer",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "frontend-engineer-implements-plan",
@@ -1213,9 +1262,7 @@ export const plannedChangeFrontendIdentityScenario = {
             planName: "frontend-identity",
             ordinal: 1,
             requiredTools: ["write"],
-            toolCalls: [
-                { name: "write", arguments: { path: "golden-frontend-identity.txt", content: "frontend" } },
-            ],
+            toolCalls: [{ name: "write", arguments: { path: "golden-frontend-identity.txt", content: "frontend" } }],
         },
         {
             id: "frontend-engineer-reports-plan-complete",
@@ -1224,13 +1271,15 @@ export const plannedChangeFrontendIdentityScenario = {
             planName: "frontend-identity",
             ordinal: 2,
             requiredTools: ["task_completed"],
-            toolCalls: [{
-                name: "task_completed",
-                arguments: {
-                    message: "- Verified the frontend identity fixture with headed browser evidence.",
-                    browserPreflightOutcome: "externally_blocked",
+            toolCalls: [
+                {
+                    name: "task_completed",
+                    arguments: {
+                        message: "- Verified the frontend identity fixture with headed browser evidence.",
+                        browserPreflightOutcome: "externally_blocked",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "reviewer-approves-frontend-identity-inspects-diff",
@@ -1268,8 +1317,7 @@ export const plannedChangeFrontendIdentityScenario = {
         {
             type: "writeProjectFile",
             path: "docs/plans/frontend-identity.md",
-            text:
-                "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Frontend identity\naffectedPaths: []\nstatus: draft\nexecutionAgent: frontend-engineer\n---\n# Frontend identity\n\nDraft content.\n",
+            text: "---\nclassification: PLANNED_CHANGE\ncomplexity: LOW\nsummary: Frontend identity\naffectedPaths: []\nstatus: draft\nexecutionAgent: frontend-engineer\n---\n# Frontend identity\n\nDraft content.\n",
         },
         { type: "type", text: "submit frontend identity plan for review" },
         { type: "enter" },
@@ -1281,15 +1329,16 @@ export const plannedChangeFrontendIdentityScenario = {
         assertsGoldenCoverage("context:frontend-engineer-identity", (result) => {
             assertEventIncludes(result, "runtime:agent:frontend-engineer");
             const turns = Array.isArray(result.state.modelTurns) ? result.state.modelTurns : [];
-            const executionTurn = turns.find((turn) =>
-                turn?.runtimeAgent === "frontend-engineer" &&
-                String(turn?.systemPrompt || "").includes("You are the Frontend Engineer")
+            const executionTurn = turns.find(
+                (turn) =>
+                    turn?.runtimeAgent === "frontend-engineer" &&
+                    String(turn?.systemPrompt || "").includes("You are the Frontend Engineer"),
             );
             assert(
                 executionTurn,
-                `Expected actual Frontend Engineer system prompt in model turns; got ${
-                    JSON.stringify(turns.map((turn) => ({ agent: turn?.agent, runtimeAgent: turn?.runtimeAgent })))
-                }`,
+                `Expected actual Frontend Engineer system prompt in model turns; got ${JSON.stringify(
+                    turns.map((turn) => ({ agent: turn?.agent, runtimeAgent: turn?.runtimeAgent })),
+                )}`,
             );
             assertStringIncludes(String(executionTurn.systemPrompt || ""), "browserPreflightOutcome");
             assert(

@@ -1,28 +1,35 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-
-const decoder = new TextDecoder();
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { getCwd } from "../../constants.js";
+import process from "node:process";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 async function privateEntry(args: string[], input?: string) {
-    const child = new Deno.Command(Deno.execPath(), {
-        args: ["run", "-A", "--quiet", "src/cli.ts", ...args],
+    const child = spawnNativeProcess(process.execPath, {
+        cwd: getCwd(),
+        args: ["run", ...[], "src/cli.ts", ...args],
         stdin: input === undefined ? "null" : "piped",
         stdout: "piped",
         stderr: "piped",
-    }).spawn();
+    });
     if (input !== undefined) {
         const writer = child.stdin.getWriter();
         await writer.write(new TextEncoder().encode(input));
         await writer.close();
     }
-    const result = await child.output();
+    const [result, stdout, stderr] = await Promise.all([
+        child.status,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+    ]);
     return {
         code: result.code,
-        stdout: decoder.decode(result.stdout),
-        stderr: decoder.decode(result.stderr),
+        stdout,
+        stderr,
     };
 }
 
-Deno.test("remote preflight runs before ordinary CLI startup", async () => {
+test("remote preflight runs before ordinary CLI startup", async () => {
     const result = await privateEntry(["--remote-preflight"]);
     if (result.code === 0) {
         const identity = JSON.parse(result.stdout);
@@ -39,7 +46,7 @@ Deno.test("remote preflight runs before ordinary CLI startup", async () => {
     assertEquals(result.stderr.includes("Unknown option"), false);
 });
 
-Deno.test("remote view rejects malformed configuration before terminal or registry startup", async () => {
+test("remote view rejects malformed configuration before terminal or registry startup", async () => {
     const result = await privateEntry(["--remote-view"], "{}\n");
     assertEquals(result.code, 1);
     assertStringIncludes(result.stderr, "Invalid remote view host");
@@ -47,7 +54,7 @@ Deno.test("remote view rejects malformed configuration before terminal or regist
     assertEquals(result.stderr.includes("Unknown option"), false);
 });
 
-Deno.test("remote view renders supplied facts and exits on q", async () => {
+test("remote view renders supplied facts and exits on q", async () => {
     const config = {
         host: "remote-server",
         cwd: "/srv/project",
@@ -63,7 +70,7 @@ Deno.test("remote view renders supplied facts and exits on q", async () => {
     assertEquals(result.stderr, "");
 });
 
-Deno.test("remote view rejects an unfinished input header", async () => {
+test("remote view rejects an unfinished input header", async () => {
     const result = await privateEntry(["--remote-view"], '{"host":"server"}');
     assertEquals(result.code, 1);
     assertStringIncludes(result.stderr, "configuration is missing or incomplete");

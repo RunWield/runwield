@@ -125,7 +125,7 @@ export function createTuiInteractionAdapter(uiAPI, ports) {
                 const prompt = [
                     "Plan Deviation confirmation",
                     typeof request.prompt === "string" ? request.prompt.trim() : "",
-                ].filter(Boolean).join("\n");
+                ].filter(Boolean).join("\n\n");
                 const options = request.options && request.options.length ? request.options : [
                     { value: "confirm", label: "Confirm Plan Deviation" },
                     { value: "cancel", label: "Cancel; keep the original Plan requirement" },

@@ -1,5 +1,12 @@
+import { recoverWindowsRename } from "./native-file-replace-windows.ts";
+import { platform } from "node:process";
+import fsPromises from "node:fs/promises";
+import { open as fsOpen } from "node:fs/promises";
+import { type NativeFileLock, openNativeFileLock } from "./native-file-lock.ts";
+import { type Stats } from "node:fs";
+import { lstat as fsLstat, mkdir as fsMkdir, readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 /** Recover writes made through the old layout after ownership moved to internal/. */
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import type { ControllerRecord } from "./workflow/controller-registry.ts";
 import { inspectWorktreeRegistryAtPath, type WorktreeRegistryEntry } from "./worktree-registry.js";
 
@@ -22,10 +29,13 @@ export async function inspectReturningRegistry(source: string, destination: stri
     const additions: WorktreeRegistryEntry[] = [];
     for (const entry of legacy.entries) {
         if (current.entries.some((saved) => saved.id === entry.id)) continue;
-        const collision = current.entries.find((saved) =>
-            saved.path === entry.path || saved.branch === entry.branch ||
-            (saved.status !== "abandoned" && entry.status !== "abandoned" &&
-                ((saved.planId && saved.planId === entry.planId) || saved.planName === entry.planName))
+        const collision = current.entries.find(
+            (saved) =>
+                saved.path === entry.path ||
+                saved.branch === entry.branch ||
+                (saved.status !== "abandoned" &&
+                    entry.status !== "abandoned" &&
+                    ((saved.planId && saved.planId === entry.planId) || saved.planName === entry.planName)),
         );
         if (collision) {
             throw new Error(`Two saved attempts refer to Plan ${entry.planName}. Both copies have been kept.`);
@@ -35,11 +45,11 @@ export async function inspectReturningRegistry(source: string, destination: stri
     return { entries: [...current.entries, ...additions], additions };
 }
 
-async function info(path: string): Promise<Deno.FileInfo | null> {
+async function info(path: string): Promise<Stats | null> {
     try {
-        return await Deno.lstat(path);
+        return await fsLstat(path);
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) return null;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
         throw error;
     }
 }
@@ -48,48 +58,53 @@ async function info(path: string): Promise<Deno.FileInfo | null> {
 export async function hasRecoverableRuntimeFiles(path: string): Promise<boolean> {
     const stat = await info(path);
     if (!stat) return false;
-    if (!stat.isDirectory) return !path.endsWith(".lock");
-    for await (const entry of Deno.readDir(path)) {
+    if (!stat.isDirectory()) return !path.endsWith(".lock");
+    for await (const entry of await fsReaddir(path, { withFileTypes: true })) {
         if (await hasRecoverableRuntimeFiles(join(path, entry.name))) return true;
     }
     return false;
 }
 
 async function syncDirectory(path: string): Promise<void> {
-    const directory = await Deno.open(path, { read: true });
+    // Match runtime layout publication: Windows does not support directory fsync.
+    if (platform === "win32") return;
+    const directory = await fsOpen(path, "r");
     try {
         await directory.sync();
     } finally {
-        directory.close();
+        await directory.close();
     }
 }
 
 async function writeAtomic(path: string, bytes: Uint8Array, onlyIfMissing = false): Promise<void> {
-    await Deno.mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await fsMkdir(dirname(path), { recursive: true, mode: 0o700 });
     const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-    const file = await Deno.open(temporary, { createNew: true, write: true, mode: 0o600 });
+    const file = await fsOpen(temporary, "wx", 0o600);
     try {
-        let offset = 0;
-        while (offset < bytes.length) offset += await file.write(bytes.subarray(offset));
+        await file.writeFile(bytes);
         await file.sync();
     } finally {
-        file.close();
+        await file.close();
     }
     try {
         if (onlyIfMissing) {
             try {
                 // Atomic no-replace publication; never overwrite a concurrent writer.
-                await Deno.link(temporary, path);
+                await fsPromises.link(temporary, path);
             } catch (error) {
-                if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+                if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
             }
         } else {
-            await Deno.rename(temporary, path);
+            try {
+                await fsPromises.rename(temporary, path);
+            } catch (error) {
+                if (!(error instanceof Error && recoverWindowsRename(error, temporary, path))) throw error;
+            }
         }
         await syncDirectory(dirname(path));
     } finally {
-        await Deno.remove(temporary).catch((error) => {
-            if (!(error instanceof Deno.errors.NotFound)) throw error;
+        await fsPromises.rm(temporary).catch((error) => {
+            if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         });
     }
 }
@@ -110,8 +125,10 @@ async function preserve(path: string, bytes: Uint8Array, archiveRoot: string): P
 function parseController(bytes: Uint8Array): ControllerRecord | null {
     try {
         const record: ControllerRecord = JSON.parse(new TextDecoder().decode(bytes));
-        return record?.version === 1 && Number.isInteger(record.revision) && record.state &&
-                typeof record.planName === "string"
+        return record?.version === 1 &&
+            Number.isInteger(record.revision) &&
+            record.state &&
+            typeof record.planName === "string"
             ? record
             : null;
     } catch {
@@ -128,9 +145,14 @@ function recoverCompletionReport(currentBytes: Uint8Array, legacyBytes: Uint8Arr
     const current = parseController(currentBytes);
     const legacy = parseController(legacyBytes);
     if (
-        !current || !legacy || current.planId !== legacy.planId || current.planName !== legacy.planName ||
-        Object.hasOwn(current.state, "executionReport") || !legacy.state.executionReport
-    ) return currentBytes;
+        !current ||
+        !legacy ||
+        current.planId !== legacy.planId ||
+        current.planName !== legacy.planName ||
+        Object.hasOwn(current.state, "executionReport") ||
+        !legacy.state.executionReport
+    )
+        return currentBytes;
     const recovered: ControllerRecord = {
         ...current,
         revision: current.revision + 1,
@@ -147,13 +169,13 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 export async function recoverLegacyRuntimeFiles(paths: RuntimeRecoveryPaths): Promise<void> {
     const stat = await info(paths.source);
     if (!stat || paths.source.endsWith(".lock")) return;
-    if (stat.isSymlink || (!stat.isDirectory && !stat.isFile)) {
+    if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) {
         throw new Error("Runtime recovery encountered an unsafe filesystem path.");
     }
     const destinationStat = await info(paths.destination);
-    if (destinationStat?.isSymlink) throw new Error("Runtime recovery encountered a symbolic link.");
-    if (stat.isDirectory) {
-        for await (const entry of Deno.readDir(paths.source)) {
+    if (destinationStat?.isSymbolicLink()) throw new Error("Runtime recovery encountered a symbolic link.");
+    if (stat.isDirectory()) {
+        for await (const entry of await fsReaddir(paths.source, { withFileTypes: true })) {
             await recoverLegacyRuntimeFiles({
                 ...paths,
                 source: join(paths.source, entry.name),
@@ -162,17 +184,17 @@ export async function recoverLegacyRuntimeFiles(paths: RuntimeRecoveryPaths): Pr
         }
         return;
     }
-    const locks: Deno.FsFile[] = [];
+    const locks: NativeFileLock[] = [];
     try {
         if (paths.controller && paths.source.endsWith(".json")) {
             for (const path of [paths.source, paths.destination]) {
-                await Deno.mkdir(dirname(path), { recursive: true, mode: 0o700 });
-                const lock = await Deno.open(`${path}.lock`, { create: true, read: true, write: true });
+                await fsMkdir(dirname(path), { recursive: true, mode: 0o700 });
+                const lock = openNativeFileLock(`${path}.lock`);
                 locks.push(lock);
                 await lock.lock(true);
             }
         }
-        const legacy = await Deno.readFile(paths.source);
+        const legacy = await fsReadFile(paths.source);
         // The original is durable before either authority is touched. Replaying
         // after a crash uses the same content-addressed backup, not another copy.
         await preserve(paths.source, legacy, paths.archiveRoot);
@@ -180,7 +202,7 @@ export async function recoverLegacyRuntimeFiles(paths: RuntimeRecoveryPaths): Pr
             const recovered = await inspectReturningRegistry(paths.source, paths.destination);
             if (recovered.additions.length || !(await info(paths.destination))) {
                 if (await info(paths.destination)) {
-                    await preserve(paths.destination, await Deno.readFile(paths.destination), paths.archiveRoot);
+                    await preserve(paths.destination, await fsReadFile(paths.destination), paths.archiveRoot);
                 }
                 await writeAtomic(
                     paths.destination,
@@ -192,7 +214,7 @@ export async function recoverLegacyRuntimeFiles(paths: RuntimeRecoveryPaths): Pr
         } else if (!(await info(paths.destination))) {
             await writeAtomic(paths.destination, legacy, true);
         } else if (paths.controller) {
-            const current = await Deno.readFile(paths.destination);
+            const current = await fsReadFile(paths.destination);
             const recovered = recoverCompletionReport(current, legacy);
             if (!equalBytes(current, recovered)) {
                 await preserve(paths.destination, current, paths.archiveRoot);
@@ -200,8 +222,8 @@ export async function recoverLegacyRuntimeFiles(paths: RuntimeRecoveryPaths): Pr
             }
         }
         // A writer without a controller inode lock must not lose a new write.
-        if (equalBytes(await Deno.readFile(paths.source), legacy)) {
-            await Deno.remove(paths.source);
+        if (equalBytes(await fsReadFile(paths.source), legacy)) {
+            await fsPromises.rm(paths.source);
             await syncDirectory(dirname(paths.source));
         }
     } finally {

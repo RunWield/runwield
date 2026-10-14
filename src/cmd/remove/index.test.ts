@@ -1,6 +1,19 @@
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
+import {
+    mkdir as fsMkdir,
+    mkdtemp as fsMkdtemp,
+    realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { getCwd } from "../../constants.js";
+import process from "node:process";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { discoverAndRegisterThemes, getAvailableThemes, initRunWieldTheme, setTheme } from "../../ui/theme/theme.js";
@@ -15,20 +28,20 @@ interface RemoveCommandFixture {
 
 async function withRemoveCommandFixture(run: (fixture: RemoveCommandFixture) => Promise<void>): Promise<void> {
     await withProcessGlobalTestLock(async () => {
-        const previousHome = Deno.env.get("HOME");
-        const previousSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
-        const previousCwd = Deno.cwd();
-        const previousExitCode = Deno.exitCode;
-        const fixtureRoot = await Deno.makeTempDir({ prefix: "runwield-remove-command-" });
+        const previousHome = process.env["HOME"];
+        const previousSandboxHome = process.env["WLD_TEST_SANDBOX_HOME"];
+        const previousCwd = getCwd();
+        const previousExitCode = process.exitCode;
+        const fixtureRoot = await fsMkdtemp(join(tmpdir(), "runwield-remove-command-"));
         const homeDir = join(fixtureRoot, "home");
         const packageDir = join(fixtureRoot, "fixture-theme-package");
         const projectRoot = join(fixtureRoot, "project");
         await Promise.all([
-            Deno.mkdir(homeDir, { recursive: true }),
-            Deno.mkdir(join(packageDir, "themes"), { recursive: true }),
-            Deno.mkdir(projectRoot, { recursive: true }),
+            fsMkdir(homeDir, { recursive: true }),
+            fsMkdir(join(packageDir, "themes"), { recursive: true }),
+            fsMkdir(projectRoot, { recursive: true }),
         ]);
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(packageDir, "package.json"),
             JSON.stringify({
                 name: "fixture-theme-package",
@@ -36,7 +49,7 @@ async function withRemoveCommandFixture(run: (fixture: RemoveCommandFixture) => 
                 pi: { themes: ["themes/*.json"] },
             }),
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(packageDir, "themes", "fixture-theme.json"),
             JSON.stringify({
                 name: "fixture-theme",
@@ -44,14 +57,14 @@ async function withRemoveCommandFixture(run: (fixture: RemoveCommandFixture) => 
                 colors: { accent: "fixtureAccent" },
             }),
         );
-        const canonicalPackageDir = await Deno.realPath(packageDir);
-        const canonicalProjectRoot = await Deno.realPath(projectRoot);
+        const canonicalPackageDir = await fsRealpath(packageDir);
+        const canonicalProjectRoot = await fsRealpath(projectRoot);
 
         try {
-            Deno.env.set("HOME", homeDir);
-            Deno.env.set("WLD_TEST_SANDBOX_HOME", homeDir);
-            Deno.chdir(canonicalProjectRoot);
-            Deno.exitCode = 0;
+            process.env["HOME"] = homeDir;
+            process.env["WLD_TEST_SANDBOX_HOME"] = homeDir;
+            process.chdir(canonicalProjectRoot);
+            process.exitCode = 0;
             __resetSettingsForTests();
             initRunWieldTheme();
             await run({
@@ -63,13 +76,13 @@ async function withRemoveCommandFixture(run: (fixture: RemoveCommandFixture) => 
         } finally {
             initRunWieldTheme();
             __resetSettingsForTests();
-            Deno.chdir(previousCwd);
-            if (previousHome === undefined) Deno.env.delete("HOME");
-            else Deno.env.set("HOME", previousHome);
-            if (previousSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", previousSandboxHome);
-            Deno.exitCode = previousExitCode;
-            await Deno.remove(fixtureRoot, { recursive: true }).catch(() => {});
+            process.chdir(previousCwd);
+            if (previousHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = previousHome;
+            if (previousSandboxHome === undefined) delete process.env["WLD_TEST_SANDBOX_HOME"];
+            else process.env["WLD_TEST_SANDBOX_HOME"] = previousSandboxHome;
+            process.exitCode = previousExitCode;
+            await fsRm(fixtureRoot, { recursive: true }).catch(() => {});
         }
     });
 }
@@ -100,7 +113,7 @@ async function installFixturePackage(projectRoot: string, source: string): Promi
     await packageManager.installAndPersist(source);
 }
 
-Deno.test("runRemoveCommand unregisters a real local package and resets its active theme", async () => {
+test("runRemoveCommand unregisters a real local package and resets its active theme", async () => {
     await withRemoveCommandFixture(async ({ packageDir, projectRoot, source }) => {
         await installFixturePackage(projectRoot, source);
         const settings = getSettingsManager(projectRoot);
@@ -119,27 +132,27 @@ Deno.test("runRemoveCommand unregisters a real local package and resets its acti
         assertEquals(settings.getGlobalSettings().packages, []);
         assertEquals(settings.getTheme(), "catppuccin-mocha");
         assertEquals(getAvailableThemes().includes("fixture-theme"), false);
-        assert((await Deno.stat(join(packageDir, "themes", "fixture-theme.json"))).isFile);
-        assertEquals(Deno.exitCode, 0);
+        assert((await fsStat(join(packageDir, "themes", "fixture-theme.json"))).isFile());
+        assertEquals(process.exitCode, 0);
     });
 });
 
-Deno.test("runRemoveCommand reports a real local package that is not installed", async () => {
+test("runRemoveCommand reports a real local package that is not installed", async () => {
     await withRemoveCommandFixture(async ({ source }) => {
         const output = await captureConsole(() => runRemoveCommand([source]));
 
         assertEquals(output.errors, []);
         assertEquals(output.logs, [`Package "${source}" is not currently installed — nothing to remove.`]);
-        assertEquals(Deno.exitCode, 0);
+        assertEquals(process.exitCode, 0);
     });
 });
 
-Deno.test("runRemoveCommand reports usage without terminating the test process", async () => {
+test("runRemoveCommand reports usage without terminating the test process", async () => {
     await withRemoveCommandFixture(async () => {
         const output = await captureConsole(() => runRemoveCommand([]));
 
         assertEquals(output.logs, []);
         assertEquals(output.errors, ["Usage: wld remove <source>"]);
-        assertEquals(Deno.exitCode, 1);
+        assertEquals(process.exitCode, 1);
     });
 });

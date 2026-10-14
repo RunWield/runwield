@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import {
     deriveWorkflowContextFromExecutionWorkflow,
     normalizeWorkflowContext,
@@ -19,7 +20,7 @@ function makeSessionManager(entries = []) {
     }));
 }
 
-Deno.test("workflow context records latest triage and suppresses duplicates", () => {
+test("workflow context records latest triage and suppresses duplicates", () => {
     /** @type {Array<Record<string, unknown>>} */
     const entries = [];
     const sessionManager = makeSessionManager(entries);
@@ -35,7 +36,7 @@ Deno.test("workflow context records latest triage and suppresses duplicates", ()
     });
 });
 
-Deno.test("workflow context merges plan name and later triage clears stale plan", () => {
+test("workflow context merges plan name and later triage clears stale plan", () => {
     const sessionManager = makeSessionManager();
 
     recordWorkflowTriageContext(sessionManager, { routingIntent: "PROJECT", complexity: "HIGH" });
@@ -58,7 +59,7 @@ Deno.test("workflow context merges plan name and later triage clears stale plan"
     });
 });
 
-Deno.test("workflow context permits plan-only context", () => {
+test("workflow context permits plan-only context", () => {
     const sessionManager = makeSessionManager();
 
     recordWorkflowPlanName(sessionManager, "standalone-plan.md");
@@ -66,7 +67,7 @@ Deno.test("workflow context permits plan-only context", () => {
     assertEquals(readPersistedWorkflowContext(sessionManager), { planName: "standalone-plan" });
 });
 
-Deno.test("workflow context skips malformed latest markers and tolerates missing session manager", () => {
+test("workflow context skips malformed latest markers and tolerates missing session manager", () => {
     const sessionManager = makeSessionManager([
         {
             type: "custom",
@@ -84,7 +85,7 @@ Deno.test("workflow context skips malformed latest markers and tolerates missing
     assertEquals(recordWorkflowPlanName(null, "p"), { planName: "p" });
 });
 
-Deno.test("workflow context reads are fail-open when session entry access throws", () => {
+test("workflow context reads are fail-open when session entry access throws", () => {
     const sessionManager =
         /** @type {import('@earendil-works/pi-coding-agent').SessionManager} */ (/** @type {unknown} */ ({
             getBranch: () => {
@@ -96,7 +97,7 @@ Deno.test("workflow context reads are fail-open when session entry access throws
     assertEquals(recordWorkflowPlanName(sessionManager, "p"), { planName: "p" });
 });
 
-Deno.test("workflow context normalization accepts canonical intents and sanitized plan names", () => {
+test("workflow context normalization accepts canonical intents and sanitized plan names", () => {
     assertEquals(normalizeWorkflowPlanName(" docs/plans/example.md "), "example");
     assertEquals(normalizeWorkflowContext({ routingIntent: "operation", complexity: "low" }), {
         routingIntent: "OPERATION",
@@ -107,7 +108,7 @@ Deno.test("workflow context normalization accepts canonical intents and sanitize
     });
 });
 
-Deno.test("workflow context derives execution metadata with legacy feature normalization", () => {
+test("workflow context derives execution metadata with legacy feature normalization", () => {
     assertEquals(
         deriveWorkflowContextFromExecutionWorkflow({
             planName: "docs/plans/epic-name/footer-plan.md",
@@ -142,7 +143,7 @@ Deno.test("workflow context derives execution metadata with legacy feature norma
     );
 });
 
-Deno.test("workflow context retains validation and publication progress facts across Session projection", () => {
+test("workflow context retains validation and publication progress facts across Session projection", () => {
     const sessionManager = makeSessionManager();
     /** @type {Array<import('../workflow/workflow-presentation.ts').WorkflowProgressFact>} */
     const progressFacts = [
@@ -178,7 +179,7 @@ Deno.test("workflow context retains validation and publication progress facts ac
     });
 });
 
-Deno.test("workflow context derives current checkpoint facts from execution metadata", () => {
+test("workflow context derives current checkpoint facts from execution metadata", () => {
     assertEquals(
         deriveWorkflowContextFromExecutionWorkflow({
             planName: "recover-plan",
@@ -204,7 +205,7 @@ Deno.test("workflow context derives current checkpoint facts from execution meta
     );
 });
 
-Deno.test("workflow context records normalized execution context without duplicate markers", () => {
+test("workflow context records normalized execution context without duplicate markers", () => {
     const sessionManager = makeSessionManager();
     const context = { routingIntent: "FEATURE", complexity: "medium", planName: "docs/plans/footer-plan.md" };
 

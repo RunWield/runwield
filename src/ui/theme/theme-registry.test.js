@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { createThemeRegistry } from "./theme-registry.ts";
 
 /** @param {string} name */
@@ -6,7 +7,7 @@ function fakeTheme(name) {
     return /** @type {any} */ ({ name });
 }
 
-Deno.test("createThemeRegistry always keeps the default theme available", () => {
+test("createThemeRegistry always keeps the default theme available", () => {
     const defaultTheme = fakeTheme("catppuccin-mocha");
     const registry = createThemeRegistry({
         defaultTheme,
@@ -17,7 +18,7 @@ Deno.test("createThemeRegistry always keeps the default theme available", () => 
     assertEquals(registry.getAvailableThemes(), ["catppuccin-mocha"]);
 });
 
-Deno.test("createThemeRegistry does not allow external themes to override the built-in default", () => {
+test("createThemeRegistry does not allow external themes to override the built-in default", () => {
     const defaultTheme = fakeTheme("catppuccin-mocha");
     const externalDefault = fakeTheme("catppuccin-mocha");
     let current = /** @type {any} */ (null);
@@ -36,7 +37,7 @@ Deno.test("createThemeRegistry does not allow external themes to override the bu
     assertEquals(registry.getAvailableThemes(), ["catppuccin-mocha", "custom"]);
 });
 
-Deno.test("createThemeRegistry warns and keeps current theme when persisted theme is unavailable", () => {
+test("createThemeRegistry warns and keeps current theme when persisted theme is unavailable", () => {
     const defaultTheme = fakeTheme("catppuccin-mocha");
     const customTheme = fakeTheme("custom");
     let current = defaultTheme;
@@ -59,7 +60,7 @@ Deno.test("createThemeRegistry warns and keeps current theme when persisted them
     assertEquals(warnings, ['Persisted theme "missing" is not available. Keeping current theme.']);
 });
 
-Deno.test("createThemeRegistry notifies subscribers on successful swaps and isolates throwing listeners", () => {
+test("createThemeRegistry notifies subscribers on successful swaps and isolates throwing listeners", () => {
     const defaultTheme = fakeTheme("catppuccin-mocha");
     const customTheme = fakeTheme("custom");
     /** @type {string[]} */

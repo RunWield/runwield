@@ -1,3 +1,4 @@
+import process from "node:process";
 /**
  * @module cmd/theme
  * Implementation of the theme selection command.
@@ -54,7 +55,7 @@ export async function runThemeCommand(argv: string[], options: ThemeCommandOptio
         const available = getAvailableThemes();
         if (!available.includes(arg)) {
             console.error(`Theme "${arg}" not found. Run 'wld theme --list' to see available themes.`);
-            Deno.exitCode = 1;
+            process.exitCode = 1;
             return;
         }
         if (remotePersonalResourcesActive()) await setCustomSetting("theme", arg, "global");

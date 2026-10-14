@@ -1,13 +1,20 @@
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
+import { collectProcessOutput } from "../../testing/subprocess-output.ts";
+import { test } from "node:test";
+import { spawnNativeProcess } from "../foreground-process.ts";
+import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { makeValidationCheckpoint } from "../workflow/validation-checkpoint.ts";
 import { createLedger } from "../workflow/review-ledger.ts";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { CLI_PATH, DENO_CONFIG_PATH, EVIDENCE, spawnAttachedCli } from "./attached-test-fixture.ts";
 import { loadAttachedWorkflowRecord, locateAttachedWorkflows } from "./record-store.ts";
-import type { AttachedJsonObject } from "./operations.ts";
+import { type AttachedNextAction, type AttachedJsonObject } from "./operations.ts";
+import process from "node:process";
 
-Deno.test("fresh CLI processes restore the same validation handoff and replay completion", async () => {
+test("fresh CLI processes restore the same validation handoff and replay completion", async () => {
     const fixture = await attachedValidationFixture();
     try {
         const workflow = await fixture.status();
@@ -31,15 +38,15 @@ Deno.test("fresh CLI processes restore the same validation handoff and replay co
     }
 });
 
-Deno.test("CI runs outside the Attached record lock; concurrent calls are bounded and dead callers recover", async () => {
+test("CI runs outside the Attached record lock; concurrent calls are bounded and dead callers recover", async () => {
     const fixture = await attachedValidationFixture({
         command: "sh -c 'touch ci-started; while ! test -f release-ci; do sleep 0.1; done'",
     });
-    let child: Deno.ChildProcess | undefined;
+    let child: import("../foreground-process.ts").NativeProcess | undefined;
     try {
         const workflow = await fixture.status();
-        child = new Deno.Command(Deno.execPath(), {
-            args: [
+        child = spawnNativeProcess(process.execPath, {
+            args: runtimeSourceArgs([
                 "run",
                 "-A",
                 "--quiet",
@@ -49,12 +56,12 @@ Deno.test("CI runs outside the Attached record lock; concurrent calls are bounde
                 CLI_PATH,
                 "attached",
                 "start_validation",
-            ],
+            ]),
             cwd: fixture.root,
             stdin: "piped",
             stdout: "piped",
             stderr: "piped",
-        }).spawn();
+        });
         const writer = child.stdin.getWriter();
         await writer.write(
             new TextEncoder().encode(
@@ -69,7 +76,12 @@ Deno.test("CI runs outside the Attached record lock; concurrent calls are bounde
         );
         await writer.close();
         const deadline = Date.now() + 30_000;
-        while (!await Deno.stat(join(fixture.cwd, "ci-started")).then(() => true, () => false)) {
+        while (
+            !(await fsStat(join(fixture.cwd, "ci-started")).then(
+                () => true,
+                () => false,
+            ))
+        ) {
             assert(Date.now() < deadline, "CI did not start");
             await new Promise((resolve) => setTimeout(resolve, 50));
         }
@@ -82,9 +94,9 @@ Deno.test("CI runs outside the Attached record lock; concurrent calls are bounde
         assert(Date.now() - started < 5_000, "The record lock must not span CI");
         child.kill("SIGKILL");
         await child.status;
-        await child.output();
+        await collectProcessOutput(child);
         child = undefined;
-        await Deno.writeTextFile(join(fixture.cwd, "release-ci"), "continue");
+        await fsWriteFile(join(fixture.cwd, "release-ci"), "continue");
         const recovered = await fixture.call("start_validation", await fixture.status());
         assert(recovered.ok && recovered.workflow.nextAction.kind === "validation", JSON.stringify(recovered));
         const record = await loadAttachedWorkflowRecord(locateAttachedWorkflows(fixture.root), workflow.workflowId);
@@ -93,15 +105,15 @@ Deno.test("CI runs outside the Attached record lock; concurrent calls are bounde
     } finally {
         if (child) {
             child.kill("SIGKILL");
-            await child.output();
+            await collectProcessOutput(child);
         }
-        await Deno.writeTextFile(join(fixture.cwd, "release-ci"), "continue").catch(() => {});
+        await fsWriteFile(join(fixture.cwd, "release-ci"), "continue").catch(() => {});
         await new Promise((resolve) => setTimeout(resolve, 200));
         await fixture.close();
     }
 });
 
-Deno.test("fresh CLI workers complete CI repair, direct review, semantic repair, and verify-round approval", async () => {
+test("fresh CLI workers complete CI repair, direct review, semantic repair, and verify-round approval", async () => {
     const fixture = await attachedValidationFixture({
         attrs: {
             validationCheckpoint: makeValidationCheckpoint({
@@ -130,20 +142,18 @@ Deno.test("fresh CLI workers complete CI repair, direct review, semantic repair,
         };
         await call("start_validation", {});
         assert(workflow.nextAction.kind === "validation" && workflow.nextAction.request.kind === "repair");
-        await Deno.writeTextFile(join(fixture.cwd, "marker"), "fixed");
+        await fsWriteFile(join(fixture.cwd, "marker"), "fixed");
         await call("task_completed", { actionId: workflow.nextAction.actionId, message: "- Fixed CI marker." });
         let repaired = false;
         let verified = false;
         for (let round = 0; round < 6 && workflow.state === "validating"; round++) {
-            const action = workflow.nextAction;
+            const action: AttachedNextAction = workflow.nextAction;
             assert(action.kind === "validation" && action.request.kind === "reviewer");
             verified ||= action.request.reviewMode === "verify";
             const { parseDiffFiles } = await import("../workflow/review-diff.ts");
-            for (
-                const file of parseDiffFiles(
-                    action.request.requiredScope === "full" ? action.request.fullDiff : action.request.repairDiff,
-                )
-            ) {
+            for (const file of parseDiffFiles(
+                action.request.requiredScope === "full" ? action.request.fullDiff : action.request.repairDiff,
+            )) {
                 let offset = 0;
                 while (offset < file.byteLength) {
                     const read = await call("review_diff", {
@@ -163,22 +173,21 @@ Deno.test("fresh CLI workers complete CI repair, direct review, semantic repair,
                 ...(repaired
                     ? { approved: true, findings: [{ id: "R2-1", title: "Value", status: "fix_confirmed" }] }
                     : {
-                        approved: false,
-                        findings: [{
-                            title: "Value",
-                            status: "new",
-                            requirement: "Implement the value",
-                            evidence: "The value needs repair",
-                        }],
-                    }),
+                          approved: false,
+                          findings: [
+                              {
+                                  title: "Value",
+                                  status: "new",
+                                  requirement: "Implement the value",
+                                  evidence: "The value needs repair",
+                              },
+                          ],
+                      }),
             });
             if (!repaired) {
-                const repair = workflow.nextAction;
+                const repair: AttachedNextAction = workflow.nextAction;
                 assert(repair.kind === "validation" && repair.request.kind === "repair");
-                await Deno.writeTextFile(
-                    join(fixture.cwd, "implementation.ts"),
-                    "export const value = 2; // repaired\n",
-                );
+                await fsWriteFile(join(fixture.cwd, "implementation.ts"), "export const value = 2; // repaired\n");
                 await call("task_completed", {
                     actionId: repair.actionId,
                     message: "- R2-1 — fixed the value. Focused checks passed.",

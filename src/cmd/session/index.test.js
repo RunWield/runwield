@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { runSessionCommand } from "./index.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
 
@@ -14,13 +15,13 @@ function makeUi() {
     };
 }
 
-Deno.test("runSessionCommand reports a missing Runtime session", async () => {
+test("runSessionCommand reports a missing Runtime session", async () => {
     const { uiAPI, messages } = makeUi();
     await runSessionCommand([], { uiAPI });
     assertEquals(messages, ["Error: No active session."]);
 });
 
-Deno.test("runSessionCommand reports typed Runtime session-info failures", async () => {
+test("runSessionCommand reports typed Runtime session-info failures", async () => {
     const { uiAPI, messages } = makeUi();
     await runSessionCommand([], {
         uiAPI,
@@ -33,7 +34,7 @@ Deno.test("runSessionCommand reports typed Runtime session-info failures", async
     assertEquals(messages, ["Error: Session info is unavailable (committed_generation_unavailable)."]);
 });
 
-Deno.test("runSessionCommand formats the Runtime session-info projection", async () => {
+test("runSessionCommand formats the Runtime session-info projection", async () => {
     const { uiAPI, messages } = makeUi();
     await runSessionCommand([], {
         uiAPI,

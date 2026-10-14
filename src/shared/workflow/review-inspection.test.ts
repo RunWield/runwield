@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { getDiffCoverage, getFileDiff, parseDiffFiles } from "./review-diff.ts";
 import { type ReviewDiffSize, type ReviewDiffSpan, ReviewInspection } from "./review-inspection.ts";
 
@@ -10,7 +11,7 @@ const DIFF = "diff --git a/a b/a\n@@ -1 +1 @@\n-x\n+😀\n";
 const FILES: ReviewDiffSize[] = [{ scope: "repair", path: "a", byteLength: 40 }];
 const SPAN: ReviewDiffSpan = { scope: "repair", path: "a", start: 0, end: 40 };
 
-Deno.test("recorded inspection matches live pages for unread bytes and correction text", () => {
+test("recorded inspection matches live pages for unread bytes and correction text", () => {
     const entries = parseDiffFiles(DIFF);
     const live = new ReviewInspection(FILES);
     const spans: ReviewDiffSpan[] = [];
@@ -40,7 +41,7 @@ Deno.test("recorded inspection matches live pages for unread bytes and correctio
     );
 });
 
-Deno.test("recorded full coverage accepts overlaps and leaves no feedback", () => {
+test("recorded full coverage accepts overlaps and leaves no feedback", () => {
     const inspection = ReviewInspection.fromRecorded(FILES, "repair", [
         { ...SPAN, start: 20 },
         { ...SPAN, end: 25 },
@@ -52,25 +53,27 @@ Deno.test("recorded full coverage accepts overlaps and leaves no feedback", () =
     assertEquals(ReviewInspection.fromRecorded([], "full", []).unread(), []);
 });
 
-Deno.test("empty recorded coverage does not satisfy inspection", () => {
+test("empty recorded coverage does not satisfy inspection", () => {
     const inspection = ReviewInspection.fromRecorded(FILES, "repair", []);
     const expectedUnread = [{ ...SPAN, byteLength: 40 }];
     assertEquals(inspection.unread(), expectedUnread);
 });
 
-Deno.test("recorded coverage rejects another scope even if that scope exists in the diff", () => {
+test("recorded coverage rejects another scope even if that scope exists in the diff", () => {
     assertThrows(
         () =>
-            ReviewInspection.fromRecorded([...FILES, { ...FILES[0], scope: "full" }], "repair", [{
-                ...SPAN,
-                scope: "full",
-            }]),
+            ReviewInspection.fromRecorded([...FILES, { ...FILES[0], scope: "full" }], "repair", [
+                {
+                    ...SPAN,
+                    scope: "full",
+                },
+            ]),
         Error,
         "Invalid review coverage scope: full; required repair.",
     );
 });
 
-Deno.test("recorded coverage requires exact diff paths, not suffixes or other files", () => {
+test("recorded coverage requires exact diff paths, not suffixes or other files", () => {
     for (const path of ["missing", "../a", "", "b"]) {
         assertThrows(
             () => ReviewInspection.fromRecorded(FILES, "repair", [{ ...SPAN, path }]),
@@ -98,7 +101,7 @@ const BAD_RANGES: [string, number, number][] = [
     ["unsafe integer", 0, Number.MAX_SAFE_INTEGER + 1],
 ];
 for (const [label, start, end] of BAD_RANGES) {
-    Deno.test(`recorded coverage rejects ${label}`, () => {
+    test(`recorded coverage rejects ${label}`, () => {
         assertThrows(
             () => ReviewInspection.fromRecorded(FILES, "repair", [{ ...SPAN, start, end }]),
             Error,

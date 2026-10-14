@@ -1,0 +1,112 @@
+{
+    "extends": "./tsconfig.json",
+    "include": [
+        "src/**/*.ts",
+        "src/**/*.js"
+    ],
+    "exclude": [
+        "src/**/*.test.ts",
+        "src/**/*.test.js",
+        "src/**/*_test.ts",
+        "src/**/*_test.js",
+        "src/**/testing/**",
+        "src/**/fixtures/**",
+        "src/ui/tui/golden-scenarios/**",
+        "src/**/*-fixture.ts",
+        "src/**/*-test-helpers.*",
+        "src/**/*-test-dom.ts",
+        "src/shared/mcp/fixture-server.ts"
+    ],
+    "compilerOptions": {
+        "skipLibCheck": true,
+        "paths": {
+            "@modelcontextprotocol/sdk/client/streamableHttp": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.d.ts"
+            ],
+            "@modelcontextprotocol/sdk/server/webStandardStreamableHttp": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/server/webStandardStreamableHttp.d.ts"
+            ],
+            "@modelcontextprotocol/sdk/server/stdio": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.d.ts"
+            ],
+            "@modelcontextprotocol/sdk/types": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/types.d.ts"
+            ],
+            "@plannotator/ui/*": [
+                "./third_party/plannotator/packages/ui/*"
+            ],
+            "@plannotator/guide-viewer/*": [
+                "./third_party/plannotator/packages/guide-viewer/*"
+            ],
+            "@plannotator/core/*": [
+                "./third_party/plannotator/packages/core/*"
+            ],
+            "@plannotator/core/code-file": [
+                "./third_party/plannotator/packages/core/code-file.ts"
+            ],
+            "@plannotator/core/extract-code-paths": [
+                "./third_party/plannotator/packages/core/extract-code-paths.ts"
+            ],
+            "@plannotator/core/feedback-templates": [
+                "./third_party/plannotator/packages/core/feedback-templates.ts"
+            ],
+            "@plannotator/shared/*": [
+                "./third_party/plannotator/packages/shared/*"
+            ],
+            "@plannotator/ai/*": [
+                "./third_party/plannotator/packages/ai/*"
+            ],
+            "@pierre/diffs/worker/worker.js": [
+                "./src/ui/workspace/react/pierre-diffs-worker-shim.ts"
+            ],
+            "@modelcontextprotocol/sdk/client/stdio": [
+                "./node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.d.ts"
+            ]
+        }
+    },
+    "files": [
+        "scripts/check-bun-runtime.ts",
+        "scripts/bun-test-sandbox.ts",
+        "scripts/run-bun-tests.ts",
+        "scripts/check-portable-json.ts",
+        "src/shared/private-json-file.ts",
+        "src/shared/private-json-file.test.ts",
+        "src/shared/testing/private-json-file-cases.ts",
+        "scripts/run-bun-tests.test.ts",
+        "src/shared/process-liveness.ts",
+        "src/shared/process-liveness.test.ts",
+        "src/testing/process-global-lock.ts",
+        "src/testing/process-global-lock.test.ts",
+        "src/constants.js",
+        "src/constants-portable.test.ts",
+        "src/shared/session/file-session-storage.ts",
+        "src/shared/session/session-directory-name.ts",
+        "src/shared/session/file-session-storage.test.ts",
+        "src/shared/linux-process-group.ts",
+        "src/shared/remote/process-group.test.ts",
+        "src/shared/native-file-lock.ts",
+        "src/shared/native-file-lock.test.ts",
+        "src/shared/foreground-process.ts",
+        "src/shared/foreground-process.test.ts",
+        "src/shared/package-install.ts",
+        "src/shared/package-install.test.ts",
+        "src/shared/agent-browser-session.ts",
+        "src/shared/agent-browser-session.test.ts",
+        "src/cli-startup.test.ts",
+        "src/ui/tui/tui-crash-events.ts",
+        "src/ui/tui/tui-crash-events.test.ts",
+        "src/ui/tui/tui-crash-guards.ts",
+        "src/shared/http-server.ts",
+        "src/shared/http-server.test.ts",
+        "scripts/compile-bun.ts",
+        "scripts/check-bun-package.ts",
+        "src/shared/captured-process.ts",
+        "src/shared/lock-file-snapshot.ts",
+        "src/shared/primary-checkout.ts",
+        "src/shared/primary-checkout.test.ts",
+        "src/shared/git-evidence-cache.ts",
+        "src/shared/git-evidence-cache.test.ts",
+        "src/shared/git-test-fixture.ts",
+        "scripts/check-bun-provider.ts"
+    ]
+}

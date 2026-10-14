@@ -1,0 +1,350 @@
+[
+    {
+        "deno": "adjacent-overload-signatures",
+        "eslint": "@typescript-eslint/adjacent-overload-signatures"
+    },
+    {
+        "deno": "ban-ts-comment",
+        "eslint": "@typescript-eslint/ban-ts-comment"
+    },
+    {
+        "deno": "ban-types",
+        "eslint": "@typescript-eslint/no-restricted-types"
+    },
+    {
+        "deno": "ban-unknown-rule-code",
+        "eslint": null
+    },
+    {
+        "deno": "ban-untagged-ignore",
+        "eslint": "parity/ban-untagged-ignore"
+    },
+    {
+        "deno": "ban-unused-ignore",
+        "eslint": null
+    },
+    {
+        "deno": "constructor-super",
+        "eslint": "constructor-super"
+    },
+    {
+        "deno": "for-direction",
+        "eslint": "for-direction"
+    },
+    {
+        "deno": "getter-return",
+        "eslint": "getter-return"
+    },
+    {
+        "deno": "jsx-boolean-value",
+        "eslint": "react/jsx-boolean-value"
+    },
+    {
+        "deno": "jsx-button-has-type",
+        "eslint": "parity/jsx-button-has-type"
+    },
+    {
+        "deno": "jsx-curly-braces",
+        "eslint": "react/jsx-curly-brace-presence"
+    },
+    {
+        "deno": "jsx-key",
+        "eslint": "react/jsx-key"
+    },
+    {
+        "deno": "jsx-no-children-prop",
+        "eslint": "react/no-children-prop"
+    },
+    {
+        "deno": "jsx-no-comment-text-nodes",
+        "eslint": "react/jsx-no-comment-textnodes"
+    },
+    {
+        "deno": "jsx-no-duplicate-props",
+        "eslint": "react/jsx-no-duplicate-props"
+    },
+    {
+        "deno": "jsx-no-unescaped-entities",
+        "eslint": "react/no-unescaped-entities"
+    },
+    {
+        "deno": "jsx-no-useless-fragment",
+        "eslint": "react/jsx-no-useless-fragment"
+    },
+    {
+        "deno": "jsx-props-no-spread-multi",
+        "eslint": "react/jsx-props-no-spread-multi"
+    },
+    {
+        "deno": "jsx-void-dom-elements-no-children",
+        "eslint": "react/void-dom-elements-no-children"
+    },
+    {
+        "deno": "no-array-constructor",
+        "eslint": "@typescript-eslint/no-array-constructor"
+    },
+    {
+        "deno": "no-async-promise-executor",
+        "eslint": "no-async-promise-executor"
+    },
+    {
+        "deno": "no-await-in-sync-fn",
+        "eslint": "parity/no-await-in-sync-fn"
+    },
+    {
+        "deno": "no-case-declarations",
+        "eslint": "no-case-declarations"
+    },
+    {
+        "deno": "no-class-assign",
+        "eslint": "no-class-assign"
+    },
+    {
+        "deno": "no-compare-neg-zero",
+        "eslint": "no-compare-neg-zero"
+    },
+    {
+        "deno": "no-cond-assign",
+        "eslint": "no-cond-assign"
+    },
+    {
+        "deno": "no-const-assign",
+        "eslint": "no-const-assign"
+    },
+    {
+        "deno": "no-constant-condition",
+        "eslint": "no-constant-condition"
+    },
+    {
+        "deno": "no-control-regex",
+        "eslint": "no-control-regex"
+    },
+    {
+        "deno": "no-debugger",
+        "eslint": "no-debugger"
+    },
+    {
+        "deno": "no-delete-var",
+        "eslint": "no-delete-var"
+    },
+    {
+        "deno": "no-deprecated-deno-api",
+        "eslint": "parity/no-deprecated-deno-api"
+    },
+    {
+        "deno": "no-dupe-args",
+        "eslint": "no-dupe-args"
+    },
+    {
+        "deno": "no-dupe-class-members",
+        "eslint": "@typescript-eslint/no-dupe-class-members"
+    },
+    {
+        "deno": "no-dupe-else-if",
+        "eslint": "no-dupe-else-if"
+    },
+    {
+        "deno": "no-dupe-keys",
+        "eslint": "no-dupe-keys"
+    },
+    {
+        "deno": "no-duplicate-case",
+        "eslint": "no-duplicate-case"
+    },
+    {
+        "deno": "no-empty",
+        "eslint": "no-empty"
+    },
+    {
+        "deno": "no-empty-character-class",
+        "eslint": "no-empty-character-class"
+    },
+    {
+        "deno": "no-empty-enum",
+        "eslint": "parity/no-empty-enum"
+    },
+    {
+        "deno": "no-empty-interface",
+        "eslint": "@typescript-eslint/no-empty-object-type"
+    },
+    {
+        "deno": "no-empty-pattern",
+        "eslint": "no-empty-pattern"
+    },
+    {
+        "deno": "no-ex-assign",
+        "eslint": "no-ex-assign"
+    },
+    {
+        "deno": "no-explicit-any",
+        "eslint": "@typescript-eslint/no-explicit-any"
+    },
+    {
+        "deno": "no-extra-boolean-cast",
+        "eslint": "no-extra-boolean-cast"
+    },
+    {
+        "deno": "no-extra-non-null-assertion",
+        "eslint": "@typescript-eslint/no-extra-non-null-assertion"
+    },
+    {
+        "deno": "no-fallthrough",
+        "eslint": "no-fallthrough"
+    },
+    {
+        "deno": "no-func-assign",
+        "eslint": "no-func-assign"
+    },
+    {
+        "deno": "no-global-assign",
+        "eslint": "no-global-assign"
+    },
+    {
+        "deno": "no-import-assertions",
+        "eslint": "parity/no-import-assertions"
+    },
+    {
+        "deno": "no-import-assign",
+        "eslint": "no-import-assign"
+    },
+    {
+        "deno": "no-inner-declarations",
+        "eslint": "no-inner-declarations"
+    },
+    {
+        "deno": "no-invalid-regexp",
+        "eslint": "no-invalid-regexp"
+    },
+    {
+        "deno": "no-invalid-triple-slash-reference",
+        "eslint": "parity/no-invalid-triple-slash-reference"
+    },
+    {
+        "deno": "no-irregular-whitespace",
+        "eslint": "no-irregular-whitespace"
+    },
+    {
+        "deno": "no-misused-new",
+        "eslint": "@typescript-eslint/no-misused-new"
+    },
+    {
+        "deno": "no-namespace",
+        "eslint": "@typescript-eslint/no-namespace"
+    },
+    {
+        "deno": "no-new-symbol",
+        "eslint": "no-new-symbol"
+    },
+    {
+        "deno": "no-obj-calls",
+        "eslint": "no-obj-calls"
+    },
+    {
+        "deno": "no-octal",
+        "eslint": "no-octal"
+    },
+    {
+        "deno": "no-prototype-builtins",
+        "eslint": "no-prototype-builtins"
+    },
+    {
+        "deno": "no-redeclare",
+        "eslint": "@typescript-eslint/no-redeclare"
+    },
+    {
+        "deno": "no-regex-spaces",
+        "eslint": "no-regex-spaces"
+    },
+    {
+        "deno": "no-self-assign",
+        "eslint": "no-self-assign"
+    },
+    {
+        "deno": "no-setter-return",
+        "eslint": "no-setter-return"
+    },
+    {
+        "deno": "no-shadow-restricted-names",
+        "eslint": "no-shadow-restricted-names"
+    },
+    {
+        "deno": "no-sloppy-imports",
+        "eslint": null
+    },
+    {
+        "deno": "no-this-alias",
+        "eslint": "parity/no-this-alias"
+    },
+    {
+        "deno": "no-this-before-super",
+        "eslint": "no-this-before-super"
+    },
+    {
+        "deno": "no-unreachable",
+        "eslint": "no-unreachable"
+    },
+    {
+        "deno": "no-unsafe-finally",
+        "eslint": "no-unsafe-finally"
+    },
+    {
+        "deno": "no-unsafe-negation",
+        "eslint": "no-unsafe-negation"
+    },
+    {
+        "deno": "no-unused-labels",
+        "eslint": "no-unused-labels"
+    },
+    {
+        "deno": "no-unused-vars",
+        "eslint": "@typescript-eslint/no-unused-vars"
+    },
+    {
+        "deno": "no-unversioned-import",
+        "eslint": "parity/no-unversioned-import"
+    },
+    {
+        "deno": "no-var",
+        "eslint": "no-var"
+    },
+    {
+        "deno": "no-window",
+        "eslint": "parity/no-window"
+    },
+    {
+        "deno": "no-window-prefix",
+        "eslint": "parity/no-window-prefix"
+    },
+    {
+        "deno": "no-with",
+        "eslint": "no-with"
+    },
+    {
+        "deno": "prefer-as-const",
+        "eslint": "@typescript-eslint/prefer-as-const"
+    },
+    {
+        "deno": "prefer-const",
+        "eslint": "prefer-const"
+    },
+    {
+        "deno": "prefer-namespace-keyword",
+        "eslint": "@typescript-eslint/prefer-namespace-keyword"
+    },
+    {
+        "deno": "require-await",
+        "eslint": "require-await"
+    },
+    {
+        "deno": "require-yield",
+        "eslint": "require-yield"
+    },
+    {
+        "deno": "use-isnan",
+        "eslint": "use-isnan"
+    },
+    {
+        "deno": "valid-typeof",
+        "eslint": "valid-typeof"
+    }
+]

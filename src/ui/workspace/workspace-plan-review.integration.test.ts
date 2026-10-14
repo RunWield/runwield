@@ -1,12 +1,15 @@
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
-import { assert, assertFalse, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertFalse, assertStringIncludes } from "../../testing/assertions.ts";
 
 const ROUTE_PATH = "src/ui/workspace/pages/projects/[projectId]/plans/[planId].astro";
 const SESSION_CONTINUATION_PATH = "src/ui/workspace/server/session-continuation.js";
 const PLAN_REVIEW_SURFACE_PATH = "src/ui/workspace/react/PlanReviewSurface.tsx";
 
-Deno.test("stable Plan page switches from live review to settled Plan home", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
+test("stable Plan page switches from live review to settled Plan home", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
 
     assertStringIncludes(route, "PlanReviewSurface");
     assertStringIncludes(route, "PlanHomeSurface");
@@ -17,10 +20,10 @@ Deno.test("stable Plan page switches from live review to settled Plan home", asy
     assertStringIncludes(route, 'presentation="workspace"');
 });
 
-Deno.test("Workspace Plan review returns Feedback to the same live Core interaction", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
-    const surface = await Deno.readTextFile(PLAN_REVIEW_SURFACE_PATH);
-    const continuation = await Deno.readTextFile(SESSION_CONTINUATION_PATH);
+test("Workspace Plan review returns Feedback to the same live Core interaction", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
+    const surface = await fsReadFile(PLAN_REVIEW_SURFACE_PATH, "utf8");
+    const continuation = await fsReadFile(SESSION_CONTINUATION_PATH, "utf8");
 
     assertStringIncludes(route, "interactionAnswerUrl");
     assertStringIncludes(route, "/session-operations/${");
@@ -28,9 +31,9 @@ Deno.test("Workspace Plan review returns Feedback to the same live Core interact
     assertStringIncludes(continuation, "operation.answer.resolve(runtimeResponse)");
 });
 
-Deno.test("Workspace Plan review carries the initial Plan into revised review rounds", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
-    const continuation = await Deno.readTextFile(SESSION_CONTINUATION_PATH);
+test("Workspace Plan review carries the initial Plan into revised review rounds", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
+    const continuation = await fsReadFile(SESSION_CONTINUATION_PATH, "utf8");
 
     assertStringIncludes(continuation, 'previousPlan: typeof meta.previousPlan === "string"');
     assertStringIncludes(continuation, "planVersions: Array.isArray(meta.planVersions)");
@@ -38,9 +41,9 @@ Deno.test("Workspace Plan review carries the initial Plan into revised review ro
     assertStringIncludes(route, "planVersions: liveReview.request?.planReview?.planVersions");
 });
 
-Deno.test("lost review interaction prepares but does not send Agent resubmission", async () => {
-    const route = await Deno.readTextFile(ROUTE_PATH);
-    const continuation = await Deno.readTextFile(SESSION_CONTINUATION_PATH);
+test("lost review interaction prepares but does not send Agent resubmission", async () => {
+    const route = await fsReadFile(ROUTE_PATH, "utf8");
+    const continuation = await fsReadFile(SESSION_CONTINUATION_PATH, "utf8");
 
     assertStringIncludes(continuation, 'request.type === "plan_review"');
     assertStringIncludes(continuation, "operation=${");

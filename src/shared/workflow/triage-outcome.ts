@@ -13,7 +13,7 @@ export const TRIAGE_COMPLEXITIES = ["LOW", "MEDIUM", "HIGH"] as const;
 
 export type TriageRoutingIntent = NonNullable<ReturnType<typeof normalizeRoutingIntent>>;
 export type TriageWorkKind = NonNullable<ReturnType<typeof normalizeWorkKind>>;
-export type TriageComplexity = typeof TRIAGE_COMPLEXITIES[number];
+export type TriageComplexity = (typeof TRIAGE_COMPLEXITIES)[number];
 export type TriageClassification = Extract<TriageRoutingIntent, "PLANNED_CHANGE" | "PROJECT">;
 
 export interface TriageOutcome {

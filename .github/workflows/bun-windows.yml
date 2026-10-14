@@ -1,0 +1,237 @@
+name: Bun Windows qualification
+
+on:
+    pull_request:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: bun-windows-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    native:
+        name: Bun Windows ${{ matrix.arch }} ${{ matrix.phase }} ${{ matrix.shard || '' }}
+        # These exact labels are standard, free public-repository runners.
+        if: github.event.repository.private == false
+        runs-on: ${{ matrix.runner }}
+        timeout-minutes: ${{ matrix.phase == 'source' && 60 || 20 }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - runner: windows-2025
+                      arch: x64
+                      asset: x64
+                      phase: source
+                      shard: 1
+                    - runner: windows-2025
+                      arch: x64
+                      asset: x64
+                      phase: source
+                      shard: 2
+                    - runner: windows-2025
+                      arch: x64
+                      asset: x64
+                      phase: source
+                      shard: 3
+                    - runner: windows-2025
+                      arch: x64
+                      asset: x64
+                      phase: source
+                      shard: 4
+                    - runner: windows-2025
+                      arch: x64
+                      asset: x64
+                      phase: package
+                    - runner: windows-11-arm
+                      arch: arm64
+                      asset: aarch64
+                      phase: source
+                      shard: 1
+                    - runner: windows-11-arm
+                      arch: arm64
+                      asset: aarch64
+                      phase: source
+                      shard: 2
+                    - runner: windows-11-arm
+                      arch: arm64
+                      asset: aarch64
+                      phase: source
+                      shard: 3
+                    - runner: windows-11-arm
+                      arch: arm64
+                      asset: aarch64
+                      phase: source
+                      shard: 4
+                    - runner: windows-11-arm
+                      arch: arm64
+                      asset: aarch64
+                      phase: package
+        env:
+            WLD_TEST_CONCURRENCY: "4"
+            WLD_TEST_FILE_TIMEOUT_MS: "600000"
+        defaults:
+            run:
+                shell: pwsh
+        steps:
+            - name: Keep disposable Git worktree paths within Windows limits
+              run: |
+                  "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+                  "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+                  "TMPDIR=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+            - uses: actions/checkout@v5
+              with:
+                  submodules: recursive
+                  persist-credentials: false
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "24"
+            - name: Install pinned native Bun
+              run: |
+                  $asset = 'bun-windows-${{ matrix.asset }}'
+                  $zip = Join-Path $env:RUNNER_TEMP "$asset.zip"
+                  Invoke-WebRequest "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/$asset.zip" -OutFile $zip
+                  Expand-Archive $zip -DestinationPath $env:RUNNER_TEMP
+                  $bin = Join-Path $env:RUNNER_TEMP $asset
+                  $bin >> $env:GITHUB_PATH
+                  & "$bin/bun.exe" --version
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  & "$bin/bun.exe" -e 'if (process.arch !== "${{ matrix.arch }}" || process.versions.bun !== "1.4.3") throw new Error("Wrong native Bun runtime")'
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            - name: Install legacy Deno only for release interoperability
+              if: matrix.phase == 'package'
+              uses: denoland/setup-deno@v2
+              with:
+                  deno-version: v2.9.7
+            - name: Install archive tools for package tests
+              if: matrix.phase == 'source'
+              run: |
+                  choco install zip unzip --yes --no-progress
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            - name: Prepare pinned native OpenSSH SFTP boundary
+              if: matrix.phase == 'source'
+              run: |
+                  $asset = if ('${{ matrix.arch }}' -eq 'arm64') { 'OpenSSH-ARM64' } else { 'OpenSSH-Win64' }
+                  $hash = if ('${{ matrix.arch }}' -eq 'arm64') { '698c6aec31c1dd0fb996206e8741f4531a97355686b5431ef347d531b07fcd42' } else { '23f50f3458c4c5d0b12217c6a5ddfde0137210a30fa870e98b29827f7b43aba5' }
+                  $zip = Join-Path $env:RUNNER_TEMP "$asset.zip"
+                  Invoke-WebRequest "https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/$asset.zip" -OutFile $zip
+                  if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $hash) { throw 'OpenSSH archive checksum mismatch' }
+                  $destination = Join-Path $env:RUNNER_TEMP 'sftp-boundary'
+                  Expand-Archive $zip -DestinationPath $destination
+                  $server = Get-ChildItem $destination -Filter sftp-server.exe -Recurse | Select-Object -First 1
+                  if (!$server) { throw 'Native sftp-server.exe absent from archive' }
+                  $server.DirectoryName >> $env:GITHUB_PATH
+            - name: Setup Go for the real Snip subprocess tests
+              if: matrix.phase == 'source'
+              uses: actions/setup-go@v6
+              with:
+                  go-version: "1.25.x"
+                  cache: false
+            - name: Install pinned Snip
+              if: matrix.phase == 'source'
+              run: |
+                  $env:GOBIN = Join-Path $env:RUNNER_TEMP 'runwield-ci-bin'
+                  New-Item -ItemType Directory -Force $env:GOBIN | Out-Null
+                  go install github.com/edouard-claude/snip/cmd/snip@v0.24.1
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  $env:GOBIN >> $env:GITHUB_PATH
+            - name: Install separate frozen root and docs graphs
+              id: install
+              run: bun run install:locked
+            - name: Prepare generated source version for focused qualification
+              if: matrix.phase == 'package'
+              run: bun scripts/write-version.js
+            - name: Check all source and test types
+              if: matrix.phase == 'source'
+              run: bun run check
+            - name: Build embedded Workspace for source integration tests
+              if: matrix.phase == 'source'
+              run: bun run workspace:build
+            - name: Verify Bun and Deno share native lock ownership
+              if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
+              timeout-minutes: 2
+              run: bun scripts/check-lock-interoperability.ts (Get-Command deno).Source
+            - name: Compare native atomic replacement semantics
+              if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
+              run: |
+                  $probe = @'
+                  import * as fs from "node:fs"; import * as os from "node:os"; import * as path from "node:path";
+                  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rename-probe-"));
+                  const target = path.join(root, "state.json"), next = path.join(root, "next.json");
+                  let fd;
+                  try {
+                    fs.writeFileSync(target, "old"); fs.writeFileSync(next, "new");
+                    fd = fs.openSync(target, "r"); fs.renameSync(next, target);
+                    console.log(JSON.stringify({runtime: process.versions, current: fs.readFileSync(target, "utf8"), previous: fs.readFileSync(fd, "utf8")}));
+                  } catch (error) { console.log(JSON.stringify({runtime: process.versions, error: error.message})); }
+                  finally { if (fd !== undefined) fs.closeSync(fd); fs.rmSync(root, {recursive: true, force: true}); }
+                  '@
+                  node --eval $probe
+                  bun --eval $probe
+                  deno eval $probe
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            - name: Run complete isolated Bun test inventory
+              if: ${{ matrix.phase == 'source' && !cancelled() && steps.install.outcome == 'success' }}
+              timeout-minutes: 40
+              run: |
+                  $files = Get-Content scripts/bun-test-files.json -Raw | ConvertFrom-Json
+                  $selected = for ($i = 0; $i -lt $files.Count; $i++) {
+                    if ($i % 4 -eq ${{ matrix.shard }} - 1) { $files[$i] }
+                  }
+                  Write-Host "Qualifying $($selected.Count) of $($files.Count) files in shard ${{ matrix.shard }}/4"
+                  bun scripts/run-bun-tests.ts @selected
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            - name: Qualify native locking, process trees and compiled identity
+              if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
+              timeout-minutes: 12
+              run: bun scripts/run-bun-tests.ts src/shared/native-file-lock.test.ts src/shared/foreground-process.test.ts src/shared/runtime-identity.test.ts src/shared/sqlite.test.ts src/shared/private-json-file.test.ts scripts/run-bun-tests.test.ts src/cmd/load-plan/reopen-plan-review-worktree.integration.test.ts src/shared/primary-checkout.test.ts src/cmd/load-plan/primary-plan-recovery.test.ts src/cmd/load-plan/plan-authority.integration.test.ts src/cmd/load-plan/legacy-validation.integration.test.ts scripts/install-platforms.test.js scripts/install-integrity.test.js scripts/install-interaction.test.js scripts/pre-commit-hook.test.ts scripts/docs-workflow.test.ts scripts/public-docs.test.ts src/shared/owner-coordination/database.test.js src/shared/session/live-session-connection.test.ts src/shared/session/live-session-events.test.ts src/testing/workflow-binary-fixtures.test.ts src/shared/remote/entry-isolation.test.ts
+            - name: Compile native executable and embedded Workspace
+              id: compile
+              if: ${{ matrix.phase == 'package' && !cancelled() && steps.install.outcome == 'success' }}
+              timeout-minutes: 10
+              run: bun run compile --output bin/wld-bun.exe --target bun-windows-${{ matrix.arch }}
+            - name: Qualify relocated package
+              if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+              timeout-minutes: 5
+              run: bun run check:package:bun bin/wld-bun.exe
+            - name: Qualify local provider and terminal restoration
+              if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+              timeout-minutes: 5
+              run: bun run check:provider:bun bin/wld-bun.exe
+            - name: Collect bounded Golden failure diagnostics
+              if: ${{ always() && matrix.phase == 'source' }}
+              run: |
+                  $destination = '.ci-cache/windows-golden-evidence'
+                  New-Item -ItemType Directory -Force $destination | Out-Null
+                  $bytes = 0
+                  $count = 0
+                  $roots = Get-ChildItem $env:RUNNER_TEMP -Directory -Filter 'rw-*'
+                  foreach ($root in $roots) {
+                    $files = Get-ChildItem $root.FullName -File -Recurse -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Name -in @('child-diagnostics.json', 'diagnostics.json', 'timeout-diagnostics.json', 'heartbeat.json') -and $_.DirectoryName -like '*runwield-golden-tui-*' }
+                    foreach ($file in $files) {
+                      if ($file.Length -gt 5MB -or $bytes + $file.Length -gt 20MB -or $count -ge 100) {
+                        Write-Warning "Diagnostic retention limit: $($file.FullName)"
+                        continue
+                      }
+                      Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $destination "$($file.Directory.Name)-$($file.Name)")
+                      $bytes += $file.Length
+                      $count++
+                    }
+                  }
+                  Write-Host "Retained $count Golden diagnostic files ($bytes bytes)"
+            - name: Retain bounded qualification evidence
+              if: always()
+              uses: actions/upload-artifact@v5
+              with:
+                  name: bun-windows-${{ matrix.arch }}-${{ matrix.phase }}-${{ matrix.shard || 0 }}-${{ github.run_attempt }}
+                  retention-days: 3
+                  include-hidden-files: true
+                  if-no-files-found: warn
+                  path: |
+                      .ci-cache/bun-report-*/
+                      .ci-cache/windows-golden-evidence/
+                      bin/*.build.json

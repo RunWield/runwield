@@ -1,5 +1,8 @@
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { tmpdir } from "node:os";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { loadPlan, savePlan } from "../../plan-store.js";
@@ -14,10 +17,10 @@ import { ownerProjectPlanProgressApi } from "./routes/owner-api.js";
 const repository = defineCommittedGitFixture({ ".gitignore": ".wld/internal/\n", "implementation.txt": "before\n" });
 
 for (const status of ["reviewed", "ready_for_decomposition"]) {
-    Deno.test(`Workspace continuation routes ${status} to its interactive workflow`, async () => {
+    test(`Workspace continuation routes ${status} to its interactive workflow`, async () => {
         await withRuntimeCommandFixture("workspace-gates-", async ({ setModelResponseFactory }) => {
             const root = await repository.checkout();
-            const worktreeRoot = await Deno.makeTempDir({ prefix: "workspace-gate-tree-" });
+            const worktreeRoot = await fsMkdtemp(join(tmpdir(), "workspace-gate-tree-"));
             const store = openOwnerCoordinationStore();
             const project = store.registerProject({ root });
             const runtime = createSessionRuntime({ sessionStore: store });
@@ -51,7 +54,7 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                         planId,
                         worktreeRoot,
                     });
-                    await Deno.writeTextFile(join(tree.path, "implementation.txt"), "implemented\n");
+                    await fsWriteFile(join(tree.path, "implementation.txt"), "implemented\n");
                     const plan = await loadPlan(tree.path, name);
                     await savePlan(tree.path, name, body, {
                         ...plan.attrs,
@@ -177,8 +180,8 @@ for (const status of ["reviewed", "ready_for_decomposition"]) {
                 service.close();
                 await runtime.closeAllSessionsWhenIdle();
                 store.close();
-                await Deno.remove(worktreeRoot, { recursive: true });
-                await Deno.remove(root, { recursive: true });
+                await fsRm(worktreeRoot, { recursive: true });
+                await fsRm(root, { recursive: true });
             }
         });
     });

@@ -1,4 +1,6 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { type GitHubCliPort, runShareCommand } from "./index.ts";
@@ -35,7 +37,7 @@ function createGitHubFixture(options: { failAt?: "version" | "auth" | "gist"; em
                 const invocation: GitHubInvocation = { args: [...args] };
                 invocations.push(invocation);
                 const stage = args[0] === "--version" ? "version" : args[0] === "auth" ? "auth" : "gist";
-                if (stage === "gist") invocation.exportedSession = await Deno.readTextFile(args.at(-1) || "");
+                if (stage === "gist") invocation.exportedSession = await fsReadFile(args.at(-1) || "", "utf8");
                 if (options.failAt === stage) {
                     return { success: false, stdout: "", stderr: `${stage} failed` };
                 }
@@ -50,10 +52,10 @@ function createGitHubFixture(options: { failAt?: "version" | "auth" | "gist"; em
 }
 
 async function assertRemoved(path: string): Promise<void> {
-    await assertRejects(() => Deno.stat(path), Deno.errors.NotFound);
+    await assertRejects(() => fsStat(path), Error, "ENOENT");
 }
 
-Deno.test("share exports a real persisted Runtime session for the external GitHub CLI", async () => {
+test("share exports a real persisted Runtime session for the external GitHub CLI", async () => {
     await withRuntimeCommandFixture("share-command-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
@@ -83,7 +85,7 @@ Deno.test("share exports a real persisted Runtime session for the external GitHu
     });
 });
 
-Deno.test("share reports GitHub CLI preflight failures before exporting the real session", async () => {
+test("share reports GitHub CLI preflight failures before exporting the real session", async () => {
     await withRuntimeCommandFixture("share-preflight-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
@@ -118,7 +120,7 @@ Deno.test("share reports GitHub CLI preflight failures before exporting the real
     });
 });
 
-Deno.test("share cleans the real exported fixture when gist creation fails", async () => {
+test("share cleans the real exported fixture when gist creation fails", async () => {
     await withRuntimeCommandFixture("share-gist-failure-", async ({ projectRoot }) => {
         const runtime = createSessionRuntime();
         const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
@@ -141,7 +143,7 @@ Deno.test("share cleans the real exported fixture when gist creation fails", asy
     });
 });
 
-Deno.test("share requires UI and a real active Runtime session", async () => {
+test("share requires UI and a real active Runtime session", async () => {
     await assertRejects(
         () => runShareCommand([], { githubCli: createGitHubFixture().port }),
         Error,

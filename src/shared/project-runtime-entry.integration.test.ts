@@ -1,5 +1,16 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { rejects } from "node:assert/strict";
+import { test } from "node:test";
+import {
+    lstat as fsLstat,
+    mkdir as fsMkdir,
+    readFile as fsReadFile,
+    realpath as fsRealpath,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { env } from "node:process";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
 import {
@@ -11,15 +22,15 @@ import { listEntries } from "./worktree-registry.js";
 
 const fixture = defineCommittedGitFixture({ "README.md": "# runtime entry\n" });
 
-Deno.test("Project Runtime Entry adopts legacy registry before normal registry reads", async () => {
+test("Project Runtime Entry adopts legacy registry before normal registry reads", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
+        const originalSandboxHome = env.WLD_TEST_SANDBOX_HOME;
         const projectRoot = await fixture.checkout({ prefix: "runwield-runtime-entry-adopt-" });
         try {
-            Deno.env.delete("WLD_TEST_SANDBOX_HOME");
+            delete env.WLD_TEST_SANDBOX_HOME;
             const legacyPath = join(projectRoot, ".wld", "worktrees.json");
-            await Deno.mkdir(dirname(legacyPath), { recursive: true });
-            await Deno.writeTextFile(
+            await fsMkdir(dirname(legacyPath), { recursive: true });
+            await fsWriteFile(
                 legacyPath,
                 `${
                     JSON.stringify(
@@ -47,36 +58,36 @@ Deno.test("Project Runtime Entry adopts legacy registry before normal registry r
 
             const entries = await listEntries(projectRoot, { migrate: false });
             const layout = resolveProjectRuntimeLayout(projectRoot);
-            const markerBefore = await Deno.readTextFile(layout.primary.layoutMarkerPath);
+            const markerBefore = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
             await enterProjectRuntime(projectRoot);
-            const markerAfter = await Deno.readTextFile(layout.primary.layoutMarkerPath);
+            const markerAfter = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
 
             assertEquals(entries.map((entry) => entry.id), ["entry-1"]);
             assertEquals(markerAfter, markerBefore);
-            await assertRejects(() => Deno.lstat(legacyPath), Deno.errors.NotFound);
+            await rejects(() => fsLstat(legacyPath), { code: "ENOENT" });
         } finally {
-            if (originalSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", originalSandboxHome);
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+            if (originalSandboxHome === undefined) delete env.WLD_TEST_SANDBOX_HOME;
+            else env.WLD_TEST_SANDBOX_HOME = originalSandboxHome;
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
         }
     });
 });
 
-Deno.test("Project Runtime Entry reconciles gitignore and reports broad wld rules", async () => {
+test("Project Runtime Entry reconciles gitignore and reports broad wld rules", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
+        const originalSandboxHome = env.WLD_TEST_SANDBOX_HOME;
         const projectRoot = await fixture.checkout({ prefix: "runwield-runtime-entry-gitignore-" });
         const originalWarn = console.warn;
         const warnings: string[] = [];
         try {
-            Deno.env.delete("WLD_TEST_SANDBOX_HOME");
+            delete env.WLD_TEST_SANDBOX_HOME;
             console.warn = (message) => warnings.push(String(message));
-            await Deno.writeTextFile(join(projectRoot, ".gitignore"), ".wld/\n.wld/plan-locks\n");
+            await fsWriteFile(join(projectRoot, ".gitignore"), ".wld/\n.wld/plan-locks\n");
 
             await enterProjectRuntime(projectRoot);
-            const first = await Deno.readTextFile(join(projectRoot, ".gitignore"));
+            const first = await fsReadFile(join(projectRoot, ".gitignore"), "utf8");
             await enterProjectRuntime(projectRoot);
-            const second = await Deno.readTextFile(join(projectRoot, ".gitignore"));
+            const second = await fsReadFile(join(projectRoot, ".gitignore"), "utf8");
 
             assertEquals(
                 first,
@@ -84,21 +95,21 @@ Deno.test("Project Runtime Entry reconciles gitignore and reports broad wld rule
             );
             assertEquals(second, first);
             assertStringIncludes(warnings[0], ".wld/settings.json");
-            assertStringIncludes(warnings[0], join(await Deno.realPath(projectRoot), ".gitignore"));
+            assertStringIncludes(warnings[0], join(await fsRealpath(projectRoot), ".gitignore"));
             await Promise.all([enterProjectRuntime(projectRoot), enterProjectRuntime(projectRoot)]);
-            await Deno.writeTextFile(join(projectRoot, ".gitignore"), `${first}# Unrelated edit\n`);
+            await fsWriteFile(join(projectRoot, ".gitignore"), `${first}# Unrelated edit\n`);
             await enterProjectRuntime(projectRoot);
             assertEquals(warnings.length, 1);
         } finally {
             console.warn = originalWarn;
-            if (originalSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", originalSandboxHome);
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+            if (originalSandboxHome === undefined) delete env.WLD_TEST_SANDBOX_HOME;
+            else env.WLD_TEST_SANDBOX_HOME = originalSandboxHome;
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
         }
     });
 });
 
-Deno.test("Project Runtime Entry reports changed warnings independently per project", async () => {
+test("Project Runtime Entry reports changed warnings independently per project", async () => {
     await withProcessGlobalTestLock(async () => {
         const firstRoot = await fixture.checkout({ prefix: "runwield-ignore-warning-first-" });
         const secondRoot = await fixture.checkout({ prefix: "runwield-ignore-warning-second-" });
@@ -107,43 +118,43 @@ Deno.test("Project Runtime Entry reports changed warnings independently per proj
         try {
             console.warn = (message) => warnings.push(String(message));
             for (const root of [firstRoot, secondRoot]) {
-                await Deno.writeTextFile(join(root, ".gitignore"), ".wld/\n");
+                await fsWriteFile(join(root, ".gitignore"), ".wld/\n");
                 await enterProjectRuntime(root);
             }
             assertEquals(warnings.length, 2);
-            assertStringIncludes(warnings[0], join(await Deno.realPath(firstRoot), ".gitignore"));
-            assertStringIncludes(warnings[1], join(await Deno.realPath(secondRoot), ".gitignore"));
+            assertStringIncludes(warnings[0], join(await fsRealpath(firstRoot), ".gitignore"));
+            assertStringIncludes(warnings[1], join(await fsRealpath(secondRoot), ".gitignore"));
 
-            await Deno.writeTextFile(join(firstRoot, ".gitignore"), "/.wld/\n");
+            await fsWriteFile(join(firstRoot, ".gitignore"), "/.wld/\n");
             await enterProjectRuntime(firstRoot);
             assertEquals(warnings.length, 3);
             assertStringIncludes(warnings[2], "rule /.wld/");
 
-            await Deno.writeTextFile(join(firstRoot, ".gitignore"), "");
+            await fsWriteFile(join(firstRoot, ".gitignore"), "");
             await enterProjectRuntime(firstRoot);
             assertEquals(warnings.length, 3);
-            await Deno.writeTextFile(join(firstRoot, ".gitignore"), "/.wld/\n");
+            await fsWriteFile(join(firstRoot, ".gitignore"), "/.wld/\n");
             await enterProjectRuntime(firstRoot);
             await enterProjectRuntime(secondRoot);
             assertEquals(warnings.length, 4);
             assertStringIncludes(warnings[3], "rule /.wld/");
         } finally {
             console.warn = originalWarn;
-            await Deno.remove(firstRoot, { recursive: true });
-            await Deno.remove(secondRoot, { recursive: true });
+            await fsRm(firstRoot, { recursive: true });
+            await fsRm(secondRoot, { recursive: true });
         }
     });
 });
 
-Deno.test("Project Runtime Entry refusal stops direct normal registry access", async () => {
+test("Project Runtime Entry refusal stops direct normal registry access", async () => {
     await withProcessGlobalTestLock(async () => {
-        const originalSandboxHome = Deno.env.get("WLD_TEST_SANDBOX_HOME");
+        const originalSandboxHome = env.WLD_TEST_SANDBOX_HOME;
         const projectRoot = await fixture.checkout({ prefix: "runwield-runtime-entry-refuse-" });
         try {
-            Deno.env.delete("WLD_TEST_SANDBOX_HOME");
+            delete env.WLD_TEST_SANDBOX_HOME;
             const legacyPath = join(projectRoot, ".wld", "worktrees.json");
-            await Deno.mkdir(dirname(legacyPath), { recursive: true });
-            await Deno.writeTextFile(legacyPath, "null\n");
+            await fsMkdir(dirname(legacyPath), { recursive: true });
+            await fsWriteFile(legacyPath, "null\n");
 
             const refusal = await assertRejects(
                 () => listEntries(projectRoot, { migrate: false }),
@@ -152,13 +163,13 @@ Deno.test("Project Runtime Entry refusal stops direct normal registry access", a
             const layout = resolveProjectRuntimeLayout(projectRoot);
 
             assertEquals(refusal.reason, "malformed_registry");
-            assertEquals(refusal.paths, [join(await Deno.realPath(projectRoot), ".wld", "worktrees.json")]);
-            await assertRejects(() => Deno.lstat(layout.primary.worktreeRegistryPath), Deno.errors.NotFound);
-            await assertRejects(() => Deno.lstat(layout.primary.layoutMarkerPath), Deno.errors.NotFound);
+            assertEquals(refusal.paths, [join(await fsRealpath(projectRoot), ".wld", "worktrees.json")]);
+            await rejects(() => fsLstat(layout.primary.worktreeRegistryPath), { code: "ENOENT" });
+            await rejects(() => fsLstat(layout.primary.layoutMarkerPath), { code: "ENOENT" });
         } finally {
-            if (originalSandboxHome === undefined) Deno.env.delete("WLD_TEST_SANDBOX_HOME");
-            else Deno.env.set("WLD_TEST_SANDBOX_HOME", originalSandboxHome);
-            await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+            if (originalSandboxHome === undefined) delete env.WLD_TEST_SANDBOX_HOME;
+            else env.WLD_TEST_SANDBOX_HOME = originalSandboxHome;
+            await fsRm(projectRoot, { recursive: true }).catch(() => {});
         }
     });
 });

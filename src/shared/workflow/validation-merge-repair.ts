@@ -1,3 +1,4 @@
+import { captureForegroundProcess } from "../captured-process.ts";
 /**
  * @module shared/workflow/validation-merge-repair
  * Merge failure classification and repair dispatch for the publication
@@ -64,7 +65,7 @@ export function annotatePublicationStage(error: Error, publicationStage: Publica
 }
 
 async function runRepairGit(cwd: string, args: string[]): Promise<GitCommandResult> {
-    const output = await new Deno.Command("git", { cwd, args, stdout: "piped", stderr: "piped" }).output();
+    const output = await captureForegroundProcess("git", { cwd, args });
     const decoder = new TextDecoder();
     return {
         code: output.code,

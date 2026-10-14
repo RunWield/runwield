@@ -1,4 +1,6 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { readPublishedDeliverySources, readPublishedRecordMarkdown } from "./published-source.ts";
 import { advancePublicationAttempt, createPublicationAttempt } from "../workflow/publication-attempt.ts";
@@ -25,14 +27,14 @@ const fixture = defineGitFixture(async (root) => {
         humanReviewMode: "always",
         humanReviewedAt: "2026-10-08T10:00:00Z",
     });
-    await Deno.writeTextFile(`${root}/docs/plans/epic.md`, parent);
-    await Deno.mkdir(`${root}/docs/work-records`, { recursive: true });
-    await Deno.writeTextFile(`${root}/docs/work-records/epic.md`, "# Delivered Epic Work Record\n");
+    await fsWriteFile(`${root}/docs/plans/epic.md`, parent);
+    await fsMkdir(`${root}/docs/work-records`, { recursive: true });
+    await fsWriteFile(`${root}/docs/work-records/epic.md`, "# Delivered Epic Work Record\n");
     await git(root, ["add", "docs"]);
     await git(root, ["commit", "-m", "sealed delivery"]);
 });
 
-Deno.test("sealed delivery keeps child evidence and terminal parent record despite a stale primary Plan", async () => {
+test("sealed delivery keeps child evidence and terminal parent record despite a stale primary Plan", async () => {
     const root = await fixture.checkout();
     try {
         await runPlanFrontMatterTransition({
@@ -62,8 +64,8 @@ Deno.test("sealed delivery keeps child evidence and terminal parent record despi
             publishedCommit: commit,
             phase: "publication_verified" as const,
         };
-        await Deno.writeTextFile(`${root}/docs/plans/epic/one.md`, "# Unrelated primary edit\n");
-        await Deno.remove(`${root}/docs/work-records/epic.md`);
+        await fsWriteFile(`${root}/docs/plans/epic/one.md`, "# Unrelated primary edit\n");
+        await fsRm(`${root}/docs/work-records/epic.md`);
         assertEquals(
             (await git(root, ["show", `${commit}:docs/plans/epic/one.md`])).includes("humanReviewDecision"),
             false,
@@ -80,14 +82,11 @@ Deno.test("sealed delivery keeps child evidence and terminal parent record despi
         );
         assertEquals(recordMarkdown, "# Delivered Epic Work Record\n");
         const record = await saveDeliveredWorkRecordEvidence(root, publication, recordMarkdown || "");
-        assertEquals(await Deno.readTextFile(`${root}/${record?.path}`), "# Delivered Epic Work Record\n");
+        assertEquals(await fsReadFile(`${root}/${record?.path}`, "utf8"), "# Delivered Epic Work Record\n");
         const artifact = await saveDeliveredPlanEvidence(root, publication, sources.delivered.markdown);
-        assertStringIncludes(await Deno.readTextFile(`${root}/${artifact?.path}`), "# Approved child");
-        assertEquals(await Deno.readTextFile(`${root}/docs/plans/epic/one.md`), "# Unrelated primary edit\n");
-        await Deno.writeTextFile(
-            `${root}/docs/plans/epic.md`,
-            parent.replace("status: verified", "status: ready_for_work"),
-        );
+        assertStringIncludes(await fsReadFile(`${root}/${artifact?.path}`, "utf8"), "# Approved child");
+        assertEquals(await fsReadFile(`${root}/docs/plans/epic/one.md`, "utf8"), "# Unrelated primary edit\n");
+        await fsWriteFile(`${root}/docs/plans/epic.md`, parent.replace("status: verified", "status: ready_for_work"));
         await git(root, ["add", "docs/plans/epic.md"]);
         await git(root, ["commit", "-m", "unfinished parent"]);
         const unfinished = await readPublishedDeliverySources(root, {
@@ -105,11 +104,11 @@ Deno.test("sealed delivery keeps child evidence and terminal parent record despi
         assertEquals(childOnly.delivered.planId, "child-id");
         assertEquals(childOnly.workRecordOwner, undefined);
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true, force: true });
     }
 });
 
-Deno.test("delivery receipts use the primary runtime from an execution worktree", async () => {
+test("delivery receipts use the primary runtime from an execution worktree", async () => {
     const root = await fixture.checkout();
     const worktree = `${root}-execution`;
     try {
@@ -123,15 +122,15 @@ Deno.test("delivery receipts use the primary runtime from an execution worktree"
         assertEquals(evidence.entries.length, 1);
         assertEquals(evidence.artifacts.length, 1);
     } finally {
-        await Deno.remove(root, { recursive: true });
-        await Deno.remove(worktree, { recursive: true }).catch(() => {});
+        await fsRm(root, { recursive: true, force: true });
+        await fsRm(worktree, { recursive: true, force: true });
     }
 });
 
-Deno.test("confirmed child delivery keeps the prepared reviewed Epic Work Record in its report", async () => {
+test("confirmed child delivery keeps the prepared reviewed Epic Work Record in its report", async () => {
     const root = await fixture.checkout();
     try {
-        await Deno.writeTextFile(`${root}/docs/plans/epic.md`, parent.replace("status: verified", "status: reviewed"));
+        await fsWriteFile(`${root}/docs/plans/epic.md`, parent.replace("status: verified", "status: reviewed"));
         await git(root, ["add", "docs/plans/epic.md"]);
         await git(root, ["commit", "-m", "prepare parent record before publication"]);
         const commit = await git(root, ["rev-parse", "HEAD"]);
@@ -163,16 +162,19 @@ Deno.test("confirmed child delivery keeps the prepared reviewed Epic Work Record
             verifiedAt: "2026-10-08T10:00:00Z",
         });
         assertEquals(
-            (await readPublishedDeliverySources(root, {
-                ...publication,
-                planPaths: ["docs/plans/epic/one.md"],
-            })).workRecordOwner,
+            (
+                await readPublishedDeliverySources(root, {
+                    ...publication,
+                    planPaths: ["docs/plans/epic/one.md"],
+                })
+            ).workRecordOwner,
             undefined,
         );
         for (const phase of ["publication_verified", "cleanup_complete"] as const) {
-            const confirmed = phase === "cleanup_complete"
-                ? advancePublicationAttempt(publication, phase, { cleanedAt: "2026-10-08T10:01:00Z" })
-                : publication;
+            const confirmed =
+                phase === "cleanup_complete"
+                    ? advancePublicationAttempt(publication, phase, { cleanedAt: "2026-10-08T10:01:00Z" })
+                    : publication;
             const sources = await readPublishedDeliverySources(root, confirmed);
             assertEquals(sources.delivered.planId, "child-id");
             assertEquals(sources.workRecordOwner?.planId, "parent-id");
@@ -199,34 +201,35 @@ Deno.test("confirmed child delivery keeps the prepared reviewed Epic Work Record
             assertEquals(report.planId, "child-id");
             assertEquals(report.rows.find((row) => row.label === "Work Record")?.outcome, "Created");
             assertEquals(report.artifacts.find((entry) => entry.kind === "work-record")?.path, artifact?.path);
-            assertEquals(await Deno.readTextFile(`${root}/${artifact?.path}`), markdown);
+            assertEquals(await fsReadFile(`${root}/${artifact?.path}`, "utf8"), markdown);
         }
-        await Deno.writeTextFile(
+        await fsWriteFile(
             `${root}/docs/plans/epic.md`,
-            parent
-                .replace("status: verified", "status: reviewed").replace("epicCompletionMode: done_enough\n", ""),
+            parent.replace("status: verified", "status: reviewed").replace("epicCompletionMode: done_enough\n", ""),
         );
         await git(root, ["add", "docs/plans/epic.md"]);
         await git(root, ["commit", "-m", "parent remains unfinished"]);
         assertEquals(
-            (await readPublishedDeliverySources(root, {
-                ...publication,
-                artifactCommit: await git(root, ["rev-parse", "HEAD"]),
-            })).workRecordOwner,
+            (
+                await readPublishedDeliverySources(root, {
+                    ...publication,
+                    artifactCommit: await git(root, ["rev-parse", "HEAD"]),
+                })
+            ).workRecordOwner,
             undefined,
         );
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true, force: true });
     }
 });
 
-Deno.test("record attachment uses exact confirmed publication, never pending or later checkout bytes", async () => {
+test("record attachment uses exact confirmed publication, never pending or later checkout bytes", async () => {
     const root = await fixture.checkout();
     try {
         const candidate = await git(root, ["rev-parse", "HEAD"]);
         const path = "docs/work-records/epic.md";
         const approved = "# Finalized delivery record\n";
-        await Deno.writeTextFile(`${root}/${path}`, approved);
+        await fsWriteFile(`${root}/${path}`, approved);
         await git(root, ["add", path]);
         await git(root, ["commit", "-m", "finalize delivery"]);
         const publishedCommit = await git(root, ["rev-parse", "HEAD"]);
@@ -246,7 +249,7 @@ Deno.test("record attachment uses exact confirmed publication, never pending or 
             publishedCommit,
         };
         assertEquals(await readPublishedRecordMarkdown(root, attempt, path), null);
-        await Deno.writeTextFile(`${root}/${path}`, "Later unrelated edits\n");
+        await fsWriteFile(`${root}/${path}`, "Later unrelated edits\n");
         for (const phase of ["publication_verified", "cleanup_complete"] as const) {
             assertEquals(await readPublishedRecordMarkdown(root, { ...attempt, phase }, path), approved);
             assertEquals(
@@ -255,6 +258,6 @@ Deno.test("record attachment uses exact confirmed publication, never pending or 
             );
         }
     } finally {
-        await Deno.remove(root, { recursive: true });
+        await fsRm(root, { recursive: true, force: true });
     }
 });

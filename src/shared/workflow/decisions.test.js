@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
 
 /** @type {import('../../tools/plan-written.ts').TriageMeta} */
@@ -9,7 +10,7 @@ const fallbackTriageMeta = {
     affectedPaths: ["src/a.js"],
 };
 
-Deno.test("decidePostPlanning returns execute_plan with normalized payload", () => {
+test("decidePostPlanning returns execute_plan with normalized payload", () => {
     assertEquals(
         decidePostPlanning(
             {
@@ -29,7 +30,7 @@ Deno.test("decidePostPlanning returns execute_plan with normalized payload", () 
     );
 });
 
-Deno.test("decidePostPlanning falls back to triage metadata for execute_plan", () => {
+test("decidePostPlanning falls back to triage metadata for execute_plan", () => {
     assertEquals(
         decidePostPlanning(
             { outcome: "approved_execute", planName: "plan-b" },
@@ -45,7 +46,7 @@ Deno.test("decidePostPlanning falls back to triage metadata for execute_plan", (
     );
 });
 
-Deno.test("decidePostPlanning maps approved_decompose to a Slicer phase transition", () => {
+test("decidePostPlanning maps approved_decompose to a Slicer phase transition", () => {
     const triageMeta = { classification: /** @type {const} */ ("PROJECT") };
     assertEquals(
         decidePostPlanning(
@@ -59,7 +60,7 @@ Deno.test("decidePostPlanning maps approved_decompose to a Slicer phase transiti
     );
 });
 
-Deno.test("decidePostPlanning carries approval annotations and images into the next phase", () => {
+test("decidePostPlanning carries approval annotations and images into the next phase", () => {
     const reviewImages = [{ base64: "YXBwcm92ZWQ=", mimeType: "image/png" }];
     assertEquals(
         decidePostPlanning(
@@ -83,7 +84,7 @@ Deno.test("decidePostPlanning carries approval annotations and images into the n
     );
 });
 
-Deno.test("decidePostPlanning maps saved to save_plan", () => {
+test("decidePostPlanning maps saved to save_plan", () => {
     assertEquals(
         decidePostPlanning(
             { outcome: "saved", planName: "plan-c" },
@@ -93,7 +94,7 @@ Deno.test("decidePostPlanning maps saved to save_plan", () => {
     );
 });
 
-Deno.test("decidePostPlanning maps feedback to semantic stay_with_agent reason", () => {
+test("decidePostPlanning maps feedback to semantic stay_with_agent reason", () => {
     assertEquals(
         decidePostPlanning(
             { outcome: "feedback", planName: "plan-d" },
@@ -103,7 +104,7 @@ Deno.test("decidePostPlanning maps feedback to semantic stay_with_agent reason",
     );
 });
 
-Deno.test("decidePostPlanning maps canceled to semantic stay_with_agent reason", () => {
+test("decidePostPlanning maps canceled to semantic stay_with_agent reason", () => {
     assertEquals(
         decidePostPlanning(
             { outcome: "canceled" },
@@ -113,7 +114,7 @@ Deno.test("decidePostPlanning maps canceled to semantic stay_with_agent reason",
     );
 });
 
-Deno.test("decidePostPlanning maps no_call and missing planName to missing declaration", () => {
+test("decidePostPlanning maps no_call and missing planName to missing declaration", () => {
     assertEquals(
         decidePostPlanning(
             { outcome: "no_call" },
@@ -130,7 +131,7 @@ Deno.test("decidePostPlanning maps no_call and missing planName to missing decla
     );
 });
 
-Deno.test("decidePostPlanning maps repair_required to plan feedback iteration", () => {
+test("decidePostPlanning maps repair_required to plan feedback iteration", () => {
     assertEquals(
         decidePostPlanning(
             { outcome: "repair_required" },
@@ -140,7 +141,7 @@ Deno.test("decidePostPlanning maps repair_required to plan feedback iteration", 
     );
 });
 
-Deno.test("decidePostPlanning halts on unknown planning outcomes", () => {
+test("decidePostPlanning halts on unknown planning outcomes", () => {
     assertEquals(
         decidePostPlanning(
             /** @type {any} */ ({ outcome: "something_else" }),
@@ -150,7 +151,7 @@ Deno.test("decidePostPlanning halts on unknown planning outcomes", () => {
     );
 });
 
-Deno.test("decidePostExecution returns run_validation when execution completed", () => {
+test("decidePostExecution returns run_validation when execution completed", () => {
     assertEquals(
         decidePostExecution(
             { repairRequired: false, executionComplete: true },
@@ -160,7 +161,7 @@ Deno.test("decidePostExecution returns run_validation when execution completed",
     );
 });
 
-Deno.test("decidePostExecution returns complete_session for intentional workflow completion", () => {
+test("decidePostExecution returns complete_session for intentional workflow completion", () => {
     assertEquals(
         decidePostExecution(
             {
@@ -184,7 +185,7 @@ Deno.test("decidePostExecution returns complete_session for intentional workflow
     );
 });
 
-Deno.test("decidePostExecution returns stay_with_agent when execution is incomplete", () => {
+test("decidePostExecution returns stay_with_agent when execution is incomplete", () => {
     assertEquals(
         decidePostExecution(
             { repairRequired: false, executionComplete: false },
@@ -201,7 +202,7 @@ Deno.test("decidePostExecution returns stay_with_agent when execution is incompl
     );
 });
 
-Deno.test("decidePostExecution halts when execution result is missing", () => {
+test("decidePostExecution halts when execution result is missing", () => {
     assertEquals(
         decidePostExecution(
             undefined,

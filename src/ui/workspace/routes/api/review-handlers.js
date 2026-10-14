@@ -21,6 +21,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [savedPath]
  * @property {string} [agentSwitch]
  * @property {string} [permissionMode]
+ * @property {string} [reviewAction]
  * @property {boolean} [conversationTurn]
  * @property {boolean} [exit]
  * @property {boolean} [canceled]
@@ -153,6 +154,9 @@ export async function reviewDenyApi(ctx) {
 export async function reviewFeedbackApi(ctx) {
     return await resolveFromRequest(ctx, (body) => ({
         approved: body.approved === true,
+        ...(["post_comments", "approve_pr", "approve_commit"].includes(String(body.reviewAction)) && {
+            reviewAction: body.reviewAction,
+        }),
         feedback: typeof body.feedback === "string" ? body.feedback : "",
         annotations: Array.isArray(body.annotations) ? body.annotations : [],
         ...reviewImageDecisionFields(body),
@@ -297,9 +301,9 @@ function validateApprovedExecutionPolicy(body, reviewPayload) {
     if (!executionAgent) {
         return jsonError(
             "invalid_execution_agent",
-            `Invalid executionAgent: ${
-                String(body.executionAgent)
-            }. Supported values are engineer and frontend-engineer.`,
+            `Invalid executionAgent: ${String(
+                body.executionAgent,
+            )}. Supported values are engineer and frontend-engineer.`,
             400,
         );
     }
@@ -307,9 +311,9 @@ function validateApprovedExecutionPolicy(body, reviewPayload) {
     if (!collaborationRecommendation) {
         return jsonError(
             "invalid_collaboration_recommendation",
-            `Invalid collaborationRecommendation: ${
-                String(body.collaborationRecommendation)
-            }. Supported values are autonomous and pair.`,
+            `Invalid collaborationRecommendation: ${String(
+                body.collaborationRecommendation,
+            )}. Supported values are autonomous and pair.`,
             400,
         );
     }
@@ -318,11 +322,12 @@ function validateApprovedExecutionPolicy(body, reviewPayload) {
 
 /** @param {ReviewPayload} [reviewPayload] */
 function trustedReviewClassification(reviewPayload) {
-    const classification = typeof reviewPayload?.classification === "string"
-        ? reviewPayload.classification
-        : typeof reviewPayload?.frontmatter?.classification === "string"
-        ? reviewPayload.frontmatter.classification
-        : "PLANNED_CHANGE";
+    const classification =
+        typeof reviewPayload?.classification === "string"
+            ? reviewPayload.classification
+            : typeof reviewPayload?.frontmatter?.classification === "string"
+              ? reviewPayload.frontmatter.classification
+              : "PLANNED_CHANGE";
     return normalizePlanClassification(classification);
 }
 

@@ -1,7 +1,19 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { symlink } from "node:fs/promises";
+import { test } from "node:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import {
+    chmod as fsChmod,
+    mkdir as fsMkdir,
+    realpath as fsRealpath,
+    rename as fsRename,
+    rm as fsRm,
+    writeFile as fsWriteFile,
+} from "node:fs/promises";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
-import { assertPersonalResourcePath, configureRemotePersonalResources } from "./personal-resources.ts";
+import { assertPersonalResourcePath, assertPersonalResourcePathSync, configureRemotePersonalResources } from "./personal-resources.ts";
 import {
     getCustomSetting,
     getExactProjectCustomSetting,
@@ -25,16 +37,16 @@ import { openFileSessionStore } from "../session/file-session-store.ts";
 
 const fixture = defineCommittedGitFixture();
 
-Deno.test("remote personal resources select mounted files while project settings keep priority", async () => {
-    const root = await Deno.makeTempDir();
+test("remote personal resources select mounted files while project settings keep priority", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rw-test-"));
     const project = await fixture.checkout();
     try {
         const globalRoot = join(root, "private", "global");
         const agentsRoot = join(root, "private", "agents");
-        await Deno.mkdir(join(globalRoot, "skills", "personal"), { recursive: true });
-        await Deno.mkdir(join(globalRoot, "agents"), { recursive: true });
-        await Deno.mkdir(join(globalRoot, "installed", "prompts"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(globalRoot, "skills", "personal"), { recursive: true });
+        await fsMkdir(join(globalRoot, "agents"), { recursive: true });
+        await fsMkdir(join(globalRoot, "installed", "prompts"), { recursive: true });
+        await fsWriteFile(
             join(globalRoot, "installed", "package.json"),
             JSON.stringify({
                 name: "inside-package",
@@ -42,10 +54,10 @@ Deno.test("remote personal resources select mounted files while project settings
                 pi: { prompts: ["prompts/*.md"] },
             }),
         );
-        await Deno.writeTextFile(join(globalRoot, "installed", "prompts", "inside.md"), "# Mounted package");
+        await fsWriteFile(join(globalRoot, "installed", "prompts", "inside.md"), "# Mounted package");
         const managedRoot = join(globalRoot, "managed");
-        await Deno.mkdir(join(managedRoot, "prompts"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(managedRoot, "prompts"), { recursive: true });
+        await fsWriteFile(
             join(managedRoot, "package.json"),
             JSON.stringify({
                 name: "managed-package",
@@ -53,12 +65,12 @@ Deno.test("remote personal resources select mounted files while project settings
                 pi: { prompts: ["prompts/*.md"] },
             }),
         );
-        await Deno.writeTextFile(join(managedRoot, "prompts", "managed.md"), "# Mounted managed package");
-        await Deno.mkdir(join(project, ".wld", "skills", "personal"), { recursive: true });
-        await Deno.mkdir(join(agentsRoot, "skills", "external"), { recursive: true });
+        await fsWriteFile(join(managedRoot, "prompts", "managed.md"), "# Mounted managed package");
+        await fsMkdir(join(project, ".wld", "skills", "personal"), { recursive: true });
+        await fsMkdir(join(agentsRoot, "skills", "external"), { recursive: true });
         const packageRoot = join(root, "private", "package-2");
-        await Deno.mkdir(join(packageRoot, "prompts"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(packageRoot, "prompts"), { recursive: true });
+        await fsWriteFile(
             join(packageRoot, "package.json"),
             JSON.stringify({
                 name: "personal-package",
@@ -66,12 +78,12 @@ Deno.test("remote personal resources select mounted files while project settings
                 pi: { prompts: ["prompts/*.md"] },
             }),
         );
-        await Deno.writeTextFile(join(packageRoot, "prompts", "personal-package.md"), "# Laptop package prompt");
-        await Deno.mkdir(join(project, ".wld", "prompts"), { recursive: true });
-        await Deno.writeTextFile(join(project, ".wld", "prompts", "personal-package.md"), "# Project prompt");
+        await fsWriteFile(join(packageRoot, "prompts", "personal-package.md"), "# Laptop package prompt");
+        await fsMkdir(join(project, ".wld", "prompts"), { recursive: true });
+        await fsWriteFile(join(project, ".wld", "prompts", "personal-package.md"), "# Project prompt");
         const projectPackage = join(project, "project-package");
-        await Deno.mkdir(join(projectPackage, "prompts"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(projectPackage, "prompts"), { recursive: true });
+        await fsWriteFile(
             join(projectPackage, "package.json"),
             JSON.stringify({
                 name: "project-package",
@@ -79,8 +91,8 @@ Deno.test("remote personal resources select mounted files while project settings
                 pi: { prompts: ["prompts/*.md"] },
             }),
         );
-        await Deno.writeTextFile(join(projectPackage, "prompts", "project-package.md"), "# Project package");
-        await Deno.writeTextFile(
+        await fsWriteFile(join(projectPackage, "prompts", "project-package.md"), "# Project package");
+        await fsWriteFile(
             join(globalRoot, "settings.json"),
             JSON.stringify({
                 marker: "personal",
@@ -89,21 +101,21 @@ Deno.test("remote personal resources select mounted files while project settings
                 packages: ["../package", "/laptop/.wld/installed", "npm:managed-package", "npm:remote-only"],
             }),
         );
-        await Deno.writeTextFile(join(globalRoot, "RUNWIELD.md"), "personal instruction");
-        await Deno.writeTextFile(
+        await fsWriteFile(join(globalRoot, "RUNWIELD.md"), "personal instruction");
+        await fsWriteFile(
             join(globalRoot, "skills", "personal", "SKILL.md"),
             "---\nname: personal\n---\nPersonal",
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(project, ".wld", "skills", "personal", "SKILL.md"),
             "---\nname: personal\n---\nProject",
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(agentsRoot, "skills", "external", "SKILL.md"),
             "---\nname: external\n---\nExternal",
         );
-        await Deno.writeTextFile(join(agentsRoot, "AGENTS.md"), "external instruction");
-        await Deno.writeTextFile(
+        await fsWriteFile(join(agentsRoot, "AGENTS.md"), "external instruction");
+        await fsWriteFile(
             join(project, ".wld", "settings.json"),
             JSON.stringify({ marker: "project", agents: { project: true }, packages: ["../project-package"] }),
         );
@@ -125,7 +137,7 @@ Deno.test("remote personal resources select mounted files while project settings
         assertEquals(getCustomSetting("marker", "global", project), "personal");
         const manager = getSettingsManager(project);
         assertEquals(manager.getTheme(), "dark");
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(globalRoot, "settings.json"),
             JSON.stringify({
                 marker: "personal",
@@ -176,25 +188,25 @@ Deno.test("remote personal resources select mounted files while project settings
         // project settings still belong to the primary checkout.
         const linked = join(root, "linked");
         await git(project, ["worktree", "add", "-b", "linked", linked]);
-        await Deno.mkdir(join(linked, ".wld", "skills", "personal"), { recursive: true });
-        await Deno.mkdir(join(linked, ".wld", "agents"), { recursive: true });
-        await Deno.mkdir(join(linked, ".wld", "prompts"), { recursive: true });
-        await Deno.writeTextFile(
+        await fsMkdir(join(linked, ".wld", "skills", "personal"), { recursive: true });
+        await fsMkdir(join(linked, ".wld", "agents"), { recursive: true });
+        await fsMkdir(join(linked, ".wld", "prompts"), { recursive: true });
+        await fsWriteFile(
             join(linked, ".wld", "skills", "personal", "SKILL.md"),
             "---\nname: personal\n---\nLinked Skill",
         );
-        await Deno.writeTextFile(
+        await fsWriteFile(
             join(linked, ".wld", "agents", "linked-engineer.md"),
             "---\nname: Linked Engineer\npromptOverride: true\n---\nLinked Agent",
         );
-        await Deno.writeTextFile(join(linked, ".wld", "prompts", "personal-package.md"), "# Linked prompt");
-        await Deno.writeTextFile(join(linked, ".wld", "settings.json"), JSON.stringify({ marker: "linked" }));
-        await Deno.writeTextFile(
+        await fsWriteFile(join(linked, ".wld", "prompts", "personal-package.md"), "# Linked prompt");
+        await fsWriteFile(join(linked, ".wld", "settings.json"), JSON.stringify({ marker: "linked" }));
+        await fsWriteFile(
             join(globalRoot, "agents", "linked-engineer.md"),
             "---\nname: Mounted Engineer\n---\nMounted Agent",
         );
 
-        assertEquals(getSettingsDir("project", linked), join(await Deno.realPath(project), ".wld"));
+        assertEquals(getSettingsDir("project", linked), join(await fsRealpath(project), ".wld"));
         assertEquals(getCustomSetting("marker", "project", linked), "project");
         assertEquals(getExactProjectCustomSetting("marker", linked), "linked");
         assertEquals(getMergedCustomSetting("marker", linked), "project");
@@ -241,12 +253,12 @@ Deno.test("remote personal resources select mounted files while project settings
         // These laptop absolute targets exist on the server under a different
         // account. None is authorized by the verified laptop mount.
         const remoteAccount = join(root, "remote-account");
-        await Deno.mkdir(remoteAccount);
+        await fsMkdir(remoteAccount);
         const remoteFile = join(remoteAccount, "SKILL.md");
-        await Deno.writeTextFile(remoteFile, "REMOTE ACCOUNT BYTES");
+        await fsWriteFile(remoteFile, "REMOTE ACCOUNT BYTES");
         const mountedSkill = join(globalRoot, "skills", "personal", "SKILL.md");
-        await Deno.remove(mountedSkill);
-        await Deno.symlink(remoteFile, mountedSkill);
+        await fsRm(mountedSkill);
+        await symlink(remoteFile, mountedSkill);
         await assertRejects(() => listSkills(), Error, mountedSkill);
         await assertRejects(
             () =>
@@ -261,55 +273,70 @@ Deno.test("remote personal resources select mounted files while project settings
             Error,
             mountedSkill,
         );
-        await Deno.remove(mountedSkill);
-        await Deno.symlink("../sibling/SKILL.md", mountedSkill);
-        await Deno.mkdir(join(globalRoot, "skills", "sibling"));
-        await Deno.writeTextFile(join(globalRoot, "skills", "sibling", "SKILL.md"), "---\nname: sibling\n---\nValid");
+        await fsRm(mountedSkill);
+        await symlink("../sibling/SKILL.md", mountedSkill);
+        await fsMkdir(join(globalRoot, "skills", "sibling"));
+        await fsWriteFile(join(globalRoot, "skills", "sibling", "SKILL.md"), "---\nname: sibling\n---\nValid");
         assertEquals((await listSkills()).some((skill) => skill.name === "sibling"), true);
 
         const instruction = join(globalRoot, "RUNWIELD.md");
-        await Deno.remove(instruction);
-        await Deno.symlink(remoteFile, instruction);
+        await fsRm(instruction);
+        await symlink(remoteFile, instruction);
         await assertRejects(() => readGlobalAgentMd(root), Error, instruction);
         const homePrompt = join(globalRoot, "prompts", "personal.md");
-        await Deno.mkdir(join(globalRoot, "prompts"));
-        await Deno.symlink(remoteFile, homePrompt);
+        await fsMkdir(join(globalRoot, "prompts"));
+        await symlink(remoteFile, homePrompt);
         await assertRejects(() => listPromptTemplates({ cwd: project }), Error, homePrompt);
         await assertRejects(() => expandPromptTemplate(homePrompt), Error, homePrompt);
         await assertRejects(() => assertPersonalResourcePath(homePrompt, "personal prompt"), Error, homePrompt);
         const agentPath = join(globalRoot, "agents", "engineer.md");
-        await Deno.symlink(remoteFile, agentPath);
+        await symlink(remoteFile, agentPath);
         await assertRejects(() => listAgentDefNames(), Error, agentPath);
         await assertRejects(() => loadAgentDef("engineer"), Error, agentPath);
         assertThrows(() => getAgentDisplayName("engineer"), Error, agentPath);
         const packagePrompt = join(packageRoot, "prompts", "personal-package.md");
-        await Deno.remove(packagePrompt);
-        await Deno.symlink(remoteFile, packagePrompt);
+        await fsRm(packagePrompt);
+        await symlink(remoteFile, packagePrompt);
         await assertRejects(
             () => assertPersonalResourcePath(packagePrompt, "package prompt", { packageResource: true }),
             Error,
             packagePrompt,
         );
         const packageManifest = join(packageRoot, "package.json");
-        await Deno.remove(packageManifest);
-        await Deno.symlink(remoteFile, packageManifest);
+        await fsRm(packageManifest);
+        await symlink(remoteFile, packageManifest);
         await assertRejects(() => resolveInstalledPackagePromptResources({ cwd: project }), Error, packageManifest);
-        await Deno.remove(homePrompt);
-        await Deno.symlink("/laptop/missing/prompt.md", homePrompt);
+        await fsRm(homePrompt);
+        await symlink("/laptop/missing/prompt.md", homePrompt);
         await assertRejects(() => assertPersonalResourcePath(homePrompt, "personal prompt"), Error, homePrompt);
 
         // A detached package mount leaves an empty private directory on the
         // same device. Missing optional files must not look healthy there.
-        await Deno.rename(packageRoot, join(root, "detached-package"));
-        await Deno.mkdir(packageRoot);
-        await Deno.chmod(packageRoot, 0o500);
+        await fsRename(packageRoot, join(root, "detached-package"));
+        await fsMkdir(packageRoot);
+        await fsChmod(packageRoot, 0o500);
         await assertRejects(
             () => assertPersonalResourcePath(packageManifest, "package manifest", { packageResource: true }),
             Error,
             "changed identity",
         );
+        // Both reader variants must reject replacement of the activated root,
+        // even when the requested file is optional and missing in its replacement.
+        await fsRename(globalRoot, join(root, "detached-global"));
+        await fsMkdir(globalRoot);
+        const optionalResource = join(globalRoot, "optional.md");
+        assertThrows(
+            () => assertPersonalResourcePathSync(optionalResource, "personal resource"),
+            Error,
+            "changed identity",
+        );
+        await assertRejects(
+            () => assertPersonalResourcePath(optionalResource, "personal resource"),
+            Error,
+            "changed identity",
+        );
     } finally {
-        await Deno.remove(root, { recursive: true });
-        await Deno.remove(project, { recursive: true });
+        await fsRm(root, { recursive: true });
+        await fsRm(project, { recursive: true });
     }
 });

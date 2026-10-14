@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
+import { test } from "node:test";
 // THROWAWAY timing harness for the Shift+Tab thinking-level latency. Deleted after diagnosis.
-import { assertEquals } from "@std/assert";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -10,11 +11,7 @@ import { persistThinkingLevel } from "./chat-session.ts";
 
 const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
-async function waitFor(
-    predicate: () => boolean,
-    description: string,
-    timeoutMs = 8_000,
-): Promise<void> {
+async function waitFor(predicate: () => boolean, description: string, timeoutMs = 8_000): Promise<void> {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
         if (predicate()) return;
@@ -23,7 +20,7 @@ async function waitFor(
     throw new Error(`Timed out waiting for ${description}.`);
 }
 
-Deno.test("measure shift+tab thinking-level latency before and after activation", async () => {
+test("measure shift+tab thinking-level latency before and after activation", async () => {
     await withRuntimeCommandFixture("debug-thinking-timing-", async ({ setModelResponseFactory }) => {
         const response = () => fauxAssistantMessage(fauxText("Fixture response."));
         setModelResponseFactory(response);
@@ -43,9 +40,7 @@ Deno.test("measure shift+tab thinking-level latency before and after activation"
             if (!projectRoot) throw new Error("missing cwd");
 
             const levelIndex = () =>
-                LEVELS.indexOf(
-                    runtime.getSessionSnapshot(sessionId)?.thinkingLevel as typeof LEVELS[number],
-                );
+                LEVELS.indexOf(runtime.getSessionSnapshot(sessionId)?.thinkingLevel as (typeof LEVELS)[number]);
 
             const pressShiftTabAndTime = async (label: string): Promise<number> => {
                 const expected = LEVELS[(levelIndex() + 1) % LEVELS.length];
@@ -95,7 +90,8 @@ Deno.test("measure shift+tab thinking-level latency before and after activation"
                 () => typeof runtime.getSessionSnapshot(sessionId)?.sessionManagerId === "string",
                 "session activation (sessionManagerId present)",
             );
-            await composition.waitForIdle();
+            // Cold session activation includes storage and provider setup, outside the latency measurement.
+            await composition.waitForIdle(15_000);
             console.log("[TIMING] session is now active:", runtime.getSessionSnapshot(sessionId)?.sessionManagerId);
 
             // --- after activation ---

@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { test } from "node:test";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import {
     readCurrentPairCheckpoint,
@@ -105,7 +106,7 @@ function schemaConst(item) {
     return item.const;
 }
 
-Deno.test("pair_checkpoint schema supports report and resolve actions", () => {
+test("pair_checkpoint schema supports report and resolve actions", () => {
     const { session } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
 
@@ -120,7 +121,7 @@ Deno.test("pair_checkpoint schema supports report and resolve actions", () => {
     ]);
 });
 
-Deno.test("pair_checkpoint report is durable and ends the turn without a form", async () => {
+test("pair_checkpoint report is durable and ends the turn without a form", async () => {
     const { session, sessionManager } = makePairSession();
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
     const result = await execute(createPairCheckpointTool({ hostedSession: session }), "checkpoint-1", reportParams);
@@ -135,7 +136,7 @@ Deno.test("pair_checkpoint report is durable and ends the turn without a form", 
     assertEquals(session.getActiveExecutionWorkflow()?.pairCheckpointCount, 1);
 });
 
-Deno.test("pair_checkpoint resolves from a later original user turn", async () => {
+test("pair_checkpoint resolves from a later original user turn", async () => {
     const { session, sessionManager } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
@@ -158,7 +159,7 @@ Deno.test("pair_checkpoint resolves from a later original user turn", async () =
     assertEquals(readCurrentPairCheckpoint(session)?.resolution?.decision, "continue");
 });
 
-Deno.test("automatic compaction preserves Pair state and active user-turn provenance", async () => {
+test("automatic compaction preserves Pair state and active user-turn provenance", async () => {
     const { session, sessionManager } = makePairSession();
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
     await execute(createPairCheckpointTool({ hostedSession: session }), "checkpoint-1", reportParams);
@@ -192,7 +193,7 @@ Deno.test("automatic compaction preserves Pair state and active user-turn proven
     assertEquals(readRequestAttemptEntries(/** @type {*} */ (sessionManager)).at(-1)?.phase, "started");
 });
 
-Deno.test("resolved Pair checkpoint survives a compacted branch snapshot", async () => {
+test("resolved Pair checkpoint survives a compacted branch snapshot", async () => {
     const { session, sessionManager } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
@@ -217,7 +218,7 @@ Deno.test("resolved Pair checkpoint survives a compacted branch snapshot", async
     );
 });
 
-Deno.test("Pair restoration does not replace a different active attempt", async () => {
+test("Pair restoration does not replace a different active attempt", async () => {
     const { session, sessionManager } = makePairSession();
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
     await execute(createPairCheckpointTool({ hostedSession: session }), "checkpoint-1", reportParams);
@@ -232,7 +233,7 @@ Deno.test("Pair restoration does not replace a different active attempt", async 
     assertEquals(session.getActiveExecutionWorkflow()?.executionAttemptStartedAtMs, 9999);
 });
 
-Deno.test("pair_checkpoint rejects same-turn resolution", async () => {
+test("pair_checkpoint rejects same-turn resolution", async () => {
     const { session, sessionManager } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
     beginRequest(session, sessionManager);
@@ -248,7 +249,7 @@ Deno.test("pair_checkpoint rejects same-turn resolution", async () => {
     assertEquals(readCurrentPairCheckpoint(session)?.resolution, null);
 });
 
-Deno.test("pair_checkpoint rejects generated continuation as user assent", async () => {
+test("pair_checkpoint rejects generated continuation as user assent", async () => {
     const { session, sessionManager } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
@@ -264,7 +265,7 @@ Deno.test("pair_checkpoint rejects generated continuation as user assent", async
     assertEquals(resolved.details.reason, "user_turn_required");
 });
 
-Deno.test("pair_checkpoint rejects a background result as user assent", async () => {
+test("pair_checkpoint rejects a background result as user assent", async () => {
     const { session, sessionManager } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
@@ -280,7 +281,7 @@ Deno.test("pair_checkpoint rejects a background result as user assent", async ()
     assertEquals(readCurrentPairCheckpoint(session)?.resolution, null);
 });
 
-Deno.test("pair_checkpoint rejects stale and consumed decisions", async () => {
+test("pair_checkpoint rejects stale and consumed decisions", async () => {
     const { session, sessionManager } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
@@ -309,7 +310,7 @@ Deno.test("pair_checkpoint rejects stale and consumed decisions", async () => {
     assertEquals(repeated.details.reason, "checkpoint_already_resolved");
 });
 
-Deno.test("pair_checkpoint requires a revision direction", async () => {
+test("pair_checkpoint requires a revision direction", async () => {
     const { session, sessionManager } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
@@ -326,7 +327,7 @@ Deno.test("pair_checkpoint requires a revision direction", async () => {
     assertEquals(readCurrentPairCheckpoint(session)?.resolution, null);
 });
 
-Deno.test("Pair Stop preserves the checkpoint and a later user turn can resume", async () => {
+test("Pair Stop preserves the checkpoint and a later user turn can resume", async () => {
     const { session, sessionManager } = makePairSession();
     const tool = createPairCheckpointTool({ hostedSession: session });
     beginRequest(session, sessionManager, { dispatchKind: "plan_execution" });
@@ -351,7 +352,7 @@ Deno.test("Pair Stop preserves the checkpoint and a later user turn can resume",
     assertEquals(readCurrentPairCheckpoint(session)?.resolution?.decision, "continue");
 });
 
-Deno.test("pair_checkpoint switches to autonomous and records content-free metrics", async () => {
+test("pair_checkpoint switches to autonomous and records content-free metrics", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
         const { session, sessionManager } = makePairSession(projectRoot);
         const tool = createPairCheckpointTool({ hostedSession: session });

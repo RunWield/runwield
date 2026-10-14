@@ -91,13 +91,17 @@ export function validationCheckpointCanResume(
 }
 
 export function isValidationCheckpoint(value: Partial<ValidationCheckpoint>): value is ValidationCheckpoint {
-    return value.version === VALIDATION_CHECKPOINT_VERSION &&
-        typeof value.attemptId === "string" && value.attemptId.length > 0 &&
-        typeof value.generation === "string" && value.generation.length > 0 &&
+    return (
+        value.version === VALIDATION_CHECKPOINT_VERSION &&
+        typeof value.attemptId === "string" &&
+        value.attemptId.length > 0 &&
+        typeof value.generation === "string" &&
+        value.generation.length > 0 &&
         typeof value.expectedStatus === "string" &&
         ["mechanical", "semantic", "delivery"].includes(String(value.nextPhase)) &&
         ["ready", "running", "awaiting_repair", "paused"].includes(String(value.state)) &&
-        typeof value.updatedAt === "string";
+        typeof value.updatedAt === "string"
+    );
 }
 
 /** Normalize durable review state before it is projected into a Session. */

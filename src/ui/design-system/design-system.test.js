@@ -1,4 +1,6 @@
-import { assertEquals, assertFalse, assertStringIncludes } from "@std/assert";
+import { readFile as fsReadFile } from "node:fs/promises";
+import { test } from "node:test";
+import { assertEquals, assertFalse, assertStringIncludes } from "../../testing/assertions.ts";
 import { actionClassName } from "./components/Button.tsx";
 import { Dialog } from "./components/Dialog.jsx";
 import { RunWieldButton, RunWieldLink } from "./components/react/RunWieldPrimitives.tsx";
@@ -6,21 +8,21 @@ import { readWorkspaceStyles } from "../workspace/workspace-styles.ts";
 
 /** @typedef {{ href?: string, className?: string }} LinkProps */
 
-Deno.test("design-system actionClassName maps visual action variants", () => {
+test("design-system actionClassName maps visual action variants", () => {
     assertEquals(actionClassName("primary"), "primary-action");
     assertEquals(actionClassName("secondary"), "secondary-action");
     assertEquals(actionClassName("danger"), "danger-action");
 });
 
-Deno.test("design-system Dialog primitive is importable and styled", async () => {
+test("design-system Dialog primitive is importable and styled", async () => {
     assertEquals(typeof Dialog, "function");
-    const css = await Deno.readTextFile(new URL("./components.css", import.meta.url));
+    const css = await fsReadFile(new URL("./components.css", import.meta.url), "utf8");
     assertStringIncludes(css, ".rw-dialog-backdrop");
     assertStringIncludes(css, ".rw-dialog-panel");
     assertStringIncludes(css, ".rw-dialog-footer");
 });
 
-Deno.test("React action primitives preserve button and link semantics", () => {
+test("React action primitives preserve button and link semantics", () => {
     /** @type {{ type: string, props: { type?: string, className: string, href?: string } }} */
     const button = RunWieldButton({ children: "Save" });
     /** @type {{ type: string, props: { type?: string, className: string, href?: string } }} */
@@ -34,8 +36,8 @@ Deno.test("React action primitives preserve button and link semantics", () => {
     assertEquals(linkProps.className, "primary-action");
 });
 
-Deno.test("design-system exposes review action, modal, and segmented toggle styling", async () => {
-    const css = await Deno.readTextFile(new URL("./components.css", import.meta.url));
+test("design-system exposes review action, modal, and segmented toggle styling", async () => {
+    const css = await fsReadFile(new URL("./components.css", import.meta.url), "utf8");
     assertStringIncludes(css, '.rw-review-action [data-slot="button"]');
     assertStringIncludes(css, ".rw-review-action-button");
     assertStringIncludes(css, ".rw-modal-primary-button");
@@ -53,11 +55,11 @@ Deno.test("design-system exposes review action, modal, and segmented toggle styl
     assertStringIncludes(css, "max-width: 12rem;");
 });
 
-Deno.test("design-system keeps Workspace controls compact and reserves pills for metadata", async () => {
-    const tokens = await Deno.readTextFile(new URL("./tokens.css", import.meta.url));
-    const components = await Deno.readTextFile(new URL("./components.css", import.meta.url));
+test("design-system keeps Workspace controls compact and reserves pills for metadata", async () => {
+    const tokens = await fsReadFile(new URL("./tokens.css", import.meta.url), "utf8");
+    const components = await fsReadFile(new URL("./components.css", import.meta.url), "utf8");
     const workspace = await readWorkspaceStyles(new URL("../workspace/static/workspace.css", import.meta.url));
-    const docs = await Deno.readTextFile(new URL("../../../docs/design-system.md", import.meta.url));
+    const docs = await fsReadFile(new URL("../../../docs/design-system.md", import.meta.url), "utf8");
 
     assertStringIncludes(tokens, "--rw-radius-control: 0.375rem;");
     assertStringIncludes(tokens, "--rw-radius-panel: 0.5rem;");
@@ -76,10 +78,10 @@ Deno.test("design-system keeps Workspace controls compact and reserves pills for
     assertStringIncludes(docs, "Use `.primary-action`, `.secondary-action`, and `.danger-action`");
 });
 
-Deno.test("document callouts take their colors from semantic tokens and keep a box on paper", async () => {
-    const tokens = await Deno.readTextFile(new URL("./tokens.css", import.meta.url));
-    const components = await Deno.readTextFile(new URL("./components.css", import.meta.url));
-    const print = await Deno.readTextFile(new URL("./print.css", import.meta.url));
+test("document callouts take their colors from semantic tokens and keep a box on paper", async () => {
+    const tokens = await fsReadFile(new URL("./tokens.css", import.meta.url), "utf8");
+    const components = await fsReadFile(new URL("./components.css", import.meta.url), "utf8");
+    const print = await fsReadFile(new URL("./print.css", import.meta.url), "utf8");
 
     assertStringIncludes(tokens, "--rw-callout-warning: var(--rw-warning);");
     assertStringIncludes(tokens, "--rw-callout-note: var(--rw-accent);");

@@ -1,32 +1,35 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { bashFixturePath } from "./bash-fixture.ts";
+import { test } from "node:test";
+import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 
 import { createFixture, runInstaller, runInstallerInPseudoTty } from "./install-test-helpers.js";
 
-Deno.test("install.sh non-interactive mode prints one PATH recommendation without prompts", async () => {
+test("install.sh non-interactive mode prints one PATH recommendation without prompts", async () => {
     const fixture = await createFixture();
     try {
         const result = await runInstaller(fixture);
         assertEquals(result.code, 0, `${result.stdout}\n${result.stderr}`);
         assertStringIncludes(result.stdout, "Restart your shell or run:");
-        assertStringIncludes(result.stdout, `export PATH=\"${fixture.installDir}:$PATH\"`);
-        assertEquals(result.stdout.includes("Add " + fixture.installDir + " to your PATH"), false);
+        assertStringIncludes(result.stdout, `export PATH=\"${bashFixturePath(fixture.installDir)}:$PATH\"`);
+        assertEquals(result.stdout.includes("Add " + bashFixturePath(fixture.installDir) + " to your PATH"), false);
     } finally {
-        await Deno.remove(fixture.root, { recursive: true });
+        await fsRm(fixture.root, { recursive: true });
     }
 });
 
-Deno.test("install.sh recognizes newly installed Snip for filter setup before shell reload", async () => {
+test("install.sh recognizes newly installed Snip for filter setup before shell reload", async () => {
     const fixture = await createFixture();
     const filterLog = join(fixture.root, "filter.log");
     try {
         const result = await runInstallerInPseudoTty(fixture, "\nn\n", { extraEnv: { WLD_FILTER_LOG: filterLog } });
         assertEquals(result.code, 0, `${result.stdout}\n${result.stderr}`);
         assertStringIncludes(result.stdout, "RunWield Deno Snip filters installed");
-        const log = await Deno.readTextFile(filterLog);
-        assertStringIncludes(log, `snip=${join(fixture.installDir, "snip")}`);
-        assertStringIncludes(log, `path=${fixture.installDir}:`);
+        const log = await fsReadFile(filterLog, "utf8");
+        assertStringIncludes(log, `snip=${bashFixturePath(join(fixture.installDir, "snip"))}`);
+        assertStringIncludes(log, `path=${bashFixturePath(fixture.installDir)}:`);
     } finally {
-        await Deno.remove(fixture.root, { recursive: true });
+        await fsRm(fixture.root, { recursive: true });
     }
 });

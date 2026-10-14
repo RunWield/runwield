@@ -9,7 +9,8 @@ export function sanitizeSessionName<Value>(value: Value): string {
     return Array.from(String(value ?? ""), (char) => {
         const code = char.charCodeAt(0);
         return code < 32 || code === 127 ? " " : char;
-    }).join("")
+    })
+        .join("")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, SESSION_NAME_MAX_LENGTH)
