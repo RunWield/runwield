@@ -92,7 +92,7 @@
         "@earendil-works/pi-mcp": "1.0.0",
         "@earendil-works/pi-tui": "1.0.0",
         "@lezer/common": "1.5.2",
-        "@lezer/highlight": "1.2.3",
+        "@lezer/highlight": "1.2.5",
         "@modelcontextprotocol/sdk": "1.30.0",
         "@pierre/diffs": "1.4.2",
         "@plannotator/atomic-editor": "0.8.0",
