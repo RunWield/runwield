@@ -14,11 +14,7 @@ const repo = defineGitFixture(async (repoPath) => {
     await git(repoPath, ["commit", "-m", "base"]);
 });
 
-async function setupLiveWorktree(
-    cwd: string,
-    id = "restore1",
-    branch = "restore-side",
-): Promise<LiveWorktreeEntry> {
+async function setupLiveWorktree(cwd: string, id = "restore1", branch = "restore-side"): Promise<LiveWorktreeEntry> {
     const path = `${cwd}-${id}`;
     await git(cwd, ["worktree", "add", "-b", branch, path, "main"]);
     return {
