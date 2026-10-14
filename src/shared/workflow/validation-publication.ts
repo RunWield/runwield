@@ -1,3 +1,6 @@
+import { completeInPlaceWorkRecord } from "../work-records/in-place-completion.ts";
+import { ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
+import { runHostRecorder } from "./validation-host-recorder.ts";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     readDeliveryEvidence,
@@ -150,6 +153,7 @@ async function prepareEpicChildManualQaArtifact(
     cwd: string,
     projectRoot: string,
 ): Promise<ManualQaPreparationResult> {
+    if (args.hostTurn) return { kind: "ready" };
     const plan = await loadPlan(cwd, args.planName).catch(() => null);
     const parentPlan = typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim()
         ? plan.attrs.parentPlan.trim()
@@ -291,12 +295,19 @@ async function runLockedPublicationPhase(
         const deliveryEvidence: DeliveryEvidence = context.nonGitInPlace
             ? { version: 1, mode: "non_git_in_place" }
             : null;
+        if (args.hostTurn) await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot, true);
         await recordLifecycleEvent(args, context.projectRoot, "validation_passed", "reviewed", undefined, {
             executionMode: context.nonGitInPlace ? "non_git_in_place" : undefined,
             deliveryEvidence,
             ...humanReviewMetadata,
         });
-        await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
+        if (args.hostTurn) {
+            await completeInPlaceWorkRecord(
+                context.executionCwd || context.projectRoot,
+                args.planName,
+                args.workRecordMnemotecaPort,
+            );
+        } else await runPostVerificationHandoffs(args, context.executionCwd || context.projectRoot);
         return { recorded: true, result: await buildVerifiedResult(args, context.projectRoot) };
     }
 
@@ -543,6 +554,7 @@ async function runLockedPublicationPhase(
         try {
             return { kind: "published", outcome: await publishOnce() };
         } catch (caught) {
+            if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
             const error = caught instanceof Error ? caught : new Error(String(caught));
             const failure = normalizePublicationFailure(error);
             // A source can change after this invocation sealed it. Recover in
@@ -579,6 +591,7 @@ async function runLockedPublicationPhase(
             try {
                 return await action();
             } catch (caught) {
+                if (caught instanceof ValidationHostWait || caught instanceof ValidationHostRejected) throw caught;
                 const error = caught instanceof Error ? caught : new Error(String(caught));
                 throw annotatePublicationStage(error, stage);
             }
@@ -828,6 +841,7 @@ export async function runPostVerificationHandoffs(
     pendingPublication = false,
 ): Promise<void> {
     if (!isPlannedChangeClassification(args.triageMeta?.classification)) return;
+    if (args.hostTurn) return await runHostRecorder(args, projectRoot, pendingPublication);
     await args.session.runPostVerificationHandoffs({
         planName: args.planName,
         planContent: args.planContent,

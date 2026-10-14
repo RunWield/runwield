@@ -42,6 +42,12 @@ const WORKER_ADDENDUM = [
 ].join("\n");
 
 const ROLE_ADDENDUM: Record<AttachedHostRole, string> = {
+    recorder: [
+        "## Attached Recorder — overrides Core lifecycle instructions above",
+        "- You are a fresh Claude subagent. Read only the canonical Plan, implementation diff and validation evidence. Do not copy the host conversation.",
+        "- Return structured work_record_completed sections to the coordinating conversation. Do not edit files, call lifecycle tools, commit, push or publish.",
+        "- Core owns persistence, supersession decisions, indexing and publication. Do not claim delivery before Core proves it.",
+    ].join("\n"),
     reviewer: [
         "## Attached independent reviewer — overrides Core lifecycle instructions above",
         "- You are a fresh Claude subagent. Do not edit files. Inspect the exact candidate with RunWield MCP review_diff directly.",

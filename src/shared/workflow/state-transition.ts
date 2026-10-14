@@ -1123,9 +1123,15 @@ export async function runPlanLifecycleEventTransition<T>(
     },
 ): Promise<TransitionResult> {
     if (opts.resources && opts.resources.length > 0) {
+        const plan = opts.event === "validation_passed" ? await loadPlan(opts.projectRoot, opts.planName) : null;
+        // In-place verification has no Git effect to replay. Complete a stopped
+        // metadata write under the normal Plan CAS, without replaying model work.
+        const interruptedInPlaceVerification = plan?.attrs.status === "reviewed" &&
+            plan.attrs.deliveryEvidence?.mode === "non_git_in_place" && Boolean(plan.attrs.validatedAt);
         return await runSemanticTransition({
             projectRoot: opts.projectRoot,
             planName: opts.planName,
+            supersedesOperations: interruptedInPlaceVerification ? ["plan_event:validation_passed"] : [],
             operation: `plan_event:${opts.event}`,
             resources: opts.resources,
             expectedRevision: opts.expectedRevision,

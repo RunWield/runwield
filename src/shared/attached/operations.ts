@@ -30,7 +30,8 @@ export type AttachedOperationName =
     | "start_validation"
     | "review_diff"
     | "review_complete"
-    | "validation_decision";
+    | "validation_decision"
+    | "work_record_completed";
 
 /** Version of the Triage role and outcome contract the host receives with a Triage action. */
 export const ATTACHED_TRIAGE_CONTRACT_VERSION = "runwield.attached.triage/1";
@@ -177,7 +178,8 @@ export type AttachedHostRole =
     | "engineer"
     | "frontend-engineer"
     | "reviewer"
-    | "reviewer-feedback-engineer";
+    | "reviewer-feedback-engineer"
+    | "recorder";
 
 export interface PendingHostAction {
     actionId: string;
@@ -215,7 +217,23 @@ export type AttachedNextAction =
         resultKind?: "paused" | "failed";
         recovery?: import("../workflow/validation-recovery.ts").ValidationRecoveryResult;
     }
-    | { kind: "awaiting_delivery"; planName: string; guidance: string }
+    | {
+        kind: "code_review";
+        actionId: string;
+        request: Extract<import("../workflow/validation-host-contract.ts").ValidationHostRequest, { kind: "decision" }>;
+    }
+    | {
+        kind: "recorder";
+        actionId: string;
+        request: Extract<import("../workflow/validation-host-contract.ts").ValidationHostRequest, { kind: "recorder" }>;
+    }
+    | {
+        kind: "delivered";
+        planName: string;
+        guidance: string;
+        completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
+        workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+    }
     | { kind: "return_to_host"; reason: "unsupported_in_preview" | "plan_advanced_in_core"; message?: string };
 
 /** The Plan a workflow submitted. The workflow references the Plan; it does not own it. */
@@ -233,7 +251,12 @@ export interface AttachedRoleInstructions {
 
 export type AttachedWorkflowClosure =
     | { reason: "unsupported_in_preview"; routingIntent: string }
-    | { reason: "plan_advanced_in_core"; message: string };
+    | { reason: "plan_advanced_in_core"; message: string }
+    | {
+        reason: "delivered";
+        completionMode?: import("../workflow/validation-host-contract.ts").HostDeliveryMode;
+        workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+    };
 
 export interface ProjectMovedRecovery {
     case: "project_moved";
@@ -633,6 +656,7 @@ export const ATTACHED_OPERATIONS: AttachedOperationDescriptor[] = [
 ];
 
 export interface AttachedValidationPayload {
+    sections?: string;
     actionId?: string;
     outcome?: import("../workflow/review-outcome.ts").ReviewCompletePayload;
     answer?: import("../workflow/validation-ports.ts").ValidationInteractionResponse;
@@ -649,7 +673,17 @@ export function parseValidationInput(
     input: AttachedJsonValue | undefined,
     operation: AttachedOperationName,
 ) {
-    const keys = operation === "start_validation"
+    const keys = operation === "work_record_completed"
+        ? [
+            "actionId",
+            "title",
+            "summary",
+            "deviationsFromPlan",
+            "deferredWork",
+            "futurePlanningNotes",
+            "supersessionProposals",
+        ]
+        : operation === "start_validation"
         ? []
         : operation === "review_diff"
         ? ["actionId", "command", "scope", "path", "offsetBytes", "maxBytes"]
@@ -660,6 +694,10 @@ export function parseValidationInput(
         readWorkflowEnvelope(projectRoot, input, keys, (payload) => {
             if (operation === "start_validation") return {};
             const actionId = readIdentifier(payload, "actionId", "payload.actionId");
+            if (operation === "work_record_completed") {
+                const { actionId: _actionId, ...sections } = payload;
+                return { actionId, sections: JSON.stringify(sections) };
+            }
             if (operation === "review_diff") {
                 const command = readText(payload, "command", "payload.command", 20);
                 if (!["list", "show"].includes(command)) {
@@ -800,7 +838,7 @@ for (const name of ["start_validation", "review_diff", "review_complete", "valid
     const descriptor: AttachedOperationDescriptor = {
         name,
         description: name === "start_validation"
-            ? "Continue shared Core validation or recover an interrupted validation call. Not publication."
+            ? "Continue shared Core validation and publication or recover an interrupted call."
             : name === "review_diff"
             ? "Read the pending reviewer candidate. Only show records coverage; list does not."
             : name === "review_complete"
@@ -885,3 +923,29 @@ for (const name of ["start_validation", "review_diff", "review_complete", "valid
     };
     ATTACHED_OPERATIONS.push(descriptor);
 }
+
+ATTACHED_OPERATIONS.push({
+    name: "work_record_completed",
+    description:
+        "Submit the Claude Recorder worker's sections. Core validates and saves them, then continues publication. An invalid submission gets one retry.",
+    inputSchema: workflowOperationSchema(["actionId", "title", "summary"], {
+        actionId: IDENTIFIER_SCHEMA,
+        title: { type: "string", minLength: 1 },
+        summary: { type: "string", minLength: 1 },
+        deviationsFromPlan: { type: "string" },
+        deferredWork: { type: "string" },
+        futurePlanningNotes: { type: "string" },
+        supersessionProposals: {
+            type: "array",
+            items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["recordId", "reason"],
+                properties: {
+                    recordId: { type: "string" },
+                    reason: { type: "string", minLength: 1 },
+                },
+            },
+        },
+    }),
+});

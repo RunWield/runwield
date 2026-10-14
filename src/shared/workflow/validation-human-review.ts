@@ -1,10 +1,10 @@
-import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 /**
  * @module shared/workflow/validation-human-review
  * The Code Review phase: asking the user to review the diff, handling
  * approval/feedback/closed-window, and persisting the review metadata.
  */
 
+import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 import { getCodeReviewMode, getGuidedReviewMode } from "../settings.js";
 import { AGENTS } from "../../constants.js";
 import { runPlanFrontMatterTransition } from "./state-transition.ts";
@@ -250,13 +250,15 @@ export async function runHumanReviewPhase(
                 humanReviewDecision: "changes_requested",
                 humanReviewedAt: null,
             });
-            await recordLifecycleEvent(
-                args,
-                context.projectRoot,
-                "validation_failed",
-                "reviewed",
-                feedbackText,
-            );
+            if (!args.hostTurn) {
+                await recordLifecycleEvent(
+                    args,
+                    context.projectRoot,
+                    "validation_failed",
+                    "reviewed",
+                    feedbackText,
+                );
+            }
             const repair = await dispatchReviewFeedbackRepair(args, context, {
                 diffText,
                 findingsSection: conversationContext,
@@ -356,7 +358,7 @@ export function normalizeHumanReview(response: ValidationInteractionResponse): {
         };
     }
     return {
-        approved: meta.approved === true,
+        approved: meta.approved === true || response.outcome === "approved",
         feedback: typeof meta.feedback === "string" ? meta.feedback : response.message || "",
         annotations: Array.isArray(meta.annotations) ? meta.annotations : [],
         images: Array.isArray(meta.images) ? meta.images : [],
@@ -366,7 +368,7 @@ export function normalizeHumanReview(response: ValidationInteractionResponse): {
     };
 }
 
-function buildHumanReviewFeedbackText(feedback: string, annotations: HumanReviewAnnotations): string {
+export function buildHumanReviewFeedbackText(feedback: string, annotations: HumanReviewAnnotations): string {
     const baseFeedback = feedback.trim() || "(no free-text feedback provided)";
     const missingAnnotations = feedback.trim()
         ? annotations.filter((annotation) => !feedbackIncludesAnnotation(feedback, annotation))

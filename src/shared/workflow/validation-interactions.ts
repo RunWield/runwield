@@ -25,7 +25,9 @@ export async function requestInteraction(
     const bytes = await crypto.subtle.digest(
         "SHA-256",
         new TextEncoder().encode(JSON.stringify([
-            request,
+            request.type === ValidationInteractionTypes.CODE_REVIEW
+                ? [request.type, request._meta?.planName, request._meta?.diffText, request._meta?.targetBranch]
+                : request,
             checkpoint.pendingCiDecision,
             checkpoint.generation,
         ])),
@@ -70,9 +72,21 @@ export async function requestInteraction(
         return answer;
     }
     if (accepted) return accepted;
-    const hostRequest = { kind: "decision" as const, identity, interaction: request };
+    // Strip process-local callbacks before saving a browser wait.
+    const hostRequest = pending && sameHostIdentity(pending.identity, identity)
+        ? pending
+        : { kind: "decision" as const, identity, interaction: JSON.parse(JSON.stringify(request)) };
     await saveHostCheckpoint(args, {
         pendingHostDecision: hostRequest,
+        ...(request.type === ValidationInteractionTypes.CODE_REVIEW
+            ? {
+                hostDecisionChoices: Object.fromEntries(
+                    Object.entries(checkpoint.hostDecisionChoices || {}).filter(([, answer]) =>
+                        answer.value !== "retry"
+                    ),
+                ),
+            }
+            : {}),
         hostDecisionSequence: identity === pending?.identity ? checkpoint.hostDecisionSequence : sequence,
     });
     throw new ValidationHostWait(hostRequest);
@@ -110,6 +124,17 @@ export async function pauseForUserAction(
         prompt: message,
         options,
     });
+    if (args.hostTurn) {
+        // Keep cancellation only until its Retry/Stop prompt has been answered. A
+        // fresh process must replay that route, not replay cancellation forever.
+        await saveHostCheckpoint(args, {
+            hostDecisionChoices: Object.fromEntries(
+                Object.entries(args.validationCheckpoint?.hostDecisionChoices || {}).filter(([, answer]) =>
+                    answer.outcome !== "canceled"
+                ),
+            ),
+        });
+    }
     const selectedValue = response.outcome === "selected" && typeof response.value === "string"
         ? options.find((option) => option.value === response.value)?.value
         : undefined;

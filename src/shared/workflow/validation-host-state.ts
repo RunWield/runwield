@@ -66,7 +66,11 @@ export async function requestHostRepair(
             args,
             context.projectRoot,
             "validation_failed",
-            args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+            args.triageMeta.status === "reviewed"
+                ? "reviewed"
+                : args.triageMeta.status === "implemented"
+                ? "implemented"
+                : "validated_ci",
             failureReason,
             { validationCheckpoint: repairCheckpoint },
         );

@@ -72,9 +72,6 @@ export async function runValidationPhase(args: ValidationLoopArgs): Promise<Vali
         case "semantic":
             return await runSemanticReviewPhase(canonicalArgs);
         case "delivery":
-            if (args.hostTurn) {
-                return { kind: "awaiting_delivery", planName: args.planName, projectRoot: getProjectRoot(args) };
-            }
             return await runValidatedReviewerPhase(canonicalArgs);
     }
 }

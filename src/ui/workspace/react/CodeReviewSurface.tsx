@@ -1,3 +1,4 @@
+import { useReviewRevision } from "./use-review-revision.ts";
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
@@ -144,6 +145,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [submitting, setSubmitting] = useState(null);
     const [submitted, setSubmitted] = useState(null);
     const [error, setError] = useState("");
+    const reviewRevisionFields = useReviewRevision(initialPayload, submitted === "feedback", setError);
     const [viewedFiles, setViewedFiles] = useState(new Set());
     const [fileNavigationTarget, setFileNavigationTarget] = useState(null);
     const [allFilesContentFits, setAllFilesContentFits] = useState(false);
@@ -588,6 +590,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     function buildReviewPayload() {
         const workflowAnnotations = toWorkflowAnnotations(annotations);
         return {
+            ...reviewRevisionFields,
             feedback: feedbackMarkdown,
             annotations: workflowAnnotations,
         };

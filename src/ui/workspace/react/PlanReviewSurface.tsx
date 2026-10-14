@@ -1,3 +1,4 @@
+import { useReviewRevision } from "./use-review-revision.ts";
 // @ts-nocheck: Workspace React islands compile TSX, but this module uses JSDoc-style JavaScript only.
 import { updateReviewInteractionUrl } from "../browser/review-navigation.ts";
 import { RunWieldMenu, RunWieldMenuItem } from "../../design-system/components/react/RunWieldMenu.tsx";
@@ -343,6 +344,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
     const executionAgent = executionPolicy.executionAgent;
     const collaborationRecommendation = executionPolicy.collaborationRecommendation;
     const waitingForRevision = Boolean(initialPayload.reviewRevisionUrl && submitted === "feedback");
+    const reviewRevisionFields = useReviewRevision(initialPayload, waitingForRevision, setError);
     const reviewNotice = waitingForRevision
         ? { state: "info", title: outcomeCopy.title, message: outcomeCopy.subtitle }
         : initialPayload.reviewNotice;
@@ -451,31 +453,6 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             reviewGroup?.setBusy(false);
         }
     }
-
-    useEffect(() => {
-        if (!waitingForRevision) return;
-        const controller = new AbortController();
-        const waitForRevision = async () => {
-            try {
-                while (!controller.signal.aborted) {
-                    const url = new URL(initialPayload.reviewRevisionUrl, globalThis.location.href);
-                    url.searchParams.set("token", initialPayload.token);
-                    const response = await fetch(url, { signal: controller.signal });
-                    if (!response.ok) throw new Error("The review host stopped. Reopen the review in Claude.");
-                    const current = await response.json();
-                    if (current.revision > initialPayload.reviewRevision) {
-                        globalThis.location.reload();
-                        return;
-                    }
-                    await pause(750);
-                }
-            } catch (caught) {
-                if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught));
-            }
-        };
-        void waitForRevision();
-        return () => controller.abort();
-    }, [waitingForRevision, initialPayload]);
 
     async function submitFeedback() {
         setSubmitting("feedback");
@@ -1622,7 +1599,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
             "x-runwield-review-token": initialPayload.token,
         };
         if (initialPayload.csrfToken) headers["x-runwield-csrf"] = initialPayload.csrfToken;
-        if (initialPayload.reviewRevisionUrl) body = { ...body, reviewRevision: initialPayload.reviewRevision };
+        body = { ...body, ...reviewRevisionFields };
         const requestId = crypto.randomUUID();
         const response = await fetch(targetUrl, {
             method: "POST",

@@ -134,7 +134,7 @@ Deno.test("fresh CLI workers complete CI repair, direct review, semantic repair,
         await call("task_completed", { actionId: workflow.nextAction.actionId, message: "- Fixed CI marker." });
         let repaired = false;
         let verified = false;
-        for (let round = 0; round < 6 && workflow.state === "validating"; round++) {
+        for (let round = 0; round < 6 && workflow.nextAction.kind === "validation"; round++) {
             const action = workflow.nextAction;
             assert(action.kind === "validation" && action.request.kind === "reviewer");
             verified ||= action.request.reviewMode === "verify";
@@ -187,7 +187,7 @@ Deno.test("fresh CLI workers complete CI repair, direct review, semantic repair,
             }
         }
         assert(verified);
-        assertEquals(workflow.state, "reviewed");
+        assertEquals(workflow.nextAction.kind, "code_review");
         assertEquals((await fixture.plan()).attrs.status, "reviewed");
         assertEquals(await fixture.ciCount(), 3);
     } finally {

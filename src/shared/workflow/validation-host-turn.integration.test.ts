@@ -248,7 +248,7 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
             outcome: verifyOutcome,
             coverage: coverage(reviewer),
         });
-        assertEquals(result.kind, "awaiting_delivery");
+        assertEquals(result.kind, "host_request");
         const reviewed = await fixture.plan();
         assertEquals(reviewed.attrs.status, "reviewed");
         assertEquals(reviewed.attrs.validationCheckpoint?.reviewState?.reviewLedger.items[0].status, "fix_confirmed");
@@ -265,7 +265,7 @@ Deno.test("fresh network-denied host turns validate real work without a Session 
         );
         const final = await businessState();
         const finalCheckpoint = await fixture.checkpointBytes();
-        assertEquals((await turn(complete(semanticRepair))).kind, "awaiting_delivery");
+        assertEquals((await turn(complete(semanticRepair))).kind, "host_request");
         assertEquals(await businessState(), final);
         assertEquals(await fixture.checkpointBytes(), finalCheckpoint);
         assertEquals(await fixture.ciCount(), 3);

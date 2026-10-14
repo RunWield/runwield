@@ -73,6 +73,9 @@ export async function cleanupReviewAgentState(state) {
  */
 export async function reviewAgentApi(request, url, state) {
     if (request.method === "GET" && url.pathname === "/api/agents/capabilities") {
+        if (state.reviewPayload.agentTurnOwner === "host") {
+            return Response.json({ mode: "review", available: false, providers: [] }, noStore());
+        }
         const provider = detectGuideProvider();
         return Response.json({
             mode: "review",
@@ -97,6 +100,9 @@ export async function reviewAgentApi(request, url, state) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/agents/jobs") {
+        if (state.reviewPayload.agentTurnOwner === "host") {
+            return Response.json({ error: "Claude Code owns agent turns for this review." }, { status: 403 });
+        }
         const body = await request.json().catch(() => ({}));
         if (
             !body || typeof body !== "object" || Array.isArray(body) || !Object.hasOwn(body, "provider") ||

@@ -32,7 +32,7 @@ dependencies:
     - "05-validate-with-claude-owned-review-and-repair-workers"
 targetBranch: "epic/attached-mode-claude-feature-preview"
 userVerifiedAt: null
-status: "in_progress"
+status: "implemented"
 ---
 
 # Publish validated work and record the outcome
