@@ -139,3 +139,20 @@ workflow exercised the explicit outcome schema and a correction with a fresh rev
 without coordinator rewrites. Logs are in `/tmp/runwield-child05-live/` on the acceptance machine.
 
 <!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/05-validate-with-claude-owned-review-and-repair-workers" -->
+
+<!-- runwield:manual-qa:start child="attached-mode-claude-feature-preview/06-publish-validated-work-and-record-the-outcome" -->
+
+## Publish validated work and record the outcome
+
+Manual verification steps for attached-mode-claude-feature-preview/06-publish-validated-work-and-record-the-outcome
+
+- [ ] In Claude Code, run validation for a FEATURE and open the hosted code review page. Submit feedback, confirm the
+      updated diff appears, then approve it.
+- [ ] Complete the Recorder action and confirm publication succeeds, the Work Record is available, and the workflow
+      closes as delivered.
+- [ ] Restart Claude while a code review or Recorder action is pending. Resume the workflow and confirm it continues
+      without repeating accepted work.
+- [ ] Confirm the post-delivery response suggests manual checks from the Plan, and that no private conversation text
+      appears in the Work Record.
+
+<!-- runwield:manual-qa:end child="attached-mode-claude-feature-preview/06-publish-validated-work-and-record-the-outcome" -->
