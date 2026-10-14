@@ -16,9 +16,9 @@ createdAt: "2026-10-07T03:22:49.110Z"
 status: "draft"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
-order: 8
+order: 9
 dependencies:
-    - "06-publish-validated-work-and-record-the-outcome"
+    - "07-answer-review-chat-from-the-claude-session"
 targetBranch: "epic/attached-mode-claude-feature-preview"
 planId: "ba18cb45-fed2-4878-8521-b4450ade354b"
 ---
@@ -27,7 +27,8 @@ planId: "ba18cb45-fed2-4878-8521-b4450ade354b"
 
 ## Context
 
-Children 1–6 implement the runtime FEATURE journey and own their own recovery tests. Unit and phase tests do not
+Children 1–7 implement the runtime FEATURE journey and own their own recovery tests. Child 7 adds review chat on the
+Plan review and code review pages; the integrated journey here exercises it on both pages. Unit and phase tests do not
 establish the complete Connect promise. This child owns the combined supported-version release evidence and the
 remaining update/disable/uninstall distribution journey.
 
