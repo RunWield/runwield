@@ -455,8 +455,6 @@ async function continueValidationAttempt(
                     report: resume.report,
                 });
                 args = { ...args, taskCompletionId: resume.identity.repairGeneration };
-            } else if (plan?.attrs.status === "reviewed") {
-                return { kind: "awaiting_delivery", planName: args.planName, projectRoot };
             } else if (checkpoint.pendingHostDecision) {
                 return {
                     kind: "host_request",

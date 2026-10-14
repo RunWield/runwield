@@ -1,3 +1,20 @@
+/**
+ * @module shared/attached/coordinator
+ * The Attached Workflow Coordinator: a sibling runtime to `SessionRuntime` (ADR-014).
+ *
+ * Each operation is one short step: load the Attached Workflow Record, check it, make
+ * at most one change, save, return. Nothing lives in process memory, so a fresh Core
+ * process continues where the last one stopped. The coordinator never starts a model
+ * turn and never stores a host transcript.
+ *
+ * Operations cover activation, Triage, Plan submission, execution handoff, and completion.
+ * A PLANNED_CHANGE outcome hands the host the Planner role; other Routing Intents
+ * close the workflow as unsupported in this Preview.
+ */
+
+import { isCommitPublishedToTarget } from "../isolated-publication.ts";
+import { readPublishedDeliverySources } from "../work-records/published-source.ts";
+import { parseRecorderSections } from "../work-records/generation.js";
 import { stat as fsStat } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import {
@@ -8,7 +25,7 @@ import {
 import { finalizePlanImplementation } from "../workflow/implementation-checkpoint.ts";
 import { probeGitRepository } from "../git.ts";
 import { hasNonGitExecutionConsent, rememberNonGitExecutionConsent } from "../non-git-execution-consent.ts";
-import { findById, listEntries } from "../worktree-registry.js";
+import { findActiveByPlanName, findById, listEntries } from "../worktree-registry.js";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative } from "node:path";
 import {
@@ -125,7 +142,12 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     const pending = record.pendingAction;
     if (record.state === "validating") {
         if (record.validation?.request && record.validation.actionId && !record.validation.resume) {
-            return { kind: "validation", actionId: record.validation.actionId, request: record.validation.request };
+            const request = record.validation.request;
+            if (request.kind === "recorder") return { kind: "recorder", actionId: record.validation.actionId, request };
+            if (request.kind === "decision" && request.interaction.type === "code_review") {
+                return { kind: "code_review", actionId: record.validation.actionId, request };
+            }
+            return { kind: "validation", actionId: record.validation.actionId, request };
         }
         return {
             kind: "validation_recovery",
@@ -136,10 +158,8 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
     }
     if (record.state === "reviewed" && record.plan) {
         return {
-            kind: "awaiting_delivery",
-            planName: record.plan.planName,
-            guidance:
-                "Core validation passed. Optional code review and publication are the next Preview step. Publication remains pending; this is not Verified.",
+            kind: "validation_recovery",
+            guidance: "Call start_validation to continue delivery.",
         };
     }
     if (record.state === "triaging" && pending) return { kind: "triage", ...pending };
@@ -191,6 +211,19 @@ async function nextActionFor(record: AttachedWorkflowRecord): Promise<AttachedNe
                 "Call start_validation now. Publication remains pending. This is not Verified.",
         };
     }
+    if (record.closure?.reason === "delivered" && record.plan) {
+        return {
+            kind: "delivered",
+            planName: record.plan.planName,
+            workRecord: record.closure.workRecord,
+            completionMode: record.closure.completionMode || "publication",
+            guidance: `${
+                record.closure.completionMode === "in_place"
+                    ? "Consented in-place completion is proven; no Git publication is claimed."
+                    : "Publication is proven."
+            } Work Record supersession proposals are deferred; use wld wr supersede. Suggest manual checks from the Plan in Claude Code; do not save those checks.`,
+        };
+    }
     return record.closure?.reason === "plan_advanced_in_core"
         ? { kind: "return_to_host", ...record.closure }
         : { kind: "return_to_host", reason: "unsupported_in_preview" };
@@ -211,6 +244,38 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         ].includes(record.state)
     )
         return record;
+    if (record.state === "validating" || record.state === "reviewed") {
+        const delivered = await loadPlan(record.projectRoot, record.plan.planName).catch(() => null);
+        const receipt = delivered?.attrs.publicationReceipt;
+        if (
+            receipt &&
+            !(await findActiveByPlanName(record.projectRoot, record.plan.planName, { migrate: false })) &&
+            (await isCommitPublishedToTarget({
+                projectRoot: record.projectRoot,
+                targetBranch: receipt.targetBranch,
+                commit: receipt.publishedCommit,
+            }).catch(() => false))
+        ) {
+            return {
+                ...record,
+                state: "closed",
+                pendingAction: null,
+                validation: null,
+                closure: {
+                    reason: "delivered",
+                    completionMode: "publication",
+                    workRecord: (
+                        await readPublishedDeliverySources(record.projectRoot, {
+                            artifactCommit: receipt.publishedCommit,
+                            planName: record.plan.planName,
+                            planId: record.plan.planId,
+                            phase: "publication_verified",
+                        })
+                    ).workRecordOwner?.attrs.workRecord,
+                },
+            };
+        }
+    }
     // Execution evidence selects the document; the invoking Plan may still be ready_for_work.
     const executionRoot = record.execution?.executionCwd;
     const location = executionRoot
@@ -228,6 +293,13 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
         throw new Error(`Plan not found: ${record.plan.planName}`);
     }
     const status = archived || archivedPlan ? "archived" : plan?.attrs.status;
+    if (
+        record.state === "validating" &&
+        status === "verified" &&
+        (plan?.attrs.deliveryEvidence?.mode === "non_git_in_place" ||
+            (await findActiveByPlanName(record.projectRoot, record.plan.planName, { migrate: false })))
+    )
+        return record;
     if (record.state === "validating" && ["implemented", "validated_ci", "reviewed"].includes(status || "")) {
         return record;
     }
@@ -1132,7 +1204,40 @@ export async function readStatus(envelope: StatusEnvelope): Promise<AttachedOper
         return await rejected("status", rejection("workflow_not_found", "No Attached Workflow has this workflowId."));
     }
     const recovery = loaded.status === "moved" ? movedRecovery(location, loaded.record) : null;
-    return { ok: true, operation: "status", workflow: await viewOf(loaded.record, recovery) };
+    if (!recovery && loaded.record.state === "reviewed") {
+        const continued = await runValidationOperation("start_validation", {
+            projectRoot: envelope.projectRoot,
+            workflowId: loaded.record.workflowId,
+            expectedRevision: loaded.record.revision,
+            operationId: crypto.randomUUID(),
+            evidence: loaded.record.evidence,
+            payload: {},
+        });
+        return { ...continued, operation: "status" };
+    }
+    const projected = recovery ? loaded.record : await reconcilePlanPosition(loaded.record);
+    if (projected.closure?.reason === "delivered" && loaded.record.state !== "closed") {
+        const original = loaded.record.validation;
+        const operation = original?.operation || "start_validation";
+        const decision = await accept(
+            operation,
+            {
+                projectRoot: envelope.projectRoot,
+                workflowId: loaded.record.workflowId,
+                expectedRevision: loaded.record.revision,
+                operationId: original?.operationId || crypto.randomUUID(),
+                evidence: original?.evidence || loaded.record.evidence,
+                payload: {},
+            },
+            loaded.record,
+            { state: "closed", pendingAction: null, validation: null, closure: projected.closure },
+        );
+        const settled = await commit(location, operation, loaded.record.revision, decision, async (winner) => ({
+            result: { ok: true, operation: "status", workflow: await viewOf(winner) },
+        }));
+        return { ...settled, operation: "status" };
+    }
+    return { ok: true, operation: "status", workflow: await viewOf(projected, recovery) };
 }
 
 async function runParsedOperation(
@@ -1160,7 +1265,11 @@ async function runParsedOperation(
         const parsed = parseTaskCompletedInput(projectRoot, input);
         return parsed.ok ? await taskCompleted(parsed.envelope) : await rejected(name, parsed.rejection);
     }
-    if (["start_validation", "review_diff", "review_complete", "validation_decision"].includes(name)) {
+    if (
+        ["start_validation", "review_diff", "review_complete", "validation_decision", "work_record_completed"].includes(
+            name,
+        )
+    ) {
         const parsed = parseValidationInput(projectRoot, input, name);
         return parsed.ok ? await runValidationOperation(name, parsed.envelope) : await rejected(name, parsed.rejection);
     }
@@ -1178,8 +1287,13 @@ async function withRoleInstructions(
     result: AttachedOperationResult,
 ): Promise<AttachedOperationResult> {
     const action = result.workflow?.nextAction;
-    if (action?.kind === "validation" && action.request.kind !== "decision") {
-        const role = action.request.kind === "reviewer" ? "reviewer" : "reviewer-feedback-engineer";
+    if ((action?.kind === "validation" || action?.kind === "recorder") && action.request.kind !== "decision") {
+        const role =
+            action.request.kind === "reviewer"
+                ? "reviewer"
+                : action.request.kind === "recorder"
+                  ? "recorder"
+                  : "reviewer-feedback-engineer";
         const cwd = action.request.cwd;
         const text = await resolveAttachedRoleInstructions(cwd, role);
         return {
@@ -1240,7 +1354,7 @@ export async function runValidationOperation(
             current,
         );
     }
-    if (!current.plan || !["implemented", "validating"].includes(current.state)) {
+    if (!current.plan || !["implemented", "validating", "reviewed"].includes(current.state)) {
         return await rejected(operation, rejection("action_superseded", "No validation action is pending."), current);
     }
     const checkpoint = current.validation ?? { coverage: [] };
@@ -1348,6 +1462,13 @@ export async function runValidationOperation(
             envelope.payload.answer
         ) {
             resume = { kind: "decision", identity: request.identity, answer: envelope.payload.answer };
+        } else if (
+            operation === "work_record_completed" &&
+            request.kind === "recorder" &&
+            "sections" in envelope.payload &&
+            envelope.payload.sections
+        ) {
+            resume = { kind: "recorder", identity: request.identity, sections: envelope.payload.sections };
         } else if (operation === "task_completed" && request.kind === "repair" && "message" in envelope.payload) {
             resume = { kind: "task_completed", identity: request.identity, report: envelope.payload.message };
         } else {
@@ -1370,6 +1491,16 @@ export async function runValidationOperation(
                 rejection("action_superseded", error instanceof Error ? error.message : String(error)),
                 current,
             );
+        }
+    }
+    let recorderError: string | undefined;
+    const submittedRecorder =
+        resume?.kind === "recorder" ? resume : checkpoint.resume?.kind === "recorder" ? checkpoint.resume : undefined;
+    if (submittedRecorder) {
+        try {
+            parseRecorderSections(submittedRecorder.sections);
+        } catch (error) {
+            recorderError = error instanceof Error ? error.message : String(error);
         }
     }
     const claimed: AttachedWorkflowRecord = {
@@ -1419,8 +1550,17 @@ export async function runValidationOperation(
             );
         }
         const changes: RecordChanges =
-            result.kind === "awaiting_delivery"
-                ? { state: "reviewed", pendingAction: null, validation: { coverage: [] } }
+            result.kind === "verified"
+                ? {
+                      state: "closed",
+                      pendingAction: null,
+                      validation: null,
+                      closure: {
+                          reason: "delivered",
+                          completionMode: result.completionMode,
+                          workRecord: result.workRecord,
+                      },
+                  }
                 : result.kind === "host_request"
                   ? {
                         state: "validating",
@@ -1447,7 +1587,22 @@ export async function runValidationOperation(
                             recovery: result.recovery,
                         },
                     };
+        if (result.kind === "host_request" && result.request.kind === "recorder") {
+            recorderError ||= result.request.validationError;
+        }
+        if (result.kind === "verified" && submittedRecorder) {
+            recorderError ||= result.workRecord?.status === "failed" ? result.workRecord.error : undefined;
+        }
         const decision = await accept(operation, envelope, claimed, changes);
+        if (recorderError && decision.next) {
+            decision.result = {
+                ok: false,
+                operation,
+                rejection: rejection("invalid_outcome", recorderError),
+                workflow: await viewOf(decision.next),
+            };
+            decision.next.acceptedOperations[envelope.operationId].result = decision.result;
+        }
         // Preserve the original outcome operation's receipt on recovery as well.
         if (decision.next && claimed.validation?.operationId) {
             const receipt = decision.next.acceptedOperations[envelope.operationId];

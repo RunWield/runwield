@@ -72,7 +72,7 @@ test("direct review_diff receipts gate review; listing is not inspection and sta
             assert(review.ok);
             workflow = review.workflow;
         }
-        assertEquals(workflow.state, "reviewed");
+        assertEquals(workflow.nextAction.kind, "code_review");
         assertEquals((await fixture.plan()).attrs.status, "reviewed");
     } finally {
         await fixture.close();

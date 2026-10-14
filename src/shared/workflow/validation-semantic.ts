@@ -1,10 +1,10 @@
-import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 /**
  * @module shared/workflow/validation-semantic
  * The Semantic Review phase: reviewer rounds with ledger convergence, repair
  * dispatch, and the round-limit decision when the automatic rounds are spent.
  */
 
+import { recordDeliveryEvidence } from "./delivery-evidence.ts";
 import { AGENTS } from "../../constants.js";
 import { captureWorktreeTree, getWorkflowDiff, getWorktreeReviewDiff } from "./git-snapshot.ts";
 import { buildDiffInspectionSection, parseDiffFiles } from "./review-diff-tool.js";
@@ -87,6 +87,8 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             context.projectRoot,
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+            undefined,
+            args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {},
         );
         return {
             kind: "paused",
@@ -107,6 +109,8 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             context.projectRoot,
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+            undefined,
+            args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {},
         );
         return {
             kind: "paused",
@@ -151,6 +155,8 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
             context.projectRoot,
             "semantic_review_passed",
             args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
+            undefined,
+            args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {},
         );
         return {
             kind: "paused",
@@ -183,7 +189,12 @@ export async function runSemanticReviewPhase(args: ValidationLoopArgs): Promise<
                 "semantic_review_passed",
                 args.triageMeta.status === "implemented" ? "implemented" : "validated_ci",
                 undefined,
-                { humanReviewMode: "always", humanReviewDecision: null, humanReviewedAt: null },
+                {
+                    humanReviewMode: "always",
+                    humanReviewDecision: null,
+                    humanReviewedAt: null,
+                    ...(args.hostTurn ? { validationCheckpoint: args.validationCheckpoint } : {}),
+                },
             );
             return {
                 kind: "paused",
@@ -1117,6 +1128,24 @@ export async function dispatchReviewFeedbackRepair(
         "Started",
     );
     emitStatus(args, buildValidationUserMessage({ kind: "review_repair", repairKind: packet.repairKind }), "warning");
+    if (args.hostTurn) {
+        await requestHostRepair(
+            args,
+            context,
+            buildValidationRepairPrompt({
+                executionCwd: context.executionCwd,
+                repairCwd: context.executionCwd,
+                worktreeId: context.worktreeId,
+                worktreeBranch: context.worktreeBranch,
+                worktreeBaseBranch: context.worktreeBaseBranch,
+                authorityNote: "A human reviewed this change. Their feedback is authoritative.",
+                repairsNeeded: [packet.findingsSection, buildDiffInspectionSection(packet.diffText)].join("\n\n"),
+                completionInstruction: "Return a disposition for every feedback item to the coordinating conversation.",
+            }),
+            packet.repairKind,
+            packet.findingsSection,
+        );
+    }
     try {
         const workflowState: ValidationWorkflowState = { ...context.workflowBase, ...packet.activeWorkflow };
         args.session.setActiveWorkflow(workflowState);

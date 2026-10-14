@@ -16,6 +16,10 @@ import { buildValidationUserMessage } from "./validation-user-messages.ts";
 import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
 import { saveHostCheckpoint } from "./validation-host-state.ts";
 
+function isPauseDecision(answer: ValidationInteractionResponse | undefined): boolean {
+    return answer?.outcome === "selected" && ["stop", "close"].includes(String(answer.value));
+}
+
 export async function requestInteraction(
     args: ValidationLoopArgs,
     request: ValidationInteractionRequest,
@@ -24,7 +28,15 @@ export async function requestInteraction(
     const checkpoint = args.validationCheckpoint!;
     const bytes = await crypto.subtle.digest(
         "SHA-256",
-        new TextEncoder().encode(JSON.stringify([request, checkpoint.pendingCiDecision, checkpoint.generation])),
+        new TextEncoder().encode(
+            JSON.stringify([
+                request.type === ValidationInteractionTypes.CODE_REVIEW
+                    ? [request.type, request._meta?.planName, request._meta?.diffText, request._meta?.targetBranch]
+                    : request,
+                checkpoint.pendingCiDecision,
+                checkpoint.generation,
+            ]),
+        ),
     );
     const key = Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
     // Answers replay by logical prompt; request identities belong to one durable wait.
@@ -40,7 +52,8 @@ export async function requestInteraction(
               key: `${key}:${sequence}`,
           };
     const resume = args.hostTurn.resume;
-    const accepted = checkpoint.hostDecisionChoices?.[key];
+    const savedAnswer = checkpoint.hostDecisionChoices?.[key];
+    const accepted = isPauseDecision(savedAnswer) ? undefined : savedAnswer;
     if (
         accepted &&
         (resume?.kind !== "decision" || !sameHostIdentity(identity, resume.identity) || args.hostTurn.consumed)
@@ -63,19 +76,31 @@ export async function requestInteraction(
             throw new ValidationHostRejected("Invalid text answer.");
         args.hostTurn.consumed = true;
         await saveHostCheckpoint(args, {
-            // Stop pauses this call, not every future call for the same round.
-            hostDecisionChoices:
-                answer.outcome === "selected" && answer.value === "stop"
-                    ? checkpoint.hostDecisionChoices
-                    : { ...checkpoint.hostDecisionChoices, [key]: answer },
+            // Stop and Close pause this call, not every future call for the same round.
+            hostDecisionChoices: isPauseDecision(answer)
+                ? checkpoint.hostDecisionChoices
+                : { ...checkpoint.hostDecisionChoices, [key]: answer },
             pendingHostDecision: undefined,
         });
         return answer;
     }
     if (accepted) return accepted;
-    const hostRequest = { kind: "decision" as const, identity, interaction: request };
+    // Strip process-local callbacks before saving a browser wait.
+    const hostRequest =
+        pending && sameHostIdentity(pending.identity, identity)
+            ? pending
+            : { kind: "decision" as const, identity, interaction: JSON.parse(JSON.stringify(request)) };
     await saveHostCheckpoint(args, {
         pendingHostDecision: hostRequest,
+        ...(request.type === ValidationInteractionTypes.CODE_REVIEW
+            ? {
+                  hostDecisionChoices: Object.fromEntries(
+                      Object.entries(checkpoint.hostDecisionChoices || {}).filter(
+                          ([, answer]) => answer.value !== "retry",
+                      ),
+                  ),
+              }
+            : {}),
         hostDecisionSequence: identity === pending?.identity ? checkpoint.hostDecisionSequence : sequence,
     });
     throw new ValidationHostWait(hostRequest);
@@ -110,6 +135,17 @@ export async function pauseForUserAction(args: ValidationLoopArgs, pause: UserAc
         prompt: message,
         options,
     });
+    if (args.hostTurn) {
+        // Keep cancellation only until its Retry/Stop prompt has been answered. A
+        // fresh process must replay that route, not replay cancellation forever.
+        await saveHostCheckpoint(args, {
+            hostDecisionChoices: Object.fromEntries(
+                Object.entries(args.validationCheckpoint?.hostDecisionChoices || {}).filter(
+                    ([, answer]) => answer.outcome !== "canceled",
+                ),
+            ),
+        });
+    }
     const selectedValue =
         response.outcome === "selected" && typeof response.value === "string"
             ? options.find((option) => option.value === response.value)?.value

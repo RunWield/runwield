@@ -1,4 +1,5 @@
 ---
+planId: "bcbc44f4-cbec-4b05-990c-a2631b0f3b5a"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "HIGH"
@@ -19,18 +20,20 @@ affectedPaths:
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/runwield-connect-prd.md"
 executionAgent: "engineer"
+collaborationRecommendation: "autonomous"
 devServerCommand: "deno task workspace:dev"
 devServerUrl: "http://127.0.0.1:5173/dev/code-review"
 devServerHmr: true
 createdAt: "2026-10-07T03:22:48.414Z"
-status: "draft"
 origin: "internal"
 parentPlan: "attached-mode-claude-feature-preview"
 order: 7
 dependencies:
     - "05-validate-with-claude-owned-review-and-repair-workers"
 targetBranch: "epic/attached-mode-claude-feature-preview"
-planId: "bcbc44f4-cbec-4b05-990c-a2631b0f3b5a"
+userVerifiedAt: null
+status: "reviewed"
+validatedCommit: "587793ac598c510bce25701017e477041837bfbd"
 ---
 
 # Publish validated work and record the outcome

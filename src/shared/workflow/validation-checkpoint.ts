@@ -28,6 +28,14 @@ type PendingHostDecision = Extract<import("./validation-host-contract.ts").Valid
 type PendingHostRepair = Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "repair" }>;
 type HostDecisionChoices = Record<string, import("./validation-ports.ts").ValidationInteractionResponse>;
 
+export type HostRecorderState = {
+    recordId: string;
+    request: Extract<import("./validation-host-contract.ts").ValidationHostRequest, { kind: "recorder" }>;
+    invalidSubmissions: number;
+    sections?: import("../work-records/generation.js").GeneratedWorkRecordSections;
+    failure?: string;
+};
+
 export type ValidationCheckpoint = {
     version: 1;
     attemptId: string;
@@ -49,6 +57,7 @@ export type ValidationCheckpoint = {
     pendingCiDecision?: PendingCiDecision;
     hostReview?: HostReviewerContinuation;
     operationalAttempts?: number;
+    hostRecorder?: HostRecorderState;
     updatedAt: string;
 };
 
@@ -138,6 +147,7 @@ export function makeValidationCheckpoint(args: {
     pendingCiDecision?: PendingCiDecision;
     hostReview?: HostReviewerContinuation;
     operationalAttempts?: number;
+    hostRecorder?: HostRecorderState;
 }): ValidationCheckpoint {
     return {
         version: VALIDATION_CHECKPOINT_VERSION,
@@ -162,6 +172,7 @@ export function makeValidationCheckpoint(args: {
         ...(args.pendingCiDecision ? { pendingCiDecision: args.pendingCiDecision } : {}),
         ...(args.hostReview ? { hostReview: args.hostReview } : {}),
         ...(args.operationalAttempts !== undefined ? { operationalAttempts: args.operationalAttempts } : {}),
+        ...(args.hostRecorder ? { hostRecorder: args.hostRecorder } : {}),
         updatedAt: new Date().toISOString(),
     };
 }

@@ -1,5 +1,5 @@
 ---
-description: Continue or restore RunWield validation with fresh Claude workers
+description: Continue or restore RunWield validation and delivery with fresh Claude workers
 disable-model-invocation: true
 ---
 
@@ -31,9 +31,20 @@ Continue the project's open RunWield workflow. Do not activate a new request.
 6. For `decision`, ask the user the exact `request.interaction.prompt` and options in plain text. Submit their answer
    through `validation_decision` with `payload.answer` (outcome, value, and optional message/valueLabel). Do not choose
    on the user's behalf.
-7. Follow each returned next action. After process loss or rejection, call `status`, then `start_validation` to recover.
-   Never bypass a stale action or candidate rejection. For `awaiting_delivery`, report that validation passed and
-   publication remains pending. Do not claim Verified, commit, push, merge, or start publication.
+7. For `code_review`, show `review.url` and poll `status` every two seconds while the browser is open. Core saves
+   approval or feedback for the exact diff. Feedback returns a fresh repair action; follow step 5, then review the new
+   diff after Core re-verifies it. Closing the page or Claude does not abandon the workflow.
+8. For `recorder`, dispatch a fresh Claude Recorder subagent with the complete `instructions.text`, request cwd and
+   canonical references. Do not send the Claude conversation. The worker returns structured sections, not files. This
+   conversation submits them unchanged through `work_record_completed` with the current action ID and revision. On
+   validation errors, send the errors and full instructions to a fresh Recorder for the one retry. After the second
+   invalid submission, Core records failure and continues publication.
+9. Follow each returned next action, including on a rejected call. After process loss or rejection, call `status`, then
+   `start_validation` to recover. Never bypass a stale action or candidate rejection. Do not claim Verified until
+   `delivered`. Do not commit, push or merge; Core owns publication.
+10. For `delivered`, report Core's proven delivery and Work Record outcome. Supersession proposals are deferred; name
+    `wld wr supersede` for later use. Suggest manual checks from the Plan in this Claude conversation. Do not save the
+    checks as a document, memory or Work Record.
 
 Stay in Claude Code and the browser. Core owns the gates; Claude owns every model call. To allow slow checks, start
 Claude Code with `MCP_TOOL_TIMEOUT=600000` (milliseconds), or a higher timeout for the project's configured command.

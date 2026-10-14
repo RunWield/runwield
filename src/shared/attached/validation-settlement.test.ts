@@ -68,7 +68,7 @@ for (const outcome of ["correction", "repair", "reviewed"] as const) {
             const completed = await completing;
             assert(durableClaim, "The real durable claim must be observed before Core settles.");
             assert(completed.ok, JSON.stringify(completed));
-            if (outcome === "reviewed") assertEquals(completed.workflow.state, "reviewed");
+            if (outcome === "reviewed") assertEquals(completed.workflow.nextAction.kind, "code_review");
             else {
                 assert(completed.workflow.nextAction.kind === "validation");
                 assertEquals(completed.workflow.nextAction.request.kind, outcome === "repair" ? "repair" : "reviewer");

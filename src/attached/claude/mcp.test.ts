@@ -135,6 +135,7 @@ test("the CLI and the MCP server return equal result objects for the same inputs
                 "review_diff",
                 "review_complete",
                 "validation_decision",
+                "work_record_completed",
             ],
         );
         for (const tool of tools.tools) {

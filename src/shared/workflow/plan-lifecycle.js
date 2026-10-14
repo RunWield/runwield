@@ -486,7 +486,7 @@ export function buildPlanEventUpdates(event, currentStatus, details = {}) {
         updatedAt: now,
     };
     const clearsValidationCheckpoint =
-        event === "validation_passed" ||
+        (event === "validation_passed" && !details.pendingPublication) ||
         (targetStatus === "implemented" && event !== "mechanical_validation_passed") ||
         event === "execution_started" ||
         event === "recovery_reset" ||

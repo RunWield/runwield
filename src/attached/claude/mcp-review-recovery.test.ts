@@ -80,6 +80,7 @@ test("fresh MCP status restores the same pending round and transport close stops
                     "review_diff",
                     "review_complete",
                     "validation_decision",
+                    "work_record_completed",
                 ],
             );
             assertEquals(tools.tools.find(({ name }) => name === "status")?.inputSchema.required, []);

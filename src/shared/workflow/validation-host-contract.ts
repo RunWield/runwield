@@ -1,3 +1,4 @@
+export type HostDeliveryMode = "publication" | "in_place";
 /** Typed process-independent waits. Outcomes are claims; the engine checks them. */
 import type { ReviewCompletePayload } from "./review-outcome.ts";
 import type { ReviewDiffScope, ReviewDiffSpan } from "./review-inspection.ts";
@@ -40,7 +41,8 @@ export type ValidationHostRequest =
           cwd: string;
           role: string;
       }
-    | { kind: "decision"; identity: ValidationDecisionIdentity; interaction: ValidationInteractionRequest };
+    | { kind: "decision"; identity: ValidationDecisionIdentity; interaction: ValidationInteractionRequest }
+    | { kind: "recorder"; identity: ValidationHostIdentity; prompt: string; cwd: string; validationError?: string };
 export type ValidationHostResume =
     | {
           kind: "reviewer";
@@ -50,10 +52,16 @@ export type ValidationHostResume =
           failure?: import("./validation-operational-errors.ts").ValidationOperationalFailure;
       }
     | { kind: "decision"; identity: ValidationDecisionIdentity; answer: ValidationInteractionResponse }
-    | { kind: "task_completed"; identity: ValidationRepairIdentity; report: string };
+    | { kind: "task_completed"; identity: ValidationRepairIdentity; report: string }
+    | { kind: "recorder"; identity: ValidationHostIdentity; sections: string };
 export type HostTurnValidationResult =
     | { kind: "host_request"; request: ValidationHostRequest }
-    | { kind: "awaiting_delivery"; planName: string }
+    | {
+          kind: "verified";
+          planName: string;
+          completionMode?: HostDeliveryMode;
+          workRecord?: import("../../plan-store.js").PlanFrontMatter["workRecord"];
+      }
     | { kind: "paused" | "failed"; reason: string; recovery?: ValidationRecoveryResult };
 export type ValidationHostTurn = { resume?: ValidationHostResume; consumed?: boolean };
 

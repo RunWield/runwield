@@ -77,7 +77,7 @@ test("round-limit continue is durable and accepts the next reviewer without anot
             coverage: coverage(reread),
             outcome: { approved: true, findings: [{ id: "R1-1", title: "Value", status: "fix_confirmed" }] },
         });
-        assertEquals(result.kind, "awaiting_delivery");
+        assertEquals(result.kind, "host_request");
         assertEquals(await fixture.ciCount(), 0);
     } finally {
         await fixture.close();
@@ -133,13 +133,13 @@ test("round-limit stop preserves passing tests and findings like the Session ans
                     outcome,
                 })
             ).kind,
-            "awaiting_delivery",
+            "host_request",
         );
         const restarted = await sessionScript(core, {
             outcomes: [outcome],
             answer: () => ({ outcome: "selected", value: "continue" }),
         });
-        // Core continues to its human delivery gate; the host stops at reviewed.
+        // Core continues to its human delivery gate; the host saves the human delivery wait.
         assertEquals(restarted.result.kind, "paused");
         assertEquals((await core.plan()).attrs.status, "reviewed");
         assertEquals(await host.lifecycle(), await core.lifecycle());
@@ -292,7 +292,7 @@ test("round-limit human takeover stops at reviewed without a human or publicatio
             identity: decision.identity,
             answer: { outcome: "selected", value: "code_review" },
         });
-        assertEquals(result.kind, "awaiting_delivery");
+        assertEquals(result.kind, "host_request");
         const plan = await fixture.plan();
         assertEquals(plan.attrs.status, "reviewed");
         assertEquals(plan.attrs.humanReviewMode, "always");

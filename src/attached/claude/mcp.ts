@@ -79,7 +79,7 @@ export async function runAttachedMcpServer(projectRoot: string, version: string)
         } finally {
             clearInterval(timer);
         }
-        const canHost = !closing && (operation.name === "plan_written" || operation.name === "status");
+        const canHost = !closing;
         const review =
             canHost && coordinated.workflow ? await ensureReviewHosted(projectRoot, coordinated.workflow) : null;
         const refreshed =

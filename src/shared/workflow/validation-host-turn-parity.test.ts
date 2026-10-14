@@ -103,7 +103,7 @@ for (const scenario of cases) {
             let outcomeIndex = 0;
             let repairTurn = 0;
             let result = await host.turn();
-            while (result.kind === "host_request") {
+            while (result.kind === "host_request" && result.request.kind !== "decision") {
                 if (result.request.kind === "repair") {
                     repairTurn++;
                     await fsWriteFile(join(host.cwd, "marker"), "fixed");
@@ -123,7 +123,7 @@ for (const scenario of cases) {
                     });
                 }
             }
-            assertEquals(result.kind, scenario.options?.planOnly ? "failed" : "awaiting_delivery");
+            assertEquals(result.kind, scenario.options?.planOnly ? "failed" : "host_request");
             assertEquals(session.result.kind, scenario.options?.planOnly ? "failed" : "paused");
             assertEquals(await observable(host), await observable(core));
             if (scenario.options?.attrs?.parentPlan) {

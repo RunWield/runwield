@@ -1,11 +1,11 @@
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import process from "node:process";
-import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 /**
  * @module ui/review/review-launcher
  * Hosts human Plan, code, and artifact review surfaces in Workspace.
  */
 
+import type { SequenceReviewDocument } from "../../shared/workflow/sequence-review.ts";
 import { startReviewWorkspaceServer } from "../../review-workspace-server.ts";
 import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
 import type { PlanExecutionPolicy, PlanFrontMatter } from "../../plan-store.js";
@@ -134,6 +134,10 @@ export interface StandaloneReviewPayload {
 
 interface CodeReviewSurfaceOptions {
     standaloneReview?: StandaloneReviewPayload;
+    agentTurnOwner?: "core" | "host";
+    surfaceId?: string;
+    onDecision?: ReviewDecisionSink;
+    onReviewOpen?(): Promise<void | Response>;
     rawPatch: string;
     gitRef: string;
     agentCwd: string;
@@ -152,6 +156,7 @@ interface CodeReviewSurfaceOptions {
 
 interface CodeReviewPayload extends Record<string, unknown> {
     standaloneReview?: StandaloneReviewPayload;
+    agentTurnOwner?: "core" | "host";
     rawPatch: string;
     gitRef: string;
     agentCwd: string;
@@ -462,12 +467,17 @@ export async function startCodeReviewSurface<TDecision = ReviewDecisionValue>({
     token = crypto.randomUUID(),
     browser,
     onSurfaceReady,
+    surfaceId,
+    onDecision,
+    onReviewOpen,
+    agentTurnOwner,
 }: CodeReviewSurfaceOptions): Promise<ReviewSurface<TDecision>> {
     if (!agentCwd) throw new Error("startCodeReviewSurface: agentCwd is required");
     const reviewStatus = await loadCodeReviewStatus(agentCwd);
     const resolvedAgentLabel = agentLabel || reviewConversation?.agentLabel || "Reviewer Feedback Engineer";
     const reviewPayload: CodeReviewPayload = {
         standaloneReview,
+        agentTurnOwner,
         rawPatch,
         gitRef,
         agentCwd,
@@ -475,6 +485,7 @@ export async function startCodeReviewSurface<TDecision = ReviewDecisionValue>({
         planName,
         planTitle,
         reviewStatus,
+        ...(surfaceId && !reviewConversation && { reviewRevisionUrl: "/api/review/revision", reviewRevision: 0 }),
         planContent,
         planAttrs,
         guidedReview,
@@ -483,10 +494,11 @@ export async function startCodeReviewSurface<TDecision = ReviewDecisionValue>({
             conversationStatusUrl: "/api/review/conversation",
         }),
     };
-    const existing = reviewConversation ? activeCodeReviewConversations.get(reviewConversation.id) : null;
-    if (reviewConversation && existing?.server.beginReviewRound) {
-        const conversationId = reviewConversation.id;
-        existing.server.beginReviewRound({ reviewPayload, reviewConversation });
+    const reuseId = reviewConversation?.id ?? surfaceId;
+    const existing = reuseId ? activeCodeReviewConversations.get(reuseId) : null;
+    if (reuseId && existing?.server.beginReviewRound) {
+        const conversationId = reuseId;
+        existing.server.beginReviewRound({ reviewPayload, reviewConversation, onDecision, onReviewOpen });
         onSurfaceReady?.({ url: existing.pageUrl, opened: false });
         return {
             url: existing.pageUrl,
@@ -504,12 +516,14 @@ export async function startCodeReviewSurface<TDecision = ReviewDecisionValue>({
         reviewPayload,
         reviewType: "code",
         reviewConversation,
+        onDecision,
+        onReviewOpen,
     });
     const url = `${server.url}/review/code?token=${encodeURIComponent(token)}`;
     const opened = await browser.open(url);
     onSurfaceReady?.({ url, opened });
-    if (reviewConversation) {
-        activeCodeReviewConversations.set(reviewConversation.id, {
+    if (reuseId) {
+        activeCodeReviewConversations.set(reuseId, {
             server: server as ReviewSurfaceServer<ReviewDecisionValue>,
             pageUrl: url,
         });
@@ -519,7 +533,7 @@ export async function startCodeReviewSurface<TDecision = ReviewDecisionValue>({
         url,
         opened,
         stop: async () => {
-            if (reviewConversation) activeCodeReviewConversations.delete(reviewConversation.id);
+            if (reuseId) activeCodeReviewConversations.delete(reuseId);
             await server.stop();
         },
     };
