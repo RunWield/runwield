@@ -132,15 +132,15 @@ test("validateGuidedReviewExplainer rejects unsafe refs and widgets", () => {
     assertEquals(result.ok, false);
     if (result.ok) throw new Error("expected validation failure");
     assertEquals(
-        result.errors.some((/** @type {string} */ error) => error.includes("changed file")),
+        result.errors.some((error: string) => error.includes("changed file")),
         true,
     );
     assertEquals(
-        result.errors.some((/** @type {string} */ error) => error.includes("external network")),
+        result.errors.some((error: string) => error.includes("external network")),
         true,
     );
     assertEquals(
-        result.errors.some((/** @type {string} */ error) => error.includes("role must be one of")),
+        result.errors.some((error: string) => error.includes("role must be one of")),
         true,
     );
 });

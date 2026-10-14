@@ -95,6 +95,11 @@ class RuntimeDeltaBuffer {
     }
 }
 
+interface PendingSteeringMessage {
+    id: string;
+    text: string;
+}
+
 export class ClaudeCliExecutionSession {
     readonly kind = "claude-cli";
     readonly id: string;
@@ -110,7 +115,9 @@ export class ClaudeCliExecutionSession {
     private readonly mcpToolNames: Set<string>;
     private readonly persistModelChange: boolean;
     private readonly messages: AgentMessage[] = [];
-    private readonly steeringMessages: string[] = [];
+    private readonly steeringMessages: PendingSteeringMessage[] = [];
+    private activeProcess: ClaudeCliProcessResult | null = null;
+    private resultAwaitingSteering = false;
     private readonly queueListeners = new Set<ClaudeCliQueueListener>();
     private turnAbortController: AbortController | null = null;
     isStreaming = false;
@@ -145,6 +152,9 @@ export class ClaudeCliExecutionSession {
 
     clearQueue(): void {
         if (this.steeringMessages.length === 0) return;
+        if (this.activeProcess) {
+            throw new Error("Claude CLI steering is already sent and cannot be recalled before acknowledgment");
+        }
         this.steeringMessages.splice(0, this.steeringMessages.length);
         this.emitQueueUpdate();
     }
@@ -153,9 +163,22 @@ export class ClaudeCliExecutionSession {
         if (images && images.length > 0) {
             throw new Error("Claude CLI execution backend does not support image attachments in live steering");
         }
-        this.steeringMessages.push(text);
+        const message = { id: crypto.randomUUID(), text };
+        this.steeringMessages.push(message);
         this.emitQueueUpdate();
-        return Promise.resolve();
+        return this.activeProcess?.sendUserMessage(text, message.id) || Promise.resolve();
+    }
+
+    async removeSteeringMessage(index: number): Promise<boolean> {
+        const message = this.steeringMessages[index];
+        if (!message) return false;
+        if (this.activeProcess && !(await this.activeProcess.cancelUserMessage(message.id))) return false;
+        const currentIndex = this.steeringMessages.indexOf(message);
+        if (currentIndex < 0) return false;
+        this.steeringMessages.splice(currentIndex, 1);
+        this.emitQueueUpdate();
+        await this.closeInputAfterResult();
+        return true;
     }
 
     async followUp(text: string, images?: ImageAttachment[]): Promise<void> {
@@ -163,20 +186,19 @@ export class ClaudeCliExecutionSession {
     }
 
     getSteeringMessages(): string[] {
-        return [...this.steeringMessages];
-    }
-
-    consumeSteeringMessages(): string[] {
-        const messages = this.getSteeringMessages();
-        if (messages.length === 0) return messages;
-        this.steeringMessages.splice(0, this.steeringMessages.length);
-        this.emitQueueUpdate();
-        return messages;
+        return this.steeringMessages.map((message) => message.text);
     }
 
     subscribe(listener: ClaudeCliQueueListener): () => void {
         this.queueListeners.add(listener);
         return () => this.queueListeners.delete(listener);
+    }
+
+    private async closeInputAfterResult(): Promise<void> {
+        if (!this.resultAwaitingSteering || this.steeringMessages.length > 0 || !this.activeProcess) return;
+        const process = this.activeProcess;
+        this.activeProcess = null;
+        await process.closeInput();
     }
 
     private emitQueueUpdate(): void {
@@ -191,9 +213,9 @@ export class ClaudeCliExecutionSession {
     async runTurn(options: ClaudeCliRunOptions): Promise<AgentMessage[]> {
         const bridgedTools = this.mcpIntegration
             ? [
-                ...this.bridgedTools.filter((tool) => !this.mcpToolNames.has(tool.name)),
-                ...this.mcpIntegration.getTools(),
-            ]
+                  ...this.bridgedTools.filter((tool) => !this.mcpToolNames.has(tool.name)),
+                  ...this.mcpIntegration.getTools(),
+              ]
             : this.bridgedTools;
 
         if (options.images && options.images.length > 0) {
@@ -212,6 +234,7 @@ export class ClaudeCliExecutionSession {
             ? AbortSignal.any([options.signal, this.turnAbortController.signal])
             : this.turnAbortController.signal;
         this.isStreaming = true;
+        this.resultAwaitingSteering = false;
 
         const emitFailure = (
             kind: ConstructorParameters<typeof ClaudeCliBackendError>[0],
@@ -239,9 +262,10 @@ export class ClaudeCliExecutionSession {
             commandId: this.hostedSession?.activeCommandInvocationId || undefined,
             sessionId: this.sessionManager.getSessionId(),
             managedSessionId: this.hostedSession?.getManagedMetadata()?.runwieldSessionId,
-            segmentId: options.executionKind === "root"
-                ? this.hostedSession?.getManagedMetadata()?.currentSegmentId
-                : undefined,
+            segmentId:
+                options.executionKind === "root"
+                    ? this.hostedSession?.getManagedMetadata()?.currentSegmentId
+                    : undefined,
             agent: this.agentName,
             provider: this.model.provider,
             model: this.model.id,
@@ -261,7 +285,10 @@ export class ClaudeCliExecutionSession {
         const pendingObservations = new Set<Promise<void>>();
         const observe = (pending: Promise<void>) => {
             pendingObservations.add(pending);
-            void pending.then(() => pendingObservations.delete(pending), () => pendingObservations.delete(pending));
+            void pending.then(
+                () => pendingObservations.delete(pending),
+                () => pendingObservations.delete(pending),
+            );
         };
         observe(recorder.recordResponseLatency("turn_start"));
         let executionOutcome: import("../../../workflow/execution-metrics.ts").ExecutionOutcome = "succeeded";
@@ -305,7 +332,7 @@ export class ClaudeCliExecutionSession {
                             emitFailure("bridge_disconnected", null);
                         },
                         beforeRuntimeToolEvent: () => flushRuntimeDeltas(),
-                        consumePendingSteering: () => this.consumeSteeringMessages(),
+                        readPendingSteering: () => this.getSteeringMessages(),
                         onTerminalAccepted: () => process?.kill(),
                     });
                 } catch {
@@ -324,7 +351,13 @@ export class ClaudeCliExecutionSession {
             const stdinText = serializeExternalCliConversation(conversation);
             const processPort = new DenoClaudeCliProcessPort();
             try {
-                process = processPort.run(command, stdinText, this.cwd, combinedSignal);
+                process = processPort.run(command, this.cwd, combinedSignal);
+                const earlySteering = [...this.steeringMessages];
+                const initialInput = process.sendUserMessage(stdinText);
+                this.activeProcess = process;
+                const earlyInputs = earlySteering.map((message) => process!.sendUserMessage(message.text, message.id));
+                await initialInput;
+                await Promise.all(earlyInputs);
             } catch (error) {
                 executionOutcome = "failed";
                 if (error instanceof ClaudeCliBackendError) {
@@ -371,6 +404,21 @@ export class ClaudeCliExecutionSession {
             };
             try {
                 parsed = await parseClaudeCliStream(process.stdout, {
+                    onControlReply: (reply) => process!.handleControlReply(reply),
+                    onUserReplay: (id) => {
+                        const index = this.steeringMessages.findIndex((message) => message.id === id);
+                        if (index < 0) return;
+                        this.resultAwaitingSteering = false;
+                        const [pending] = this.steeringMessages.splice(index, 1);
+                        const message = makeUserMessage(pending.text);
+                        this.sessionManager.appendMessage(message);
+                        this.messages.push(message as AgentMessage);
+                        this.emitQueueUpdate();
+                    },
+                    onResult: () => {
+                        this.resultAwaitingSteering = true;
+                        observe(this.closeInputAfterResult().catch(() => this.abort()));
+                    },
                     onDelta: (delta) => {
                         if (!firstTextDeltaRecorded && delta.text) {
                             firstTextDeltaRecorded = true;
@@ -392,19 +440,21 @@ export class ClaudeCliExecutionSession {
                         });
                     },
                     onUsage: (observation) => {
-                        observe(recorder.recordModelUsage({
-                            sourceId: observation.sourceId,
-                            inputTokens: observation.usage.inputTokens,
-                            outputTokens: observation.usage.outputTokens,
-                            cacheReadTokens: observation.usage.cacheReadTokens,
-                            cacheWriteTokens: observation.usage.cacheWriteTokens,
-                            costUsd: observation.usage.costUsd,
-                            costSource: observation.usage.costUsd === null ? "unavailable" : "reported",
-                            inputCacheBasis: "unknown",
-                            aggregationBasis: observation.aggregationBasis,
-                            usageKind: observation.aggregationBasis === "alternative" ? "request" : "turn",
-                            model: observation.model || this.model.id,
-                        }));
+                        observe(
+                            recorder.recordModelUsage({
+                                sourceId: observation.sourceId,
+                                inputTokens: observation.usage.inputTokens,
+                                outputTokens: observation.usage.outputTokens,
+                                cacheReadTokens: observation.usage.cacheReadTokens,
+                                cacheWriteTokens: observation.usage.cacheWriteTokens,
+                                costUsd: observation.usage.costUsd,
+                                costSource: observation.usage.costUsd === null ? "unavailable" : "reported",
+                                inputCacheBasis: "unknown",
+                                aggregationBasis: observation.aggregationBasis,
+                                usageKind: observation.aggregationBasis === "alternative" ? "request" : "turn",
+                                model: observation.model || this.model.id,
+                            }),
+                        );
                     },
                     onNativeToolStart: (call) => {
                         observe(recorder.recordResponseLatency("first_response"));
@@ -416,10 +466,12 @@ export class ClaudeCliExecutionSession {
                     onNativeToolResult: (res) => {
                         if (nativeCallIds.has(res.callId)) {
                             nativeCallIds.delete(res.callId);
-                            observe(recorder.recordToolFinish(res.callId, "", {
-                                isError: res.isError,
-                                result: res.resultText,
-                            }));
+                            observe(
+                                recorder.recordToolFinish(res.callId, "", {
+                                    isError: res.isError,
+                                    result: res.resultText,
+                                }),
+                            );
                         }
                     },
                     isTerminalAccepted: () => bridge?.acceptedTerminal === true,
@@ -507,6 +559,8 @@ export class ClaudeCliExecutionSession {
             return this.getMessages();
         } finally {
             flushRuntimeDeltas();
+            this.activeProcess = null;
+            process?.kill();
             this.isStreaming = false;
             this.turnAbortController = null;
             if (command) {
@@ -524,8 +578,8 @@ export class ClaudeCliExecutionSession {
     private readMessages(): AgentMessage[] {
         return readExternalCliConversation(this.sessionManager).map((message) => {
             return message.role === "user"
-                ? makeUserMessage(message.text) as AgentMessage
-                : makeAssistantMessage(message.text, this.model, zeroUsage()) as AgentMessage;
+                ? (makeUserMessage(message.text) as AgentMessage)
+                : (makeAssistantMessage(message.text, this.model, zeroUsage()) as AgentMessage);
         });
     }
 }

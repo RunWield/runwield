@@ -2,6 +2,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { createThemeFromJson, mergeThemeJson, resolveThemeVars, splitFgBgColors } from "./theme-json.ts";
+import type { ThemeJson } from "./theme-json.ts";
 
 test("resolveThemeVars resolves nested references and leaves literals intact", () => {
     const resolved = resolveThemeVars({
@@ -86,7 +87,7 @@ test("splitFgBgColors separates Pi foreground and background tokens", () => {
 });
 
 test("embedded theme supplies workflow footer tokens and partial overrides can replace them", async () => {
-    const base = JSON.parse(await fsReadFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
+    const base: ThemeJson = JSON.parse(await fsReadFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
     const merged = mergeThemeJson(base, {
         name: "custom-workflow",
         vars: { custom: "#123456" },
@@ -103,7 +104,7 @@ test("embedded theme supplies workflow footer tokens and partial overrides can r
 });
 
 test("createThemeFromJson constructs the real Pi Theme from resolved colors", async () => {
-    const base = JSON.parse(await fsReadFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
+    const base: ThemeJson = JSON.parse(await fsReadFile(new URL("./catppuccin-mocha.json", import.meta.url), "utf8"));
     const theme = createThemeFromJson(
         mergeThemeJson(base, {
             name: "custom",

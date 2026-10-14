@@ -454,6 +454,90 @@ test("Claude CLI execution session appends RunWield transcript entries and sends
     });
 });
 
+test("Claude CLI delivers steering during a turn without a lifecycle tool", async () => {
+    await withClaudeFixture(async (root, logPath) => {
+        process.env["RUNWIELD_CLAUDE_FIXTURE_SLEEP_MS"] = "500";
+        const model = getModelRegistry().find("claude-cli", "sonnet");
+        if (!model) throw new Error("missing claude model");
+        const session = new ClaudeCliExecutionSession({
+            cwd: root,
+            agentName: "Guide",
+            agentDisplayName: "Guide",
+            finalSystemPrompt: "system",
+            model,
+            sessionManager: SessionManager.inMemory(root),
+        });
+        const run = session.runTurn({ userRequest: "start work" });
+        await waitForLogText(logPath, "start work");
+        const delivery = session.steer("focus on the timeout case");
+        assertEquals(session.getSteeringMessages(), ["focus on the timeout case"]);
+        await assertRejects(
+            async () => {
+                await session.clearQueue();
+            },
+            Error,
+            "already sent",
+        );
+        await delivery;
+        const messages = await run;
+        assertStringIncludes(await fsReadFile(logPath, "utf8"), "focus on the timeout case");
+        assertEquals(session.getSteeringMessages(), []);
+        assertEquals(messages.filter((message) => message.role === "user").length, 2);
+    });
+});
+
+test("Claude CLI preserves duplicate steering queued before subprocess startup", async () => {
+    await withClaudeFixture(async (root) => {
+        const model = getModelRegistry().find("claude-cli", "sonnet");
+        if (!model) throw new Error("missing claude model");
+        const session = new ClaudeCliExecutionSession({
+            cwd: root,
+            agentName: "Guide",
+            agentDisplayName: "Guide",
+            finalSystemPrompt: "system",
+            model,
+            sessionManager: SessionManager.inMemory(root),
+        });
+        await session.steer("check timeouts");
+        await session.steer("check timeouts");
+        const messages = await session.runTurn({ userRequest: "start work" });
+        assertEquals(session.getSteeringMessages(), []);
+        assertEquals(
+            messages.filter((message) => message.role === "user").map((message) => message.content),
+            [
+                [{ type: "text", text: "start work" }],
+                [{ type: "text", text: "check timeouts" }],
+                [{ type: "text", text: "check timeouts" }],
+            ],
+        );
+    });
+});
+
+test("Claude CLI recalls pending steering without stopping the turn or replaying it", async () => {
+    await withClaudeFixture(async (root, logPath) => {
+        process.env["RUNWIELD_CLAUDE_FIXTURE_SLEEP_MS"] = "500";
+        const model = getModelRegistry().find("claude-cli", "sonnet");
+        if (!model) throw new Error("missing claude model");
+        const session = new ClaudeCliExecutionSession({
+            cwd: root,
+            agentName: "Guide",
+            agentDisplayName: "Guide",
+            finalSystemPrompt: "system",
+            model,
+            sessionManager: SessionManager.inMemory(root),
+        });
+        const run = session.runTurn({ userRequest: "start work" });
+        await waitForLogText(logPath, "start work");
+        await session.steer("recall this correction");
+        assertEquals(await session.removeSteeringMessage(0), true);
+        const messages = await run;
+        assertEquals(messages.filter((message) => message.role === "user").length, 1);
+        assertEquals(session.getSteeringMessages(), []);
+        const consumed = (await fsReadFile(logPath, "utf8")).split("\n").filter((line) => line.includes('"consumed"'));
+        assertEquals(consumed, []);
+    });
+});
+
 test("captured Claude Code 2.1.284 Read stream reaches the execution owner's JSONL", async () => {
     await withClaudeFixture(async (root) => {
         await setCustomSetting("workflowMetrics", true, "project", root);
