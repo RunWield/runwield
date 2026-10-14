@@ -944,6 +944,7 @@ export async function buildVerifiedResult(
         kind: "verified",
         planName: args.planName,
         projectRoot,
+        workRecord: recordingOwner?.attrs.workRecord,
         classification: args.triageMeta?.classification,
         ...(shouldContinueParentEpicAfterValidation(args.triageMeta)
             ? { epicContinuation: { completedPlanName: args.planName, projectRoot, resolution: epicResolution } }

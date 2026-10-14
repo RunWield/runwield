@@ -16,6 +16,10 @@ import { buildValidationUserMessage } from "./validation-user-messages.ts";
 import { sameHostIdentity, ValidationHostRejected, ValidationHostWait } from "./validation-host-contract.ts";
 import { saveHostCheckpoint } from "./validation-host-state.ts";
 
+function isPauseDecision(answer: ValidationInteractionResponse | undefined): boolean {
+    return answer?.outcome === "selected" && ["stop", "close"].includes(String(answer.value));
+}
+
 export async function requestInteraction(
     args: ValidationLoopArgs,
     request: ValidationInteractionRequest,
@@ -44,7 +48,8 @@ export async function requestInteraction(
         key: `${key}:${sequence}`,
     };
     const resume = args.hostTurn.resume;
-    const accepted = checkpoint.hostDecisionChoices?.[key];
+    const savedAnswer = checkpoint.hostDecisionChoices?.[key];
+    const accepted = isPauseDecision(savedAnswer) ? undefined : savedAnswer;
     if (
         accepted &&
         (resume?.kind !== "decision" || !sameHostIdentity(identity, resume.identity) || args.hostTurn.consumed)
@@ -63,8 +68,8 @@ export async function requestInteraction(
         ) throw new ValidationHostRejected("Invalid text answer.");
         args.hostTurn.consumed = true;
         await saveHostCheckpoint(args, {
-            // Stop pauses this call, not every future call for the same round.
-            hostDecisionChoices: answer.outcome === "selected" && answer.value === "stop"
+            // Stop and Close pause this call, not every future call for the same round.
+            hostDecisionChoices: isPauseDecision(answer)
                 ? checkpoint.hostDecisionChoices
                 : { ...checkpoint.hostDecisionChoices, [key]: answer },
             pendingHostDecision: undefined,

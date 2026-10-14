@@ -14,6 +14,7 @@ import { resolvePhaseContext } from "./validation-context.ts";
 import { runPublicationPhase } from "./validation-publication.ts";
 import { continueWorkflowValidation } from "./validation.ts";
 import { loadPublicationAttempt, startPublicationAttempt } from "./publication-machine.ts";
+import { PUBLICATION_REVALIDATION_MESSAGE } from "./publication-revalidation.ts";
 import {
     createValidationProgress,
     getCurrentValidationProgress,
@@ -267,9 +268,13 @@ for (const sealed of [false, true]) {
             assertEquals(await git(projectRoot, ["rev-parse", "main"]), mainBefore);
             if (sealed) {
                 assertEquals(result.result.kind, "paused");
-                assertStringIncludes(result.result.reason || "", "Plan now targets release/next");
+                assertEquals(result.result.reason, PUBLICATION_REVALIDATION_MESSAGE);
+                assertEquals(result.result.continueValidation, true);
                 assertEquals(await git(projectRoot, ["rev-parse", "release/next"]), mainBefore);
-                assertEquals((await loadPublicationAttempt(projectRoot, worktree.id))?.targetBranch, "main");
+                assertEquals(await loadPublicationAttempt(projectRoot, worktree.id), null);
+                const currentPlan = await loadPlan(worktree.path, "p");
+                assertEquals(currentPlan?.attrs.status, "implemented");
+                assertEquals(currentPlan?.attrs.targetBranch, "release/next");
                 assertEquals(await Deno.readTextFile(`${worktree.path}/delivered.txt`), "late target edit\n");
             } else {
                 assertEquals(result.result.kind, "verified", JSON.stringify(result));

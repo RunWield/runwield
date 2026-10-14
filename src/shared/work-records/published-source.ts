@@ -108,7 +108,7 @@ export interface PublishedDeliverySources {
 /** Read-only delivery facts: keep child identity distinct from the Epic recording owner. */
 export async function readPublishedDeliverySources(
     root: string,
-    attempt: PublicationAttempt,
+    attempt: Pick<PublicationAttempt, "artifactCommit" | "planName" | "planId" | "phase" | "planPaths">,
 ): Promise<PublishedDeliverySources> {
     if (!attempt.artifactCommit) throw new Error("The delivered Plan artifact commit is missing.");
     const delivered = await readSource(root, attempt.artifactCommit, attempt.planName);

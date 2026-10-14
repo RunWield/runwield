@@ -12,6 +12,8 @@ type DriverConfig = {
 type SavedRequest = { kind?: string; interaction?: { type?: string } };
 type SavedRecorder = { sections?: { title: string }; invalidSubmissions?: number };
 type SavedController = {
+    status?: string;
+    deliveryEvidence?: { mode?: string };
     validationCheckpoint?: { hostRecorder?: SavedRecorder; pendingHostDecision?: SavedRequest };
 };
 type SavedWrite = {
@@ -26,7 +28,7 @@ Deno.rename = async (from, to) => {
     let point = "";
     try {
         const contents = await Deno.readTextFile(from);
-        if (to.endsWith("/docs/plans/p.md") && /^status:\s*["']?verified["']?\s*$/m.test(contents)) {
+        if (String(to).endsWith("/docs/plans/p.md") && /^status:\s*["']?verified["']?\s*$/m.test(contents)) {
             point = "in_place_verified";
         }
         const saved: SavedWrite = JSON.parse(contents);
@@ -51,6 +53,13 @@ Deno.rename = async (from, to) => {
     if (point === config.crashPoint && config.timing === "before") Deno.exit(86);
     await rename(from, to);
     if (point === config.crashPoint && config.timing !== "before") Deno.exit(86);
+};
+const remove = Deno.remove;
+Deno.remove = async (path, options) => {
+    await remove(path, options);
+    if (config.crashPoint === "record_saved" && /\/docs\/work-records\/\.[^/]+\.tmp$/.test(String(path))) {
+        Deno.exit(86);
+    }
 };
 const result = await runAttachedOperation(config.operation, config.projectRoot, JSON.stringify(config.input));
 console.log("ATTACHED_RESULT=" + JSON.stringify(result));

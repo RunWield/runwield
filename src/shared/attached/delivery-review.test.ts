@@ -127,3 +127,28 @@ Deno.test("Attached code review cannot launch a Core Guided Review model turn", 
         await fixture.close();
     }
 });
+
+Deno.test("closing the ask Code Review offer leaves a fresh choice on continuation", async () => {
+    const fixture = await attachedValidationFixture({ attrs: { humanReviewMode: "ask" } });
+    try {
+        const offered = await toDelivery(fixture);
+        assert(offered.workflow.nextAction.kind === "validation");
+        const closed = await fixture.call("validation_decision", offered.workflow, {
+            actionId: offered.workflow.nextAction.actionId,
+            answer: { outcome: "selected", value: "close" },
+        });
+        assert(closed.ok && closed.workflow.nextAction.kind === "validation_recovery", JSON.stringify(closed));
+        const resumed = await fixture.call("start_validation", closed.workflow);
+        assert(resumed.ok && resumed.workflow.nextAction.kind === "validation", JSON.stringify(resumed));
+        assertEquals(resumed.workflow.nextAction.request.kind, "decision");
+        assert(resumed.workflow.nextAction.actionId !== offered.workflow.nextAction.actionId);
+        const opened = await fixture.call("validation_decision", resumed.workflow, {
+            actionId: resumed.workflow.nextAction.actionId,
+            answer: { outcome: "selected", value: "open" },
+        });
+        assert(opened.ok && opened.workflow.nextAction.kind === "code_review", JSON.stringify(opened));
+        assertEquals(await fixture.ciCount(), 1);
+    } finally {
+        await fixture.close();
+    }
+});

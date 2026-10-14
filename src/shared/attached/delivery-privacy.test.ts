@@ -1,8 +1,10 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { join } from "@std/path";
+import { Client } from "@modelcontextprotocol/sdk/client";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
 import { prepareIndexRuntime } from "./delivery-test-fixture.ts";
-import { DENO_CONFIG_PATH, EVIDENCE } from "./attached-test-fixture.ts";
+import { CLI_PATH, DENO_CONFIG_PATH, EVIDENCE, readRecordBytes } from "./attached-test-fixture.ts";
 import { parseDiffFiles } from "../workflow/review-diff.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import {
@@ -23,6 +25,8 @@ Deno.test("whole Attached delivery starts zero Core model sessions and excludes 
     await prepareIndexRuntime();
     const fixture = await attachedValidationFixture({ attrs: { workKind: "FEATURE", humanReviewMode: "always" } });
     const privateHostConversation = "PRIVATE_CLAUDE_CONVERSATION_8d25aacd";
+    const client = new Client({ name: EVIDENCE.host, version: EVIDENCE.hostVersion });
+    let transport: StdioClientTransport | undefined;
     try {
         const marker = join(fixture.parent, "core-model-turns");
         const hosted = new URL("../session/hosted-session.js", import.meta.url).href;
@@ -58,6 +62,7 @@ Deno.test("whole Attached delivery starts zero Core model sessions and excludes 
             config,
             JSON.stringify({
                 ...base,
+                lock: new URL("./deno.lock", new URL(`file://${DENO_CONFIG_PATH}`)).pathname,
                 imports: {
                     ...imports,
                     [hosted]: new URL(`file://${monitorHosted}`).href,
@@ -65,47 +70,36 @@ Deno.test("whole Attached delivery starts zero Core model sessions and excludes 
                 },
             }),
         );
+        transport = new StdioClientTransport({
+            command: Deno.execPath(),
+            args: ["run", "-A", "--quiet", "--no-check", "--config", config, CLI_PATH, "attached", "mcp"],
+            cwd: fixture.root,
+            env: { ...Deno.env.toObject(), PATH: `${fixture.bin}:${Deno.env.get("PATH") || ""}` },
+            stderr: "inherit",
+        });
+        await client.connect(transport);
         const call = async (
             operation: AttachedOperationName,
             workflow: AttachedWorkflowView,
             payload: AttachedJsonObject = {},
+            conversation?: string,
         ): Promise<AttachedOperationResult> => {
-            const inputPath = join(fixture.parent, "monitor-input.json");
-            await Deno.writeTextFile(
-                inputPath,
-                JSON.stringify({
-                    projectRoot: fixture.root,
-                    operation,
-                    privateHostConversation,
-                    input: {
-                        workflowId: workflow.workflowId,
-                        expectedRevision: workflow.revision,
-                        operationId: crypto.randomUUID(),
-                        evidence: EVIDENCE,
-                        payload,
-                    },
-                }),
-            );
-            const output = await new Deno.Command(Deno.execPath(), {
-                args: [
-                    "run",
-                    "-A",
-                    "--deny-net",
-                    "--quiet",
-                    "--no-check",
-                    "--config",
-                    config,
-                    fromFileUrl(new URL("./testing/delivery-process.ts", import.meta.url)),
-                    inputPath,
-                ],
-                env: { PATH: `${fixture.bin}:${Deno.env.get("PATH") || ""}` },
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
-            assert(output.success, new TextDecoder().decode(output.stderr));
-            const text = new TextDecoder().decode(output.stdout);
-            return JSON.parse(text.slice(text.lastIndexOf("ATTACHED_RESULT=") + 16));
+            const response = await client.callTool({
+                name: operation,
+                _meta: { hostConversation: privateHostConversation },
+                arguments: {
+                    workflowId: workflow.workflowId,
+                    expectedRevision: workflow.revision,
+                    operationId: crypto.randomUUID(),
+                    payload,
+                    ...(conversation ? { transcript: conversation } : {}),
+                },
+            });
+            return JSON.parse(JSON.stringify(response.structuredContent));
         };
+        const rejectedTranscript = await call("start_validation", await fixture.status(), {}, privateHostConversation);
+        assert(!rejectedTranscript.ok);
+        assertEquals(rejectedTranscript.rejection.code, "transcript_field");
         await Deno.writeTextFile(join(fixture.cwd, "marker"), "pass");
         let result = await call("start_validation", await fixture.status());
         assert(result.ok && result.workflow.nextAction.kind === "validation", JSON.stringify(result));
@@ -143,10 +137,18 @@ Deno.test("whole Attached delivery starts zero Core model sessions and excludes 
             answer: { outcome: "approved" },
         });
         assert(result.ok && result.workflow.nextAction.kind === "recorder", JSON.stringify(result));
+        // The fake external Recorder receives the actual adapter handoff. Echoing
+        // leaked text makes an adapter that forwards the conversation fail here.
+        const recorderInput = result.instructions?.text + "\n" + result.workflow.nextAction.request.prompt;
+        assertStringIncludes(recorderInput, "value = 3");
+        assertEquals(recorderInput.includes(privateHostConversation), false);
+        const recorderSummary = recorderInput.includes(privateHostConversation)
+            ? privateHostConversation
+            : "The implementation exports value 3.";
         result = await call("work_record_completed", result.workflow, {
             actionId: result.workflow.nextAction.actionId,
             title: "Value outcome",
-            summary: "The implementation exports value 3.",
+            summary: recorderSummary,
         });
         assert(result.ok && result.workflow.nextAction.kind === "delivered", JSON.stringify(result));
         assertEquals(await Deno.readTextFile(marker).catch(() => ""), "");
@@ -170,6 +172,7 @@ Deno.test("whole Attached delivery starts zero Core model sessions and excludes 
         for (
             const artifact of [
                 records[0].markdown,
+                await readRecordBytes(fixture.root, fixture.workflowId),
                 indexText,
                 JSON.stringify(await fixture.evidence()),
                 await fixture.metrics(),
@@ -177,6 +180,8 @@ Deno.test("whole Attached delivery starts zero Core model sessions and excludes 
             ]
         ) assertEquals(artifact.includes(privateHostConversation), false);
     } finally {
+        await client.close().catch(() => {});
+        await transport?.close().catch(() => {});
         await fixture.close();
     }
 });

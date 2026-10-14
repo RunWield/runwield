@@ -13,6 +13,7 @@
  */
 
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
+import { readPublishedDeliverySources } from "../work-records/published-source.ts";
 import { parseRecorderSections } from "../work-records/generation.js";
 import {
     createExecutionStartPorts,
@@ -229,7 +230,12 @@ async function reconcilePlanPosition(record: AttachedWorkflowRecord): Promise<At
                 closure: {
                     reason: "delivered",
                     completionMode: "publication",
-                    workRecord: delivered?.attrs.workRecord,
+                    workRecord: (await readPublishedDeliverySources(record.projectRoot, {
+                        artifactCommit: receipt.publishedCommit,
+                        planName: record.plan.planName,
+                        planId: record.plan.planId,
+                        phase: "publication_verified",
+                    })).workRecordOwner?.attrs.workRecord,
                 },
             };
         }

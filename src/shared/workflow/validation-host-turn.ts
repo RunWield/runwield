@@ -125,7 +125,12 @@ export async function continueHostTurnValidation(
                 kind: "verified",
                 planName: args.planName,
                 completionMode: "publication",
-                workRecord: source.plan?.attrs.workRecord,
+                workRecord: (await readPublishedDeliverySources(args.projectRoot, {
+                    artifactCommit: receipt.publishedCommit,
+                    planName: args.planName,
+                    planId: source.plan!.attrs.planId!,
+                    phase: "publication_verified",
+                })).workRecordOwner?.attrs.workRecord,
             };
         }
     }
@@ -163,7 +168,7 @@ export async function continueHostTurnValidation(
             completionMode: delivered.plan?.attrs.deliveryEvidence?.mode === "non_git_in_place"
                 ? "in_place"
                 : "publication",
-            workRecord: delivered.plan?.attrs.workRecord,
+            workRecord: result.workRecord,
         };
     }
     return {

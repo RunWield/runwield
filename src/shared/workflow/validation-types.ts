@@ -25,6 +25,7 @@ type EpicContinuationResolution = import("./epic-continuation.ts").EpicContinuat
 export type WorkflowValidationResult = {
     kind: "verified" | "paused" | "failed" | "semantic_repair_handoff" | "host_request";
     hostRequest?: import("./validation-host-contract.ts").ValidationHostRequest;
+    workRecord?: PlanFrontMatter["workRecord"];
     planName: string;
     projectRoot: string;
     classification?: string;

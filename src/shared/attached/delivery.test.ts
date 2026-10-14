@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 import { attachedValidationFixture } from "./validation-test-fixture.ts";
-import { prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
+import { approveSemantic, prepareIndexRuntime, toDelivery } from "./delivery-test-fixture.ts";
 import { listWorkRecords } from "../work-records/store.js";
 import { git } from "../git-test-fixture.ts";
 import { loadPlan } from "../../plan-store.js";
@@ -215,3 +215,82 @@ Deno.test("consented non-Git completion records through Claude before Core estab
         await fixture.close();
     }
 });
+
+for (const committed of [false, true]) {
+    Deno.test(`${committed ? "committed" : "uncommitted"} implementation edits during Recorder wait require fresh CI, semantic review and human approval`, async () => {
+        const fixture = await attachedValidationFixture();
+        try {
+            const started = await toDelivery(fixture);
+            assert(started.workflow.nextAction.kind === "code_review");
+            const approved = await fixture.call("validation_decision", started.workflow, {
+                actionId: started.workflow.nextAction.actionId,
+                answer: { outcome: "approved" },
+            });
+            assert(approved.ok && approved.workflow.nextAction.kind === "recorder");
+            await Deno.writeTextFile(join(fixture.cwd, "implementation.ts"), "export const value = 4;\n");
+            if (committed) {
+                await git(fixture.cwd, ["add", "implementation.ts"]);
+                await git(fixture.cwd, ["commit", "-m", "Edit during Recorder wait"]);
+            }
+            const resumed = await fixture.call("work_record_completed", approved.workflow, {
+                actionId: approved.workflow.nextAction.actionId,
+                title: "Value outcome",
+                summary: "The implementation exports the new value.",
+            });
+            assert(resumed.ok && resumed.workflow.nextAction.kind === "validation", JSON.stringify(resumed));
+            assertEquals(resumed.workflow.nextAction.request.kind, "reviewer");
+            assertEquals(await fixture.ciCount(), 2);
+            assertEquals((await loadPlan(fixture.root, "p"))?.attrs.publicationReceipt ?? null, null);
+            const reviewed = await approveSemantic(fixture, resumed.workflow);
+            assertEquals(reviewed.workflow.nextAction.kind, "code_review");
+        } finally {
+            await fixture.close();
+        }
+    });
+}
+
+for (const invalid of [false, true]) {
+    Deno.test(`delivery to another branch retains the ${invalid ? "failed" : "generated"} recording outcome`, async () => {
+        const fixture = await attachedValidationFixture({
+            attrs: { humanReviewMode: "none", deliveryBranch: "landing" },
+        });
+        try {
+            await git(fixture.root, ["branch", "landing"]);
+            const primaryPlan = await Deno.readTextFile(join(fixture.root, "docs/plans/p.md"));
+            let started = await toDelivery(fixture);
+            assert(started.workflow.nextAction.kind === "recorder");
+            const sections = {
+                title: "Value outcome",
+                summary: "Implemented.",
+                supersessionProposals: invalid
+                    ? [{ recordId: "de174442-62e4-4c14-980c-783531bdb457", reason: "Replaces old value" }]
+                    : [],
+            };
+            if (invalid) {
+                const first = await fixture.call("work_record_completed", started.workflow, {
+                    actionId: started.workflow.nextAction.actionId,
+                    ...sections,
+                });
+                assert(!first.ok && first.workflow?.nextAction.kind === "recorder");
+                started = { ...started, workflow: first.workflow };
+            }
+            assert(started.workflow.nextAction.kind === "recorder");
+            const completed = await fixture.call("work_record_completed", started.workflow, {
+                actionId: started.workflow.nextAction.actionId,
+                ...sections,
+            });
+            assertEquals(completed.ok, !invalid, JSON.stringify(completed));
+            assert(completed.workflow?.nextAction.kind === "delivered", JSON.stringify(completed));
+            assertEquals(completed.workflow.nextAction.workRecord?.status, invalid ? "failed" : "generated");
+            assertEquals(await Deno.readTextFile(join(fixture.root, "docs/plans/p.md")), primaryPlan);
+            const replayedCore = await fixture.turn();
+            assert(replayedCore.kind === "verified", JSON.stringify(replayedCore));
+            assertEquals(replayedCore.workRecord, completed.workflow.nextAction.workRecord);
+            const restored = await fixture.status();
+            assert(restored.nextAction.kind === "delivered");
+            assertEquals(restored.nextAction.workRecord, completed.workflow.nextAction.workRecord);
+        } finally {
+            await fixture.close();
+        }
+    });
+}
