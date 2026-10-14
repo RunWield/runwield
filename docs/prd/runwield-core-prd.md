@@ -471,6 +471,9 @@ does not reset its lifecycle or decisions.
 - Given recreated empty or stale runtime registry files, migration reports, or debug files, selecting a Plan recovers
   them automatically without replacing current attempts. Distinct valid attempts remain available; originals remain
   recoverable. Registry recovery and ordinary writers cannot overwrite each other or wait on their own locks.
+- Given an adopted worktree is removed or its former path is reused, its historical adoption record does not block
+  entry into the primary Project. Historical paths remain absolute, normalized, sorted, and unique; history alone
+  never authorizes recovery or file movement. Current checkout, registry, journal, and symlink safety checks still apply.
 - Given a Plan listing or a grouped evidence read, nested reads of the same checkout share runtime-layout verification
   for that operation. Later reads and writes revalidate changed evidence; background work cannot retain verification
   after its initiating read ends. Plan contents, controller state, and publication evidence remain freshly read.

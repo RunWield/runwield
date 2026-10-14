@@ -15,7 +15,7 @@ import {
 } from "node:fs/promises";
 import { clearInterval, setInterval } from "node:timers";
 import { pid, platform } from "node:process";
-import { basename, dirname, join, resolve, sep as SEPARATOR } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep as SEPARATOR } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
     getRunWieldRuntimeDir,
@@ -630,7 +630,7 @@ async function preflight(
     marker: LayoutMarker | null,
     options: { legacyRegistryLockHeld?: boolean } = {},
 ): Promise<MigrationPreflight | ProjectRuntimeMigrationBlockedResult> {
-    const markerCheck = await validateMarkerRoots(layout, primaryCheckoutRoot, marker);
+    const markerCheck = validateMarkerRoots(layout, primaryCheckoutRoot, marker);
     if (isBlocked(markerCheck)) return markerCheck;
 
     const existingJournal = await readJournal(layout.primary.layoutMigrationJournalPath);
@@ -804,11 +804,11 @@ async function preflight(
     };
 }
 
-async function validateMarkerRoots(
+function validateMarkerRoots(
     layout: ProjectRuntimeLayout,
     primaryCheckoutRoot: string,
     marker: LayoutMarker | null,
-): Promise<ProjectRuntimeMigrationBlockedResult | undefined> {
+): ProjectRuntimeMigrationBlockedResult | undefined {
     if (!marker) return undefined;
     if (marker.primaryCheckoutRoot !== primaryCheckoutRoot) {
         return block(
@@ -829,7 +829,10 @@ async function validateMarkerRoots(
         );
     }
     for (const root of marker.adoptedSelectedCheckoutRoots) {
-        if (root !== (await canonicalExistingRoot(root))) {
+        // These locators record completed adoption, not current filesystem authority.
+        // Retired worktrees can disappear or their paths can be reused. Active roots
+        // are independently verified against Git, the registry, and the journal.
+        if (!isAbsolute(root) || root !== resolve(root)) {
             return block(
                 "malformed_migration_evidence",
                 [layout.primary.layoutMarkerPath, root],
@@ -1147,7 +1150,7 @@ async function collectSymlinks(
     repositoryContainers: Set<string> = new Set(),
 ): Promise<void> {
     let entries: Dirent[] | null;
-    for (let attempt = 0;; attempt++) {
+    for (let attempt = 0; ; attempt++) {
         try {
             // A staging checkout can be disappearing during publication cleanup.
             // Recheck its type on every retry so a replacement symlink still blocks.
@@ -1162,9 +1165,13 @@ async function collectSymlinks(
             break;
         } catch (error) {
             if (
-                platform !== "win32" || attempt >= 10 || !(error instanceof Error) || !("code" in error) ||
+                platform !== "win32" ||
+                attempt >= 10 ||
+                !(error instanceof Error) ||
+                !("code" in error) ||
                 (error.code !== "EPERM" && error.code !== "EACCES" && error.code !== "EBUSY")
-            ) throw error;
+            )
+                throw error;
             await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
         }
     }
