@@ -1149,8 +1149,8 @@ A `null` fingerprint does not match a known fingerprint. OpenSSH host verificati
 The root is remote `primaryRoot`, then `gitRoot`, then `cwd` when the preceding value is absent. A worktree shares its
 primary checkout's project identity; each Session stores execution cwd separately. Neither temporary personal mount
 paths nor laptop paths identify the project. Local history surfaces do not treat a remote root as a laptop directory.
-Records without a remote locator remain local. Remote Memory binding remains
-[target scope](remote-ssh-prd.md#local-memories-and-saved-sessions), as does ambiguous host confirmation.
+Records without a remote locator remain local. Remote Memory binding is separate from Session identity and follows
+[project knowledge](#project-context-and-initialization). Ambiguous host confirmation for Sessions remains target scope.
 
 **Conversation acceptance scenarios:**
 
@@ -1168,15 +1168,37 @@ Records without a remote locator remain local. Remote Memory binding remains
 
 **Requirement: Preserve useful project facts and retrieve relevant context.**
 
-- **Mnemoteca:** project/global persistent memory for preferences, project facts, and critical context.
+- **Mnemoteca:** project/global persistent memory for preferences, project facts, and critical context. The Memory tool,
+  core injection, and local `/sleep` share one collection resolver. Git worktrees and subfolders use the main checkout’s
+  collection; existing main-checkout names stay unchanged.
 - **Init:** `wld init` / `/init` explores the project, confirms verification setup, writes context, stores memories, and
   records initialization. It does not search for fake test seams or require a test-seam risk report; that audit is an
   explicit bundled `/test-seams` Prompt Template invocation.
-- **Sleep:** `wld sleep` / `/sleep` runs memory and context cleanup prompts.
+- **Sleep:** `wld sleep` / `/sleep` runs local memory and context cleanup prompts. Remote `/sleep` is deferred and
+  reports that it is not available without starting maintenance.
 - **Cymbal:** external semantic/structural code intelligence for search, symbol lookup, impact analysis, tracing, and
   related code queries.
 - **Snip:** optional command-output filtering for compact diagnostics.
 - **Project context:** `docs/domain-language.md`, memories, settings, and Plan files provide durable project knowledge.
+
+**Delivered requirement: Keep remote personal Memory on the laptop.** Remote recall, store, delete, and core injection
+use the authenticated laptop service. Writes are acknowledged after Mnemoteca completes; retries keep one request id.
+Only the bound collection and global scope are available. Personal Memory requires no server-side Mnemoteca binary. The
+remote key is the lower-case resolved SSH hostname, user, port, and primary project root, without the host key. The
+normal collection is `<folder>@<hostname>-<hash>`. With no saved binding, an exact folder-name match to a local Session
+project asks whether it is the same project. Yes shares the local resolver’s collection; No keeps the normal remote
+collection. Several matches are listed separately. Either answer is saved before opening the TUI, and reconnect does not
+ask again. A Memory collection without a local Session project never triggers a question. Shared Memory does not merge
+Sessions. Work Record indexes remain derived project data and use the remote project’s
+`.wld/internal/work-records.sqlite3`, not personal Memory.
+
+**Remote Memory acceptance scenarios:**
+
+- A same-project Yes answer makes a local memory available remotely and a remote store available locally before
+  disconnect.
+- A No answer or no local namesake creates a separate collection. Reconnect reuses the saved binding.
+- A repeated write request adds one memory. A request for another project’s collection is refused.
+- A core memory stored from the main checkout appears in a worktree prompt. Remote `/sleep` does no maintenance.
 
 **Requirement: Keep memory current and subordinate to project authority.**
 
@@ -1506,7 +1528,8 @@ remains target qualification.
 **Requirement: Keep personal files on the laptop during a remote connection.** The approved Linux `sct` pilot mounts
 laptop `~/.wld` at a private remote root through stock SFTP/SSHFS; the remote project's `.wld` stays remote. This is
 direct trusted-host access, not a copy or a confinement boundary. The normal remote TUI uses these resources for
-conversation turns. Remote Memory and delivery workflows follow in their owning child Plans.
+conversation turns. Personal Memory operations use the laptop service; delivery workflows follow in their owning child
+Plans.
 
 **Current bounded acceptance scenario:** Given a personal Skill file and a remote project `.wld`, when the personal file
 changes through the mount, the laptop sees it; a laptop edit is also visible through the mount, while project `.wld`
@@ -1642,7 +1665,11 @@ empty initial inventory does not remove an authorized root's access to later dis
 while queued never begin execution. Both external CLI bridges preserve structured results and output schemas, report
 unknown tools as protocol errors, and support human-paced review waits. The private HTTP bridge rejects foreign Origins.
 `/mcp` prints server status and `/mcp reconnect <server>` reconnects without a model request. MCP tools use direct
-calls; codemode is deferred as a separate capability.
+calls; codemode is deferred as a separate capability. In remote Sessions, `/mcp` shows each effective server’s location.
+Personal definitions come from the laptop and are listed as `laptop — not started remotely`, without forwarding their
+command arguments or credentials. Project servers retain safety and override rules and start remotely. Personal MCP
+forwarding is target scope in
+[child06](../plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md).
 
 **Remote conversation scope:** [Local personal environment](remote-ssh-prd.md#local-personal-environment) specifies
 direct access to laptop `~/.wld` at a fresh private remote mount path, with project `.wld` remaining remote. Personal
@@ -2075,8 +2102,9 @@ Open product questions:
 **Scope and maturity:** Current shared Session baseline; reliable end-to-end continuation remains required wherever gaps
 exist. Remote conversation, image paste, offline history, and connected resume passed the compiled macOS/Linux `sct`
 pilot with an authenticated synthetic provider. Offline remote history and connected remote resume are separate from
-local client continuation. Remote Memory, workflows, child Sessions, write delegation, Plan review, and transcript
-rollover remain target scope in the [Remote SSH journey](remote-ssh-prd.md#local-memories-and-saved-sessions).
+local client continuation. Remote Memory uses the laptop service. Workflows, child Sessions, write delegation, Plan
+review, and transcript rollover remain target scope in the
+[Remote SSH journey](remote-ssh-prd.md#local-memories-and-saved-sessions).
 
 **Requirement: Continue the same saved work across clients.**
 

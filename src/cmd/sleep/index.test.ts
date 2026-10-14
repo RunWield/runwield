@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertMatch, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { basename, join } from "@std/path";
+import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
@@ -264,4 +265,42 @@ Deno.test("sleep rejects missing Runtime state before touching Mnemoteca", async
         "active runtime session",
     );
     assertEquals(mnemoteca.ensureCalls, 0);
+});
+
+const memoryGitFixture = defineCommittedGitFixture();
+
+Deno.test("sleep maintains the main checkout collection from a worktree", async () => {
+    await withRuntimeCommandFixture("sleep-worktree-", async ({ setModelResponse }) => {
+        const root = await memoryGitFixture.checkout();
+        const temp = await Deno.makeTempDir({ prefix: "sleep-worktree-" });
+        const worktree = join(temp, "feature");
+        const runtime = createSessionRuntime();
+        let sessionId: string | undefined;
+        try {
+            await git(root, ["worktree", "add", "-b", "feature", worktree]);
+            setModelResponse("Memory maintenance complete.");
+            sessionId = await runtime.createPromptReadySession({ cwd: worktree, agentName: "router" });
+            const requests: string[] = [];
+            runtime.subscribeSessionEvents(sessionId, (event) => {
+                if (event.type === RuntimeEventTypes.USER_MESSAGE) requests.push(event.text);
+            });
+            const mnemoteca = createMnemotecaFixture();
+            await runSleepCommand([], {
+                sessionId,
+                sessionRuntime: runtime,
+                uiAPI: { appendSystemMessage: () => {} },
+                mnemotecaPort: mnemoteca.port,
+                sessionPort: UNEXPECTED_SESSION_PORT,
+            });
+            assertEquals(mnemoteca.exports[0].args.slice(0, 3), ["export", "--name", basename(root)]);
+            assertStringIncludes(
+                requests[0],
+                `Use --name ${JSON.stringify(basename(root))} for every mnemoteca command.`,
+            );
+        } finally {
+            if (sessionId) await runtime.closeSession(sessionId);
+            await Deno.remove(temp, { recursive: true });
+            await Deno.remove(root, { recursive: true });
+        }
+    });
 });

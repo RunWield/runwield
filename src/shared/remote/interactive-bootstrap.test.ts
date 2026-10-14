@@ -120,6 +120,7 @@ console.log("RETURNED_AFTER_TERMINATION");
                 JSON.stringify({
                     connection: { port: service.port, credential: service.credential },
                     resources: { globalRoot: resources },
+                    memoryCollection: "fixture@host-1234",
                     cwd: projectRoot,
                     view: { host: "host", cwd: projectRoot, status: "Connected", trust: "Trusted", readiness: "Ready" },
                 }) + "\n",

@@ -1,5 +1,7 @@
 /* Connection-scoped local control and authenticated laptop model bridge. */
 
+import { readPersonalMcpConfig } from "../mcp/config.ts";
+import { LaptopMemoryService } from "./memory-service.ts";
 import { createRunWieldModelRuntime } from "../models/model-registry.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 import type { SettingsUpdate } from "./settings-bridge.ts";
@@ -113,6 +115,7 @@ function equalSecret(left: string, right: string): boolean {
 export function startRemoteControlService(
     identity: RemoteControlIdentity,
     target?: LaptopSessionTarget,
+    memoryCollection?: string,
 ): RemoteControlService {
     if (!validIdentity(identity)) throw new Error("Invalid remote control identity");
     const credential = Array.from(
@@ -120,6 +123,7 @@ export function startRemoteControlService(
         (byte) => byte.toString(16).padStart(2, "0"),
     )
         .join("");
+    const memory = memoryCollection ? new LaptopMemoryService(memoryCollection) : undefined;
     let connected = false;
     let ready = false;
     let shutdown = false;
@@ -281,6 +285,7 @@ export function startRemoteControlService(
             ready = false;
             stopModels();
             stopSessions();
+            memory?.close();
         }
     };
     const abort = new AbortController();
@@ -343,7 +348,26 @@ export function startRemoteControlService(
                 ready = false;
                 stopModels();
                 stopSessions();
+                memory?.close();
                 return Response.json({ shutdown: true });
+            }
+            if (path === "/mcp/config") {
+                if (shutdown || !ready) return new Response(null, { status: 403 });
+                if (request.method !== "GET") return new Response(null, { status: 405 });
+                try {
+                    const config = await readPersonalMcpConfig();
+                    // Personal servers are listed here, not launched: their argv and credentials stay on the laptop.
+                    return Response.json({
+                        ...config,
+                        servers: config.servers.map((server) => ({ ...server, command: "", args: [], env: {} })),
+                    });
+                } catch {
+                    return new Response(null, { status: 503 });
+                }
+            }
+            if (path === "/memory") {
+                if (shutdown || !ready) return new Response(null, { status: 403 });
+                return memory ? await memory.handle(request) : new Response(null, { status: 404 });
             }
             if (path === "/clipboard/image") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
@@ -409,6 +433,7 @@ export function startRemoteControlService(
             ready = false;
             stopModels();
             stopSessions();
+            memory?.close();
         },
         async close() {
             if (closed) return;
@@ -418,6 +443,7 @@ export function startRemoteControlService(
             if (timer !== undefined) clearInterval(timer);
             stopModels();
             stopSessions();
+            memory?.close();
             abort.abort();
             await server.finished;
         },

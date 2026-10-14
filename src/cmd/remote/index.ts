@@ -6,6 +6,7 @@ import { fixedPythonCommand, resolveRemoteTarget } from "../../shared/remote/tar
 import { type MountHeader, startLaptopSftp } from "../../shared/remote/sftp-mount.ts";
 import { VERSION } from "../../shared/version.js";
 import { downloadReleaseRuntime } from "../../shared/remote/release-artifact.ts";
+import { bindRemoteMemory } from "../../shared/remote/memory-binding.ts";
 import { parseRemoteModelProof, type RemoteModelProof } from "../../shared/remote/model-proof-config.ts";
 
 export const REMOTE_USAGE = "Usage: wld remote <ssh-host>[:<remote-directory>]\n" +
@@ -126,6 +127,7 @@ async function sendPrivateHeader(host: string, socket: string, signal: AbortSign
     view: { host: string; cwd: string; status: string; trust: string; readiness: string };
     mount: MountHeader;
     remoteHome: string;
+    memoryCollection: string;
     modelProof?: RemoteModelProof;
 }): Promise<void> {
     const child = new Deno.Command("ssh", {
@@ -231,6 +233,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     // path generated from the known identity and the local verified checksum.
     const expected = `${target.home}/.cache/runwield/runtime/${BUILD_ID}/${triple}/${metadata.sha256}/wld`;
     if (executable !== expected) throw new Error("Remote runtime returned an unexpected cache path");
+    const memoryCollection = await bindRemoteMemory(target);
     const { startRemoteControlService } = await import("../../shared/remote/control.ts");
     const { openFileSessionStore } = await import("../../shared/session/file-session-store.ts");
     const store = openFileSessionStore();
@@ -247,7 +250,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
             store,
             target,
             targetLabel: `${host}:${target.cwd}`,
-        });
+        }, memoryCollection);
     } catch (error) {
         store.close();
         await sftp.close();
@@ -313,6 +316,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
             protocol: REMOTE_PROTOCOL_VERSION,
             mount: sftp.header,
             remoteHome: target.home,
+            memoryCollection,
             ...(modelProof ? { modelProof } : {}),
             view: {
                 host,

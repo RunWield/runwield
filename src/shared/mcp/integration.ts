@@ -49,6 +49,8 @@ export class McpIntegration {
     private readonly roots = new Set<WeakRef<ExtensionAPI>>();
     private closed = false;
 
+    constructor(private readonly servers: McpServerDefinition[] = []) {}
+
     getTools(): ToolDefinition[] {
         return [...this.tools.values()].filter((tool) => tool.exposure !== "hidden");
     }
@@ -105,8 +107,16 @@ export class McpIntegration {
     async runCommand(args: string): Promise<McpNotification[]> {
         const runner = this.session?.extensionRunner;
         const command = runner?.getCommand("mcp");
-        if (!runner || !command) return [{ message: "No MCP servers configured.", level: "info" }];
-        const notifications: McpNotification[] = [];
+        const locations: McpNotification[] = this.servers.filter((server) => server.location).map((server) => ({
+            message: `${server.name}: ${server.location}${
+                server.location === "laptop" ? " — not started remotely" : ""
+            }`,
+            level: "info",
+        }));
+        if (!runner || !command) {
+            return locations.length ? locations : [{ message: "No MCP servers configured.", level: "info" }];
+        }
+        const notifications: McpNotification[] = [...locations];
         const context = runner.createCommandContext();
         await command.handler(args, {
             ...context,
@@ -134,11 +144,12 @@ export class McpIntegration {
 }
 
 export async function startMcpIntegration(options: McpIntegrationStartOptions): Promise<McpIntegrationStartResult> {
-    const integration = new McpIntegration();
+    const integration = new McpIntegration(options.servers);
+    const activeServers = options.servers.filter((server) => server.location !== "laptop");
     const warnings: McpWarning[] = [];
-    if (options.servers.length === 0) return { integration, warnings };
+    if (activeServers.length === 0) return { integration, warnings };
     const config: LoadedMcpConfig = {
-        servers: options.servers.map((server) => ({
+        servers: activeServers.map((server) => ({
             name: server.name,
             config: { command: server.command, args: server.args, env: server.env, exposure: "direct" },
             source: server.source,
@@ -198,7 +209,7 @@ export async function startMcpIntegration(options: McpIntegrationStartOptions): 
                 if (type !== "warning" && type !== "error") return;
                 // Startup errors can include credentials or argv. Keep automatic
                 // diagnostics redacted; Pi's manager provides explicit inspection.
-                for (const server of options.servers) {
+                for (const server of activeServers) {
                     if (!message.includes(`${server.name}:`) && !message.startsWith("MCP failed to load:")) continue;
                     warnings.push({
                         source: server.source,

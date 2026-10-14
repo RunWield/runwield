@@ -70,7 +70,7 @@ Deno.test({
                     primaryRoot: null,
                     isWorktree: false,
                 },
-            });
+            }, "clipboard-bootstrap");
             const entry = new URL("./entry.ts", import.meta.url).href;
             const tui = new URL("../../ui/tui/tui.ts", import.meta.url).href;
             const terminalModule = new URL("../../ui/tui/testing/virtual-terminal.js", import.meta.url).href;
@@ -145,6 +145,7 @@ console.log("RETURNED_AFTER_TERMINATION");
                         connection: { port: service.port, credential: service.credential },
                         resources: { globalRoot: resources },
                         cwd: projectRoot,
+                        memoryCollection: "clipboard-bootstrap",
                         view: {
                             host: "host",
                             cwd: projectRoot,

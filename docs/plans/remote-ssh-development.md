@@ -262,10 +262,12 @@ Keep the SSH connection recipe separate from host identity. A local host record 
 port, and verified host evidence after an alias rename. Neither alias spelling nor a host-key fingerprint alone is
 sufficient. Ambiguous equivalence requires confirmation, not automatic history merging.
 
-New unrelated remote projects get separate local Memory collections. Deliberate mapping to an existing collection by
-name does not require a local checkout and does not merge Sessions. Ask once when the intended mapping is ambiguous,
-then retain it. Core injection, explicit recall/store/delete, and `/sleep` all use that same resolved mapping. Backups
-stay local. Existing local project IDs, collection names, and saved Sessions remain unchanged.
+A remote project's Memory collection is built automatically from the normalized server name and the project folder name,
+with no prompt. The one exception: when the remote folder name equals a local project's folder name, ask once whether it
+is the same project. **Yes** shares that local project's collection; **No** uses the normal rule. The answer is
+retained. Sharing a collection does not merge Sessions. Core injection and explicit recall/store/delete use the same
+resolved mapping. Remote `/sleep` is deferred scope. Existing local project IDs, main-checkout collection names, and
+saved Sessions remain unchanged.
 
 ### Browser review and connection lifetime
 

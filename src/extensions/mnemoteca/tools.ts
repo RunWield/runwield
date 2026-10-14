@@ -1,14 +1,17 @@
-import { basename, dirname, isAbsolute, join, normalize } from "@std/path";
+import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
+import { requestRemoteMemory } from "../../shared/remote/memory-bridge.ts";
+import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 
 export interface MnemotecaToolHost {
     cwd: string;
+    boundCollection?: string;
     exec: HelperBinaryExec;
 }
 
-interface MemoryParams {
+export interface MemoryParams {
     action: "recall" | "store" | "delete";
     query?: string;
     content?: string;
@@ -81,33 +84,13 @@ export const memoryToolDef = defineTool({
     },
 });
 
-export function normalizedProjectCollectionName(rawName: string): string {
-    return rawName === "global" ? "default" : (rawName || "default");
-}
-
-export async function resolveProjectCollectionName(host: MnemotecaToolHost): Promise<string> {
-    const cwd = host.cwd;
-    const fallback = normalizedProjectCollectionName(basename(cwd));
-    try {
-        const result = await host.exec("git", ["rev-parse", "--git-common-dir"], { cwd });
-        if (result.code !== 0) return fallback;
-        const commonDir = result.stdout.trim().split(/\r?\n/).at(-1) || "";
-        if (!commonDir) return fallback;
-        const absoluteCommonDir = normalize(isAbsolute(commonDir) ? commonDir : join(cwd, commonDir));
-        if (basename(absoluteCommonDir) !== ".git") return fallback;
-        return normalizedProjectCollectionName(basename(dirname(absoluteCommonDir)));
-    } catch {
-        return fallback;
-    }
-}
-
 export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] {
     let collectionName: string | null = null;
     let initPromise: Promise<void> | null = null;
 
     async function projectName(): Promise<string> {
         if (collectionName) return collectionName;
-        collectionName = await resolveProjectCollectionName(host);
+        collectionName = await resolveMemoryCollection(host);
         return collectionName;
     }
 
@@ -288,6 +271,7 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
             ...memoryToolDef,
             async execute(_id, params, signal) {
                 const typed = params as MemoryParams;
+                if (remotePersonalResourcesActive()) return await requestRemoteMemory(typed, signal);
                 if (typed.action === "recall") return await recall(typed, signal);
                 if (typed.action === "store") return await store(typed, signal);
                 if (typed.action === "delete") return await deleteMemory(typed, signal);

@@ -1,7 +1,14 @@
 /** Separate remote process: all Session, tool and save behavior is production code. */
+import { createMnemotecaTools, type MemoryParams } from "../../extensions/mnemoteca/tools.ts";
+import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
+import { assembleFinalSystemPrompt } from "../session/session.js";
+import { loadAgentDef } from "../session/agents.js";
+import { runSleepCommand, SYSTEM_SLEEP_MNEMOTECA_PORT } from "../../cmd/sleep/index.ts";
+import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { configureRemoteModelConnection } from "../models/model-registry.ts";
+import { configureRemoteMemoryConnection } from "./memory-bridge.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
 import { RemoteSessionControl, type RemoteSessionControlConnection } from "./session-control-client.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
@@ -15,10 +22,15 @@ import { runResumeCommand } from "../../cmd/resume/index.ts";
 export interface RuntimeClientInput {
     connection: RemoteSessionControlConnection;
     resources: string;
+    memoryCollection: string;
     cwd: string;
 }
 export interface RuntimeClientCommand {
     kind:
+        | "memory"
+        | "core-prompt"
+        | "sleep"
+        | "mcp"
         | "turn"
         | "load"
         | "close"
@@ -31,6 +43,7 @@ export interface RuntimeClientCommand {
         | "snapshots"
         | "image-preflight-turn";
     text?: string;
+    memory?: MemoryParams;
     sessionId?: string;
     image?: boolean;
     ref?: string;
@@ -43,6 +56,8 @@ export interface RuntimeClientSnapshot {
 }
 export interface RuntimeClientReport {
     kind: string;
+    text?: string;
+    activeAgent?: string | null;
     ok?: boolean;
     error?: string;
     sessionId?: string;
@@ -62,6 +77,7 @@ const lines = processLines(Deno.stdin.readable);
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
 configureRemotePersonalResources({ globalRoot: input.resources });
 configureRemoteSettingsConnection(input.connection);
+const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });
 const clearModels = await configureRemoteModelConnection(input.connection);
 const control = new RemoteSessionControl(input.connection);
 const runtime = createSessionRuntime({ remoteSessionControl: control, ownerProcessKind: "test" });
@@ -89,7 +105,52 @@ try {
         const command: RuntimeClientCommand = JSON.parse(next.value);
         if (command.kind === "close") break;
         try {
-            if (command.kind === "guard") {
+            if (command.kind === "memory") {
+                if (!command.memory) throw new Error("Missing Memory operation");
+                const [tool] = createMnemotecaTools({ cwd: input.cwd, exec: denoHelperBinaryExec });
+                const result = await tool.execute(
+                    "remote-memory",
+                    command.memory,
+                    undefined,
+                    undefined,
+                    {} as Parameters<typeof tool.execute>[4],
+                );
+                console.log(JSON.stringify({ kind: "memory", text: result.content, ok: true }));
+            } else if (command.kind === "core-prompt") {
+                const definition = await loadAgentDef("guide", input.cwd);
+                const text = await assembleFinalSystemPrompt(
+                    { ...definition, systemPrompt: "{{MEMORIES}}" },
+                    [],
+                    [],
+                    input.cwd,
+                );
+                console.log(JSON.stringify({ kind: "core-prompt", text, ok: true }));
+            } else if (command.kind === "sleep") {
+                const notices: string[] = [];
+                await runSleepCommand([], {
+                    sessionId,
+                    sessionRuntime: runtime,
+                    uiAPI: { appendSystemMessage: (message) => notices.push(message) },
+                    mnemotecaPort: SYSTEM_SLEEP_MNEMOTECA_PORT,
+                    sessionPort: { startInteractiveSession },
+                });
+                console.log(
+                    JSON.stringify({
+                        kind: "sleep",
+                        notices,
+                        activeAgent: runtime.getSessionSnapshot(sessionId)?.activeAgent,
+                    }),
+                );
+            } else if (command.kind === "mcp") {
+                console.log(
+                    JSON.stringify({
+                        kind: "mcp",
+                        notices: (await runtime.runMcpCommand(sessionId, "")).notifications.map((notice) =>
+                            notice.message
+                        ),
+                    }),
+                );
+            } else if (command.kind === "guard") {
                 const errors: string[] = [];
                 const hosted = new HostedSession({ id: crypto.randomUUID(), cwd: input.cwd });
                 const missing = SessionManager.inMemory(input.cwd);
@@ -242,6 +303,7 @@ try {
     await Promise.all(pending);
     await runtime.closeAllSessionsWhenIdle();
     clearModels();
+    clearMemory();
     await lines.cancel();
     lines.releaseLock();
 }

@@ -15,6 +15,7 @@ export interface RemoteSupervisorHeader {
     view: RemoteConnectionViewConfig;
     mount: MountHeader;
     remoteHome: string;
+    memoryCollection: string;
     modelProof?: RemoteModelProof;
 }
 
@@ -60,6 +61,8 @@ async function readHeader(connection: Deno.Conn): Promise<RemoteSupervisorHeader
                 header.modelProof = parseRemoteModelProof(JSON.stringify(header.modelProof));
             }
             if (
+                typeof header.memoryCollection !== "string" || !header.memoryCollection ||
+                header.memoryCollection.includes("\0") ||
                 typeof header.remoteHome !== "string" || !header.remoteHome.startsWith("/") ||
                 header.remoteHome.includes("\0")
             ) throw new Error("Invalid remote home");
@@ -371,6 +374,7 @@ export async function runRemoteSupervisor(): Promise<void> {
         await writer.write(encoder.encode(
             JSON.stringify({
                 view: header.view,
+                memoryCollection: header.memoryCollection,
                 connection: { port: header.port, credential: header.credential },
                 cwd: header.view.cwd,
                 resources: {

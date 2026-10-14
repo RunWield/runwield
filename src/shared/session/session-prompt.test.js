@@ -1,7 +1,9 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { join } from "@std/path";
+import { basename, join } from "@std/path";
+import { createMnemotecaTools } from "../../extensions/mnemoteca/tools.ts";
+import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { AGENTS } from "../../constants.js";
 import { loadAgentDef } from "./agents.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -283,27 +285,43 @@ sessionPromptTest("assembleFinalSystemPromptWithContextProjection attributes res
     }
 });
 
-sessionPromptTest("assembleFinalSystemPromptWithContextProjection includes Core Memory from Mnemoteca", async () => {
-    const projectRoot = await Deno.makeTempDir({ prefix: "runwield-context-project-" });
+sessionPromptTest("core memories stored from the checkout are injected into its worktree prompt", async () => {
+    const projectRoot = await promptGitFixture.checkout();
+    const worktreeParent = await Deno.makeTempDir({ prefix: "runwield-memory-worktree-" });
+    const worktree = join(worktreeParent, "feature");
     const fakeBin = join(projectRoot, "fake-bin");
     const commandLog = join(projectRoot, "mnemoteca-command.log");
+    const memoryFile = join(projectRoot, "fixture-memory.txt");
     const previousPath = Deno.env.get("PATH");
     const pathSeparator = Deno.build.os === "windows" ? ";" : ":";
     try {
+        await git(projectRoot, ["worktree", "add", "-b", "memory-feature", worktree]);
         await Deno.mkdir(fakeBin);
         await Deno.writeTextFile(
             join(fakeBin, "mnemoteca"),
             `#!/usr/bin/env bash
 set -euo pipefail
-printf 'args=%s\n' "$*" > '${commandLog}'
-if [[ "$*" != 'list -t core -f plain' ]]; then
-  exit 64
-fi
-printf 'Core memory from Mnemoteca\nSecond core memory\n'
+printf 'args=%s\n' "$*" >> '${commandLog}'
+[[ "$2" == '--name' && "$3" == '${basename(projectRoot)}' ]] || exit 64
+case "$1" in
+  init) ;;
+  add) printf '%s\n' "\${@: -1}" > '${memoryFile}' ;;
+  list) [[ "$*" == 'list --name ${basename(projectRoot)} -t core -f plain' ]] || exit 64
+        cat '${memoryFile}' ;;
+  *) exit 64 ;;
+esac
 `,
         );
         await Deno.chmod(join(fakeBin, "mnemoteca"), 0o755);
         Deno.env.set("PATH", previousPath ? `${fakeBin}${pathSeparator}${previousPath}` : fakeBin);
+        const [memoryTool] = createMnemotecaTools({ cwd: projectRoot, exec: denoHelperBinaryExec });
+        await memoryTool.execute(
+            "store-core",
+            { action: "store", content: "Core memory from Mnemoteca\nSecond core memory", core: true },
+            new AbortController().signal,
+            () => {},
+            /** @type {any} */ ({}),
+        );
 
         const { prompt, projection } = await assembleFinalSystemPromptWithContextProjection(
             /** @type {any} */ ({
@@ -314,19 +332,23 @@ printf 'Core memory from Mnemoteca\nSecond core memory\n'
             }),
             [],
             [],
-            projectRoot,
+            worktree,
         );
 
         assertStringIncludes(prompt, "Core memory from Mnemoteca");
         assertStringIncludes(prompt, "Second core memory");
-        assertEquals(await Deno.readTextFile(commandLog), "args=list -t core -f plain\n");
+        assertStringIncludes(
+            await Deno.readTextFile(commandLog),
+            `args=list --name ${basename(projectRoot)} -t core -f plain\n`,
+        );
         const coreMemoryItem = projection.categories.find((category) => category.id === "core_memories")?.items?.[0];
         assertEquals(coreMemoryItem?.source, "mnemoteca");
         assertEquals(coreMemoryItem?.label, "Core Memories");
     } finally {
         if (previousPath === undefined) Deno.env.delete("PATH");
         else Deno.env.set("PATH", previousPath);
-        await Deno.remove(projectRoot, { recursive: true }).catch(() => {});
+        await Deno.remove(worktreeParent, { recursive: true });
+        await Deno.remove(projectRoot, { recursive: true });
     }
 });
 

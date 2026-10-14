@@ -158,6 +158,7 @@ for (
                 view: { host: "host", cwd: root, status: "Connected", trust: "Trust", readiness: "No turns" },
                 mount: sftp.header,
                 remoteHome: await Deno.realPath(getHomeDir()),
+                memoryCollection: "fixture@host-1234",
             });
             const driver = new Deno.Command("python3", {
                 args: [

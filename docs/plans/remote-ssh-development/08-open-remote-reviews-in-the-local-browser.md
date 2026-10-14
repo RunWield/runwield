@@ -16,10 +16,10 @@ createdAt: "2026-09-21T02:05:51.971Z"
 status: "draft"
 origin: "internal"
 parentPlan: "remote-ssh-development"
-order: 7
+order: 8
 dependencies:
     - "01-establish-the-remote-connection-and-matched-runtime"
-    - "06-carry-remote-context-through-delivery-workflows"
+    - "07-carry-remote-context-through-delivery-workflows"
 targetBranch: "epic/remote-ssh-development"
 planId: "8b3db8e1-34fd-4a8d-9c06-07611d132802"
 ---

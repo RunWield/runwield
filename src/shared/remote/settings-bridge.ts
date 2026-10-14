@@ -97,3 +97,15 @@ export async function updateRemoteGlobalSetting(update: SettingsUpdate): Promise
         }
     }
 }
+
+/** The server user's home is never a source of personal MCP definitions. */
+export async function readRemotePersonalMcpConfig(): Promise<import("../mcp/config.ts").ResolveMcpConfigResult> {
+    if (!remoteConnection) throw new Error("Personal MCP requires the laptop settings service");
+    const response = await send(remoteConnection, "/mcp/config");
+    if (!response.ok) throw new Error(`Laptop MCP configuration failed (${response.status})`);
+    const result: import("../mcp/config.ts").ResolveMcpConfigResult = await response.json();
+    if (!Array.isArray(result.servers) || !Array.isArray(result.warnings)) {
+        throw new Error("Invalid laptop MCP configuration");
+    }
+    return result;
+}

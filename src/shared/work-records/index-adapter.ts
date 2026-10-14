@@ -3,6 +3,8 @@
  * Derived Mnemoteca index for canonical Work Records.
  */
 
+import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
+import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { basename, dirname } from "@std/path";
 import { listWorkRecords } from "./store.js";
 import type { WorkRecordMnemotecaPort } from "./mnemoteca-port.ts";
@@ -116,7 +118,18 @@ export async function runMnemotecaWorkRecordCommand(cwd: string, args: string[],
     const mnemotecaPort = options.mnemotecaPort;
     let result;
     try {
-        result = await mnemotecaPort.run(args, { cwd });
+        if (remotePersonalResourcesActive()) {
+            const commonDir = await resolveGitCommonDir(cwd);
+            const root = commonDir && basename(commonDir) === ".git" ? dirname(commonDir) : cwd;
+            const layout = resolveProjectRuntimeLayout(root).primary;
+            await Deno.mkdir(layout.internalRoot, { recursive: true, mode: 0o700 });
+            result = await mnemotecaPort.run(args, {
+                cwd,
+                env: { MNEMOTECA_DB_PATH: layout.workRecordIndexDatabasePath },
+            });
+        } else {
+            result = await mnemotecaPort.run(args, { cwd });
+        }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`mnemoteca ${args[0] || ""} failed: ${message}`);

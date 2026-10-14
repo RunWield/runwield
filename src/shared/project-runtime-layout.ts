@@ -44,6 +44,7 @@ export interface PrimaryProjectRuntimeLayout {
     projectSecretStorePath: string;
     fallbackWorktreesRoot: string;
     debugRoot: string;
+    workRecordIndexDatabasePath: string;
 }
 
 export interface SelectedProjectRuntimeLayout {
@@ -267,6 +268,7 @@ export function resolveProjectRuntimeLayout(selectedCheckoutRoot: string): Proje
             projectSecretStorePath: join(primaryInternalRoot, "collaboration-secrets.json"),
             fallbackWorktreesRoot: join(primaryInternalRoot, "worktrees"),
             debugRoot: join(primaryInternalRoot, "debug"),
+            workRecordIndexDatabasePath: join(primaryInternalRoot, "work-records.sqlite3"),
         },
         selected: {
             checkoutRoot: selectedProjectRoot,

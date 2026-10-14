@@ -4,8 +4,10 @@
  */
 
 import { parseArgs } from "@std/cli/parse-args";
-import { basename, dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "@std/path";
 import { AGENTS, SLEEP_PROMPT_PATH } from "../../constants.js";
+import { remotePersonalResourcesActive } from "../../shared/remote/personal-resources.ts";
+import { resolveMemoryCollection } from "../../shared/memory-collection.ts";
 import { ensureMnemotecaBinary } from "../../shared/runtime-preflight.ts";
 import { printCommandHelp } from "../help/index.ts";
 import { COMMAND_NAMES } from "../registry.js";
@@ -97,6 +99,13 @@ export async function runSleepCommand(argv: string[], options: SleepCommandOptio
         return;
     }
 
+    if (remotePersonalResourcesActive()) {
+        const message = "[RunWield] /sleep is not available in remote Sessions yet.";
+        if (options.uiAPI) options.uiAPI.appendSystemMessage(message);
+        else console.log(message);
+        return;
+    }
+
     if (!options.uiAPI) {
         await options.sessionPort.startInteractiveSession("/sleep", {
             initialAgentName: AGENTS.ENGINEER,
@@ -120,8 +129,7 @@ export async function runSleepCommand(argv: string[], options: SleepCommandOptio
     await mnemoteca.ensureAvailable();
 
     const cwd = snapshot.cwd;
-    const rawCollectionName = basename(cwd) || "default";
-    const collectionName = rawCollectionName === "global" ? "default" : rawCollectionName;
+    const collectionName = await resolveMemoryCollection({ cwd });
     const artifactDir = resolve(sessionRuntime.getSessionMemoryBackupDir(runtimeSessionId));
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const backupPath = join(
@@ -139,6 +147,9 @@ export async function runSleepCommand(argv: string[], options: SleepCommandOptio
         "",
         "## Run-specific artifact context",
         "",
+        `- Memory collection: ${collectionName}. Use --name ${
+            JSON.stringify(collectionName)
+        } for every mnemoteca command.`,
         `- Immutable pre-maintenance backup: ${backupPath}`,
         `- Session artifact directory: ${artifactDir}`,
         "- Do not modify or overwrite the pre-maintenance backup.",

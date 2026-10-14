@@ -1,5 +1,7 @@
 import { parse as parseJsonc } from "@std/jsonc";
 import { join } from "@std/path";
+import { remotePersonalResourcesActive } from "../remote/personal-resources.ts";
+import { readRemotePersonalMcpConfig } from "../remote/settings-bridge.ts";
 import { getHomeDir } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
@@ -14,6 +16,7 @@ export interface McpServerDefinition {
     args: string[];
     env: Record<string, string>;
     source: McpSourceKind;
+    location?: "local" | "laptop" | "remote";
 }
 
 export interface McpWarning {
@@ -36,7 +39,7 @@ export interface ResolveMcpConfigResult {
 
 interface ParsedServerEntry {
     disabled: boolean;
-    definition?: Omit<McpServerDefinition, "source">;
+    definition?: Omit<McpServerDefinition, "source" | "location">;
 }
 
 const MCP_FILE_NAME = "mcp.json";
@@ -222,11 +225,11 @@ export function getProjectMcpConfigPath(cwd: string): string {
 export async function resolveMcpConfig(options: ResolveMcpConfigOptions): Promise<ResolveMcpConfigResult> {
     const warnings: McpWarning[] = [];
     const resolved = new Map<string, McpServerDefinition>();
-    const globalPath = getGlobalMcpConfigPath();
-    const globalFile = await readConfigFile(globalPath, "global");
-    if (globalFile.warning) warnings.push(globalFile.warning);
-    for (const [name, entry] of globalFile.entries) {
-        if (entry.definition && !entry.disabled) resolved.set(name, { ...entry.definition, source: "global" });
+    const remote = remotePersonalResourcesActive();
+    const personal = remote ? await readRemotePersonalMcpConfig() : await readPersonalMcpConfig();
+    warnings.push(...personal.warnings);
+    for (const server of personal.servers) {
+        resolved.set(server.name, { ...server, ...(remote ? { location: "laptop" as const } : {}) });
     }
 
     const primaryRoot = resolvePrimaryCheckoutRoot(options.cwd);
@@ -238,7 +241,13 @@ export async function resolveMcpConfig(options: ResolveMcpConfigOptions): Promis
         if (projectFile.warning) warnings.push(projectFile.warning);
         for (const [name, entry] of projectFile.entries) {
             if (entry.disabled) resolved.delete(name);
-            else if (entry.definition) resolved.set(name, { ...entry.definition, source: "project" });
+            else if (entry.definition) {
+                resolved.set(name, {
+                    ...entry.definition,
+                    source: "project",
+                    ...(remote ? { location: "remote" as const } : {}),
+                });
+            }
         }
     }
 
@@ -255,7 +264,21 @@ export async function resolveMcpConfig(options: ResolveMcpConfigOptions): Promis
             );
             continue;
         }
-        resolved.set(requestServer.name, { ...requestServer, source: "request" });
+        resolved.set(requestServer.name, {
+            ...requestServer,
+            source: "request",
+            ...(remote ? { location: "remote" as const } : {}),
+        });
     }
     return { servers: Array.from(resolved.values()), warnings };
+}
+
+/** Laptop-owned personal definitions, with the same file safety checks as local MCP. */
+export async function readPersonalMcpConfig(): Promise<ResolveMcpConfigResult> {
+    const file = await readConfigFile(getGlobalMcpConfigPath(), "global");
+    const servers: McpServerDefinition[] = [];
+    for (const entry of file.entries.values()) {
+        if (entry.definition && !entry.disabled) servers.push({ ...entry.definition, source: "global" });
+    }
+    return { servers, warnings: file.warning ? [file.warning] : [] };
 }
