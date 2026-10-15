@@ -8,6 +8,7 @@ import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fix
 import {
     attachSessionEventSubscribers,
     buildAgentSession,
+    runPrompt,
     runIsolatedAgentSession,
     runNonInteractiveAgentPrompt,
 } from "./session.js";
@@ -429,6 +430,271 @@ test("a completed tool is not repeated after EOF and its result stays in retry c
             assertStringIncludes(JSON.stringify(session.messages.at(-1)), "Completed after retry");
         } finally {
             session.dispose();
+        }
+    });
+});
+
+test("a repeated tool call and result stops before another model request", async () => {
+    await withRuntimeCommandFixture("loop-guard-repeat-tool-", async (fixture) => {
+        let executions = 0;
+        let requests = 0;
+        const tool = {
+            name: "repeat_tool",
+            label: "Repeat tool",
+            description: "Returns one stable synthetic result",
+            parameters: { type: "object", properties: {} },
+            execute: () => {
+                executions += 1;
+                return Promise.resolve({
+                    content: [{ type: /** @type {const} */ ("text"), text: "stable synthetic result" }],
+                    details: null,
+                });
+            },
+        };
+        fixture.setModelResponseFactories(
+            Array.from({ length: 4 }, () => () => {
+                requests += 1;
+                return fauxAssistantMessage(fauxToolCall("repeat_tool", {}));
+            }),
+        );
+        const sessionManager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
+        const built = await buildAgentSession({
+            agentName: "guide",
+            cwd: fixture.projectRoot,
+            customTools: [tool],
+            toolNames: ["repeat_tool"],
+            sessionManager,
+        });
+        try {
+            await runPrompt({
+                session: built.session,
+                agentDef: built.agentDef,
+                agentName: "guide",
+                userRequest: "Use the synthetic tool",
+                finalSystemPrompt: built.promptState.text,
+                subscriberState: {
+                    resetTurn() {},
+                    drainInvokedToolNames: () => [],
+                    endThinking() {},
+                    unsubscribe() {},
+                },
+                requestId: "synthetic-repeat-request",
+            });
+            const stops = sessionManager
+                .getBranch()
+                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop");
+            assertEquals(executions, 3);
+            assertEquals(requests, 3);
+            assertEquals(
+                /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{reason?: string}> | undefined} */ (
+                    stops.at(-1)
+                )?.data?.reason,
+                "repeated_tool_result",
+            );
+        } finally {
+            built.session.dispose();
+        }
+    });
+});
+
+test("a repeated two-tool cycle stops after three cycles", async () => {
+    await withRuntimeCommandFixture("loop-guard-tool-cycle-", async (fixture) => {
+        let executions = 0;
+        let requests = 0;
+        /** @param {string} name @param {string} result */
+        const makeTool = (name, result) => ({
+            name,
+            label: name,
+            description: "Returns a stable synthetic cycle result",
+            parameters: { type: "object", properties: {} },
+            execute: () => {
+                executions += 1;
+                return Promise.resolve({
+                    content: [{ type: /** @type {const} */ ("text"), text: result }],
+                    details: null,
+                });
+            },
+        });
+        fixture.setModelResponseFactories(
+            Array.from({ length: 7 }, (_, index) => () => {
+                requests += 1;
+                return fauxAssistantMessage(fauxToolCall(index % 2 === 0 ? "cycle_a" : "cycle_b", {}));
+            }),
+        );
+        const sessionManager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
+        const built = await buildAgentSession({
+            agentName: "guide",
+            cwd: fixture.projectRoot,
+            customTools: [makeTool("cycle_a", "result a"), makeTool("cycle_b", "result b")],
+            toolNames: ["cycle_a", "cycle_b"],
+            sessionManager,
+        });
+        try {
+            await runPrompt({
+                session: built.session,
+                agentDef: built.agentDef,
+                agentName: "guide",
+                userRequest: "Use the synthetic tools",
+                finalSystemPrompt: built.promptState.text,
+                subscriberState: {
+                    resetTurn() {},
+                    drainInvokedToolNames: () => [],
+                    endThinking() {},
+                    unsubscribe() {},
+                },
+                requestId: "synthetic-cycle-request",
+            });
+            const stops = sessionManager
+                .getBranch()
+                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop");
+            assertEquals(executions, 6);
+            assertEquals(requests, 6);
+            assertEquals(
+                /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{reason?: string}> | undefined} */ (
+                    stops.at(-1)
+                )?.data?.reason,
+                "repeating_tool_cycle",
+            );
+        } finally {
+            built.session.dispose();
+        }
+    });
+});
+
+test("the model-turn budget survives a Session reopen for the same request", async () => {
+    await withRuntimeCommandFixture("loop-guard-turn-budget-", async (fixture) => {
+        let executions = 0;
+        let requests = 0;
+        const tool = {
+            name: "counter_tool",
+            label: "Counter tool",
+            description: "Returns the distinct synthetic step number",
+            parameters: { type: "object", properties: { step: { type: "number" } }, required: ["step"] },
+            /** @param {string} _toolCallId @param {{step: number}} args */
+            execute: (_toolCallId, args) => {
+                executions += 1;
+                return Promise.resolve({
+                    content: [{ type: /** @type {const} */ ("text"), text: `synthetic step ${args.step}` }],
+                    details: null,
+                });
+            },
+        };
+        fixture.setModelResponseFactories(
+            Array.from({ length: 51 }, (_, index) => () => {
+                requests += 1;
+                if (index === 50) return fauxAssistantMessage(fauxText("First request segment complete"));
+                return fauxAssistantMessage(fauxToolCall("counter_tool", { step: index + 1 }));
+            }),
+        );
+        const sessionManager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
+        const firstBuilt = await buildAgentSession({
+            agentName: "guide",
+            cwd: fixture.projectRoot,
+            customTools: [tool],
+            toolNames: ["counter_tool"],
+            sessionManager,
+        });
+        try {
+            await runPrompt({
+                session: firstBuilt.session,
+                agentDef: firstBuilt.agentDef,
+                agentName: "guide",
+                userRequest: "Use the synthetic counter, first segment",
+                finalSystemPrompt: firstBuilt.promptState.text,
+                subscriberState: {
+                    resetTurn() {},
+                    drainInvokedToolNames: () => [],
+                    endThinking() {},
+                    unsubscribe() {},
+                },
+                requestId: "synthetic-budget-request",
+            });
+        } finally {
+            firstBuilt.session.dispose();
+        }
+
+        const sessionPath = sessionManager.getSessionFile();
+        if (!sessionPath) throw new Error("Missing synthetic session transcript");
+        const reopenedManager = SessionManager.open(
+            sessionPath,
+            join(fixture.homeDir, "sessions"),
+            fixture.projectRoot,
+        );
+        fixture.setModelResponseFactories(
+            Array.from({ length: 50 }, (_, index) => () => {
+                requests += 1;
+                if (index === 49) return fauxAssistantMessage(fauxText("Should not be requested"));
+                return fauxAssistantMessage(fauxToolCall("counter_tool", { step: index + 51 }));
+            }),
+        );
+        const secondBuilt = await buildAgentSession({
+            agentName: "guide",
+            cwd: fixture.projectRoot,
+            customTools: [tool],
+            toolNames: ["counter_tool"],
+            sessionManager: reopenedManager,
+        });
+        try {
+            await runPrompt({
+                session: secondBuilt.session,
+                agentDef: secondBuilt.agentDef,
+                agentName: "guide",
+                userRequest: "Continue the synthetic counter request",
+                finalSystemPrompt: secondBuilt.promptState.text,
+                subscriberState: {
+                    resetTurn() {},
+                    drainInvokedToolNames: () => [],
+                    endThinking() {},
+                    unsubscribe() {},
+                },
+                requestId: "synthetic-budget-request",
+            });
+            const entries = reopenedManager.getBranch();
+            const stops = entries.filter(
+                (entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop",
+            );
+            const turns = entries.filter(
+                (entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_turn",
+            );
+            assertEquals(executions, 99);
+            assertEquals(requests, 100);
+            assertEquals(turns.length, 100);
+            assertEquals(
+                /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{reason?: string}> | undefined} */ (
+                    stops.at(-1)
+                )?.data?.reason,
+                "model_turn_limit",
+            );
+        } finally {
+            secondBuilt.session.dispose();
+        }
+
+        fixture.setModelResponseFactories([() => fauxAssistantMessage(fauxText("New instruction answered"))]);
+        const freshBuilt = await buildAgentSession({
+            agentName: "guide",
+            cwd: fixture.projectRoot,
+            customTools: [tool],
+            toolNames: ["counter_tool"],
+            sessionManager: reopenedManager,
+        });
+        try {
+            await runPrompt({
+                session: freshBuilt.session,
+                agentDef: freshBuilt.agentDef,
+                agentName: "guide",
+                userRequest: "Start a new synthetic request",
+                finalSystemPrompt: freshBuilt.promptState.text,
+                subscriberState: {
+                    resetTurn() {},
+                    drainInvokedToolNames: () => [],
+                    endThinking() {},
+                    unsubscribe() {},
+                },
+                requestId: "synthetic-fresh-request",
+            });
+            assertStringIncludes(JSON.stringify(freshBuilt.session.messages.at(-1)), "New instruction answered");
+        } finally {
+            freshBuilt.session.dispose();
         }
     });
 });

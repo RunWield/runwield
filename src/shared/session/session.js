@@ -136,6 +136,7 @@ import { installEarlySteeringInterruption } from "./early-steering.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
 import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { sanitizeSessionName } from "./session-name.ts";
+import { attachRunawayLoopGuard } from "./runaway-loop-guard.js";
 
 /** @returns {string | null} */
 function homePromptsDir() {
@@ -3888,6 +3889,7 @@ function agentTransitionSteeringSignature(steering) {
  * @param {import('./hosted-session.js').HostedSession} [opts.hostedSession]
  * @param {AgentTransitionSteeringEntry[]} [opts.transitionSteering]
  * @param {() => void} [opts.onTransitionSteeringConsumed]
+ * @param {string} [opts.requestId]
  *
  * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
  */
@@ -3908,6 +3910,7 @@ export async function runPrompt({
     hostedSession,
     transitionSteering = [],
     onTransitionSteeringConsumed,
+    requestId = `prompt:${crypto.randomUUID()}`,
 }) {
     subscriberState.resetTurn();
 
@@ -3972,6 +3975,7 @@ export async function runPrompt({
             // Cancellation is best effort; the active prompt still observes the AbortSignal check below.
         }
     };
+    const unsubscribeLoopGuard = attachRunawayLoopGuard({ session, requestId, hostedSession });
 
     try {
         signal?.throwIfAborted();
@@ -4057,6 +4061,7 @@ export async function runPrompt({
         promptError = error instanceof Error ? error : new Error(String(error));
         throw error;
     } finally {
+        unsubscribeLoopGuard();
         signal?.removeEventListener("abort", abortPrompt);
         // Defensive cleanup handles abort/error paths where thinking_end may never fire.
         subscriberState.endThinking();
@@ -4693,6 +4698,7 @@ export async function runRootTurn({
                     disableAutoCompaction,
                     hostedSession: targetHostedSession,
                     transitionSteering,
+                    requestId: dispatch.requestId,
                     onTransitionSteeringConsumed: () => {
                         transitionSteeringConsumed = true;
                     },
@@ -5020,6 +5026,7 @@ export async function runIsolatedAgentSession(opts) {
                             debugLogPath: opts.debugLogPath,
                             signal: opts.signal,
                             disableAutoCompaction: opts.disableAutoCompaction === true,
+                            requestId: dispatch.requestId,
                         }),
                     );
                 } catch (err) {

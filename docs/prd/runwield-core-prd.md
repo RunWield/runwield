@@ -1974,6 +1974,29 @@ remote Agent uses the model after a remote project tool result, the laptop runti
 without a second sign-in or a model substitution. The trusted server can still access laptop-account files via SFTP;
 this is not confinement.
 
+**Requirement: Stop runaway model and tool loops.**
+
+Each Pi-backed request has a durable budget of 100 model requests, counting each turn start and each provider retry
+reported by Pi, including automatic tool continuations. The count is recorded before each request and remains attached
+to the same request when it resumes after a failure or process restart. A new user instruction starts a new request
+budget. Stop before starting another model request once the budget is exhausted, preserve the Session, and show the
+reason and a clear continuation action. Also stop the current request when an exact tool call and result repeats three
+times consecutively, or an exact cycle of up to three
+tool call/result pairs repeats three times. Persist only hashes of tool names, arguments, and results for this check;
+never duplicate raw tool inputs or outputs into guard records. A stop is recoverable through a new user instruction and
+does not mark the Session or its enclosing workflow complete.
+
+**Acceptance scenarios:**
+
+- Given a model repeatedly requests the same tool with the same result, when the third identical pair completes,
+  RunWield stops before another model request and records a visible, recoverable stop reason.
+- Given a model repeats a cycle of two or three exact tool call/result pairs three times, when the cycle completes,
+  RunWield stops before another model request and records a visible, recoverable stop reason.
+- Given one request reaches 100 model requests, when it is continued after a retry or process restart, RunWield stops
+  before request 101. A new user instruction starts a fresh request budget.
+- Given a loop guard stops a request, when the Session is reopened, the stop remains in its transcript and the user can
+  continue with a new instruction.
+
 **Requirement: Recover from temporary model-service failures.**
 
 For Pi-backed model requests, retry temporary connection, rate-limit, and server failures, including an interrupted

@@ -490,6 +490,27 @@ export function createReplayEvents(sessionId, entries, options = {}) {
             });
             continue;
         }
+        if (value.type === "custom" && value.customType === "runwield.loop_guard_stop") {
+            const reason = typeof value.data?.reason === "string" ? value.data.reason : "";
+            const message =
+                reason === "model_turn_limit"
+                    ? "Stopped this request after its model request limit. Your Session is saved; send a new instruction to continue."
+                    : reason === "repeated_tool_result"
+                      ? "Stopped this request after the same tool call and result repeated. Your Session is saved; send a new instruction to continue."
+                      : reason === "repeating_tool_cycle"
+                        ? "Stopped this request after a tool call and result cycle repeated. Your Session is saved; send a new instruction to continue."
+                        : "Stopped this request to prevent an unbounded tool loop.";
+            events.push({
+                ...common,
+                type: RuntimeEventTypes.SYSTEM_STATUS,
+                eventId: makeEventId(value, RuntimeEventTypes.SYSTEM_STATUS, 0, segmentId),
+                messageId: entryMessageId(value, `${sessionId}:loop-guard`, segmentId),
+                message,
+                level: "warning",
+                header: "RunWield",
+            });
+            continue;
+        }
         const manualQaChecklist = readManualQaChecklistMessage(value);
         if (manualQaChecklist) {
             events.push({
