@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import type { AgentSession, AgentSessionEvent, CustomEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { HostedSession } from "./hosted-session.js";
 import { emitSystemStatus } from "./session-runtime-events.js";
 
 export const LOOP_GUARD_MAX_MODEL_TURNS = 100;
@@ -9,39 +11,45 @@ const LOOP_GUARD_TURN_CUSTOM_TYPE = "runwield.loop_guard_turn";
 const LOOP_GUARD_TOOL_CUSTOM_TYPE = "runwield.loop_guard_tool";
 const LOOP_GUARD_STOP_CUSTOM_TYPE = "runwield.loop_guard_stop";
 
-/** @typedef {{type?: string, customType?: string, data?: {requestId?: string, turnCount?: number, signature?: string}}} GuardEntry */
+type GuardEntryData = {
+    requestId?: string;
+    turnCount?: number;
+    signature?: string;
+    reason?: string;
+};
+
+type RunawayLoopGuardOptions = {
+    session: AgentSession;
+    requestId: string;
+    hostedSession?: HostedSession;
+};
+
+type GuardCustomEntry = CustomEntry<GuardEntryData>;
 
 /**
  * Attach a persistent guard to one Pi request. Only fingerprints and counters
  * are written to the transcript; tool arguments and results are never copied.
- *
- * @param {{ session: import('@earendil-works/pi-coding-agent').AgentSession, requestId: string, hostedSession?: import('./hosted-session.js').HostedSession }} options
- * @returns {() => void}
  */
-export function attachRunawayLoopGuard({ session, requestId, hostedSession }) {
+export function attachRunawayLoopGuard({ session, requestId, hostedSession }: RunawayLoopGuardOptions): () => void {
     const sessionManager = session.sessionManager;
-    if (!sessionManager || typeof sessionManager.getBranch !== "function") return () => {};
+    const branch = sessionManager.getBranch();
 
-    /** @type {GuardEntry[]} */
-    const branch = sessionManager.getBranch().map((entry) => /** @type {GuardEntry} */ (entry));
-    /** @type {number} */
-    let modelTurns = branch.reduce((count, entry) => {
-        if (entry.type !== "custom" || entry.customType !== LOOP_GUARD_TURN_CUSTOM_TYPE) return count;
+    let modelTurns = branch.reduce((count: number, entry: SessionEntry) => {
+        if (!isGuardEntry(entry, LOOP_GUARD_TURN_CUSTOM_TYPE)) return count;
         return entry.data?.requestId === requestId ? Math.max(count, Number(entry.data.turnCount) || 0) : count;
     }, 0);
-    /** @type {string[]} */
     const toolHistory = branch
-        .filter((entry) => entry.type === "custom" && entry.customType === LOOP_GUARD_TOOL_CUSTOM_TYPE)
+        .filter((entry) => isGuardEntry(entry, LOOP_GUARD_TOOL_CUSTOM_TYPE))
         .map((entry) => entry.data)
-        .filter((entry) => entry?.requestId === requestId && typeof entry.signature === "string")
+        .filter(
+            (entry): entry is GuardEntryData => entry?.requestId === requestId && typeof entry.signature === "string",
+        )
         .slice(-LOOP_GUARD_MAX_CYCLE_LENGTH * LOOP_GUARD_REPEAT_CYCLES)
-        .map((entry) => entry?.signature || "");
+        .map((entry) => entry.signature || "");
     let stopped = false;
-    /** @type {Map<string, string>} */
-    const toolArguments = new Map();
+    const toolArguments = new Map<string, string>();
 
-    /** @param {string} reason @param {string} message */
-    const stop = (reason, message) => {
+    const stop = (reason: string, message: string): void => {
         if (stopped) return;
         stopped = true;
         sessionManager.appendCustomEntry(LOOP_GUARD_STOP_CUSTOM_TYPE, {
@@ -74,7 +82,7 @@ export function attachRunawayLoopGuard({ session, requestId, hostedSession }) {
         });
     };
 
-    const unsubscribe = session.subscribe((event) => {
+    const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
         if (stopped) return;
         if (event.type === "turn_start" || event.type === "auto_retry_start") {
             reserveModelTurn();
@@ -114,7 +122,7 @@ export function attachRunawayLoopGuard({ session, requestId, hostedSession }) {
         toolArguments.delete(event.toolCallId);
     });
 
-    const unsubscribeToolArguments = session.subscribe((event) => {
+    const unsubscribeToolArguments = session.subscribe((event: AgentSessionEvent) => {
         if (event.type === "tool_execution_start") {
             const args = JSON.stringify(event.args, (_key, value) =>
                 value && typeof value === "object" && !Array.isArray(value)
@@ -131,8 +139,11 @@ export function attachRunawayLoopGuard({ session, requestId, hostedSession }) {
     };
 }
 
-/** @param {string[]} history @returns {number} */
-function repeatedCycleLength(history) {
+function isGuardEntry(entry: SessionEntry, customType: string): entry is GuardCustomEntry {
+    return entry.type === "custom" && entry.customType === customType;
+}
+
+function repeatedCycleLength(history: string[]): number {
     for (let cycleLength = 1; cycleLength <= LOOP_GUARD_MAX_CYCLE_LENGTH; cycleLength += 1) {
         const needed = cycleLength * LOOP_GUARD_REPEAT_CYCLES;
         if (history.length < needed) continue;

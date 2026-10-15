@@ -136,7 +136,7 @@ import { installEarlySteeringInterruption } from "./early-steering.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
 import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { sanitizeSessionName } from "./session-name.ts";
-import { attachRunawayLoopGuard } from "./runaway-loop-guard.js";
+import { attachRunawayLoopGuard } from "./runaway-loop-guard.ts";
 
 /** @returns {string | null} */
 function homePromptsDir() {
