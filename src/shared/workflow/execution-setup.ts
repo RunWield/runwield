@@ -192,6 +192,7 @@ export async function prepareExecutionSetup(session: HostedSession, cwd: string)
         await writeReceipt(cwd, receipt);
         if (!command) {
             await writeReceipt(cwd, { ...receipt, state: "ready" });
+            if (controller.signal.aborted) throw new Error("Worktree setup canceled; no Agent work began.");
             return;
         }
         emitSystemStatus(session, `Preparing worktree dependencies: ${command}`);
@@ -211,6 +212,7 @@ export async function prepareExecutionSetup(session: HostedSession, cwd: string)
         }
         await assertSetupFilesUnchanged(cwd, receipt);
         await writeReceipt(cwd, { ...receipt, state: "ready" });
+        if (controller.signal.aborted) throw new Error("Worktree setup canceled; no Agent work began.");
     } finally {
         session.removeActiveInteraction(interactionId);
     }
