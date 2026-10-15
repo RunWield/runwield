@@ -1,8 +1,10 @@
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { getCwd } from "../../constants.js";
-import process from "node:process";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { parseRemoteInteractiveConfig } from "./entry.ts";
+
+import process from "node:process";
 
 async function privateEntry(args: string[], input?: string) {
     const child = spawnNativeProcess(process.execPath, {
@@ -54,7 +56,7 @@ test("remote view rejects malformed configuration before terminal or registry st
     assertEquals(result.stderr.includes("Unknown option"), false);
 });
 
-test("remote view renders supplied facts and exits on q", async () => {
+test("remote interactive entry refuses stale status-only configuration before opening a local Session", async () => {
     const config = {
         host: "remote-server",
         cwd: "/srv/project",
@@ -63,15 +65,37 @@ test("remote view renders supplied facts and exits on q", async () => {
         readiness: "Waiting",
     };
     const result = await privateEntry(["--remote-view"], `${JSON.stringify(config)}\nq`);
-    assertEquals(result.code, 0);
-    assertStringIncludes(result.stdout, "remote-server");
-    assertStringIncludes(result.stdout, "/srv/project");
-    assertStringIncludes(result.stdout, "Waiting");
-    assertEquals(result.stderr, "");
+    assertEquals(result.code, 1);
+    assertStringIncludes(result.stderr, "Invalid remote interactive configuration");
+    assertEquals(result.stdout, "");
 });
 
 test("remote view rejects an unfinished input header", async () => {
     const result = await privateEntry(["--remote-view"], '{"host":"server"}');
     assertEquals(result.code, 1);
     assertStringIncludes(result.stderr, "configuration is missing or incomplete");
+});
+
+test("remote bootstrap rejects invalid control identity, cwd, and mount roots", async () => {
+    const config = {
+        connection: { port: 1234, credential: "a".repeat(64) },
+        cwd: "/remote/project",
+        resources: { globalRoot: "/private/verified-mount" },
+        view: { host: "host", cwd: "/remote/project", status: "Connected", trust: "Trusted", readiness: "Ready" },
+    };
+    assertEquals(await parseRemoteInteractiveConfig(JSON.stringify(config)), config);
+    for (const invalid of [
+        { ...config, connection: { port: 0, credential: config.connection.credential } },
+        { ...config, connection: { port: 65536, credential: config.connection.credential } },
+        { ...config, connection: { port: 1234, credential: "not-a-credential" } },
+        { ...config, cwd: "relative" },
+        { ...config, cwd: "/another/project" },
+        { ...config, resources: { globalRoot: "relative-mount" } },
+    ]) {
+        await assertRejects(
+            () => parseRemoteInteractiveConfig(JSON.stringify(invalid)),
+            Error,
+            "Invalid remote interactive configuration",
+        );
+    }
 });

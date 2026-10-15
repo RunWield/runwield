@@ -69,11 +69,19 @@ export interface RegisterSessionArtifactOptions {
     now?: () => string;
 }
 
+export interface RemoteProjectLocator {
+    host: import("../remote/target.ts").RemoteHostIdentity;
+    root: string;
+    /** Display and reconnect command only; not an identity field. */
+    targetLabel?: string;
+}
+
 export interface FileSessionProject {
     projectId: string;
     displayName: string;
     registeredRoot: string;
     currentRoot: string;
+    remote?: RemoteProjectLocator;
     lifecycle: "enabled" | "disabled" | "removed";
     accessScope?: "local_runtime" | "workspace";
     createdAt: string;
@@ -104,6 +112,13 @@ export interface FileSessionManifest {
     lastPlanReview?: LastPlanReviewReference;
 }
 
+export interface PendingTranscriptMigration {
+    beforeByteLength: number;
+    beforeDigestHex: string;
+    after: TranscriptEvidence;
+    headerVersion: number;
+}
+
 export interface FileSessionActivation {
     state: "uninitialized" | "idle" | "active" | "uncertain" | "reconcile_required";
     phase: SessionPhase | null;
@@ -116,6 +131,7 @@ export interface FileSessionActivation {
     blockedReason: string | null;
     baselineByteLength?: number | null;
     baselineDigestHex?: string | null;
+    pendingMigration?: PendingTranscriptMigration;
 }
 
 export interface FileSessionGeneration {
@@ -438,6 +454,19 @@ export interface FileSessionStore {
     inspectSegmentRolloverRecovery(options: InspectRolloverOptions): Promise<RolloverInspection>;
     discardOrphanRolloverCandidate(options: DiscardOrphanOptions): Promise<void>;
     validateSuccessorSegmentLocator(options: SuccessorLocator): Promise<CatalogedTranscriptLocator>;
+    /** Admission and I/O both run while this store holds the actual native writer lock. */
+    readActiveSessionTranscript(proof: FileActivationProof): string;
+    writeActiveSessionTranscript(
+        proof: FileActivationProof,
+        contents: string,
+        expectedDigestHex: string,
+    ): TranscriptEvidence;
+    /** Laptop migration also advances the baseline from which interrupted saves recover. */
+    migrateActiveSessionTranscript(
+        proof: FileActivationProof,
+        contents: string,
+        expectedDigestHex: string,
+    ): FileActivationProof;
     inspectSessionActivation(runwieldSessionId: string): SessionControlSnapshot;
     acquireSessionActivation(options: ActivationOptions): FileActivationProof;
     changeSessionActivationPhase(
@@ -459,10 +488,7 @@ export interface FileSessionStore {
         evidence: TranscriptEvidence & { generation: number },
         options?: { now?: () => string },
     ): SessionControlSnapshot;
-    releaseUnchangedActivation(
-        proof: FileActivationProof,
-        options?: { now?: () => string },
-    ): SessionControlSnapshot;
+    releaseUnchangedActivation(proof: FileActivationProof, options?: { now?: () => string }): SessionControlSnapshot;
     recoverSessionControl(options: SessionRecoveryOptions): SessionControlSnapshot;
     markSessionReconcileRequired(session: ReconcileSession, options?: ReconcileOptions): SessionControlSnapshot;
     markSessionUncertain(proof: FileActivationProof, options?: ReconcileOptions): SessionControlSnapshot;

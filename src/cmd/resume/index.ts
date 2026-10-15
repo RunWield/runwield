@@ -80,9 +80,8 @@ export function getResumeModelSelection(sessionModel: PersistedModelSelection | 
             if (model && registry.isSelectable(model)) {
                 return {
                     modelOverride: `${model.provider}/${model.id}`,
-                    contextWindow: typeof model.contextWindow === "number"
-                        ? model.contextWindow
-                        : DEFAULT_CONTEXT_WINDOW,
+                    contextWindow:
+                        typeof model.contextWindow === "number" ? model.contextWindow : DEFAULT_CONTEXT_WINDOW,
                 };
             }
         } catch {
@@ -142,7 +141,7 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
     const items = sessions.map((session) => {
         const display = (session.firstMessage || session.id).trim().replace(/\n/g, " ");
         return {
-            value: session.path,
+            value: session.path || session.id,
             label: session.name ? `${session.name} (${display})` : display,
             description: `${new Date(session.modified || 0).toLocaleString()} | Messages: ${session.messageCount}`,
         };
@@ -155,20 +154,20 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
         getTerminalColumns() - SELECT_CHROME_WIDTH - widestDescription,
     );
 
-    const selectedPath = await uiAPI.promptSelect("Select a session to resume:", items, {
+    const selectedId = await uiAPI.promptSelect("Select a session to resume:", items, {
         layout: {
             maxPrimaryColumnWidth,
             truncatePrimary: ({ text, maxWidth }) =>
                 text.length > maxWidth ? `${text.slice(0, Math.max(0, maxWidth - 1))}…` : text,
         },
     });
-    if (!selectedPath) {
+    if (!selectedId) {
         editor.setText("");
         editor.disableSubmit = false;
         return;
     }
 
-    const selected = sessions.find((session) => session.path === selectedPath);
+    const selected = sessions.find((session) => (session.path || session.id) === selectedId);
     if (!selected) throw new Error("Selected persisted session is no longer available.");
     const inspection = await sessionRuntime.inspectResumableSession({
         cwd: current.cwd,
@@ -211,9 +210,9 @@ export async function runResumeCommand(argv: string[], options: ResumeCommandOpt
         try {
             const result = await sessionRuntime.compactSession(loaded.sessionId);
             if ("ok" in result && result.ok === false) throw new Error(result.error);
-            notice = `Conversation compacted and restored. Previous size: ${
-                (result.tokensBefore ?? 0).toLocaleString()
-            } tokens.`;
+            notice = `Conversation compacted and restored. Previous size: ${(
+                result.tokensBefore ?? 0
+            ).toLocaleString()} tokens.`;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const canceled = message === "Compaction cancelled" || message.includes("cancelled");

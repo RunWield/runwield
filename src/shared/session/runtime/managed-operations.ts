@@ -14,6 +14,7 @@ import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
 import { parseProviderModel } from "../../models/model-validation.ts";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { requireLocalSessionWriter } from "../../remote/personal-resources.ts";
 
 import {
     normalizeManagedActiveModelState,
@@ -182,10 +183,7 @@ export class RuntimeManagedOperations {
         string,
         import("../../owner-coordination/session-activations.js").ActivationProof
     >();
-    private currentManagedOperations = new Map<
-        string,
-        import("../managed-operation.ts").ManagedOperationCapability
-    >();
+    private currentManagedOperations = new Map<string, import("../managed-operation.ts").ManagedOperationCapability>();
     private currentManagedOperationSettlements = new Map<string, Promise<void>>();
 
     getSessionSnapshot(sessionId: string) {
@@ -196,10 +194,7 @@ export class RuntimeManagedOperations {
         return this.queues.getQueuedMessages(sessionId);
     }
 
-    subscribeSessionEvents(
-        sessionId: string,
-        listener: import("./types.ts").SessionRuntimeEventListener,
-    ) {
+    subscribeSessionEvents(sessionId: string, listener: import("./types.ts").SessionRuntimeEventListener) {
         return this.events.subscribeSessionEvents(sessionId, listener);
     }
 
@@ -217,7 +212,7 @@ export class RuntimeManagedOperations {
     }
 
     hasOperation(sessionId: string) {
-        return this.currentManagedOperations.has(sessionId);
+        return this.currentManagedOperationSettlements.has(sessionId) || this.currentManagedOperations.has(sessionId);
     }
 
     currentCapability(sessionId: string) {
@@ -376,8 +371,10 @@ export class RuntimeManagedOperations {
                 ...managed,
                 generation: 0,
                 acknowledgedGeneration: 0,
-                activeAgent: hostedSession.getRootAgentName?.() ||
-                    readPersistedActiveAgentName(hostedSession.getRootSessionManager?.() || undefined) || null,
+                activeAgent:
+                    hostedSession.getRootAgentName?.() ||
+                    readPersistedActiveAgentName(hostedSession.getRootSessionManager?.() || undefined) ||
+                    null,
                 model: managedModelState.model,
                 provider: managedModelState.provider,
                 thinkingLevel: hostedSession.getThinkingLevel?.() || managed.thinkingLevel || "off",
@@ -445,13 +442,15 @@ export class RuntimeManagedOperations {
         options: { activateAgent?: boolean; hydrate?: boolean } = {},
     ): Promise<T | ManagedOperationFailure> {
         const session = this.services.sessionHost.getSession(sessionId);
-        if (!session) return ({ ok: false, error: "not_found" });
+        if (!session) return { ok: false, error: "not_found" };
         const managed = session.getManagedMetadata?.();
         const currentCapability = this.currentManagedOperations.get(sessionId) || null;
         if (currentCapability) {
             const context = this.activeManagedOperation.getStore();
             if (
-                context?.runtime === this && context.sessionId === sessionId && context.capability === currentCapability
+                context?.runtime === this &&
+                context.sessionId === sessionId &&
+                context.capability === currentCapability
             ) {
                 return await operation(session, currentCapability);
             }
@@ -483,16 +482,160 @@ export class RuntimeManagedOperations {
         );
     }
 
+    private async runRemoteManagedOperation<T>(
+        sessionId: string,
+        descriptor: import("../managed-operation.ts").ManagedOperationDescriptor,
+        body: (context: {
+            acceptedTurnId: string;
+            hasPendingImages: boolean;
+            capability: import("../managed-operation.ts").ManagedOperationCapability;
+        }) => Promise<T>,
+    ): Promise<T | import("./types.ts").ManagedOperationRunFailure> {
+        const persistence = this.services.remotePersistence!;
+        const session = this.services.sessionHost.getSession(sessionId)!;
+        const managed = session.getManagedMetadata()!;
+        if (this.currentManagedOperationSettlements.has(sessionId)) {
+            return { ok: false, turns: 0, error: "managed_operation_in_progress" };
+        }
+        let settled = () => {};
+        this.currentManagedOperationSettlements.set(
+            sessionId,
+            new Promise<void>((resolve) => {
+                settled = resolve;
+            }),
+        );
+        const options = descriptor.options || {};
+        const busy = options.emitBusyEvents !== false;
+        if (busy) this.events.beginBusyOperation(sessionId);
+        let hydration: Awaited<ReturnType<typeof persistence.open>> | null = null;
+        let capability: import("../managed-operation.ts").ManagedOperationCapability | null = null;
+        let cleanupTurnStart: (() => void) | undefined;
+        const abort = new AbortController();
+        let capabilitySettled = false;
+        try {
+            hydration = await persistence.open(session);
+            const signal = AbortSignal.any([abort.signal, hydration.bridge.signal]);
+            capability = {
+                runtimeSessionId: sessionId,
+                runwieldSessionId: managed.runwieldSessionId,
+                operationId: hydration.operation,
+                get settled() {
+                    return capabilitySettled;
+                },
+                signal,
+                registerArtifact() {
+                    throw requireLocalSessionWriter();
+                },
+                cancel() {
+                    abort.abort();
+                },
+                assertLive() {
+                    if (capabilitySettled) throw new Error("Managed operation capability is settled");
+                    hydration!.bridge.assertHealthy();
+                },
+                settle() {
+                    capabilitySettled = true;
+                },
+            };
+            this.currentManagedOperations.set(sessionId, capability);
+            session.setManagedOperationCapability(capability);
+            session.setRootSessionManager(hydration.manager, capability);
+            // Idle connections can have older snapshots. The transcript hydrated
+            // under fresh laptop ownership is authoritative for this operation.
+            const hydratedMetadata = persistence.metadata(
+                managed.runwieldSessionId,
+                [hydration.manager.getHeader()!, ...hydration.manager.getEntries()],
+                managed.generation,
+            );
+            session.setManagedMetadata(hydratedMetadata);
+            this.events.beginLiveCapture(sessionId);
+            const pending = session.getPendingManagedTurnIntent();
+            const manager = hydration.manager;
+            const acceptedTurnId = options.turnId || crypto.randomUUID();
+            const cleanup = options.onTurnStarted?.({ turnId: acceptedTurnId });
+            if (typeof cleanup === "function") cleanupTurnStart = cleanup;
+            const hasPendingImages = (options.initialImages || []).some((image) => !image.path && !image.ref);
+            if (options.initialRequest !== undefined && descriptor.emitPromptEvents !== false && !hasPendingImages) {
+                this.events.emitSessionEvent(sessionId, {
+                    type: RuntimeEventTypes.USER_MESSAGE,
+                    turnId: acceptedTurnId,
+                    text: options.initialRequest,
+                    images: options.initialImages || [],
+                });
+                this.events.emitSessionEvent(sessionId, { type: RuntimeEventTypes.TURN_START, turnId: acceptedTurnId });
+            }
+            if (descriptor.activateAgent !== false) {
+                const resumeAgent = await resolveResumeAgentName(manager);
+                const agentName = options.agentName || pending.agentName || resumeAgent;
+                const persistedManual = readPersistedManualModelState(manager, agentName);
+                const preparedModelOverride =
+                    "preparedModelOverride" in options && typeof options.preparedModelOverride === "string"
+                        ? options.preparedModelOverride
+                        : undefined;
+                const model =
+                    preparedModelOverride ||
+                    (pending.model
+                        ? pending.provider
+                            ? `${pending.provider}/${pending.model}`
+                            : pending.model
+                        : persistedManual
+                          ? persistedManual.provider
+                              ? `${persistedManual.provider}/${persistedManual.model}`
+                              : persistedManual.model
+                          : resolvePersistedResumeModel(manager));
+                const configuration = await resolvePersistedRootConfiguration(agentName, manager, session.cwd);
+                await this.settings.activateSessionAgent(session, {
+                    ...configuration,
+                    agentName,
+                    model,
+                    toolNames: options.toolNames,
+                    customTools: options.customTools || configuration.customTools,
+                    includeEditFallback: options.includeEditFallback,
+                    thinkingLevelOverride:
+                        pending.thinkingLevel || hydratedMetadata.thinkingLevel
+                            ? normalizeThinkingLevel(pending.thinkingLevel || hydratedMetadata.thinkingLevel)
+                            : undefined,
+                    managedOperationCapability: capability,
+                });
+                if (pending.manualModel && pending.model) {
+                    recordManualModelSelection(manager, pending.provider || "", pending.model);
+                }
+            }
+            session.consumePendingManagedTurnIntent();
+            const result = await this.activeManagedOperation.run({ runtime: this, sessionId, capability }, () =>
+                body({ acceptedTurnId, hasPendingImages, capability: capability! }),
+            );
+            hydration.bridge.assertHealthy();
+            await persistence.control.checkpoint(hydration.operation);
+            session.dehydrateManagedSession();
+            await persistence.synchronize(session);
+            return result;
+        } catch (error) {
+            session.dehydrateManagedSession();
+            if (hydration) await persistence.control.markUncertain(hydration.operation).catch(() => {});
+            throw error;
+        } finally {
+            hydration?.bridge.close();
+            this.events.endLiveCapture(sessionId);
+            this.queues.removeAllQueueSourceSubscriptions(sessionId);
+            cleanupTurnStart?.();
+            capability?.settle();
+            this.currentManagedOperations.delete(sessionId);
+            this.currentManagedOperationSettlements.delete(sessionId);
+            settled();
+            session.setManagedOperationCapability(null);
+            if (busy) this.events.endBusyOperation(sessionId);
+        }
+    }
+
     async runManagedOperation<T>(
         sessionId: string,
         descriptor: import(".././managed-operation.ts").ManagedOperationDescriptor,
-        body: (
-            context: {
-                acceptedTurnId: string;
-                hasPendingImages: boolean;
-                capability: import(".././managed-operation.ts").ManagedOperationCapability;
-            },
-        ) => Promise<T>,
+        body: (context: {
+            acceptedTurnId: string;
+            hasPendingImages: boolean;
+            capability: import(".././managed-operation.ts").ManagedOperationCapability;
+        }) => Promise<T>,
     ): Promise<T | import("./types.ts").ManagedOperationRunFailure> {
         const hostedSession = this.services.sessionHost.getSession(sessionId);
         if (!hostedSession) throw new Error("SessionRuntime.runManagedOperation: session not found");
@@ -506,6 +649,7 @@ export class RuntimeManagedOperations {
                 error: "managed_operation_in_progress",
             };
         }
+        if (this.services.remotePersistence) return await this.runRemoteManagedOperation(sessionId, descriptor, body);
         if (!this.services.sessionStore) throw new Error("Session coordination is unavailable");
         const state = this.services.sessionStore.inspectSessionActivation(managed.runwieldSessionId);
         const committedPlanAssociations = this.services.sessionStore.listSessionPlanAssociations(
@@ -585,10 +729,10 @@ export class RuntimeManagedOperations {
             const pendingIntent = hostedSession.getPendingManagedTurnIntent?.() || {};
             let generationSegment = null;
             if (state.generation) {
-                generationSegment = this.services.sessionStore.listSessionTranscriptSegments(
-                    managed.runwieldSessionId,
-                )
-                    .find((segment) => segment.segmentId === state.generation?.currentSegmentId) || null;
+                generationSegment =
+                    this.services.sessionStore
+                        .listSessionTranscriptSegments(managed.runwieldSessionId)
+                        .find((segment) => segment.segmentId === state.generation?.currentSegmentId) || null;
                 if (!generationSegment) throw new Error("Committed generation current segment is absent from manifest");
                 const currentEvidence = await captureTranscriptEvidence({
                     transcriptPath: generationSegment.transcriptPath,
@@ -623,8 +767,8 @@ export class RuntimeManagedOperations {
                 this.services.sessionStore.releaseUnchangedActivation(activeProof);
                 return result;
             }
-            const shouldEmitPromptEvents = options.initialRequest !== undefined &&
-                descriptor.emitPromptEvents !== false;
+            const shouldEmitPromptEvents =
+                options.initialRequest !== undefined && descriptor.emitPromptEvents !== false;
             if (shouldEmitPromptEvents && !hasPendingImages) {
                 this.events.emitSessionEvent(hostedSession.id, {
                     type: RuntimeEventTypes.USER_MESSAGE,
@@ -650,20 +794,19 @@ export class RuntimeManagedOperations {
                 ? sessionDirForRoot(this.services.sessionStore.path, transcriptProjectRoot)
                 : "";
             const transcriptPath = generationSegment?.transcriptPath || managed.transcriptPath;
-            const managedProjectSessionDir = generationSegment && transcriptProjectSessionDir && isPathInside(
-                    transcriptPath,
-                    transcriptProjectSessionDir,
-                )
-                ? transcriptProjectSessionDir
-                : undefined;
+            const managedProjectSessionDir =
+                generationSegment &&
+                transcriptProjectSessionDir &&
+                isPathInside(transcriptPath, transcriptProjectSessionDir)
+                    ? transcriptProjectSessionDir
+                    : undefined;
             const { sessionManager } = await openPersistedRootSession({
                 cwd: generationSegment?.transcriptCwd || hostedSession.cwd,
                 sessionId: generationSegment?.piSessionId || managed.piSessionId,
                 sessionPath: transcriptPath,
                 sessionDir: managedProjectSessionDir,
-                managedProjectRoot: managedProjectSessionDir && transcriptProjectRoot
-                    ? transcriptProjectRoot
-                    : undefined,
+                managedProjectRoot:
+                    managedProjectSessionDir && transcriptProjectRoot ? transcriptProjectRoot : undefined,
                 managedSegmentCwd: managedProjectSessionDir ? generationSegment?.transcriptCwd : undefined,
             });
             hostedSession.setRootSessionManager(sessionManager, capability);
@@ -673,11 +816,12 @@ export class RuntimeManagedOperations {
             }
             await restoreExecutionWorkflow(hostedSession);
             const executionRootConfiguration = resolvePersistedExecutionRootConfiguration(hostedSession);
-            const preparedModelOverride = "preparedModelOverride" in options &&
-                    typeof options.preparedModelOverride === "string"
-                ? options.preparedModelOverride
-                : undefined;
-            const pendingModel = preparedModelOverride ||
+            const preparedModelOverride =
+                "preparedModelOverride" in options && typeof options.preparedModelOverride === "string"
+                    ? options.preparedModelOverride
+                    : undefined;
+            const pendingModel =
+                preparedModelOverride ||
                 (pendingIntent.model || pendingIntent.provider
                     ? pendingIntent.provider && pendingIntent.model
                         ? `${pendingIntent.provider}/${pendingIntent.model}`
@@ -694,15 +838,14 @@ export class RuntimeManagedOperations {
                     parsedPendingModel.ok ? parsedPendingModel.id : pendingModel,
                 );
             }
-            let agentName = executionRootConfiguration?.agentName || options.agentName || pendingIntent.agentName ||
-                null;
+            let agentName =
+                executionRootConfiguration?.agentName || options.agentName || pendingIntent.agentName || null;
             if (descriptor.activateAgent !== false) {
                 const resumeAgent = await resolveResumeAgentName(sessionManager);
                 agentName ||= resumeAgent;
                 const persistedManualModel = readPersistedManualModelState(sessionManager, agentName);
-                const persistedModel = agentName === resumeAgent
-                    ? resolvePersistedResumeModel(sessionManager)
-                    : undefined;
+                const persistedModel =
+                    agentName === resumeAgent ? resolvePersistedResumeModel(sessionManager) : undefined;
                 const persistedRootConfiguration = await resolvePersistedRootConfiguration(
                     agentName,
                     sessionManager,
@@ -711,17 +854,21 @@ export class RuntimeManagedOperations {
                 await this.settings.activateSessionAgent(hostedSession, {
                     ...persistedRootConfiguration,
                     agentName,
-                    thinkingLevelOverride: pendingIntent.thinkingLevel || managed.thinkingLevel
-                        ? normalizeThinkingLevel(pendingIntent.thinkingLevel || managed.thinkingLevel)
-                        : undefined,
-                    model: pendingModel ||
+                    thinkingLevelOverride:
+                        pendingIntent.thinkingLevel || managed.thinkingLevel
+                            ? normalizeThinkingLevel(pendingIntent.thinkingLevel || managed.thinkingLevel)
+                            : undefined,
+                    model:
+                        pendingModel ||
                         (persistedManualModel
                             ? persistedManualModel.provider
                                 ? `${persistedManualModel.provider}/${persistedManualModel.model}`
                                 : persistedManualModel.model
                             : persistedModel),
                     toolNames: options.toolNames,
-                    customTools: options.customTools || executionRootConfiguration?.customTools ||
+                    customTools:
+                        options.customTools ||
+                        executionRootConfiguration?.customTools ||
                         persistedRootConfiguration.customTools,
                     includeEditFallback: options.includeEditFallback,
                     ...(executionRootConfiguration?.cwd ? { cwd: executionRootConfiguration.cwd } : {}),
@@ -731,10 +878,9 @@ export class RuntimeManagedOperations {
                     managedOperationCapability: capability,
                 });
                 if (pendingIntent.model || pendingIntent.provider) {
-                    hostedSession.getRootSessionManager?.()?.appendModelChange?.(
-                        pendingIntent.provider || "",
-                        pendingIntent.model || "",
-                    );
+                    hostedSession
+                        .getRootSessionManager?.()
+                        ?.appendModelChange?.(pendingIntent.provider || "", pendingIntent.model || "");
                 }
             }
             // Agent activation restores its saved defaults. Apply the user's
@@ -762,8 +908,10 @@ export class RuntimeManagedOperations {
                 generation: nextGeneration,
                 acknowledgedGeneration: nextGeneration,
                 name: hostedSession.getRootSessionManager?.()?.getSessionName?.() || managed.name || null,
-                activeAgent: hostedSession.getRootAgentName?.() ||
-                    readPersistedActiveAgentName(hostedSession.getRootSessionManager?.() || undefined) || null,
+                activeAgent:
+                    hostedSession.getRootAgentName?.() ||
+                    readPersistedActiveAgentName(hostedSession.getRootSessionManager?.() || undefined) ||
+                    null,
                 model: managedModelState.model,
                 provider: managedModelState.provider,
                 thinkingLevel: hostedSession.getThinkingLevel?.() || managed.thinkingLevel || "off",

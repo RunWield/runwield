@@ -363,13 +363,14 @@ export class SessionRuntime {
 export function createSessionRuntime(options: CreateSessionRuntimeOptions = {}): SessionRuntime {
     let sessionStore = options.sessionStore ?? null;
     let ownsSessionStore = false;
-    if (!Object.hasOwn(options, "sessionStore")) {
+    if (!options.remoteSessionControl && !Object.hasOwn(options, "sessionStore")) {
         sessionStore = openFileSessionStore();
         ownsSessionStore = true;
     }
     return new SessionRuntime({
         sessionHost: new SessionHost(),
         sessionStore,
+        remoteSessionControl: options.remoteSessionControl,
         ownsSessionStore,
         ownerProcessKind: options.ownerProcessKind ?? "test",
         ownerInstanceId: options.ownerInstanceId ?? crypto.randomUUID(),
@@ -387,12 +388,7 @@ interface ManagedContinuationSnapshot {
     activeExecutionWorkflow?: RuntimeContinuationValue;
 }
 type RuntimeContinuationValue =
-    | string
-    | number
-    | boolean
-    | null
-    | RuntimeContinuationRecord
-    | RuntimeContinuationValue[];
+    string | number | boolean | null | RuntimeContinuationRecord | RuntimeContinuationValue[];
 interface RuntimeContinuationRecord {
     [key: string]: RuntimeContinuationValue;
 }
@@ -411,9 +407,8 @@ export function deriveManagedSessionContinuationDecision(facts: ManagedContinuat
     return {
         ok: true,
         code: "continue",
-        agentName: typeof snapshot.activeAgent === "string" && snapshot.activeAgent
-            ? snapshot.activeAgent
-            : AGENTS.ROUTER,
+        agentName:
+            typeof snapshot.activeAgent === "string" && snapshot.activeAgent ? snapshot.activeAgent : AGENTS.ROUTER,
         message: "Ready for your next message.",
     };
 }
