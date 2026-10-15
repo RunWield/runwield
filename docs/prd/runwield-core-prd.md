@@ -885,6 +885,12 @@ Executable Plan work starts only from `ready_for_work`.
 Execution requirements:
 
 - work on the approved Plan in an isolated worktree;
+- prepare worktree dependencies before the initial preparation commit invokes project Git hooks. Run only the explicit
+  project `worktree_setup_command` or a command the user confirms; never infer an installer or bypass hooks. When hooks
+  exist without configuration, ask for setup or confirmation that the checkout is ready. Setup failure or cancellation
+  must not start an Agent, mark the Plan in progress, or silently resume an incomplete attempt. Preserve setup output
+  for retry; never commit setup-created versioned files, unrelated edits, or staging as preparation. Successful setup
+  and a completed preparation checkpoint must not run again merely because the Session resumes;
 - preserve the user's existing checkout changes and a useful recovery point;
 - carry uncommitted `.wld/settings.json` and `docs/domain-language.md` into newly created planning and execution
   worktrees, including Tutorial worktrees, and recreate only RunWield's managed `.gitignore` block. These versionable
@@ -1090,6 +1096,13 @@ pauses, and explicit always still requires review. Policy edits survive reload, 
 global edit does not replace an explicit project override.
 
 **Acceptance scenarios: Completion recovery and preparation.**
+
+- Given a fresh execution worktree with a dependency-backed Git hook and an approved setup command, setup completes
+  before the first preparation commit, the hook runs normally, and exactly one preparation commit precedes Agent work.
+- Given failed bootstrap, the Plan remains ready and the worktree and diagnostics survive. Retrying the corrected setup
+  uses that attempt, runs no Agent until setup and the hook succeed, and never absorbs unrelated setup output.
+- Given an already prepared worktree, resuming preserves its baseline and does not reinstall dependencies or add a
+  duplicate preparation commit.
 
 - Given delivered code with a failed Work Record, the completion menu offers **Retry Work Record**. Retry regenerates
   only that Plan's record (or its eligible parent Epic), keeps the current Session, and never repeats implementation,

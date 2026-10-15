@@ -1,4 +1,12 @@
 // @ts-nocheck: extracted from checked JSDoc workflow.js; tightening types is out of scope for this structural split.
+import {
+    prepareExecutionSetup,
+    readExecutionSetup,
+    completeExecutionSetup,
+    assertExecutionSetupRetrySafe,
+    recordExecutionSetupCheckpoint,
+    recordExecutionSetupLifecycle,
+} from "./execution-setup.ts";
 import { isMissingExecutableError } from "../foreground-process.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { stat as fsStat } from "node:fs/promises";
@@ -56,7 +64,7 @@ import {
     emitReusingExecutionWorktree,
     emitUpdatingPlanStatusToInProgress,
 } from "./execution-preparation-progress.ts";
-import { recordPlanEvent } from "./plan-lifecycle.js";
+import { recordPlanEvent, buildPlanEventUpdates } from "./plan-lifecycle.js";
 import { recordWorkflowMetric } from "./metrics.js";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
@@ -459,11 +467,14 @@ export async function startActiveExecutionWorkflow({
             worktreePath: reusable.path,
             baseRef: reusableBaseRef,
         }));
+    if (reusable) await assertExecutionSetupRetrySafe(reusable.path);
+    const setupReceipt = reusable ? await readExecutionSetup(reusable.path) : null;
+    const unfinishedSetup = Boolean(setupReceipt && setupReceipt.state !== "prepared");
     const continuingReusableWorktree =
+        !unfinishedSetup &&
         Boolean(reusable) &&
         (authorityStatus === "in_progress" || reusableHasExecutionChanges || reusableHasPreparationCheckpoint);
-    const needsPreparationCheckpoint =
-        !continuingReusableWorktree || (reusableHasPreparationCheckpoint && !reusableHasExecutionChanges);
+    const needsPreparationCheckpoint = !continuingReusableWorktree || !reusableHasExecutionChanges;
     const needsExecutionStartedEvent = authorityStatus !== "in_progress";
     /** @type {Extract<Awaited<ReturnType<typeof loadCanonicalExecutionPlanSource>>, {kind:"loaded"}> | undefined} */
     let lockedCanonicalPlanSource;
@@ -576,6 +587,14 @@ export async function startActiveExecutionWorkflow({
                     baseCommit: worktreeArtifacts.baseCommit,
                 });
                 registerRollback("remove_clean_created_worktree_and_registry_entry", async () => {
+                    // Explicit setup commands can leave valuable output, even on failure.
+                    // Keep their directory and attempt for retry instead of force-removing it.
+                    if (await readExecutionSetup(worktreeArtifacts.path)) {
+                        await updateWorktreeRegistryEntry(projectRoot, worktreeArtifacts.id, {
+                            status: "execution_failed",
+                        });
+                        return;
+                    }
                     await removeWorktreeGitArtifacts({
                         projectRoot,
                         path: worktreeArtifacts.path,
@@ -654,6 +673,7 @@ export async function startActiveExecutionWorkflow({
                     reusedWorktree,
                 );
             }
+            if (needsPreparationCheckpoint) await prepareExecutionSetup(hostedSession, worktree.path);
             const executionPlan = await loadPlan(worktree.path, planName);
             if (!executionPlan) throw new Error(`Plan not found in its execution worktree: ${planName}`);
             // Re-entering an in-progress attempt must keep the tree from before the
@@ -726,6 +746,19 @@ export async function startActiveExecutionWorkflow({
             }
             if (needsExecutionStartedEvent) {
                 emitUpdatingPlanStatusToInProgress(hostedSession);
+                await recordExecutionSetupLifecycle(
+                    worktree.path,
+                    planFile.relativePath,
+                    buildPlanEventUpdates("execution_started", authorityStatus, {
+                        triageMeta: executionPlan.attrs,
+                        executionBaselineTree: baselineTree,
+                        worktreeId: worktree.id,
+                        worktreePath: worktree.path,
+                        worktreeBranch: worktree.branch,
+                        worktreeBaseBranch,
+                        worktreeStatus: "active",
+                    }),
+                );
                 await recordPlanEvent({
                     cwd: worktree.path,
                     planName,
@@ -755,7 +788,9 @@ export async function startActiveExecutionWorkflow({
                         ? editedSiblingPaths
                         : await prepareEditedSiblingPlans(worktree.path, planName, planFile.relativePath)),
                 ];
+                const preparationToken = await recordExecutionSetupCheckpoint(worktree.path);
                 const preparation = await checkpointExecutionPreparation({
+                    preparationToken,
                     worktreePath: worktree.path,
                     branch: worktree.branch,
                     baseCommit: worktree.baseCommit,
@@ -876,6 +911,7 @@ export async function startActiveExecutionWorkflow({
     }
     const activeWorkflow =
         /** @type {import('../session/hosted-session.js').ActiveExecutionWorkflow} */ transition.value;
+    await completeExecutionSetup(activeWorkflow.executionCwd);
     hostedSession.setActiveExecutionWorkflow(activeWorkflow);
     return activeWorkflow;
 }
