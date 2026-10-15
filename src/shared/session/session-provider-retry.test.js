@@ -1,6 +1,6 @@
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
@@ -14,6 +14,7 @@ import {
 } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
 import { createReplayEvents } from "./session-transcript-projection.js";
+import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
 /** @typedef {{ type: string, message?: string }} ProviderNotice */
 
@@ -45,12 +46,20 @@ test("an interrupted provider response retries the same request and completes", 
             sessionManager: manager,
         });
         const retryEvents = [];
+        const guard = attachRunawayLoopGuard({ session, requestId: "synthetic-provider-retry" });
         const unsubscribe = session.subscribe((event) => {
             if (event.type === "auto_retry_start") retryEvents.push(event);
         });
         try {
             await session.prompt("Keep this request");
             assertEquals(requests.length, 2);
+            assertEquals(
+                session.sessionManager
+                    .getBranch()
+                    .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_turn")
+                    .length,
+                2,
+            );
             assertEquals(retryEvents.length, 1);
             assertStringIncludes(JSON.stringify(requests[1].messages), "Keep this request");
             assertEquals(JSON.stringify(requests[1].messages).includes("partial"), false);
@@ -73,6 +82,7 @@ test("an interrupted provider response retries the same request and completes", 
             assertEquals(replay.some((event) => /retrying|currently stopped/i.test(event.message || "")), false);
         } finally {
             unsubscribe();
+            guard.dispose();
             session.dispose();
         }
     });
@@ -466,20 +476,25 @@ test("a repeated tool call and result stops before another model request", async
             sessionManager,
         });
         try {
-            await runPrompt({
-                session: built.session,
-                agentDef: built.agentDef,
-                agentName: "guide",
-                userRequest: "Use the synthetic tool",
-                finalSystemPrompt: built.promptState.text,
-                subscriberState: {
-                    resetTurn() {},
-                    drainInvokedToolNames: () => [],
-                    endThinking() {},
-                    unsubscribe() {},
-                },
-                requestId: "synthetic-repeat-request",
-            });
+            await assertRejects(
+                () =>
+                    runPrompt({
+                        session: built.session,
+                        agentDef: built.agentDef,
+                        agentName: "guide",
+                        userRequest: "Use the synthetic tool",
+                        finalSystemPrompt: built.promptState.text,
+                        subscriberState: {
+                            resetTurn() {},
+                            drainInvokedToolNames: () => [],
+                            endThinking() {},
+                            unsubscribe() {},
+                        },
+                        requestId: "synthetic-repeat-request",
+                    }),
+                RunawayLoopGuardStoppedError,
+                "repeated_tool_result",
+            );
             const stops = sessionManager
                 .getBranch()
                 .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop");
@@ -493,6 +508,52 @@ test("a repeated tool call and result stops before another model request", async
             );
         } finally {
             built.session.dispose();
+        }
+    });
+});
+
+test("a runaway isolated request rejects instead of returning successful messages", async () => {
+    await withRuntimeCommandFixture("loop-guard-isolated-stop-", async (fixture) => {
+        let executions = 0;
+        let requests = 0;
+        const tool = {
+            name: "isolated_repeat_tool",
+            label: "Repeat tool",
+            description: "Returns a stable synthetic result",
+            parameters: { type: "object", properties: {} },
+            execute: () => {
+                executions += 1;
+                return Promise.resolve({
+                    content: [{ type: /** @type {const} */ ("text"), text: "stable isolated result" }],
+                    details: null,
+                });
+            },
+        };
+        fixture.setModelResponseFactories(
+            Array.from({ length: 4 }, () => () => {
+                requests += 1;
+                return fauxAssistantMessage(fauxToolCall("isolated_repeat_tool", {}));
+            }),
+        );
+        const hostedSession = new HostedSession({ id: "isolated-loop-guard", cwd: fixture.projectRoot });
+        try {
+            await assertRejects(
+                () =>
+                    runIsolatedAgentSession({
+                        hostedSession,
+                        agentName: "guide",
+                        userRequest: "Use the synthetic isolated tool",
+                        customTools: [tool],
+                        toolNames: ["isolated_repeat_tool"],
+                    }),
+                RunawayLoopGuardStoppedError,
+                "repeated_tool_result",
+            );
+            assertEquals(executions, 3);
+            assertEquals(requests, 3);
+            assertEquals(hostedSession.getSubAgentSessions().size, 0);
+        } finally {
+            hostedSession.dispose();
         }
     });
 });
@@ -530,20 +591,25 @@ test("a repeated two-tool cycle stops after three cycles", async () => {
             sessionManager,
         });
         try {
-            await runPrompt({
-                session: built.session,
-                agentDef: built.agentDef,
-                agentName: "guide",
-                userRequest: "Use the synthetic tools",
-                finalSystemPrompt: built.promptState.text,
-                subscriberState: {
-                    resetTurn() {},
-                    drainInvokedToolNames: () => [],
-                    endThinking() {},
-                    unsubscribe() {},
-                },
-                requestId: "synthetic-cycle-request",
-            });
+            await assertRejects(
+                () =>
+                    runPrompt({
+                        session: built.session,
+                        agentDef: built.agentDef,
+                        agentName: "guide",
+                        userRequest: "Use the synthetic tools",
+                        finalSystemPrompt: built.promptState.text,
+                        subscriberState: {
+                            resetTurn() {},
+                            drainInvokedToolNames: () => [],
+                            endThinking() {},
+                            unsubscribe() {},
+                        },
+                        requestId: "synthetic-cycle-request",
+                    }),
+                RunawayLoopGuardStoppedError,
+                "repeating_tool_cycle",
+            );
             const stops = sessionManager
                 .getBranch()
                 .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop");
@@ -635,20 +701,25 @@ test("the model-turn budget survives a Session reopen for the same request", asy
             sessionManager: reopenedManager,
         });
         try {
-            await runPrompt({
-                session: secondBuilt.session,
-                agentDef: secondBuilt.agentDef,
-                agentName: "guide",
-                userRequest: "Continue the synthetic counter request",
-                finalSystemPrompt: secondBuilt.promptState.text,
-                subscriberState: {
-                    resetTurn() {},
-                    drainInvokedToolNames: () => [],
-                    endThinking() {},
-                    unsubscribe() {},
-                },
-                requestId: "synthetic-budget-request",
-            });
+            await assertRejects(
+                () =>
+                    runPrompt({
+                        session: secondBuilt.session,
+                        agentDef: secondBuilt.agentDef,
+                        agentName: "guide",
+                        userRequest: "Continue the synthetic counter request",
+                        finalSystemPrompt: secondBuilt.promptState.text,
+                        subscriberState: {
+                            resetTurn() {},
+                            drainInvokedToolNames: () => [],
+                            endThinking() {},
+                            unsubscribe() {},
+                        },
+                        requestId: "synthetic-budget-request",
+                    }),
+                RunawayLoopGuardStoppedError,
+                "model_turn_limit",
+            );
             const entries = reopenedManager.getBranch();
             const stops = entries.filter(
                 (entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_stop",
@@ -669,13 +740,49 @@ test("the model-turn budget survives a Session reopen for the same request", asy
             secondBuilt.session.dispose();
         }
 
+        const stoppedSessionPath = reopenedManager.getSessionFile();
+        if (!stoppedSessionPath) throw new Error("Missing stopped synthetic session transcript");
+        const stoppedManager = SessionManager.open(stoppedSessionPath, join(fixture.homeDir, "sessions"), fixture.projectRoot);
+        fixture.setModelResponseFactories([() => fauxAssistantMessage(fauxText("New instruction answered"))]);
+        const stoppedBuilt = await buildAgentSession({
+            agentName: "guide",
+            cwd: fixture.projectRoot,
+            customTools: [tool],
+            toolNames: ["counter_tool"],
+            sessionManager: stoppedManager,
+        });
+        try {
+            await assertRejects(
+                () =>
+                    runPrompt({
+                        session: stoppedBuilt.session,
+                        agentDef: stoppedBuilt.agentDef,
+                        agentName: "guide",
+                        userRequest: "Continue the stopped synthetic request",
+                        finalSystemPrompt: stoppedBuilt.promptState.text,
+                        subscriberState: {
+                            resetTurn() {},
+                            drainInvokedToolNames: () => [],
+                            endThinking() {},
+                            unsubscribe() {},
+                        },
+                        requestId: "synthetic-budget-request",
+                    }),
+                RunawayLoopGuardStoppedError,
+                "model_turn_limit",
+            );
+            assertEquals(requests, 100);
+        } finally {
+            stoppedBuilt.session.dispose();
+        }
+
         fixture.setModelResponseFactories([() => fauxAssistantMessage(fauxText("New instruction answered"))]);
         const freshBuilt = await buildAgentSession({
             agentName: "guide",
             cwd: fixture.projectRoot,
             customTools: [tool],
             toolNames: ["counter_tool"],
-            sessionManager: reopenedManager,
+            sessionManager: stoppedManager,
         });
         try {
             await runPrompt({

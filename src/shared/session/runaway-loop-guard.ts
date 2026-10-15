@@ -26,13 +26,31 @@ type RunawayLoopGuardOptions = {
 
 type GuardCustomEntry = CustomEntry<GuardEntryData>;
 
+export class RunawayLoopGuardStoppedError extends Error {
+    constructor(reason: string) {
+        super(`RunWield stopped this request (${reason}). Send a new instruction to continue.`);
+        this.name = "RunawayLoopGuardStoppedError";
+    }
+}
+
+export type RunawayLoopGuard = {
+    dispose: () => void;
+    throwIfStopped: () => void;
+};
+
 /**
  * Attach a persistent guard to one Pi request. Only fingerprints and counters
  * are written to the transcript; tool arguments and results are never copied.
  */
-export function attachRunawayLoopGuard({ session, requestId, hostedSession }: RunawayLoopGuardOptions): () => void {
+export function attachRunawayLoopGuard({
+    session,
+    requestId,
+    hostedSession,
+}: RunawayLoopGuardOptions): RunawayLoopGuard {
     const sessionManager = session.sessionManager;
-    if (!sessionManager || typeof sessionManager.getBranch !== "function") return () => {};
+    if (!sessionManager || typeof sessionManager.getBranch !== "function") {
+        return { dispose: () => {}, throwIfStopped: () => {} };
+    }
     const branch = sessionManager.getBranch();
 
     let modelTurns = branch.reduce((count: number, entry: SessionEntry) => {
@@ -47,12 +65,19 @@ export function attachRunawayLoopGuard({ session, requestId, hostedSession }: Ru
         )
         .slice(-LOOP_GUARD_MAX_CYCLE_LENGTH * LOOP_GUARD_REPEAT_CYCLES)
         .map((entry) => entry.signature || "");
-    let stopped = false;
+    const priorStop = branch
+        .filter((entry) => isGuardEntry(entry, LOOP_GUARD_STOP_CUSTOM_TYPE))
+        .map((entry) => entry.data)
+        .filter((entry) => entry?.requestId === requestId && typeof entry.reason === "string")
+        .at(-1);
+    let stopReason = priorStop?.reason;
+    let stopped = Boolean(stopReason);
     const toolArguments = new Map<string, string>();
 
     const stop = (reason: string, message: string): void => {
         if (stopped) return;
         stopped = true;
+        stopReason = reason;
         sessionManager.appendCustomEntry(LOOP_GUARD_STOP_CUSTOM_TYPE, {
             version: 1,
             requestId,
@@ -85,7 +110,7 @@ export function attachRunawayLoopGuard({ session, requestId, hostedSession }: Ru
 
     const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
         if (stopped) return;
-        if (event.type === "turn_start" || event.type === "auto_retry_start") {
+        if (event.type === "turn_start") {
             reserveModelTurn();
             return;
         }
@@ -134,9 +159,14 @@ export function attachRunawayLoopGuard({ session, requestId, hostedSession }: Ru
         }
     });
 
-    return () => {
-        unsubscribe();
-        unsubscribeToolArguments();
+    return {
+        dispose: () => {
+            unsubscribe();
+            unsubscribeToolArguments();
+        },
+        throwIfStopped: () => {
+            if (stopReason) throw new RunawayLoopGuardStoppedError(stopReason);
+        },
     };
 }
 

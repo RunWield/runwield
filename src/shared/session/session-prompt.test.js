@@ -11,7 +11,7 @@ import {
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { AGENTS } from "../../constants.js";
@@ -37,6 +37,7 @@ import {
 import { getRootExecutionMessages } from "./execution-backend.ts";
 import { HostedSession } from "./hosted-session.js";
 import { getRunWieldSessionDir } from "./root-session.js";
+import { RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 import { estimateContextTextTokens } from "./session-context-report.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 
@@ -789,6 +790,96 @@ test("runRootTurn completes through the real root prompt machinery", async () =>
         assertEquals(JSON.stringify(messages).includes("The real root turn completed."), true);
         assertEquals(__getRootSessionMetadataForTests(root).rootTurnCount, 1);
         hostedSession.dispose();
+    });
+});
+
+test("a runaway root turn is recorded as failed and a new instruction gets a fresh request", async () => {
+    await withRuntimeCommandFixture("session-root-loop-guard-", async ({ projectRoot, setModelResponseFactories }) => {
+        let modelCalls = 0;
+        let toolCalls = 0;
+        const repeatTool = {
+            name: "repeat_tool",
+            label: "Repeat tool",
+            description: "Returns a stable synthetic result",
+            parameters: { type: "object", properties: {} },
+            execute: () => {
+                toolCalls += 1;
+                return Promise.resolve({
+                    content: [{ type: /** @type {const} */ ("text"), text: "stable result" }],
+                    details: null,
+                });
+            },
+        };
+        setModelResponseFactories([
+            () => {
+                modelCalls += 1;
+                return fauxAssistantMessage(fauxToolCall("repeat_tool", {}));
+            },
+            () => {
+                modelCalls += 1;
+                return fauxAssistantMessage(fauxToolCall("repeat_tool", {}));
+            },
+            () => {
+                modelCalls += 1;
+                return fauxAssistantMessage(fauxToolCall("repeat_tool", {}));
+            },
+            () => {
+                modelCalls += 1;
+                return fauxAssistantMessage(fauxText("Fresh instruction completed."));
+            },
+        ]);
+        const hostedSession = makeHostedRuntimeSession(projectRoot, "root-loop-guard");
+        const root = await ensureRootAgentSession({
+            hostedSession,
+            agentName: AGENTS.GUIDE,
+            customTools: [repeatTool],
+            toolNames: ["repeat_tool"],
+        });
+
+        try {
+            await assertRejects(
+                () =>
+                    runRootTurn({
+                        hostedSession,
+                        agentName: AGENTS.GUIDE,
+                        userRequest: "Use the synthetic repeat tool",
+                    }),
+                RunawayLoopGuardStoppedError,
+            );
+            assertEquals(modelCalls, 3);
+            assertEquals(toolCalls, 3);
+            const attempts = root.sessionManager
+                .getBranch()
+                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.request_attempt")
+                .map(
+                    (entry) =>
+                        /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{phase?: string; requestId?: string}>} */ (
+                            entry
+                        ).data,
+                );
+            assertEquals(attempts.at(-1)?.phase, "failed");
+
+            const messages = await runRootTurn({
+                hostedSession,
+                agentName: AGENTS.GUIDE,
+                userRequest: "Answer with a fresh synthetic instruction",
+            });
+            assertEquals(modelCalls, 4);
+            assertStringIncludes(JSON.stringify(messages.at(-1)), "Fresh instruction completed.");
+            const completedAttempts = root.sessionManager
+                .getBranch()
+                .filter((entry) => entry.type === "custom" && entry.customType === "runwield.request_attempt")
+                .map(
+                    (entry) =>
+                        /** @type {import('@earendil-works/pi-coding-agent').CustomEntry<{phase?: string; requestId?: string}>} */ (
+                            entry
+                        ).data,
+                );
+            assertEquals(completedAttempts.at(-1)?.phase, "completed");
+            assertEquals(completedAttempts.at(-1)?.requestId === attempts.at(-1)?.requestId, false);
+        } finally {
+            hostedSession.dispose();
+        }
     });
 });
 

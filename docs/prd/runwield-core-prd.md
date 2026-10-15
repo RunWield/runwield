@@ -1976,15 +1976,15 @@ this is not confinement.
 
 **Requirement: Stop runaway model and tool loops.**
 
-Each Pi-backed request has a durable budget of 100 model requests, counting each turn start and each provider retry
-reported by Pi, including automatic tool continuations. The count is recorded before each request and remains attached
-to the same request when it resumes after a failure or process restart. A new user instruction starts a new request
-budget. Stop before starting another model request once the budget is exhausted, preserve the Session, and show the
-reason and a clear continuation action. Also stop the current request when an exact tool call and result repeats three
-times consecutively, or an exact cycle of up to three
-tool call/result pairs repeats three times. Persist only hashes of tool names, arguments, and results for this check;
-never duplicate raw tool inputs or outputs into guard records. A stop is recoverable through a new user instruction and
-does not mark the Session or its enclosing workflow complete.
+Each Pi-backed request has a durable budget of 100 model requests, counting each Pi turn start, including automatic
+tool continuations. A provider retry counts when its next turn starts; the retry notification itself is not another
+request. The count is recorded before each request and remains attached to the same request when it resumes after a
+failure or process restart. A new user instruction starts a new request budget. Stop before starting another model
+request once the budget is exhausted, preserve the Session, and show the reason and a clear action to send a new
+instruction. Also stop the current request when an exact tool call and result repeats three times consecutively, or an
+exact cycle of up to three tool call/result pairs repeats three times. Persist only hashes of tool names, arguments, and
+results for this check; never duplicate raw tool inputs or outputs into guard records. A saved stop blocks that request
+after Session reopen and does not mark the Session or its enclosing workflow complete.
 
 **Acceptance scenarios:**
 
@@ -1992,10 +1992,10 @@ does not mark the Session or its enclosing workflow complete.
   RunWield stops before another model request and records a visible, recoverable stop reason.
 - Given a model repeats a cycle of two or three exact tool call/result pairs three times, when the cycle completes,
   RunWield stops before another model request and records a visible, recoverable stop reason.
-- Given one request reaches 100 model requests, when it is continued after a retry or process restart, RunWield stops
-  before request 101. A new user instruction starts a fresh request budget.
+- Given one request reaches 100 model requests, when a retry or process restart continues it, RunWield stops before
+  request 101. A provider retry contributes one count when its next turn starts.
 - Given a loop guard stops a request, when the Session is reopened, the stop remains in its transcript and the user can
-  continue with a new instruction.
+  send a new instruction; replaying the stopped request does not call the model or complete successfully.
 
 **Requirement: Recover from temporary model-service failures.**
 

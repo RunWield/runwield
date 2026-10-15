@@ -136,7 +136,7 @@ import { installEarlySteeringInterruption } from "./early-steering.ts";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";
 import { formatGitPromptState, readGitPromptState } from "../git.ts";
 import { sanitizeSessionName } from "./session-name.ts";
-import { attachRunawayLoopGuard } from "./runaway-loop-guard.ts";
+import { attachRunawayLoopGuard, RunawayLoopGuardStoppedError } from "./runaway-loop-guard.ts";
 
 /** @returns {string | null} */
 function homePromptsDir() {
@@ -3975,12 +3975,14 @@ export async function runPrompt({
             // Cancellation is best effort; the active prompt still observes the AbortSignal check below.
         }
     };
-    const unsubscribeLoopGuard = attachRunawayLoopGuard({ session, requestId, hostedSession });
+    const loopGuard = attachRunawayLoopGuard({ session, requestId, hostedSession });
 
     try {
         signal?.throwIfAborted();
+        loopGuard.throwIfStopped();
         signal?.addEventListener("abort", abortPrompt, { once: true });
         while (true) {
+            loopGuard.throwIfStopped();
             if (hostedSession) {
                 await hostedSession.waitForAgentSteeringPreparations();
                 signal?.throwIfAborted();
@@ -4054,14 +4056,17 @@ export async function runPrompt({
         ) {
             throw new Error("background_result_cancelled");
         }
+        loopGuard.throwIfStopped();
         await session.prompt(preparedImages.text, requestOptions);
+        loopGuard.throwIfStopped();
         signal?.throwIfAborted();
         await session.agent.waitForIdle();
+        loopGuard.throwIfStopped();
     } catch (error) {
         promptError = error instanceof Error ? error : new Error(String(error));
         throw error;
     } finally {
-        unsubscribeLoopGuard();
+        loopGuard.dispose();
         signal?.removeEventListener("abort", abortPrompt);
         // Defensive cleanup handles abort/error paths where thinking_end may never fire.
         subscriberState.endThinking();
@@ -4710,7 +4715,12 @@ export async function runRootTurn({
                         : signal?.aborted
                           ? "canceled"
                           : "failed";
-                piReason = piOutcome === "succeeded" ? "completed" : piOutcome;
+                piReason =
+                    err instanceof RunawayLoopGuardStoppedError
+                        ? "runaway_loop_guard"
+                        : piOutcome === "succeeded"
+                          ? "completed"
+                          : piOutcome;
                 throw err;
             } finally {
                 executionMetricsForSession.delete(piSession);
@@ -5036,7 +5046,12 @@ export async function runIsolatedAgentSession(opts) {
                             : opts.signal?.aborted
                               ? "canceled"
                               : "failed";
-                    piReason = piOutcome === "succeeded" ? "completed" : piOutcome;
+                    piReason =
+                        err instanceof RunawayLoopGuardStoppedError
+                            ? "runaway_loop_guard"
+                            : piOutcome === "succeeded"
+                              ? "completed"
+                              : piOutcome;
                     throw err;
                 } finally {
                     executionMetricsForSession.delete(session);
