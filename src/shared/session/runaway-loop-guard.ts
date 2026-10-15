@@ -32,6 +32,7 @@ type GuardCustomEntry = CustomEntry<GuardEntryData>;
  */
 export function attachRunawayLoopGuard({ session, requestId, hostedSession }: RunawayLoopGuardOptions): () => void {
     const sessionManager = session.sessionManager;
+    if (!sessionManager || typeof sessionManager.getBranch !== "function") return () => {};
     const branch = sessionManager.getBranch();
 
     let modelTurns = branch.reduce((count: number, entry: SessionEntry) => {
