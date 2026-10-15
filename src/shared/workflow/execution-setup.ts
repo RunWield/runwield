@@ -24,6 +24,11 @@ import {
     PROCESS_STREAM_OUTPUT_LIMIT_BYTES,
 } from "./process-output.ts";
 
+interface SetupLifecyclePlan {
+    path: string;
+    expected: string;
+}
+
 interface SetupReceipt {
     state: "pending" | "ready" | "prepared";
     command: string;
@@ -32,7 +37,7 @@ interface SetupReceipt {
     tree: string;
     index: string;
     checkpointTree?: string;
-    lifecyclePlan?: { path: string; expected: string };
+    lifecyclePlan?: SetupLifecyclePlan;
 }
 
 function receiptPath(cwd: string): string {
@@ -89,10 +94,10 @@ async function hasCommitHooks(cwd: string): Promise<boolean> {
     return false;
 }
 
-async function selectSetupCommand(session: HostedSession, cwd: string): Promise<string> {
+async function selectSetupCommand(session: HostedSession, cwd: string): Promise<string | null> {
     const configured = getExactProjectCustomSetting("worktree_setup_command", cwd);
     if (typeof configured === "string") return configured.trim();
-    if (!(await hasCommitHooks(cwd))) return "";
+    if (!(await hasCommitHooks(cwd))) return null;
     const response = await requestHostedSessionInteraction(
         session,
         {
@@ -121,7 +126,7 @@ async function assertSetupFilesUnchanged(cwd: string, receipt: SetupReceipt): Pr
     if (receipt.state === "ready" && receipt.lifecyclePlan && !allowedTrees.includes(current.tree)) {
         const changedPaths = await git(cwd, ["diff", "--name-only", receipt.tree, current.tree]);
         if (changedPaths === receipt.lifecyclePlan.path) {
-            const currentPlan = await git(cwd, ["show", `${current.tree}:${receipt.lifecyclePlan.path}`]);
+            const currentPlan = await readFile(join(cwd, receipt.lifecyclePlan.path), "utf8");
             if (
                 isDeepStrictEqual(
                     parsePlanFrontMatter(currentPlan),
@@ -150,40 +155,45 @@ export async function prepareExecutionSetup(session: HostedSession, cwd: string)
     await enterProjectRuntime(cwd);
     const previous = await readExecutionSetup(cwd);
     if (previous?.state === "prepared") return;
-    if (previous) await assertSetupFilesUnchanged(cwd, previous);
-    let command: string;
-    if (previous) {
-        // Retry is also the repair path for a mistyped or obsolete command. Keep
-        // corrections in runtime state so they cannot become unrelated source edits.
-        const response = await requestHostedSessionInteraction(
-            session,
-            {
-                type: RuntimeInteractionTypes.TEXT,
-                prompt: `Worktree setup did not complete in ${cwd}. Confirm or correct the setup command to retry. Cancel to keep execution paused.`,
-                defaultValue: previous.command,
-                allowEmpty: false,
-            },
-            undefined,
-            session.getManagedOperationCapability?.() || null,
-        );
-        if (response.outcome !== "text" || !String(response.value || "").trim()) {
-            throw new Error("Worktree setup retry was not confirmed; execution remains paused.");
-        }
-        command = String(response.value).trim();
-    } else {
-        command = await selectSetupCommand(session, cwd);
-    }
-    if (!command && !previous) return;
-    const receipt: SetupReceipt = previous
-        ? { ...previous, command, state: "pending", ...(await snapshot(cwd)) }
-        : { state: "pending", command, commitToken: crypto.randomUUID(), ...(await snapshot(cwd)) };
-    // A failed setup must not become the next attempt's baseline or absorb user edits.
-    await assertSetupFilesUnchanged(cwd, receipt);
-    await writeReceipt(cwd, receipt);
     const interactionId = `execution-setup:${crypto.randomUUID()}`;
     const controller = new AbortController();
     session.addActiveInteraction(interactionId, { abortController: controller });
     try {
+        if (previous) await assertSetupFilesUnchanged(cwd, previous);
+        let command: string | null;
+        if (previous) {
+            // Retry is also the repair path for a mistyped or obsolete command. Keep
+            // corrections in runtime state so they cannot become unrelated source edits.
+            const response = await requestHostedSessionInteraction(
+                session,
+                {
+                    type: RuntimeInteractionTypes.TEXT,
+                    prompt: `Worktree setup did not complete in ${cwd}. Confirm or correct the setup command to retry. Cancel to keep execution paused.`,
+                    defaultValue: previous.command,
+                    allowEmpty: true,
+                },
+                undefined,
+                session.getManagedOperationCapability?.() || null,
+            );
+            if (response.outcome !== "text") {
+                throw new Error("Worktree setup retry was not confirmed; execution remains paused.");
+            }
+            command = String(response.value || "").trim();
+        } else {
+            command = await selectSetupCommand(session, cwd);
+        }
+        if (controller.signal.aborted) throw new Error("Worktree setup canceled; no Agent work began.");
+        if (command === null) return;
+        const receipt: SetupReceipt = previous
+            ? { ...previous, command, state: "pending", ...(await snapshot(cwd)) }
+            : { state: "pending", command, commitToken: crypto.randomUUID(), ...(await snapshot(cwd)) };
+        // A failed setup must not become the next attempt's baseline or absorb user edits.
+        await assertSetupFilesUnchanged(cwd, receipt);
+        await writeReceipt(cwd, receipt);
+        if (!command) {
+            await writeReceipt(cwd, { ...receipt, state: "ready" });
+            return;
+        }
         emitSystemStatus(session, `Preparing worktree dependencies: ${command}`);
         const process = spawnForegroundShell({ command, cwd, signal: controller.signal });
         const [outcome, stdout, stderr] = await Promise.all([

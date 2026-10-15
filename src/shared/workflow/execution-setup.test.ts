@@ -307,3 +307,34 @@ test("interrupted preparation checkpoint journals require the retained commit", 
         await f.cleanup();
     }
 });
+
+test("Stop while accepting the setup command cannot launch bootstrap", async () => {
+    const f = await fixture({ configured: false });
+    try {
+        f.session.subscribeRuntimeEvents((event) => {
+            if (event.type === "interaction_resolved") f.session.cancelActiveInteractions();
+        });
+        await assert.rejects(f.start, /setup canceled/);
+        assert.equal(f.session.getActiveExecutionWorkflow(), null);
+        assert.equal(f.session.getActiveInteractions().size, 0);
+        assert.equal((await listEntries(f.root)).length, 0);
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("declaring existing setup still preserves a failed hook for command-based recovery", async () => {
+    const f = await fixture({ configured: false });
+    try {
+        f.session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "text", value: "" }) });
+        await assert.rejects(f.start, /hook.cjs/);
+        const [attempt] = await listEntries(f.root);
+        assert(attempt);
+        assert.equal((await readExecutionSetup(attempt.path))?.state, "ready");
+        f.session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "text", value: "bun setup.cjs" }) });
+        await f.start();
+        assert.equal(await git(attempt.path, ["rev-list", "--count", `${attempt.baseCommit}..HEAD`]), "1");
+    } finally {
+        await f.cleanup();
+    }
+});
