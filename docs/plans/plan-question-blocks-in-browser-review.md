@@ -17,6 +17,7 @@ devServerUrl: null
 devServerHmr: null
 createdAt: "2026-10-13"
 status: "draft"
+planId: "52058f1f-2c93-43f8-b725-a08ebf3090ff"
 ---
 
 # Answer Planner questions inside the browser Plan review

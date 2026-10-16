@@ -21,8 +21,7 @@ status: "validated"
 origin: "internal"
 parentPlan: "package-manager-distribution"
 order: 1
-dependencies:
-    []
+dependencies: []
 userVerifiedAt: null
 targetBranch: "main"
 archivedAt: "2026-09-19T21:48:21.140Z"
@@ -186,7 +185,7 @@ repository creation or package publication.
 ## Verification Plan
 
 - Run
-  `deno run -A scripts/run-tests.js scripts/package-homebrew.test.ts src/cmd/update/index.test.ts src/shared/update-check.test.js scripts/install-integrity.test.js scripts/install-platforms.test.js scripts/install-interaction.test.js`,
+  `deno run -A scripts/run-tests.js scripts/package-homebrew.test.ts src/cmd/update/index.test.ts src/shared/update-check.test.ts scripts/install-integrity.test.js scripts/install-platforms.test.js scripts/install-interaction.test.js`,
   adding the focused metadata and message tests implemented with this change. Use `deno task ci` for repository checks.
   Never run `deno test` directly.
 - Preparation tests use local release HTTP fixtures and real archives. Assert exact architecture-to-URL/checksum

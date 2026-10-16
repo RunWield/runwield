@@ -155,7 +155,7 @@ required by this packaging Plan; document existing limitations rather than claim
 - `../../../../src/cmd/workspace/workspace.test.ts` and
   `../../../../src/ui/workspace/session-artifact-route.integration.test.ts` — actual Workspace startup, pairing and
   authorized artifact retrieval.
-- `../../../../src/shared/worktree-creation.test.js` and `../../../../src/shared/isolated-publication.test.ts` — local
+- `../../../../src/shared/worktree-creation.test.ts` and `../../../../src/shared/isolated-publication.test.ts` — local
   publication, bare-remote publication, commit ancestry and dirty-primary preservation.
 - Microsoft manifest guidance: https://learn.microsoft.com/en-us/windows/package-manager/package/manifest and
   repository: https://github.com/microsoft/winget-pkgs . These are references, not Tickets.
@@ -216,7 +216,7 @@ does not authorize a public release, WinGet PR, new account, paid service, code-
 ### Automated repository checks
 
 - Use
-  `deno run -A scripts/run-tests.js --isolated scripts/package-windows.test.ts scripts/package-winget.test.ts src/cmd/update/index.test.ts src/shared/foreground-process.test.ts src/cmd/resume/index.test.ts src/shared/session/session-runtime.test.js src/acp/server.test.js src/cmd/workspace/workspace.test.ts src/shared/worktree-creation.test.js src/shared/isolated-publication.test.ts`,
+  `deno run -A scripts/run-tests.js --isolated scripts/package-windows.test.ts scripts/package-winget.test.ts src/cmd/update/index.test.ts src/shared/foreground-process.test.ts src/cmd/resume/index.test.ts src/shared/session/session-runtime.test.js src/acp/server.test.js src/cmd/workspace/workspace.test.ts src/shared/worktree-creation.test.ts src/shared/isolated-publication.test.ts`,
   plus new focused package/path/runner tests and the artifact-route integration test. Run on Windows as well as
   supported Unix CI. Run `deno task ci`; never `deno test` directly.
 - Safe-runner regression: use a disposable parent-process home and memory location as the host fixture. Sentinels there

@@ -5,7 +5,7 @@
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
-import { hashPlanBody, listPlanResources, updatePlanCollaborationMetadata } from "../../plan-store.js";
+import { hashPlanBody, listPlans, listPlanResources, updatePlanCollaborationMetadata } from "../../plan-store.js";
 import { redactSecrets, REVIEWER_SCOPE } from "../../shared/collaboration/capabilities.ts";
 import { createCollaborationClient, SYSTEM_COLLABORATION_FETCH } from "../../shared/collaboration/client.js";
 import { encryptJsonPayload, importContentKey } from "../../shared/collaboration/crypto.ts";
@@ -18,6 +18,7 @@ import {
 } from "../../shared/collaboration/secrets.js";
 import { buildCollaborationUrl } from "../../shared/collaboration/urls.ts";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
+import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 interface PlansPushArgs {
@@ -85,10 +86,7 @@ function normalizeSpaceResponse(value: WireValue): ReturnType<typeof normalizeSh
 }
 
 function normalizeRevisionResponse(value: WireValue): ReturnType<typeof normalizeRevisionMetadata> {
-    if (
-        value && typeof value === "object" && !Array.isArray(value) &&
-        typeof value.revision === "object"
-    ) {
+    if (value && typeof value === "object" && !Array.isArray(value) && typeof value.revision === "object") {
         return normalizeRevisionResponse(value.revision);
     }
     return normalizeRevisionMetadata(value);
@@ -102,33 +100,43 @@ async function secretPaths(cwd: string, projectSecrets: boolean) {
 }
 
 function findResourceByNameOrId(resources: PlanResource[], target: string): PlanResource | null {
-    const matches = resources.filter((resource) =>
-        resource.planName === target || resource.name === target || resource.planId === target ||
-        resource.attrs?.planId === target
+    const matches = resources.filter(
+        (resource) =>
+            resource.planName === target ||
+            resource.name === target ||
+            resource.planId === target ||
+            resource.attrs?.planId === target,
     );
     if (matches.length > 1) throw new Error(`Multiple Plans matched ${target}; use a unique Plan name or planId.`);
     return matches[0] || null;
 }
 
 function hasCompleteRemoteCanonicalMetadata(attrs: PlanAttrs): boolean {
-    return attrs.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL &&
-        typeof attrs.collaborationServerUrl === "string" && attrs.collaborationServerUrl.length > 0 &&
-        typeof attrs.collaborationSpaceId === "string" && attrs.collaborationSpaceId.length > 0 &&
-        Number.isInteger(Number(attrs.collaborationRevision)) && Number(attrs.collaborationRevision) > 0 &&
-        typeof attrs.collaborationBodyHash === "string" && attrs.collaborationBodyHash.length > 0;
+    return (
+        attrs.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL &&
+        typeof attrs.collaborationServerUrl === "string" &&
+        attrs.collaborationServerUrl.length > 0 &&
+        typeof attrs.collaborationSpaceId === "string" &&
+        attrs.collaborationSpaceId.length > 0 &&
+        Number.isInteger(Number(attrs.collaborationRevision)) &&
+        Number(attrs.collaborationRevision) > 0 &&
+        typeof attrs.collaborationBodyHash === "string" &&
+        attrs.collaborationBodyHash.length > 0
+    );
 }
 
 function redactedError(error: Error, secrets: string[]): string {
     return redactSecrets(error, secrets);
 }
 
-export async function pushPlanRevision(
-    pushOptions: PushPlanRevisionOptions,
-): Promise<PushedPlanRevision> {
+export async function pushPlanRevision(pushOptions: PushPlanRevisionOptions): Promise<PushedPlanRevision> {
     const cwd = pushOptions.cwd || getCwd();
     await enterProjectRuntime(cwd);
     const now = new Date().toISOString();
     const target = pushOptions.target;
+    const selected = (await listPlans(cwd)).filter((plan) => plan.name === target || plan.attrs.planId === target);
+    if (selected.length > 1) throw new Error(`Multiple Plans matched ${target}; use a unique Plan name or planId.`);
+    await resolveWorkflowPlanLocation(cwd, selected[0]?.name || target);
     const resource = findResourceByNameOrId(await listPlanResources(cwd, { backfillMissing: false }), target);
     if (!resource) throw new Error(`Active Plan not found: ${target}`);
     const attrs = resource.attrs || {};
@@ -177,7 +185,7 @@ export async function pushPlanRevision(
             bearerCapability: secretRecord.maintainerCapability,
             fetch: SYSTEM_COLLABORATION_FETCH,
         });
-        space = normalizeSpaceResponse(await client.getSharedSpace(spaceId) as WireValue);
+        space = normalizeSpaceResponse((await client.getSharedSpace(spaceId)) as WireValue);
     } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error));
         throw new Error(`Unable to fetch remote Shared Space: ${redactedError(cause, secrets)}`);
@@ -209,12 +217,15 @@ export async function pushPlanRevision(
 
     const key = await importContentKey(secretRecord.contentKey);
     const payloadCiphertext = String(
-        await encryptJsonPayload({
-            planId,
-            title: attrs.summary || planName,
-            metadata: { ...attrs, planId },
-            body,
-        }, key),
+        await encryptJsonPayload(
+            {
+                planId,
+                title: attrs.summary || planName,
+                metadata: { ...attrs, planId },
+                body,
+            },
+            key,
+        ),
     );
 
     const expectedRevision = localRevision + 1;
@@ -226,13 +237,11 @@ export async function pushPlanRevision(
             fetch: SYSTEM_COLLABORATION_FETCH,
         });
         appended = normalizeRevisionResponse(
-            await client.appendRevision(spaceId, { payloadCiphertext, expectedRevision }) as WireValue,
+            (await client.appendRevision(spaceId, { payloadCiphertext, expectedRevision })) as WireValue,
         );
     } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error));
-        throw new Error(
-            `Unable to append remote revision: ${redactedError(cause, [...secrets, payloadCiphertext])}`,
-        );
+        throw new Error(`Unable to append remote revision: ${redactedError(cause, [...secrets, payloadCiphertext])}`);
     }
     if (appended.spaceId !== spaceId || appended.revision !== expectedRevision) {
         throw new Error(
@@ -261,20 +270,21 @@ export async function pushPlanRevision(
     } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error));
         throw new Error(
-            `Remote revision ${appended.revision} was appended, but local collaboration metadata update failed. Run \`${CLI_BIN} plans pull ${planName}\` before retrying or editing further. ${
-                redactedError(cause, secrets)
-            }`,
+            `Remote revision ${appended.revision} was appended, but local collaboration metadata update failed. Run \`${CLI_BIN} plans pull ${planName}\` before retrying or editing further. ${redactedError(
+                cause,
+                secrets,
+            )}`,
         );
     }
 
     const reviewerUrl = secretRecord.reviewerCapability
         ? buildCollaborationUrl({
-            serverUrl,
-            spaceId,
-            contentKey: secretRecord.contentKey,
-            bearerCapability: secretRecord.reviewerCapability,
-            role: REVIEWER_SCOPE,
-        })
+              serverUrl,
+              spaceId,
+              contentKey: secretRecord.contentKey,
+              bearerCapability: secretRecord.reviewerCapability,
+              role: REVIEWER_SCOPE,
+          })
         : "";
 
     return {

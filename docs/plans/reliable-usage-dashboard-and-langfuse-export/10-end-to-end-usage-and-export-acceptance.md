@@ -7,12 +7,12 @@ affectedPaths:
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/prd/runwield.md"
     - "docs/domain-language.md"
-    - "docs/settings.md"
+    - "docs/user-documentation/settings.md"
     - "packages/langfuse-exporter/"
     - "src/shared/workflow/"
     - "src/ui/workspace/"
 executionAgent: "engineer"
-devServerCommand: "deno task workspace:dev"
+devServerCommand: "bun run workspace:dev"
 devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-09-21T19:28:55.522Z"
@@ -85,11 +85,11 @@ exposes a defect.
   scenarios, ownership map, and cross-links reconciled to delivered behavior.
 - `docs/domain-language.md` — **Usage observation**, **Metrics exporter**, and **Delivery unconfirmed** confirmed as
   implemented truth with stable relationships, and no unimplemented proposal promoted.
-- `docs/settings.md` and `src/skills/runwield/SETTINGS.md` — default-on recording, retention until deletion, and export
-  approval semantics accurate.
+- `docs/user-documentation/settings.md` and `src/skills/runwield/SETTINGS.md` — default-on recording, retention until
+  deletion, and export approval semantics accurate.
 - `docs/design-system.md` — any pattern children 05 or 09 added is documented.
-- `docs/plans/complete-tool-call-metrics.md` — left untouched as a separate draft; only its satisfied coverage goals are
-  noted, and its token-denominator scope stays out.
+- `docs/plans/archived/complete-tool-call-metrics.md` — kept as completed history; only its satisfied coverage goals
+  are noted, and its token-denominator scope stays out.
 
 ## Reuse Opportunities
 
@@ -97,7 +97,7 @@ exposes a defect.
   again.
 - `defineGitFixture`, `makeValidationProjectRoot`, `withProcessGlobalTestLock` for the reproducible parts of the
   journey.
-- The child 05 and 09 browser flows and dev server (`deno task workspace:dev`, `http://127.0.0.1:5173`).
+- The child 05 and 09 browser flows and dev server (`bun run workspace:dev`, `http://127.0.0.1:5173`).
 - The child 08 real-destination checks and pinned Langfuse v4 fixtures.
 - `docs/prd/` capability structure and `docs/plan-lifecycle.md` for the reconciliation sweep.
 
@@ -123,17 +123,17 @@ exposes a defect.
   intent still labeled target or deferred and no transient PRD left claiming shipped scope.
 - `docs/domain-language.md` defines all three new terms as implemented truth, with avoided aliases and stable
   relationships, and promotes no unimplemented proposal.
-- `docs/settings.md` and `src/skills/runwield/SETTINGS.md` state default-on recording, retention until deletion,
-  explicit opt-out preservation, and separate export approval.
+- `docs/user-documentation/settings.md` and `src/skills/runwield/SETTINGS.md` state default-on recording, retention until
+  deletion, explicit opt-out preservation, and separate export approval.
 - No historical metrics reconstruction exists anywhere in the delivered behavior.
 
 ## Verification Plan
 
-- Automated: `deno task test` for the full suite, then `deno task ci`, `deno task workspace:check`,
-  `deno task workspace:build`, and `deno task doc-links:check`. Never `deno test` directly.
+- Automated: `bun run test` for the full suite, then `bun run ci`, `bun run workspace:check`,
+  `bun run workspace:build`, and `bun run doc-links:check`. Never `bun test` directly.
 - Creating Langfuse credentials and exporting real records requires explicit owner authorization. Do not upload existing
   history to prove the new-only path; use a disposable project and journey-generated records only.
-- Headed browser checks: run `deno task workspace:dev`, open `http://127.0.0.1:5173/usage`, and walk the journey's
+- Headed browser checks: run `bun run workspace:dev`, open `http://127.0.0.1:5173/usage`, and walk the journey's
   inspection steps on both desktop and phone viewports.
 - In the disposable Langfuse project, query the received observations directly and compare counts and sums against the
   local report; an availability label beside a vendor chart still showing invented zero or full totals is a failure.
@@ -144,7 +144,7 @@ exposes a defect.
 - Confirm Sessions, Plans, and worktrees survive a clear-history action taken during the journey.
 - Confirm home, Session navigation, pairing, Project access, explicit recording opt-outs, Session authority, worktree
   protection, redaction, and truthful workflow completion all still behave as before this Epic.
-- Confirm `deno task seams:check` passes with no new seam for Plan writes, journal writes, or lifecycle state.
+- Confirm `bun run seams:check` passes with no new seam for Plan writes, journal writes, or lifecycle state.
 - Existing protected behavior: the full pre-Epic suite passes. Expected to stop existing: zero-filled usage absence,
   opt-in-by-default recording, uncoordinated metrics appends, and pruning publication evidence with no persisted
   observation.

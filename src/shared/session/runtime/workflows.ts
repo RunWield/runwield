@@ -3,6 +3,7 @@ import { resolvePlanExecutionRuntimeAgent } from "../../workflow/execution-agent
 import { runActiveAgentTurn } from ".././agent-switching.js";
 import { emitSystemStatus, RuntimeEventTypes } from ".././session-runtime-events.js";
 import { readPersistedPendingSegmentContinuationEntry } from ".././workflow-context-session.js";
+import { prepareSessionPlanningWorktree } from "../../workflow/session-planning-worktree.ts";
 import { executePlanAction } from "../../workflow/plan-actions.ts";
 
 import { buildSemanticRepairCiState, isRuntimeRootSessionManager } from "./support.ts";
@@ -276,6 +277,8 @@ export class RuntimeWorkflows {
                     if (!current) {
                         return { kind: "no_reference" as const, message: "This Session has no previous Plan review." };
                     }
+                    const prepared = await prepareSessionPlanningWorktree(session.cwd, current.planName);
+                    session.rebindProjectRoot(prepared.documentRoot);
                     return await reopenSavedPlanReview(runtime, sessionId, current, (message, isError) => {
                         emitSystemStatus(session, message, { header: "RunWield", level: isError ? "error" : "info" });
                     });
@@ -382,15 +385,18 @@ export class RuntimeWorkflows {
             sessionId,
             "workflow_operation",
             async (activeSession) => {
-                const current = await findPlanEvidenceById(activeSession.cwd, planId);
-                if (!["approved", "ready_for_work"].includes(current.attrs.status || "")) {
+                const selected = await findPlanEvidenceById(activeSession.cwd, planId);
+                const prepared = await prepareSessionPlanningWorktree(activeSession.cwd, selected.planName);
+                const current = prepared.plan;
+                if (!current || !["approved", "ready_for_work"].includes(current.attrs.status || "")) {
                     throw new Error("Plan changed. Refresh before opening review.");
                 }
+                activeSession.rebindProjectRoot(prepared.documentRoot);
                 const toolCallId = crypto.randomUUID();
                 const tool = createPlanWrittenTool({ hostedSession: activeSession, agentName });
                 const result = await tool.execute(
                     toolCallId,
-                    { planName: current.planName },
+                    { planName: selected.planName },
                     undefined,
                     undefined,
                     {} as import("@earendil-works/pi-coding-agent").ExtensionToolContext,
@@ -468,7 +474,9 @@ export class RuntimeWorkflows {
                 const { executePlan } = await import("../../workflow/workflow.js");
                 const { resolveWorkflowPlanLocation } = await import("../../workflow/plan-location.ts");
                 const { recordPlanEvent } = await import("../../workflow/plan-lifecycle.js");
-                const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "");
+                const location = await resolveWorkflowPlanLocation(session.cwd, options.planName || "", {
+                    readOnly: true,
+                });
                 if (options.triageMeta?.planId && location.plan?.attrs.planId !== options.triageMeta.planId) {
                     throw new Error("Plan identity changed. Refresh before continuing execution.");
                 }

@@ -13,7 +13,7 @@ affectedPaths:
     - "src/cmd/install/"
     - "docs/prd/runwield-core-prd.md"
     - "docs/prd/runwield-workspace-prd.md"
-devServerCommand: "deno task workspace:dev"
+devServerCommand: "bun run workspace:dev"
 devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-09-20T01:12:35-04:00"
@@ -418,8 +418,9 @@ These are architectural boundaries, not an allowlist, implementation checklist o
 - TUI and owner Workspace lifecycle — shared background export without a new service or Session lock lifetime.
 - `src/ui/workspace/` and shared design-system areas when needed — authorized report routes, Usage page, settings,
   deletion control, gap and delivery status.
-- Owning PRDs, `docs/settings.md`, customization/provider references, design system and applicable glossary — behavior
-  synchronization in the delivering changes. Do not rewrite unrelated dirty files as part of this Epic.
+- Owning PRDs, `docs/user-documentation/settings.md`, customization/provider references, design system and applicable
+  glossary — behavior synchronization in the delivering changes. Do not rewrite unrelated dirty files as part of this
+  Epic.
 
 ## Reuse Opportunities
 
@@ -437,9 +438,9 @@ These are architectural boundaries, not an allowlist, implementation checklist o
 
 ## Verification Plan
 
-Use `deno task test` or `deno run -A scripts/run-tests.js <deno test args>`, never direct `deno test`. Repository checks
-include `deno task seams:check`, `deno task ci`, `deno task workspace:check`, `deno task workspace:build`, and
-`deno task doc-links:check`. Later executable Plans select focused test paths.
+Use `bun run test` or `bun scripts/run-tests.js <test paths or runner options>`, never direct `bun test`. Repository
+checks include `bun run seams:check`, `bun run ci`, `bun run workspace:check`, `bun run workspace:build`, and
+`bun run doc-links:check`. Later executable Plans select focused test paths.
 
 Use real temporary files, Git repositories and Session bundles for owned persistence, joins, locks and deletion. Fake
 actual subprocess/network/clock boundaries only. A callback that substitutes Plan writes, journal writes or lifecycle

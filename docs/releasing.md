@@ -104,11 +104,13 @@ promote current `HEAD` by accident.
 
 Before confirmation, show the selected source commit, target tag, and Release Branch publication when applicable. The
 release command tags an explicit commit and does not switch branches or alter working files. GitHub Actions is the
-authoritative release qualification environment. It runs source quality, the Golden TUI release gate, and binary smoke
-checks and binary compilation in parallel from the tagged commit. Asset preparation follows compilation immediately,
-then native Windows and Homebrew checks run alongside source and Golden qualification. Publication explicitly requires
-every source shard, Golden shard, binary smoke check, build, and native package check to succeed. Preparation never
-publishes release bytes.
+authoritative release qualification environment. Its `release-gate` workflow resolves the tag to one exact commit for
+product checks and builds. It runs Ubuntu source quality and Linux Golden checks alongside macOS source and package
+checks, Windows x64 and ARM64 source and package checks, container checks, binary smoke checks, and compilation.
+Asset preparation follows compilation immediately. Native Linux and macOS checks execute the actual release archives;
+Windows ZIP and Homebrew checks also consume the checked release bytes. Publication requires every gate to succeed,
+including all reusable platform workflows. A failed, skipped, or cancelled required gate blocks publication.
+Preparation never publishes release bytes. Windows ARM64 checks do not add a Windows ARM64 published asset.
 
 ## Commands
 
@@ -238,6 +240,20 @@ active. The retained submission code uses WingetCreate and requires a classic Gi
 when restored. For the first public listing, follow `docs/winget-first-release.md`. Git for Windows is a WinGet
 dependency. Browser and model downloads remain first-use per-user setup.
 
+## CI tiers
+
+`bun run ci` is the host-native local source and Golden gate. It does not launch Windows, macOS, or container matrices.
+`pr-gate` retains the four Ubuntu source/type/lint shards and four Linux Golden shards, with the existing aggregate
+status contexts `ci` and `golden`. Ordinary PRs do not run the 23 former platform/container jobs; the duplicate four
+Ubuntu source shards are removed rather than repeated in release qualification.
+
+`release-gate` owns broad platform coverage after the Candidate or Stable tag is created. Its internal
+`release-unix.yml`, `release-windows.yml`, and `release-containers.yml` workflows are reusable and also support manual
+diagnostics at the selected workflow revision. Windows checks use at most two runners concurrently within the matrix.
+Manual diagnostics use a synthetic Candidate identity; release calls pass the real version and resolved product SHA.
+No new mandatory pre-tag check is introduced. Product fixes belong on the Release Branch and are later explicitly
+forward-ported to `main` under the release policy above.
+
 ## GitHub workflow ownership
 
 The tag-triggered workflow owns release qualification, builds, GitHub release creation, asset upload, native Windows
@@ -250,7 +266,11 @@ The workflow also exposes a required-tag manual dispatch solely for recovery whe
 moved—for example, after its GitHub Release has made it immutable, or when a workflow-only fix on the default branch can
 safely retry the existing tagged source. In that mode, the source-quality job runs from the default-branch workflow
 revision containing the recovery fix, while metadata validation, release qualification, builds, and publication use the
-existing tag. Recovery packaging tools come from the workflow revision, not from a changed product source. If a GitHub
+existing tag, resolved once to its peeled commit SHA. Reusable platform checks also use that product SHA. For the frozen historical product commits of `v0.12.0-rc.1` and
+`v0.12.0-rc.2`, manual recovery builds and checks the original Deno container
+recipes instead of requiring later Bun-only container tooling. That compatibility path requires the exact recorded
+commit; a missing tool on newer source fails normally. Native archive checks compare against the selected product's
+Bun pin, not the recovery tooling's pin. Recovery packaging tools come from the workflow revision, not from a changed product source. If a GitHub
 Release exists, recovery skips compilation and asset publication. It downloads the existing assets and checks their
 completeness, archive checksums, combined checksum file, and GitHub SHA-256 digests before resuming package checks and
 publication. It never replaces published files. Missing or inconsistent assets stop recovery for inspection; restore
@@ -307,7 +327,7 @@ current Pages deployment unchanged.
   and comply. Never fall back to current `HEAD` automatically.
 - **GitHub Release exists**: the tag is immutable, including when qualification, asset upload, or notes editing later
   fails. Keep the tag at its original commit and recover the existing release. If a workflow fix is required, dispatch
-  `release-wld` manually with that tag after the recovery commit reaches the default branch.
+  `release-gate` manually with that tag after the recovery commit reaches the default branch.
 - **Candidate published but should not be promoted**: leave it as a prerelease and publish a later Candidate tag.
 - **Assets published but notes pending**: do not recreate the release. Retry the notes edit and verify the published
   notes.

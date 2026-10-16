@@ -50,11 +50,7 @@ function deferredSignal(): DeferredSignal {
     return { promise, resolve: resolvePromise };
 }
 
-async function waitFor(
-    predicate: () => boolean,
-    description: string,
-    timeoutMs = 5_000,
-): Promise<void> {
+async function waitFor(predicate: () => boolean, description: string, timeoutMs = 5_000): Promise<void> {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
         if (predicate()) return;
@@ -70,7 +66,7 @@ async function waitForPath(path: string, description: string, timeoutMs = 5_000)
                 fsStatSync(path);
                 return true;
             } catch (error) {
-                if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return false;
+                if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
                 throw error;
             }
         },
@@ -92,7 +88,7 @@ async function countSessionTranscripts(projectRoot: string): Promise<number> {
             if (entry.isFile() && entry.name.endsWith(".jsonl")) count++;
         }
     } catch (error) {
-        if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return 0;
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return 0;
         throw error;
     }
     return count;
@@ -343,14 +339,12 @@ test("slash resume restores conversation after an interrupted checkpoint", async
             });
             await fsWriteFile(
                 segment.transcriptPath,
-                `${
-                    JSON.stringify({
-                        type: "custom",
-                        id: crypto.randomUUID(),
-                        customType: "runwield.request_attempt",
-                        data: { status: "failed" },
-                    })
-                }\n`,
+                `${JSON.stringify({
+                    type: "custom",
+                    id: crypto.randomUUID(),
+                    customType: "runwield.request_attempt",
+                    data: { status: "failed" },
+                })}\n`,
                 { flag: "a" },
             );
             store.markSessionUncertain(proof, { reason: "interrupted after a failed request" });
@@ -425,14 +419,15 @@ test("chat input controller queues deferred slash input for the next turn during
             await submitText(terminal, "/not-a-command args");
             await waitFor(
                 () =>
-                    composition.runtime.getQueuedMessages(composition.sessionId).some((item) =>
-                        item.text === "/not-a-command args" && item.delivery === "next_turn"
-                    ),
+                    composition.runtime
+                        .getQueuedMessages(composition.sessionId)
+                        .some((item) => item.text === "/not-a-command args" && item.delivery === "next_turn"),
                 "queued deferred slash message",
             );
-            assertEquals(composition.runtime.getQueuedMessages(composition.sessionId).map((item) => item.text), [
-                "/not-a-command args",
-            ]);
+            assertEquals(
+                composition.runtime.getQueuedMessages(composition.sessionId).map((item) => item.text),
+                ["/not-a-command args"],
+            );
             assertEquals(composition.runtime.getQueuedMessages(composition.sessionId)[0]?.delivery, "next_turn");
             releaseModel.resolve();
             await composition.waitForIdle();
@@ -513,16 +508,18 @@ test("chat input controller preflights pasted image attachments through the comp
                 await submitText(terminal, "describe pasted image");
                 await waitFor(
                     () =>
-                        modelRequests.some((request) =>
-                            request.includes("describe pasted image") &&
-                            (request.includes("image/png") || request.includes("attachment:"))
+                        modelRequests.some(
+                            (request) =>
+                                request.includes("describe pasted image") &&
+                                (request.includes("image/png") || request.includes("attachment:")),
                         ),
                     "model request with pasted image",
                 );
                 assert(
-                    modelRequests.some((request) =>
-                        request.includes("describe pasted image") &&
-                        (request.includes("image/png") || request.includes("attachment:"))
+                    modelRequests.some(
+                        (request) =>
+                            request.includes("describe pasted image") &&
+                            (request.includes("image/png") || request.includes("attachment:")),
                     ),
                 );
             } finally {
@@ -636,26 +633,30 @@ test("chat input controller shows Agy MCP setup approval action without spilling
 });
 
 test("chat input controller preserves input while model setup blocks through the composed TUI", async () => {
-    await withRuntimeCommandFixture("chat-input-real-model-block-", async () => {
-        const harness = createInteractiveCompositionHarness({});
-        try {
-            await harness.waitForScreen("Only showing models from configured providers");
-            await harness.pressKey("escape");
-            await harness.waitForScreen("No model was selected");
-            await harness.waitForComposition(20_000);
-            await harness.type("keep me");
-            await waitFor(() => harness.terminal.getScreenText().includes("keep me"), "typed blocked draft");
-            await harness.type("\r");
-            await waitFor(
-                () => harness.terminal.getScrollbackText().includes("Choose a default model"),
-                "model setup block message",
-            );
-            assertStringIncludes(harness.terminal.getScreenText(), "keep me");
-            assertStringIncludes(harness.terminal.getScrollbackText(), "Choose a default model");
-        } finally {
-            await harness.dispose();
-        }
-    }, { providerState: "provider-no-model" });
+    await withRuntimeCommandFixture(
+        "chat-input-real-model-block-",
+        async () => {
+            const harness = createInteractiveCompositionHarness({});
+            try {
+                await harness.waitForScreen("Only showing models from configured providers");
+                await harness.pressKey("escape");
+                await harness.waitForScreen("No model was selected");
+                await harness.waitForComposition(20_000);
+                await harness.type("keep me");
+                await waitFor(() => harness.terminal.getScreenText().includes("keep me"), "typed blocked draft");
+                await harness.type("\r");
+                await waitFor(
+                    () => harness.terminal.getScrollbackText().includes("Choose a default model"),
+                    "model setup block message",
+                );
+                assertStringIncludes(harness.terminal.getScreenText(), "keep me");
+                assertStringIncludes(harness.terminal.getScrollbackText(), "Choose a default model");
+            } finally {
+                await harness.dispose();
+            }
+        },
+        { providerState: "provider-no-model" },
+    );
 });
 
 test("chat input controller queues input while another surface is active", async () => {
@@ -670,10 +671,7 @@ test("chat input controller queues input while another surface is active", async
             );
             await submitText(terminal, "keep managed draft");
             await waitFor(() => terminal.getScreenText().includes("keep managed draft"), "typed managed draft");
-            assertStringIncludes(
-                terminal.getScreenText(),
-                "This conversation is running in RunWield Workspace.",
-            );
+            assertStringIncludes(terminal.getScreenText(), "This conversation is running in RunWield Workspace.");
             assertStringIncludes(terminal.getScreenText(), "keep managed draft");
             assertEquals(
                 composition.runtime.getQueuedMessages(composition.sessionId).map((message) => message.text),
@@ -868,6 +866,26 @@ test("chat input controller submits tutorial discovery as a normal Planner turn"
         agentName: "planner",
         initialTutorialContext: context,
     });
+});
+
+test("chat input explains resource limits and restores the draft without replaying it", async () => {
+    let submissions = 0;
+    const { controller, editor, messages } = createControllerHarness({
+        promptUserTurn: () => {
+            submissions++;
+            return Promise.reject(Object.assign(new Error("Could not open socket"), { code: "EMFILE" }));
+        },
+    });
+    try {
+        await editor.onSubmit("keep this request");
+        await waitFor(() => messages.length > 0, "resource-limit guidance");
+        assertEquals(editor.getText(), "keep this request");
+        assertEquals(submissions, 1);
+        assertStringIncludes(messages[0], "open-file limit");
+        assertEquals(messages[0].includes("at async"), false);
+    } finally {
+        await controller.dispose();
+    }
 });
 
 test("chat input controller restores exact draft and previews after image preflight rejection", async () => {

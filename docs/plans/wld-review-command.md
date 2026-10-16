@@ -62,11 +62,11 @@ This Plan adds `wld review`. It opens the same code review page for three source
 - **The worktree is made only when needed.** In PR and branch mode, RunWield creates the review worktree the first time
   the user sends a message or annotations to the Engineer. Until then, the diff and Guided Review use git refs only.
 - **PR mode has a destination switch**, like Plannotator:
-  - **Post to PR**: two buttons. **Post comments** posts the annotations as a neutral review. **Approve** posts the
-    annotations and approves.
-  - **Engineer**: annotations and chat go to the Engineer, who edits the review worktree. The user can ask the Engineer
-    to commit and push to the PR branch.
-  - There is no "Request changes" action. Closing the tab does nothing.
+    - **Post to PR**: two buttons. **Post comments** posts the annotations as a neutral review. **Approve** posts the
+      annotations and approves.
+    - **Engineer**: annotations and chat go to the Engineer, who edits the review worktree. The user can ask the Engineer
+      to commit and push to the PR branch.
+    - There is no "Request changes" action. Closing the tab does nothing.
 - **Forge CLIs.** GitHub uses `gh` and GitLab uses `glab`. When the CLI is missing or not signed in, the Post to PR
   destination is unavailable and the page says which CLI and sign-in it needs. The rest of the review still works.
 - **Only PRs of this repository.** RunWield accepts a PR URL only when its repository is a remote of the current
@@ -214,17 +214,17 @@ sequenceDiagram
 
 - **Engineer chat:** `createSessionRuntime({ ownerProcessKind: "workspace" })`, then
   `createPromptReadySession({ cwd,
-  agentName: AGENTS.ENGINEER })`. The loop subscribes to Session events and copies
+agentName: AGENTS.ENGINEER })`. The loop subscribes to Session events and copies
   assistant text into `reviewConversation.events`, so the browser streams the reply. The first prompt tells the Engineer
   what is under review (the PR or branch, base, and head) and that the user directs commits and pushes.
 - **Approve & Commit:** an Operator Session in the current checkout gets the `src/prompt-templates/commit.md` body and
   one push rule: when the branch has no upstream, use `git push -u origin HEAD`. After the Operator finishes, RunWield
   checks the result itself and does not trust the Operator's text:
-  - the working tree is clean;
-  - `HEAD` moved;
-  - `@{u}` equals `HEAD`.
+    - the working tree is clean;
+    - `HEAD` moved;
+    - `@{u}` equals `HEAD`.
 
-  If a check fails, RunWield reports which one failed. The commits stay in place.
+    If a check fails, RunWield reports which one failed. The commits stay in place.
 
 **Option set aside:** run the existing validation loop with a fake Plan. That would write Plan front matter and Delivery
 Evidence for work that has no Plan, and it would keep the Reviewer Feedback Engineer instead of the normal Engineer.
@@ -284,50 +284,51 @@ Not changed: the validation Code Review loop, Plan lifecycle, `worktrees.json`, 
 2. `src/shared/standalone-review/review-target.ts` exports `resolveReviewTarget(projectRoot, arg)`. It returns one of
    three typed targets, and each target has `computeDiff(cwd)`, `gitRef` (a readable description of the head), and
    `baseLabel`. It rejects these cases with a clear message and no side effects:
-   - the directory is not a git repository;
-   - the PR/MR URL repository does not match the host and owner/repo (or GitLab project path) of any `git remote -v`
-     entry;
-   - the URL is not a PR or MR URL;
-   - the named branch does not exist;
-   - the named branch is the current branch (the message suggests `wld review`);
-   - uncommitted mode with no changes.
+    - the directory is not a git repository;
+    - the PR/MR URL repository does not match the host and owner/repo (or GitLab project path) of any `git remote -v`
+      entry;
+    - the URL is not a PR or MR URL;
+    - the named branch does not exist;
+    - the named branch is the current branch (the message suggests `wld review`);
+    - uncommitted mode with no changes.
 3. For a PR target, the resolver gets metadata with `fetchPR` and fetches the PR head and the base branch from the
    matching remote, so that `computeDiff` works with no worktree. When `gh`/`glab` is missing or not signed in, the
    command stops. It names the CLI and the `gh auth login` / `glab auth login` command, because the PR head and base
    cannot be resolved without it.
 4. `src/shared/standalone-review/forge-review.ts` exports:
-   - a subprocess `PRRuntime` port for `gh` and `glab`;
-   - `postForgeReview(target, { action: "comment" | "approve", feedback, annotations })`, which fetches the PR metadata
-     again, refuses when the head SHA differs from the reviewed SHA, maps annotations as described in Approach, and
-     calls `submitPRReview`. It returns posted, partial (with the failed comments), or refused, each with a message.
+    - a subprocess `PRRuntime` port for `gh` and `glab`;
+    - `postForgeReview(target, { action: "comment" | "approve", feedback, annotations })`, which fetches the PR metadata
+      again, refuses when the head SHA differs from the reviewed SHA, maps annotations as described in Approach, and
+      calls `submitPRReview`. It returns posted, partial (with the failed comments), or refused, each with a message.
 5. `src/shared/standalone-review/review-worktree.ts` exports `ensureReviewWorktree(target)` and
    `settleReviewWorktree(worktree)`:
-   - `ensureReviewWorktree` creates the worktree only on its first call. It reuses an existing checkout of the branch in
-     branch mode, and it runs `gh pr checkout` / `glab mr checkout` in PR mode.
-   - `settleReviewWorktree` removes a worktree that RunWield created when it is clean and its `HEAD` is on its upstream.
-     Otherwise it keeps the worktree and returns its path and branch. It never removes a reused or primary checkout.
+    - `ensureReviewWorktree` creates the worktree only on its first call. It reuses an existing checkout of the branch in
+      branch mode, and it runs `gh pr checkout` / `glab mr checkout` in PR mode.
+    - `settleReviewWorktree` removes a worktree that RunWield created when it is clean and its `HEAD` is on its upstream.
+      Otherwise it keeps the worktree and returns its path and branch. It never removes a reused or primary checkout.
 6. `src/shared/standalone-review/review-commit.ts` exports `approveAndCommit(cwd)`. It runs the Operator with the
    `commit.md` template body and the upstream push rule. Then it checks: the tree is clean, `HEAD` moved, and `@{u}`
    equals `HEAD`. It returns a result that names each failed check. In detached `HEAD` it refuses before it starts the
    Operator.
 7. `src/shared/standalone-review/review-loop.ts` exports `runStandaloneReview(target, { browser, print })`, the loop in
    Approach:
-   - Conversation turns create the Engineer Session once, in the review worktree (PR or branch mode) or in the current
-     checkout (uncommitted mode), with `AGENTS.ENGINEER`. They stream the reply into `reviewConversation.events` and
-     recompute the diff.
-   - `reviewAction` values `post_comments`, `approve_pr`, and `approve_commit` call steps 4 and 6. A refused or failed
-     action keeps the review open and shows the reason on the page. A completed action ends the review.
-   - Cancel or exit ends the review with no Forge or git action.
-   - It always calls `settleReviewWorktree` and closes the Sessions at the end, including on Ctrl+C.
+    - Conversation turns create the Engineer Session once, in the review worktree (PR or branch mode) or in the current
+      checkout (uncommitted mode), with `AGENTS.ENGINEER`. They stream the reply into `reviewConversation.events` and
+      recompute the diff.
+    - `reviewAction` values `post_comments`, `approve_pr`, and `approve_commit` call steps 4 and 6. A refused or failed
+      action keeps the review open and shows the reason on the page. A completed action ends the review.
+    - Cancel or exit ends the review with no Forge or git action.
+    - It always calls `settleReviewWorktree` and closes the Sessions at the end, including on Ctrl+C.
 8. `wld review` is registered in `src/cmd/registry.js` (surfaces `["cli"]`) and runs `runStandaloneReview` through
    `src/cmd/review/index.ts`. It prints:
-   - the review URL;
-   - a progress line when the worktree and the Engineer Session start;
-   - the Forge or commit result;
-   - the kept worktree path and branch, or "removed";
-   - the Engineer Session id for `wld resume`.
+    - the review URL;
+    - a progress line when the worktree and the Engineer Session start;
+    - the Forge or commit result;
+    - the kept worktree path and branch, or "removed";
+    - the Engineer Session id for `wld resume`.
 
-   `wld review --help` shows the three forms.
+    `wld review --help` shows the three forms.
+
 9. `buildGuidedReviewPrompt` accepts optional `reviewContext` text. When there is no Plan, the prompt grounds the
    explainer in that context (the PR title and body) or in the diff alone. It does not ask the model to explain a
    missing Plan. In PR and branch mode before the worktree exists, the prompt states the head ref and says to read files
@@ -340,6 +341,7 @@ Not changed: the validation Code Review loop, Plan lifecycle, `worktrees.json`, 
 
     The agent label shows the Engineer's display name. `reviewFeedbackApi` accepts `reviewAction` only as
     `post_comments`, `approve_pr`, or `approve_commit`, and it drops any other value.
+
 11. `CodeReviewSurface.tsx` renders the actions by mode. The validation review (no `standaloneReview`) shows exactly the
     actions it shows today.
     - **PR:** a destination switch, **Post to PR** or **Engineer**. Post to PR shows **Post comments** and **Approve**.
@@ -364,39 +366,39 @@ Not changed: the validation Code Review loop, Plan lifecycle, `worktrees.json`, 
 **Automated:**
 
 - `deno run -A scripts/run-tests.js src/shared/standalone-review/ src/shared/workflow/git-snapshot.test.ts src/ui/review/ src/ui/workspace/routes/api/ src/cmd/review/`
-- `deno run -A scripts/run-tests.js src/shared/workflow/guided-review.test.js src/shared/workflow/validation-loop-human-review.test.js src/ui/workspace/workspace-code-review.integration.test.ts`
+- `deno run -A scripts/run-tests.js src/shared/workflow/guided-review.test.ts src/shared/workflow/validation-loop-human-review.test.js src/ui/workspace/workspace-code-review.integration.test.ts`
 
 **New tests.** Use a real Git repository through `defineGitFixture`. Fake only the `gh`/`glab` subprocess port and the
 agent turns.
 
 - `review-target.test.ts`:
-  - The uncommitted target diff contains a staged, an unstaged, and an untracked file.
-  - The branch target diff contains only the branch's commits since the merge base, not later commits on the current
-    branch.
-  - Rejections leave the repository unchanged: a foreign PR URL, a missing branch, the current branch, and a clean tree
-    in uncommitted mode.
-  - With a fixture remote that has a `pull/1/head` ref, the PR target's diff matches the merge-base diff, and no
-    worktree exists afterwards.
+    - The uncommitted target diff contains a staged, an unstaged, and an untracked file.
+    - The branch target diff contains only the branch's commits since the merge base, not later commits on the current
+      branch.
+    - Rejections leave the repository unchanged: a foreign PR URL, a missing branch, the current branch, and a clean tree
+      in uncommitted mode.
+    - With a fixture remote that has a `pull/1/head` ref, the PR target's diff matches the merge-base diff, and no
+      worktree exists afterwards.
 - `forge-review.test.ts`:
-  - The annotation mapping produces the correct `path`, `line`, `start_line`, and `side`, a file-level comment, and the
-    body.
-  - `comment` and `approve` reach `submitPRReview` with the matching action.
-  - A changed head SHA refuses without a submit call.
-  - A partial GitLab result is reported with the failed comments.
+    - The annotation mapping produces the correct `path`, `line`, `start_line`, and `side`, a file-level comment, and the
+      body.
+    - `comment` and `approve` reach `submitPRReview` with the matching action.
+    - A changed head SHA refuses without a submit call.
+    - A partial GitLab result is reported with the failed comments.
 - `review-worktree.test.ts`:
-  - No worktree exists until `ensureReviewWorktree` is called.
-  - A second call returns the same worktree.
-  - Settle removes a clean worktree that RunWield created.
-  - Settle keeps a dirty worktree and a worktree with unpushed commits, and it reports the path and branch.
-  - Settle never removes a reused branch checkout.
+    - No worktree exists until `ensureReviewWorktree` is called.
+    - A second call returns the same worktree.
+    - Settle removes a clean worktree that RunWield created.
+    - Settle keeps a dirty worktree and a worktree with unpushed commits, and it reports the path and branch.
+    - Settle never removes a reused branch checkout.
 - `review-commit.test.ts`: with a fake Operator turn that commits but does not push, the result names the `@{u}` check.
   In detached `HEAD`, the Operator never starts.
 - `review-loop.test.ts`, with a fake browser decision sequence:
-  - A conversation turn starts the Engineer Session with agent `engineer` in the worktree, and the next round's diff
-    includes the Engineer's file change.
-  - `post_comments` ends the loop after one Forge call.
-  - Cancel ends the loop with zero Forge calls, zero commits, and a settled worktree.
-  - A test that replaces the Engineer step with a no-op must fail the "next diff includes the change" assertion.
+    - A conversation turn starts the Engineer Session with agent `engineer` in the worktree, and the next round's diff
+      includes the Engineer's file change.
+    - `post_comments` ends the loop after one Forge call.
+    - Cancel ends the loop with zero Forge calls, zero commits, and a settled worktree.
+    - A test that replaces the Engineer step with a no-op must fail the "next diff includes the change" assertion.
 - `git-snapshot.test.ts`: the existing `getWorktreeReviewDiff` cases still pass, and the new `getReviewDiff` ref-head
   case passes.
 - `CodeReviewSurface` tests: each mode renders exactly its buttons, and the validation review (no `standaloneReview`)

@@ -57,7 +57,7 @@ export const GET = async ({ request, params }: { request: Request; params: { seg
 
     if (segments.join("/") === "usage") {
         try {
-            // Native Deno import keeps Core's JSR modules out of Vite's Node evaluator.
+            // Native Bun import keeps Core's host-only modules out of Vite's evaluator.
             const fixture: typeof import("../../../server/dev-usage-fixture.ts") = await Function(
                 "specifier",
                 "return import(specifier)",

@@ -266,3 +266,174 @@ test("test --filter preserves literal and regex selection through the real isola
         await fsRm(root, { recursive: true, force: true });
     }
 });
+
+interface WorkflowStep {
+    uses?: string;
+    run?: string;
+    with?: Record<string, string>;
+    env?: Record<string, string>;
+}
+interface WorkflowMatrixEntry {
+    runner: string;
+    arch?: string;
+    phase?: string;
+    shard?: number;
+    asset?: string;
+}
+interface WorkflowJob {
+    if?: string;
+    uses?: string;
+    needs?: string | string[];
+    with?: Record<string, string>;
+    "runs-on"?: string;
+    steps?: WorkflowStep[];
+    strategy?: {
+        "fail-fast": boolean;
+        "max-parallel"?: number;
+        matrix: { runner?: string[]; shard?: number[]; include?: WorkflowMatrixEntry[] };
+    };
+}
+interface GateWorkflow {
+    name: string;
+    on: Record<string, { inputs?: Record<string, { required: boolean; type: string }> } | null>;
+    jobs: Record<string, WorkflowJob>;
+    concurrency?: { "cancel-in-progress": boolean };
+}
+async function readGate(name: string): Promise<GateWorkflow> {
+    const { load } = await import("js-yaml");
+    return load(await fsReadFile(`.github/workflows/${name}.yml`, "utf8")) as GateWorkflow;
+}
+
+test("ordinary PRs keep only the Ubuntu source and Linux Golden portfolio", async () => {
+    const pr = await readGate("pr");
+    assertEquals(pr.name, "pr-gate");
+    assertEquals(Object.keys(pr.jobs).sort(), ["ci", "ci-shards", "golden", "golden-shards"]);
+    for (const name of ["ci-shards", "golden-shards"]) {
+        assertEquals(pr.jobs[name]["runs-on"], "ubuntu-latest");
+        assertEquals(pr.jobs[name].strategy?.matrix.shard, [1, 2, 3, 4]);
+        assertEquals(pr.jobs[name].strategy?.["fail-fast"], false);
+    }
+    for (const name of ["ci", "golden"]) {
+        assertEquals(pr.jobs[name].if, "always()");
+        assertEquals(pr.jobs[name].needs, `${name}-shards`);
+        assertEquals(pr.jobs[name].steps?.[0].run, `test '\${{ needs.${name}-shards.result }}' = 'success'`);
+    }
+    const { scripts } = await readPackageConfig();
+    assertEquals(scripts.ci, "bun scripts/check-bun-runtime.ts && bun scripts/run-ci.ts");
+});
+
+test("platform checks are release-only, use the selected commit, and cannot silently skip private repositories", async () => {
+    const release = await readGate("release");
+    assertEquals(release.name, "release-gate");
+    assertEquals(release.concurrency?.["cancel-in-progress"], false);
+    const paths = await fsReaddir(".github/workflows");
+    for (const platform of ["unix", "windows", "containers"]) {
+        assertEquals(paths.includes(`bun-${platform}.yml`), false);
+        const workflow = await readGate(`release-${platform}`);
+        assertEquals(Object.keys(workflow.on).sort(), ["workflow_call", "workflow_dispatch"]);
+        assertEquals(workflow.on.workflow_call?.inputs?.source_sha, {
+            description: "Exact product commit selected by release-gate",
+            required: true,
+            type: "string",
+        });
+        assertEquals(workflow.concurrency, undefined, "A diagnostic run must not cancel a release call");
+        const call = release.jobs[`${platform}-checks`];
+        assertEquals(call.uses, `./.github/workflows/release-${platform}.yml`);
+        assertEquals(call.needs, "metadata");
+        assertEquals(call.with, {
+            source_sha: "${{ needs.metadata.outputs.source_sha }}",
+            build_version: "${{ needs.metadata.outputs.build_version }}",
+            ...(platform === "containers"
+                ? { legacy_recovery: "${{ needs.metadata.outputs.legacy_containers == 'true' }}" }
+                : {}),
+        });
+        for (const [name, job] of Object.entries(workflow.jobs)) {
+            assertEquals(
+                job.if,
+                platform === "containers"
+                    ? name === "legacy-containers"
+                        ? "inputs.legacy_recovery"
+                        : "${{ !inputs.legacy_recovery }}"
+                    : undefined,
+                "Only frozen historical container recipes may select a compatibility job",
+            );
+            const checkouts = job.steps?.filter((step) => step.uses?.startsWith("actions/checkout@")) || [];
+            assertEquals(checkouts.length, 1);
+            assertEquals(checkouts[0].with?.ref, "${{ inputs.source_sha || github.sha }}");
+            assertEquals(
+                job.steps?.some((step) => /bun test\b|run-bun-tests\.ts/.test(step.run || "")),
+                false,
+            );
+        }
+    }
+});
+
+test("release matrix preserves native source and package coverage without duplicate Ubuntu source or a new Windows asset", async () => {
+    const unix = await readGate("release-unix");
+    assertEquals(unix.jobs.source.strategy?.matrix.runner, ["macos-latest"]);
+    assertEquals(unix.jobs.source.strategy?.matrix.shard, [1, 2, 3, 4]);
+    assertEquals(unix.jobs.package.strategy?.matrix.runner, ["ubuntu-latest", "macos-latest"]);
+    const windows = (await readGate("release-windows")).jobs.native;
+    assertEquals(windows.strategy?.["max-parallel"], 2);
+    assertEquals(windows.strategy?.["fail-fast"], false);
+    const entries = windows.strategy?.matrix.include || [];
+    assertEquals(entries.length, 10);
+    for (const arch of ["x64", "arm64"]) {
+        assertEquals(
+            entries.filter((entry) => entry.arch === arch && entry.phase === "source").map((entry) => entry.shard),
+            [1, 2, 3, 4],
+        );
+        assertEquals(entries.filter((entry) => entry.arch === arch && entry.phase === "package").length, 1);
+    }
+    const release = await readGate("release");
+    assertEquals(release.jobs.build.strategy?.matrix.include?.length, 5);
+    const build = await fsReadFile(".github/workflows/release.yml", "utf8");
+    assertEquals(build.includes("asset_suffix: windows-arm64"), false);
+    assertEquals(
+        release.jobs["native-package-check"].strategy?.matrix.include?.map((entry) => entry.asset),
+        ["linux-x64", "linux-arm64", "darwin-arm64", "darwin-x64"],
+    );
+});
+
+test("publication requires every product and source gate including actual package bytes", async () => {
+    const workflow = await readGate("release");
+    const release = workflow.jobs.release;
+    const gates = [
+        "ci",
+        "golden",
+        "release-check",
+        "assets",
+        "windows-package-check",
+        "homebrew-check",
+        "native-package-check",
+        "unix-checks",
+        "windows-checks",
+        "containers-checks",
+    ];
+    assertEquals(release.needs, [
+        "metadata",
+        "ci",
+        "golden",
+        "release-check",
+        "assets",
+        "windows-package-check",
+        "native-package-check",
+        "homebrew-check",
+        "unix-checks",
+        "windows-checks",
+        "containers-checks",
+    ]);
+    assertStringIncludes(release.if || "", "!cancelled()");
+    for (const gate of gates) assertStringIncludes(release.if || "", `needs.${gate}.result == 'success'`);
+    const native = workflow.jobs["native-package-check"];
+    assertEquals(native.needs, ["metadata", "assets"]);
+    assertEquals(
+        native.steps?.find((step) => step.uses?.startsWith("actions/download-artifact@"))?.with?.name,
+        "release-upload",
+    );
+    const check = native.steps?.find((step) => step.run?.includes("tar -xzf"))?.run || "";
+    assertStringIncludes(check, "./native-package/wld --remote-preflight");
+    assertStringIncludes(check, "artifact.version !== process.env.BUILD_VERSION");
+    assertStringIncludes(check, "artifact.target !== process.env.TARGET");
+    assertStringIncludes(check, "embedded.buildId !== artifact.buildId");
+});

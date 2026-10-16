@@ -5,7 +5,7 @@
 
 import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
-import { clearPlanCollaborationMetadata, listPlanResources } from "../../plan-store.js";
+import { clearPlanCollaborationMetadata, listPlans, listPlanResources } from "../../plan-store.js";
 import { redactSecrets } from "../../shared/collaboration/capabilities.ts";
 import {
     CollaborationApiError,
@@ -21,6 +21,7 @@ import {
     resolveCompatibleSecretRecord,
 } from "../../shared/collaboration/secrets.js";
 import { normalizePlanServerUrl } from "../../shared/collaboration/urls.ts";
+import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
 import { enterProjectRuntime } from "../../shared/project-runtime-layout.ts";
 
 interface PlansUnshareArgs {
@@ -110,19 +111,27 @@ async function secretPaths(cwd: string, projectSecrets: boolean) {
 }
 
 function findResourceByNameOrId(resources: PlanResource[], target: string): PlanResource | null {
-    const matches = resources.filter((resource) =>
-        resource.planName === target || resource.name === target || resource.planId === target ||
-        resource.attrs?.planId === target
+    const matches = resources.filter(
+        (resource) =>
+            resource.planName === target ||
+            resource.name === target ||
+            resource.planId === target ||
+            resource.attrs?.planId === target,
     );
     if (matches.length > 1) throw new Error(`Multiple Plans matched ${target}; use a unique Plan name or planId.`);
     return matches[0] || null;
 }
 
 function hasCompleteRemoteCanonicalMetadata(attrs: PlanAttrs): boolean {
-    return attrs.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL &&
-        typeof attrs.collaborationServerUrl === "string" && attrs.collaborationServerUrl.length > 0 &&
-        typeof attrs.collaborationSpaceId === "string" && attrs.collaborationSpaceId.length > 0 &&
-        Number.isInteger(Number(attrs.collaborationRevision)) && Number(attrs.collaborationRevision) > 0;
+    return (
+        attrs.collaborationState === COLLABORATION_STATE_REMOTE_CANONICAL &&
+        typeof attrs.collaborationServerUrl === "string" &&
+        attrs.collaborationServerUrl.length > 0 &&
+        typeof attrs.collaborationSpaceId === "string" &&
+        attrs.collaborationSpaceId.length > 0 &&
+        Number.isInteger(Number(attrs.collaborationRevision)) &&
+        Number(attrs.collaborationRevision) > 0
+    );
 }
 
 function errorStatus(error: Error): number | undefined {
@@ -136,9 +145,7 @@ function isNotFoundError(error: Error): boolean {
 function isAmbiguousRemoteError(error: Error): boolean {
     const status = errorStatus(error);
     if (status && status >= 500) return true;
-    return /(?:Plan Server error 5\d\d|Network failure|ECONN|ETIMEDOUT|timeout|fetch failed)/i.test(
-        error.message,
-    );
+    return /(?:Plan Server error 5\d\d|Network failure|ECONN|ETIMEDOUT|timeout|fetch failed)/i.test(error.message);
 }
 
 function redactedError(error: Error, secrets: string[]): string {
@@ -163,6 +170,9 @@ export async function unsharePlan(unshareOptions: UnsharePlanOptions): Promise<U
     await enterProjectRuntime(cwd);
     const now = new Date().toISOString();
     const target = unshareOptions.target;
+    const selected = (await listPlans(cwd)).filter((plan) => plan.name === target || plan.attrs.planId === target);
+    if (selected.length > 1) throw new Error(`Multiple Plans matched ${target}; use a unique Plan name or planId.`);
+    await resolveWorkflowPlanLocation(cwd, selected[0]?.name || target);
     const resource = findResourceByNameOrId(await listPlanResources(cwd, { backfillMissing: false }), target);
     if (!resource) throw new Error(`Active Plan not found: ${target}`);
     const attrs = resource.attrs || {};
@@ -213,22 +223,24 @@ export async function unsharePlan(unshareOptions: UnsharePlanOptions): Promise<U
     let space: ReturnType<typeof normalizeSharedSpaceMetadata> | null = null;
     let alreadyDeleted = false;
     try {
-        space = normalizeSpaceResponse(await client.getSharedSpace(spaceId) as WireValue);
+        space = normalizeSpaceResponse((await client.getSharedSpace(spaceId)) as WireValue);
     } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error));
         if (isNotFoundError(cause)) {
             alreadyDeleted = true;
         } else if (isAmbiguousRemoteError(cause)) {
             throw new Error(
-                `Unable to verify remote Shared Space; local collaboration metadata was not changed. Retry when the Plan Server is reachable. ${
-                    redactedError(cause, secrets)
-                }`,
+                `Unable to verify remote Shared Space; local collaboration metadata was not changed. Retry when the Plan Server is reachable. ${redactedError(
+                    cause,
+                    secrets,
+                )}`,
             );
         } else {
             throw new Error(
-                `Unable to fetch remote Shared Space; local collaboration metadata was not changed. ${
-                    redactedError(cause, secrets)
-                }`,
+                `Unable to fetch remote Shared Space; local collaboration metadata was not changed. ${redactedError(
+                    cause,
+                    secrets,
+                )}`,
             );
         }
     }
@@ -270,15 +282,17 @@ export async function unsharePlan(unshareOptions: UnsharePlanOptions): Promise<U
                 deletedDuringDelete = true;
             } else if (isAmbiguousRemoteError(cause)) {
                 throw new Error(
-                    `Remote delete result is ambiguous; local collaboration metadata was not changed. Retry or verify before cleanup. ${
-                        redactedError(cause, secrets)
-                    }`,
+                    `Remote delete result is ambiguous; local collaboration metadata was not changed. Retry or verify before cleanup. ${redactedError(
+                        cause,
+                        secrets,
+                    )}`,
                 );
             } else {
                 throw new Error(
-                    `Unable to delete remote Shared Space; local collaboration metadata was not changed. ${
-                        redactedError(cause, secrets)
-                    }`,
+                    `Unable to delete remote Shared Space; local collaboration metadata was not changed. ${redactedError(
+                        cause,
+                        secrets,
+                    )}`,
                 );
             }
         }
@@ -299,9 +313,10 @@ export async function unsharePlan(unshareOptions: UnsharePlanOptions): Promise<U
     } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error));
         throw new Error(
-            `Remote Shared Space ${spaceId} is deleted, but local collaboration secret cleanup failed. Local Plan remains locked until cleanup is retried. ${
-                redactedError(cause, secrets)
-            }`,
+            `Remote Shared Space ${spaceId} is deleted, but local collaboration secret cleanup failed. Local Plan remains locked until cleanup is retried. ${redactedError(
+                cause,
+                secrets,
+            )}`,
         );
     }
 
@@ -310,9 +325,10 @@ export async function unsharePlan(unshareOptions: UnsharePlanOptions): Promise<U
     } catch (error) {
         const cause = error instanceof Error ? error : new Error(String(error));
         throw new Error(
-            `Remote Shared Space ${spaceId} is deleted and ${deletedSecrets.length} local secret record(s) were removed, but local collaboration metadata cleanup failed. Remove the lock metadata or retry unshare before editing. ${
-                redactedError(cause, secrets)
-            }`,
+            `Remote Shared Space ${spaceId} is deleted and ${deletedSecrets.length} local secret record(s) were removed, but local collaboration metadata cleanup failed. Remove the lock metadata or retry unshare before editing. ${redactedError(
+                cause,
+                secrets,
+            )}`,
         );
     }
 

@@ -307,7 +307,7 @@ async function runIsolatedSuite(sandboxRoot, roots = [REPO_ROOT], excludedPaths 
             const name = relative(REPO_ROOT, file);
             const fileStartedAt = Date.now();
 
-            const env = await createSandboxEnv(sandboxRoot, `slot-${slot}-file-${slotRuns}`);
+            const env = await createSandboxEnv(sandboxRoot, `${slot}-${slotRuns}`);
             for (const key of ["WLD_TEST_SSHFS", "WLD_TEST_SSHFS_STALL"]) {
                 if (process.env[key] === "1") env[key] = "1";
             }
@@ -427,7 +427,10 @@ export async function main(args = process.argv.slice(2)) {
         );
     }
 
-    const sandboxRoot = await fsMkdtemp(join(tmpdir(), "runwield-test-sandboxes-"));
+    // Worktree paths encode the project path again; keep Windows sandboxes below Git's path limit.
+    const sandboxRoot = await fsMkdtemp(
+        join(tmpdir(), process.platform === "win32" ? "rw-" : "runwield-test-sandboxes-"),
+    );
     // Return through finally so every isolated sandbox is cleaned before exit.
     let exitCode = 0;
     const suite =

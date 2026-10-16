@@ -1,0 +1,208 @@
+name: Container release checks
+
+on:
+    workflow_call:
+        inputs:
+            source_sha:
+                description: Exact product commit selected by release-gate
+                required: true
+                type: string
+            build_version:
+                description: Candidate or Stable identity
+                required: true
+                type: string
+            legacy_recovery:
+                description: Frozen historical container recipes selected by release-gate
+                type: boolean
+                default: false
+    workflow_dispatch:
+
+env:
+    WLD_BUILD_VERSION: ${{ inputs.build_version || 'v0.0.0-rc.1' }}
+
+permissions:
+    contents: read
+
+jobs:
+    deno-free:
+        if: ${{ !inputs.legacy_recovery }}
+        name: Deno-free Linux toolchain
+        runs-on: ubuntu-latest
+        container: oven/bun:1.4.3
+        timeout-minutes: 25
+        steps:
+            - name: Prepare system tools
+              run: apt-get update && apt-get install -y --no-install-recommends git python3 ca-certificates
+            - uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.source_sha || github.sha }}
+                  submodules: recursive
+                  persist-credentials: false
+            - name: Trust the mounted checkout
+              # Nested runner tests replace HOME. Keep the exact mounted checkout
+              # trusted in this disposable container across those isolated homes.
+              run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
+            - name: Assert Deno is absent
+              run: |
+                  if command -v deno; then echo "Deno must be absent from this qualification" >&2; exit 1; fi
+                  bun scripts/check-bun-runtime.ts
+            - name: Install frozen graphs
+              run: bun run install:locked
+            - name: Check source and test types
+              run: bun run check
+            - name: Check source quality
+              run: bun run lint && bun run seams:check
+            - name: Check compiled release surfaces
+              run: bun scripts/release-check.js --runtime bun --binary-only --build-version "$WLD_BUILD_VERSION"
+            - name: Build remote runtime bundles
+              run: bun scripts/build-workspace-runtime.js && bun scripts/build-plan-server-runtime.js
+            - name: Verify relocated remote runtime and diagnostic compilation
+              run: bun scripts/run-tests.js scripts/bun-remote-runtime.test.ts scripts/compile-entrypoint.test.ts
+            - name: Qualify migrated tooling and Astro development without Deno
+              run: bun run test:suite scripts/check-owned-runtime.test.ts scripts/task-compatibility.test.ts scripts/ci-policy.test.ts src/ui/workspace/workspace-dev-imports.integration.test.ts src/shared/http-server.test.ts src/shared/native-file-lock.test.ts src/shared/foreground-process.test.ts
+            - name: Print toolchain failure logs
+              if: failure()
+              run: |
+                  for log in /tmp/*-failure-*.log; do
+                    if [ -f "$log" ]; then
+                      echo "::group::$log"
+                      cat "$log"
+                      echo "::endgroup::"
+                    fi
+                  done
+            - name: Retain toolchain test evidence
+              if: always()
+              uses: actions/upload-artifact@v5
+              with:
+                  name: deno-free-toolchain-${{ github.run_attempt }}
+                  include-hidden-files: true
+                  if-no-files-found: ignore
+                  path: |
+                      .ci-cache/
+                      /tmp/*-failure-*.log
+                      /tmp/runwield-test-sandboxes-*-evidence/**
+
+    ux-image:
+        if: ${{ !inputs.legacy_recovery }}
+        name: Deno-free UX container
+        runs-on: ubuntu-latest
+        timeout-minutes: 25
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.source_sha || github.sha }}
+                  persist-credentials: false
+            - name: Build the existing Stable installer journey
+              run: docker build --target wld-ux-latest -f Containerfile.wld-ux -t runwield-ux:ci .
+            - name: Verify runtime tools and preserved volume owner
+              run: |
+                  docker run --rm --entrypoint /bin/sh runwield-ux:ci -ec '
+                    test "$(id -u)" = 1993
+                    test "$HOME" = /home/deno
+                    if command -v deno; then echo "Unexpected Deno executable" >&2; exit 1; fi
+                    test "$(node --version | cut -d. -f1)" = v24
+                    wld --version
+                    command -v mnemoteca cymbal ketch agent-browser snip
+                  '
+
+    remote-image:
+        if: ${{ !inputs.legacy_recovery }}
+        name: Remote test container
+        runs-on: ubuntu-latest
+        timeout-minutes: 25
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.source_sha || github.sha }}
+                  submodules: recursive
+                  persist-credentials: false
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: .bun-version
+            - name: Validate test Compose configuration
+              run: docker compose -f compose.yml config --quiet
+            - name: Build the Bun remote test image
+              run: docker build -f Containerfile -t runwield-plan-server:ci .
+            - name: Qualify startup, assets, persistence and container protections
+              run: bun scripts/check-remote-container.ts docker runwield-plan-server:ci
+
+    legacy-containers:
+        name: Historical container recovery
+        if: inputs.legacy_recovery
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.source_sha || github.sha }}
+                  submodules: recursive
+                  persist-credentials: false
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: .bun-version
+            - name: Require a frozen historical product commit
+              run: |
+                  case "$(git rev-parse HEAD)" in
+                    55cc60ec1cf5a96eeb41c9fddd12459200101aab|d46be40f400aa3d07c56007c0a8aadabea5b6aeb) ;;
+                    *) echo "Unsupported historical container source" >&2; exit 1 ;;
+                  esac
+            - name: Install frozen Bun graphs and historical container engine
+              run: |
+                  bun run install:locked
+                  sudo apt-get update
+                  sudo apt-get install -y podman
+            - name: Build and validate the historical UX recipe
+              run: |
+                  podman build --target wld-ux-latest -f Containerfile.wld-ux -t runwield-ux:recovery .
+                  podman run --rm --entrypoint /bin/sh runwield-ux:recovery -ec '
+                    test "$(id -u)" = 1993
+                    test "$HOME" = /home/deno
+                    deno --version
+                    test "$(node --version | cut -d. -f1)" = v24
+                    wld --version
+                    command -v mnemoteca cymbal ketch agent-browser snip
+                  '
+            - name: Build and inspect the historical remote image
+              run: |
+                  docker compose -f compose.yml config --quiet
+                  podman build -f Containerfile -t runwield-remote:recovery .
+                  bun scripts/assert-plan-server-image.js runwield-remote:recovery
+            - name: Check historical startup, assets, persistence and protections
+              run: |
+                  trap 'podman rm --force runwield-recovery; podman volume rm runwield-recovery-data' EXIT
+                  podman volume create runwield-recovery-data
+                  podman run -d --name runwield-recovery --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+                    --tmpfs /tmp:rw,noexec,nosuid,size=64m -v runwield-recovery-data:/data -p 127.0.0.1:8765:8080 runwield-remote:recovery
+                  podman exec runwield-recovery /bin/sh -ec '
+                    test "$(id -u)" = 1993
+                    deno --version
+                    ! touch /app/should-not-write
+                  '
+                  bun -e '
+                    const { strict: assert } = await import("node:assert");
+                    const base = "http://127.0.0.1:8765";
+                    let ready = false;
+                    for (let i = 0; i < 100; i++) {
+                      try { ready = (await fetch(`${base}/readyz`)).status === 200; } catch {}
+                      if (ready) break;
+                      await Bun.sleep(200);
+                    }
+                    assert(ready, "Historical remote image did not become ready");
+                    assert.deepEqual(await (await fetch(`${base}/healthz`)).json(), {ok:true, mode:"remote"});
+                    const page = await fetch(`${base}/p/container-smoke`);
+                    assert.equal(page.status, 200);
+                    const html = await page.text();
+                    assert(html.includes("Remote Plan Review"));
+                    const assets = [...html.matchAll(/(?:src|href)="(\/_astro\/[^"#?]+)"/g)].map(m => m[1]);
+                    assert(assets.some(a => a.endsWith(".css")));
+                    for (const asset of assets) {
+                      const response = await fetch(base + asset);
+                      assert.equal(response.status, 200);
+                      assert((await response.arrayBuffer()).byteLength > 0);
+                    }
+                  '
+                  podman exec runwield-recovery /bin/sh -ec 'test -f /data/runwield-shared-spaces.sqlite; echo persistence > /data/recovery-proof'
+                  podman stop --time 10 runwield-recovery
+                  test "$(podman inspect --format '{{.State.ExitCode}}' runwield-recovery)" = 0
+                  podman start runwield-recovery
+                  podman exec runwield-recovery /bin/sh -ec 'test "$(cat /data/recovery-proof)" = persistence; test -f /data/runwield-shared-spaces.sqlite'

@@ -29,6 +29,10 @@ interface ReleaseState {
     windowsResult: string;
     homebrewResult: string;
     releaseResult: string;
+    nativePackageResult: string;
+    unixResult: string;
+    platformWindowsResult: string;
+    containersResult: string;
 }
 
 function jobBlock(workflow: string, name: string): string {
@@ -75,6 +79,10 @@ function evaluateReleaseCondition(condition: string, state: ReleaseState): boole
         "needs.windows-package-check.result": state.windowsResult,
         "needs.homebrew-check.result": state.homebrewResult,
         "needs.release.result": state.releaseResult,
+        "needs.native-package-check.result": state.nativePackageResult,
+        "needs.unix-checks.result": state.unixResult,
+        "needs.windows-checks.result": state.platformWindowsResult,
+        "needs.containers-checks.result": state.containersResult,
     };
     let expression = condition;
     for (const [key, value] of Object.entries(values)) {
@@ -116,6 +124,10 @@ const successfulRelease: ReleaseState = {
     windowsResult: "success",
     homebrewResult: "success",
     releaseResult: "success",
+    nativePackageResult: "success",
+    unixResult: "success",
+    platformWindowsResult: "success",
+    containersResult: "success",
 };
 
 test("actual release event condition publishes only qualified Stable results", async () => {
@@ -167,6 +179,10 @@ test("fresh and existing releases traverse the actual qualification conditions",
         "assetsResult",
         "windowsResult",
         "homebrewResult",
+        "nativePackageResult",
+        "unixResult",
+        "platformWindowsResult",
+        "containersResult",
     ]) {
         for (const status of ["failure", "cancelled", "skipped"]) {
             assertEquals(
@@ -298,5 +314,54 @@ test("docs deployment separates historical source from frozen Bun tooling", asyn
         const command = stepRun(deploy, step);
         assertStringIncludes(command, "bun ../tooling/scripts/verify-docs-source.ts");
         assertStringIncludes(command, "git rev-parse HEAD");
+    }
+});
+
+test("release source resolution pins the product runtime and bounds historical compatibility to manual recovery", async () => {
+    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
+    const command = stepRun(jobBlock(workflow, "metadata"), "Resolve the immutable product commit");
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-release-source-"));
+    try {
+        const bin = join(root, "bin");
+        await fsMkdir(bin);
+        await executable(
+            join(bin, "git"),
+            `#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  fetch) exit "\${FETCH_EXIT:-0}" ;;
+  rev-parse) echo "$PRODUCT_SHA"; exit "\${RESOLVE_EXIT:-0}" ;;
+  show) echo 1.4.3; exit "\${PIN_EXIT:-0}" ;;
+  *) exit 99 ;;
+esac
+`,
+        );
+        const output = join(root, "output");
+        const base = {
+            PATH: `${bin}${delimiter}${process.env["PATH"] ?? ""}`,
+            GITHUB_OUTPUT: output,
+            RELEASE_TAG: "v0.12.0-rc.1",
+            PRODUCT_SHA: "55cc60ec1cf5a96eeb41c9fddd12459200101aab",
+            RECOVERY: "true",
+        };
+        for (const [recovery, sha, legacy] of [
+            ["true", base.PRODUCT_SHA, "true"],
+            ["false", base.PRODUCT_SHA, "false"],
+            ["true", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "false"],
+        ]) {
+            await fsWriteFile(output, "");
+            const result = await runShell(command, { ...base, RECOVERY: recovery, PRODUCT_SHA: sha });
+            assert(result.success, new TextDecoder().decode(result.stderr));
+            assertEquals(
+                await fsReadFile(output, "utf8"),
+                `sha=${sha}\nbun_version=1.4.3\nlegacy_containers=${legacy}\n`,
+            );
+        }
+        for (const failure of ["FETCH_EXIT", "RESOLVE_EXIT", "PIN_EXIT"]) {
+            const result = await runShell(command, { ...base, [failure]: "42" });
+            assertEquals(result.success, false, `${failure} must stop the release`);
+        }
+    } finally {
+        await fsRm(root, { recursive: true });
     }
 });

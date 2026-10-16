@@ -62,8 +62,7 @@ Owning requirements and proposed changes:
 - [Workspace: Browser Sessions](../../../prd/runwield-workspace-prd.md#browser-sessions), **Read Session artifacts
   comfortably on desktop and phone** — preserve loading feedback, one Workspace header, phone Contents controls, and
   Back to Session for existing Session readers. Search opens documents without a Session and returns to Search instead.
-- [Workspace: Human cross-Project code search](../../../prd/runwield-workspace-prd.md#human-cross-project-code-search) and
-  [Main-checkout Code Surface](../../../prd/runwield-workspace-prd.md#main-checkout-code-surface) — remove them from the
+- Workspace: Human cross-Project code search and Main-checkout Code Surface — remove them from the
   personal v2 milestone, not from future product intent. Fix contradictory milestone and capability references.
 - [Core: Work records](../../../prd/runwield-core-prd.md#work-records) — preserve current approved eligibility, source
   links, approval distinctions, and completion confidence. This slice does not change record lifecycle or Agent
@@ -305,10 +304,10 @@ No Work Record supersession is proposed.
   These checks fail for a static result list or cache-only reader.
 - Automated regression: run
   `deno run -A scripts/run-tests.js src/ui/workspace/owner-workspace.test.js
-  src/ui/workspace/workspace-board.test.js src/ui/workspace/workspace-lifecycle.test.js
-  src/ui/workspace/session-artifact-route.integration.test.ts src/ui/workspace/workspace-review.test.js
-  src/shared/work-records/work-records.test.js src/shared/session/session-transcript-manifest.test.js
-  src/shared/session/file-session-store.test.js src/plan-store.test.js`
+src/ui/workspace/workspace-board.test.js src/ui/workspace/workspace-lifecycle.test.js
+src/ui/workspace/session-artifact-route.integration.test.ts src/ui/workspace/workspace-review.test.js
+src/shared/work-records/work-records.test.js src/shared/session/session-transcript-manifest.test.js
+src/shared/session/file-session-store.test.js src/plan-store.test.js`
   as one command. Then run `deno task workspace:check` and `deno task seams:check`; run `deno task ci` for final
   integration.
 - Preserve regression coverage for pairing, request protection, registered roots, local board filtering, Plan lifecycle

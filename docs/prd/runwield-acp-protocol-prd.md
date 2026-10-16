@@ -20,7 +20,7 @@ Make RunWield usable from external clients through **Agent Client Protocol (ACP)
 behavior, and Plan workflows available in the TUI.
 
 **Current compatibility (owner confirmed 2026-10-06):** JetBrains AI Chat and the Air plugin can drive RunWield. OpenAB
-works end to end with Discord and its other supported chat platforms. Other ACP-compatible clients are expected to work
+works end to end with Discord, Slack, and its other supported chat platforms. Other ACP-compatible clients are expected to work
 through the same protocol. Internal conformance checklists do not make these working integrations future scope.
 
 The continuing product requirements are:

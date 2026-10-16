@@ -14,6 +14,7 @@ import { AGENTS } from "../../constants.js";
 import { ClaudeCliBackendError } from "../../shared/session/backends/claude-cli/failure.ts";
 import { AgyCliBackendError } from "../../shared/session/backends/agy-cli/failure.ts";
 import { AgyCliMcpSetupApprovalError } from "../../shared/session/backends/agy-cli/mcp-setup.ts";
+import { resourceExhaustionMessage } from "../../shared/resource-exhaustion.ts";
 
 type ThinkingLevel = Parameters<typeof persistThinkingLevel>[0];
 
@@ -70,6 +71,8 @@ function imageWarningKey(image: ImageAttachment): string {
 }
 
 function userTurnFailureMessage(error: Error | string): string | null {
+    const resourceMessage = resourceExhaustionMessage(error);
+    if (resourceMessage) return resourceMessage;
     if (error instanceof ClaudeCliBackendError || error instanceof AgyCliBackendError) {
         // The backend already emitted its sanitized message as a system status.
         return null;

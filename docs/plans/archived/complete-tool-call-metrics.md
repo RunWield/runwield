@@ -329,7 +329,7 @@ extend adjacent existing suites as needed. Full CI is performed by the normal wo
 
 ```sh
 deno run -A scripts/run-tests.js src/shared/workflow/metrics.test.js src/shared/workflow/execution-metrics.test.ts src/shared/session/session-metrics.test.ts
-deno run -A scripts/run-tests.js src/shared/session/session-subscribers.test.js src/shared/session/session-prompt.test.js src/shared/session/session-context-report.test.js
+deno run -A scripts/run-tests.js src/shared/session/session-subscribers.test.js src/shared/session/session-prompt.test.js src/shared/session/session-context-report.test.ts
 deno run -A scripts/run-tests.js src/shared/session/backends/claude-cli/claude-cli-backend.test.ts src/shared/session/backends/claude-cli/mcp-bridge.test.ts src/shared/session/backends/agy-cli/agy-cli-backend.test.ts src/shared/session/claude-cli-execution.test.ts
 deno run -A scripts/run-tests.js src/shared/workflow/command-metrics.test.ts src/ui/tui/slash-dispatch.test.ts src/ui/workspace/command-metrics.test.ts
 deno task seams:check

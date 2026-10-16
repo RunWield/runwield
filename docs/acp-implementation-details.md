@@ -57,7 +57,7 @@ The implementation evidence comes from these source files:
 - `src/shared/session/session-runtime.ts`
 - `src/shared/session/session-runtime-events.js`
 - `src/shared/session/session-runtime-interactions.js`
-- `src/acp/protocol-smoke.test.js`
+- `src/acp/protocol-smoke.test.ts`
 - `src/acp/session-map.test.js`
 - `src/acp/server.test.js`
 
@@ -521,7 +521,7 @@ Evidence: `src/acp/server.js`, `event-mapper.js`, and `interaction-mapper.js`; c
 
 The repository contains these checks. They were read, not rerun for this update.
 
-- `src/acp/protocol-smoke.test.js`: SDK 1.4.0 imports, protocol version, elicitation names, standard `thought_level`,
+- `src/acp/protocol-smoke.test.ts`: SDK 1.4.0 imports, protocol version, elicitation names, standard `thought_level`,
   cost/usage schemas, and Terminal Auth shapes.
 - `src/acp/session-map.test.js`: ACP/Runtime mapping, cancellation records, and cost state.
 - `src/acp/server.test.js`: real Runtime wire tests for initialization, stdout purity, generated version, stdio MCP,

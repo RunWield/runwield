@@ -12,7 +12,7 @@ affectedPaths:
     - "docs/design-system.md"
 executionAgent: "frontend-engineer"
 collaborationRecommendation: "pair"
-devServerCommand: "deno task workspace:dev"
+devServerCommand: "bun run workspace:dev"
 devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-09-21T19:28:55.399Z"
@@ -133,9 +133,9 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
 
 ## Verification Plan
 
-- Automated: `deno task workspace:test`, `deno task workspace:check`, `deno task workspace:build`, then `deno task ci`
-  and `deno task doc-links:check`.
-- Headed browser checks are mandatory. Run `deno task workspace:dev` and open `http://127.0.0.1:5173/usage`, then
+- Automated: `bun run workspace:test`, `bun run workspace:check`, `bun run workspace:build`, then `bun run ci`
+  and `bun run doc-links:check`.
+- Headed browser checks are mandatory. Run `bun run workspace:dev` and open `http://127.0.0.1:5173/usage`, then
   navigate to Settings.
 - With no exporter installed, the surface shows not installed and no destination controls; install and leave unapproved,
   and status changes without any send becoming possible.

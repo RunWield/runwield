@@ -15,10 +15,16 @@ executionAgent: "frontend-engineer"
 collaborationRecommendation: "autonomous"
 createdAt: "2026-10-11"
 origin: "internal"
-status: "ready_for_work"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/edit-code-to-suggest-in-code-review"
+validatedCommit: "25f24a82a46a0d09b9fd58f4310207b54462e2e8"
+workRecord:
+    status: "generated"
+    recordId: "60dc16d7-b2a5-43d0-a3a6-9b0883708c69"
+    path: "docs/work-records/2026-10-16-edit-to-suggest-in-code-review.md"
+    lastAttemptAt: "2026-10-16T03:41:18.220Z"
+status: "verified"
 ---
 
 # Edit Code to Suggest in Code Review
@@ -186,7 +192,7 @@ only when discovery changes approved intent — the change reaches another subsy
 shifts, migration or compatibility risk grows, or the Verification Plan no longer proves the objective.
 
 - `src/shared/workflow/git-snapshot.ts` — extract the review base tree; add the base-file reader.
-- `src/shared/workflow/git-snapshot.test.js` — base-file reader tests next to the existing `getWorktreeReviewDiff`
+- `src/shared/workflow/git-snapshot.test.ts` — base-file reader tests next to the existing `getWorktreeReviewDiff`
   fixtures.
 - `src/ui/workspace/routes/api/review-file-handlers.ts` — `targetBranch` option; return `oldContent`; update the
   "intentionally not guessed" comment.
@@ -234,19 +240,20 @@ Deliberately left out:
 2. `git-snapshot.ts` exports `readWorktreeReviewBaseFile(cwd, targetBranch, path)`. It returns the file text at `path`
    in the tree from `resolveWorktreeReviewBaseTree`, or `null` when the path is not in that tree. It does not read the
    working tree, the execution baseline tree, or any other branch.
-3. `src/shared/workflow/git-snapshot.test.js` proves, with real repositories:
-   - a modified file returns the merge-base text, not target-branch text added after the merge-base (reuse the "excludes
-     target work imported after the execution baseline" setup);
-   - a file added only in the worktree returns `null`;
-   - a missing target branch rejects with `WorktreeReviewTargetError`.
+3. `src/shared/workflow/git-snapshot.test.ts` proves, with real repositories:
+    - a modified file returns the merge-base text, not target-branch text added after the merge-base (reuse the "excludes
+      target work imported after the execution baseline" setup);
+    - a file added only in the worktree returns `null`;
+    - a missing target branch rejects with `WorktreeReviewTargetError`.
 4. `reviewFileContentApi` accepts `options.targetBranch`. With a target branch it returns:
-   - `oldContent` equal to the merge-base text for a modified file, using `oldPath` when present (renames);
-   - `oldContent: ""` for a file absent from the base that exists in the worktree;
-   - `oldContent: null` when the comparison fails, with `newContent` still set.
+    - `oldContent` equal to the merge-base text for a modified file, using `oldPath` when present (renames);
+    - `oldContent: ""` for a file absent from the base that exists in the worktree;
+    - `oldContent: null` when the comparison fails, with `newContent` still set.
 
-   Without a target branch, `oldContent` stays `null`. The base-file path passes the same path safety checks as the
-   worktree path. The response field names and status codes are unchanged. The function comment no longer says the
-   baseline is not guessed.
+    Without a target branch, `oldContent` stays `null`. The base-file path passes the same path safety checks as the
+    worktree path. The response field names and status codes are unchanged. The function comment no longer says the
+    baseline is not guessed.
+
 5. `src/ui/workspace/routes/api/review-file-handlers.test.ts` covers each case in step 4 against a `defineGitFixture`
    repository. It also covers a `..` path returning 403. The modified-file test fails if `oldContent` is `null` or
    equals `newContent`.
@@ -254,7 +261,7 @@ Deliberately left out:
    `targetBranch: reviewPayload.targetBranch` when it is a string. The token check is unchanged.
 7. `src/ui/workspace/server/session-continuation.js` exports
    `getLiveCodeReviewCheckout({ projectId,
-   runwieldSessionId, operationId, interactionId })`. It returns
+runwieldSessionId, operationId, interactionId })`. It returns
    `{ cwd, targetBranch }` from `codeReviewRefreshContexts` only when the same liveness checks as `getLiveCodeReview`
    pass, and `null` otherwise. Both methods share one liveness check.
 8. `ownerInSituReviewFileContent` in `src/ui/workspace/server.js` reads the Session, `operation`, and `interaction` from
@@ -292,7 +299,7 @@ Deliberately left out:
 
 ### Automated
 
-- `deno run -A scripts/run-tests.js src/shared/workflow/git-snapshot.test.js`
+- `deno run -A scripts/run-tests.js src/shared/workflow/git-snapshot.test.ts`
 - `deno run -A scripts/run-tests.js src/ui/workspace/routes/api/review-file-handlers.test.ts`
 - `deno run -A scripts/run-tests.js src/ui/workspace/workspace-code-review.integration.test.ts`
 - `deno run -A scripts/run-tests.js src/ui/workspace/workspace-review.test.js`
@@ -307,7 +314,7 @@ The tests that prove the objective, not only "nothing broke":
 
 ### Must still be protected
 
-- All existing `getWorktreeReviewDiff` tests in `git-snapshot.test.js` pass unchanged. The extraction must not change
+- All existing `getWorktreeReviewDiff` tests in `git-snapshot.test.ts` pass unchanged. The extraction must not change
   the patch.
 - `workspace-code-review.integration.test.ts` "reload reads the latest proposed branch patch" passes unchanged.
 - `/api/file-content` still requires the review token on the standalone server and still returns 403 for unsafe paths.

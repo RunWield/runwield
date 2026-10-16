@@ -20,9 +20,9 @@ tracked **QA Environment Profile** so each Project pays the discovery cost once.
 
 ## Problem Statement
 
-RunWield currently generates a Manual QA checklist automatically after successful QUICK_FIX Mechanical Validation and
-successful standalone Planned Change validation. For Epic children, it writes advisory checklist sections to the Epic's
-`manual-qa.md` artifact. This behavior has no setting.
+The current [Core Manual QA checklist](runwield-core-prd.md#manual-qa-checklist) is generated automatically for successful
+QUICK_FIX checks and standalone Planned Changes. Epic children contribute to an advisory Epic artifact. Core owns the
+current checklist requirements; this proposal adds configurable and Agent-executed QA.
 
 The current checklist does not execute the procedures. It cannot show which behaviors passed, which failed, or why an
 Agent could not perform a check. It also cannot return evidence-backed defects to Engineer without starting an unrelated

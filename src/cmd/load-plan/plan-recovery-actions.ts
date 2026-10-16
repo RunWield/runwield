@@ -576,7 +576,7 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
         false,
         "RunWield",
     );
-    const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
+    const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { readOnly: true });
     if (!location.plan) {
         uiAPI.appendSystemMessage(
             buildPlanRecoveryUserMessage({ kind: "abandon_definition_missing" }),

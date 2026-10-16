@@ -285,7 +285,7 @@ Re-express their still-valid outcomes against the new layout rather than deletin
 ### Commands and cleanup review
 
 - Focused diagnostics and entry:
-  `deno run -A scripts/run-tests.js src/cmd/plans/doctor.test.ts src/cmd/plans/doctor-messages.test.ts src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/runwield-owned-paths.test.js`.
+  `deno run -A scripts/run-tests.js src/cmd/plans/doctor.test.ts src/cmd/plans/doctor-messages.test.ts src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/runwield-owned-paths.test.ts`.
 - Diagnostic dependency regressions:
   `deno run -A scripts/run-tests.js src/plan-store.test.js src/shared/workflow/transition-recovery.test.ts src/shared/workflow/planning-worktree.test.ts src/shared/isolated-publication.test.ts`.
 - Cross-store and surface coverage:

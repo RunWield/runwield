@@ -199,7 +199,7 @@ finished and still never checks the assembled result.
 ## Verification Plan
 
 - Automated:
-  `deno run -A scripts/run-tests.js src/shared/workflow/workflow-slicer.integration.test.ts src/shared/workflow/plan-lifecycle.test.js src/shared/worktree-creation.test.js src/shared/workflow/epic-branch-planning.integration.test.ts src/shared/workflow/epic-continuation.test.js`,
+  `deno run -A scripts/run-tests.js src/shared/workflow/workflow-slicer.integration.test.ts src/shared/workflow/plan-lifecycle.test.js src/shared/worktree-creation.test.ts src/shared/workflow/epic-branch-planning.integration.test.ts src/shared/workflow/epic-continuation.test.js`,
   adjusted to the real test paths touched.
 - Automated, real Git fixtures: a new Epic without a named branch gets `epic/<epic-name>`; the first child start creates
   it from the primary head and records that commit; a second start reuses it unchanged.

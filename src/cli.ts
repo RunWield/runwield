@@ -14,8 +14,17 @@
  *   bun src/cli.ts "<user request>"
  */
 
-import { argv, env, exit } from "node:process";
+import { argv, env, execArgv, execPath, exit, ppid } from "node:process";
 import { parseArgs } from "./shared/cli-args.ts";
+import { isStandaloneExecutable } from "./shared/runtime-identity.ts";
+import { superviseRuntime } from "./shared/runtime-supervisor.ts";
+
+// Keep the supervisor outside every command and startup import. A native Bun
+// abort cannot reach JavaScript catch/finally blocks in the working runtime.
+// Match the actual parent so nested wld invocations get their own supervisor.
+if (env.WLD_RUNTIME_SUPERVISOR_PID !== String(ppid)) {
+    exit(await superviseRuntime(execPath, isStandaloneExecutable() ? argv.slice(2) : [...execArgv, ...argv.slice(1)]));
+}
 const cliArgs = argv.slice(2);
 
 // Keep private runtime entries ahead of helper exposure, browser startup and
