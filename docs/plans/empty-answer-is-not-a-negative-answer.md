@@ -17,7 +17,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/empty-answer-is-not-a-negative-answer"
-status: "in_progress"
+status: "implemented"
 ---
 
 # An Empty Answer Is Not a Negative Answer
