@@ -108,6 +108,8 @@ export async function runRemoteView(): Promise<void> {
     configureRemotePersonalResources(config.resources);
     const { configureRemoteSettingsConnection } = await import("./settings-bridge.ts");
     configureRemoteSettingsConnection(config.connection);
+    const { configureRemoteMcpConnection } = await import("./mcp-bridge.ts");
+    const clearMcp = configureRemoteMcpConnection(config.connection);
     const { configureRemoteMemoryConnection } = await import("./memory-bridge.ts");
     const clearMemory = configureRemoteMemoryConnection({ ...config.connection, collection: config.memoryCollection });
     const { configureRemoteClipboardConnection } = await import("../../ui/tui/clipboard.ts");
@@ -139,6 +141,7 @@ export async function runRemoteView(): Promise<void> {
         try {
             await lifecycle?.dispose();
         } finally {
+            await clearMcp();
             clearClipboard();
             clearMemory();
             clearModels?.();

@@ -1,4 +1,5 @@
 import process from "node:process";
+import { hostname } from "node:os";
 import { appendFile } from "node:fs/promises";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import type { JsonMap } from "./config.ts";
@@ -12,12 +13,14 @@ interface FixtureRequestParams {
     arguments?: Record<string, string>;
     cursor?: string;
     _meta?: FixtureRequestMeta;
+    requestId?: string | number;
 }
 
 interface FixtureRequest {
     id?: string | number;
     method?: string;
     params?: FixtureRequestParams;
+    result?: JsonMap;
 }
 
 const decoder = new TextDecoder();
@@ -105,8 +108,10 @@ function fixtureTools(): JsonMap[] {
     }));
 }
 
+const delayed = new Map<string | number, ReturnType<typeof setTimeout>>();
+let rootsCallId: string | number | undefined;
 let buffer = "";
-await log({ event: "started", pid: process.pid, cwd: process.cwd() });
+await log({ event: "started", pid: process.pid, host: hostname(), cwd: process.cwd() });
 function logShutdown(): void {
     logSync({ event: "shutdown", pid: process.pid });
 }
@@ -117,6 +122,9 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     });
 }
 
+if (process.env.RUNWIELD_MCP_FIXTURE_BLOCK_STDIN === "1") {
+    await new Promise<void>(() => setInterval(() => {}, 1000));
+}
 for await (const chunk of process.stdin) {
     buffer += decoder.decode(chunk, { stream: true });
     let newline = buffer.indexOf("\n");
@@ -125,7 +133,23 @@ for await (const chunk of process.stdin) {
         buffer = buffer.slice(newline + 1);
         if (line) {
             const message = JSON.parse(line) as FixtureRequest;
-            if (message.method === "initialize") {
+            if (message.method === "notifications/cancelled") {
+                const id = message.params?.requestId;
+                await log({ event: "cancelled", requestId: id ?? "" });
+                if (id !== undefined) {
+                    clearTimeout(delayed.get(id));
+                    delayed.delete(id);
+                }
+            } else if (!message.method && message.id === "fixture-roots" && rootsCallId !== undefined) {
+                send({
+                    jsonrpc: "2.0",
+                    id: rootsCallId,
+                    result: {
+                        content: [{ type: "text", text: JSON.stringify(message.result) }],
+                    },
+                });
+                rootsCallId = undefined;
+            } else if (message.method === "initialize") {
                 if (fixtureShouldInitError()) {
                     send({
                         jsonrpc: "2.0",
@@ -189,6 +213,36 @@ for await (const chunk of process.stdin) {
             } else if (message.method === "tools/call") {
                 const marker = message.params?.arguments?.marker || "";
                 await log({ event: "call", pid: process.pid, marker });
+                if (marker === "cooperative-slow") {
+                    const id = message.id ?? "";
+                    delayed.set(
+                        id,
+                        setTimeout(
+                            () => {
+                                delayed.delete(id);
+                                logSync({ event: "delayed-effect", marker });
+                                send({
+                                    jsonrpc: "2.0",
+                                    id,
+                                    result: { content: [{ type: "text", text: "delayed-effect" }] },
+                                });
+                            },
+                            Number(process.env.RUNWIELD_MCP_FIXTURE_DELAY_MS || 500),
+                        ),
+                    );
+                    newline = buffer.indexOf("\n");
+                    continue;
+                }
+                if (marker === "roots") {
+                    rootsCallId = message.id;
+                    send({ jsonrpc: "2.0", id: "fixture-roots", method: "roots/list" });
+                    newline = buffer.indexOf("\n");
+                    continue;
+                }
+                if (marker === "flood") {
+                    for (let i = 0; i < 80; i++)
+                        send({ jsonrpc: "2.0", method: "fixture/output", params: { text: "f".repeat(1024 * 1024) } });
+                }
                 if (marker === "change-tools") {
                     changedTools = "replacement";
                     send({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
@@ -219,6 +273,24 @@ for await (const chunk of process.stdin) {
                         jsonrpc: "2.0",
                         id: message.id ?? null,
                         result: { content: [{ type: "text", text: "fixture-error" }], isError: true },
+                    });
+                } else if (marker === "placement") {
+                    send({
+                        jsonrpc: "2.0",
+                        id: message.id ?? null,
+                        result: {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify({
+                                        cwd: process.cwd(),
+                                        pid: process.pid,
+                                        host: hostname(),
+                                        configured: process.env.LAPTOP_SECRET ?? null,
+                                    }),
+                                },
+                            ],
+                        },
                     });
                 } else if (marker === "environment") {
                     send({
@@ -292,3 +364,5 @@ for await (const chunk of process.stdin) {
         newline = buffer.indexOf("\n");
     }
 }
+
+for (const timer of delayed.values()) clearTimeout(timer);
