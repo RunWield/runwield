@@ -493,6 +493,11 @@ continues automatically and out of the user's view. Detailed diagnostics stay av
 inspection. Automatic repair keeps user content, truthful validation, real permissions, and user decisions intact. It
 confirms the outcome of an uncertain external action before it repeats that action.
 
+**Requirement: Treat an unknown state as live.** Automatic repair keeps a lock, run, worktree, Session, or publication
+attempt when it cannot get a positive answer about that item. An empty, unreadable, timed-out, truncated, or unknown
+result means "could not tell". It does not mean "dead", "finished", "clean", or "passed". RunWield never releases,
+reaps, takes over, or retries an item because a query was empty or failed. It never reports success on that basis.
+
 **Requirement: Ask only for an outcome-level decision or a genuine external prerequisite.** When the user must act,
 RunWield explains what happened, what it is protecting, what is missing, the action the user can take, what Retry will
 continue, and what each choice means. It offers deliberate abandonment with work preserved at the safest recoverable
@@ -502,6 +507,10 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
 
 - Given stale locks, inconsistent settings or storage, or mismatched Plan bookkeeping, RunWield restores its own state
   and continues.
+- Given a lock whose run status query returns an empty or unreadable result, recovery keeps the lock and the work
+  continues.
+- Given a freshness or status check whose fetch fails or times out, RunWield does not report the checkout as current
+  and does not act on that result.
 - Given exhausted automatic attempts, the same workflow stays open and recoverable.
 - Given a genuine external prerequisite, the user receives a specific action plus Retry and abandonment choices; Retry
   continues the preserved workflow.

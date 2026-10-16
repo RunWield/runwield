@@ -70,6 +70,22 @@ While writing code:
 When the clean change needs a small refactor of code you are already changing, do it and say why in your report. When a
 Plan specifies the approach, follow it; report a design problem you noticed instead of redesigning the Plan.
 
+## An Empty Answer Is Not a Negative Answer
+
+A check that uses a subprocess, network call, file read, or parse has three results: yes, no, and could not tell.
+Write three branches, not two:
+
+- A positive "yes" takes its definite path.
+- A positive "no" takes the other definite path.
+- "Could not tell" takes the safe path. Keep the item. Report that the check could not give an answer.
+
+An unreadable, empty, timed-out, or truncated result, an unknown status, or an exception means "could not tell".
+It never counts as "dead", "finished", "clean", or "passed". Only a positive answer permits release, deletion,
+takeover, or a success report.
+
+Match an answer to its question with an identifier that both sides share, such as a run id. Do not use a name that
+one side invents.
+
 ## A Blocker Ends in Prose
 
 When something stops you from finishing the assigned work — it is impossible as specified, two requirements contradict
