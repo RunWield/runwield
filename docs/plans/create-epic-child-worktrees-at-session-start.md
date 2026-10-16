@@ -22,6 +22,12 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/create-epic-child-worktrees-at-session-start"
 status: "reviewed"
+validatedCommit: "dd611d5924fc0ce01ab6cfb4e58755aa2e7d2b9c"
+workRecord:
+    status: "generated"
+    recordId: "a91edc69-e3ee-4ef8-8bfb-84fdb182ad25"
+    path: "docs/work-records/2026-10-16-create-plan-worktrees-only-at-session-start.md"
+    lastAttemptAt: "2026-10-16T15:21:47.702Z"
 ---
 
 # Create Epic Child Worktrees Only When a Session Starts
