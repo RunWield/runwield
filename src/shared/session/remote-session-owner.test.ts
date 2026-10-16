@@ -4,7 +4,6 @@ import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { customEntry, makeSessionFixture } from "../remote/session-save-test-fixture.ts";
 import { openFileSessionStore } from "./file-session-store.ts";
-import { RemoteSessionOwner } from "./remote-session-owner.ts";
 import { parseRemoteSessionTranscript, sessionDigest } from "../remote/session-protocol.ts";
 
 test("remote owner hydrates exact laptop evidence under a real exclusive activation", async () => {
@@ -149,7 +148,7 @@ test("remote owner checkpoint publishes digest and releases for a fresh operatio
             phase: "preparing",
             expectedGeneration: 0,
         });
-        const fresh = new RemoteSessionOwner(f.store, proof);
+        const fresh = f.store.createRemoteSessionOwner(proof);
         assertNotEquals(fresh.operation, f.owner.operation);
         assertEquals(
             fresh.handle({ operation: fresh.operation, kind: "hydrate", sequence: 0, contents: "" }).contents,
@@ -182,7 +181,7 @@ test("remote owner uncertainty recovers saved evidence without replaying the eff
             phase: "preparing",
             expectedGeneration: state.generation?.generation ?? null,
         });
-        const fresh = new RemoteSessionOwner(reloaded, proof);
+        const fresh = reloaded.createRemoteSessionOwner(proof);
         const loaded = fresh.handle({ operation: fresh.operation, sequence: 0, kind: "hydrate", contents: "" });
         assertEquals(loaded.contents, f.initial + customEntry());
         assertEquals(parseRemoteSessionTranscript(loaded.contents).length, 2);
@@ -198,8 +197,37 @@ test("remote owner requires trusted preparing proof instead of a hydrated activa
     const f = await makeSessionFixture();
     try {
         const proof = f.store.changeSessionActivationPhase(f.proof, "hydrated");
-        assertThrows(() => new RemoteSessionOwner(f.store, proof), Error, "preparing phase");
+        assertThrows(() => f.store.createRemoteSessionOwner(proof), Error, "preparing phase");
         assertThrows(() => f.owner.handle(f.request("hydrate", 0)), Error);
+    } finally {
+        await f.close();
+    }
+});
+
+test("native remote persistence cannot be replaced through returned store or owner methods", async () => {
+    const f = await makeSessionFixture();
+    try {
+        assertEquals(
+            Reflect.set(f.store, "writeActiveSessionTranscript", () => {
+                throw new Error("replacement write");
+            }),
+            false,
+        );
+        assertEquals(
+            Reflect.set(f.owner, "handle", () => {
+                throw new Error("replacement save");
+            }),
+            false,
+        );
+        assertEquals(
+            Reflect.set(Object.getPrototypeOf(f.owner), "handle", () => {
+                throw new Error("replacement prototype");
+            }),
+            false,
+        );
+        f.owner.handle(f.request("hydrate", 0));
+        f.owner.handle(f.request("append", 1, customEntry()));
+        assertEquals(f.owner.inspect().contents, f.initial + customEntry());
     } finally {
         await f.close();
     }

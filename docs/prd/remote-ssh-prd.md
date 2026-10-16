@@ -4,10 +4,11 @@ Last updated: 2026-09-24 EDT
 
 **Status:** Remote conversation, laptop history, image paste, and connected resume are implemented and verified on the
 compiled macOS laptop/Linux `sct` pilot with matching build identity and an authenticated synthetic OpenAI-compatible
-streaming provider. See [journey evidence](#conversation-journey-evidence). Remote Memory, delivery workflows, and the
-production-provider/platform matrix remain target scope. **Document role:** Transient feature proposal.
-[RunWield Core](runwield-core-prd.md) owns shared installation, location, connection cleanup, and Session continuity
-requirements; this document keeps the remaining remote journey clear.
+streaming provider. See [journey evidence](#conversation-journey-evidence). Laptop-owned remote Memory and MCP placement
+are delivered. Delivery workflows, personal MCP forwarding, and the production-provider/platform matrix remain target
+scope. **Document role:** Transient feature proposal. [RunWield Core](runwield-core-prd.md) owns shared installation,
+location, connection cleanup, and Session continuity requirements; this document keeps the remaining remote journey
+clear.
 
 ## Background
 
@@ -40,8 +41,8 @@ checkout, or automatic installation of every project dependency. Hostile-server 
 ## Product Fit and Main Journey
 
 The conversation journey covers connection, normal Agent turns with core project tools and laptop Pi models, laptop
-clipboard images, offline history, and connected resume. It passed the qualified `sct` pilot below. Memory, delivery
-workflows, and local browser review extend this journey in the remaining child Plans.
+clipboard images, offline history, and connected resume. It passed the qualified `sct` pilot below. Laptop-owned Memory
+extends this journey. Delivery workflows, personal MCP forwarding, and local browser review follow in their child Plans.
 
 Command forms:
 
@@ -104,14 +105,15 @@ cache, and an executable compatible with the preflight for the matching glibc-li
 local machine needs OpenSSH and an explicitly built matching development bundle; see
 [build steps](runwield-core-prd.md#installation-and-updates). Runtime preparation checks build/protocol identity and
 checksums, reuses or repairs private cache entries, and does not run a remote personal installer or start a personal
-profile. Normal runtime startup also requires executable `mnemoteca`, `cymbal`, and `ketch` helpers on the remote
-`PATH`; private binary staging alone does not supply them. Connection loss and exit clean up owned processes, with
-uncertain termination reported when it cannot be confirmed. The launcher starts a connection-owned stock SFTP server and
-SSHFS mount of the laptop's full `~/.wld` at a fresh private remote root. A direct personal Skill file edit through this
-mount changed the laptop file in both directions on the approved Linux `sct` pilot; the remote project's `.wld` remained
-remote. The normal TUI accepts conversation turns with any Agent and core project tools through the laptop model
-connection. Opening an empty composer creates no saved Session or writer lock. The first message starts laptop-owned
-history; personal resources are not copied. Workflow execution and browser review follow in their owning child Plans.
+profile. Normal runtime startup requires executable `cymbal` and `ketch` helpers on the remote `PATH`; private binary
+staging alone does not supply them. Mnemoteca runs on the laptop, not the server. Connection loss and exit clean up
+owned processes, with uncertain termination reported when it cannot be confirmed. The launcher starts a connection-owned
+stock SFTP server and SSHFS mount of the laptop's full `~/.wld` at a fresh private remote root. A direct personal Skill
+file edit through this mount changed the laptop file in both directions on the approved Linux `sct` pilot; the remote
+project's `.wld` remained remote. The normal TUI accepts conversation turns with any Agent and core project tools
+through the laptop model connection. Opening an empty composer creates no saved Session or writer lock. The first
+message starts laptop-owned history; personal resources are not copied. Workflow execution and browser review follow in
+their owning child Plans.
 
 **Current acceptance scenarios:**
 
@@ -164,7 +166,13 @@ Compatibility failures explain the limitation before the affected turn starts.
 
 **Requirement: Use customizations honestly.** Complete personal Skill trees and other supported resources are read
 through the mount without making working copies; local paths must not accidentally select unrelated remote files.
-Machine-specific scripts and MCP integrations are best effort, not a promise that every local executable works remotely.
+Machine-specific scripts are best effort, not a promise that every local executable works remotely.
+
+**Delivered requirement: Run MCP servers on their owning machine.** Personal definitions come from the laptop, not the
+server user’s home. `/mcp` lists them as `laptop — not started remotely`; command arguments and credentials stay on the
+laptop. Project definitions retain normal safety checks and override rules, run with the remote cwd, and appear as
+`remote`. Personal tool forwarding is target scope in
+[child06](../plans/remote-ssh-development/06-forward-personal-mcp-tools-from-the-laptop.md).
 
 **Current bounded proof scenarios (not ordinary remote user turns):**
 
@@ -198,24 +206,33 @@ Machine-specific scripts and MCP integrations are best effort, not a promise tha
 provider. `wld remote sessions` reads laptop history offline. Connected remote `/resume` continues only Sessions for the
 current target. The [Core Session continuity](runwield-core-prd.md#session-continuity) and
 [laptop-owned save contract](runwield-core-prd.md#laptop-owned-remote-session-saves) own shared history and save
-behavior. The connection-wide personal mount is not a Session writer. Remote Memory is target scope in
+behavior. The connection-wide personal mount is not a Session writer. Remote Memory is delivered in
 [child05](../plans/remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine.md); workflow context
 and rollover on resume are target scope in
-[child06](../plans/remote-ssh-development/06-carry-remote-context-through-delivery-workflows.md).
+[child07](../plans/remote-ssh-development/07-carry-remote-context-through-delivery-workflows.md).
 
-**Target requirement: Read and update the same local memories.** Core Memory injection, recall, additions, and deletions
-use local storage and preserve project/global scope. Work Record retrieval reads the remote project's canonical records.
-A successful personal-data save means the change is saved locally, not merely queued on the server until exit.
+**Delivered requirement: Read and update the same local memories.** Core Memory injection, recall, additions, and
+deletions use local storage and preserve project/global scope. Work Record retrieval reads the remote project's
+canonical records. A successful personal-data save means the change is saved locally, not merely queued on the server
+until exit.
 
-**Requirement: Keep project knowledge correctly scoped (Sessions delivered; Memory target).** Unrelated remote folders
-must not share Sessions because their names match. Session identity follows the
+**Requirement: Keep project knowledge correctly scoped (Sessions and Memory delivered).** Unrelated remote folders must
+not share Sessions because their names match. Session identity follows the
 [Core remote project locator](runwield-core-prd.md#project-context-and-initialization): exact host identity and
 canonical project root, separate from the execution cwd and temporary mount paths. An ambiguous host match never merges
 history; confirmation for ambiguous aliases remains target scope.
 
-For Memory, a remote project can use an intended existing local collection without requiring a local checkout. When that
-relationship cannot be established safely, ask once rather than guess; retain the choice for later connections. A new
-remote-only project can have locally stored memories of its own. This must not silently remap local projects.
+Memory normally uses `<folder>@<hostname>-<hash>`, from the normalized resolved hostname, user, port, and canonical
+remote primary root. It excludes the host key, so a server rebuild retains memories. Worktrees share the primary root.
+With no saved binding, only an exact folder-name match to a saved local Session project triggers a question. The laptop
+lists each matching local project and asks whether it is the same project. Yes shares that local project’s collection;
+No keeps the normal remote collection. Both answers are saved before the remote TUI opens. A Memory collection alone
+does not trigger a question. Shared memories never merge Sessions.
+
+Local Memory tools, core injection, and `/sleep` use one collection rule; worktrees and subfolders use their main
+checkout’s collection. Existing main-checkout names stay unchanged. Remote `/sleep` is deferred: it reports that it is
+not available, without a backup, Agent switch, or Memory operation. The remote Work Record index is a derived cache
+under the project’s `.wld/internal/work-records.sqlite3`, separate from personal Memory.
 
 **Requirement: Preserve local history.** Saved remote conversation history remains on the laptop after disconnect. The
 first submitted message creates the saved Session, not connection or an empty composer. Offline history uses the normal
@@ -223,7 +240,7 @@ TUI transcript renderer without a composer; one footer names the target and the 
 Reading history starts no SSH connection and takes no Session Writer Lock. Reconnect and target-scoped `/resume`
 continue the same Session with its saved Agent and model. Local TUI, ACP, Workspace, and `/load-plan` lists hide remote
 Sessions. Resume never repeats unfinished tool effects. Workflow context on remote resume remains target behavior in
-child06.
+child07.
 
 **Conversation acceptance scenarios:**
 
@@ -239,12 +256,16 @@ child06.
 - Given loss during a Session save, RunWield does not report success without laptop evidence or overwrite newer saved
   history on reconnect. The next operation uses committed evidence and does not repeat the uncertain effect.
 
-**Target Memory acceptance scenarios:**
+**Delivered Memory acceptance scenarios:**
 
 - Given existing global and selected project memories, when the remote Agent recalls them, it receives the correct
   scopes. A successful store or delete is visible from local RunWield before disconnect.
 - Given unrelated same-named folders on two servers, their project memories stay distinct unless the user deliberately
   selects shared project memories.
+- Given a local and remote project with the same folder name, Yes shares the local collection and No separates it;
+  reconnect uses the saved answer without a question. No namesake means no question.
+- Given a remote `/sleep`, no backup, Agent switch, or Memory command occurs.
+- Given a retried remote Memory write, one laptop memory is added before acknowledgement.
 
 **Shared requirements:** [Project context](runwield-core-prd.md#project-context-and-initialization),
 [Session continuity](runwield-core-prd.md#session-continuity), [Work Records](runwield-core-prd.md#work-records).
@@ -252,8 +273,8 @@ child06.
 ### Remote workflows and local review
 
 **Scope and maturity:** Target extension in
-[child06](../plans/remote-ssh-development/06-carry-remote-context-through-delivery-workflows.md) and local browser
-review in [child07](../plans/remote-ssh-development/07-open-remote-reviews-in-the-local-browser.md). Existing approval
+[child07](../plans/remote-ssh-development/07-carry-remote-context-through-delivery-workflows.md) and local browser
+review in [child08](../plans/remote-ssh-development/08-open-remote-reviews-in-the-local-browser.md). Existing approval
 and validation meanings remain unchanged. Conversation turns and core project tools passed the `sct` pilot. Workflow
 handoffs, child Sessions, write delegation, Plan review, and transcript rollover belong to the remaining workflow
 extensions.
@@ -337,7 +358,7 @@ remote-only sentinel in the second, closed the upstream request on cancellation,
 `sct` pilot also verified direct bidirectional personal Skill file access through stock SFTP/SSHFS. The later
 [conversation journey](#conversation-journey-evidence) verifies ordinary turns, offline history, and connected resume
 under [child04](../plans/remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history.md). Production
-providers, Memory, workflows, and the platform matrix retain their separate qualification scope.
+providers, workflows, and the platform matrix retain their separate qualification scope.
 
 The owner has deferred Claude CLI and Antigravity CLI from the first release. Their existing native tools and local
 sign-in remain coupled to one machine, so do not advertise them without a later proof. Copying credentials or silently
@@ -370,9 +391,10 @@ fix references, and remove this transient proposal under project policy.
 **Remote SSH connection** is now defined in the [domain glossary](../domain-language.md#product-and-runtime). The
 current connection mounts laptop personal files and opens the normal remote TUI for conversation turns. It can create
 and continue a saved **Session** whose history belongs to the laptop. A **Remote project locator** binds that history to
-an exact host identity and canonical remote project root; execution cwd and mount paths are separate facts. Memory,
-workflows, child Sessions, write delegation, Plan review, and transcript rollover remain target relationships. The
-compiled `sct` conversation journey passed with an authenticated synthetic provider.
+an exact host identity and canonical remote project root; execution cwd and mount paths are separate facts. Memory
+bindings separately select laptop collections. Workflows, child Sessions, write delegation, Plan review, and transcript
+rollover remain target relationships. The compiled `sct` conversation journey passed with an authenticated synthetic
+provider.
 
 ## Evidence and Open Checks
 
@@ -395,9 +417,9 @@ authenticated synthetic OpenAI-compatible SSE provider on the laptop:
 This verifies the conversation journey, not a production-provider or platform matrix. The pilot used authentic helper
 installations verified on `sct` under `/usr/local/bin` for runtime preflight. Observed startup was about 35 seconds warm
 and about 100 seconds on first cold use, before further performance fixes; these samples are not speed promises. Remote
-Memory remains in [child05](../plans/remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine.md),
-and full delivery workflows remain in
-[child06](../plans/remote-ssh-development/06-carry-remote-context-through-delivery-workflows.md).
+Memory is delivered in
+[child05](../plans/remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine.md), and full delivery
+workflows remain in [child07](../plans/remote-ssh-development/07-carry-remote-context-through-delivery-workflows.md).
 
 The owner requested the two commands above, existing remote files with no local checkout, local personal data, and no
 unattended work. [VS Code Remote SSH](https://code.visualstudio.com/docs/remote/ssh) is the setup and interaction
@@ -409,7 +431,7 @@ evidence limits. Before committing delivery scope, planning must resolve:
 - Future Claude CLI and Antigravity CLI compatibility without remote credentials or a local checkout; this does not
   block the Pi-backed first release.
 - Supported host builds and demonstrated connection-loss cleanup.
-- Correct project Memory selection across all entry points, including Core injection and `/sleep`.
+- Remote `/sleep` maintenance remains deferred; local `/sleep` shares the Memory collection resolver.
 
 These are technical evidence gaps, not a need to repeat the product interview. If a gap requires a narrower product,
 bring that specific scope decision back to the owner.

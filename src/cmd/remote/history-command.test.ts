@@ -16,7 +16,7 @@ test("remote sessions opens committed laptop history offline while its writer re
         const store = openFileSessionStore();
         const identity = { buildId: "a".repeat(64), protocol: 1 };
         const service = startRemoteControlService(identity, {
-            store,
+            baseDir: store.path,
             targetLabel: "offline-host:/unavailable/project",
             target: {
                 host: { hostname: "offline.example", user: "tester", port: 22, hostKeyFingerprint: "SHA256:fixture" },

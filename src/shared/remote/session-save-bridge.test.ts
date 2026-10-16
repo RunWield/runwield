@@ -11,18 +11,28 @@ import { assertEquals, assertRejects, assertStringIncludes } from "../../testing
 import { join } from "node:path";
 import { deferred, makeControlFixture, within } from "./session-save-test-fixture.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
-import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
 import { parseRemoteSessionTranscript, type RemoteSessionRequest } from "./session-protocol.ts";
 import process from "node:process";
 
 type ControlFixture = Awaited<ReturnType<typeof makeControlFixture>>;
 type TransportReply = (input: RemoteSessionRequest, response: Response) => Promise<Response>;
 interface ClientOptions {
-    mode: "save" | "fault" | "manual-fault" | "workflow" | "lifecycle" | "mount" | "reload" | "worker-fault";
+    mode:
+        | "save"
+        | "bridge-override"
+        | "fault"
+        | "manual-fault"
+        | "workflow"
+        | "lifecycle"
+        | "mount"
+        | "reload"
+        | "worker-fault";
     blockedMethod?: string;
     faultGate?: string;
     timeoutMs?: number;
     operation?: string;
+    measure?: boolean;
+    holdWorkerAppend?: boolean;
 }
 interface ClientResult {
     failed?: boolean;
@@ -45,6 +55,8 @@ interface ClientResult {
     pending?: number;
     kind?: string;
     cwd?: string;
+    samples?: Array<{ kind: string; sequence: number; latencyMs: number; accepted: boolean }>;
+    hydratedContents?: string;
 }
 
 /** Proxy only the genuine HTTP boundary. All accepted requests reach the actual control service and owner. */
@@ -108,7 +120,14 @@ function startClient(f: ControlFixture, baseUrl: string, options: ClientOptions)
             const result = await within(output, 20_000);
             const stderr = new TextDecoder().decode(result.stderr);
             assertEquals(result.code, 0, stderr);
-            return JSON.parse(new TextDecoder().decode(result.stdout).trim());
+            return Object.assign(
+                {},
+                ...new TextDecoder()
+                    .decode(result.stdout)
+                    .trim()
+                    .split("\n")
+                    .map((line) => JSON.parse(line)),
+            );
         },
         async close() {
             try {
@@ -323,8 +342,8 @@ for (const fault of ["disconnect", "late-ack", "worker-invalid-json", "wrong-evi
                 phase: "preparing",
                 expectedGeneration: state.generation?.generation ?? null,
             });
-            const owner = new RemoteSessionOwner(reloaded, proof);
-            f.control.registerSessionOwner(owner);
+            const owner = reloaded.createRemoteSessionOwner(proof);
+            f.control.registerSessionOperation(owner.operation);
             reload = startClient(f, f.baseUrl, { mode: "reload", operation: owner.operation });
             assertEquals(await reload.result(), { entries: 1, file: null });
             assertEquals(owner.inspect().contents, savedContents);
@@ -374,6 +393,69 @@ test("detached remote personal mount cannot create a local file store or root Se
         await assertFileFree(f, false);
     } finally {
         await client.close();
+        await f.close();
+    }
+});
+
+test("remote root persistence ignores caller-supplied save methods", async () => {
+    const f = await makeControlFixture();
+    let client: ReturnType<typeof startClient> | undefined;
+    try {
+        await f.ready();
+        client = startClient(f, f.baseUrl, { mode: "bridge-override" });
+        const result = await client.result();
+        assertEquals(result.entries, 3);
+        assertEquals(result.file, null);
+        assertStringIncludes(f.owner.inspect().contents, '"immutable":true');
+        assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).activation?.state, "idle");
+    } finally {
+        await client?.close();
+        await f.close();
+    }
+});
+
+test("save qualification measures the real persistence Worker without replacing the bridge", async () => {
+    const f = await makeControlFixture();
+    let client: ReturnType<typeof startClient> | undefined;
+    try {
+        await f.ready();
+        client = startClient(f, f.baseUrl, { mode: "save", measure: true });
+        const result = await client.result();
+        assertEquals(
+            result.samples?.map((sample) => sample.kind),
+            ["hydrate", "append", "append", "append", "checkpoint"],
+        );
+        assertEquals(
+            result.samples?.every((sample) => sample.accepted && sample.latencyMs >= 0),
+            true,
+        );
+        assertEquals(result.hydratedContents, f.initial);
+    } finally {
+        await client?.close();
+        await f.close();
+    }
+});
+
+test("save qualification records a failed Worker deadline without replacing persistence", async () => {
+    const f = await makeControlFixture();
+    let client: ReturnType<typeof startClient> | undefined;
+    try {
+        await f.ready();
+        client = startClient(f, f.baseUrl, {
+            mode: "fault",
+            measure: true,
+            holdWorkerAppend: true,
+            timeoutMs: 1_000,
+        });
+        const result = await client.result();
+        assertEquals(result.failed, true);
+        assertEquals(
+            result.samples?.some((sample) => sample.kind === "append" && !sample.accepted && sample.latencyMs >= 900),
+            true,
+        );
+        assertEquals(f.owner.inspect().contents, f.initial);
+    } finally {
+        await client?.close();
         await f.close();
     }
 });

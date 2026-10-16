@@ -9,7 +9,7 @@ affectedPaths:
     - "src/shared/remote/control.ts"
     - "src/shared/remote/target.ts"
     - "src/shared/remote/session-protocol.ts"
-    - "src/shared/session/remote-session-owner.ts"
+    - "src/shared/session/file-session-store.ts"
     - "src/shared/session/root-session.js"
     - "src/shared/session/session-runtime.js"
     - "src/shared/session/session.js"
@@ -215,7 +215,7 @@ Workspace UI apart from skipping remote project records.
 
 ## Reuse Opportunities
 
-- `RemoteSessionOwner` (`src/shared/session/remote-session-owner.ts`) — the only laptop writer for remote saves.
+- `RemoteSessionOwner` (`src/shared/session/file-session-store.ts`) — the only laptop writer for remote saves.
 - `RemoteSessionSaveBridge`, `session-save-worker.ts`, and `createRemoteRootSessionManager` — synchronous per-entry
   saves and in-memory hydration.
 - `createFileSessionControl` (`src/shared/session/file-session-control.ts`) — laptop lock, phase, and generation

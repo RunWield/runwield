@@ -102,3 +102,20 @@ Manual verification steps for remote-ssh-development/04-run-and-resume-remote-se
       calls.
 
 <!-- runwield:manual-qa:end child="remote-ssh-development/04-run-and-resume-remote-sessions-with-local-history" -->
+
+<!-- runwield:manual-qa:start child="remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine" -->
+
+## Keep Memory and Integrations on Their Owning Machine
+
+Manual verification steps for remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine
+
+- [ ] Connect to a remote project that has a local folder with the same name. Select the local project, store a memory
+      remotely, and recall it in a local Session. Reconnect and confirm that no question appears.
+- [ ] Connect to a remote project with no local folder match. Confirm that no question appears and that memories from
+      two remote projects remain separate.
+- [ ] Start a remote Session without `mnemoteca` installed on the server. Confirm that Memory recall and core memories
+      work, and that `/sleep` reports that it is not available remotely.
+- [ ] Open `/mcp` in a remote Session. Confirm that personal servers show as laptop servers and are not started
+      remotely, and that project servers show as remote.
+
+<!-- runwield:manual-qa:end child="remote-ssh-development/05-keep-memory-and-integrations-on-their-owning-machine" -->

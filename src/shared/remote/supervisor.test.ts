@@ -190,6 +190,7 @@ for (const scenario of [
                 view: { host: "host", cwd: root, status: "Connected", trust: "Trust", readiness: "No turns" },
                 mount: sftp.header,
                 remoteHome: await fsRealpath(getHomeDir()),
+                memoryCollection: "fixture@host-1234",
             });
             const driver = spawnNativeProcess("python3", {
                 cwd: getCwd(),

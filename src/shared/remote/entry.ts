@@ -72,6 +72,7 @@ export interface RemoteInteractiveConfig {
     connection: import("./session-control-client.ts").RemoteSessionControlConnection;
     resources: import("./personal-resources.ts").RemotePersonalResources;
     cwd: string;
+    memoryCollection: string;
 }
 
 /** Admit private bootstrap data before importing the ordinary TUI composition. */
@@ -80,6 +81,9 @@ export async function parseRemoteInteractiveConfig(header: string): Promise<Remo
     const { parseRemoteConnectionViewConfig } = await import("../../ui/tui/remote-connection-view.ts");
     parseRemoteConnectionViewConfig(JSON.stringify(config.view ?? config));
     if (
+        typeof config.memoryCollection !== "string" ||
+        !config.memoryCollection ||
+        config.memoryCollection.includes("\0") ||
         !config.connection ||
         !Number.isInteger(config.connection.port) ||
         config.connection.port < 1 ||
@@ -104,6 +108,8 @@ export async function runRemoteView(): Promise<void> {
     configureRemotePersonalResources(config.resources);
     const { configureRemoteSettingsConnection } = await import("./settings-bridge.ts");
     configureRemoteSettingsConnection(config.connection);
+    const { configureRemoteMemoryConnection } = await import("./memory-bridge.ts");
+    const clearMemory = configureRemoteMemoryConnection({ ...config.connection, collection: config.memoryCollection });
     const { configureRemoteClipboardConnection } = await import("../../ui/tui/clipboard.ts");
     const clearClipboard = configureRemoteClipboardConnection(config.connection);
     let clearModels: (() => void) | undefined;
@@ -134,6 +140,7 @@ export async function runRemoteView(): Promise<void> {
             await lifecycle?.dispose();
         } finally {
             clearClipboard();
+            clearMemory();
             clearModels?.();
             stopTUI?.();
         }

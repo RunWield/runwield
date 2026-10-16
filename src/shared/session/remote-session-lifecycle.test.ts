@@ -8,7 +8,6 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promis
 import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { customEntry, makeSessionFixture, within } from "../remote/session-save-test-fixture.ts";
-import { RemoteSessionOwner } from "./remote-session-owner.ts";
 import { parseRemoteSessionTranscript, sessionDigest } from "../remote/session-protocol.ts";
 import { HostedSession } from "./hosted-session.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -85,8 +84,7 @@ async function contender(f: SessionFixture): Promise<ProcessReply> {
 }
 function freshOwner(f: SessionFixture) {
     const state = f.store.inspectSessionActivation(f.session.runwieldSessionId);
-    return new RemoteSessionOwner(
-        f.store,
+    return f.store.createRemoteSessionOwner(
         f.store.acquireSessionActivation({
             runwieldSessionId: f.session.runwieldSessionId,
             projectId: f.session.projectId,
@@ -360,8 +358,7 @@ for (const replaced of [false, true]) {
                     const state = restarted.inspectSessionActivation(f.session.runwieldSessionId);
                     assertEquals(state.activation?.state, committedLegacy ? "idle" : "uninitialized");
                     assertEquals(state.generation?.generation ?? null, committedLegacy ? (replaced ? 1 : 0) : null);
-                    const owner = new RemoteSessionOwner(
-                        restarted,
+                    const owner = restarted.createRemoteSessionOwner(
                         restarted.acquireSessionActivation({
                             runwieldSessionId: f.session.runwieldSessionId,
                             projectId: f.session.projectId,

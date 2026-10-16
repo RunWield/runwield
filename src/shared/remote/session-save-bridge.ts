@@ -36,12 +36,18 @@ export class RemoteSessionSaveBridge {
             !connection.operation
         )
             throw new Error("Invalid remote Session bridge connection");
-        this.#connection = { ...connection, baseUrl: url.origin, timeoutMs };
+        this.#connection = {
+            baseUrl: url.origin,
+            credential: connection.credential,
+            operation: connection.operation,
+            timeoutMs,
+        };
         this.#worker = new Worker(new URL("./session-save-worker.ts", import.meta.url).href, { type: "module" });
         this.#worker.onerror = (event) => {
             event.preventDefault();
             Atomics.store(new Int32Array(this.#fault), 0, 1);
         };
+        Object.freeze(this);
     }
 
     get signal(): AbortSignal {
@@ -167,3 +173,5 @@ export class RemoteSessionSaveBridge {
         this.#worker.terminate();
     }
 }
+
+Object.freeze(RemoteSessionSaveBridge.prototype);

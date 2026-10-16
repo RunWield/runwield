@@ -49,8 +49,10 @@ function fixtureShouldListError(): boolean {
 
 function fixtureShouldInitError(): boolean {
     const path = process.env.RUNWIELD_MCP_FIXTURE_INIT_ERROR_PATH;
-    return process.env.RUNWIELD_MCP_FIXTURE_INIT_ERROR === "1" ||
-        (path !== undefined && readFileSync(path, "utf8") === "1");
+    return (
+        process.env.RUNWIELD_MCP_FIXTURE_INIT_ERROR === "1" ||
+        (path !== undefined && readFileSync(path, "utf8") === "1")
+    );
 }
 
 function fixtureHasResources(): boolean {
@@ -104,7 +106,7 @@ function fixtureTools(): JsonMap[] {
 }
 
 let buffer = "";
-await log({ event: "started", pid: process.pid });
+await log({ event: "started", pid: process.pid, cwd: process.cwd() });
 function logShutdown(): void {
     logSync({ event: "shutdown", pid: process.pid });
 }
@@ -171,9 +173,7 @@ for await (const chunk of process.stdin) {
                     jsonrpc: "2.0",
                     id: message.id ?? null,
                     result: {
-                        resources: [
-                            { uri: "fixture://document", name: "document", mimeType: "text/plain" },
-                        ],
+                        resources: [{ uri: "fixture://document", name: "document", mimeType: "text/plain" }],
                     },
                 });
             } else if (message.method === "resources/templates/list") {
@@ -183,9 +183,7 @@ for await (const chunk of process.stdin) {
                     jsonrpc: "2.0",
                     id: message.id ?? null,
                     result: {
-                        contents: [
-                            { uri: "fixture://document", mimeType: "text/plain", text: "fixture-resource" },
-                        ],
+                        contents: [{ uri: "fixture://document", mimeType: "text/plain", text: "fixture-resource" }],
                     },
                 });
             } else if (message.method === "tools/call") {
@@ -227,10 +225,12 @@ for await (const chunk of process.stdin) {
                         jsonrpc: "2.0",
                         id: message.id ?? null,
                         result: {
-                            content: [{
-                                type: "text",
-                                text: JSON.stringify(fixtureEnvironment()),
-                            }],
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(fixtureEnvironment()),
+                                },
+                            ],
                         },
                     });
                 } else if (marker === "image-resource") {
@@ -238,10 +238,12 @@ for await (const chunk of process.stdin) {
                         jsonrpc: "2.0",
                         id: message.id ?? null,
                         result: {
-                            content: [{
-                                type: "resource",
-                                resource: { uri: "fixture://image", mimeType: "image/png", blob: "aW1hZ2U=" },
-                            }],
+                            content: [
+                                {
+                                    type: "resource",
+                                    resource: { uri: "fixture://image", mimeType: "image/png", blob: "aW1hZ2U=" },
+                                },
+                            ],
                         },
                     });
                 } else if (marker === "resource") {
@@ -249,14 +251,16 @@ for await (const chunk of process.stdin) {
                         jsonrpc: "2.0",
                         id: message.id ?? null,
                         result: {
-                            content: [{
-                                type: "resource",
-                                resource: {
-                                    uri: `file:///${"u".repeat(20_000)}`,
-                                    mimeType: "text/plain",
-                                    text: "r".repeat(20_000),
+                            content: [
+                                {
+                                    type: "resource",
+                                    resource: {
+                                        uri: `file:///${"u".repeat(20_000)}`,
+                                        mimeType: "text/plain",
+                                        text: "r".repeat(20_000),
+                                    },
                                 },
-                            }],
+                            ],
                             isError: false,
                         },
                     });
@@ -265,12 +269,14 @@ for await (const chunk of process.stdin) {
                         jsonrpc: "2.0",
                         id: message.id ?? null,
                         result: {
-                            content: [{
-                                type: "resource_link",
-                                name: "resource-link",
-                                title: "t".repeat(20_000),
-                                uri: `file:///${"u".repeat(20_000)}`,
-                            }],
+                            content: [
+                                {
+                                    type: "resource_link",
+                                    name: "resource-link",
+                                    title: "t".repeat(20_000),
+                                    uri: `file:///${"u".repeat(20_000)}`,
+                                },
+                            ],
                             isError: false,
                         },
                     });

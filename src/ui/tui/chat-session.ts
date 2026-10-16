@@ -332,7 +332,7 @@ export async function startInteractiveSession(
         view.requestRender();
         if (!options.skipModelWelcome) {
             await listAvailableAgents(runtimeSnapshot().cwd);
-            await ensureMnemotecaBinary();
+            if (!remotePersonalResourcesActive()) await ensureMnemotecaBinary();
             await ensureCymbalBinary();
             await ensureKetchBinary();
         }

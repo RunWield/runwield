@@ -9,7 +9,8 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { ok as assert, match as assertMatch } from "node:assert/strict";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
@@ -87,7 +88,7 @@ test("sleep help uses the real command registry", async () => {
         runSleepCommand(["--help"], {
             mnemotecaPort: createMnemotecaFixture().port,
             sessionPort: UNEXPECTED_SESSION_PORT,
-        })
+        }),
     );
     assertStringIncludes(output.logs.join("\n"), "Usage (sleep):");
     assertStringIncludes(output.logs.join("\n"), "memory");
@@ -118,10 +119,12 @@ test("Mnemoteca export creates its real fixture directory and verifies the subpr
     try {
         await exportMnemotecaCollection("project", outputPath, fixture.port);
 
-        assertEquals(fixture.exports, [{
-            args: ["export", "--name", "project", "--no-embeddings", "--output", outputPath],
-            outputPath,
-        }]);
+        assertEquals(fixture.exports, [
+            {
+                args: ["export", "--name", "project", "--no-embeddings", "--output", outputPath],
+                outputPath,
+            },
+        ]);
         assert((await fsStat(outputPath)).isFile());
     } finally {
         await fsRm(tempDir, { recursive: true });
@@ -255,6 +258,44 @@ test("sleep leaves a real Runtime on its current Agent when external backup fail
             assertEquals(messages, []);
         } finally {
             runtime.closeSession(sessionId);
+        }
+    });
+});
+
+const memoryGitFixture = defineCommittedGitFixture();
+
+test("sleep maintains the main checkout collection from a worktree", async () => {
+    await withRuntimeCommandFixture("sleep-worktree-", async ({ setModelResponse }) => {
+        const root = await memoryGitFixture.checkout();
+        const temp = await fsMkdtemp(join(tmpdir(), "sleep-worktree-"));
+        const worktree = join(temp, "feature");
+        const runtime = createSessionRuntime();
+        let sessionId: string | undefined;
+        try {
+            await git(root, ["worktree", "add", "-b", "feature", worktree]);
+            setModelResponse("Memory maintenance complete.");
+            sessionId = await runtime.createPromptReadySession({ cwd: worktree, agentName: "router" });
+            const requests: string[] = [];
+            runtime.subscribeSessionEvents(sessionId, (event) => {
+                if (event.type === RuntimeEventTypes.USER_MESSAGE) requests.push(event.text);
+            });
+            const mnemoteca = createMnemotecaFixture();
+            await runSleepCommand([], {
+                sessionId,
+                sessionRuntime: runtime,
+                uiAPI: { appendSystemMessage: () => {} },
+                mnemotecaPort: mnemoteca.port,
+                sessionPort: UNEXPECTED_SESSION_PORT,
+            });
+            assertEquals(mnemoteca.exports[0]?.args.slice(0, 3), ["export", "--name", basename(root)]);
+            assertStringIncludes(
+                requests[0],
+                `Use --name ${JSON.stringify(basename(root))} for every mnemoteca command.`,
+            );
+        } finally {
+            if (sessionId) await runtime.closeSession(sessionId);
+            await fsRm(temp, { recursive: true });
+            await fsRm(root, { recursive: true });
         }
     });
 });

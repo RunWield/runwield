@@ -114,26 +114,33 @@ export function getRemoteSessionSaveBridge(manager) {
  * Hydrate only from the laptop owner. No Session file or remote transcript directory is created.
  * The caller owns the remote project identity and must discard this manager after any bridge fault.
  * @param {string} cwd
- * @param {import('../remote/session-save-bridge.ts').RemoteSessionSaveBridge} bridge
+ * @param {import('../remote/session-protocol.ts').RemoteSessionConnection} connection
  * @returns {Promise<import('@earendil-works/pi-coding-agent').SessionManager>}
  */
-export async function createRemoteRootSessionManager(cwd, bridge) {
-    const { CURRENT_SESSION_VERSION, SessionManager } = await import("@earendil-works/pi-coding-agent");
-    if (CURRENT_SESSION_VERSION !== 3) bridge.fail(new Error("Incompatible Pi remote Session format"));
-    const snapshot = bridge.request("hydrate");
-    const entries = parseRemoteSessionTranscript(snapshot.contents);
-    const manager = SessionManager.inMemory(cwd, undefined, entries);
-    if (
-        manager.getSessionFile() !== undefined ||
-        manager.isPersisted() ||
-        JSON.stringify([manager.getHeader(), ...manager.getEntries()]) !== JSON.stringify(entries) ||
-        typeof Reflect.get(manager, "_persist") !== "function" ||
-        typeof Reflect.get(manager, "_rewriteFile") !== "function"
-    )
-        bridge.fail(new Error("Incompatible Pi remote Session persistence contract"));
-    const guarded = installSessionPersistence(manager, bridge);
-    remoteSessionBridges.set(guarded, bridge);
-    return guarded;
+export async function createRemoteRootSessionManager(cwd, connection) {
+    const { RemoteSessionSaveBridge } = await import("../remote/session-save-bridge.ts");
+    const bridge = new RemoteSessionSaveBridge(connection);
+    try {
+        const { CURRENT_SESSION_VERSION, SessionManager } = await import("@earendil-works/pi-coding-agent");
+        if (CURRENT_SESSION_VERSION !== 3) bridge.fail(new Error("Incompatible Pi remote Session format"));
+        const snapshot = bridge.request("hydrate");
+        const entries = parseRemoteSessionTranscript(snapshot.contents);
+        const manager = SessionManager.inMemory(cwd, undefined, entries);
+        if (
+            manager.getSessionFile() !== undefined ||
+            manager.isPersisted() ||
+            JSON.stringify([manager.getHeader(), ...manager.getEntries()]) !== JSON.stringify(entries) ||
+            typeof Reflect.get(manager, "_persist") !== "function" ||
+            typeof Reflect.get(manager, "_rewriteFile") !== "function"
+        )
+            bridge.fail(new Error("Incompatible Pi remote Session persistence contract"));
+        const guarded = installSessionPersistence(manager, bridge);
+        remoteSessionBridges.set(guarded, bridge);
+        return guarded;
+    } catch (error) {
+        bridge.close();
+        throw error;
+    }
 }
 
 /** @param {import('@earendil-works/pi-coding-agent').SessionManager} sessionManager */

@@ -13,6 +13,7 @@ import { summarizeProjectedEntries } from "../session/session-transcript-project
 import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { configureRemoteModelConnection } from "../models/model-registry.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
+import { configureRemoteMemoryConnection } from "./memory-bridge.ts";
 import { RemoteSessionControl } from "./session-control-client.ts";
 import { processLines } from "./remote-runtime-lines.ts";
 import { type RuntimeClientInput } from "./remote-runtime-test-client.ts";
@@ -47,6 +48,7 @@ async function runSettingsClient() {
     const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
     configureRemotePersonalResources({ globalRoot: input.resources });
     configureRemoteSettingsConnection(input.connection);
+    const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });
     const clearModels = await configureRemoteModelConnection(input.connection);
     const host = new SessionHost();
     const runtime = new SessionRuntime({
@@ -120,6 +122,7 @@ async function runSettingsClient() {
     } finally {
         await runtime.closeAllSessionsWhenIdle();
         clearModels();
+        clearMemory();
         await lines.cancel();
         lines.releaseLock();
     }
@@ -157,7 +160,12 @@ async function startSettingsProcess(f: RuntimeFixture): Promise<SettingsProcess>
         if (next.done) throw new Error(`Settings client exited: ${await stderr}`);
         return JSON.parse(next.value);
     }
-    await send({ connection: f.control.connection, resources: f.resources, cwd: f.remoteProject });
+    await send({
+        connection: f.control.connection,
+        resources: f.resources,
+        cwd: f.remoteProject,
+        memoryCollection: f.memoryCollection,
+    });
     const ready = await read();
     assertEquals(ready.ok, true, ready.error);
     return {

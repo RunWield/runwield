@@ -1,6 +1,6 @@
 import type { FileEntry } from "@earendil-works/pi-coding-agent";
 import type { HostedSession, ManagedSessionMetadata } from "../hosted-session.js";
-import { createRemoteRootSessionManager } from "../root-session.js";
+import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../root-session.js";
 import { summarizeProjectedEntries } from "../session-transcript-projection.js";
 import { RuntimeEventTypes } from "../session-runtime-events.js";
 import { parseRemoteSessionTranscript, REMOTE_SESSION_IDENTITY_ENTRY } from "../../remote/session-protocol.ts";
@@ -57,12 +57,13 @@ export class RemoteSessionPersistence {
     }
 
     async #hydrate(session: HostedSession, operation: string): Promise<RemoteHydration> {
-        const bridge = this.control.openBridge(operation);
         try {
-            const manager = await createRemoteRootSessionManager(session.cwd, bridge);
-            return { operation, bridge, manager };
+            const manager = await createRemoteRootSessionManager(
+                session.cwd,
+                this.control.sessionConnection(operation),
+            );
+            return { operation, bridge: getRemoteSessionSaveBridge(manager)!, manager };
         } catch (error) {
-            bridge.close();
             await this.control.markUncertain(operation).catch(() => {});
             throw error;
         }

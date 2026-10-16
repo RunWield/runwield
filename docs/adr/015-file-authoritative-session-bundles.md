@@ -61,6 +61,11 @@ transcript, not a transcript file. A trusted laptop caller registers an operatio
 HTTP clients cannot supply or replace that proof. The existing authenticated remote control service admits ordered,
 immutable requests for that operation and checks the native lock again on every admission.
 
+Persistence and ownership components are product-owned, not injectable ports. The laptop connection constructs its store
+and operation registry. The store constructs remote owners with the same native-lock context that acquired their proofs.
+Remote root managers construct their save bridge from connection data. Callers cannot supply replacement stores,
+registries, or persistence bridges. Tests use real bundles and locks, with faults at network or process boundaries.
+
 Pi's synchronous persistence hooks wait for each exact-byte save acknowledgement. A dedicated Deno Worker handles
 network progress and notifies the calling thread through shared memory. The laptop writes and synchronizes the bytes
 before acknowledging them. Save acknowledgement is separate from final generation publication. Identical retries return

@@ -45,7 +45,6 @@ async function main() {
     const { makeControlFixture, deferred, within } = await import("./session-save-test-fixture.ts");
     const { makeSaveModelRuntime } = await import("./session-save-agent-fixture.ts");
     const { LocalModelBridge, handleModelRequest } = await import("./model-bridge.ts");
-    const { RemoteSessionOwner } = await import("../session/remote-session-owner.ts");
     const { parseRemoteSessionTranscript } = await import("./session-protocol.ts");
 
     interface LiveReply {
@@ -320,7 +319,7 @@ async function main() {
         )} PATH=/usr/bin:/bin ${quote(`${remoteRoot}/client`)}`;
         const client = (
             mode: string,
-            owner: InstanceType<typeof RemoteSessionOwner>,
+            owner: import("../session/file-session-store.ts").RemoteSessionOwner,
             supervisor = false,
             timeoutMs = 5000,
         ) => {
@@ -390,8 +389,8 @@ async function main() {
                 phase: "preparing",
                 expectedGeneration: state.generation?.generation ?? null,
             });
-            const owner = new RemoteSessionOwner(f.store, proof);
-            f.control.registerSessionOwner(owner);
+            const owner = f.store.createRemoteSessionOwner(proof);
+            f.control.registerSessionOperation(owner.operation);
             return owner;
         };
         startTunnel();

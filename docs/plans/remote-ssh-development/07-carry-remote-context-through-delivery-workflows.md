@@ -18,10 +18,11 @@ createdAt: "2026-09-21T02:05:51.352Z"
 status: "draft"
 origin: "internal"
 parentPlan: "remote-ssh-development"
-order: 6
+order: 7
 dependencies:
     - "04-run-and-resume-remote-sessions-with-local-history"
     - "05-keep-memory-and-integrations-on-their-owning-machine"
+    - "06-forward-personal-mcp-tools-from-the-laptop"
 userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
 ---

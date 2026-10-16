@@ -22,7 +22,7 @@ test("remote TUI composition stays dormant with a normal composer and creates no
         const store = openFileSessionStore({ baseDir });
         const identity = { buildId: "a".repeat(64), protocol: 1 };
         const service = startRemoteControlService(identity, {
-            store,
+            baseDir: store.path,
             targetLabel: `remote:${projectRoot}`,
             target: {
                 cwd: projectRoot,

@@ -1,7 +1,7 @@
 import { decodeTextStream } from "../../testing/decode-text-stream.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { test } from "node:test";
-import { readFile as fsReadFile, writeFile as fsWriteFile, mkdir as fsMkdir } from "node:fs/promises";
+import { readFile as fsReadFile, writeFile as fsWriteFile, mkdir as fsMkdir, stat as fsStat } from "node:fs/promises";
 import { spawnNativeProcess } from "../foreground-process.ts";
 import { readdirSync } from "node:fs";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
@@ -44,22 +44,26 @@ test("production remote bootstrap uses the laptop catalog and mounted settings, 
         const baseDir = join(homeDir, "laptop-history");
         const store = openFileSessionStore({ baseDir });
         const identity = { buildId: "a".repeat(64), protocol: 1 };
-        const service = startRemoteControlService(identity, {
-            store,
-            targetLabel: `host:${projectRoot}`,
-            target: {
-                host: { hostname: "host.example", user: "tester", port: 22, hostKeyFingerprint: "SHA256:fixture" },
-                cwd: projectRoot,
-                home: remoteHome,
-                os: "Linux",
-                arch: "x86_64",
-                gitRoot: null,
-                gitDir: null,
-                gitCommonDir: null,
-                primaryRoot: null,
-                isWorktree: false,
+        const service = startRemoteControlService(
+            identity,
+            {
+                baseDir: store.path,
+                targetLabel: `host:${projectRoot}`,
+                target: {
+                    host: { hostname: "host.example", user: "tester", port: 22, hostKeyFingerprint: "SHA256:fixture" },
+                    cwd: projectRoot,
+                    home: remoteHome,
+                    os: "Linux",
+                    arch: "x86_64",
+                    gitRoot: null,
+                    gitDir: null,
+                    gitCommonDir: null,
+                    primaryRoot: null,
+                    isWorktree: false,
+                },
             },
-        });
+            "fixture@host-1234",
+        );
         const entry = new URL("./entry.ts", import.meta.url).href;
         const tui = new URL("../../ui/tui/tui.ts", import.meta.url).href;
         const terminalModule = new URL("../../ui/tui/testing/virtual-terminal.js", import.meta.url).href;
@@ -131,6 +135,7 @@ console.log("RETURNED_AFTER_TERMINATION");
                     JSON.stringify({
                         connection: { port: service.port, credential: service.credential },
                         resources: { globalRoot: resources },
+                        memoryCollection: "fixture@host-1234",
                         cwd: projectRoot,
                         view: {
                             host: "host",
@@ -164,6 +169,17 @@ console.log("RETURNED_AFTER_TERMINATION");
             assertEquals(listProjectsFromDisk(baseDir), []);
             assertEquals(Array.from(readdirSync(baseDir, { withFileTypes: true })), []);
             assertEquals(await fsReadFile(join(remoteHome, ".wld", "settings.json"), "utf8"), sentinel);
+            const bundledSkillsPath = join(remoteHome, ".wld", "bundled-skills");
+            const skillsDeadline = Date.now() + 10_000;
+            while (Date.now() < skillsDeadline) {
+                try {
+                    await fsStat(bundledSkillsPath);
+                    break;
+                } catch (error) {
+                    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                }
+            }
             // Core bundled Skill materialization is a remote runtime cache, not a personal profile or transcript.
             assertEquals(
                 Array.from(readdirSync(join(remoteHome, ".wld"), { withFileTypes: true }))

@@ -7,6 +7,9 @@ import { env } from "node:process";
  * Shared helpers for loading agent definitions and running agent invocations.
  */
 
+import { requestRemoteMemory } from "../remote/memory-bridge.ts";
+import { resolveMemoryCollection } from "../memory-collection.ts";
+
 import {
     createAgentSession,
     createBashToolDefinition,
@@ -1708,13 +1711,21 @@ export async function assembleFinalSystemPromptWithContextProjection(
     let memories = "";
     if (hasMemoriesPlaceholder) {
         try {
-            const output = await captureForegroundProcess("mnemoteca", {
-                args: ["list", "-t", "core", "-f", "plain"],
-                cwd,
-            });
-            if (output.code === 0) {
-                memories = new TextDecoder().decode(output.stdout).trim();
-                if (memories.startsWith("No documents") || memories.startsWith("Error:")) memories = "";
+            if (remotePersonalResourcesActive()) {
+                const result = await requestRemoteMemory({ action: "list-core" });
+                memories = result.content
+                    .map((item) => item.text)
+                    .join("\n")
+                    .trim();
+            } else {
+                const output = await captureForegroundProcess("mnemoteca", {
+                    args: ["list", "--name", await resolveMemoryCollection({ cwd }), "-t", "core", "-f", "plain"],
+                    cwd,
+                });
+                if (output.code === 0) {
+                    memories = new TextDecoder().decode(output.stdout).trim();
+                    if (memories.startsWith("No documents") || memories.startsWith("Error:")) memories = "";
+                }
             }
         } catch {
             memories = "";
@@ -2055,7 +2066,7 @@ export async function buildAgentSession({
     ) {
         throw new Error("Remote managed agent sessions are not approved; use bounded model integration only");
     }
-    await ensureMnemotecaBinary();
+    if (!remotePersonalResourcesActive()) await ensureMnemotecaBinary();
     await ensureCymbalBinary();
     const agentDef = subAgentDefinition
         ? await loadSubAgentDefinition(subAgentDefinition.id, subAgentDefinition.options)

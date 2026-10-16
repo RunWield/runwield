@@ -11,7 +11,6 @@ import { ok as assert } from "node:assert/strict";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { dirname, join } from "node:path";
 import { makeControlFixture, makeSessionFixture, within } from "./session-save-test-fixture.ts";
-import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
 import { MAX_SESSION_BYTES, type RemoteSessionResponse } from "./session-protocol.ts";
 import { type ImageAttachment } from "../session/types.js";
 import process from "node:process";
@@ -98,8 +97,7 @@ test("remote upload and fresh hydrated manager read laptop attachment bytes thro
         assertEquals(first.file, null);
         await assertRejects(() => fsStat(f.mount), Error, "ENOENT");
         const state = f.store.inspectSessionActivation(f.session.runwieldSessionId);
-        const fresh = new RemoteSessionOwner(
-            f.store,
+        const fresh = f.store.createRemoteSessionOwner(
             f.store.acquireSessionActivation({
                 runwieldSessionId: f.session.runwieldSessionId,
                 projectId: f.session.projectId,
@@ -109,7 +107,7 @@ test("remote upload and fresh hydrated manager read laptop attachment bytes thro
                 expectedGeneration: state.generation?.generation ?? null,
             }),
         );
-        f.control.registerSessionOwner(fresh);
+        f.control.registerSessionOperation(fresh.operation);
         const second = await client(f, "read", first.attachment.ref, f.baseUrl, fresh.operation);
         assertEquals(second, first);
         await assertRejects(() => fsStat(f.mount), Error, "ENOENT");

@@ -1,12 +1,8 @@
-import { openSync, readSync, closeSync } from "node:fs";
+import { closeSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
-import {
-    type FileSessionManifest,
-    type FileSessionProject,
-    type FileSessionStore,
-} from "../session/file-session-store-types.ts";
-import { recoverRemoteSession, RemoteSessionOwner } from "../session/remote-session-owner.ts";
+import type { FileSessionManifest, FileSessionProject, FileSessionStore } from "../session/file-session-store-types.ts";
+import { openFileSessionStore, type RemoteSessionOwner } from "../session/file-session-store.ts";
 import { getRunWieldSessionsBaseDir } from "../session/root-session.js";
 import {
     ensurePrivateDir,
@@ -27,10 +23,10 @@ import {
     sessionDigest,
     validateSessionControlRequest,
 } from "./session-protocol.ts";
-import { type ResolvedRemoteTarget } from "./target.ts";
+import type { ResolvedRemoteTarget } from "./target.ts";
 
 export interface LaptopSessionTarget {
-    store: FileSessionStore;
+    baseDir?: string;
     target: ResolvedRemoteTarget;
     targetLabel: string;
 }
@@ -112,6 +108,8 @@ const MAX_SETTLED_ADMISSIONS = 1024;
 export class LaptopSessionControl {
     readonly #ownerInstanceId = crypto.randomUUID();
     #closed = false;
+    readonly #store: FileSessionStore;
+    readonly #owners = new Map<string, RemoteSessionOwner>();
     #creating = new Set<string>();
     #admissions = new Map<string, SessionAdmission>();
     #operationAdmissions = new Map<string, string>();
@@ -128,15 +126,20 @@ export class LaptopSessionControl {
     }
 
     #settleOperation(operation: string): void {
-        this.owners.delete(operation);
+        this.#owners.delete(operation);
         const admissionId = this.#operationAdmissions.get(operation);
         if (admissionId) this.#settleAdmission(admissionId);
     }
 
-    constructor(
-        readonly connection: LaptopSessionTarget,
-        readonly owners: Map<string, RemoteSessionOwner>,
-    ) {}
+    constructor(readonly connection: LaptopSessionTarget) {
+        this.#store = openFileSessionStore({ baseDir: connection.baseDir });
+    }
+
+    handleSave(input: import("./session-protocol.ts").RemoteSessionRequest) {
+        const owner = this.#owners.get(input.operation);
+        if (!owner || this.#closed) throw new Error("Stale Session operation");
+        return owner.handle(input);
+    }
 
     #projectMatches(project: FileSessionProject): boolean {
         const remote = project.remote;
@@ -152,10 +155,10 @@ export class LaptopSessionControl {
     }
 
     #locate(sessionId: string) {
-        for (const project of listProjectsFromDisk(this.connection.store.path).filter((project) =>
+        for (const project of listProjectsFromDisk(this.#store.path).filter((project) =>
             this.#projectMatches(project),
         )) {
-            const found = listManifests(sessionDirForProject(this.connection.store.path, project), false).find(
+            const found = listManifests(sessionDirForProject(this.#store.path, project), false).find(
                 ({ manifest }) => manifest.runwieldSessionId === sessionId,
             );
             if (found) return { project, ...found };
@@ -166,7 +169,7 @@ export class LaptopSessionControl {
     async handle(input: RemoteSessionControlRequest): Promise<RemoteSessionControlResponse> {
         validateSessionControlRequest(input);
         if (this.#closed) throw new Error("Session connection is closed");
-        const store = this.connection.store;
+        const store = this.#store;
         if (input.kind === "list") {
             // A first interrupted turn can have saved entries but no published
             // generation yet. Connected discovery repairs it; offline viewing
@@ -179,7 +182,7 @@ export class LaptopSessionControl {
                     }
                     const state = store.inspectSessionActivation(manifest.runwieldSessionId).activation?.state;
                     if (state === "uncertain" || state === "reconcile_required") {
-                        recoverRemoteSession(store, manifest.runwieldSessionId, this.#ownerInstanceId);
+                        store.recoverRemoteSession(manifest.runwieldSessionId, this.#ownerInstanceId);
                     }
                 }
             }
@@ -213,7 +216,7 @@ export class LaptopSessionControl {
             admission.cancelled = true;
             if (admission.operation) {
                 try {
-                    this.owners.get(admission.operation)?.markUncertain();
+                    this.#owners.get(admission.operation)?.markUncertain();
                 } finally {
                     this.#settleOperation(admission.operation);
                 }
@@ -222,7 +225,7 @@ export class LaptopSessionControl {
             return {};
         }
         if (input.kind === "checkpoint" || input.kind === "markUncertain") {
-            const owner = this.owners.get(input.operation);
+            const owner = this.#owners.get(input.operation);
             if (!owner) throw new Error("Stale Session operation");
             try {
                 if (input.kind === "checkpoint") owner.checkpoint();
@@ -323,7 +326,7 @@ export class LaptopSessionControl {
                 const { manifest } = this.#locate(input.sessionId);
                 const state = store.inspectSessionActivation(input.sessionId);
                 if (state.activation && ["uncertain", "reconcile_required"].includes(state.activation.state)) {
-                    recoverRemoteSession(store, input.sessionId, this.#ownerInstanceId);
+                    store.recoverRemoteSession(input.sessionId, this.#ownerInstanceId);
                 }
                 proof = store.acquireSessionActivation({
                     runwieldSessionId: input.sessionId,
@@ -335,8 +338,8 @@ export class LaptopSessionControl {
             }
             try {
                 if (this.#closed || admission.cancelled) throw new Error("Session admission was cancelled");
-                const owner = new RemoteSessionOwner(store, proof);
-                this.owners.set(owner.operation, owner);
+                const owner = store.createRemoteSessionOwner(proof);
+                this.#owners.set(owner.operation, owner);
                 admission.operation = owner.operation;
                 this.#operationAdmissions.set(owner.operation, input.admissionId);
                 return { operation: owner.operation };
@@ -356,12 +359,16 @@ export class LaptopSessionControl {
     close(): void {
         this.#closed = true;
         for (const admission of this.#admissions.values()) admission.cancelled = true;
-        for (const [operation, owner] of this.owners) {
-            try {
-                owner.markUncertain();
-            } finally {
-                this.#settleOperation(operation);
+        try {
+            for (const [operation, owner] of this.#owners) {
+                try {
+                    owner.markUncertain();
+                } finally {
+                    this.#settleOperation(operation);
+                }
             }
+        } finally {
+            this.#store.close();
         }
     }
 }

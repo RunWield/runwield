@@ -1,9 +1,12 @@
+import { appendFileSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { stdinStream } from "../../testing/stdin-stream.ts";
-import { writeFileSync, renameSync, mkdirSync } from "node:fs";
-import { RemoteSessionSaveBridge } from "./session-save-bridge.ts";
+import process from "node:process";
+/** Real remote subprocess used by the focused Session transport tests. */
+import type { RemoteSessionSaveBridge } from "./session-save-bridge.ts";
 import {
     createRemoteRootSessionManager,
     createRootSessionManager,
+    getRemoteSessionSaveBridge,
     getRunWieldSessionsBaseDir,
 } from "../session/root-session.js";
 import { openFileSessionStore } from "../session/file-session-store.ts";
@@ -16,13 +19,10 @@ import {
     settleWorkflowToolEvent,
     waitForWorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
-import { MAX_SESSION_BYTES, type RemoteSessionConnection } from "./session-protocol.ts";
-import { type RemoteModelConnection } from "./model-bridge.ts";
+import { MAX_SESSION_BYTES, type RemoteSessionConnection, type SessionWorkerRequest } from "./session-protocol.ts";
+import type { RemoteModelConnection } from "./model-bridge.ts";
 import { makeSaveAgent } from "./session-save-agent-fixture.ts";
 import { persistImageAttachment } from "../session/image-attachments.ts";
-import process from "node:process";
-
-/** Real remote subprocess used by the focused Session transport tests. */
 
 interface ClientInput {
     connection: RemoteSessionConnection;
@@ -31,6 +31,7 @@ interface ClientInput {
     mount: string;
     mode:
         | "save"
+        | "bridge-override"
         | "fault"
         | "manual-fault"
         | "workflow"
@@ -44,6 +45,7 @@ interface ClientInput {
         | "allocation-fault"
         | "oversized";
     measure?: boolean;
+    holdWorkerAppend?: boolean;
     home?: string;
     modelConnection?: RemoteModelConnection;
     faultPoint?: "before-prompt" | "before-tool" | "after-tool" | "tool-hook";
@@ -60,22 +62,23 @@ function denied(action: () => void): boolean {
     }
 }
 
+/** Private one-line stdin also supports the compiled SSH client; credentials are never CLI arguments. */
 let inputReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-let inputChunk: Uint8Array = new Uint8Array();
+let inputChunk = new Uint8Array();
 let inputOffset = 0;
 async function readInputByte(): Promise<number | null> {
     if (inputOffset === inputChunk.length) {
         const result = await (inputReader ??= stdinStream().getReader()).read();
         if (result.done) return null;
-        inputChunk = result.value;
+        inputChunk = new Uint8Array(result.value);
         inputOffset = 0;
     }
     return inputChunk[inputOffset++] ?? null;
 }
 
-/** Private one-line stdin also supports the compiled SSH client; credentials are never CLI arguments. */
 async function privateInput(): Promise<ClientInput> {
-    if (process.argv.slice(2)[0]) return JSON.parse(process.argv.slice(2)[0]);
+    const argument = process.argv[2];
+    if (argument) return JSON.parse(argument);
     const bytes: number[] = [];
     for (let byte = await readInputByte(); byte !== null; byte = await readInputByte()) {
         if (byte === 10) return JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)));
@@ -94,36 +97,82 @@ interface SaveSample {
 }
 const samples: SaveSample[] = [];
 let hydratedContents = "";
-class MeasuredSaveBridge extends RemoteSessionSaveBridge {
-    override request(kind: Parameters<RemoteSessionSaveBridge["request"]>[0], contents = "") {
-        const start = performance.now();
-        let accepted = false;
-        try {
-            const response = super.request(kind, contents);
-            accepted = true;
-            if (kind === "hydrate") hydratedContents = response.contents;
-            return response;
-        } finally {
-            if (input.measure) {
-                samples.push({ kind, sequence: samples.length, latencyMs: performance.now() - start, accepted });
-            }
-        }
-    }
-}
-// Fault the real runtime Worker after hydration, without replacing persistence or transport.
 let saveWorker: Worker | undefined;
-const NativeWorker = globalThis.Worker;
+// Measure the real bridge at its Worker boundary, without replacing persistence.
+const workerClass = globalThis.Worker;
+const load = Atomics.load;
+let pendingSample: { request: SessionWorkerRequest; start: number } | undefined;
 if (input.mode === "worker-fault") {
-    globalThis.Worker = class extends NativeWorker {
+    globalThis.Worker = class extends workerClass {
         constructor(url: string | URL, options?: WorkerOptions) {
             super(url, options);
             saveWorker = this;
         }
     };
 }
-const bridge = new MeasuredSaveBridge(input.connection);
+if (input.measure) {
+    globalThis.Worker = class extends workerClass {
+        override postMessage(request: SessionWorkerRequest) {
+            pendingSample = { request, start: performance.now() };
+            // Model a stalled Worker, so the main-thread deadline must wake the caller itself.
+            if (input.holdWorkerAppend && JSON.parse(request.payload).kind === "append") return;
+            super.postMessage(request);
+        }
+    };
+    Atomics.load = new Proxy(load, {
+        apply(target, receiver, args) {
+            const value = Reflect.apply(target, receiver, args);
+            const sample = pendingSample;
+            if (sample && args[0].buffer === sample.request.result && args[1] === 0 && value !== 0) {
+                const payload = JSON.parse(sample.request.payload);
+                const accepted = value === 1;
+                samples.push({
+                    kind: payload.kind,
+                    sequence: payload.sequence,
+                    latencyMs: performance.now() - sample.start,
+                    accepted,
+                });
+                if (accepted && payload.kind === "hydrate") {
+                    const length = load(new Int32Array(sample.request.result, 0, 2), 1);
+                    const text = new TextDecoder().decode(new Uint8Array(sample.request.result, 8, length));
+                    hydratedContents = JSON.parse(text).contents;
+                }
+                pendingSample = undefined;
+            }
+            return value;
+        },
+    });
+}
+let bridgeForCleanup: RemoteSessionSaveBridge | undefined;
 try {
-    const manager = await createRemoteRootSessionManager(input.cwd, bridge);
+    const connection =
+        input.mode === "bridge-override"
+            ? {
+                  ...input.connection,
+                  request() {
+                      throw new Error("Caller replaced persistence");
+                  },
+              }
+            : input.connection;
+    const manager = await createRemoteRootSessionManager(input.cwd, connection);
+    const bridge = getRemoteSessionSaveBridge(manager)!;
+    bridgeForCleanup = bridge;
+    if (input.mode === "bridge-override") {
+        if (
+            Reflect.set(bridge, "request", () => {
+                throw new Error("Replacement save");
+            })
+        ) {
+            throw new Error("Remote persistence bridge is replaceable");
+        }
+        if (
+            Reflect.set(Object.getPrototypeOf(bridge), "request", () => {
+                throw new Error("Replacement prototype");
+            })
+        ) {
+            throw new Error("Remote persistence prototype is replaceable");
+        }
+    }
     const retainedRead = manager.getEntries;
     const retainedWrite = manager.appendSessionInfo;
     if (input.mode === "allocation-fault" || input.mode === "oversized") {
@@ -168,7 +217,7 @@ try {
             modelConnection: input.modelConnection,
             execute: () => {
                 effects++;
-                writeFileSync(input.marker, "effect\n", { flag: "a" });
+                appendFileSync(input.marker, "effect\n");
                 if (input.mode === "agent-fault" && input.faultPoint === "after-tool") fault();
                 return Promise.resolve("remote-effect-complete");
             },
@@ -363,7 +412,18 @@ try {
         bridge.request("checkpoint");
     }
 } finally {
-    bridge.close();
-    await inputReader?.cancel();
+    if (pendingSample) {
+        // A deadline ends the request before another Atomics.load observes its terminal slot.
+        const payload = JSON.parse(pendingSample.request.payload);
+        samples.push({
+            kind: payload.kind,
+            sequence: payload.sequence,
+            latencyMs: performance.now() - pendingSample.start,
+            accepted: false,
+        });
+    }
+    bridgeForCleanup?.close();
+    globalThis.Worker = workerClass;
+    Atomics.load = load;
     if (input.measure) console.log(JSON.stringify({ samples, hydratedContents }));
 }

@@ -1,7 +1,7 @@
-import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
 import { getCwd } from "../../constants.js";
 import process from "node:process";
 import {
+    chmod as fsChmod,
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { AGENTS } from "../../constants.js";
 import { loadAgentDef } from "./agents.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -38,9 +38,13 @@ import { getRootExecutionMessages } from "./execution-backend.ts";
 import { HostedSession } from "./hosted-session.js";
 import { getRunWieldSessionDir } from "./root-session.js";
 import { estimateContextTextTokens } from "./session-context-report.ts";
+import { createMnemotecaTools } from "../../extensions/mnemoteca/tools.ts";
+import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
+
+/** @typedef {import("@earendil-works/pi-coding-agent").ExtensionToolContext} MnemotecaToolContext */
 
 /**
  * @param {string | Record<string, any>} testDefinition
@@ -292,27 +296,44 @@ sessionPromptTest("assembleFinalSystemPromptWithContextProjection attributes res
     }
 });
 
-sessionPromptTest("assembleFinalSystemPromptWithContextProjection includes Core Memory from Mnemoteca", async () => {
-    const projectRoot = await fsMkdtemp(join(tmpdir(), "runwield-context-project-"));
+sessionPromptTest("core memories stored from the checkout are injected into its worktree prompt", async () => {
+    const projectRoot = await promptGitFixture.checkout();
+    const worktreeParent = await fsMkdtemp(join(tmpdir(), "runwield-memory-worktree-"));
+    const worktree = join(worktreeParent, "feature");
     const fakeBin = join(projectRoot, "fake-bin");
     const commandLog = join(projectRoot, "mnemoteca-command.log");
+    const memoryFile = join(projectRoot, "fixture-memory.txt");
     const previousPath = process.env["PATH"];
     const pathSeparator = process.platform === "win32" ? ";" : ":";
     try {
+        await git(projectRoot, ["worktree", "add", "-b", "memory-feature", worktree]);
         await fsMkdir(fakeBin);
-        const source = join(fakeBin, "mnemoteca.ts");
+        const executable = join(fakeBin, "mnemoteca");
         await fsWriteFile(
-            source,
-            `
-import { writeFileSync } from "node:fs";
-const args = process.argv.slice(2).join(" ");
-writeFileSync(${JSON.stringify(commandLog)}, "args=" + args + "\\n");
-if (args !== "list -t core -f plain") process.exit(64);
-console.log("Core memory from Mnemoteca\\nSecond core memory");
+            executable,
+            `#!/usr/bin/env bash
+set -euo pipefail
+printf 'args=%s\n' "$*" >> '${commandLog}'
+[[ "$2" == '--name' && "$3" == '${basename(projectRoot)}' ]] || exit 64
+case "$1" in
+  init) ;;
+  add) printf '%s\n' "\${@: -1}" > '${memoryFile}' ;;
+  list) [[ "$*" == 'list --name ${basename(projectRoot)} -t core -f plain' ]] || exit 64
+        cat '${memoryFile}' ;;
+  *) exit 64 ;;
+esac
 `,
         );
-        await writeRuntimeExecutableFixture(join(fakeBin, "mnemoteca"), source);
+        await fsChmod(executable, 0o755);
         process.env["PATH"] = previousPath ? `${fakeBin}${pathSeparator}${previousPath}` : fakeBin;
+        const [memoryTool] = createMnemotecaTools({ cwd: projectRoot, exec: denoHelperBinaryExec });
+        await memoryTool.execute(
+            "store-core",
+            { action: "store", content: "Core memory from Mnemoteca\nSecond core memory", core: true },
+            new AbortController().signal,
+            () => {},
+            /** @type {MnemotecaToolContext} */ ({}),
+        );
 
         const { prompt, projection } = await assembleFinalSystemPromptWithContextProjection(
             /** @type {any} */ ({
@@ -323,18 +344,22 @@ console.log("Core memory from Mnemoteca\\nSecond core memory");
             }),
             [],
             [],
-            projectRoot,
+            worktree,
         );
 
         assertStringIncludes(prompt, "Core memory from Mnemoteca");
         assertStringIncludes(prompt, "Second core memory");
-        assertEquals(await fsReadFile(commandLog, "utf8"), "args=list -t core -f plain\n");
+        assertStringIncludes(
+            await fsReadFile(commandLog, "utf8"),
+            `args=list --name ${basename(projectRoot)} -t core -f plain\n`,
+        );
         const coreMemoryItem = projection.categories.find((category) => category.id === "core_memories")?.items?.[0];
         assertEquals(coreMemoryItem?.source, "mnemoteca");
         assertEquals(coreMemoryItem?.label, "Core Memories");
     } finally {
         if (previousPath === undefined) delete process.env["PATH"];
         else process.env["PATH"] = previousPath;
+        await fsRm(worktreeParent, { recursive: true }).catch(() => {});
         await fsRm(projectRoot, { recursive: true }).catch(() => {});
     }
 });

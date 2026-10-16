@@ -1,7 +1,7 @@
-import { openNativeFileLock } from "../native-file-lock.ts";
 import { rm as fsRm } from "node:fs/promises";
-import { test } from "node:test";
+import { openNativeFileLock } from "../native-file-lock.ts";
 import { readdirSync, readFileSync } from "node:fs";
+import { test } from "node:test";
 import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { defineCommittedGitFixture } from "../git-test-fixture.ts";
@@ -14,9 +14,8 @@ import {
 } from "../session/file-session-storage.ts";
 import { startRemoteControlService } from "./control.ts";
 import { LaptopSessionControl, listSavedRemoteSessions } from "./laptop-session-control.ts";
-import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
-import { type ResolvedRemoteTarget } from "./target.ts";
-import { type RemoteSessionControlRequest } from "./session-protocol.ts";
+import type { ResolvedRemoteTarget } from "./target.ts";
+import type { RemoteSessionControlRequest } from "./session-protocol.ts";
 import { customEntry } from "./session-save-test-fixture.ts";
 
 const repositories = defineCommittedGitFixture();
@@ -28,6 +27,7 @@ async function fixture(test: (f: Awaited<ReturnType<typeof setup>>) => Promise<v
         await test(f);
     } finally {
         await f.service.close();
+        f.control.close();
         f.store.close();
         await fsRm(f.root, { recursive: true });
     }
@@ -48,10 +48,9 @@ async function setup() {
         primaryRoot: root,
         isWorktree: false,
     };
-    const connection = { store, target, targetLabel: `alias:${root}` };
+    const connection = { baseDir: store.path, target, targetLabel: `alias:${root}` };
     const service = startRemoteControlService(identity, connection);
-    const owners = new Map<string, RemoteSessionOwner>();
-    const control = new LaptopSessionControl(connection, owners);
+    const control = new LaptopSessionControl(connection);
     async function post(path: string, body: string) {
         return await fetch(`http://127.0.0.1:${service.port}${path}`, {
             method: "POST",
@@ -75,14 +74,14 @@ async function setup() {
         if (!response.ok) throw new Error(`Session save status ${response.status}`);
         return await response.json();
     }
-    return { root, store, target, service, control, owners, request, post, save, baseDir };
+    return { root, store, target, service, control, request, post, save, baseDir };
 }
 
 test("a dormant laptop connection and empty remote list create no project or Session evidence", async () => {
     await fixture(async (f) => {
         assertEquals(await f.request({ kind: "list" }), { sessions: [] });
         assertEquals(listProjectsFromDisk(f.baseDir), []);
-        assertEquals(Array.from(readdirSync(f.baseDir, { withFileTypes: true })), []);
+        assertEquals(readdirSync(f.baseDir), []);
     });
 });
 
@@ -95,7 +94,7 @@ test("first message ownership stays on the laptop and publication releases the n
         assertEquals(JSON.parse(hydrated.contents.split("\n")[0]).cwd, f.target.cwd);
         const project = listProjectsFromDisk(f.baseDir)[0];
         const directory = sessionDirForProject(f.baseDir, project);
-        const file = openNativeFileLock(lockPath(directory, sessionId), false);
+        const file = openNativeFileLock(lockPath(directory, sessionId));
         try {
             assertEquals(file.tryLockSync(true), false);
             const user =
@@ -165,24 +164,21 @@ test("remote begin and list refuse another target's Session", async () => {
             name: "",
             admissionId: crypto.randomUUID(),
         });
-        const owner = f.owners.get(created.operation || "")!;
-        owner.handle({ operation: owner.operation, sequence: 0, kind: "hydrate", contents: "" });
-        owner.handle({ operation: owner.operation, sequence: 1, kind: "append", contents: customEntry() });
-        await f.control.handle({ kind: "checkpoint", operation: owner.operation });
+        const operation = created.operation!;
+        f.control.handleSave({ operation, sequence: 0, kind: "hydrate", contents: "" });
+        f.control.handleSave({ operation, sequence: 1, kind: "append", contents: customEntry() });
+        await f.control.handle({ kind: "checkpoint", operation });
         for (const changed of [
             { ...f.target.host, hostname: "other.example" },
             { ...f.target.host, user: "other" },
             { ...f.target.host, port: 2222 },
             { ...f.target.host, hostKeyFingerprint: "SHA256:other" },
         ]) {
-            const other = new LaptopSessionControl(
-                {
-                    store: f.store,
-                    target: { ...f.target, host: changed },
-                    targetLabel: "other",
-                },
-                new Map(),
-            );
+            const other = new LaptopSessionControl({
+                baseDir: f.store.path,
+                target: { ...f.target, host: changed },
+                targetLabel: "other",
+            });
             assertEquals(await other.handle({ kind: "list" }), { sessions: [] });
             await assertRejects(
                 () => other.handle({ kind: "begin", sessionId, admissionId: crypto.randomUUID() }),
@@ -190,20 +186,19 @@ test("remote begin and list refuse another target's Session", async () => {
                 "does not belong",
             );
             await assertRejects(() => other.handle({ kind: "list", sessionId }), Error, "does not belong");
+            other.close();
         }
-        const otherRoot = new LaptopSessionControl(
-            {
-                store: f.store,
-                target: { ...f.target, primaryRoot: join(f.root, "other") },
-                targetLabel: "other",
-            },
-            new Map(),
-        );
+        const otherRoot = new LaptopSessionControl({
+            baseDir: f.store.path,
+            target: { ...f.target, primaryRoot: join(f.root, "other") },
+            targetLabel: "other",
+        });
         await assertRejects(
             () => otherRoot.handle({ kind: "begin", sessionId, admissionId: crypto.randomUUID() }),
             Error,
             "does not belong",
         );
+        otherRoot.close();
     });
 });
 
@@ -216,18 +211,18 @@ test("connection loss preserves durable entries, releases ownership, and recover
             name: "",
             admissionId: crypto.randomUUID(),
         });
-        const owner = f.owners.get(created.operation || "")!;
-        owner.handle({ operation: owner.operation, sequence: 0, kind: "hydrate", contents: "" });
-        owner.handle({
-            operation: owner.operation,
+        const operation = created.operation!;
+        f.control.handleSave({ operation, sequence: 0, kind: "hydrate", contents: "" });
+        f.control.handleSave({
+            operation,
             sequence: 1,
             kind: "append",
             contents: customEntry("saved-effect"),
         });
         f.control.close();
         assertEquals(f.store.inspectSessionActivation(sessionId).activation?.state, "uncertain");
-        assertEquals(f.owners.size, 0);
-        const next = new LaptopSessionControl({ store: f.store, target: f.target, targetLabel: "alias" }, new Map());
+
+        const next = new LaptopSessionControl({ baseDir: f.store.path, target: f.target, targetLabel: "alias" });
         const reopened = await next.handle({ kind: "begin", sessionId, admissionId: crypto.randomUUID() });
         assertEquals(typeof reopened.operation, "string");
         const project = listProjectsFromDisk(f.baseDir)[0];
@@ -236,8 +231,8 @@ test("connection loss preserves durable entries, releases ownership, and recover
         next.close();
         assertThrows(
             () =>
-                owner.handle({
-                    operation: owner.operation,
+                f.control.handleSave({
+                    operation,
                     sequence: 2,
                     kind: "append",
                     contents: customEntry("repeat"),
@@ -392,5 +387,42 @@ test("admission cancellation protocol refuses ambiguous identities and private l
             await response.text();
         }
         assertEquals(listProjectsFromDisk(f.baseDir), []);
+    });
+});
+
+test("laptop control owns persistence and its operation registry despite extra constructor inputs", async () => {
+    await fixture(async (f) => {
+        const suppliedOwners = new Map();
+        const connection = {
+            baseDir: f.baseDir,
+            target: f.target,
+            targetLabel: "alias",
+            store: {
+                ...f.store,
+                ensureSessionCatalogRecordAndAcquire() {
+                    throw new Error("Caller replaced storage");
+                },
+            },
+        };
+        // Exercise a JavaScript caller, which can pass fields and arguments outside the TS contract.
+        const control: LaptopSessionControl = Reflect.construct(LaptopSessionControl, [connection, suppliedOwners]);
+        try {
+            const sessionId = crypto.randomUUID();
+            const created = await control.handle({
+                kind: "create",
+                sessionId,
+                name: "",
+                admissionId: crypto.randomUUID(),
+            });
+            const operation = created.operation!;
+            assertEquals(suppliedOwners.size, 0, "The caller must not own the active operation registry");
+            control.handleSave({ operation, sequence: 0, kind: "hydrate", contents: "" });
+            control.handleSave({ operation, sequence: 1, kind: "append", contents: customEntry("real-owned-save") });
+            await control.handle({ kind: "checkpoint", operation });
+            assertEquals(suppliedOwners.size, 0);
+            assertEquals(f.store.inspectSessionActivation(sessionId).activation?.state, "idle");
+        } finally {
+            control.close();
+        }
     });
 });

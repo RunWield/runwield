@@ -16,6 +16,9 @@ import { serveHttp } from "../http-server.ts";
 import { ok as assert } from "node:assert/strict";
 import { assertEquals } from "../../testing/assertions.ts";
 import { processLines } from "./remote-runtime-lines.ts";
+import { resolveMemoryCollection } from "../memory-collection.ts";
+import { writeWorkflowBinaryFixtures } from "../../testing/workflow-binary-fixtures.ts";
+import type { MemoryRequest } from "./memory-bridge.ts";
 import {
     type RuntimeCommandFixture,
     type RuntimeCommandFixtureOptions,
@@ -61,6 +64,7 @@ export interface CapturedControl {
     response: string;
 }
 export interface RuntimeProxyPolicy {
+    memoryAfter?: (input: MemoryRequest, response: Response) => Promise<Response>;
     before?: (
         request: RemoteSessionRequest | RemoteSessionControlRequest,
         path: string,
@@ -84,6 +88,9 @@ export interface RuntimeFixture extends RuntimeCommandFixture {
     remoteProject: string;
     remoteHome: string;
     resources: string;
+    connection: { port: number; credential: string };
+    memoryCollection: string;
+    memoryRequests: MemoryRequest[];
     store: ReturnType<typeof openFileSessionStore>;
     control: RemoteSessionControl;
     controls: CapturedControl[];
@@ -97,7 +104,11 @@ export interface RuntimeProcess {
     read(): Promise<RuntimeClientReport>;
     close(): Promise<void>;
 }
-async function startProcess(input: RuntimeClientInput, remoteHome: string): Promise<RuntimeProcess> {
+async function startProcess(
+    input: RuntimeClientInput,
+    remoteHome: string,
+    remotePath: string,
+): Promise<RuntimeProcess> {
     const child = spawnNativeProcess(process.execPath, {
         args: runtimeSourceArgs([
             "run",
@@ -108,7 +119,12 @@ async function startProcess(input: RuntimeClientInput, remoteHome: string): Prom
             new URL("./remote-runtime-test-client.ts", import.meta.url).pathname,
         ]),
         cwd: input.cwd,
-        env: { HOME: remoteHome, WLD_TEST_SANDBOX_HOME: remoteHome, MNEMOTECA_DB_PATH: join(remoteHome, "memory.db") },
+        env: {
+            HOME: remoteHome,
+            WLD_TEST_SANDBOX_HOME: remoteHome,
+            MNEMOTECA_DB_PATH: join(remoteHome, "memory.db"),
+            PATH: remotePath,
+        },
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",
@@ -157,48 +173,58 @@ export async function withRemoteRuntimeFixture(
         async (local) => {
             const remoteProject = await repositories.checkout();
             const remoteHome = await fsMkdtemp(join(tmpdir(), "remote-runtime-home-"));
+            const remoteBin = await writeWorkflowBinaryFixtures(remoteHome);
+            await fsRm(join(remoteBin, "mnemoteca"));
+            const remotePath = `${remoteBin}:/usr/bin:/bin`;
             const resources = join(remoteHome, "mounted-personal-resources");
             await fsMkdir(join(resources, "agents"), { recursive: true });
             await fsMkdir(join(remoteHome, ".wld"), { recursive: true });
             await fsCopyFile(local.settingsPath, join(resources, "settings.json"));
             await fsWriteFile(
                 join(resources, "agents", "remote-runtime.md"),
-                `---\nname: Remote Runtime\ndescription: Test project conversation\ntools:\n    - read\n    - write\n    - see_image\n---\nUse project tools when asked, then answer.\n`,
+                `---\nname: Remote Runtime\ndescription: Test project conversation\ntools:\n    - read\n    - write\n    - see_image\n    - memory\n---\nUse project tools when asked, then answer.\n`,
             );
             await fsWriteFile(join(remoteHome, ".wld", "settings.json"), "remote profile must not be read");
             await fsWriteFile(join(local.projectRoot, "sentinel.txt"), "laptop initial\n");
             const store = openFileSessionStore({ baseDir: join(local.homeDir, "laptop-history") });
             const identity = { buildId: "a".repeat(64), protocol: 1 };
-            const service = startRemoteControlService(identity, {
-                store,
-                targetLabel: `fixture:${remoteProject}`,
-                target: {
-                    host: {
-                        hostname: "remote-runtime.example",
-                        user: "tester",
-                        port: 22,
-                        hostKeyFingerprint: "SHA256:runtime",
+            const memoryCollection = await resolveMemoryCollection({ cwd: local.projectRoot });
+            const service = startRemoteControlService(
+                identity,
+                {
+                    baseDir: store.path,
+                    targetLabel: `fixture:${remoteProject}`,
+                    target: {
+                        host: {
+                            hostname: "remote-runtime.example",
+                            user: "tester",
+                            port: 22,
+                            hostKeyFingerprint: "SHA256:runtime",
+                        },
+                        cwd: remoteProject,
+                        home: remoteHome,
+                        os: "Linux",
+                        arch: "x86_64",
+                        gitRoot: remoteProject,
+                        gitDir: join(remoteProject, ".git"),
+                        gitCommonDir: join(remoteProject, ".git"),
+                        primaryRoot: remoteProject,
+                        isWorktree: false,
                     },
-                    cwd: remoteProject,
-                    home: remoteHome,
-                    os: "Linux",
-                    arch: "x86_64",
-                    gitRoot: remoteProject,
-                    gitDir: join(remoteProject, ".git"),
-                    gitCommonDir: join(remoteProject, ".git"),
-                    primaryRoot: remoteProject,
-                    isWorktree: false,
                 },
-            });
+                memoryCollection,
+            );
             const controls: CapturedControl[] = [];
             const saves: RemoteSessionRequest[] = [];
             const modelRequests: RuntimeModelRequest[] = [];
+            const memoryRequests: MemoryRequest[] = [];
             const policy: RuntimeProxyPolicy = {};
             const baseUrl = `http://127.0.0.1:${service.port}`;
             const proxy = serveHttp({ hostname: "127.0.0.1", port: 0, onListen() {} }, async (request) => {
                 const path = new URL(request.url).pathname;
                 const body = request.method === "POST" ? await request.text() : undefined;
                 if (path === "/models/stream" && body) modelRequests.push(JSON.parse(body));
+                if (path === "/memory" && body) memoryRequests.push(JSON.parse(body));
                 if (body && policy.before && (path === "/session/control" || path === "/session/request")) {
                     const input: RemoteSessionRequest | RemoteSessionControlRequest = JSON.parse(body);
                     const interrupted = await policy.before(input, path);
@@ -209,6 +235,9 @@ export async function withRemoteRuntimeFixture(
                     headers: request.headers,
                     body,
                 });
+                if (path === "/memory" && body && policy.memoryAfter) {
+                    return await policy.memoryAfter(JSON.parse(body), response);
+                }
                 if (path === "/session/control" || path === "/session/request") {
                     const input: RemoteSessionControlRequest | RemoteSessionRequest = JSON.parse(body || "{}");
                     if (path === "/session/control") {
@@ -242,6 +271,9 @@ export async function withRemoteRuntimeFixture(
                     remoteProject,
                     remoteHome,
                     resources,
+                    connection,
+                    memoryCollection,
+                    memoryRequests,
                     store,
                     control: new RemoteSessionControl(connection),
                     controls,
@@ -249,7 +281,11 @@ export async function withRemoteRuntimeFixture(
                     modelRequests,
                     policy,
                     async start() {
-                        const process = await startProcess({ connection, resources, cwd: remoteProject }, remoteHome);
+                        const process = await startProcess(
+                            { connection, resources, memoryCollection, cwd: remoteProject },
+                            remoteHome,
+                            remotePath,
+                        );
                         processes.push(process);
                         return process;
                     },

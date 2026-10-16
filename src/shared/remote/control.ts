@@ -1,13 +1,19 @@
 import { serveHttp } from "../http-server.ts";
 /* Connection-scoped local control and authenticated laptop model bridge. */
 
+import { readPersonalMcpConfig } from "../mcp/config.ts";
+import { LaptopMemoryService } from "./memory-service.ts";
 import { createRunWieldModelRuntime } from "../models/model-registry.ts";
 import { handleModelRequest, LocalModelBridge } from "./model-bridge.ts";
 import type { SettingsUpdate } from "./settings-bridge.ts";
 import { readSystemClipboardImage } from "../../ui/tui/clipboard.ts";
 import { validateClipboardImage } from "./clipboard-bridge.ts";
 import { MAX_SESSION_BYTES, type RemoteSessionRequest, validateSessionRequest } from "./session-protocol.ts";
-import type { RemoteSessionOwner } from "../session/remote-session-owner.ts";
+import {
+    getRemoteSessionOwner,
+    releaseRemoteSessionOperation,
+    type RemoteSessionOwner,
+} from "../session/file-session-store.ts";
 import { LaptopSessionControl, type LaptopSessionTarget } from "./laptop-session-control.ts";
 import { type RemoteSessionControlRequest, validateSessionControlRequest } from "./session-protocol.ts";
 
@@ -88,8 +94,8 @@ export interface RemoteControlService {
     readonly credential: string;
     status(): RemoteControlStatus;
     /** Trusted laptop registration only. HTTP clients cannot supply writer proofs. */
-    registerSessionOwner(owner: RemoteSessionOwner): void;
-    unregisterSessionOwner(operation: string): void;
+    registerSessionOperation(operation: string): void;
+    unregisterSessionOperation(operation: string): void;
     requestShutdown(): void;
     close(): Promise<void>;
 }
@@ -120,11 +126,13 @@ function equalSecret(left: string, right: string): boolean {
 export function startRemoteControlService(
     identity: RemoteControlIdentity,
     target?: LaptopSessionTarget,
+    memoryCollection?: string,
 ): RemoteControlService {
     if (!validIdentity(identity)) throw new Error("Invalid remote control identity");
     const credential = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
         byte.toString(16).padStart(2, "0"),
     ).join("");
+    const memory = memoryCollection ? new LaptopMemoryService(memoryCollection) : undefined;
     let connected = false;
     let ready = false;
     let shutdown = false;
@@ -184,9 +192,21 @@ export function startRemoteControlService(
         }
     };
     const sessionOwners = new Map<string, RemoteSessionOwner>();
-    const sessions = target ? new LaptopSessionControl(target, sessionOwners) : null;
+    const sessions = target ? new LaptopSessionControl(target) : null;
     const stopSessions = () => {
-        if (sessions) sessions.close();
+        try {
+            sessions?.close();
+        } catch {
+            /* Continue cleanup and release the listener. */
+        }
+        for (const operation of sessionOwners.keys()) {
+            try {
+                releaseRemoteSessionOperation(operation);
+            } catch {
+                /* Other operations must still be released. */
+            }
+            sessionOwners.delete(operation);
+        }
     };
     const sessionControlHandler = async (request: Request): Promise<Response> => {
         if (!sessions || request.method !== "POST") return new Response(null, { status: 404 });
@@ -253,10 +273,11 @@ export function startRemoteControlService(
         }
         // Body reads are asynchronous: authority must be checked again after the last byte.
         if (shutdown || closed || !ready) return new Response(null, { status: 403 });
-        const owner = sessionOwners.get(input.operation);
-        if (!owner) return new Response(null, { status: 409 });
         try {
-            return Response.json(owner.handle(input));
+            const owner = sessionOwners.get(input.operation);
+            if (owner) return Response.json(owner.handle(input));
+            if (!sessions) throw new Error("Stale Session operation");
+            return Response.json(sessions.handleSave(input));
         } catch {
             return new Response(null, { status: 409 });
         }
@@ -286,6 +307,7 @@ export function startRemoteControlService(
             ready = false;
             stopModels();
             stopSessions();
+            memory?.close();
         }
     };
     const abort = new AbortController();
@@ -348,7 +370,26 @@ export function startRemoteControlService(
                 ready = false;
                 stopModels();
                 stopSessions();
+                memory?.close();
                 return Response.json({ shutdown: true });
+            }
+            if (path === "/mcp/config") {
+                if (shutdown || !ready) return new Response(null, { status: 403 });
+                if (request.method !== "GET") return new Response(null, { status: 405 });
+                try {
+                    const config = await readPersonalMcpConfig();
+                    // Personal servers are listed here, not launched: their argv and credentials stay on the laptop.
+                    return Response.json({
+                        ...config,
+                        servers: config.servers.map((server) => ({ ...server, command: "", args: [], env: {} })),
+                    });
+                } catch {
+                    return new Response(null, { status: 503 });
+                }
+            }
+            if (path === "/memory") {
+                if (shutdown || !ready) return new Response(null, { status: 403 });
+                return memory ? await memory.handle(request) : new Response(null, { status: 404 });
             }
             if (path === "/clipboard/image") {
                 if (shutdown || !ready) return new Response(null, { status: 403 });
@@ -400,20 +441,26 @@ export function startRemoteControlService(
         port: address.port,
         credential,
         status: () => ({ connected, ready, shutdown, closed }),
-        registerSessionOwner(owner) {
-            if (shutdown || closed || sessionOwners.has(owner.operation)) {
+        registerSessionOperation(operation) {
+            const owner = getRemoteSessionOwner(operation);
+            if (shutdown || closed || sessionOwners.has(operation)) {
                 throw new Error("Remote Session owner cannot be registered");
             }
             sessionOwners.set(owner.operation, owner);
         },
-        unregisterSessionOwner(operation) {
-            sessionOwners.delete(operation);
+        unregisterSessionOperation(operation) {
+            try {
+                releaseRemoteSessionOperation(operation);
+            } finally {
+                sessionOwners.delete(operation);
+            }
         },
         requestShutdown() {
             shutdown = true;
             ready = false;
             stopModels();
             stopSessions();
+            memory?.close();
         },
         async close() {
             if (closed) return;
@@ -423,6 +470,7 @@ export function startRemoteControlService(
             if (timer !== undefined) clearInterval(timer);
             stopModels();
             stopSessions();
+            memory?.close();
             abort.abort();
             await server.finished;
         },

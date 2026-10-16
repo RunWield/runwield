@@ -64,22 +64,31 @@ test(
             process.env["PATH"] = `${hardware.root}:${oldPath}`;
             process.env["CLIPBOARD_MODE_PATH"] = hardware.modePath;
             process.env["CLIPBOARD_PNG_PATH"] = join(hardware.root, "clipboard.png");
-            const service = startRemoteControlService(identity, {
-                store,
-                targetLabel: `host:${projectRoot}`,
-                target: {
-                    host: { hostname: "host.example", user: "tester", port: 22, hostKeyFingerprint: "SHA256:fixture" },
-                    cwd: projectRoot,
-                    home: remoteHome,
-                    os: "Linux",
-                    arch: "x86_64",
-                    gitRoot: null,
-                    gitDir: null,
-                    gitCommonDir: null,
-                    primaryRoot: null,
-                    isWorktree: false,
+            const service = startRemoteControlService(
+                identity,
+                {
+                    baseDir: store.path,
+                    targetLabel: `host:${projectRoot}`,
+                    target: {
+                        host: {
+                            hostname: "host.example",
+                            user: "tester",
+                            port: 22,
+                            hostKeyFingerprint: "SHA256:fixture",
+                        },
+                        cwd: projectRoot,
+                        home: remoteHome,
+                        os: "Linux",
+                        arch: "x86_64",
+                        gitRoot: null,
+                        gitDir: null,
+                        gitCommonDir: null,
+                        primaryRoot: null,
+                        isWorktree: false,
+                    },
                 },
-            });
+                "clipboard-bootstrap",
+            );
             const entry = new URL("./entry.ts", import.meta.url).href;
             const tui = new URL("../../ui/tui/tui.ts", import.meta.url).href;
             const terminalModule = new URL("../../ui/tui/testing/virtual-terminal.js", import.meta.url).href;
@@ -100,16 +109,18 @@ while (!terminal.getScreenText().includes("laptop-http/remote-model") && Date.no
     await terminal.flush();
 }
 await new Promise((resolve) => setTimeout(resolve, 500));
+const screenBeforePaste = terminal.getScreenText();
 terminal.input("\\x16");
-const pasteDeadline = Date.now() + 4000;
-while (!terminal.getScreenText().includes("image/png") && Date.now() < pasteDeadline) {
+const pasteDeadline = Date.now() + 10_000;
+while (terminal.getScreenText() === screenBeforePaste && Date.now() < pasteDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 20));
     await terminal.flush();
 }
+const imagePreviewed = terminal.getScreenText() !== screenBeforePaste;
 terminal.typeText("Unsubmitted production prompt");
 await new Promise((resolve) => setTimeout(resolve, 200));
 await terminal.flush();
-console.log(JSON.stringify({ returned, screen: terminal.getScreenText(), home: (await import(${JSON.stringify(
+console.log(JSON.stringify({ returned, imagePreviewed, screen: terminal.getScreenText(), home: (await import(${JSON.stringify(
                     new URL("../../constants.js", import.meta.url).href,
                 )})).getHomeDir() }));
 await running;
@@ -157,6 +168,7 @@ console.log("RETURNED_AFTER_TERMINATION");
                         JSON.stringify({
                             connection: { port: service.port, credential: service.credential },
                             resources: { globalRoot: resources },
+                            memoryCollection: "clipboard-bootstrap",
                             cwd: projectRoot,
                             view: {
                                 host: "host",
@@ -183,7 +195,7 @@ console.log("RETURNED_AFTER_TERMINATION");
                 assertEquals(report.home, remoteHome);
                 assertStringIncludes(report.screen, "laptop-http/remote-model");
                 assertStringIncludes(report.screen, "Unsubmitted production prompt");
-                assertStringIncludes(report.screen, "image/png");
+                assertEquals(report.imagePreviewed, true);
                 assertEquals(report.screen.includes("Cannot attach"), false);
                 assertEquals(listProjectsFromDisk(baseDir), []);
                 assertEquals(Array.from(readdirSync(baseDir, { withFileTypes: true })), []);
