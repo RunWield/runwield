@@ -38,7 +38,9 @@ function isPlanReviewRetryAccepted(response) {
     if (!response || typeof response !== "object") return false;
     if (response.outcome === RuntimeInteractionOutcomes.ACCEPTED) return true;
     if (response.value === true) return true;
-    const value = String(response.value || "").trim().toLowerCase();
+    const value = String(response.value || "")
+        .trim()
+        .toLowerCase();
     return value === "yes" || value === "review_again" || value === "review";
 }
 
@@ -108,7 +110,7 @@ export async function executePlan({
 
     async function tryLoadPlanForExecution() {
         try {
-            const location = await resolveWorkflowPlanLocation(projectRoot, planName);
+            const location = await resolveWorkflowPlanLocation(projectRoot, planName, { readOnly: true });
             return { plan: location.plan, error: null };
         } catch (error) {
             return { plan: null, error };
@@ -122,12 +124,15 @@ export async function executePlan({
             level: "error",
             header: "RunWield",
         });
-        await recordWorkflowMetric({
-            category: "execution",
-            event: "plan_execution_rejected",
-            planName,
-            details: { reason: initialLoad.error ? "plan_load_failed" : "plan_not_found" },
-        }, projectRoot);
+        await recordWorkflowMetric(
+            {
+                category: "execution",
+                event: "plan_execution_rejected",
+                planName,
+                details: { reason: initialLoad.error ? "plan_load_failed" : "plan_not_found" },
+            },
+            projectRoot,
+        );
 
         const planPath = join(projectRoot, PLANS_DIR_NAME, `${planName}.md`);
         let recoveryAttempt = 0;
@@ -176,11 +181,9 @@ export async function executePlan({
                 requestRetry: (details) =>
                     requestPlanReviewRetryConfirmation(hostedSession, requestHostedSessionInteraction, details),
                 onUnanswered: ({ reason }) => {
-                    emitSystemStatus(
-                        hostedSession,
-                        `Plan review ended without an answer (${reason}).`,
-                        { header: "RunWield" },
-                    );
+                    emitSystemStatus(hostedSession, `Plan review ended without an answer (${reason}).`, {
+                        header: "RunWield",
+                    });
                 },
             });
             if (recoverableReview.kind === "complete") {
@@ -195,7 +198,7 @@ export async function executePlan({
             }
 
             const reviewResponse = recoverableReview.response || {};
-            const reviewMeta = /** @type {any} */ (reviewResponse._meta || reviewResponse || {});
+            const reviewMeta = /** @type {any} */ reviewResponse._meta || reviewResponse || {};
             if (reviewMeta.remoteReview === true) {
                 const message = reviewResponse.message || `Plan "${planName}" saved for remote review.`;
                 emitSystemStatus(hostedSession, message, { header: "RunWield" });
@@ -240,9 +243,10 @@ export async function executePlan({
                     executionComplete: false,
                     intentionalComplete: revisionOutcome.outcome === "saved" || revisionOutcome.outcome === "canceled",
                     intentionalCompleteReason: `review_${revisionOutcome.outcome}`,
-                    message: revisionOutcome.outcome === "saved" || revisionOutcome.outcome === "canceled"
-                        ? SESSION_COMPLETE_GUIDANCE
-                        : undefined,
+                    message:
+                        revisionOutcome.outcome === "saved" || revisionOutcome.outcome === "canceled"
+                            ? SESSION_COMPLETE_GUIDANCE
+                            : undefined,
                 };
             }
 
@@ -252,9 +256,10 @@ export async function executePlan({
             if (Array.isArray(reviewMeta.images) && reviewMeta.images.length > 0) {
                 effectiveReviewImages = reviewMeta.images;
             }
-            const approvedMeta = /** @type {Partial<import('../../plan-store.js').PlanFrontMatter>} */ (
-                reviewMeta.planAttrs || _triageMeta || {}
-            );
+            const approvedMeta =
+                /** @type {Partial<import('../../plan-store.js').PlanFrontMatter>} */ reviewMeta.planAttrs ||
+                _triageMeta ||
+                {};
             const approvalAction = normalizePlanApprovalAction({
                 classification: approvedMeta.classification,
                 action: reviewMeta.approvalAction,
@@ -276,9 +281,8 @@ export async function executePlan({
 
             const currentStatus = plan.attrs?.status || "approved";
             if (currentStatus !== "ready_for_work" && currentStatus !== "ready_for_decomposition") {
-                const readinessEvent = approvedMeta.classification === "PROJECT"
-                    ? "epic_readiness_passed"
-                    : "readiness_passed";
+                const readinessEvent =
+                    approvedMeta.classification === "PROJECT" ? "epic_readiness_passed" : "readiness_passed";
                 const readinessMeta = await recordPlanEvent({
                     cwd: projectRoot,
                     planName,
@@ -295,9 +299,10 @@ export async function executePlan({
                     } else if (plan.attrs.status === currentStatus) {
                         plan.attrs = {
                             ...plan.attrs,
-                            status: readinessEvent === "epic_readiness_passed"
-                                ? "ready_for_decomposition"
-                                : "ready_for_work",
+                            status:
+                                readinessEvent === "epic_readiness_passed"
+                                    ? "ready_for_decomposition"
+                                    : "ready_for_work",
                         };
                     }
                 } else if (readinessMeta) {
@@ -305,9 +310,8 @@ export async function executePlan({
                 } else {
                     plan.attrs = {
                         ...plan.attrs,
-                        status: readinessEvent === "epic_readiness_passed"
-                            ? "ready_for_decomposition"
-                            : "ready_for_work",
+                        status:
+                            readinessEvent === "epic_readiness_passed" ? "ready_for_decomposition" : "ready_for_work",
                     };
                 }
             }
@@ -333,12 +337,15 @@ export async function executePlan({
     const policy = resolvePlanExecutionPolicy(effectiveMeta);
     if (!policy.ok && policy.reason !== "project_epic") {
         emitSystemStatus(hostedSession, `ERROR: ${policy.error}`, { level: "error", header: "RunWield" });
-        await recordWorkflowMetric({
-            category: "execution",
-            event: "plan_execution_rejected",
-            planName,
-            details: { reason: policy.reason },
-        }, projectRoot);
+        await recordWorkflowMetric(
+            {
+                category: "execution",
+                event: "plan_execution_rejected",
+                planName,
+                details: { reason: policy.reason },
+            },
+            projectRoot,
+        );
         return { repairRequired: false, executionComplete: false, error: policy.error };
     }
     if (policy.ok) {
@@ -349,53 +356,67 @@ export async function executePlan({
     if (isProjectPlan(plan.attrs)) {
         const error = `Plan ${planName} is a PROJECT Epic container and cannot be executed directly.`;
         emitSystemStatus(hostedSession, `ERROR: ${error}`, { level: "error", header: "RunWield" });
-        await recordWorkflowMetric({
-            category: "execution",
-            event: "plan_execution_rejected",
-            planName,
-            details: { reason: "epic_container", classification: effectiveMeta.classification },
-        }, projectRoot);
+        await recordWorkflowMetric(
+            {
+                category: "execution",
+                event: "plan_execution_rejected",
+                planName,
+                details: { reason: "epic_container", classification: effectiveMeta.classification },
+            },
+            projectRoot,
+        );
         return { repairRequired: false, executionComplete: false, error };
     }
 
     if (!isExecutablePlanStatus(plan.attrs.status)) {
         const error = `Plan ${planName} is not ready for work (status: ${plan.attrs.status}).`;
         emitSystemStatus(hostedSession, `ERROR: ${error}`, { level: "error", header: "RunWield" });
-        await recordWorkflowMetric({
-            category: "execution",
-            event: "plan_execution_rejected",
-            planName,
-            details: { reason: "not_ready_for_work", status: plan.attrs.status },
-        }, projectRoot);
+        await recordWorkflowMetric(
+            {
+                category: "execution",
+                event: "plan_execution_rejected",
+                planName,
+                details: { reason: "not_ready_for_work", status: plan.attrs.status },
+            },
+            projectRoot,
+        );
         return { repairRequired: false, executionComplete: false, error };
     }
 
-    const collaboration = policy.ok ? selectRuntimeCollaborationStyle(hostedSession, policy.policy) : {
-        style: CollaborationStyles.AUTONOMOUS,
-        recommendation: CollaborationStyles.AUTONOMOUS,
-        pairCapable: false,
-        resolutionReason: "legacy_autonomous",
-    };
+    const collaboration = policy.ok
+        ? selectRuntimeCollaborationStyle(hostedSession, policy.policy)
+        : {
+              style: CollaborationStyles.AUTONOMOUS,
+              recommendation: CollaborationStyles.AUTONOMOUS,
+              pairCapable: false,
+              resolutionReason: "legacy_autonomous",
+          };
     if (policy.ok && policy.policy.executionAgent === AGENTS.FRONTEND_ENGINEER) {
-        await recordWorkflowMetric({
-            category: "execution",
-            event: "frontend_runtime_style_resolved",
-            details: {
-                policySource: policy.policy.source,
-                recommendation: collaboration.recommendation,
-                runtimeStyle: collaboration.style,
-                pairCapable: collaboration.pairCapable,
-                resolutionReason: collaboration.resolutionReason,
+        await recordWorkflowMetric(
+            {
+                category: "execution",
+                event: "frontend_runtime_style_resolved",
+                details: {
+                    policySource: policy.policy.source,
+                    recommendation: collaboration.recommendation,
+                    runtimeStyle: collaboration.style,
+                    pairCapable: collaboration.pairCapable,
+                    resolutionReason: collaboration.resolutionReason,
+                },
             },
-        }, projectRoot);
+            projectRoot,
+        );
     }
 
-    await recordWorkflowMetric({
-        category: "execution",
-        event: "plan_execution_started",
-        planName,
-        details: { classification: effectiveMeta.classification, status: effectiveMeta.status },
-    }, projectRoot);
+    await recordWorkflowMetric(
+        {
+            category: "execution",
+            event: "plan_execution_started",
+            planName,
+            details: { classification: effectiveMeta.classification, status: effectiveMeta.status },
+        },
+        projectRoot,
+    );
 
     emitSystemStatus(hostedSession, `=== Executing Plan: ${planName} ===`, { header: "RunWield" });
 
@@ -418,16 +439,19 @@ export async function executePlan({
         prepareSegmentHandoff,
     });
     if (!result.executionComplete) {
-        await recordWorkflowMetric({
-            category: "execution",
-            event: "plan_execution_result",
-            planName,
-            details: {
-                executionComplete: false,
-                repairRequired: result.repairRequired,
-                hasError: Boolean(result.error),
+        await recordWorkflowMetric(
+            {
+                category: "execution",
+                event: "plan_execution_result",
+                planName,
+                details: {
+                    executionComplete: false,
+                    repairRequired: result.repairRequired,
+                    hasError: Boolean(result.error),
+                },
             },
-        }, projectRoot);
+            projectRoot,
+        );
         return result;
     }
 
@@ -444,15 +468,18 @@ export async function executePlan({
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         try {
-            await recordWorkflowMetric({
-                category: "execution",
-                event: "implementation_checkpoint_failed",
-                planName,
-                details: {
-                    executionMode: executionContext?.executionMode,
-                    hasExecutionContext: Boolean(executionContext),
+            await recordWorkflowMetric(
+                {
+                    category: "execution",
+                    event: "implementation_checkpoint_failed",
+                    planName,
+                    details: {
+                        executionMode: executionContext?.executionMode,
+                        hasExecutionContext: Boolean(executionContext),
+                    },
                 },
-            }, projectRoot);
+                projectRoot,
+            );
         } catch {
             // The checkpoint failure remains the authoritative error.
         }
@@ -469,18 +496,19 @@ export async function executePlan({
             ...(result.completionReport ? { completionReport: result.completionReport } : {}),
         };
     }
-    await recordWorkflowMetric({
-        category: "execution",
-        event: "plan_execution_result",
-        planName,
-        details: { executionComplete: true, repairRequired: false },
-    }, projectRoot);
-
-    emitSystemStatus(
-        hostedSession,
-        `✅ Plan implementation complete and checkpointed: ${planName}`,
-        { header: "RunWield" },
+    await recordWorkflowMetric(
+        {
+            category: "execution",
+            event: "plan_execution_result",
+            planName,
+            details: { executionComplete: true, repairRequired: false },
+        },
+        projectRoot,
     );
+
+    emitSystemStatus(hostedSession, `✅ Plan implementation complete and checkpointed: ${planName}`, {
+        header: "RunWield",
+    });
     return {
         repairRequired: false,
         executionComplete: true,
@@ -489,32 +517,30 @@ export async function executePlan({
     };
 }
 
-export async function executeSingleEngineerPlan(
-    {
-        planName,
-        planBody,
-        approvedMarkdown,
-        approvalTriageMeta,
-        approvalEvidence,
-        triageMeta,
-        sessionManager,
-        currentStatus,
-        hostedSession,
-        routerMessage,
-        reviewFeedback,
-        reviewImages,
-        collaborationStyle = CollaborationStyles.AUTONOMOUS,
-        collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
-        prepareSegmentHandoff = false,
-    }: ExecuteSingleEngineerPlanOptions,
-): Promise<PlanExecutionResult> {
+export async function executeSingleEngineerPlan({
+    planName,
+    planBody,
+    approvedMarkdown,
+    approvalTriageMeta,
+    approvalEvidence,
+    triageMeta,
+    sessionManager,
+    currentStatus,
+    hostedSession,
+    routerMessage,
+    reviewFeedback,
+    reviewImages,
+    collaborationStyle = CollaborationStyles.AUTONOMOUS,
+    collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
+    prepareSegmentHandoff = false,
+}: ExecuteSingleEngineerPlanOptions): Promise<PlanExecutionResult> {
     const approvalSnapshot = approvalEvidence
         ? {
-            planId: approvalEvidence.planId,
-            revision: approvalEvidence.revision,
-            status: approvalEvidence.status,
-            worktree: approvalEvidence.worktree,
-        }
+              planId: approvalEvidence.planId,
+              revision: approvalEvidence.revision,
+              status: approvalEvidence.status,
+              worktree: approvalEvidence.worktree,
+          }
         : normalizeApprovalSnapshotForHandoff(approvalTriageMeta);
     if (prepareSegmentHandoff) {
         const approvalValidation = await validateApprovedPlanSnapshotForHandoff({
@@ -554,6 +580,16 @@ export async function executeSingleEngineerPlan(
         });
         return { repairRequired: false, executionComplete: false, error: message };
     }
+    const preparedPlan = (await resolveWorkflowPlanLocation(executionContext.executionCwd, planName)).plan;
+    if (!preparedPlan) {
+        return {
+            repairRequired: false,
+            executionComplete: false,
+            error: `Prepared execution Plan is missing: ${planName}`,
+        };
+    }
+    planBody = projectEngineerPlanBody(preparedPlan.markdown);
+    approvedMarkdown = preparedPlan.markdown;
     if (prepareSegmentHandoff) {
         const managed = hostedSession.getManagedMetadata?.();
         if (!managed?.runwieldSessionId) {

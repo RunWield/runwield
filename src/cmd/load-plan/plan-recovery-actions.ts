@@ -40,10 +40,7 @@ import type { PlanSessionSurface, RecoveryWorktreeContext } from "./plan-session
 import type { RecoveryFlowPlan, UnresolvedTransitionRecord } from "./plan-recovery-flow.ts";
 
 export type RecoveryActionOutcome =
-    | { kind: "menu" }
-    | { kind: "handled"; verified?: boolean }
-    | { kind: "review" }
-    | { kind: "settled" };
+    { kind: "menu" } | { kind: "handled"; verified?: boolean } | { kind: "review" } | { kind: "settled" };
 export type RecoveryMetricDetailValue = string | number | boolean | null | undefined;
 export type RecoveryMetricDetails = Record<string, RecoveryMetricDetailValue>;
 
@@ -119,11 +116,7 @@ export async function stopLostRecoveryPlan(context: RecoveryActionContext): Prom
 export async function restoreRecoveryWorktreeRecord(context: RecoveryActionContext): Promise<RecoveryActionOutcome> {
     const { projectRoot, plan, uiAPI, worktreeContext } = context;
     if (!worktreeContext?.id || !worktreeContext.path || !worktreeContext.branch || !worktreeContext.baseBranch) {
-        uiAPI.appendSystemMessage(
-            buildPlanRecoveryUserMessage({ kind: "record_incomplete" }),
-            true,
-            "RunWield",
-        );
+        uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "record_incomplete" }), true, "RunWield");
         await context.recordRecoveryResult("restore_record", "blocked", { reason: "incomplete_worktree_identity" });
         return { kind: "menu" };
     }
@@ -141,11 +134,7 @@ export async function restoreRecoveryWorktreeRecord(context: RecoveryActionConte
         status: "completed",
     });
     if (!restored.restored || !restored.entry) {
-        uiAPI.appendSystemMessage(
-            buildPlanRecoveryUserMessage({ kind: "record_restore_failed" }),
-            true,
-            "RunWield",
-        );
+        uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "record_restore_failed" }), true, "RunWield");
         await context.recordRecoveryResult("restore_record", "blocked", {
             reason: restored.reason || "restore_refused",
         });
@@ -166,22 +155,24 @@ export async function settleRecoveryRecords(context: RecoveryActionContext): Pro
     const authorityRoots = [
         ...new Set([
             projectRoot,
-            ...context.unresolvedRecords.map((record) => record.authorityRoot).filter((root): root is string =>
-                Boolean(root)
-            ),
+            ...context.unresolvedRecords
+                .map((record) => record.authorityRoot)
+                .filter((root): root is string => Boolean(root)),
         ]),
     ];
-    const rechecks = await Promise.all(authorityRoots.map(async (authorityRoot) => {
-        const result = await healSettledTransitionRecords(authorityRoot, {
-            planName: plan.planName,
-            apply: true,
-            evidenceProjectRoot: projectRoot,
-        });
-        return {
-            closed: result.closed,
-            remaining: result.remaining.map((record) => ({ ...record, authorityRoot })),
-        };
-    })).catch((error) => {
+    const rechecks = await Promise.all(
+        authorityRoots.map(async (authorityRoot) => {
+            const result = await healSettledTransitionRecords(authorityRoot, {
+                planName: plan.planName,
+                apply: true,
+                evidenceProjectRoot: projectRoot,
+            });
+            return {
+                closed: result.closed,
+                remaining: result.remaining.map((record) => ({ ...record, authorityRoot })),
+            };
+        }),
+    ).catch((error) => {
         if (error instanceof ProjectRuntimeEntryRefusedError) throw error;
         return null;
     });
@@ -256,12 +247,7 @@ export async function userVerifyRecoveryPlan(context: RecoveryActionContext): Pr
 
 export async function inspectRecoveryPlan(context: RecoveryActionContext): Promise<RecoveryActionOutcome> {
     context.worktreeContext = await context.refreshRecoveryWorktree();
-    await appendRecoveryReport(
-        context.projectRoot,
-        context.plan,
-        context.uiAPI,
-        context.worktreeContext,
-    );
+    await appendRecoveryReport(context.projectRoot, context.plan, context.uiAPI, context.worktreeContext);
     await context.recordRecoveryResult("inspect", "reported", {
         hasWorktree: hasWorktreeContext(context.worktreeContext),
     });
@@ -354,12 +340,7 @@ export async function openFollowUpRecoveryPlan(context: RecoveryActionContext): 
         return { kind: "menu" };
     }
     if (
-        !(await confirmRecoveryWorktreeAvailable(
-            context.projectRoot,
-            context.plan.planName,
-            worktree,
-            context.uiAPI,
-        ))
+        !(await confirmRecoveryWorktreeAvailable(context.projectRoot, context.plan.planName, worktree, context.uiAPI))
     ) {
         await context.recordRecoveryResult("follow_up", "blocked", { reason: "worktree_unavailable" });
         return { kind: "menu" };
@@ -461,9 +442,10 @@ export async function continueRecoveryPlan(context: RecoveryActionContext): Prom
         return { kind: "menu" };
     }
     if (context.plan.attrs.status === "in_progress" || context.plan.attrs.status === "failed") {
-        const authorityRoot = context.plan.attrs.executionMode === "worktree" && context.worktreeContext?.path
-            ? context.worktreeContext.path
-            : context.projectRoot;
+        const authorityRoot =
+            context.plan.attrs.executionMode === "worktree" && context.worktreeContext?.path
+                ? context.worktreeContext.path
+                : context.projectRoot;
         context.plan.attrs = await recordPlanEvent({
             cwd: authorityRoot,
             planName: context.plan.planName,
@@ -584,7 +566,7 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
         false,
         "RunWield",
     );
-    const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
+    const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { readOnly: true });
     if (!location.plan) {
         uiAPI.appendSystemMessage(
             buildPlanRecoveryUserMessage({ kind: "abandon_definition_missing" }),
@@ -596,8 +578,9 @@ export async function abandonRecoveryPlan(context: RecoveryActionContext): Promi
     }
     Object.assign(plan, location.plan);
     await context.recordRecoveryResult("abandon", "abandoned");
-    return plan.attrs.status === "validated" || plan.attrs.status === "verified" ||
-            plan.attrs.status === "user_verified"
+    return plan.attrs.status === "validated" ||
+        plan.attrs.status === "verified" ||
+        plan.attrs.status === "user_verified"
         ? { kind: "settled" }
         : { kind: "menu" };
 }

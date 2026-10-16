@@ -591,11 +591,20 @@ earlier behavior.
 
 **Requirement: Each child starts with the preceding children's published code.**
 
-Before continuation prepares the next child, Core fetches the latest remote Epic target. New planning worktrees start
+Before a session starts in a child, Core fetches the latest remote Epic target. New planning worktrees start
 from that commit; an existing, unstarted planning worktree imports it before planning resumes, preserving saved Plan
 scope and the child's authoritative lifecycle state. RunWield's own status changes do not block synchronization or count
 as implementation. The refreshed commit becomes the planning baseline before execution starts. Fetch failure keeps
 continuation recoverable instead of silently starting from stale code. The user's primary checkout stays intact.
+
+**Requirement: A child worktree starts only with a session.**
+
+Core creates a child's planning worktree only when planning, review, re-review, execution, or automatic continuation
+starts a session in that child. It starts from the latest fetched Epic branch. Plan location lookups are pure. Loading,
+selecting, viewing, canceling, pushing, or sharing never creates a child worktree. A session-less write to an unstarted
+child without a worktree is refused: start planning first, with no changes to the Plan or Git state. All Plans use the
+same session-start preparation, including standalone Plans with a recorded delivery branch. Existing planning worktrees
+are reused and refreshed; no automatic cleanup removes worktrees created earlier.
 
 **Requirement: Children are slices, and their boundaries can move.**
 
@@ -634,6 +643,12 @@ and siblings active. Listings keep held work distinct from active and finished w
 
 **Acceptance scenarios:**
 
+- Given an Epic with unstarted children, when the user opens the Epic, browses, views, or cancels, or when lookups or
+  collaboration commands touch those children, no child worktree is created.
+- Given a child with no worktree and an Epic branch that advanced after decomposition, when the user resumes planning,
+  re-reviews, reviews, or executes it, its worktree starts from the newest fetched Epic head.
+- Given an unstarted child without a worktree, when the user puts it on hold or pushes it without starting a session,
+  Core says to start planning first and changes nothing.
 - Given a new Epic with a missing Epic branch, when the user opens it to start the first child, the branch starts from
   the latest primary branch, the child drafts are on it, the user's checkout is unchanged, and Planner can use the child
   Plan.
