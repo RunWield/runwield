@@ -18,6 +18,12 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/empty-answer-is-not-a-negative-answer"
 status: "reviewed"
+validatedCommit: "4aa0f8aa46249b9f54f1b319b068d2f9814d0bed"
+workRecord:
+    status: "generated"
+    recordId: "3b2cb09c-9dd8-4ef9-824a-2ebd2bfa22a3"
+    path: "docs/work-records/2026-10-16-treat-unknown-check-results-as-inconclusive.md"
+    lastAttemptAt: "2026-10-16T17:06:23.354Z"
 ---
 
 # An Empty Answer Is Not a Negative Answer
