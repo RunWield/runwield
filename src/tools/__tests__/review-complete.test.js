@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { createReviewCompletedTool } from "../review-complete.ts";

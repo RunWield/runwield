@@ -196,13 +196,13 @@ scope belong to [Core Work records](runwield-core-prd.md#work-records).
 These five documents are this project's living PRDs. The product-family capabilities below own shared product promises;
 each surface document owns its detailed behavior. A reference adds context, not another independently maintained copy.
 
-| Owning PRD                                                     | Capability scope                                                                                                                          |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| [RunWield](#capability-requirements)                           | Reviewed intent, consistent cross-surface outcomes, durable knowledge, public documentation, independent adoption and privacy             |
-| [Core](runwield-core-prd.md#capability-requirements)           | Routing, Plan review/lifecycle, execution, validation, recovery, Sessions, context, records, customization, PRD authoring                 |
-| [Workspace](runwield-workspace-prd.md#capability-requirements) | Local boards and sharing, attention, browser/phone journeys, Project access, knowledge/code search, pairing, later team governance/review |
-| [Connect](runwield-connect-prd.md#capability-requirements)     | External-host opt-in, host model ownership, host compatibility, privacy, setup and recovery                                               |
-| [ACP](runwield-acp-protocol-prd.md#capability-requirements)    | External-client Sessions, negotiated interactions, Telegram reference journey, recovery and protocol conformance                          |
+| Owning PRD                                                     | Capability scope                                                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [RunWield](#capability-requirements)                           | Reviewed intent, consistent cross-surface outcomes, durable knowledge, public documentation, independent adoption and privacy        |
+| [Core](runwield-core-prd.md#capability-requirements)           | Routing, Plan review/lifecycle, execution, validation, recovery, Sessions, context, records, customization, PRD authoring            |
+| [Workspace](runwield-workspace-prd.md#capability-requirements) | Local boards and sharing, attention, browser/phone journeys, Project access, knowledge search, pairing, later team governance/review |
+| [Connect](runwield-connect-prd.md#capability-requirements)     | External-host opt-in, host model ownership, host compatibility, privacy, setup and recovery                                          |
+| [ACP](runwield-acp-protocol-prd.md#capability-requirements)    | External-client Sessions, negotiated interactions, Telegram reference journey, recovery and protocol conformance                     |
 
 When behavior changes, update the owning capability and its acceptance scenarios in the same implementation change.
 Other PRDs and Plans link to that owner. Proposed additions, changes, and removals stay labeled until reconciled with

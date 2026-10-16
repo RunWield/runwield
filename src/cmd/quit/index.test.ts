@@ -1,17 +1,18 @@
 import { test } from "node:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { execPath, versions } from "node:process";
+import { execPath } from "node:process";
 import { type CapturedProcessOutput, captureForegroundProcess } from "../../shared/captured-process.ts";
 import { mkdir as fsMkdir, rm as fsRm } from "node:fs/promises";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { runQuitCommand } from "./index.ts";
 
 const decoder = new TextDecoder();
 
 function removeDenoLockNotice(stderr: string): string {
-    return stderr.split("\n")
+    return stderr
+        .split("\n")
         .filter((line) => line !== "Blocking waiting for file lock on node_modules directory")
         .join("\n");
 }
@@ -20,12 +21,8 @@ async function runQuitChild(): Promise<CapturedProcessOutput> {
     const fixtureRoot = await mkdtemp(join(tmpdir(), "runwield-quit-command-"));
     const homeDir = join(fixtureRoot, "home");
     const projectRoot = join(fixtureRoot, "project");
-    await Promise.all([
-        fsMkdir(homeDir, { recursive: true }),
-        fsMkdir(projectRoot, { recursive: true }),
-    ]);
+    await Promise.all([fsMkdir(homeDir, { recursive: true }), fsMkdir(projectRoot, { recursive: true })]);
     const moduleUrl = import.meta.resolve("./index.ts");
-    const configPath = fromFileUrl(new URL("../../../deno.json", import.meta.url));
     const source = [
         `import { runQuitCommand } from ${JSON.stringify(moduleUrl)};`,
         "await runQuitCommand([], {",
@@ -35,7 +32,7 @@ async function runQuitChild(): Promise<CapturedProcessOutput> {
     ].join("\n");
     try {
         return await captureForegroundProcess(execPath, {
-            args: versions.deno ? ["eval", "--config", configPath, source] : ["--eval", source],
+            args: ["--eval", source],
             cwd: projectRoot,
             env: {
                 HOME: homeDir,

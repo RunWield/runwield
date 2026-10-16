@@ -8,7 +8,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { AGENTS } from "../constants.js";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE, type WorkflowContext } from "../shared/session/workflow-context-session.js";
 import { ACTIVE_AGENT_CUSTOM_TYPE } from "../shared/session/active-agent-session.js";

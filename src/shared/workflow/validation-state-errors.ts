@@ -1,5 +1,5 @@
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 
 export type ValidationStateProblem = "plan_missing" | "unknown_plan_status";

@@ -1,27 +1,31 @@
+import { mkdtempSync, readdirSync, rmSync, mkdirSync, symlinkSync, readFileSync, writeFileSync } from "node:fs";
+
+import { tmpdir } from "node:os";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { runLoadPlanCommand } from "../load-plan/index.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
 
-const config = fromFileUrl(new URL("../../../deno.json", import.meta.url));
-const cli = fromFileUrl(new URL("../../cli.ts", import.meta.url));
+const cli = fileURLToPath(new URL("../../cli.ts", import.meta.url));
 const moduleUrl = (path: string) => new URL(path, import.meta.url).href;
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const fixture = defineCommittedGitFixture();
 
 for (const command of ["load-plan", "plans"]) {
     for (const allow of [false, true]) {
-        Deno.test(`${command} ${allow ? "override does not authorize" : "refuses"} a registered home document before retired-status repair`, async () => {
+        test(`${command} ${allow ? "override does not authorize" : "refuses"} a registered home document before retired-status repair`, async () => {
             await withRuntimeCommandFixture("selected-plan-directory-", async ({ homeDir: home }) => {
                 const project = await fixture.checkout();
                 try {
-                    Deno.mkdirSync(join(home, "docs/plans"), { recursive: true });
+                    mkdirSync(join(home, "docs/plans"), { recursive: true });
                     const path = join(home, "docs/plans/selected.md");
                     const text = "---\nplanId: selected-id\nstatus: ready_for_review\n---\n# Selected\n";
-                    Deno.writeTextFileSync(path, text);
+                    writeText(path, text);
                     await addEntry(project, {
                         id: "selected-tree",
                         planId: "selected-id",
@@ -35,75 +39,84 @@ for (const command of ["load-plan", "plans"]) {
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString(),
                     });
-                    const output = await new Deno.Command(Deno.execPath(), {
-                        args: [
-                            "run",
-                            "-A",
-                            "--config",
-                            config,
-                            cli,
-                            ...(allow ? ["--allow-system-directory"] : []),
-                            ...(command === "load-plan"
-                                ? ["load-plan", "selected"]
-                                : ["plans", "archive", "selected", "--force"]),
-                        ],
-                        cwd: project,
-                        env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-                        stdin: "null",
-                        stdout: "piped",
-                        stderr: "piped",
-                    }).output();
+                    const output = await collectOutput(
+                        Bun.spawn({
+                            cmd: [
+                                process.execPath,
+                                "--no-env-file",
+                                "--no-install",
+                                cli,
+                                ...(allow ? ["--allow-system-directory"] : []),
+                                ...(command === "load-plan"
+                                    ? ["load-plan", "selected"]
+                                    : ["plans", "archive", "selected", "--force"]),
+                            ],
+                            cwd: project,
+                            env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                            stdin: "ignore",
+                            stdout: "pipe",
+                            stderr: "pipe",
+                        }),
+                    );
                     assertEquals(output.code, 1);
                     assertStringIncludes(decode(output.stderr), "--allow-system-directory");
-                    assertEquals(Deno.readTextFileSync(path), text);
-                    assertEquals([...Deno.readDirSync(home)].some((entry) => entry.name === "docs"), true);
+                    assertEquals(readText(path), text);
+                    assertEquals(
+                        [...readdirSync(home, { withFileTypes: true })].some((entry) => entry.name === "docs"),
+                        true,
+                    );
                 } finally {
-                    Deno.removeSync(project, { recursive: true });
+                    rmSync(project, { recursive: true });
                 }
             });
         });
     }
 }
 
-Deno.test("direct chat startup checks the primary checkout before runtime writers", async () => {
+test("direct chat startup checks the primary checkout before runtime writers", async () => {
     const home = await fixture.checkout();
-    const trees = Deno.makeTempDirSync();
+    const trees = mkdtempSync(join(tmpdir(), "directory-warning-"));
     const tree = join(trees, "linked");
     try {
         await git(home, ["worktree", "add", "-b", "direct-chat-folder-warning", tree]);
         const script = join(trees, "startup.ts");
-        Deno.writeTextFileSync(
+        writeText(
             script,
-            `import { startInteractiveSession } from ${
-                JSON.stringify(moduleUrl("../../ui/tui/chat-session.ts"))
-            };\nawait startInteractiveSession(null, {});`,
+            `import { startInteractiveSession } from ${JSON.stringify(
+                moduleUrl("../../ui/tui/chat-session.ts"),
+            )};\nawait startInteractiveSession(null, {});`,
         );
-        Deno.writeTextFileSync(join(home, ".gitignore"), "# unchanged\n");
-        const before = Deno.readTextFileSync(join(home, ".gitignore"));
-        const output = await new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "--config", config, script],
-            cwd: tree,
-            env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-            stdin: "null",
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        writeText(join(home, ".gitignore"), "# unchanged\n");
+        const before = readText(join(home, ".gitignore"));
+        const output = await collectOutput(
+            Bun.spawn({
+                cmd: [process.execPath, "--no-env-file", "--no-install", script],
+                cwd: tree,
+                env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                stdin: "ignore",
+                stdout: "pipe",
+                stderr: "pipe",
+            }),
+        );
         assertEquals(output.code, 1);
         assertStringIncludes(decode(output.stderr), "--allow-system-directory");
-        assertEquals(Deno.readTextFileSync(join(home, ".gitignore")), before);
-        assertEquals([...Deno.readDirSync(home)].some((entry) => entry.name === ".wld"), false);
+        assertEquals(readText(join(home, ".gitignore")), before);
+        assertEquals(
+            [...readdirSync(home, { withFileTypes: true })].some((entry) => entry.name === ".wld"),
+            false,
+        );
     } finally {
-        Deno.removeSync(trees, { recursive: true });
-        Deno.removeSync(home, { recursive: true });
+        rmSync(trees, { recursive: true });
+        rmSync(home, { recursive: true });
     }
 });
 
-Deno.test("real stdin closure cancels the directory selector and restores terminal resources", async () => {
-    const home = Deno.makeTempDirSync();
-    const scripts = Deno.makeTempDirSync();
+test("real stdin closure cancels the directory selector and restores terminal resources", async () => {
+    const home = mkdtempSync(join(tmpdir(), "directory-warning-"));
+    const scripts = mkdtempSync(join(tmpdir(), "directory-warning-"));
     try {
         const script = join(scripts, "closure.ts");
-        Deno.writeTextFileSync(
+        writeText(
             script,
             `
 import process from "node:process";
@@ -125,40 +138,42 @@ if (!terminal.stopped) throw new Error("Terminal was not restored");
 console.log("CANCELED");
 `,
         );
-        const child = new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "--config", config, script],
+        const child = Bun.spawn({
+            cmd: [process.execPath, "--no-env-file", "--no-install", script],
             cwd: home,
-            env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-            stdin: "piped",
-            stdout: "piped",
-            stderr: "piped",
-        }).spawn();
-        const reader = child.stdout.getReader();
+            env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+            stdin: "pipe",
+            stdout: "pipe",
+            stderr: "pipe",
+        });
+        const [readyStream, outputStream] = child.stdout.tee();
+        const reader = readyStream.getReader();
         const first = await reader.read();
         assertStringIncludes(decode(first.value!), "READY");
+        void reader.cancel();
         reader.releaseLock();
-        await child.stdin.close();
+        child.stdin.end();
         const timeout = setTimeout(() => child.kill("SIGKILL"), 10000);
         try {
-            const output = await child.output();
+            const output = await collectOutput(child, outputStream);
             assertEquals(output.code, 0, decode(output.stderr));
             assertStringIncludes(decode(output.stdout), "CANCELED");
         } finally {
             clearTimeout(timeout);
         }
     } finally {
-        Deno.removeSync(home, { recursive: true });
-        Deno.removeSync(scripts, { recursive: true });
+        rmSync(home, { recursive: true });
+        rmSync(scripts, { recursive: true });
     }
 });
 
-Deno.test("ACP Load Plan at a registered home root keeps protocol behavior without a terminal gate", async () => {
+test("ACP Load Plan at a registered home root keeps protocol behavior without a terminal gate", async () => {
     await withRuntimeCommandFixture("acp-selected-directory-", async ({ homeDir, projectRoot }) => {
         const runtime = createSessionRuntime();
         const messages: string[] = [];
         try {
-            Deno.mkdirSync(join(homeDir, "docs/plans"), { recursive: true });
-            Deno.writeTextFileSync(
+            mkdirSync(join(homeDir, "docs/plans"), { recursive: true });
+            writeText(
                 join(homeDir, "docs/plans/acp.md"),
                 "---\nplanId: acp-plan\nstatus: invalid-status\n---\n# ACP\n",
             );
@@ -198,51 +213,53 @@ Deno.test("ACP Load Plan at a registered home root keeps protocol behavior witho
     });
 });
 
-Deno.test("explicit acknowledgement covers only its inspected root and canonical aliases", async () => {
-    const home = Deno.makeTempDirSync();
-    const scripts = Deno.makeTempDirSync();
+test("explicit acknowledgement covers only its inspected root and canonical aliases", async () => {
+    const home = mkdtempSync(join(tmpdir(), "directory-warning-"));
+    const scripts = mkdtempSync(join(tmpdir(), "directory-warning-"));
     try {
         const alias = join(scripts, "home-alias");
-        Deno.symlinkSync(home, alias);
+        symlinkSync(home, alias);
         const script = join(scripts, "bound-consent.ts");
-        Deno.writeTextFileSync(
+        writeText(
             script,
             `
 import { confirmProjectDirectory } from ${JSON.stringify(moduleUrl("../../ui/tui/directory-warning.ts"))};
 if (!await confirmProjectDirectory(${JSON.stringify(home)}, true)) throw new Error("Acknowledgement failed");
 if (!await confirmProjectDirectory(${JSON.stringify(alias)})) throw new Error("Alias asked twice");
 try {
-    await confirmProjectDirectory(${JSON.stringify(Deno.build.os === "windows" ? "C:\\" : "/")});
+    await confirmProjectDirectory(${JSON.stringify(process.platform === "win32" ? "C:\\" : "/")});
     throw new Error("Different root was authorized");
 } catch (error) {
     if (!error.message.includes("--allow-system-directory")) throw error;
 }
 `,
         );
-        const output = await new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "--config", config, script],
-            cwd: home,
-            env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-            stdin: "null",
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        const output = await collectOutput(
+            Bun.spawn({
+                cmd: [process.execPath, "--no-env-file", "--no-install", script],
+                cwd: home,
+                env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                stdin: "ignore",
+                stdout: "pipe",
+                stderr: "pipe",
+            }),
+        );
         assertEquals(output.code, 0, decode(output.stderr));
     } finally {
-        Deno.removeSync(scripts, { recursive: true });
-        Deno.removeSync(home, { recursive: true });
+        rmSync(scripts, { recursive: true });
+        rmSync(home, { recursive: true });
     }
 });
 
 for (const allow of [false, true]) {
-    Deno.test(`plans doctor refuses a registered home root before repair${allow ? " even with cwd acknowledgement" : ""}`, async () => {
+    test(`plans doctor refuses a registered home root before repair${allow ? " even with cwd acknowledgement" : ""}`, async () => {
         await withRuntimeCommandFixture("doctor-selected-directory-", async ({ homeDir: home }) => {
             const project = await fixture.checkout();
             try {
-                Deno.mkdirSync(join(home, "docs/plans"), { recursive: true });
+                mkdirSync(join(home, "docs/plans"), { recursive: true });
                 const path = join(home, "docs/plans/selected.md");
                 const text = "---\nstatus: draft\n---\n# Selected\n";
-                Deno.writeTextFileSync(path, text);
+                writeText(path, text);
                 await addEntry(project, {
                     id: "doctor-home-tree",
                     planId: "doctor-home-plan",
@@ -256,30 +273,53 @@ for (const allow of [false, true]) {
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                 });
-                const output = await new Deno.Command(Deno.execPath(), {
-                    args: [
-                        "run",
-                        "-A",
-                        "--config",
-                        config,
-                        cli,
-                        ...(allow ? ["--allow-system-directory"] : []),
-                        "plans",
-                        "doctor",
-                    ],
-                    cwd: project,
-                    env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-                    stdin: "null",
-                    stdout: "piped",
-                    stderr: "piped",
-                }).output();
+                const output = await collectOutput(
+                    Bun.spawn({
+                        cmd: [
+                            process.execPath,
+                            "--no-env-file",
+                            "--no-install",
+                            cli,
+                            ...(allow ? ["--allow-system-directory"] : []),
+                            "plans",
+                            "doctor",
+                        ],
+                        cwd: project,
+                        env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                        stdin: "ignore",
+                        stdout: "pipe",
+                        stderr: "pipe",
+                    }),
+                );
                 assertEquals(output.code, 1);
                 assertStringIncludes(decode(output.stderr), "--allow-system-directory");
-                assertEquals(Deno.readTextFileSync(path), text);
-                assertEquals([...Deno.readDirSync(home)].some((entry) => entry.name === ".gitignore"), false);
+                assertEquals(readText(path), text);
+                assertEquals(
+                    [...readdirSync(home, { withFileTypes: true })].some((entry) => entry.name === ".gitignore"),
+                    false,
+                );
             } finally {
-                Deno.removeSync(project, { recursive: true });
+                rmSync(project, { recursive: true });
             }
         });
     });
+}
+
+async function collectOutput(
+    child: Bun.Subprocess<"pipe" | "ignore" | "inherit", "pipe", "pipe">,
+    outputStream = child.stdout,
+) {
+    const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(outputStream).bytes(),
+        new Response(child.stderr).bytes(),
+    ]);
+    return { code, stdout, stderr };
+}
+
+function readText(path: string): string {
+    return readFileSync(path, "utf8");
+}
+function writeText(path: string, text: string): void {
+    writeFileSync(path, text);
 }

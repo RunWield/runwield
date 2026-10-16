@@ -3,7 +3,7 @@
  * Pull encrypted remote Shared Space feedback into a local locked Plan.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN, getCwd } from "../../constants.js";
 import {
     createPulledCollaborationPlan,

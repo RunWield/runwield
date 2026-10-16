@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertLessOrEqual } from "@std/assert";
+import { assertEquals, assertLessOrEqual } from "../../testing/assertions.ts";
 
 import {
     calculateValidationRetryDelayMs,

@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, rm as fsRm, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join, toFileUrl } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../../testing/assertions.ts";
+import { join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { runGoldenScenarioChildProcess } from "./child-protocol.js";
 import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.js";
 

@@ -10,7 +10,8 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import { strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { savePlan } from "../../plan-store.js";

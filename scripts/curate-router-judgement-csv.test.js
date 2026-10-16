@@ -1,5 +1,5 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { curateRows, getUnambiguousHumanSeed, isPureGreetingRow } from "./curate-router-judgement-csv.js";
 
 test("isPureGreetingRow identifies greeting rows", () => {

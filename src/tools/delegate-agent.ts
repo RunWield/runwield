@@ -5,7 +5,7 @@ import { captureForegroundProcess } from "../shared/captured-process.ts";
  * Context-isolated foreground Delegated Agent Session tool.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
@@ -30,27 +30,46 @@ import type { AgentDefinition } from "../shared/session/types.js";
 import type { BashAllowedCommands } from "../shared/bash-command-policy.ts";
 import { extractAssistantOutput } from "../shared/workflow/workflow-results.js";
 
-type DelegationMode = "read" | "write";
+export type DelegationMode = "read" | "write";
 
-const PARAMETERS = Type.Object({
-    mode: StringEnum(["read", "write"], {
-        description:
-            "Delegation authority. Use read for investigation/review and write for one exclusive implementation task.",
-    }),
-    role: Type.Optional(StringEnum([...DELEGATED_ROLE_IDS], {
-        description:
-            "Optional Delegated Agent Role. Omit (or use 'general') for an unspecialized delegate. Use 'verification-adversary' to have a read-only delegate attack a draft Plan's outcomes, steps, and verification claims with the cheapest counterfeit implementation; a role's authority ceiling can reduce the requested mode.",
-    })),
-    background: Type.Optional(
-        Type.Boolean({ description: "Run a read-only delegate without waiting for its result." }),
-    ),
-    brief: Type.String({
-        minLength: 1,
-        maxLength: 12000,
-        description:
-            "Self-contained bounded brief for the Delegated Agent. Include all paths, goals, constraints, and expected handoff details.",
-    }),
-}, { additionalProperties: false });
+/** Every delegation mode, in the order the tool schema lists them. */
+export const DELEGATION_MODES: readonly DelegationMode[] = Object.freeze(["read", "write"]);
+
+const MODE_DESCRIPTIONS: Readonly<Record<DelegationMode, string>> = Object.freeze({
+    read: "read for investigation/review",
+    write: "write for one exclusive implementation task",
+});
+
+/**
+ * Build the tool schema with only the modes this Agent may use, so the model never sees a mode it would be refused.
+ *
+ * @param {readonly DelegationMode[]} modes
+ */
+function createParameters(modes: readonly DelegationMode[]) {
+    return Type.Object(
+        {
+            mode: StringEnum(modes, {
+                description: `Delegation authority. Use ${modes.map((mode) => MODE_DESCRIPTIONS[mode]).join(" and ")}.`,
+            }),
+            role: Type.Optional(
+                StringEnum([...DELEGATED_ROLE_IDS], {
+                    description:
+                        "Optional Delegated Agent Role. Omit (or use 'general') for an unspecialized delegate. Use 'verification-adversary' to have a read-only delegate attack a draft Plan's outcomes, steps, and verification claims with the cheapest counterfeit implementation; a role's authority ceiling can reduce the requested mode.",
+                }),
+            ),
+            background: Type.Optional(
+                Type.Boolean({ description: "Run a read-only delegate without waiting for its result." }),
+            ),
+            brief: Type.String({
+                minLength: 1,
+                maxLength: 12000,
+                description:
+                    "Self-contained bounded brief for the Delegated Agent. Include all paths, goals, constraints, and expected handoff details.",
+            }),
+        },
+        { additionalProperties: false },
+    );
+}
 
 export interface DelegatedAgentSessionOptions {
     hostedSession: HostedSession;
@@ -81,6 +100,8 @@ interface DelegateAgentToolOptions {
     cwd: string;
     parentTools: string[];
     bashAllowedCommands?: BashAllowedCommands;
+    /** Modes the parent Agent may delegate with; absent allows every mode. */
+    delegationModes?: readonly DelegationMode[];
     runIsolatedAgentSession: RunIsolatedAgentSession;
     modelOverride?: string;
     thinkingLevelOverride?: ThinkingLevel;
@@ -213,7 +234,9 @@ function parsePorcelainLine(line: string): PorcelainStatusEntry | null {
 export async function captureDelegatedChangeSnapshot(cwd: string): Promise<DelegatedChangeSnapshot | null> {
     try {
         const [head, output] = await Promise.all([
-            runGit(cwd, ["rev-parse", "HEAD"]).then((value) => value.trim()).catch(() => null),
+            runGit(cwd, ["rev-parse", "HEAD"])
+                .then((value) => value.trim())
+                .catch(() => null),
             runGit(cwd, ["status", "--porcelain", "--untracked-files=all"]),
         ]);
         const entries = [];
@@ -355,12 +378,23 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
     if (!opts.hostedSession) throw new Error("createDelegateAgentTool: hostedSession is required");
     if (!opts.cwd) throw new Error("createDelegateAgentTool: cwd is required");
     if (!opts.runIsolatedAgentSession) throw new Error("createDelegateAgentTool: runIsolatedAgentSession is required");
-    return defineTool<typeof PARAMETERS, DelegateAgentDetails>({
+    const allowedModes = DELEGATION_MODES.filter(
+        (mode) => !opts.delegationModes || opts.delegationModes.includes(mode),
+    );
+    if (!allowedModes.length) throw new Error("createDelegateAgentTool: delegationModes must allow at least one mode");
+    const parameters = createParameters(allowedModes);
+    const modeGuidance =
+        allowedModes.length === DELEGATION_MODES.length
+            ? "Use mode 'read' for investigation/review and mode 'write' for one exclusive synchronous implementation task."
+            : `Only mode '${allowedModes[0]}' is available to this Agent.`;
+    const backgroundGuidance = allowedModes.includes("read")
+        ? " Set background: true for independent read-only work and inspect its final task result before relying on it."
+        : "";
+    return defineTool<typeof parameters, DelegateAgentDetails>({
         name: "delegate_agent",
         label: "Delegate Agent",
-        description:
-            "Run a bounded context-isolated Delegated Agent Session. Use mode 'read' for investigation/review and mode 'write' for one exclusive synchronous implementation task. Set background: true for independent read-only work and inspect its final task result before relying on it.",
-        parameters: PARAMETERS,
+        description: `Run a bounded context-isolated Delegated Agent Session. ${modeGuidance}${backgroundGuidance}`,
+        parameters,
         async execute(toolCallId, params, signal, _onUpdate, _ctx): Promise<DelegateAgentResult> {
             const requestedMode: DelegationMode = params.mode === "write" ? "write" : "read";
             const requestedRole = typeof params.role === "string" && params.role ? params.role : DELEGATED_ROLE_GENERAL;
@@ -382,9 +416,9 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
             }
             const role = getDelegatedRole(requestedRole);
             if (!role) {
-                const message = `Delegation failed: unknown role "${requestedRole}". Valid roles: ${
-                    DELEGATED_ROLE_IDS.join(", ")
-                }.`;
+                const message = `Delegation failed: unknown role "${requestedRole}". Valid roles: ${DELEGATED_ROLE_IDS.join(
+                    ", ",
+                )}.`;
                 return {
                     content: [{ type: "text" as const, text: message }],
                     details: {
@@ -399,6 +433,20 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
             }
 
             const mode = resolveEffectiveDelegationMode(requestedMode, role.authorityCeiling);
+            if (!allowedModes.includes(mode)) {
+                return {
+                    content: [
+                        {
+                            type: "text" as const,
+                            text: `Delegation failed: this Agent can't delegate in ${mode} mode. Allowed: ${allowedModes.join(
+                                ", ",
+                            )}.`,
+                        },
+                    ],
+                    details: { ok: false, mode, role: role.id, error: "delegation_mode_denied" },
+                    isError: true,
+                };
+            }
             const childTools = resolveDelegatedToolNames(opts.parentTools, mode);
             const definitionId = mode === "read" ? SUBAGENTS.DELEGATED_READ : SUBAGENTS.DELEGATED;
             const userRequest = [
@@ -475,12 +523,10 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
                     extractAssistantOutput(messages) || "(Delegated Agent returned no text.)",
                 );
                 const afterSnapshot = mode === "write" ? await captureDelegatedChangeSnapshot(opts.cwd) : null;
-                const changedPaths = mode === "write"
-                    ? diffDelegatedChangeSnapshot(beforeSnapshot, afterSnapshot)
-                    : undefined;
-                const committedChangesDetected = mode === "write"
-                    ? delegatedHeadChanged(beforeSnapshot, afterSnapshot)
-                    : undefined;
+                const changedPaths =
+                    mode === "write" ? diffDelegatedChangeSnapshot(beforeSnapshot, afterSnapshot) : undefined;
+                const committedChangesDetected =
+                    mode === "write" ? delegatedHeadChanged(beforeSnapshot, afterSnapshot) : undefined;
                 return {
                     content: [{ type: "text" as const, text: output }],
                     details: {
@@ -493,22 +539,22 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
                         output,
                         tools: childTools,
                         changedPaths,
-                        changeAttributionComplete: mode === "write"
-                            ? Boolean(beforeSnapshot && afterSnapshot && !committedChangesDetected)
-                            : undefined,
+                        changeAttributionComplete:
+                            mode === "write"
+                                ? Boolean(beforeSnapshot && afterSnapshot && !committedChangesDetected)
+                                : undefined,
                         committedChangesDetected,
                     },
                 };
             } catch (error) {
-                const afterSnapshot = mode === "write" && release
-                    ? await captureDelegatedChangeSnapshot(opts.cwd)
-                    : null;
-                const changedPaths = mode === "write" && release
-                    ? diffDelegatedChangeSnapshot(beforeSnapshot, afterSnapshot)
-                    : undefined;
-                const committedChangesDetected = mode === "write" && release
-                    ? delegatedHeadChanged(beforeSnapshot, afterSnapshot)
-                    : undefined;
+                const afterSnapshot =
+                    mode === "write" && release ? await captureDelegatedChangeSnapshot(opts.cwd) : null;
+                const changedPaths =
+                    mode === "write" && release
+                        ? diffDelegatedChangeSnapshot(beforeSnapshot, afterSnapshot)
+                        : undefined;
+                const committedChangesDetected =
+                    mode === "write" && release ? delegatedHeadChanged(beforeSnapshot, afterSnapshot) : undefined;
                 const caughtMessage = errorMessage(error instanceof Error ? error : String(error));
                 const message = `Delegation failed: ${caughtMessage}`;
                 return {
@@ -523,9 +569,10 @@ export function createDelegateAgentTool(opts: DelegateAgentToolOptions) {
                         error: caughtMessage,
                         tools: childTools,
                         changedPaths,
-                        changeAttributionComplete: mode === "write" && release
-                            ? Boolean(beforeSnapshot && afterSnapshot && !committedChangesDetected)
-                            : undefined,
+                        changeAttributionComplete:
+                            mode === "write" && release
+                                ? Boolean(beforeSnapshot && afterSnapshot && !committedChangesDetected)
+                                : undefined,
                         committedChangesDetected,
                     },
                     isError: true,

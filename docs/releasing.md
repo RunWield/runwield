@@ -55,8 +55,8 @@ bash install.sh vX.Y.Z-rc.N
 Release operators need:
 
 - `git` with push access to this repository.
-- Bun matching `.bun-version` (1.4.3) for release executables and their binary qualification.
-- `deno` matching the repository toolchain for source regression, Golden and package tooling.
+- Bun matching `.bun-version` (1.4.3) for source, Golden, executable and package qualification;
+  run `bun run install:locked` first.
 - `gh` authenticated to GitHub with permission to read releases before tagging, verify Candidate releases during
   promotion, and edit release notes after CI publishes assets (`gh auth status` should pass for the target account).
 
@@ -66,8 +66,9 @@ Release binaries use pinned Bun, frozen root/docs dependency graphs, and the Bun
 All five existing release targets and archive names remain supported. Artifact metadata uses the
 existing platform triples; the embedded build identity includes the Bun compiler and dependency graph.
 `--remote-preflight` reports the executing runtime and its version so qualification rejects a Deno binary
-or an unexpected Bun version. Deno continues to run the source and Golden regression gates and the
-native package verification tooling. Run those tools in separate checkouts from Bun builds.
+or an unexpected Bun version. Bun runs the source and Golden regression gates and the
+native package verification tooling. Legacy Deno lock compatibility runs in a separate qualification lane.
+Remote container and historical documentation publishing conversion remain tracked transition work.
 
 The Bun binary gate retains bundled-reference extraction, image resizing, Plans UI, and Plan/code
 review checks. Native Windows ZIP and Homebrew checks still gate publication. This compiler change
@@ -103,27 +104,29 @@ promote current `HEAD` by accident.
 
 Before confirmation, show the selected source commit, target tag, and Release Branch publication when applicable. The
 release command tags an explicit commit and does not switch branches or alter working files. GitHub Actions is the
-authoritative release qualification environment. It runs source quality, the Golden TUI release gate, and binary smoke
-checks and binary compilation in parallel from the tagged commit. Asset preparation follows compilation immediately,
-then native Windows and Homebrew checks run alongside source and Golden qualification. Publication explicitly requires
-every source shard, Golden shard, binary smoke check, build, and native package check to succeed. Preparation never
-publishes release bytes.
+authoritative release qualification environment. Its `release-gate` workflow resolves the tag to one exact commit for
+product checks and builds. It runs Ubuntu source quality and Linux Golden checks alongside macOS source and package
+checks, Windows x64 and ARM64 source and package checks, container checks, binary smoke checks, and compilation.
+Asset preparation follows compilation immediately. Native Linux and macOS checks execute the actual release archives;
+Windows ZIP and Homebrew checks also consume the checked release bytes. Publication requires every gate to succeed,
+including all reusable platform workflows. A failed, skipped, or cancelled required gate blocks publication.
+Preparation never publishes release bytes. Windows ARM64 checks do not add a Windows ARM64 published asset.
 
 ## Commands
 
 Use these repository-owned commands instead of hand-writing tag or build commands:
 
 ```bash
-deno task release:candidate --tag vX.Y.Z-rc.N [--dry-run]
-deno task release:promote --candidate vX.Y.Z-rc.N [--dry-run]
-deno task release:stable --tag vX.Y.Z [--dry-run]
-deno task release:metadata --tag vX.Y.Z[-rc.N]
-deno task release:check --build-version vX.Y.Z[-rc.N]
-deno task package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag vA.B.C --output <dir>
-deno task package:homebrew:check --tap <dir>
-deno task package:windows --tag vX.Y.Z --binary <path-to-wld.exe> --output <dir>
-deno task package:windows:check --package <dir>/wld-vX.Y.Z-windows-x64.zip
-deno task package:winget --tag vX.Y.Z --output <dir>
+bun run release:candidate --tag vX.Y.Z-rc.N [--dry-run]
+bun run release:promote --candidate vX.Y.Z-rc.N [--dry-run]
+bun run release:stable --tag vX.Y.Z [--dry-run]
+bun run release:metadata --tag vX.Y.Z[-rc.N]
+bun run release:check --build-version vX.Y.Z[-rc.N]
+bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag vA.B.C --output <dir>
+bun run package:homebrew:check --tap <dir>
+bun run package:windows --tag vX.Y.Z --binary <path-to-wld.exe> --output <dir>
+bun run package:windows:check --package <dir>/wld-vX.Y.Z-windows-x64.zip
+bun run package:winget --tag vX.Y.Z --output <dir>
 ```
 
 Dry runs perform read-only tag, version, and source preflight and print the proposed tag target and tag push. They must
@@ -136,10 +139,10 @@ releases, or leave repository files behind.
 2. Generate cumulative release notes from the previous Stable tag to the policy-selected source commit. Later Candidates
    keep the cumulative upgrade notes and add validation-relevant changes since the previous Candidate when useful. Do
    not derive notes from unrelated current `HEAD` changes.
-3. Run `deno task release:candidate --tag <candidate-tag> --dry-run`. Inspect the source branch, source commit, target
+3. Run `bun run release:candidate --tag <candidate-tag> --dry-run`. Inspect the source branch, source commit, target
    tag, and planned remote changes.
 4. Confirm the branch and tag push. The tag remains a retryable release attempt until its GitHub Release is created.
-5. Run `deno task release:candidate --tag <candidate-tag>`.
+5. Run `bun run release:candidate --tag <candidate-tag>`.
 6. Wait for the tag-triggered GitHub workflow to publish the prerelease assets.
 7. Edit the published Candidate release with the curated temporary notes and verify they landed.
 
@@ -161,10 +164,10 @@ active. After Stable publication, merge its final tip into `main` and delete the
 2. Verify the Candidate GitHub release is published as a prerelease and includes every expected wld asset.
 3. Generate Stable release notes cumulative from the previous Stable. Remove Candidate-specific warnings, but do not
    treat promotion as an empty release merely because the source commit is unchanged from the Candidate.
-4. Run `deno task release:promote --candidate <candidate-tag> --dry-run` and inspect the Candidate source commit and
+4. Run `bun run release:promote --candidate <candidate-tag> --dry-run` and inspect the Candidate source commit and
    target Stable tag.
 5. Confirm the tag push. The tag becomes immutable when its GitHub Release is created.
-6. Run `deno task release:promote --candidate <candidate-tag>`.
+6. Run `bun run release:promote --candidate <candidate-tag>`.
 7. Wait for the Stable tag-triggered GitHub workflow to publish Stable assets.
 8. Edit the published Stable release with the curated temporary notes and verify they landed.
 9. For a branch-based series, fetch the Release Branch and merge its final remote tip into `main`. Resolve conflicts
@@ -203,8 +206,8 @@ The `HOMEBREW_TAP_TOKEN` repository secret must contain a GitHub token with writ
 Publication stops if the credential is absent or any package check fails. To reproduce the check locally, use:
 
 ```bash
-deno task package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag v0.3.3 --output /tmp/runwield-tap
-deno task package:homebrew:check --tap /tmp/runwield-tap
+bun run package:homebrew --wld-tag vX.Y.Z --mnemoteca-tag v0.3.3 --output /tmp/runwield-tap
+bun run package:homebrew:check --tap /tmp/runwield-tap
 ```
 
 The checked formula installs metadata beside `libexec/wld`; a Homebrew-owned `wld update` prints
@@ -227,7 +230,7 @@ Stable releases also render a `runwield-winget-manifests-vX.Y.Z` artifact. You c
 bytes with:
 
 ```bash
-deno task package:winget --tag vX.Y.Z --output /tmp/runwield-winget
+bun run package:winget --tag vX.Y.Z --output /tmp/runwield-winget
 ```
 
 Candidate tags are rejected. Automatic WinGet PR submission is disabled until the owner directs its restoration. Stable
@@ -236,6 +239,20 @@ releases still prepare manifest artifacts, but do not submit them to `microsoft/
 active. The retained submission code uses WingetCreate and requires a classic GitHub token with the `public_repo` scope
 when restored. For the first public listing, follow `docs/winget-first-release.md`. Git for Windows is a WinGet
 dependency. Browser and model downloads remain first-use per-user setup.
+
+## CI tiers
+
+`bun run ci` is the host-native local source and Golden gate. It does not launch Windows, macOS, or container matrices.
+`pr-gate` retains the four Ubuntu source/type/lint shards and four Linux Golden shards, with the existing aggregate
+status contexts `ci` and `golden`. Ordinary PRs do not run the 23 former platform/container jobs; the duplicate four
+Ubuntu source shards are removed rather than repeated in release qualification.
+
+`release-gate` owns broad platform coverage after the Candidate or Stable tag is created. Its internal
+`release-unix.yml`, `release-windows.yml`, and `release-containers.yml` workflows are reusable and also support manual
+diagnostics at the selected workflow revision. Windows checks use at most two runners concurrently within the matrix.
+Manual diagnostics use a synthetic Candidate identity; release calls pass the real version and resolved product SHA.
+No new mandatory pre-tag check is introduced. Product fixes belong on the Release Branch and are later explicitly
+forward-ported to `main` under the release policy above.
 
 ## GitHub workflow ownership
 
@@ -249,7 +266,11 @@ The workflow also exposes a required-tag manual dispatch solely for recovery whe
 moved—for example, after its GitHub Release has made it immutable, or when a workflow-only fix on the default branch can
 safely retry the existing tagged source. In that mode, the source-quality job runs from the default-branch workflow
 revision containing the recovery fix, while metadata validation, release qualification, builds, and publication use the
-existing tag. Recovery packaging tools come from the workflow revision, not from a changed product source. If a GitHub
+existing tag, resolved once to its peeled commit SHA. Reusable platform checks also use that product SHA. For the frozen historical product commits of `v0.12.0-rc.1` and
+`v0.12.0-rc.2`, manual recovery builds and checks the original Deno container
+recipes instead of requiring later Bun-only container tooling. That compatibility path requires the exact recorded
+commit; a missing tool on newer source fails normally. Native archive checks compare against the selected product's
+Bun pin, not the recovery tooling's pin. Recovery packaging tools come from the workflow revision, not from a changed product source. If a GitHub
 Release exists, recovery skips compilation and asset publication. It downloads the existing assets and checks their
 completeness, archive checksums, combined checksum file, and GitHub SHA-256 digests before resuming package checks and
 publication. It never replaces published files. Missing or inconsistent assets stop recovery for inspection; restore
@@ -306,7 +327,7 @@ current Pages deployment unchanged.
   and comply. Never fall back to current `HEAD` automatically.
 - **GitHub Release exists**: the tag is immutable, including when qualification, asset upload, or notes editing later
   fails. Keep the tag at its original commit and recover the existing release. If a workflow fix is required, dispatch
-  `release-wld` manually with that tag after the recovery commit reaches the default branch.
+  `release-gate` manually with that tag after the recovery commit reaches the default branch.
 - **Candidate published but should not be promoted**: leave it as a prerelease and publish a later Candidate tag.
 - **Assets published but notes pending**: do not recreate the release. Retry the notes edit and verify the published
   notes.

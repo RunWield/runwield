@@ -13,8 +13,9 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 
 interface ReleaseState {
     cancelled: boolean;
@@ -28,6 +29,10 @@ interface ReleaseState {
     windowsResult: string;
     homebrewResult: string;
     releaseResult: string;
+    nativePackageResult: string;
+    unixResult: string;
+    platformWindowsResult: string;
+    containersResult: string;
 }
 
 function jobBlock(workflow: string, name: string): string {
@@ -54,7 +59,11 @@ function stepRun(job: string, name: string): string {
     const step = next < 0 ? block : block.slice(0, next);
     const run = step.match(/^ {14}run:\s*\|\n([\s\S]*)$/m);
     if (!run) throw new Error(`Step ${name} has no multiline command`);
-    return run[1].split("\n").map((line) => line.slice(18)).join("\n").trim();
+    return run[1]
+        .split("\n")
+        .map((line) => line.slice(18))
+        .join("\n")
+        .trim();
 }
 
 function evaluateReleaseCondition(condition: string, state: ReleaseState): boolean {
@@ -70,6 +79,10 @@ function evaluateReleaseCondition(condition: string, state: ReleaseState): boole
         "needs.windows-package-check.result": state.windowsResult,
         "needs.homebrew-check.result": state.homebrewResult,
         "needs.release.result": state.releaseResult,
+        "needs.native-package-check.result": state.nativePackageResult,
+        "needs.unix-checks.result": state.unixResult,
+        "needs.windows-checks.result": state.platformWindowsResult,
+        "needs.containers-checks.result": state.containersResult,
     };
     let expression = condition;
     for (const [key, value] of Object.entries(values)) {
@@ -111,6 +124,10 @@ const successfulRelease: ReleaseState = {
     windowsResult: "success",
     homebrewResult: "success",
     releaseResult: "success",
+    nativePackageResult: "success",
+    unixResult: "success",
+    platformWindowsResult: "success",
+    containersResult: "success",
 };
 
 test("actual release event condition publishes only qualified Stable results", async () => {
@@ -155,16 +172,18 @@ test("fresh and existing releases traverse the actual qualification conditions",
     assertStringIncludes(release, "needs.golden.result == 'success'");
     assertStringIncludes(release, "needs.release-check.result == 'success'");
     assertStringIncludes(release, "needs.assets.result == 'success'");
-    for (
-        const key of [
-            "ciResult",
-            "goldenResult",
-            "releaseCheckResult",
-            "assetsResult",
-            "windowsResult",
-            "homebrewResult",
-        ]
-    ) {
+    for (const key of [
+        "ciResult",
+        "goldenResult",
+        "releaseCheckResult",
+        "assetsResult",
+        "windowsResult",
+        "homebrewResult",
+        "nativePackageResult",
+        "unixResult",
+        "platformWindowsResult",
+        "containersResult",
+    ]) {
         for (const status of ["failure", "cancelled", "skipped"]) {
             assertEquals(
                 evaluateReleaseCondition(jobCondition(release), { ...successfulRelease, [key]: status }),
@@ -275,4 +294,74 @@ test("docs workflow validates release assets and exact source before deployment"
     assertStringIncludes(workflow, "cancel-in-progress: false");
     assertStringIncludes(workflow, "sha=$(git rev-parse HEAD)");
     assertStringIncludes(workflow, "ref: ${{ needs.sync.outputs.sha || github.sha }}");
+});
+
+test("docs deployment separates historical source from frozen Bun tooling", async () => {
+    const workflow = await fsReadFile(".github/workflows/docs.yml", "utf8");
+    const deploy = jobBlock(workflow, "deploy");
+    assertEquals(deploy.includes("deno"), false);
+    assertStringIncludes(deploy, "path: source");
+    assertStringIncludes(deploy, "path: tooling");
+    assertStringIncludes(deploy, "needs.sync.outputs.tooling_sha || github.event.repository.default_branch");
+    assertStringIncludes(deploy, "working-directory: tooling");
+    assertStringIncludes(deploy, "bun run install:locked");
+    assertStringIncludes(deploy, "bun tooling/scripts/build-stable-docs.ts source");
+    assertStringIncludes(deploy, "path: source/dist/docs");
+    for (const step of ["Verify documentation source and qualified release", "Reject stale build before deployment"]) {
+        const stepStart = deploy.indexOf(`            - name: ${step}\n`);
+        const stepBody = deploy.slice(stepStart).split(/\n {12}- name:/)[0];
+        assertStringIncludes(stepBody, "working-directory: source");
+        const command = stepRun(deploy, step);
+        assertStringIncludes(command, "bun ../tooling/scripts/verify-docs-source.ts");
+        assertStringIncludes(command, "git rev-parse HEAD");
+    }
+});
+
+test("release source resolution pins the product runtime and bounds historical compatibility to manual recovery", async () => {
+    const workflow = await fsReadFile(".github/workflows/release.yml", "utf8");
+    const command = stepRun(jobBlock(workflow, "metadata"), "Resolve the immutable product commit");
+    const root = await fsMkdtemp(join(tmpdir(), "runwield-release-source-"));
+    try {
+        const bin = join(root, "bin");
+        await fsMkdir(bin);
+        await executable(
+            join(bin, "git"),
+            `#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  fetch) exit "\${FETCH_EXIT:-0}" ;;
+  rev-parse) echo "$PRODUCT_SHA"; exit "\${RESOLVE_EXIT:-0}" ;;
+  show) echo 1.4.3; exit "\${PIN_EXIT:-0}" ;;
+  *) exit 99 ;;
+esac
+`,
+        );
+        const output = join(root, "output");
+        const base = {
+            PATH: `${bin}${delimiter}${process.env["PATH"] ?? ""}`,
+            GITHUB_OUTPUT: output,
+            RELEASE_TAG: "v0.12.0-rc.1",
+            PRODUCT_SHA: "55cc60ec1cf5a96eeb41c9fddd12459200101aab",
+            RECOVERY: "true",
+        };
+        for (const [recovery, sha, legacy] of [
+            ["true", base.PRODUCT_SHA, "true"],
+            ["false", base.PRODUCT_SHA, "false"],
+            ["true", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "false"],
+        ]) {
+            await fsWriteFile(output, "");
+            const result = await runShell(command, { ...base, RECOVERY: recovery, PRODUCT_SHA: sha });
+            assert(result.success, new TextDecoder().decode(result.stderr));
+            assertEquals(
+                await fsReadFile(output, "utf8"),
+                `sha=${sha}\nbun_version=1.4.3\nlegacy_containers=${legacy}\n`,
+            );
+        }
+        for (const failure of ["FETCH_EXIT", "RESOLVE_EXIT", "PIN_EXIT"]) {
+            const result = await runShell(command, { ...base, [failure]: "42" });
+            assertEquals(result.success, false, `${failure} must stop the release`);
+        }
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
 });

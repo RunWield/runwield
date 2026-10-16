@@ -1,16 +1,21 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { addEntry } from "../../shared/worktree-registry.js";
-import { ProjectRuntimeEntryRefusedError } from "../../shared/project-runtime-layout.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { runLoadPlanCommand } from "./index.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n" });
-const config = fromFileUrl(new URL("../../../deno.json", import.meta.url));
-const cli = fromFileUrl(new URL("../../cli.ts", import.meta.url));
+const cli = fileURLToPath(new URL("../../cli.ts", import.meta.url));
 
 async function registerMissingExecution(root: string, path: string): Promise<void> {
     const baseCommit = await git(root, ["rev-parse", "HEAD"]);
@@ -43,129 +48,159 @@ async function registerMissingExecution(root: string, path: string): Promise<voi
 }
 
 for (const allow of [false, true]) {
-    Deno.test(`CLI Load Plan restores a missing managed directory ${allow ? "with" : "without"} override`, async () => {
+    test(`CLI Load Plan defers restoration of a missing managed directory ${allow ? "with" : "without"} override`, async () => {
         await withRuntimeCommandFixture("missing-cli-directory-", async ({ homeDir }) => {
             const root = await fixture.checkout();
-            const container = Deno.makeTempDirSync();
+            const container = mkdtempSync(join(tmpdir(), "directory-warning-"));
             const path = join(container, "absent-parent/execution");
             try {
                 await registerMissingExecution(root, path);
-                const child = new Deno.Command(Deno.execPath(), {
-                    args: [
-                        "run",
-                        "-A",
-                        "--config",
-                        config,
+                const child = Bun.spawn({
+                    cmd: [
+                        process.execPath,
+                        "--no-env-file",
+                        "--no-install",
                         cli,
                         ...(allow ? ["--allow-system-directory"] : []),
                         "load-plan",
                         "missing",
                     ],
                     cwd: root,
-                    env: { HOME: homeDir, WLD_TEST_SANDBOX_HOME: homeDir },
-                    stdin: "null",
-                    stdout: "piped",
-                    stderr: "piped",
-                }).spawn();
-                let ended = false;
-                const output = child.output().then((result) => {
-                    ended = true;
-                    return result;
+                    env: { ...process.env, HOME: homeDir, WLD_TEST_SANDBOX_HOME: homeDir },
+                    stdin: "ignore",
+                    stdout: "pipe",
+                    stderr: "pipe",
                 });
-                const deadline = Date.now() + 20000;
-                while (!ended && Date.now() < deadline) {
-                    try {
-                        if ((await loadPlan(path, "missing"))?.attrs.planId === "missing-directory-plan") break;
-                    } catch (error) {
-                        if (
-                            !(error instanceof Deno.errors.NotFound) &&
-                            !(error instanceof ProjectRuntimeEntryRefusedError)
-                        ) throw error;
+                const [readiness, captured] = child.stdout.tee();
+                const output = collectOutput(child, captured);
+                const reader = readiness.getReader();
+                let rendered = "";
+                const timeout = setTimeout(() => child.kill("SIGTERM"), 20000);
+                try {
+                    while (!rendered.includes("Plan recovery")) {
+                        const chunk = await reader.read();
+                        if (chunk.done) break;
+                        rendered += new TextDecoder().decode(chunk.value);
                     }
-                    await new Promise((resolve) => setTimeout(resolve, 50));
+                } finally {
+                    clearTimeout(timeout);
+                    void reader.cancel();
+                    reader.releaseLock();
                 }
                 try {
                     child.kill("SIGTERM");
-                } catch { /* Startup may already have stopped without a terminal. */ }
+                } catch {
+                    /* Startup may already have stopped without a terminal. */
+                }
                 const result = await output;
-                assertEquals(
-                    (await loadPlan(path, "missing"))?.attrs.planId,
-                    "missing-directory-plan",
-                    new TextDecoder().decode(result.stderr),
-                );
-                assertEquals(await git(path, ["branch", "--show-current"]), "worktree/missing");
+                const diagnostics = new TextDecoder().decode(result.stderr);
+                assertStringIncludes(new TextDecoder().decode(result.stdout), "Plan recovery");
+                assertEquals(diagnostics.includes("ENOENT"), false, diagnostics);
+                assertEquals(diagnostics.includes("Fatal error"), false, diagnostics);
+                assertEquals(await loadPlan(path, "missing"), null);
                 assertEquals(await loadPlan(root, "missing"), null);
             } finally {
                 await git(root, ["worktree", "remove", "--force", path]).catch(() => {});
-                Deno.removeSync(container, { recursive: true });
-                Deno.removeSync(root, { recursive: true });
+                rmSync(container, { recursive: true });
+                rmSync(root, { recursive: true });
             }
         });
     });
 }
 
-Deno.test("UI Load Plan restores a missing managed directory before offering recovery", async () => {
-    await withRuntimeCommandFixture("missing-ui-directory-", async ({ setModelResponseFactory }) => {
-        setModelResponseFactory(() => {
-            throw new Error("Canceled recovery must not run an Agent turn");
-        });
-        const root = await fixture.checkout();
-        const container = Deno.makeTempDirSync();
-        const path = join(container, "absent-parent/execution");
-        const runtime = createSessionRuntime();
-        const messages: string[] = [];
-        const prompts: string[] = [];
-        try {
-            await registerMissingExecution(root, path);
-            const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
-            await runLoadPlanCommand(["missing"], {
-                sessionRuntime: runtime,
-                sessionId,
-                uiAPI: {
-                    abortActivePrompt: () => {},
-                    appendSystemMessage: (message) => messages.push(message),
-                    appendAgentMessageStart: () => ({ appendText: () => {} }),
-                    requestRender: () => {},
-                    promptSelect: (prompt) => {
-                        prompts.push(prompt);
-                        return Promise.resolve(null);
-                    },
-                    promptText: () => Promise.resolve(null),
-                    showModelSelector: () => {},
-                },
+for (const continueWork of [false, true]) {
+    test(`${continueWork ? "continuing" : "canceling"} UI Load Plan recovery ${continueWork ? "restores" : "does not restore"} the missing managed directory`, async () => {
+        await withRuntimeCommandFixture("missing-ui-directory-", async ({ setModelResponseFactory }) => {
+            setModelResponseFactory(() => {
+                throw new Error("Stop at external Agent boundary");
             });
-            assertEquals(
-                (await loadPlan(path, "missing"))?.attrs.planId,
-                "missing-directory-plan",
-                messages.join("\n"),
-            );
-            assertStringIncludes(messages.join("\n"), "is back on branch");
-            assert(prompts.some((prompt) => prompt.includes("Plan recovery")), prompts.join("\n"));
-        } finally {
-            await runtime.closeAllSessionsWhenIdle();
-            await git(root, ["worktree", "remove", "--force", path]).catch(() => {});
-            Deno.removeSync(container, { recursive: true });
-            Deno.removeSync(root, { recursive: true });
-        }
+            const root = await fixture.checkout();
+            const container = mkdtempSync(join(tmpdir(), "directory-warning-"));
+            const path = join(container, "absent-parent/execution");
+            const runtime = createSessionRuntime();
+            const messages: string[] = [];
+            const prompts: string[] = [];
+            try {
+                await registerMissingExecution(root, path);
+                const sessionId = await runtime.createPromptReadySession({ cwd: root, agentName: "router" });
+                await runLoadPlanCommand(["missing"], {
+                    sessionRuntime: runtime,
+                    sessionId,
+                    uiAPI: {
+                        abortActivePrompt: () => {},
+                        appendSystemMessage: (message) => messages.push(message),
+                        appendAgentMessageStart: () => ({ appendText: () => {} }),
+                        requestRender: () => {},
+                        promptSelect: (prompt) => {
+                            prompts.push(prompt);
+                            return Promise.resolve(continueWork ? "follow_up" : null);
+                        },
+                        promptText: () => Promise.resolve(null),
+                        showModelSelector: () => {},
+                    },
+                });
+                if (continueWork) {
+                    assertEquals(
+                        (await loadPlan(path, "missing"))?.attrs.planId,
+                        "missing-directory-plan",
+                        messages.join("\n"),
+                    );
+                    assertEquals(await git(path, ["branch", "--show-current"]), "worktree/missing");
+                } else {
+                    assertEquals(await loadPlan(path, "missing"), null, messages.join("\n"));
+                }
+                assertEquals(messages.join("\n").includes("is back on branch"), false);
+                assert(
+                    prompts.some((prompt) => prompt.includes("Plan recovery")),
+                    prompts.join("\n"),
+                );
+            } finally {
+                await runtime.closeAllSessionsWhenIdle();
+                await git(root, ["worktree", "remove", "--force", path]).catch(() => {});
+                rmSync(container, { recursive: true });
+                rmSync(root, { recursive: true });
+            }
+        });
     });
-});
+}
 
-Deno.test("CLI Load Plan gates an external absolute Plan in home before onboarding", async () => {
+test("CLI Load Plan gates an external absolute Plan in home before onboarding", async () => {
     await withRuntimeCommandFixture("external-plan-directory-", async ({ homeDir, projectRoot }) => {
         const path = join(homeDir, "external.md");
         const text = "---\nstatus: approved\n---\n# External\n";
-        Deno.writeTextFileSync(path, text);
-        const result = await new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "--config", config, cli, "load-plan", path],
-            cwd: projectRoot,
-            env: { HOME: homeDir, WLD_TEST_SANDBOX_HOME: homeDir },
-            stdin: "null",
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        writeText(path, text);
+        const result = await collectOutput(
+            Bun.spawn({
+                cmd: [process.execPath, "--no-env-file", "--no-install", cli, "load-plan", path],
+                cwd: projectRoot,
+                env: { ...process.env, HOME: homeDir, WLD_TEST_SANDBOX_HOME: homeDir },
+                stdin: "ignore",
+                stdout: "pipe",
+                stderr: "pipe",
+            }),
+        );
         assertEquals(result.code, 1);
         assertStringIncludes(new TextDecoder().decode(result.stderr), "--allow-system-directory");
-        assertEquals(Deno.readTextFileSync(path), text);
+        assertEquals(readText(path), text);
         assertEquals(await loadPlan(projectRoot, "external"), null);
     });
 });
+
+async function collectOutput(
+    child: Bun.Subprocess<"pipe" | "ignore" | "inherit", "pipe", "pipe">,
+    outputStream = child.stdout,
+) {
+    const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(outputStream).bytes(),
+        new Response(child.stderr).bytes(),
+    ]);
+    return { code, stdout, stderr };
+}
+
+function readText(path: string): string {
+    return readFileSync(path, "utf8");
+}
+function writeText(path: string, text: string): void {
+    writeFileSync(path, text);
+}

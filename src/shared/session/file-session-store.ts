@@ -7,7 +7,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { stat, unlink } from "node:fs/promises";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
-import { resolve } from "@std/path";
+import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { openNativeFileLock } from "../native-file-lock.ts";
 import { createFileSessionControl } from "./file-session-control.ts";

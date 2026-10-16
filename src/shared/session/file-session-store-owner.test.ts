@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertNotStrictEquals, assertStrictEquals } from "@std/assert";
+import { notStrictEqual as assertNotStrictEquals, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { openFileSessionStore } from "./file-session-store.ts";
 import { FileSessionStoreOwner } from "./file-session-store-owner.ts";
 

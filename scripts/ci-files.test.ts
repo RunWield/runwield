@@ -1,9 +1,9 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { test } from "node:test";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { listCiFiles } from "./ci-files.ts";
 
 test("CI file discovery includes source work but excludes Git-ignored and .wld files", async () => {

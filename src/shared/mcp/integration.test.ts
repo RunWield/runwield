@@ -3,7 +3,8 @@ import { makeTempFile } from "../../testing/temp-file.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import {
     createAgentSession,
@@ -11,7 +12,8 @@ import {
     SessionManager,
     type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { getCwd } from "../../constants.js";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { SessionHost } from "../session/session-host.ts";

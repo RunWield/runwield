@@ -12,8 +12,8 @@ import { tmpdir } from "node:os";
  * between those contracts. The declaration is metadata for diagnostics and
  * regression tests. Runtime workflow state still decides which Agent runs.
  */
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { SUBAGENTS } from "../../constants.js";
 import { isWorkflowOnlyAgent, listAllAgentDefinitions, listAvailableAgents, loadAgentDef } from "./agents.js";
 import { loadSubAgentDefinition } from "./subagent-definitions.ts";

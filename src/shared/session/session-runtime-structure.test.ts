@@ -1,7 +1,9 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { readdir as fsReaddir, readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
-import { dirname, fromFileUrl, join, relative, resolve } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const SESSION_DIR = dirname(fromFileUrl(import.meta.url));
 const REPO_ROOT = resolve(SESSION_DIR, "../../..");

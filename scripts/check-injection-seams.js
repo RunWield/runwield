@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-run --allow-write=scripts/injection-seam-baseline.json
+#!/usr/bin/env bun
 import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 
@@ -43,7 +43,7 @@ import process from "node:process";
  * Renaming a seam looks like removing one and adding another, which the ratchet is
  * right to reject. Declare it instead:
  *
- *     deno run -A scripts/check-injection-seams.js --update --rename old=new
+ *     bun scripts/check-injection-seams.js --update --rename old=new
  *
  * A rename rewrites the name in the baseline before comparing, so it can carry an
  * existing seam to a new name but can never introduce one — the old name has to be
@@ -52,7 +52,7 @@ import process from "node:process";
  * Splitting a module moves seams between files, which looks like a removal in one
  * and an addition in the other. Declare the move:
  *
- *     deno run -A scripts/check-injection-seams.js --update --move src/a.js:name=src/b.ts
+ *     bun scripts/check-injection-seams.js --update --move src/a.js:name=src/b.ts
  *
  * A move relocates a seam already recorded against the source module before
  * comparing, so it can carry an existing seam to a new home but can never
@@ -62,7 +62,7 @@ import process from "node:process";
  * When the scan itself is fixed, modules and seam spellings it could never see before
  * appear all at once and look exactly like regressions. Adopt them explicitly:
  *
- *     deno run -A scripts/check-injection-seams.js --update --adopt-newly-visible
+ *     bun scripts/check-injection-seams.js --update --adopt-newly-visible
  *
  * This is only ever correct in the same change as a detection fix. It records newly
  * visible modules and newly visible seams inside known modules, then puts both under
@@ -70,7 +70,8 @@ import process from "node:process";
  * still rejected.
  */
 
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 
 const BASELINE_PATH = new URL("./injection-seam-baseline.json", import.meta.url);
@@ -580,6 +581,10 @@ export function collectSeamNames(text) {
     ) {
         const member = finalMemberName(fallback[1]);
         const implementation = finalMemberName(fallback[2]);
+        // A field read can supply data even when the option name is a verb:
+        // `options.clearAttachedContext || payload.standaloneReview` is a Boolean
+        // condition, not an implementation fallback. Method-shaped members still count.
+        if (fallback[2].includes(".") && !isBehavioralCollaborator(implementation)) continue;
         if (substitutesImplementation(member, member, implementation, true)) names.add(member);
     }
 
@@ -1228,7 +1233,7 @@ if (import.meta.main) {
         }
         if (stale.length > 0) {
             sections.push(
-                `Seams were removed — run \`deno task seams:update\` to lock the progress in:\n${formatList(stale)}`,
+                `Seams were removed — run \`bun run seams:update\` to lock the progress in:\n${formatList(stale)}`,
             );
         }
         sections.push(
@@ -1239,7 +1244,7 @@ if (import.meta.main) {
                 "`makeValidationProjectRoot` a real Plan project.\n\n" +
                 "If you ADDED a seam: remove it and pass a capability port as a required argument instead.\n" +
                 "If you ADDED a conditional seam: remove the branch; existing conditional debt may only shrink.\n" +
-                "If you REMOVED seams: run `deno task seams:update` to tighten the baseline in the same change.\n" +
+                "If you REMOVED seams: run `bun run seams:update` to tighten the baseline in the same change.\n" +
                 "Never run `--update` to silence an addition; it refuses to loosen and will reject it.\n" +
                 "Background: docs/plans/finish-injection-seam-ownership-enforcement.md and src/skills/write-tests/SKILL.md.",
         );

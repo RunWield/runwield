@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { test } from "node:test";
 import {
@@ -7,7 +8,6 @@ import {
     realpath as fsRealpath,
     rm as fsRm,
 } from "node:fs/promises";
-import { assertEquals } from "@std/assert";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { createOwnerWorkspaceApp } from "./server.js";
@@ -15,7 +15,7 @@ import { drainWorkflowMetrics, getWorkflowMetricsFilePath } from "../../shared/w
 import { setCustomSetting } from "../../shared/settings.js";
 import { makeManagedSessionFixture } from "../../testing/managed-session-fixture.ts";
 import { encodeCwdForSessionDir } from "../../shared/session/root-session.js";
-import { basename, join } from "@std/path";
+import { basename, join } from "node:path";
 
 test("Owner command observations require authentication, catalog names, and a registered Project", async () => {
     await withWorkflowMetricsFixture(async ({ projectRoot }) => {

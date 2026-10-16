@@ -1,6 +1,7 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { validationWorkflowTreeScenarios } from "../golden-scenarios/validation-workflow-tree.ts";
 import {
     assertValidationBranchInventory,

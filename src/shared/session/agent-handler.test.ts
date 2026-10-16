@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -398,8 +398,8 @@ test("sequential QUICK_FIX completions each run Mechanical Validation", async ()
         await setCustomSetting(
             "verification_command",
             process.platform === "win32"
-                ? `"${process.execPath}" ${process.versions.deno ? "eval" : "--eval"} "process.exit(0)"`
-                : `'${process.execPath.replaceAll("'", "'\"'\"'")}' ${process.versions.deno ? "eval" : "--eval"} 'process.exit(0)'`,
+                ? `"${process.execPath}" ${"--eval"} "process.exit(0)"`
+                : `'${process.execPath.replaceAll("'", "'\"'\"'")}' ${"--eval"} 'process.exit(0)'`,
             "project",
             projectRoot,
         );

@@ -1,8 +1,8 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
 import { openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { loadOwnerDashboard, subscribeOwnerDashboard } from "./server/owner-dashboard.ts";
 

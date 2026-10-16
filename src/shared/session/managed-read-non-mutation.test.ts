@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import {
@@ -9,8 +10,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { openOwnerCoordinationStore } from "../owner-coordination/index.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { createSessionRuntime } from "./session-runtime.ts";

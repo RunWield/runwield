@@ -1,8 +1,9 @@
-#!/usr/bin/env -S deno run --allow-read --allow-run --allow-write=scripts/language-policy-baseline.json
+#!/usr/bin/env bun
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 
 const BASELINE_PATH = new URL("./language-policy-baseline.json", import.meta.url);

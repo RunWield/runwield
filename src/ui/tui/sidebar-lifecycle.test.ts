@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { tuiSessionSidebarProjection, type TuiSessionSidebarSnapshot } from "./session-sidebar.ts";
 import { buildWorkflowPresentation, type LiveValidationProgress } from "../../shared/workflow/workflow-presentation.ts";
 

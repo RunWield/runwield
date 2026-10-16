@@ -1,4 +1,4 @@
-import { isAbsolute } from "@std/path";
+import { isAbsolute } from "node:path";
 
 export interface RemoteModelProof {
     provider: string;

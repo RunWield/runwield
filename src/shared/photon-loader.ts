@@ -1,6 +1,7 @@
 /** Photon is a CommonJS/WASM boundary, kept out of Deno's ESM compile graph. */
 import { createRequire } from "node:module";
-import { join, toFileUrl } from "@std/path";
+import { join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import type { PhotonImage } from "@silvia-odwyer/photon-node";
 import { RUNWIELD_ROOT } from "../../runtime-root.js";
 

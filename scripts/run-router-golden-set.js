@@ -15,10 +15,10 @@ import process from "node:process";
  * triage_report decision to humanJudgement.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../src/shared/cli-args.ts";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { AGENTS, getCwd, getHomeDir } from "../src/constants.js";
 import { createSessionRuntime } from "../src/shared/session/session-runtime.ts";
 import { readLatestTriageOutcome as readLatestTriageOutcomeFn } from "../src/shared/workflow/orchestrator.ts";
@@ -472,7 +472,7 @@ export async function main(argv) {
 
     if (args.help) {
         console.log([
-            "Usage: deno run -A scripts/run-router-golden-set.js [options]",
+            "Usage: bun scripts/run-router-golden-set.js [options]",
             "",
             "Runs the real Router against labelled Router judgement rows.",
             "",

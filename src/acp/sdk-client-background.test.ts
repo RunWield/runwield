@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { client, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";

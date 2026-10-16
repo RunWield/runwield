@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertExists, assertThrows } from "@std/assert";
+import { assertEquals, assertExists, assertThrows } from "../../testing/assertions.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { makeToolProjectFixture } from "../../testing/workflow-metrics-fixture.ts";
 import { HostedSession } from "../session/hosted-session.js";

@@ -2,18 +2,21 @@ import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { mkdir as fsMkdir, rm as fsRm, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { effectiveDeliveryBranch } from "./plan-branch.ts";
 import {
     canonicalizeStoredPlanName,
     getPlanRevisionForText,
     loadPlan,
+    mergeFrontMatterText,
     parsePlanFrontMatter,
+    withPlanCatalogLock,
 } from "../../plan-store.js";
 import {
     addEntry as addWorktreeRegistryEntry,
     listEntries as listWorktreeRegistryEntries,
     removeEntry as removeWorktreeRegistryEntry,
+    renamePlanningWorktreePlan,
     updateEntry as updateWorktreeRegistryEntry,
     type WorktreeRegistryEntry,
 } from "../worktree-registry.js";
@@ -115,11 +118,12 @@ async function resolveExistingTargetSnapshot(projectRoot: string, targetBranch: 
             }
         } else remoteTargetExists = true;
     }
-    const baseRef = remoteTargetExists && await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`)
-        ? `refs/remotes/origin/${branch}`
-        : await gitRefExists(projectRoot, `refs/heads/${branch}`)
-        ? `refs/heads/${branch}`
-        : "";
+    const baseRef =
+        remoteTargetExists && (await gitRefExists(projectRoot, `refs/remotes/origin/${branch}`))
+            ? `refs/remotes/origin/${branch}`
+            : (await gitRefExists(projectRoot, `refs/heads/${branch}`))
+              ? `refs/heads/${branch}`
+              : "";
     if (!baseRef) throw new Error(`Target branch does not exist: ${targetBranch}. Create it before planning.`);
     const commit = (await runGit(projectRoot, ["rev-parse", `${baseRef}^{commit}`])).trim();
     return { baseRef: commit, baseBranch: branch };
@@ -169,7 +173,7 @@ async function readTargetPlanMarkdowns(
     return found;
 }
 
-async function loadTargetPlan(projectRoot: string, planName: string, baseRef: string) {
+export async function loadTargetPlan(projectRoot: string, planName: string, baseRef: string) {
     const source = await readTargetPlanMarkdown(projectRoot, planName, baseRef);
     if (!source) return null;
     const temp = await mkdtemp(join(tmpdir(), "runwield-"));
@@ -180,17 +184,27 @@ async function loadTargetPlan(projectRoot: string, planName: string, baseRef: st
     await fsRm(temp, { recursive: true }).catch(() => {});
     return plan
         ? {
-            ...plan,
-            path: `${baseRef}:${source.relativePath}`,
-            revision: await getPlanRevisionForText(source.markdown),
-        }
+              ...plan,
+              path: `${baseRef}:${source.relativePath}`,
+              revision: await getPlanRevisionForText(source.markdown),
+          }
         : null;
 }
 
 export async function findTargetBranchPlan(cwd: string, targetBranch: string, planName: string) {
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
-    const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch);
-    return await loadTargetPlan(projectRoot, canonicalizeStoredPlanName(planName).name, target.baseRef);
+    const branch = targetBranch.trim().replace(/^origin\//, "");
+    if (!branch || branch === "HEAD" || branch.startsWith("refs/")) {
+        throw new Error(`Invalid target branch name: ${targetBranch}`);
+    }
+    // Lookup uses the known snapshot. Only session preparation fetches into project refs.
+    const remoteRef = `refs/remotes/origin/${branch}`;
+    const ref = (await gitRefExists(projectRoot, remoteRef)) ? remoteRef : `refs/heads/${branch}`;
+    // Undefined means this checkout has not fetched the branch; null means the
+    // known branch has no document at this path.
+    if (!(await gitRefExists(projectRoot, ref))) return undefined;
+    const commit = (await runGit(projectRoot, ["rev-parse", `${ref}^{commit}`])).trim();
+    return await loadTargetPlan(projectRoot, canonicalizeStoredPlanName(planName).name, commit);
 }
 
 /** Read remote target children in disposable Git storage without changing project refs or objects. */
@@ -202,7 +216,7 @@ export async function inspectTargetBranchPlansByParent(cwd: string, targetBranch
     }
     const remoteUrl = (await runGit(projectRoot, ["remote", "get-url", "origin"]).catch(() => "")).trim();
     if (!remoteUrl) {
-        const localRef = await gitRefExists(projectRoot, `refs/heads/${branch}`) ? `refs/heads/${branch}` : "";
+        const localRef = (await gitRefExists(projectRoot, `refs/heads/${branch}`)) ? `refs/heads/${branch}` : "";
         if (!localRef) throw new Error(`Target branch does not exist: ${targetBranch}. Create it before planning.`);
         return await readTargetChildren(projectRoot, localRef, parentPlanName);
     }
@@ -257,9 +271,9 @@ export async function findTargetBranchPlansByParent(cwd: string, targetBranch: s
         const plan = await loadPlan(entry.path, entry.planName).catch(() => null);
         if (!plan || plan.attrs.parentPlan !== parentName) continue;
         const targetPlan = children.get(entry.planName);
-        if (
-            targetPlan?.attrs.planId && entry.planId && targetPlan.attrs.planId !== entry.planId
-        ) {
+        // The branch owns membership and names; a saved planning checkout cannot restore a removed child.
+        if (!targetPlan && entry.status === "planning") continue;
+        if (targetPlan?.attrs.planId && entry.planId && targetPlan.attrs.planId !== entry.planId) {
             throw new Error(`Registered Plan ${entry.planName} does not match the target Plan ID.`);
         }
         if (entry.planId && plan.attrs.planId && entry.planId !== plan.attrs.planId) {
@@ -277,24 +291,50 @@ export async function preparePlanningWorktreeForPlan(
 ): Promise<PlanningWorktreeResult> {
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     const planId = typeof planAttrs.planId === "string" ? planAttrs.planId.trim() : "";
-    if (!planId) throw new Error(`Planning worktree for ${planName} requires a stable planId.`);
+    if (!planId) {
+        // Serialize onboarding until the generated identity is saved in a registered document.
+        return await withPlanCatalogLock(projectRoot, async () => {
+            const registered = (await listWorktreeRegistryEntries(projectRoot)).find(
+                (entry) => entry.planName === planName && entry.status !== "abandoned",
+            );
+            let stablePlanId = registered?.planId;
+            if (!stablePlanId) {
+                const target = await resolveExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
+                const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+                if (!targetPlan) throw new Error(`Plan ${planName} does not exist on target ${target.baseBranch}.`);
+                stablePlanId = targetPlan.attrs.planId || crypto.randomUUID();
+            }
+            return await preparePlanningWorktreeForPlan(projectRoot, planName, { ...planAttrs, planId: stablePlanId });
+        });
+    }
 
-    const existing = (await listWorktreeRegistryEntries(projectRoot)).find((entry) =>
-        entry.planId === planId && entry.status !== "abandoned"
+    let existing = (await listWorktreeRegistryEntries(projectRoot)).find(
+        (entry) => entry.planId === planId && entry.status !== "abandoned",
     );
     if (existing) {
         if (existing.planName !== planName) {
-            throw new Error(
-                `Planning worktree for ${planName} found a different registered Plan: ${existing.planName}.`,
-            );
+            if (existing.status !== "planning") {
+                throw new Error(
+                    `Planning worktree for ${planName} found a different registered Plan: ${existing.planName}.`,
+                );
+            }
+            const target = await resolveExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
+            const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+            if (!targetPlan || targetPlan.attrs.planId !== planId || existing.baseBranch !== target.baseBranch) {
+                throw new Error(`Target Plan ${planName} does not match the saved planning identity.`);
+            }
+            existing = await refreshPlanningWorktree(projectRoot, existing, target.baseRef);
+            const renamed = await loadPlan(existing.path, planName);
+            if (!renamed || renamed.attrs.planId !== planId) {
+                throw new Error(`Refreshed planning worktree is missing ${planName}. Your saved work is preserved.`);
+            }
+            existing = await renamePlanningWorktreePlan(projectRoot, existing.id, existing.planName, planName);
         }
         if (await pathExists(existing.path)) {
             const plan = await loadPlan(existing.path, planName);
             if (!plan) throw new Error(`Registered worktree is missing its Plan: ${existing.path}`);
             if (plan.attrs.planId !== planId) {
-                throw new Error(
-                    `Registered worktree contains a different Plan ID. Your files were not changed.`,
-                );
+                throw new Error(`Registered worktree contains a different Plan ID. Your files were not changed.`);
             }
             if (existing.status !== "planning") return { entry: existing, plan, reused: true };
             const target = await resolveExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
@@ -305,7 +345,7 @@ export async function preparePlanningWorktreeForPlan(
             }
             if (target.baseRef !== existing.baseCommit) {
                 const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
-                if (!targetPlan || targetPlan.attrs.planId !== planId) {
+                if (!targetPlan || (targetPlan.attrs.planId && targetPlan.attrs.planId !== planId)) {
                     throw new Error(
                         `Target Plan ${planName} is missing or has a different Plan ID. Your files were not changed.`,
                     );
@@ -320,15 +360,22 @@ export async function preparePlanningWorktreeForPlan(
 
     const targetBranch = targetBranchForPlan(planAttrs);
     const branch = targetBranch.replace(/^origin\//, "");
-    if (!await gitRefExists(projectRoot, `refs/heads/${branch}`)) {
+    if (!(await gitRefExists(projectRoot, `refs/heads/${branch}`))) {
         await prepareTargetBranchRef(projectRoot, targetBranch);
     }
     const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch);
     const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
     if (!targetPlan) throw new Error(`Plan ${planName} does not exist on target ${target.baseBranch}.`);
-    if (targetPlan.attrs.planId !== planId) {
-        throw new Error(`Target Plan ${planName} has a different or missing Plan ID. Your files were not changed.`);
+    if (targetPlan.attrs.planId && targetPlan.attrs.planId !== planId) {
+        throw new Error(`Target Plan ${planName} has a different Plan ID. Your files were not changed.`);
     }
+    const canonicalPlan = targetPlan.attrs.planId
+        ? targetPlan
+        : {
+              ...targetPlan,
+              attrs: { ...targetPlan.attrs, planId },
+              markdown: mergeFrontMatterText(targetPlan.markdown, { planId }),
+          };
 
     const attemptId = crypto.randomUUID().slice(0, 8);
     const transition = await runExecutionPreparationTransition({
@@ -381,13 +428,11 @@ export async function preparePlanningWorktreeForPlan(
                 branch: entry.branch,
                 status: entry.status,
             });
-            await writeControllerState(projectRoot, { planName, planId }, { documentWorktreeId: entry.id });
-            await markEffect("controller_document_worktree_recorded", { worktreeId: entry.id });
             const planFile = await ensureExecutionPlanFile({
                 executionCwd: entry.path,
                 planName,
-                canonicalSource: loadedCanonicalSource(planName, targetPlan),
-                reconcileFromCanonical: false,
+                canonicalSource: loadedCanonicalSource(planName, canonicalPlan),
+                reconcileFromCanonical: !targetPlan.attrs.planId,
                 replaceFromCanonical: false,
             });
             if (!["present", "restored", "reconciled"].includes(planFile.kind)) {
@@ -398,6 +443,7 @@ export async function preparePlanningWorktreeForPlan(
             const dirty = (await runGit(entry.path, ["status", "--porcelain"])).trim();
             if (dirty) {
                 const preparation = await checkpointExecutionPreparation({
+                    phase: "planning",
                     worktreePath: entry.path,
                     branch: entry.branch,
                     baseCommit: entry.baseCommit,
@@ -414,6 +460,8 @@ export async function preparePlanningWorktreeForPlan(
             await updateWorktreeRegistryEntry(projectRoot, entry.id, { status: "planning" });
             const plan = await loadPlan(entry.path, planName);
             if (!plan) throw new Error(`Planning worktree is missing its Plan after preparation: ${entry.path}`);
+            await writeControllerState(projectRoot, { planName, planId }, { documentWorktreeId: entry.id });
+            await markEffect("controller_document_worktree_recorded", { worktreeId: entry.id });
             return { entry, plan, reused: false };
         },
         verifyPreparation: (result) => ({

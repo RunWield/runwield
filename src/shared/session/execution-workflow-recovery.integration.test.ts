@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { defineGitFixture, git } from "../git-test-fixture.ts";

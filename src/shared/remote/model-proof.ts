@@ -1,6 +1,6 @@
 import { readFile as fsReadFile, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 /* Explicit, one-turn LIVE proof. This is not an interactive remote Session. */
-import { isAbsolute, join, relative } from "@std/path";
+import { isAbsolute, join, relative } from "node:path";
 import type { RemoteModelConnection } from "./model-bridge.ts";
 import type { RemoteMount } from "./sftp-mount.ts";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";

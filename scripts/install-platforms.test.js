@@ -6,8 +6,8 @@ import {
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 
 import {
     BINARY_NAMES,
@@ -154,12 +154,12 @@ test("ux:new-user image provisions Node 24 for required agent-browser helper", a
 });
 
 test("ux:new-user tasks build latest and current targets from one containerfile", async () => {
-    const denoJson = JSON.parse(await fsReadFile(repoPath("deno.json"), "utf8"));
-    assertStringIncludes(denoJson.tasks["ux:new-user"], "--target wld-ux-latest");
-    assertStringIncludes(denoJson.tasks["ux:new-user"], "-f Containerfile.wld-ux");
+    const packageJson = JSON.parse(await fsReadFile(repoPath("package.json"), "utf8"));
+    assertStringIncludes(packageJson.scripts["ux:new-user"], "--target wld-ux-latest");
+    assertStringIncludes(packageJson.scripts["ux:new-user"], "-f Containerfile.wld-ux");
 
-    const currentTask = denoJson.tasks["ux:new-user:current"];
-    assertStringIncludes(currentTask, "deno task compile --target");
+    const currentTask = packageJson.scripts["ux:new-user:current"];
+    assertStringIncludes(currentTask, "bun run compile --target");
     assertStringIncludes(currentTask, "--target wld-ux-current");
     assertStringIncludes(currentTask, "-f Containerfile.wld-ux");
     assertStringIncludes(currentTask, "runwield-wld-ux-current:local");

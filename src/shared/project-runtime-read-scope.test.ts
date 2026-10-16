@@ -8,8 +8,9 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertNotStrictEquals, assertRejects, assertStrictEquals } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert, notStrictEqual as assertNotStrictEquals, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { getRunWieldRuntimeDir } from "../constants.js";
 import { listPlans, loadPlan, savePlan } from "../plan-store.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";

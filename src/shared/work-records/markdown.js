@@ -3,7 +3,7 @@
  * Parse, validate, and format canonical Work Record markdown.
  */
 
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
+import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { normalizeWorkKind } from "../../constants.js";
 import { normalizeTicketReferences } from "../ticket-references.js";
 import {

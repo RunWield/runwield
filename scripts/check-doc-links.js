@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-run
+#!/usr/bin/env bun
 import { fileURLToPath } from "node:url";
 import { captureScriptProcess } from "./script-process.ts";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";

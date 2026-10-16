@@ -1,8 +1,9 @@
+import { assertEquals } from "./testing/assertions.ts";
 import { test } from "node:test";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
+import { join } from "node:path";
 
 interface AdrFrontMatter {
     status: string;

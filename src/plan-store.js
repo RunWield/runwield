@@ -24,10 +24,10 @@ export { isEpicPlan, isProjectPlan, isSequencePlan } from "./shared/project-plan
  * External plans (missing front matter) get sensible defaults applied.
  */
 
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
+import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./shared/lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone } from "./shared/process-liveness.ts";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "@std/path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
     CLI_BIN,
@@ -1162,7 +1162,7 @@ export function injectFrontMatter(markdown, overrides = {}) {
  * @returns {{ attrs: PlanFrontMatter, body: string }}
  */
 export function parsePlanFrontMatter(markdown, opts = {}) {
-    const missingOrigin = opts.missingOrigin || DEFAULT_FRONT_MATTER.origin;
+    const missingOrigin = /** @type {PlanFrontMatter["origin"]} */ (opts.missingOrigin || DEFAULT_FRONT_MATTER.origin);
     if (/^(<<<<<<<|=======|>>>>>>>)\s/m.test(markdown)) {
         throw new Error("Plan contains unresolved merge conflict markers.");
     }
@@ -1178,14 +1178,16 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
             body: markdown,
         };
     }
-    const { attrs, body } = extractYaml(markdown);
+    const { attrs, body } = /** @type {import("./shared/front-matter.ts").FrontMatter<PlanFrontMatter>} */ (
+        extractYaml(markdown)
+    );
     const collaborationAttrs = normalizeCollaborationFrontMatter(attrs);
     const sourceAttrs = { ...attrs };
-    for (const key of OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS) delete sourceAttrs[key];
+    for (const key of OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS) Reflect.deleteProperty(sourceAttrs, key);
     for (const key of Object.values(COLLABORATION_FRONT_MATTER_KEYS)) {
-        delete sourceAttrs[key];
+        Reflect.deleteProperty(sourceAttrs, key);
     }
-    delete sourceAttrs.collaborationMode;
+    Reflect.deleteProperty(sourceAttrs, "collaborationMode");
     delete sourceAttrs.type;
     return {
         attrs: {
@@ -2901,8 +2903,9 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
                 if (
                     message.includes("Target branch does not exist") ||
                     message.includes("Could not refresh target branch")
-                )
+                ) {
                     continue;
+                }
                 throw error;
             }
             for (const child of targetChildren) {
@@ -2932,21 +2935,17 @@ async function listPlansWithTargetChildren(cwd, onlyEpic) {
             if (attempts.filter((entry) => entry.planName === attempt.planName).length !== 1) continue;
             const execution = await loadPlan(attempt.path, attempt.planName);
             if (!execution) {
-                const archived = await loadArchivedPlanByName(attempt.path, attempt.planName);
-                if (archived && (!attempt.planId || archived.attrs.planId === attempt.planId)) {
-                    const index = results.findIndex(
-                        (item) =>
-                            item.name === attempt.planName ||
-                            Boolean(attempt.planId && item.attrs.planId === attempt.planId),
-                    );
-                    if (index >= 0) results.splice(index, 1);
-                    const issueIndex = parseIssues.findIndex((issue) => issue.name === attempt.planName);
-                    if (issueIndex >= 0) parseIssues.splice(issueIndex, 1);
-                    continue;
-                }
-                throw new Error(
-                    `The execution Plan is missing at ${attempt.path}/docs/plans/${attempt.planName}.md. Restore that file before editing or continuing this Plan; the primary copy will not be used.`,
+                // A missing or archived authority cannot expose a stale primary copy.
+                // Direct Plan loading owns the recovery error, not the project catalog.
+                const index = results.findIndex(
+                    (item) =>
+                        item.name === attempt.planName ||
+                        Boolean(attempt.planId && item.attrs.planId === attempt.planId),
                 );
+                if (index >= 0) results.splice(index, 1);
+                const issueIndex = parseIssues.findIndex((issue) => issue.name === attempt.planName);
+                if (issueIndex >= 0) parseIssues.splice(issueIndex, 1);
+                continue;
             }
             if (attempt.planId && execution.attrs.planId && execution.attrs.planId !== attempt.planId) {
                 throw new Error(
@@ -3708,6 +3707,9 @@ async function ensurePlanIdentityLocked(cwd, planName, options = {}) {
             const byId = groupExistingPlanIds(plans);
             assertNoDuplicatePlanIds(byId);
             reservedPlanIds = new Set(byId.keys());
+            for (const attempt of await listControllerDocumentWorktrees(cwd)) {
+                if (attempt.planId) reservedPlanIds.add(attempt.planId);
+            }
         }
         const idGenerator = options.idGenerator || (() => crypto.randomUUID());
         let planId = normalizePlanId(plan.attrs.planId);
@@ -3963,21 +3965,9 @@ export async function findPlanEvidenceById(cwd, planId) {
             );
         }
         if (matches.length === 0) throw new Error(`Plan not found for planId: ${normalized}`);
-        // Target-branch list entries can use a Git revision:path reference, not a
-        // filesystem path. Prefer the saved local child in the selected document
-        // worktree when it has the same identity.
-        const local =
-            !isAbsolute(matches[0].path) && resolvePrimaryCheckoutRoot(cwd) !== cwd
-                ? await loadPlanStrict(cwd, matches[0].name)
-                : null;
-        const loaded =
-            local?.kind === "loaded" && local.attrs.planId === matches[0].attrs.planId
-                ? local
-                : await loadPlanFileStrict(matches[0].path);
-        if (loaded.kind !== "loaded") {
-            if (loaded.kind === "malformed") throw loaded.error;
-            throw new Error(`Plan not found for planId: ${normalized}`);
-        }
+        // Catalog entries can be Git snapshots. Resolve their document authority without writing or fetching.
+        const { plan: loaded } = await resolveWorkflowPlanLocation(cwd, matches[0].name, { readOnly: true });
+        if (!loaded) throw new Error(`Plan not found for planId: ${normalized}`);
         const durableId = loaded.attrs.planId;
         if (!durableId) {
             throw new Error(

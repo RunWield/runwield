@@ -116,7 +116,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
   over upstream alert styles.
 - `src/ui/workspace/react/ReviewDevSurface.tsx` — realistic Plan and reader fixtures, preserving review interactions and
   revision comparisons.
-- `src/shared/session/agents-shared-practice.test.ts`, `src/ui/design-system/design-system.test.js`, and
+- `src/shared/session/agents-shared-practice.test.ts`, `src/ui/design-system/design-system.test.ts`, and
   `src/ui/workspace/workspace-plan-review-ux.test.tsx` — focused guidance and integration regressions.
 - `docs/design-system.md` and the owning Core/Workspace PRD capabilities — usage rules and delivered acceptance
   scenarios.
@@ -178,7 +178,7 @@ No Work Records are proposed for replacement. No `supersedes` confirmation is ne
 **Focused automated checks**
 
 - Run
-  `deno run -A scripts/run-tests.js src/shared/session/agents-shared-practice.test.ts src/ui/design-system/design-system.test.js src/ui/workspace/workspace-plan-review-ux.test.tsx src/ui/workspace/react/plan-review-direct-edits.test.ts src/ui/workspace/react/plan-review-feedback.test.ts`.
+  `deno run -A scripts/run-tests.js src/shared/session/agents-shared-practice.test.ts src/ui/design-system/design-system.test.ts src/ui/workspace/workspace-plan-review-ux.test.tsx src/ui/workspace/react/plan-review-direct-edits.test.ts src/ui/workspace/react/plan-review-feedback.test.ts`.
 - Run `deno task workspace:check` and `deno task workspace:build` to confirm the imported renderer and shared styles
   still build together.
 - Inspect the composed Planner instructions and template together: the exact-step rules and current headings remain;

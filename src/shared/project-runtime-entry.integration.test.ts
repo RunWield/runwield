@@ -9,8 +9,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { env } from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture } from "./git-test-fixture.ts";
 import {

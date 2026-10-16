@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client";

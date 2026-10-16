@@ -2,7 +2,7 @@
  * Golden concurrent Plan workflow coverage.
  */
 
-import { assert } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes } from "../testing/scenario-runner.js";
 import { assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
 

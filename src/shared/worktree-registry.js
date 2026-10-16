@@ -17,7 +17,7 @@ import { pid, platform } from "node:process";
  * Durable registry for RunWield execution worktrees.
  */
 
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./lock-file-snapshot.ts";
 import { getLockHostname, isPidAlive } from "./process-liveness.ts";
 import { CLI_BIN } from "../constants.js";
@@ -773,6 +773,39 @@ export async function refreshPlanningWorktreeBase(projectRoot, id, expectedBaseC
         }
         if (entry.baseCommit !== expectedBaseCommit) throw new Error(`Planning worktree baseline changed: ${id}`);
         Object.assign(entry, base, { updatedAt: new Date().toISOString() });
+        await writeRegistry(projectRoot, entries);
+        return entry;
+    });
+}
+
+/**
+ * Follow a published rename after refreshing an unstarted planning checkout.
+ * @param {string} projectRoot
+ * @param {string} id
+ * @param {string} expectedName
+ * @param {string} nextName
+ */
+export async function renamePlanningWorktreePlan(projectRoot, id, expectedName, nextName) {
+    return await withWorktreeRegistryLock(projectRoot, async () => {
+        const entries = await readRegistry(projectRoot);
+        const entry = entries.find((candidate) => candidate.id === id);
+        if (!entry || entry.planName !== expectedName || entry.status !== "planning" || entry.publication) {
+            throw new Error(
+                "The planning attempt changed while following the published Plan rename. Retry loading it.",
+            );
+        }
+        if (
+            entries.some(
+                (candidate) =>
+                    candidate.id !== id &&
+                    candidate.planName === nextName &&
+                    NONTERMINAL_STATUSES.has(candidate.status),
+            )
+        ) {
+            throw new Error(`Another attempt already owns ${nextName}.`);
+        }
+        entry.planName = nextName;
+        entry.updatedAt = new Date().toISOString();
         await writeRegistry(projectRoot, entries);
         return entry;
     });

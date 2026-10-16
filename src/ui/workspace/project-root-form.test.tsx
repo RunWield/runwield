@@ -1,34 +1,35 @@
 // @ts-nocheck: happy-dom supplies browser globals for the real React island.
-import { assert, assertEquals } from "@std/assert";
-import { fromFileUrl } from "@std/path";
+import { importTestBundle } from "../../testing/import-test-bundle.ts";
+import { test } from "node:test";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals } from "../../testing/assertions.ts";
+import { fileURLToPath } from "node:url";
 import { build, stop } from "esbuild";
 import { Window } from "happy-dom";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 const bundle = await build({
-    entryPoints: [fromFileUrl(new URL("./islands/ProjectRootForm.tsx", import.meta.url))],
+    entryPoints: [fileURLToPath(new URL("./islands/ProjectRootForm.tsx", import.meta.url))],
     bundle: true,
     write: false,
     format: "esm",
     jsx: "automatic",
-    plugins: [{
-        name: "shared-react",
-        setup(builder) {
-            builder.onResolve(
-                { filter: /^react(?:-dom)?(?:\/.*)?$/ },
-                (args) => ({ path: import.meta.resolve(args.path), external: true }),
-            );
+    plugins: [
+        {
+            name: "shared-react",
+            setup(builder) {
+                builder.onResolve({ filter: /^react(?:-dom)?(?:\/.*)?$/ }, (args) => ({
+                    path: import.meta.resolve(args.path),
+                    external: true,
+                }));
+            },
         },
-    }],
+    ],
 });
 stop();
-const { default: ProjectRootForm } = await import(
-    `data:text/javascript,${encodeURIComponent(bundle.outputFiles[0].text)}`
-);
 
 for (const projectId of [undefined, "relink-project"]) {
-    Deno.test(`${projectId ? "relink" : "add"} root form preserves input on Quit and Escape, confirms once, and disables pending actions`, async () => {
+    test(`${projectId ? "relink" : "add"} root form preserves input on Quit and Escape, confirms once, and disables pending actions`, async () => {
         await withProcessGlobalTestLock(async () => {
             const browser = new Window({ url: "http://127.0.0.1:8787/projects" });
             const names = [
@@ -54,6 +55,8 @@ for (const projectId of [undefined, "relink-project"]) {
                         value: name === "IS_REACT_ACT_ENVIRONMENT" ? true : browser[name],
                     });
                 }
+                const { createRoot } = await import("react-dom/client");
+                const { default: ProjectRootForm } = await importTestBundle(bundle.outputFiles[0].text);
                 // happy-dom does not implement the native modal lifecycle.
                 browser.HTMLDialogElement.prototype.showModal = function () {
                     this.open = true;
@@ -115,7 +118,7 @@ for (const projectId of [undefined, "relink-project"]) {
                 assertEquals(document.activeElement, submit);
                 await send();
                 await act(() =>
-                    container.querySelector("dialog").dispatchEvent(new browser.Event("cancel", { cancelable: true }))
+                    container.querySelector("dialog").dispatchEvent(new browser.Event("cancel", { cancelable: true })),
                 );
                 assertEquals(container.querySelector("dialog"), null);
                 assertEquals(input.value, "/entered/home");
@@ -127,7 +130,7 @@ for (const projectId of [undefined, "relink-project"]) {
                 await act(() => form.dispatchEvent(new browser.Event("submit", { bubbles: true, cancelable: true })));
                 assertEquals(requests.length, count);
                 await act(() =>
-                    finish(new Response(JSON.stringify({ error: "Root changed; try again." }), { status: 409 }))
+                    finish(new Response(JSON.stringify({ error: "Root changed; try again." }), { status: 409 })),
                 );
                 assertEquals(submit.disabled, false);
                 assertEquals(container.querySelector('[role="status"]').textContent, "Root changed; try again.");
@@ -143,7 +146,7 @@ for (const projectId of [undefined, "relink-project"]) {
                         new Response(JSON.stringify({ project: { projectId: "linked-project" } }), {
                             status: projectId ? 200 : 201,
                         }),
-                    )
+                    ),
                 );
                 assertEquals(navigations, 1);
             } finally {

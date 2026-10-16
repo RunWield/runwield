@@ -1,3 +1,4 @@
+/** @typedef {import("../front-matter.ts").FrontMatterRecord & { bashAllowedCommands?: import("../bash-command-policy.ts").BashAllowedCommands | null }} AgentDefinitionFrontMatter */
 import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 /**
@@ -5,8 +6,9 @@ import { readdir, readFile } from "node:fs/promises";
  * Agent discovery — scans agent definitions (bundled + overrides) and returns merged metadata.
  */
 
-import { basename, dirname, fromFileUrl, join } from "@std/path";
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { AGENT_DEFS_DIR, AGENTS, SYSTEM_PROMPT_TEMPLATE_PATH } from "../../constants.js";
 import { directoryExists, fileExists } from "../helpers.ts";
 import {
@@ -15,7 +17,12 @@ import {
     personalGlobalRoot,
     PersonalResourcePathError,
 } from "../remote/personal-resources.ts";
-import { PROTECTED_TOOL_NAMES, UNIVERSAL_AGENT_TOOL_NAMES } from "../../tools/registry.ts";
+import {
+    AGENT_TOOL_SETS,
+    DELEGATE_AGENT_MODE_TOOL_NAMES,
+    PROTECTED_TOOL_NAMES,
+    UNIVERSAL_AGENT_TOOL_NAMES,
+} from "../../tools/registry.ts";
 import { normalizeBashAllowedCommands } from "../bash-command-policy.ts";
 
 /** @returns {string | null} */
@@ -227,9 +234,9 @@ export function getAgentDisplayName(internalName, projectRoot) {
 
     throw new Error(
         `getAgentDisplayName: no agent definition with a frontmatter "name:" field was found for "${canonicalName}". ` +
-            `Searched: ${
-                getAgentDefDirsByPriority(projectRoot).map((dir) => join(dir, `${canonicalName}.md`)).join(", ")
-            }.`,
+            `Searched: ${getAgentDefDirsByPriority(projectRoot)
+                .map((dir) => join(dir, `${canonicalName}.md`))
+                .join(", ")}.`,
     );
 }
 
@@ -338,6 +345,30 @@ function normalizeToolNames(tools) {
 }
 
 /**
+ * Expand `toolSets` front matter into the tool names of each named set.
+ * Unknown names fail so a typo can't silently drop an Agent's tools.
+ *
+ * @param {unknown} value
+ * @param {string} source
+ * @returns {string[]}
+ */
+function expandToolSets(value, source) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || !value.every((name) => typeof name === "string")) {
+        throw new Error(`${source}: toolSets must be a list of set names.`);
+    }
+    return value.flatMap((name) => {
+        const setName = name.trim();
+        if (!Object.hasOwn(AGENT_TOOL_SETS, setName)) {
+            throw new Error(
+                `${source}: unknown toolSets entry "${name}". Expected one of: ${Object.keys(AGENT_TOOL_SETS).join(", ")}.`,
+            );
+        }
+        return AGENT_TOOL_SETS[setName];
+    });
+}
+
+/**
  * @param {unknown} value
  * @returns {number | undefined}
  */
@@ -398,7 +429,7 @@ export function resolveSessionToolNames(agentTools, toolNames, customToolNames) 
     const normalizedCustomToolNames = normalizeToolNames(customToolNames);
     const allowedToolNames = new Set(normalizedAgentTools);
     const universalAgentToolNames = normalizedAgentTools.filter((toolName) =>
-        UNIVERSAL_AGENT_TOOL_NAMES.includes(toolName)
+        UNIVERSAL_AGENT_TOOL_NAMES.includes(toolName),
     );
 
     /** @type {string[]} */
@@ -436,9 +467,7 @@ export async function listAllAgentDefinitions(projectRoot) {
         } catch (err) {
             if (err instanceof PersonalResourcePathError) throw err;
             // Surface malformed agent definitions instead of silently dropping them.
-            console.error(
-                `[RunWield] Skipping agent "${name}": ${err instanceof Error ? err.message : String(err)}`,
-            );
+            console.error(`[RunWield] Skipping agent "${name}": ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 
@@ -493,8 +522,10 @@ export async function isWorkflowOnlyAgent(agentName, projectRoot) {
  */
 export function buildWorkflowOnlyAgentMessage(agentName, projectRoot) {
     const displayName = getAgentDisplayName(agentName, projectRoot);
-    return `${displayName} is activated by RunWield as part of a workflow, not by hand. ` +
-        `Staying with the current agent.`;
+    return (
+        `${displayName} is activated by RunWield as part of a workflow, not by hand. ` +
+        `Staying with the current agent.`
+    );
 }
 
 /**
@@ -534,8 +565,9 @@ function normalizeSharedPracticeNames(value, agentName) {
  * @returns {Promise<string>}
  */
 async function readSharedPracticeBody(name, projectRoot) {
-    const candidatePaths = getAgentDefDirsByPriority(projectRoot)
-        .map((dir) => join(dir, SHARED_PRACTICE_DIR, `${name}.md`));
+    const candidatePaths = getAgentDefDirsByPriority(projectRoot).map((dir) =>
+        join(dir, SHARED_PRACTICE_DIR, `${name}.md`),
+    );
 
     for (const filePath of candidatePaths) {
         await assertPersonalResourcePath(filePath, `shared practice "${name}"`);
@@ -578,7 +610,8 @@ export async function composeSharedPracticePrompt(value, agentName, projectRoot)
  * layer sets `promptOverride: true`, lower-layer prompt content is discarded.
  * Fragments named by the merged `sharedPractice:` list are appended last, so an
  * agent prompt reads persona → process → universal practice.
- * Tool lists are replaced when a higher layer defines `tools`. Tools declared
+ * Tool lists are replaced when a higher layer defines `tools` or `toolSets`;
+ * that layer's list is its expanded sets followed by its `tools`. Tools declared
  * in the lowest existing layer are treated as "bundled" for protected-tool
  * enforcement (always re-added even if a higher layer narrows the list).
  *
@@ -608,14 +641,23 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
             throw new Error(`Agent def ${filePath} has no frontmatter`);
         }
 
-        const { attrs, body } = extractYaml(raw);
+        const { attrs, body } = /** @type {import("../front-matter.ts").FrontMatter<AgentDefinitionFrontMatter>} */ (
+            extractYaml(raw)
+        );
         if (Object.hasOwn(attrs, "bashAllowedCommands")) {
-            attrs.bashAllowedCommands = normalizeBashAllowedCommands(attrs.bashAllowedCommands, filePath);
+            const commands = normalizeBashAllowedCommands(attrs.bashAllowedCommands, filePath);
+            const inherited = mergedAttrs.bashAllowedCommands;
+            attrs.bashAllowedCommands = commands?.length
+                ? [...new Set([...(Array.isArray(inherited) ? inherited : []), ...commands])]
+                : commands;
         }
         found = true;
 
-        if (Object.prototype.hasOwnProperty.call(attrs, "tools")) {
-            const normalized = normalizeToolNames(attrs.tools);
+        if (Object.hasOwn(attrs, "tools") || Object.hasOwn(attrs, "toolSets")) {
+            const normalized = normalizeToolNames([
+                ...expandToolSets(attrs.toolSets, filePath),
+                ...normalizeToolNames(attrs.tools),
+            ]);
             if (!bundledToolsSet) {
                 bundledTools = normalized;
                 bundledToolsSet = true;
@@ -634,20 +676,18 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
     }
 
     if (!found) {
-        throw new Error(
-            `Could not find agent def for "${agentName}". Checked: ${filePaths.join(", ")}`,
-        );
+        throw new Error(`Could not find agent def for "${agentName}". Checked: ${filePaths.join(", ")}`);
     }
 
-    const displayName = typeof mergedAttrs.name === "string" && mergedAttrs.name.trim()
-        ? mergedAttrs.name.trim()
-        : agentName;
+    const displayName =
+        typeof mergedAttrs.name === "string" && mergedAttrs.name.trim() ? mergedAttrs.name.trim() : agentName;
     const model = typeof mergedAttrs.model === "string" && mergedAttrs.model.trim() ? mergedAttrs.model.trim() : "";
     const description = typeof mergedAttrs.description === "string" ? mergedAttrs.description.trim() : "";
-    const thinkingLevel = typeof mergedAttrs.thinkingLevel === "string" &&
-            ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(mergedAttrs.thinkingLevel)
-        ? mergedAttrs.thinkingLevel
-        : undefined;
+    const thinkingLevel =
+        typeof mergedAttrs.thinkingLevel === "string" &&
+        ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(mergedAttrs.thinkingLevel)
+            ? mergedAttrs.thinkingLevel
+            : undefined;
     const temperature = normalizeTemperature(mergedAttrs.temperature);
     const contextContract = normalizeContextContract(mergedAttrs.contextContract, agentName);
     // Merged, so a project or home layer can mark its own Agent workflow-only —
@@ -673,6 +713,8 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         if (!tools.includes(toolName)) tools.push(toolName);
     }
 
+    const { tools: resolvedTools, delegationModes } = resolveDelegationModes(tools);
+
     displayNameCache.set(displayNameCacheKey(projectRoot, agentName), displayName);
     if (busyLines) busyLinesCache.set(displayNameCacheKey(projectRoot, agentName), busyLines);
 
@@ -684,12 +726,43 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         contextContract,
         thinkingLevel,
         temperature,
-        tools,
+        tools: resolvedTools,
+        delegationModes,
         bashAllowedCommands,
         workflowOnly,
         busyLines,
         systemPrompt,
     };
+}
+
+/**
+ * @typedef {Object} ResolvedDelegationTools
+ * @property {string[]} tools - Tool names with mode-limited delegation names folded into `delegate_agent`
+ * @property {import('./types.js').DelegationMode[] | undefined} delegationModes - Allowed modes; absent allows all
+ */
+
+/**
+ * Fold `delegate_agent_read` and `delegate_agent_write` into the one `delegate_agent` tool and record which modes
+ * they allow. Plain `delegate_agent` keeps every mode.
+ *
+ * @param {string[]} tools
+ * @returns {ResolvedDelegationTools}
+ */
+function resolveDelegationModes(tools) {
+    /** @type {import('./types.js').DelegationMode[]} */
+    const modes = [];
+    /** @type {string[]} */
+    const resolved = [];
+    for (const toolName of tools) {
+        const mode = Object.hasOwn(DELEGATE_AGENT_MODE_TOOL_NAMES, toolName)
+            ? DELEGATE_AGENT_MODE_TOOL_NAMES[/** @type {keyof typeof DELEGATE_AGENT_MODE_TOOL_NAMES} */ (toolName)]
+            : undefined;
+        if (mode && !modes.includes(mode)) modes.push(mode);
+        const name = mode ? "delegate_agent" : toolName;
+        if (!resolved.includes(name)) resolved.push(name);
+    }
+    const unlimited = tools.includes("delegate_agent") || !modes.length;
+    return { tools: resolved, delegationModes: unlimited ? undefined : modes };
 }
 
 /**

@@ -6,7 +6,8 @@ import {
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { dirname, fromFileUrl, join, normalize, relative, resolve, SEPARATOR } from "@std/path";
+import { dirname, join, normalize, relative, resolve, sep as SEPARATOR } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 /** User documentation lives in its own folder and publishes at the site root. */
 const USER_DOCS_DIRECTORY = "user-documentation/";

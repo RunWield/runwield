@@ -23,8 +23,7 @@ createdAt: "2026-09-21T02:05:47.752Z"
 origin: "internal"
 parentPlan: "remote-ssh-development"
 order: 1
-dependencies:
-    []
+dependencies: []
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 status: "validated"
@@ -209,7 +208,7 @@ owned preparation, authentication, or cleanup with injected success results.
 - **Commands:** generate existing source-run version metadata with `deno run -A scripts/write-version.js`. Run new tests
   with `deno run -A scripts/run-tests.js src/cmd/remote/ src/shared/remote/`. Include connection-view tests there or add
   their exact paths to this command. Run preserved boundary tests with
-  `deno run -A scripts/run-tests.js src/cmd/__tests__/registry.test.js src/cmd/help/index.test.ts src/cli-context-files.test.ts src/shared/foreground-process.test.ts src/shared/agent-browser-session.test.ts src/shared/package-install.test.ts scripts/compile.test.js scripts/write-version.test.js scripts/release-assets.test.js src/ui/tui/chat-session.test.ts src/ui/tui/tui-manager.test.ts src/ui/tui/tui-crash-guards.test.js`.
+  `deno run -A scripts/run-tests.js src/cmd/__tests__/registry.test.ts src/cmd/help/index.test.ts src/cli-context-files.test.ts src/shared/foreground-process.test.ts src/shared/agent-browser-session.test.ts src/shared/package-install.test.ts scripts/compile.test.js scripts/write-version.test.js scripts/release-assets.test.js src/ui/tui/chat-session.test.ts src/ui/tui/tui-manager.test.ts src/ui/tui/tui-crash-guards.test.ts`.
   Run `deno task doc-links:check` and `deno task seams:check`. Workflow Validation runs full CI separately.
 - **Target and dispatch tests:** exercise the actual CLI with an isolated SSH executable fixture, then the production
   bootstrap through a real shell and temporary filesystem. Cover both command forms, remote home, relative paths,

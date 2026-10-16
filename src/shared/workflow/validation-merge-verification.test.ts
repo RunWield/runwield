@@ -7,8 +7,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertExists } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertExists } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { buildPlanEventUpdates } from "./plan-lifecycle.js";
 import { createGitPort } from "../git-port.ts";

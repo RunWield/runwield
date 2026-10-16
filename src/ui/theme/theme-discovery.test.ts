@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { loadExternalThemeJsons } from "./theme-discovery.ts";
 
 test("external theme discovery merges partial themes and skips built-in name overrides", async () => {

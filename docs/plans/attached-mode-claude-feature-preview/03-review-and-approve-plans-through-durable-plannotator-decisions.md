@@ -95,7 +95,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 ## Verification Plan
 
 - Automated: run
-  `deno run -A scripts/run-tests.js src/shared/attached/ src/ui/review/review-launcher.test.ts src/ui/workspace/plan-review-decision-route.test.ts src/shared/workflow/plan-review-actions.test.ts src/shared/workflow/plan-review-recovery.test.js`.
+  `deno run -A scripts/run-tests.js src/shared/attached/ src/ui/review/review-launcher.test.ts src/ui/workspace/plan-review-decision-route.test.ts src/shared/workflow/plan-review-actions.test.ts src/shared/workflow/plan-review-recovery.test.ts`.
 - Automated: terminate the review-owning process before a decision, after accepted Feedback, and after approval
   persistence but before reply. Resume fresh; test duplicate callbacks, changed semantic content, formatting-only
   normalization, readiness denial, and port conflict.

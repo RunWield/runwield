@@ -1,6 +1,6 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { parsePlanFrontMatter, resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { decidePostExecution } from "./decisions.ts";

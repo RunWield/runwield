@@ -1,7 +1,8 @@
 import process from "node:process";
 /** Run one Golden TUI scenario in a fixture environment owned by the parent test. */
 
-import { fromFileUrl, join, toFileUrl } from "@std/path";
+import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
+import { join } from "node:path";
 import { _setTestStatePath } from "../../../cmd/init/init-state.ts";
 import { GOLDEN_CHILD_READY_MARKER } from "./subprocess-runner.js";
 

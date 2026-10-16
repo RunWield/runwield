@@ -8,39 +8,39 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { computeBuildIdentity, sha256File, verifyBuildArtifact } from "./build-metadata.js";
 import { prepareDevelopmentArtifacts } from "./release-assets.js";
 import { writeBuildIdentityFile } from "./write-version.js";
 
 async function fixture() {
     const root = await fsMkdtemp(join(tmpdir(), "runwield-fixture-"));
-    for (
-        const dir of [
-            "src/shared",
-            "scripts",
-            "third_party/plannotator/packages",
-            "brand",
-            "dist/workspace-runtime",
-            "node_modules/@earendil-works/pi-coding-agent/dist/utils",
-        ]
-    ) {
+    for (const dir of [
+        "src/shared",
+        "scripts",
+        "third_party/plannotator/packages",
+        "brand",
+        "dist/workspace-runtime",
+        "node_modules/@earendil-works/pi-coding-agent/dist/utils",
+    ]) {
         await fsMkdir(join(root, dir), { recursive: true });
     }
-    for (
-        const file of [
-            "deno.json",
-            "deno.lock",
-            "config.schema.json",
-            "image-resize-worker.js",
-            "src/cli.ts",
-            "src/shared/version.js",
-            "scripts/compile.js",
-            "dist/workspace-runtime/server.mjs",
-            "node_modules/@earendil-works/pi-coding-agent/dist/utils/worker.js",
-        ]
-    ) {
+    for (const file of [
+        "package.json",
+        "bun.lock",
+        "bunfig.toml",
+        "tsconfig.json",
+        "tsconfig.bun.json",
+        "config.schema.json",
+        "image-resize-worker.js",
+        "src/cli.ts",
+        "src/shared/version.js",
+        "scripts/compile-bun.ts",
+        "dist/workspace-runtime/server.mjs",
+        "node_modules/@earendil-works/pi-coding-agent/dist/utils/worker.js",
+    ]) {
         await fsWriteFile(join(root, file), "initial");
     }
     return root;
@@ -49,8 +49,11 @@ async function fixture() {
 test("common identity changes for dirty included source and resources, not generated identity/version", async () => {
     const root = await fixture();
     try {
-        const identity = () => computeBuildIdentity(root, "2.9.7", ["compile", "--bundle"]);
+        const identity = () => computeBuildIdentity(root, "bun:1.4.3", ["compile", "--bundle"]);
         const first = await identity();
+        await fsWriteFile(join(root, "deno.json"), "obsolete Deno configuration");
+        await fsWriteFile(join(root, "deno.lock"), "obsolete Deno lock");
+        assertEquals(await identity(), first);
         await writeBuildIdentityFile(join(root, "src/shared/build-identity.js"), first);
         await fsWriteFile(join(root, "src/shared/version.js"), "release");
         assertEquals(await identity(), first);
@@ -67,13 +70,21 @@ test("common identity changes for dirty included source and resources, not gener
 test("common identity includes lock, compiler version/options and explicit npm resources", async () => {
     const root = await fixture();
     try {
-        const identity = () => computeBuildIdentity(root, "2.9.7", ["--bundle"]);
+        const identity = () => computeBuildIdentity(root, "bun:1.4.3", ["--bundle"]);
         const first = await identity();
-        assertNotEquals(await computeBuildIdentity(root, "2.9.8", ["--bundle"]), first);
-        assertNotEquals(await computeBuildIdentity(root, "2.9.7", ["--minify"]), first);
-        for (const file of ["deno.lock", "node_modules/@earendil-works/pi-coding-agent/dist/utils/worker.js"]) {
+        assertNotEquals(await computeBuildIdentity(root, "bun:1.4.4", ["--bundle"]), first);
+        assertNotEquals(await computeBuildIdentity(root, "bun:1.4.3", ["--minify"]), first);
+        for (const file of [
+            "bun.lock",
+            "package.json",
+            "bunfig.toml",
+            "tsconfig.json",
+            "tsconfig.bun.json",
+            "node_modules/@earendil-works/pi-coding-agent/dist/utils/worker.js",
+        ]) {
+            const before = await identity();
             await fsWriteFile(join(root, file), "changed");
-            assertNotEquals(await identity(), first);
+            assertNotEquals(await identity(), before);
         }
     } finally {
         await fsRm(root, { recursive: true });
@@ -120,7 +131,12 @@ test("development bundle verifies all checksums, build identities and GNU target
             Error,
             "mismatched",
         );
-        assertEquals(await fsStat(join(root, "invalid")).then(() => true).catch(() => false), false);
+        assertEquals(
+            await fsStat(join(root, "invalid"))
+                .then(() => true)
+                .catch(() => false),
+            false,
+        );
         bad.buildId = "a".repeat(64);
         bad.version = "another-release";
         await fsWriteFile(`${paths[2]}.build.json`, JSON.stringify(bad));

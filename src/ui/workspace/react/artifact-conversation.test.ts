@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../../testing/assertions.ts";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
 
 test("artifact conversation keeps the user message and optional review context distinct", () => {

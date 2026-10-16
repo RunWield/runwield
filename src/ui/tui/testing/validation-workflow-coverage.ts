@@ -1,4 +1,5 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { ok as assert } from "node:assert/strict";
 
 export type ValidationWorkflowBranchId =
     | "mechanical:ci:pass"

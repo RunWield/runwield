@@ -4,8 +4,8 @@ import { getCwd } from "../../constants.js";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 
 import { RUNWIELD_ROOT } from "../../../runtime-root.js";
 import { workspaceMetadata as _workspaceMetadata } from "./server/plan-adapter.js";

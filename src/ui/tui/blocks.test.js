@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assert, assertEquals, assertNotEquals } from "@std/assert";
+import { ok as assert, notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import chalk from "chalk";
 
 // Force chalk to produce ANSI codes in non-TTY test environment

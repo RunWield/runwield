@@ -9,7 +9,7 @@ import { readFileSync as fsReadFileSync } from "node:fs";
  * Owner-wide opt-in marker for Session activation protocol rollout.
  */
 
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { getOwnerCoordinationDatabaseEpoch } from "./database.js";
 import type { OwnerCoordinationDatabase } from "./database.js";
 

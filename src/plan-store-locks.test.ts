@@ -1,11 +1,11 @@
+import { assertEquals } from "./testing/assertions.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { pid, platform } from "node:process";
 import { hostname } from "node:os";
 import { openNativeFileLock } from "./shared/native-file-lock.ts";
 import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { injectFrontMatter, listPlanResources, savePlan, withPlanCatalogLock, withPlanLock } from "./plan-store.js";
 import { resolveProjectRuntimeLayout } from "./shared/project-runtime-layout.ts";
 

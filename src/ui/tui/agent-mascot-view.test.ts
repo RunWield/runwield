@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import { setCustomSetting } from "../../shared/settings.js";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 import { createChatView } from "./chat-view.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";

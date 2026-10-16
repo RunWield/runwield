@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { createSessionRuntimeEvent, RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { attachTuiRuntimeAdapter } from "./runtime-adapter.js";

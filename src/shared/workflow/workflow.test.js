@@ -15,7 +15,7 @@ import {
 import { test } from "node:test";
 import { rmSync as fsRmSync } from "node:fs";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createWorktreeGitArtifacts, settleWorktreeAttempt } from "../worktree.js";

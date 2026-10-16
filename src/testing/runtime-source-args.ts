@@ -1,4 +1,3 @@
-import { versions } from "node:process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,7 +6,6 @@ const BUN_CONFIG = fileURLToPath(new URL("../../tsconfig.json", import.meta.url)
 
 /** Run the same fixture source with the active runtime, never silently dropping a permission boundary. */
 export function runtimeSourceArgs(denoArgs: string[]): string[] {
-    if (versions.deno) return denoArgs;
     const [command, ...args] = denoArgs;
     if (command !== "run" && command !== "eval") throw new Error(`Unsupported fixture command: ${command}`);
     let offset = 0;
@@ -27,13 +25,13 @@ export function runtimeSourceArgs(denoArgs: string[]): string[] {
     }
     return command === "eval"
         ? [
-            "--no-install",
-            "--tsconfig-override",
-            BUN_CONFIG,
-            "--eval",
-            args[offset],
-            "[eval]",
-            ...args.slice(offset + 1),
-        ]
+              "--no-install",
+              "--tsconfig-override",
+              BUN_CONFIG,
+              "--eval",
+              args[offset],
+              "[eval]",
+              ...args.slice(offset + 1),
+          ]
         : ["run", "--no-install", "--tsconfig-override", BUN_CONFIG, ...args.slice(offset)];
 }

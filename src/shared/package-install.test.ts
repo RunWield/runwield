@@ -1,9 +1,9 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { platform } from "node:process";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     bundledHelperDirectoryForInstall,
     packageMetadataPathForExecutablePath,

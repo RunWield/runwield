@@ -6,8 +6,8 @@ import process from "node:process";
  * Generate a human-reviewable Router judgement CSV from extracted Router decisions.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { dirname, join } from "@std/path";
+import { parseArgs } from "../src/shared/cli-args.ts";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../src/constants.js";
 import {
     indexRowsByDecisionId,
@@ -99,7 +99,7 @@ export async function main(argv) {
 
     if (args.help) {
         console.log([
-            "Usage: deno run -A scripts/write-router-judgement-csv.js --in router-decisions.jsonl --out router-judgements.csv",
+            "Usage: bun scripts/write-router-judgement-csv.js --in router-decisions.jsonl --out router-judgements.csv",
             "",
             "Options:",
             `  --in, -i <path>       Extracted Router decisions JSONL (default: ${DEFAULT_INPUT})`,

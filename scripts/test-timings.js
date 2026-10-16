@@ -4,7 +4,7 @@ import {
     rename as fsRename,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { dirname, relative } from "@std/path";
+import { dirname, relative } from "node:path";
 
 const TIMING_FILE_VERSION = 1;
 // A timing changes order, never membership or assertions. Use the first real

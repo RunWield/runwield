@@ -9,8 +9,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { createRunWieldBashToolDefinition } from "../bash.ts";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 

@@ -1,8 +1,8 @@
 import { bashFixturePath } from "./bash-fixture.ts";
 import { test } from "node:test";
 import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 
 import { createFixture, runInstaller, runInstallerInPseudoTty } from "./install-test-helpers.js";
 

@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../../../testing/assertions.ts";
 import { submitWorkflowAction } from "./workflow-action.ts";
 
 test("held Plan warnings require confirmation and preserve revision on retry", async () => {

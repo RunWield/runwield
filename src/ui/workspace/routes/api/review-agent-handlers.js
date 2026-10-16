@@ -189,7 +189,9 @@ function createGuideJob(state, provider) {
         startedAt: now,
         endedAt: null,
         command: provider ? [provider.provider, "guided-review"] : ["fixture"],
-        cwd: state.cwd,
+        cwd: typeof state.reviewPayload.agentCwd === "string" && state.reviewPayload.agentCwd.trim()
+            ? state.reviewPayload.agentCwd
+            : state.cwd,
         engine: provider?.provider || "fixture",
         model: provider?.model || "unknown",
         usageState: provider?.provider === "wld" ? "pending" : "unavailable",
@@ -275,13 +277,14 @@ async function runGuideJob(state, entry, changedFiles) {
                         ? state.reviewPayload.gitRef
                         : "RunWield code review diff",
                 changedFiles,
+                reviewContext: readStandaloneReviewContext(state.reviewPayload.standaloneReview),
                 planContent: typeof state.reviewPayload.planContent === "string" ? state.reviewPayload.planContent : "",
                 planAttrs:
                     state.reviewPayload.planAttrs && typeof state.reviewPayload.planAttrs === "object"
                         ? /** @type {Record<string, unknown>} */ (state.reviewPayload.planAttrs)
                         : {},
             });
-            const result = await state.runGuideCommand(prompt, entry.abortController.signal, state.cwd, {
+            const result = await state.runGuideCommand(prompt, entry.abortController.signal, String(entry.info.cwd), {
                 onUsage: (usage) => addGuideJobUsage(state, entry, usage),
             });
             raw = result.stdout;
@@ -580,14 +583,7 @@ async function resolveRunWieldGuideCommand(cwd) {
     if (await commandExists("wld")) return { command: "wld", args: ["guided-review"] };
     return {
         command: process.execPath,
-        args: isStandaloneExecutable()
-            ? ["guided-review"]
-            : [
-                  "run",
-                  ...(process.versions.deno ? ["-A", "--unstable-no-legacy-abort"] : []),
-                  "src/cli.ts",
-                  "guided-review",
-              ],
+        args: isStandaloneExecutable() ? ["guided-review"] : ["run", ...[], "src/cli.ts", "guided-review"],
         cwd,
     };
 }
@@ -610,4 +606,10 @@ function shellCommand(configured) {
 
 function noStore() {
     return { headers: { "cache-control": "no-store" } };
+}
+
+/** @param {unknown} value */
+function readStandaloneReviewContext(value) {
+    if (!value || typeof value !== "object" || !("reviewContext" in value)) return "";
+    return typeof value.reviewContext === "string" ? value.reviewContext : "";
 }

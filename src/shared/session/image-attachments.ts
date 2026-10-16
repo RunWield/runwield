@@ -4,7 +4,7 @@ import { mkdir as fsMkdir, stat as fsStat, writeFile as fsWriteFile } from "node
  * Helpers for session-scoped image attachments and vision fallback routing.
  */
 
-import { basename, extname, isAbsolute, join, normalize, relative, resolve } from "@std/path";
+import { basename, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { discoverProviderModel } from "../models/model-registry.ts";
 import { assertModelExecutionBackendSupported } from "../models/model-execution.ts";
 import { parseProviderModel } from "../models/model-validation.ts";

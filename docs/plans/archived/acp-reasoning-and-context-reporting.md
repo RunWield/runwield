@@ -8,7 +8,7 @@ affectedPaths:
     - "src/acp/server.js"
     - "src/acp/event-mapper.js"
     - "src/acp/server.test.js"
-    - "src/acp/protocol-smoke.test.js"
+    - "src/acp/protocol-smoke.test.ts"
     - "docs/prd/runwield-acp-protocol-prd.md"
     - "docs/acp-implementation-details.md"
 executionAgent: "engineer"
@@ -124,7 +124,7 @@ incidental helpers or fixtures required by the steps below.
   per-message token count as current context. Preserve cumulative cost behavior when a valid usage update is emitted.
 - `src/acp/server.test.js` — extend real ACP wire tests for reasoning options, selection, persistence/reload, invalid or
   unsupported values, model/Agent-dependent option refresh, and exact context updates.
-- `src/acp/protocol-smoke.test.js` — retain schema checks for `thought_level` and `usage_update`, including the
+- `src/acp/protocol-smoke.test.ts` — retain schema checks for `thought_level` and `usage_update`, including the
   no-update behavior when the exact context contract is unavailable if a pure mapper test is added there.
 - `docs/prd/runwield-acp-protocol-prd.md` — update the owning ACP requirements and acceptance scenarios to describe
   native reasoning selection and truthful context reporting as the delivered target; preserve unrelated deferred ACP
@@ -189,7 +189,7 @@ No Work Record supersession is proposed.
 ## Verification Plan
 
 - Automated focused ACP tests: run the repository's isolated test runner for `src/acp/server.test.js` and
-  `src/acp/protocol-smoke.test.js`. Assert standard `thought_level` category/id, complete config responses, next-turn
+  `src/acp/protocol-smoke.test.ts`. Assert standard `thought_level` category/id, complete config responses, next-turn
   model/thinking behavior, reload persistence, visible refusal without mutation, and schema-valid `usage_update` frames.
 - Automated reasoning discrimination: through the real ACP fixture provider, select `high`, send a prompt, and assert
   the provider receives the selected thinking setting. Submit an unsupported value and assert zero provider calls plus

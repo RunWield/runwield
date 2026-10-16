@@ -1,7 +1,8 @@
 // @ts-nocheck: Deno test imports are checked by scripts/run-tests.js, not Astro check.
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertFalse, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertFalse, assertStringIncludes } from "../../testing/assertions.ts";
 
 const ROUTE_PATH = "src/ui/workspace/pages/projects/[projectId]/plans/[planId].astro";
 const SESSION_CONTINUATION_PATH = "src/ui/workspace/server/session-continuation.js";

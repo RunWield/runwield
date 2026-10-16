@@ -16,9 +16,15 @@ devServerUrl: null
 devServerHmr: null
 createdAt: "2026-10-10"
 status: "draft"
+planId: "f79cd8d2-970c-4adf-859d-f6db48ef8e1a"
 ---
 
 # Migrate RunWield's runtime without weakening storage or isolation
+
+Current contributor commands retain the original task names; use `bun run compile --output <path>` and `bun run ci`.
+Dated checkpoints below record the transitional names used at the time. See [the task compatibility audit](bun-task-compatibility.md).
+Carlos subsequently approved Bun-only test container definitions without equivalent Deno permissions; see
+[the phase-2 plan](bun-only-toolchain.md) for the current container scope.
 
 ## Context and recovered decisions
 
@@ -939,7 +945,6 @@ independent of platform process-kill latency. Five affected files pass Bun and D
 terminal gate makes the new deterministic buffered-output regression fail; restoring it
 passes. Native SFTP startup and buffered-output behavior await the next Windows run.
 
-
 ### Integrated qualification and final review follow-up
 
 Merged upstream `b2fed1a1` into the feature branch, retaining the owner's WinGet pause and
@@ -973,7 +978,6 @@ bytes, and a clean Git status. Native confirmation of this corrected fixture is 
 This qualifies the intended long-file-path prerequisite only when the native test passes;
 it does not claim support for arbitrarily deep repository/worktree roots or for Git's
 long-path opt-in being disabled. Product worktree naming remains unchanged.
-
 
 At integrated `10321fc8c`, Linux ARM64 passes all 649 source files and relocated-package
 provider/terminal checks. Both native Windows package lanes and ordinary PR CI pass.
@@ -1012,7 +1016,6 @@ doctor snapshot read while another operation holds the native Windows byte-range
 read/lock contention as insufficient evidence to repair that particular file and continues scanning. A real native-lock
 regression holds one live file throughout report and repair, verifies an unrelated abandoned lock is diagnosed and
 removed, and verifies the original ownership and exact bytes remain intact.
-
 
 ## Full qualification and CRLF publication correction (2026-10-11)
 

@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { animations, mascotRoleForAgent, terminalLines } from "./frames.ts";
 import { mascotPose, MASCOTS } from "./mascot.ts";
 

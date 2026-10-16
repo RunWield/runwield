@@ -1,10 +1,10 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "./captured-process.ts";
 import { mkdtemp, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     gitIndexEvidence,
     gitWorktreeListEvidence,

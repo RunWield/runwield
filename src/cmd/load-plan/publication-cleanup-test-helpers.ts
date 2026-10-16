@@ -12,8 +12,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { savePlan } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
@@ -300,7 +302,7 @@ async function checkCleanupRestart(
         } finally {
             runtime.closeAllSessions();
             await git(root, ["worktree", "remove", "--force", tree]).catch(() => {});
-            await fsRm(root, { recursive: true });
+            await fsRm(root, { recursive: true, force: true });
             await fsRm(directory, { recursive: true });
         }
     });

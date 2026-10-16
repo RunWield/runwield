@@ -21,6 +21,7 @@ import { normalizeCollaborationMode, normalizeExecutionAgent } from "../../../..
  * @property {string} [savedPath]
  * @property {string} [agentSwitch]
  * @property {string} [permissionMode]
+ * @property {string} [reviewAction]
  * @property {boolean} [conversationTurn]
  * @property {boolean} [exit]
  * @property {boolean} [canceled]
@@ -146,6 +147,8 @@ export async function reviewDenyApi(ctx) {
 export async function reviewFeedbackApi(ctx) {
     return await resolveFromRequest(ctx, (body) => ({
         approved: body.approved === true,
+        ...(["post_comments", "approve_pr", "approve_commit"].includes(String(body.reviewAction)) &&
+            { reviewAction: body.reviewAction }),
         feedback: typeof body.feedback === "string" ? body.feedback : "",
         annotations: Array.isArray(body.annotations) ? body.annotations : [],
         ...reviewImageDecisionFields(body),

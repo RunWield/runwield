@@ -1,6 +1,6 @@
 import process from "node:process";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
@@ -75,10 +75,7 @@ function taskCompletedMessage(summary: string) {
 test("runLocalCI emits one semantic validation tool lifecycle", async () => {
     await withRuntimeCommandFixture("validation-local-ci-", async ({ projectRoot }) => {
         const ui = makeUi() as ValidationUi;
-        const hostedSession = attachRecorder(
-            new HostedSession({ id: "validation-local-ci", cwd: projectRoot }),
-            ui,
-        );
+        const hostedSession = attachRecorder(new HostedSession({ id: "validation-local-ci", cwd: projectRoot }), ui);
         ui.promptText = () => Promise.resolve("printf validation-output");
 
         const result = await runLocalCI({ hostedSession, cwd: projectRoot });
@@ -90,8 +87,14 @@ test("runLocalCI emits one semantic validation tool lifecycle", async () => {
             ui.toolCalls.some((call) => call.name === "bash" && call.args === "printf validation-output"),
             true,
         );
-        assertEquals(ui.toolOutputs.some((output) => output.includes("validation-output")), true);
-        assertEquals(ui.toolResults.some((result) => !result.isError), true);
+        assertEquals(
+            ui.toolOutputs.some((output) => output.includes("validation-output")),
+            true,
+        );
+        assertEquals(
+            ui.toolResults.some((result) => !result.isError),
+            true,
+        );
         hostedSession.dispose();
     });
 });
@@ -105,9 +108,7 @@ test("runLocalCI streams large validation output without failing the process buf
         );
         ui.promptText = () =>
             Promise.resolve(
-                `${JSON.stringify(process.execPath)} ${
-                    process.versions.deno ? "eval" : "-e"
-                } "console.log('x'.repeat(1200000)); console.error('tail-marker')"`,
+                `${JSON.stringify(process.execPath)} ${"-e"} "console.log('x'.repeat(1200000)); console.error('tail-marker')"`,
             );
 
         const result = await runLocalCI({ hostedSession, cwd: projectRoot });
@@ -117,40 +118,53 @@ test("runLocalCI streams large validation output without failing the process buf
         assertEquals(result.exitCode, 0);
         assertStringIncludes(result.output, "tail-marker");
         assertStringIncludes(result.output, "stdout truncated; showing last");
-        assertEquals(ui.toolResults.some((result) => !result.isError), true);
+        assertEquals(
+            ui.toolResults.some((result) => !result.isError),
+            true,
+        );
         hostedSession.dispose();
     });
 });
 
 test("Mechanical Validation runs real checklist and session machinery after CI passes", async () => {
     await withRuntimeCommandFixture("mechanical-pass-", async ({ projectRoot, setModelMessages }) => {
-        setModelMessages([fauxAssistantMessage(fauxToolCall("manual_qa_completed", {
-            checklistMarkdown: "Manual verification steps for small-fix\n- [ ] Save settings and reload.",
-        }))]);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("manual_qa_completed", {
+                    checklistMarkdown: "Manual verification steps for small-fix\n- [ ] Save settings and reload.",
+                }),
+            ),
+        ]);
         const fixture = await activateMechanicalFixture(projectRoot);
         const ci = defineLocalCIFixture([{ kind: "completed", exitCode: 0, output: "ok" }]);
 
-        const result = await runMechanicalValidation({
-            hostedSession: fixture.hostedSession,
-            sessionManager: fixture.sessionManager,
-            cwd: projectRoot,
-            manualQaName: "small-fix",
-            manualQaContext: "Fix the settings save action.",
-        }, ci.port);
+        const result = await runMechanicalValidation(
+            {
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
+                cwd: projectRoot,
+                manualQaName: "small-fix",
+                manualQaContext: "Fix the settings save action.",
+            },
+            ci.port,
+        );
 
         assertEquals(result, { passed: true, attempts: 0 });
         assertEquals(ci.calls, [projectRoot]);
         assertEquals(fixture.hostedSession.getRootAgentName(), "engineer");
         assertEquals(
-            fixture.sessionManager.getBranch().some((entry) =>
-                entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"
-            ),
+            fixture.sessionManager
+                .getBranch()
+                .some((entry) => entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"),
             true,
         );
-        assertEquals(
-            fixture.ui.systemCalls.map((call) => call.validationProgress?.stage).filter(Boolean),
-            ["ci", "ci", "ci", "manual_qa", "terminal"],
-        );
+        assertEquals(fixture.ui.systemCalls.map((call) => call.validationProgress?.stage).filter(Boolean), [
+            "ci",
+            "ci",
+            "ci",
+            "manual_qa",
+            "terminal",
+        ]);
         fixture.hostedSession.dispose();
     });
 });
@@ -159,9 +173,11 @@ test("Mechanical Validation repairs through the real Engineer turn and then pass
     await withRuntimeCommandFixture("mechanical-repair-", async ({ projectRoot, setModelMessages }) => {
         setModelMessages([
             taskCompletedMessage("- Repaired the fixture failure."),
-            fauxAssistantMessage(fauxToolCall("manual_qa_completed", {
-                checklistMarkdown: "Manual verification steps for quick-fix\n- [ ] Exercise the repair.",
-            })),
+            fauxAssistantMessage(
+                fauxToolCall("manual_qa_completed", {
+                    checklistMarkdown: "Manual verification steps for quick-fix\n- [ ] Exercise the repair.",
+                }),
+            ),
         ]);
         const fixture = await activateMechanicalFixture(projectRoot);
         const ci = defineLocalCIFixture([
@@ -169,11 +185,14 @@ test("Mechanical Validation repairs through the real Engineer turn and then pass
             { kind: "completed", exitCode: 0, output: "ok" },
         ]);
 
-        const result = await runMechanicalValidation({
-            hostedSession: fixture.hostedSession,
-            sessionManager: fixture.sessionManager,
-            cwd: projectRoot,
-        }, ci.port);
+        const result = await runMechanicalValidation(
+            {
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
+                cwd: projectRoot,
+            },
+            ci.port,
+        );
 
         assertEquals(result, { passed: true, attempts: 1 });
         assertEquals(ci.calls, [projectRoot, projectRoot]);
@@ -196,11 +215,14 @@ test("Mechanical Validation ignores task completion from an earlier Engineer tur
         });
         const ci = defineLocalCIFixture([{ kind: "completed", exitCode: 1, output: "still failing" }]);
 
-        const result = await runMechanicalValidation({
-            hostedSession: fixture.hostedSession,
-            sessionManager: fixture.sessionManager,
-            cwd: projectRoot,
-        }, ci.port);
+        const result = await runMechanicalValidation(
+            {
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
+                cwd: projectRoot,
+            },
+            ci.port,
+        );
 
         assertEquals(result.passed, false);
         assertEquals(
@@ -220,17 +242,22 @@ test("Mechanical Validation stops after three real Engineer repair completions",
             taskCompletedMessage("- Third repair attempt."),
         ]);
         const fixture = await activateMechanicalFixture(projectRoot);
-        const ci = defineLocalCIFixture(Array.from({ length: 4 }, () => ({
-            kind: "completed" as const,
-            exitCode: 1,
-            output: "still broken",
-        })));
+        const ci = defineLocalCIFixture(
+            Array.from({ length: 4 }, () => ({
+                kind: "completed" as const,
+                exitCode: 1,
+                output: "still broken",
+            })),
+        );
 
-        const result = await runMechanicalValidation({
-            hostedSession: fixture.hostedSession,
-            sessionManager: fixture.sessionManager,
-            cwd: projectRoot,
-        }, ci.port);
+        const result = await runMechanicalValidation(
+            {
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
+                cwd: projectRoot,
+            },
+            ci.port,
+        );
 
         assertEquals(result.passed, false);
         assertEquals(result.attempts, 3);
@@ -240,9 +267,9 @@ test("Mechanical Validation stops after three real Engineer repair completions",
             true,
         );
         assertEquals(
-            fixture.sessionManager.getBranch().some((entry) =>
-                entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"
-            ),
+            fixture.sessionManager
+                .getBranch()
+                .some((entry) => entry.type === "custom" && entry.customType === "runwield.manual_qa_checklist"),
             false,
         );
         fixture.hostedSession.dispose();
@@ -252,16 +279,21 @@ test("Mechanical Validation stops after three real Engineer repair completions",
 test("Mechanical Validation preserves the Engineer session when local CI is canceled", async () => {
     await withRuntimeCommandFixture("mechanical-canceled-", async ({ projectRoot }) => {
         const fixture = await activateMechanicalFixture(projectRoot);
-        const ci = defineLocalCIFixture([{
-            kind: "canceled",
-            output: "Validation canceled.",
-        }]);
+        const ci = defineLocalCIFixture([
+            {
+                kind: "canceled",
+                output: "Validation canceled.",
+            },
+        ]);
 
-        const result = await runMechanicalValidation({
-            hostedSession: fixture.hostedSession,
-            sessionManager: fixture.sessionManager,
-            cwd: projectRoot,
-        }, ci.port);
+        const result = await runMechanicalValidation(
+            {
+                hostedSession: fixture.hostedSession,
+                sessionManager: fixture.sessionManager,
+                cwd: projectRoot,
+            },
+            ci.port,
+        );
 
         assertEquals(result, { passed: false, attempts: 0, reason: "canceled" });
         assertEquals(fixture.hostedSession.getRootAgentName(), "engineer");

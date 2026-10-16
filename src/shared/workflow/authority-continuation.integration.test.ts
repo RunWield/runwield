@@ -9,8 +9,9 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     archivePlan,
     listPlans,
@@ -28,6 +29,7 @@ import { recordPlanEvent } from "./plan-lifecycle.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { createPublicationAttempt } from "./publication-attempt.ts";
 import { findCompletionSiblings } from "./plan-family.ts";
 
@@ -122,6 +124,10 @@ test("missing execution worktree is rebuilt before lifecycle writes continue", a
         const body = await loadPlanBodyById(root, "demo");
         await fsRm(tree, { recursive: true });
 
+        const snapshot = await resolvePlanWithPrimaryRecovery(root, "demo");
+        assertEquals(snapshot.plan.markdown, primary.markdown);
+        assertEquals(await fsReaddir(directory), []);
+        await prepareSessionPlanningWorktree(root, "demo");
         assertEquals((await resolvePlanWithPrimaryRecovery(root, "demo")).plan.path, join(tree, "docs/plans/demo.md"));
         assertEquals((await loadPlanBodyById(root, "demo")).body, body.body);
         await savePlanBodyById(root, "demo", "# Recovered execution copy\n", body.bodyHash, {

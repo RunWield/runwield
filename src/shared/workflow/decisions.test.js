@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { decidePostExecution, decidePostPlanning } from "./decisions.ts";
 
 /** @type {import('../../tools/plan-written.ts').TriageMeta} */

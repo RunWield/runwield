@@ -1,8 +1,8 @@
 import process from "node:process";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { getWorktreeRegistryPath } from "./worktree-registry.js";
 import { stageGitChangesExcludingRuntime } from "./git-runtime-safety.ts";

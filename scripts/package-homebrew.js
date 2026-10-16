@@ -4,7 +4,7 @@ import process from "node:process";
  * Render the owner Homebrew tap from immutable RunWield and Mnemoteca release assets.
  */
 
-import { basename, join } from "@std/path";
+import { basename, join } from "node:path";
 import { parseReleaseTag } from "./release.js";
 
 const RUNWIELD_REPO = "gandazgul/runwield";
@@ -317,8 +317,8 @@ The RunWield formula uses Homebrew's \`:cannot_represent\` metadata because the 
 Regenerate from this repository with:
 
 \`\`\`sh
-deno task package:homebrew --wld-tag <stable-tag> --mnemoteca-tag <stable-tag> --output <dir>
-deno task package:homebrew --mnemoteca-tag <stable-tag> --output <existing-tap-dir>
+bun run package:homebrew --wld-tag <stable-tag> --mnemoteca-tag <stable-tag> --output <dir>
+bun run package:homebrew --mnemoteca-tag <stable-tag> --output <existing-tap-dir>
 \`\`\`
 `;
 }

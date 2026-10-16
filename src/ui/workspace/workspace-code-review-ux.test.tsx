@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { readFile as fsReadFile } from "node:fs/promises";
-import { assertFalse, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertFalse, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 
 test("Code Review styles inherited annotation modals with CSS only", async () => {
     const surface = await fsReadFile(new URL("./react/CodeReviewSurface.tsx", import.meta.url), "utf8");

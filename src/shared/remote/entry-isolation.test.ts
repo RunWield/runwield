@@ -12,8 +12,9 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const cli = fromFileUrl(new URL("../../cli.ts", import.meta.url));
 const projectRoot = dirname(dirname(dirname(cli)));
@@ -150,15 +151,7 @@ for (const populated of [false, true]) {
                 ? await nativeTerminalSession(project, home)
                 : await (async () => {
                       const result = await captureForegroundProcess("python3", {
-                          args: [
-                              "-c",
-                              pty,
-                              cli,
-                              project,
-                              home,
-                              process.execPath,
-                              JSON.stringify(["run", ...(process.versions.deno ? ["-A", "--quiet"] : [])]),
-                          ],
+                          args: ["-c", pty, cli, project, home, process.execPath, JSON.stringify(["run", ...[]])],
                           cwd: projectRoot,
                       });
                       assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));

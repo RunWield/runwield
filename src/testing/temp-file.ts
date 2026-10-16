@@ -1,4 +1,3 @@
-import { versions } from "node:process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,14 +17,7 @@ export async function makeTempFile(options: TempFileOptions = {}): Promise<strin
     return path;
 }
 
-interface TempDirectoryRuntime {
-    makeTempDir(options: TempFileOptions): Promise<string>;
-}
-/** Deno's native temp operation retains filesystem-only test permissions. */
+/** Create a disposable fixture directory under the isolated runner's temporary root. */
 export async function makeTempDirectory(options: TempFileOptions = {}): Promise<string> {
-    if (versions.deno) {
-        const runtime: TempDirectoryRuntime = Reflect.get(globalThis, "Deno");
-        return await runtime.makeTempDir(options);
-    }
     return await mkdtemp(join(options.dir ?? tmpdir(), options.prefix ?? "runwield-fixture-"));
 }

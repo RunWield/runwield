@@ -5,7 +5,7 @@ workKind: "BUG_FIX"
 complexity: "MEDIUM"
 affectedPaths:
     - "src/shared/workflow/git-snapshot.js"
-    - "src/shared/workflow/git-snapshot.test.js"
+    - "src/shared/workflow/git-snapshot.test.ts"
     - "src/shared/workflow/review-diff-tool.js"
     - "src/shared/workflow/validation-loop-review.test.js"
     - "src/ui/review/review-consumers.integration.test.js"
@@ -164,7 +164,7 @@ Engineer; the change is in shared patch collection, not visual design.
 Use the sandboxed runner, never `deno test` directly:
 
 ```sh
-deno run -A scripts/run-tests.js src/shared/workflow/git-snapshot.test.js src/shared/workflow/review-diff-tool.test.js src/shared/workflow/review-contract.test.ts src/shared/workflow/validation-loop-review.test.js src/shared/workflow/validation-loop-human-review.test.js src/ui/review/review-consumers.integration.test.js src/ui/review/review-launcher.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
+deno run -A scripts/run-tests.js src/shared/workflow/git-snapshot.test.ts src/shared/workflow/review-diff-tool.test.js src/shared/workflow/review-contract.test.ts src/shared/workflow/validation-loop-review.test.js src/shared/workflow/validation-loop-human-review.test.js src/ui/review/review-consumers.integration.test.js src/ui/review/review-launcher.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
 ```
 
 Required proof:

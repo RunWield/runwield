@@ -7,7 +7,7 @@ import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "no
  * Git tree snapshots for workflow-scoped validation diffs.
  */
 
-import { dirname, isAbsolute, join } from "@std/path";
+import { dirname, isAbsolute, join } from "node:path";
 import { assertGitRepository, GitRepositoryRequiredError } from "../git.ts";
 
 class GitCommandError extends Error {
@@ -119,7 +119,7 @@ export async function listCommitsTouchingPathsSince(
  * Capture the current working tree into a git tree object without mutating the
  * repository's real index.
  */
-export async function captureWorktreeTree(cwd: string): Promise<string> {
+export async function captureWorktreeTree(cwd: string, forcePaths: string[] = []): Promise<string> {
     await assertGitRepository(cwd, "Capturing an execution baseline tree");
     const realIndex = (await runGit(cwd, ["rev-parse", "--git-path", "index"])).trim();
     const realIndexPath = isAbsolute(realIndex) ? realIndex : join(cwd, realIndex);
@@ -135,6 +135,7 @@ export async function captureWorktreeTree(cwd: string): Promise<string> {
             await fsRm(indexPath);
         }
         await runGit(cwd, ["add", "-A", "--", "."], env);
+        if (forcePaths.length > 0) await runGit(cwd, ["add", "-f", "--", ...forcePaths], env);
         return (await runGit(cwd, ["write-tree"], env)).trim();
     } finally {
         await fsRm(indexPath).catch(() => {});
@@ -157,12 +158,11 @@ export async function getWorkflowDiff(cwd: string, baselineTree: string | undefi
 }
 
 /**
- * Return the complete proposed patch from the recorded target branch's common
- * ancestor with execution HEAD to the current worktree files. This is the
- * shared comparison for AI review, repair context, human review, and future
- * full-review consumers.
+ * Resolve the tree of the recorded target branch's common ancestor with
+ * execution HEAD. Both the proposed patch and its before-file text use this
+ * shared comparison base.
  */
-export async function getWorktreeReviewDiff(cwd: string, targetBranch: string): Promise<string> {
+export async function resolveWorktreeReviewBaseTree(cwd: string, targetBranch: string): Promise<string> {
     await assertGitRepository(cwd, "Computing a worktree review diff");
     const branch = String(targetBranch || "").trim();
     if (!branch) throw new WorktreeReviewTargetError(branch);
@@ -171,12 +171,9 @@ export async function getWorktreeReviewDiff(cwd: string, targetBranch: string): 
     try {
         targetCommit = (await runGit(cwd, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`])).trim();
     } catch (error) {
-        if (error instanceof Error && isMissingRevisionError(error)) {
-            throw new WorktreeReviewTargetError(branch);
-        }
+        if (error instanceof Error && isMissingRevisionError(error)) throw new WorktreeReviewTargetError(branch);
         throw error;
     }
-
     let executionCommit;
     try {
         executionCommit = (await runGit(cwd, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
@@ -188,7 +185,6 @@ export async function getWorktreeReviewDiff(cwd: string, targetBranch: string): 
         }
         throw error;
     }
-
     let commonAncestor;
     try {
         commonAncestor = (await runGit(cwd, ["merge-base", targetCommit, executionCommit])).trim();
@@ -200,7 +196,76 @@ export async function getWorktreeReviewDiff(cwd: string, targetBranch: string): 
         }
         throw error;
     }
+    return (await runGit(cwd, ["rev-parse", "--verify", `${commonAncestor}^{tree}`])).trim();
+}
+
+export type ReviewHead = { kind: "ref"; ref: string } | { kind: "worktree" };
+
+export interface ReviewDiffOptions {
+    baseRef: string;
+    head: ReviewHead;
+}
+
+/** Compare the common ancestor with a commit or the complete working tree. */
+export async function getReviewDiff(cwd: string, { baseRef, head }: ReviewDiffOptions): Promise<string> {
+    await assertGitRepository(cwd, "Computing a review diff");
+    const targetCommit = (await runGit(cwd, ["rev-parse", "--verify", `${baseRef}^{commit}`])).trim();
+    const headRef = head.kind === "ref" ? head.ref : "HEAD";
+    let executionCommit;
+    try {
+        executionCommit = (await runGit(cwd, ["rev-parse", "--verify", `${headRef}^{commit}`])).trim();
+    } catch (error) {
+        if (error instanceof Error && isMissingRevisionError(error)) {
+            throw new WorktreeReviewComparisonError(
+                `Cannot compute the worktree review diff because ${
+                    head.kind === "worktree" ? "execution HEAD" : headRef
+                } is unavailable.`,
+            );
+        }
+        throw error;
+    }
+
+    let commonAncestor;
+    try {
+        commonAncestor = (await runGit(cwd, ["merge-base", targetCommit, executionCommit])).trim();
+    } catch (error) {
+        if (error instanceof GitCommandError && error.code === 1) {
+            throw new WorktreeReviewComparisonError(
+                `Cannot compute the worktree review diff because ${baseRef} and ${
+                    head.kind === "worktree" ? "execution HEAD" : headRef
+                } have no common ancestor.`,
+            );
+        }
+        throw error;
+    }
     const baseTree = (await runGit(cwd, ["rev-parse", "--verify", `${commonAncestor}^{tree}`])).trim();
+    const currentTree =
+        head.kind === "worktree"
+            ? await captureWorktreeTree(cwd)
+            : (await runGit(cwd, ["rev-parse", "--verify", `${executionCommit}^{tree}`])).trim();
+    return await diffTrees(cwd, baseTree, currentTree);
+}
+
+/** Read a file from the same common-ancestor tree used by the proposed patch. */
+export async function readWorktreeReviewBaseFile(
+    cwd: string,
+    targetBranch: string,
+    path: string,
+): Promise<string | null> {
+    const baseTree = await resolveWorktreeReviewBaseTree(cwd, targetBranch);
+    let blob;
+    try {
+        blob = (await runGit(cwd, ["rev-parse", "--verify", `${baseTree}:${path}`])).trim();
+    } catch (error) {
+        if (error instanceof Error && isMissingRevisionError(error)) return null;
+        throw error;
+    }
+    return await runGit(cwd, ["cat-file", "blob", blob]);
+}
+
+/** Return the complete proposed patch using the shared review comparison base. */
+export async function getWorktreeReviewDiff(cwd: string, targetBranch: string): Promise<string> {
+    const baseTree = await resolveWorktreeReviewBaseTree(cwd, targetBranch);
     const currentTree = await captureWorktreeTree(cwd);
     return await diffTrees(cwd, baseTree, currentTree);
 }

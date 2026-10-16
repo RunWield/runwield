@@ -11,8 +11,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { prepareReleaseAssets, releaseAssetNames } from "./release-assets.js";
 
 async function fixture() {

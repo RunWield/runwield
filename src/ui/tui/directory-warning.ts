@@ -36,8 +36,10 @@ async function confirmInspectedDirectory(directory: DirectoryInspection, allow: 
     try {
         getTUI();
         existingTui = true;
-    } catch { /* No terminal has been opened yet. */ }
-    if (!existingTui && !Deno.stdin.isTerminal()) {
+    } catch {
+        /* No terminal has been opened yet. */
+    }
+    if (!existingTui && !process.stdin.isTTY) {
         throw new Error(
             `${DIRECTORY_WARNING}\n${path}\nUse wld --allow-system-directory <command> to continue without terminal input.`,
         );

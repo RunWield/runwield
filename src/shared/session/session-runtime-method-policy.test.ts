@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { SessionRuntime } from "./session-runtime.ts";
 import { SESSION_RUNTIME_METHOD_POLICY } from "./session-runtime-method-policy.ts";
 

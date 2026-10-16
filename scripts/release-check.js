@@ -15,8 +15,8 @@ import process from "node:process";
  * script used by the release workflow, then smoke-test the native executable.
  */
 
-import { join } from "@std/path";
-import { buildCompileArgs } from "./compile.js";
+import { join } from "node:path";
+import { PASSIVE_PATHS } from "./compile-bun.ts";
 
 const BUNDLED_AGENT_DEFS_SOURCE_DIR = join("src", "agent-definitions");
 const BUNDLED_SKILLS_SOURCE_DIR = join("src", "skills");
@@ -234,14 +234,10 @@ async function collectMarkdownFiles(rootDir, relativeDir = "") {
 }
 
 export function assertRequiredBundledAssetsConfigured() {
-    const compileArgs = buildCompileArgs();
-    const includePaths = new Set();
-    for (let index = 0; index < compileArgs.length; index += 1) {
-        if (compileArgs[index] === "--include") includePaths.add(compileArgs[index + 1]);
-    }
+    const includePaths = new Set(PASSIVE_PATHS);
 
     for (const includePath of REQUIRED_BUNDLED_BINARY_ASSET_INCLUDES) {
-        if (!includePaths.has(includePath)) {
+        if (!includePaths.has(includePath.replace(/\/$/, ""))) {
             throw new Error(`Release compile is missing bundled asset include: ${includePath}`);
         }
     }
@@ -508,10 +504,10 @@ export async function smokeTestBinaryReviewSurface(binaryPath, root) {
 
 /**
  * @param {string[]} args
- * @returns {{ buildVersion: string | undefined, includeGolden: boolean, runtime?: "bun" | "deno" }}
+ * @returns {{ buildVersion: string | undefined, includeGolden: boolean, runtime?: "bun" }}
  */
 export function parseReleaseCheckOptions(args = []) {
-    /** @type {{ buildVersion: string | undefined, includeGolden: boolean, runtime?: "bun" | "deno" }} */
+    /** @type {{ buildVersion: string | undefined, includeGolden: boolean, runtime?: "bun" }} */
     const options = { buildVersion: undefined, includeGolden: true };
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -519,7 +515,7 @@ export function parseReleaseCheckOptions(args = []) {
         else if (arg === "--binary-only") options.includeGolden = false;
         else if (arg === "--runtime") {
             const runtime = args[++index];
-            if (runtime !== "bun" && runtime !== "deno") throw new Error("--runtime requires bun or deno.");
+            if (runtime !== "bun") throw new Error("--runtime requires bun.");
             options.runtime = runtime;
         } else throw new Error(`Unknown release check argument: ${arg}`);
     }
@@ -586,7 +582,7 @@ async function restoreFile(path, snapshot) {
  * @property {string} [buildVersion]
  * @property {string} [rootDir]
  * @property {boolean} [includeGolden]
- * @property {"bun" | "deno"} [runtime]
+ * @property {"bun"} [runtime]
  */
 
 /**
@@ -625,11 +621,10 @@ export async function runReleaseCheck(options, port) {
     try {
         assertRequiredBundledAssetsConfigured();
         const compileEnv = options.buildVersion ? { WLD_BUILD_VERSION: options.buildVersion } : undefined;
-        const bunRuntime = options.runtime === "bun";
         await mustRun(
             "Compile release binary",
-            bunRuntime ? "bun" : "deno",
-            bunRuntime ? ["run", "compile:bun", output] : ["run", "-A", "scripts/compile.js", "--output", output],
+            "bun",
+            ["run", "compile", "--output", output],
             {
                 cwd: rootDir,
                 env: compileEnv,
@@ -638,13 +633,8 @@ export async function runReleaseCheck(options, port) {
         );
         await mustRun(
             "Smoke test Workspace code and Plan review routes",
-            bunRuntime ? "bun" : "deno",
-            [
-                "run",
-                ...(bunRuntime ? [] : ["-A"]),
-                "scripts/assert-workspace-review-runtime.js",
-                ...(bunRuntime ? ["--bun"] : []),
-            ],
+            "bun",
+            ["run", "scripts/assert-workspace-review-runtime.js", "--bun"],
             { cwd: rootDir },
             runner,
         );
@@ -659,7 +649,7 @@ export async function runReleaseCheck(options, port) {
             runner,
         );
         if (options.buildVersion) assertBinaryVersionOutput(`${smoke.stdout}${smoke.stderr}`, options.buildVersion);
-        if (bunRuntime) {
+        {
             const identity = await mustRun(
                 "Verify Bun runtime identity",
                 output,
@@ -696,8 +686,8 @@ export async function runReleaseCheck(options, port) {
         if (options.includeGolden !== false) {
             await mustRun(
                 "Run Golden TUI release gate",
-                "deno",
-                ["task", "test:golden-tui:extensive"],
+                "bun",
+                ["run", "test:golden-tui:extensive"],
                 { cwd: rootDir },
                 runner,
             );

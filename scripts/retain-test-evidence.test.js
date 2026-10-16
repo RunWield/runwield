@@ -1,3 +1,4 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -8,8 +9,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { retainTestEvidence } from "./retain-test-evidence.js";
 
 test("test cleanup retains Golden failure diagnostics but not sandbox HOME or caches", async () => {

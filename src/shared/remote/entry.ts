@@ -61,8 +61,8 @@ export async function runRemotePreflight(): Promise<void> {
             buildId: BUILD_ID,
             protocol: REMOTE_PROTOCOL_VERSION,
             version: VERSION,
-            runtime: process.versions.bun ? "bun" : "deno",
-            runtimeVersion: process.versions.bun || process.versions.deno,
+            runtime: "bun",
+            runtimeVersion: process.versions.bun,
         }),
     );
 }

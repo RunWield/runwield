@@ -1,3 +1,4 @@
+import { assertEquals } from "../testing/assertions.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -8,7 +9,6 @@ import {
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { wrapPlanSafeFileTool } from "./plan-safe-file-tools.ts";
 

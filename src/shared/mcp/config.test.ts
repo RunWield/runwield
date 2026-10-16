@@ -10,8 +10,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { resolveMcpConfig } from "./config.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 

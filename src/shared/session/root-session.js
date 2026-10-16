@@ -5,7 +5,7 @@
 
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { open, readdir, realpath, stat as fsStat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, SEPARATOR } from "@std/path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep as SEPARATOR } from "node:path";
 import { encodeCwdForSessionDir } from "./session-directory-name.ts";
 export { encodeCwdForSessionDir } from "./session-directory-name.ts";
 import { requireLocalSessionWriter } from "../remote/personal-resources.ts";

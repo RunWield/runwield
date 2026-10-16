@@ -1,8 +1,9 @@
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assert, assertEquals, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { getRunWieldSessionDir } from "../session/root-session.js";
 import { captureTranscriptEvidence } from "../session/session-transcript-projection.js";
 import { openOwnerCoordinationDatabase } from "./database.js";

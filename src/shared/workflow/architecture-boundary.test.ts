@@ -1,7 +1,8 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const REPO_ROOT = join(dirname(fromFileUrl(import.meta.url)), "../../..");
 

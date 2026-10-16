@@ -6,7 +6,7 @@ import { type NativeFileLock, openNativeFileLock } from "./native-file-lock.ts";
 import { type Stats } from "node:fs";
 import { lstat as fsLstat, mkdir as fsMkdir, readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 /** Recover writes made through the old layout after ownership moved to internal/. */
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import type { ControllerRecord } from "./workflow/controller-registry.ts";
 import { inspectWorktreeRegistryAtPath, type WorktreeRegistryEntry } from "./worktree-registry.js";
 

@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { Buffer } from "node:buffer";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -10,7 +11,6 @@ import { spawnNativeProcess } from "../foreground-process.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 
 test("a producer lost after a flushed call start leaves no fabricated terminal row", async () => {

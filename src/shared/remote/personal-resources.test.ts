@@ -10,8 +10,8 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { assertPersonalResourcePath, assertPersonalResourcePathSync, configureRemotePersonalResources } from "./personal-resources.ts";
 import {

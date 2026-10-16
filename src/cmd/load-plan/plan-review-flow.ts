@@ -74,9 +74,7 @@ export interface DirectPlanReviewResult {
 
 const DIRECT_REVIEW_STATUSES = new Set(["draft", "feedback", "approved", "ready_for_work"]);
 
-export function getDirectPlanReviewEligibility(
-    plan: { attrs: PlanFrontMatter },
-): DirectPlanReviewEligibility {
+export function getDirectPlanReviewEligibility(plan: { attrs: PlanFrontMatter }): DirectPlanReviewEligibility {
     if (!DIRECT_REVIEW_STATUSES.has(plan.attrs.status || "")) {
         return { eligible: false, reason: "unsupported_status" };
     }
@@ -103,10 +101,7 @@ export async function reviewLoadedPlanDirectly({
     runSlicerAgent,
     session,
 }: DirectReviewOptions): Promise<DirectPlanReviewResult> {
-    assertRecoveryWorktreeIsManaged(
-        plan.planName,
-        await resolveRecoveryWorktree(projectRoot, plan),
-    );
+    assertRecoveryWorktreeIsManaged(plan.planName, await resolveRecoveryWorktree(projectRoot, plan));
 
     if (isSequencePlan(plan.attrs)) {
         // Freeze the complete saved set before presentation. No Planner turn is needed to open it.
@@ -269,11 +264,7 @@ export async function reviewLoadedPlanDirectly({
                 : { outcome: RuntimeInteractionOutcomes.CANCELED, value: false };
         },
         onUnanswered: ({ reason }) => {
-            uiAPI.appendSystemMessage(
-                `Plan review ended without an answer (${reason}).`,
-                false,
-                "RunWield",
-            );
+            uiAPI.appendSystemMessage(`Plan review ended without an answer (${reason}).`, false, "RunWield");
         },
     });
 
@@ -300,7 +291,9 @@ export async function reviewLoadedPlanDirectly({
     if (reviewResult.approved) {
         let reloadedAfterReview = false;
         try {
-            const { plan: latestPlan } = await resolveWorkflowPlanLocation(projectRoot, plan.planName);
+            const { plan: latestPlan } = await resolveWorkflowPlanLocation(projectRoot, plan.planName, {
+                readOnly: true,
+            });
             if (latestPlan) {
                 plan.attrs = reviewResult.planAttrs
                     ? { ...latestPlan.attrs, ...reviewResult.planAttrs }
@@ -356,11 +349,7 @@ export async function reviewLoadedPlanDirectly({
             return { keepPlanAgentActive: true };
         }
 
-        const ready = await prepareApprovedPlanForWork(
-            projectRoot,
-            plan,
-            uiAPI,
-        );
+        const ready = await prepareApprovedPlanForWork(projectRoot, plan, uiAPI);
         if (!ready) {
             return { keepPlanAgentActive: true };
         }
@@ -411,9 +400,7 @@ export async function reviewLoadedPlanDirectly({
             });
         } else {
             uiAPI.appendSystemMessage(
-                appendSessionCompleteGuidance(
-                    `Plan saved. Resume later with: ${CLI_BIN} load-plan ${plan.planName}`,
-                ),
+                appendSessionCompleteGuidance(`Plan saved. Resume later with: ${CLI_BIN} load-plan ${plan.planName}`),
                 false,
                 "RunWield",
             );

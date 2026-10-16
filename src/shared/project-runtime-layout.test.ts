@@ -27,8 +27,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
-import { dirname, fromFileUrl, join, resolve } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertExists, assertRejects } from "../testing/assertions.ts";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { getRunWieldRuntimeDir, PROJECT_INTERNAL_RUNTIME_DIR_NAME, RUNWIELD_DIR_NAME } from "../constants.js";
 import { withProcessGlobalTestLock } from "../testing/process-global-lock.ts";
 import { defineCommittedGitFixture, git } from "./git-test-fixture.ts";
@@ -38,7 +40,7 @@ import {
     type ProjectRuntimeMigrationResult,
     resolveProjectRuntimeLayout,
 } from "./project-runtime-layout.ts";
-import { withWorktreeRegistryLock } from "./worktree-registry.js";
+import { inspectWorktreeRegistry, withWorktreeRegistryLock } from "./worktree-registry.js";
 import {
     advancePublicationAttempt,
     createPublicationAttempt,
@@ -1276,22 +1278,30 @@ test("legacy migration rejects malformed selected roots in a completed marker", 
     const project = await makeMigrationProject();
     try {
         const layout = resolveProjectRuntimeLayout(project.selectedRoot);
-        await writeText(
-            layout.primary.layoutMarkerPath,
-            `${JSON.stringify(
-                {
-                    version: 1,
-                    primaryCheckoutRoot: project.primaryRoot,
-                    adoptedSelectedCheckoutRoots: [project.selectedRoot, project.selectedRoot],
-                    completedAt: "2026-01-01T00:00:00.000Z",
-                },
-                null,
-                2,
-            )}\n`,
-        );
-        const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
-        if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
-        assertEquals(result.reason, "malformed_migration_evidence");
+        for (const roots of [
+            [project.selectedRoot, project.selectedRoot],
+            [project.primaryRoot, project.selectedRoot].sort().reverse(),
+            ["relative-checkout"],
+            [`${project.selectedRoot}/../traversal`],
+            [`${project.selectedRoot}/.`],
+        ]) {
+            await writeText(
+                layout.primary.layoutMarkerPath,
+                `${JSON.stringify(
+                    {
+                        version: 1,
+                        primaryCheckoutRoot: project.primaryRoot,
+                        adoptedSelectedCheckoutRoots: roots,
+                        completedAt: "2026-01-01T00:00:00.000Z",
+                    },
+                    null,
+                    2,
+                )}\n`,
+            );
+            const result = await migrateLegacyProjectRuntimeState(project.selectedRoot);
+            if (result.kind !== "blocked") throw new Error(`Expected blocked, got ${result.kind}`);
+            assertEquals(result.reason, "malformed_migration_evidence");
+        }
     } finally {
         await project.cleanup();
     }
@@ -1789,6 +1799,56 @@ test("adopted runtime recovers returning old writes without reverting current de
     }
 });
 
+test("adopted runtime keeps retired checkout history independent of current filesystem targets", async () => {
+    const project = await makeMigrationProject();
+    const other = await fsRealpath(await fsMkdtemp(join(tmpdir(), "retired-runtime-target-")));
+    try {
+        const layout = await enterProjectRuntime(project.selectedRoot);
+        const markerBefore = await fsReadFile(layout.primary.layoutMarkerPath, "utf8");
+        const removal = git(project.primaryRoot, ["worktree", "remove", "--force", project.selectedRoot]);
+        await Promise.all([
+            removal,
+            (async () => {
+                for (let read = 0; read < 5; read++) {
+                    await enterProjectRuntime(project.primaryRoot);
+                    assertEquals((await inspectWorktreeRegistry(project.primaryRoot)).entries, []);
+                }
+            })(),
+        ]);
+        await assertMissing(project.selectedRoot);
+        await writeText(join(other, ".wld", "plan-backups", "keep.md"), "Unrelated checkout bytes.\n");
+        await writeText(join(getRunWieldRuntimeDir(other), "plan-backups", "keep.md"), "Unrelated runtime bytes.\n");
+        const before = await snapshotTree(other);
+        const runtimeBefore = await snapshotTree(getRunWieldRuntimeDir(other));
+        await fsSymlink(other, project.selectedRoot, process.platform === "win32" ? "junction" : "dir");
+        assertEquals(await fsRealpath(project.selectedRoot), other);
+        for (let read = 0; read < 5; read++) {
+            await enterProjectRuntime(project.primaryRoot);
+            assertEquals((await inspectWorktreeRegistry(project.primaryRoot)).entries, []);
+        }
+        assertEquals(await fsReadFile(layout.primary.layoutMarkerPath, "utf8"), markerBefore);
+        assertEquals(await snapshotTree(other), before);
+        assertEquals(await snapshotTree(getRunWieldRuntimeDir(other)), runtimeBefore);
+
+        // Historical membership must not authorize this locator as a live checkout.
+        const registryPath = join(getRunWieldRuntimeDir(project.primaryRoot), "worktrees.json");
+        await writeText(registryPath, JSON.stringify({ version: 1, entries: [project.registryEntry] }));
+        const symlinked = await migrateLegacyProjectRuntimeState(project.primaryRoot);
+        assert(symlinked.kind === "blocked");
+        assertEquals(symlinked.reason, "symlink");
+        await fsRm(project.selectedRoot);
+        await fsMkdir(project.selectedRoot);
+        const unattached = await migrateLegacyProjectRuntimeState(project.primaryRoot);
+        assert(unattached.kind === "blocked");
+        assertEquals(unattached.reason, "invalid_registered_checkout");
+        assertEquals(await snapshotTree(other), before);
+        assertEquals(await snapshotTree(getRunWieldRuntimeDir(other)), runtimeBefore);
+    } finally {
+        await project.cleanup();
+        await fsRm(other, { recursive: true });
+    }
+});
+
 test("adopted runtime does not recover directories authorized only by old marker history", async () => {
     const project = await makeMigrationProject();
     const other = await fsRealpath(await fsMkdtemp(join(tmpdir(), "unregistered-runtime-root-")));
@@ -2153,7 +2213,6 @@ async function readChildStdout(child: NativeProcess): Promise<string> {
     if (!status.success) throw new Error(`Driver failed: ${stderr}`);
     return stdout.trim();
 }
-
 
 interface DirectoryHandleSymbols {
     CreateFileW(

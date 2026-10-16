@@ -4,7 +4,7 @@
  */
 
 import { chmodSync, mkdirSync } from "node:fs";
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 
 export const OWNER_COORDINATION_DB_FILENAME = "owner-coordination.sqlite3";

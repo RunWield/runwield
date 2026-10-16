@@ -62,7 +62,7 @@ Concretely:
 
 `bash` remains an Agent tool: a `bashAllowedCommands` front matter field limits its use but never adds it to a toolset.
 Bundled Guide and read-delegate definitions list permitted inspection commands; write delegates have no default list.
-For layered Agent definitions, omission inherits, a list replaces, `[]` denies all, and `null` resets the definition's
+For layered Agent definitions, omission inherits, non-empty lists merge without duplicate entries, `[]` denies all, and `null` resets the definition's
 inherited list to unrestricted. An absent list means unrestricted bash. Delegated Sessions intersect the effective
 parent's list with the child's definition list after role authority is resolved. A child's omission or `null` cannot
 remove a parent restriction; without parent bash, the child does not gain bash. These limits apply to RunWield-managed

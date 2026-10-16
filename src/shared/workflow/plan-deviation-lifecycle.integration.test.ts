@@ -7,8 +7,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { HostedSession } from "../session/hosted-session.js";
 import { createGitPort } from "../git-port.ts";
 import { createPlanDeviationTool } from "../../tools/plan-deviation.ts";

@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { decodeBase64Url, decodeUtf8Base64Url, encodeBase64Url, encodeUtf8Base64Url } from "./base64url.ts";
 
 test("base64url round trips UTF-8 strings", () => {

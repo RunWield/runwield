@@ -6,7 +6,7 @@
 import { chmodSync, copyFileSync, mkdirSync, statSync, unlinkSync } from "node:fs";
 import { deleteProjectRegistration } from "./project-removal.ts";
 import { DatabaseSync } from "../sqlite.ts";
-import { dirname, extname } from "@std/path";
+import { dirname, extname } from "node:path";
 import { ensureOwnerDatabaseDirectory, getOwnerCoordinationDatabasePath } from "./paths.ts";
 import {
     OWNER_COORDINATION_SCHEMA_V10_SQL,

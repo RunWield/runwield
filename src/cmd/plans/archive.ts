@@ -3,8 +3,8 @@
  * Archive, list, and restore saved Plans.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { relative } from "@std/path";
+import { parseArgs } from "../../shared/cli-args.ts";
+import { relative } from "node:path";
 import { CLI_BIN, getCwd } from "../../constants.js";
 import {
     archivePlan,
@@ -27,7 +27,7 @@ import {
 
 async function confirmArchivePlanRoot(cwd: string, name: string): Promise<void> {
     const location = await resolveWorkflowPlanLocation(cwd, name, { migrateRegistry: false, readOnly: true });
-    const confirmed = location.missingManagedExecutionWorktree
+    const confirmed = location.missingExecutionCheckout
         ? await confirmMissingManagedProjectDirectory(location.documentRoot)
         : await confirmProjectDirectory(location.documentRoot);
     if (!confirmed) throw new DirectoryStartupCanceled("Project startup canceled");
@@ -116,7 +116,7 @@ function unwrapArchiveTransitionValue<T>(transition: TransitionResult): T {
         return (transition.value as ArchiveTransitionEnvelope<T>).value;
     }
     const recovery = (transition.recoveryActions || [])
-        .map((action) => action.command ? `${action.label}: ${action.command}` : action.label)
+        .map((action) => (action.command ? `${action.label}: ${action.command}` : action.label))
         .join("; ");
     throw new Error(
         `${transition.operation} for Plan needs recovery: ${transition.message || transition.status}${
@@ -130,13 +130,16 @@ function isChildFeatureArchiveCandidate(plan: PlanEntry): boolean {
 }
 
 function normalizePlanNameArgument(target: string): string {
-    return target.trim().replace(/^docs\/plans\//i, "").replace(/\.md$/i, "");
+    return target
+        .trim()
+        .replace(/^docs\/plans\//i, "")
+        .replace(/\.md$/i, "");
 }
 
 async function resolveActiveArchiveTarget(cwd: string, target: string): Promise<{ name: string; revision?: string }> {
     const normalizedName = normalizePlanNameArgument(target);
     await confirmArchivePlanRoot(cwd, normalizedName);
-    const byName = (await resolveWorkflowPlanLocation(cwd, normalizedName)).plan;
+    const byName = (await resolveWorkflowPlanLocation(cwd, normalizedName, { readOnly: true })).plan;
     if (byName) return { name: normalizedName, revision: byName.revision };
     const matches = (await listPlans(cwd)).filter((plan) => plan.attrs.planId === target);
     if (matches.length > 1) throw new Error(`Duplicate planId values found for ${target}; use a Plan name instead.`);
@@ -232,7 +235,7 @@ export async function runPlansArchiveCommand(argv: string[]): Promise<void> {
         if (!target) throw new Error("Missing archived Plan name or id for restore.");
         if (positionals.length > 2) throw new Error(`Unexpected restore argument: ${positionals[2]}`);
         const source = await loadArchivedPlan(getCwd(), target);
-        if (!await confirmProjectDirectory(source ? getPlanDocumentRoot(source.path) : getCwd())) return;
+        if (!(await confirmProjectDirectory(source ? getPlanDocumentRoot(source.path) : getCwd()))) return;
         const restored = unwrapArchiveTransitionValue<RestoredPlan>(
             await runArchiveTransition({
                 projectRoot: source ? getPlanDocumentRoot(source.path) : getCwd(),
@@ -248,11 +251,10 @@ export async function runPlansArchiveCommand(argv: string[]): Promise<void> {
     if (parsed.all) {
         if (parsed.status === undefined) throw new Error("Missing --status for bulk archive.");
         if (positionals.length > 0) throw new Error(`Unexpected archive argument with --all: ${positionals[0]}`);
-        const result = await archivePlansByStatusTransactionally(
-            getCwd(),
-            parsed.status as PlanStatus,
-            { reason: parsed.reason, force: Boolean(parsed.force) },
-        );
+        const result = await archivePlansByStatusTransactionally(getCwd(), parsed.status as PlanStatus, {
+            reason: parsed.reason,
+            force: Boolean(parsed.force),
+        });
         printBulkArchiveResult(result, parsed.status);
         if (result.archived.length > 0) await printArchiveRetentionNudge(getCwd());
         if (result.failed.length > 0) throw new Error(`Bulk archive failed for ${result.failed.length} Plan(s).`);

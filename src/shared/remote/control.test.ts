@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { type RemoteControlService, startRemoteControlService } from "./control.ts";
 
 const identity = { buildId: "a".repeat(64), protocol: 1 };

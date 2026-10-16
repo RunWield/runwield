@@ -8,8 +8,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { createTestWorktreeAttempt, git, makeRepo } from "./worktree-test-helpers.ts";
 import { removeWorktreeGitArtifacts } from "./worktree.js";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";

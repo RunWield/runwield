@@ -9,8 +9,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { git, makeRepo } from "./worktree-test-helpers.ts";
 import { createWorktreeGitArtifacts, removeWorktreeGitArtifacts } from "./worktree.js";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";

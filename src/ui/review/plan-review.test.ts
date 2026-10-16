@@ -5,8 +5,8 @@ import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { getStoredPlanPath, loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { BrowserPort } from "../../shared/browser-port.ts";
@@ -54,10 +54,7 @@ function approvedDecision(overrides: ReviewDecisionBody = {}): ReviewDecisionBod
     };
 }
 
-function decisionBrowserAfter(
-    beforeDecision: () => Promise<void>,
-    body: ReviewDecisionBody,
-): BrowserPort {
+function decisionBrowserAfter(beforeDecision: () => Promise<void>, body: ReviewDecisionBody): BrowserPort {
     return {
         async open(url: string): Promise<boolean> {
             await beforeDecision();
@@ -179,7 +176,7 @@ test("submitPlanForReview accepts approval after Markdown body formatting", asyn
     await fsWriteFile(planPath, before);
     const browser = decisionBrowserAfter(async () => {
         const formatted = await captureForegroundProcess(process.execPath, {
-            args: process.versions.deno ? ["fmt", "--quiet", "--line-width", "50", planPath] : [
+            args: [
                 "run",
                 "--no-install",
                 fileURLToPath(new URL("../../../node_modules/prettier/bin/prettier.cjs", import.meta.url)),
@@ -195,7 +192,7 @@ test("submitPlanForReview accepts approval after Markdown body formatting", asyn
             cwd: getCwd(),
         });
         assertEquals(formatted.success, true);
-        assertEquals(await fsReadFile(planPath, "utf8") === before, false);
+        assertEquals((await fsReadFile(planPath, "utf8")) === before, false);
     }, approvedDecision());
     try {
         const result = await submitPlanForReview({ cwd: dir, planName: "plan", planPath, browser });
@@ -424,7 +421,7 @@ test("submitPlanForReview cancellation stops the real review surface without wri
     const controller = new AbortController();
     let openedUrl = "";
     let markOpened: () => void = () => {};
-    const opened = new Promise<void>((resolveOpened) => markOpened = resolveOpened);
+    const opened = new Promise<void>((resolveOpened) => (markOpened = resolveOpened));
     const browser: BrowserPort = {
         open: (url: string) => {
             openedUrl = url;
@@ -510,11 +507,7 @@ test("submitPlanForReview approval preserves the prior execution attempt", async
         assertEquals(result.approved, true);
         const savedPlan = await loadPlan(executionDir, "plan");
         assertEquals(savedPlan?.attrs.status, "approved");
-        assertEquals(
-            savedPlan?.attrs.worktreeId,
-            "wt-prior",
-            "review must retain the implementation attempt",
-        );
+        assertEquals(savedPlan?.attrs.worktreeId, "wt-prior", "review must retain the implementation attempt");
         assertEquals(savedPlan?.attrs.worktreeStatus, "active");
         assertEquals((await findRegistryEntryById(dir, "wt-prior"))?.status, "active");
         assertEquals(await fsReadFile(getStoredPlanPath(dir, "plan"), "utf8"), primaryMarkdown);

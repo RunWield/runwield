@@ -1,70 +1,90 @@
+import { readdirSync } from "node:fs";
+import { mkdtemp, rm, mkdir, writeFile, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { defineCommittedGitFixture, git } from "../../shared/git-test-fixture.ts";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { getCliCommandDefinitions, requiresProjectDirectoryConsent } from "../registry.js";
 
-const cli = fromFileUrl(new URL("../../cli.ts", import.meta.url));
-const config = fromFileUrl(new URL("../../../deno.json", import.meta.url));
+const cli = fileURLToPath(new URL("../../cli.ts", import.meta.url));
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
-for (const command of ["init", "initialize", "plans", "wr", "guided-review"]) {
-    Deno.test(`noninteractive ${command} refuses home before project work`, async () => {
-        const home = await Deno.makeTempDir();
+for (const command of ["init", "initialize", "plans", "wr", "guided-review", "review"]) {
+    test(`noninteractive ${command} refuses home before project work`, async () => {
+        const home = await mkdtemp(join(tmpdir(), "directory-warning-"));
         try {
-            const child = new Deno.Command(Deno.execPath(), {
-                args: ["run", "-A", "--config", config, cli, command],
+            const child = Bun.spawn({
+                cmd: [process.execPath, "--no-env-file", "--no-install", cli, command],
                 cwd: home,
-                env: { HOME: home, WLD_TEST_SANDBOX_HOME: home, MNEMOTECA_DB_PATH: join(home, "memory.sqlite") },
-                stdin: "piped",
-                stdout: "piped",
-                stderr: "piped",
-            }).spawn();
-            const writer = child.stdin.getWriter();
-            await writer.write(new TextEncoder().encode("piped request\n"));
-            await writer.close();
-            const output = await child.output();
+                env: {
+                    ...process.env,
+                    HOME: home,
+                    WLD_TEST_SANDBOX_HOME: home,
+                    MNEMOTECA_DB_PATH: join(home, "memory.sqlite"),
+                },
+                stdin: "pipe",
+                stdout: "pipe",
+                stderr: "pipe",
+            });
+            child.stdin.write("piped request\n");
+            child.stdin.end();
+            const output = await collectOutput(child);
             assertEquals(output.code, 1);
             assertStringIncludes(decode(output.stderr), "wld --allow-system-directory <command>");
-            assertEquals([...Deno.readDirSync(home)].filter((entry) => entry.name !== ".wld").length, 0);
             assertEquals(
-                await Array.fromAsync(Deno.readDir(join(home, ".wld"))).then((entries) =>
-                    entries.some((entry) => entry.name === "sessions")
-                ).catch((error) => {
-                    if (error instanceof Deno.errors.NotFound) return false;
-                    throw error;
-                }),
+                [...readdirSync(home, { withFileTypes: true })].filter((entry) => entry.name !== ".wld").length,
+                0,
+            );
+            assertEquals(
+                await readdir(join(home, ".wld"), { withFileTypes: true })
+                    .then((entries) => entries.some((entry) => entry.name === "sessions"))
+                    .catch((error) => {
+                        if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+                        throw error;
+                    }),
                 false,
             );
         } finally {
-            await Deno.remove(home, { recursive: true });
+            await rm(home, { recursive: true });
         }
     });
 }
-Deno.test("leading acknowledgement reaches real plans listing and help is exempt", async () => {
-    const home = await Deno.makeTempDir();
+test("leading acknowledgement reaches real plans listing and help is exempt", async () => {
+    const home = await mkdtemp(join(tmpdir(), "directory-warning-"));
     try {
-        await Deno.mkdir(join(home, "docs", "plans"), { recursive: true });
-        await Deno.writeTextFile(
+        await mkdir(join(home, "docs", "plans"), { recursive: true });
+        await writeFile(
             join(home, "docs", "plans", "fixture.md"),
             "---\nplanId: fixture-plan\nstatus: draft\nsummary: Consent fixture\n---\n# Consent fixture\n",
         );
         for (const args of [["--allow-system-directory", "plans"], ["plans", "--help"], ["--help"], ["--version"]]) {
-            const output = await new Deno.Command(Deno.execPath(), {
-                args: ["run", "-A", "--config", config, cli, ...args],
-                cwd: home,
-                env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+            const output = await collectOutput(
+                Bun.spawn({
+                    cmd: [
+                        process.execPath,
+                        "--no-env-file",
+                        "--no-install",
+                        cli,
+                        ...(args[0] === "--" ? ["--", ...args] : args),
+                    ],
+                    cwd: home,
+                    env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                    stdout: "pipe",
+                    stderr: "pipe",
+                }),
+            );
             assertEquals(output.code, 0, decode(output.stderr));
             if (args[0] === "--allow-system-directory") assertStringIncludes(decode(output.stdout), "Consent fixture");
         }
     } finally {
-        await Deno.remove(home, { recursive: true });
+        await rm(home, { recursive: true });
     }
 });
-Deno.test("registry policy covers every CLI command and aliases", () => {
-    const guarded = ["router", "onboard", "load-plan", "resume", "plans", "wr", "sleep", "init"];
+test("registry policy covers every CLI command and aliases", () => {
+    const guarded = ["router", "onboard", "load-plan", "review", "resume", "plans", "wr", "sleep", "init"];
     for (const command of getCliCommandDefinitions()) {
         for (const name of [command.name, ...(command.aliases || [])]) {
             assertEquals(requiresProjectDirectoryConsent(name, []), guarded.includes(command.name), name);
@@ -75,75 +95,95 @@ Deno.test("registry policy covers every CLI command and aliases", () => {
     assertEquals(requiresProjectDirectoryConsent(undefined, []), true);
 });
 
-for (
-    const args of [["plans", "--allow-system-directory"], ["--", "--allow-system-directory"], [
-        "request with --allow-system-directory inside",
-    ]]
-) {
-    Deno.test(`acknowledgement text outside the leading prefix does not bypass consent: ${args.join(" ")}`, async () => {
-        const home = await Deno.makeTempDir();
+for (const args of [
+    ["plans", "--allow-system-directory"],
+    ["--", "--allow-system-directory"],
+    ["request with --allow-system-directory inside"],
+]) {
+    test(`acknowledgement text outside the leading prefix does not bypass consent: ${args.join(" ")}`, async () => {
+        const home = await mkdtemp(join(tmpdir(), "directory-warning-"));
         try {
-            const output = await new Deno.Command(Deno.execPath(), {
-                args: ["run", "-A", "--config", config, cli, ...args],
-                cwd: home,
-                env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
+            const output = await collectOutput(
+                Bun.spawn({
+                    cmd: [
+                        process.execPath,
+                        "--no-env-file",
+                        "--no-install",
+                        cli,
+                        ...(args[0] === "--" ? ["--", ...args] : args),
+                    ],
+                    cwd: home,
+                    env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                    stdout: "pipe",
+                    stderr: "pipe",
+                }),
+            );
             assertEquals(output.code, 1);
             assertStringIncludes(decode(output.stderr), "System or home folder detected. Continue?");
         } finally {
-            await Deno.remove(home, { recursive: true });
+            await rm(home, { recursive: true });
         }
     });
 }
 
-Deno.test({
-    name: "guided-review refusal leaves the piped request unread",
-    ignore: Deno.build.os === "windows",
-    async fn() {
-        const home = await Deno.makeTempDir();
-        try {
-            await Deno.writeTextFile(join(home, "input.txt"), "Unread guided review request\n");
-            const quoted = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-            const command = `exec 3< input.txt; ${
-                [Deno.execPath(), "run", "-A", "--config", config, cli, "guided-review"].map(quoted).join(" ")
-            } <&3; result=$?; cat <&3; exit $result`;
-            const output = await new Deno.Command("bash", {
-                args: ["-c", command],
+test("guided-review refusal leaves the piped request unread", { skip: process.platform === "win32" }, async () => {
+    const home = await mkdtemp(join(tmpdir(), "directory-warning-"));
+    try {
+        await writeFile(join(home, "input.txt"), "Unread guided review request\n");
+        const quoted = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+        const command = `exec 3< input.txt; ${[process.execPath, "--no-env-file", "--no-install", cli, "guided-review"]
+            .map(quoted)
+            .join(" ")} <&3; result=$?; cat <&3; exit $result`;
+        const output = await collectOutput(
+            Bun.spawn({
+                cmd: ["bash", "-c", command],
                 cwd: home,
-                env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-                stdout: "piped",
-                stderr: "piped",
-            }).output();
-            assertEquals(output.code, 1);
-            assertStringIncludes(decode(output.stdout), "Unread guided review request");
-            assertStringIncludes(decode(output.stderr), "--allow-system-directory");
-        } finally {
-            await Deno.remove(home, { recursive: true });
-        }
-    },
+                env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                stdout: "pipe",
+                stderr: "pipe",
+            }),
+        );
+        assertEquals(output.code, 1);
+        assertStringIncludes(decode(output.stdout), "Unread guided review request");
+        assertStringIncludes(decode(output.stderr), "--allow-system-directory");
+    } finally {
+        await rm(home, { recursive: true });
+    }
 });
 
 const homeGitFixture = defineCommittedGitFixture();
-Deno.test("a linked worktree does not authorize project work in its classified primary root", async () => {
+test("a linked worktree does not authorize project work in its classified primary root", async () => {
     const home = await homeGitFixture.checkout();
-    const trees = await Deno.makeTempDir();
+    const trees = await mkdtemp(join(tmpdir(), "directory-warning-"));
     const tree = join(trees, "linked");
     try {
         await git(home, ["worktree", "add", "-b", "folder-warning-linked", tree]);
-        const output = await new Deno.Command(Deno.execPath(), {
-            args: ["run", "-A", "--config", config, cli, "plans"],
-            cwd: tree,
-            env: { HOME: home, WLD_TEST_SANDBOX_HOME: home },
-            stdout: "piped",
-            stderr: "piped",
-        }).output();
+        const output = await collectOutput(
+            Bun.spawn({
+                cmd: [process.execPath, "--no-env-file", "--no-install", cli, "plans"],
+                cwd: tree,
+                env: { ...process.env, HOME: home, WLD_TEST_SANDBOX_HOME: home },
+                stdout: "pipe",
+                stderr: "pipe",
+            }),
+        );
         assertEquals(output.code, 1);
         assertStringIncludes(decode(output.stderr), "System or home folder detected. Continue?");
-        assertEquals([...Deno.readDirSync(tree)].some((entry) => entry.name === "docs"), false);
+        assertEquals(
+            [...readdirSync(tree, { withFileTypes: true })].some((entry) => entry.name === "docs"),
+            false,
+        );
     } finally {
-        await Deno.remove(trees, { recursive: true });
-        await Deno.remove(home, { recursive: true });
+        await rm(trees, { recursive: true });
+        await rm(home, { recursive: true });
     }
 });
+
+async function collectOutput(child: Bun.Subprocess<"pipe" | "ignore" | "inherit", "pipe", "pipe">) {
+    const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).bytes(),
+        new Response(child.stderr).bytes(),
+    ]);
+    return { code, stdout, stderr };
+}

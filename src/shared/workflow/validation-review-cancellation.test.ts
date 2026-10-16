@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan } from "../../plan-store.js";
 import { HostedSession } from "../session/hosted-session.js";
 import { createTuiInteractionAdapter } from "../../ui/tui/runtime-interaction-adapter.js";

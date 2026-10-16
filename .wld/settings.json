@@ -1,5 +1,6 @@
 {
-    "verification_command": "deno task ci",
+    "worktree_setup_command": "bun run install:locked",
+    "verification_command": "bun run ci",
     "guidedReview": "ask",
     "imageGeneration": {
         "model": "codex-cli/gpt-6.1-sol",

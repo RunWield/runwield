@@ -5,7 +5,7 @@ import { readableStdin } from "../../shared/stdin-stream.ts";
 import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 /* CLI-only remote connection. SSH supplies authentication, host verification and
  * terminal transport. No project or personal context is opened on the laptop. */
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { linuxTarget, prepareRemoteRuntime } from "../../shared/remote/runtime.js";
 import { fixedPythonCommand, resolveRemoteTarget } from "../../shared/remote/target.ts";
 import { type MountHeader, startLaptopSftp } from "../../shared/remote/sftp-mount.ts";
@@ -198,7 +198,7 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
                 ("code" in error && ["ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND"].includes(String(error.code))));
         if (!missingIdentity) throw error;
         throw new Error(
-            "No launcher build identity. Build the launcher and matching Linux artifact explicitly with deno run -A scripts/compile.js --output bin/wld.",
+            "No launcher build identity. Build the launcher and matching Linux artifact explicitly with bun run compile --output bin/wld.",
         );
     }
     const { BUILD_ID, REMOTE_PROTOCOL_VERSION } = identity;

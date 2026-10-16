@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
 import {
     plannedChangeNonGitInPlaceScenario,
     plannedChangeReviewRepairValidationScenario,
@@ -1090,7 +1090,7 @@ export const validationTreeSemanticRoundLimitFollowUpScenario = {
                 JSON.stringify({
                     verification_command:
                         process.platform === "win32"
-                            ? `"${process.execPath}" ${process.versions.deno ? "eval" : "-e"} "import fs from 'node:fs'; if (fs.readFileSync('semantic-round-limit-stop.txt', 'utf8') === 'followup\\n') fs.writeFileSync('followup-ci.txt', 'checked followup');"`
+                            ? `"${process.execPath}" ${"-e"} "import fs from 'node:fs'; if (fs.readFileSync('semantic-round-limit-stop.txt', 'utf8') === 'followup\\n') fs.writeFileSync('followup-ci.txt', 'checked followup');"`
                             : "if test \"$(cat semantic-round-limit-stop.txt)\" = followup; then printf 'checked followup' > followup-ci.txt; fi",
                 }) + "\n",
         },

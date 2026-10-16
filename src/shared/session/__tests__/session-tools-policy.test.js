@@ -18,8 +18,10 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { withProcessGlobalTestLock } from "../../../testing/process-global-lock.ts";
 import { AGENTS, SUBAGENTS } from "../../../constants.js";
@@ -1397,7 +1399,7 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
             const init = await captureForegroundProcess("git", { cwd, args: ["init", "-b", "main"] });
             assert(init.success);
             await fsWriteFile(join(cwd, "dirty.txt"), "visible in status\n");
-            await setPolicy("[pwd]");
+            await setPolicy("[git version]");
             getSettingsManager(cwd).setShellPath(bashFixtureExecutable());
             getSettingsManager(cwd).setShellCommandPrefix("printf 'configured shell' > shell-prefix.txt; ");
             await ensureRootAgentSession({ hostedSession, agentName: AGENTS.GUIDE, modelOverride: "test/text" });
@@ -1414,24 +1416,33 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
                 );
             };
             assertEquals(
-                (
-                    await execute(findTool("bash"), { command: process.platform === "win32" ? "pwd -W" : "pwd" })
-                ).content.some((item) => item.type === "text" && item.text.includes(cwd.replaceAll("\\", "/"))),
+                (await execute(findTool("bash"), { command: "git version" })).content.some(
+                    (item) => item.type === "text" && item.text.includes("git version"),
+                ),
                 true,
             );
             assertEquals(await fsReadFile(join(cwd, "shell-prefix.txt"), "utf8"), "configured shell");
-            await assertRejects(() => execute(findTool("bash"), { command: "git status" }), Error, "report a blocker");
-            const denied = await execute(findTool("background_task"), { action: "start", command: "git status" });
-            assert(denied.content.some((item) => item.type === "text" && item.text.includes("pwd")));
+            assert(
+                (await execute(findTool("bash"), { command: "git status --short" })).content.some(
+                    (item) => item.type === "text" && item.text.includes("dirty.txt"),
+                ),
+            );
+            await assertRejects(
+                () => execute(findTool("bash"), { command: "touch forbidden" }),
+                Error,
+                "report a blocker",
+            );
+            const denied = await execute(findTool("background_task"), { action: "start", command: "touch forbidden" });
+            assert(denied.content.some((item) => item.type === "text" && item.text.includes("git version")));
             assertEquals(
                 getRootSessionRebuildOptions(hostedSession).customTools?.some((tool) => tool.name === "bash"),
                 false,
             );
-            assert(findTool("bash")?.description.includes("pwd"));
+            assert(findTool("bash")?.description.includes("git version"));
             assert(
                 __getRootSessionMetadataForTests(
                     /** @type {any} */ (hostedSession.getRootAgentSession()),
-                )?.promptState.text.includes("Allowed commands: pwd"),
+                )?.promptState.text.includes("git version"),
             );
             await setPolicy("[git status]");
             await ensureRootAgentSession({
@@ -1440,7 +1451,7 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
                 modelOverride: "test/text",
                 ...getRootSessionRebuildOptions(hostedSession),
             });
-            await assertRejects(() => execute(findTool("bash"), { command: "pwd" }), Error, "git status");
+            await assertRejects(() => execute(findTool("bash"), { command: "git version" }), Error, "git status");
             const started = await execute(findTool("background_task"), {
                 action: "start",
                 command: "git status --short",
@@ -1454,7 +1465,7 @@ test("Guide bash policy reaches Pi and background tools and refreshes after root
                 ).details?.output.includes("dirty.txt"),
             );
             assert(
-                (await execute(findTool("background_task"), { action: "start", command: "pwd" })).content.some(
+                (await execute(findTool("background_task"), { action: "start", command: "git version" })).content.some(
                     (item) => item.type === "text" && item.text.includes("git status"),
                 ),
             );
@@ -1607,18 +1618,22 @@ test("read and write delegated Pi sessions inherit only the parent's available b
     });
 });
 
-test("Agent command front matter replaces, clears, and validates layered defaults", async () => {
+test("Agent command front matter merges, clears, and validates layered defaults", async () => {
     const cwd = await fsMkdtemp(join(tmpdir(), "runwield-bash-frontmatter-"));
     const directory = join(cwd, ".wld", "agents");
     const overridePath = join(directory, "guide.md");
     try {
         await fsMkdir(directory, { recursive: true });
         const initial = await loadAgentDef(AGENTS.GUIDE, cwd);
-        assert(initial.bashAllowedCommands?.includes("git status"));
+        assert(initial.bashAllowedCommands);
+        assert(initial.bashAllowedCommands.includes("git status"));
         await fsWriteFile(overridePath, "---\nname: Guide\n---\n");
         assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, initial.bashAllowedCommands);
-        await fsWriteFile(overridePath, "---\nbashAllowedCommands: [pwd]\n---\n");
-        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, ["pwd"]);
+        await fsWriteFile(overridePath, "---\nbashAllowedCommands: [td, git status, td]\n---\n");
+        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
+            ...initial.bashAllowedCommands,
+            "td",
+        ]);
         await fsWriteFile(overridePath, "---\nbashAllowedCommands: []\n---\n");
         assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, []);
         await fsWriteFile(overridePath, "---\nbashAllowedCommands: null\n---\n");
@@ -1630,6 +1645,109 @@ test("Agent command front matter replaces, clears, and validates layered default
     } finally {
         await removeTempDir(cwd);
     }
+});
+
+test("Agent toolSets expand into the layer's tool list and validate set names", async () => {
+    const cwd = await fsMkdtemp(join(tmpdir(), "runwield-toolsets-frontmatter-"));
+    const directory = join(cwd, ".wld", "agents");
+    try {
+        await fsMkdir(directory, { recursive: true });
+        await fsWriteFile(
+            join(directory, "docs-writer.md"),
+            "---\nname: Docs Writer\ntoolSets: [docs, shell]\ntools: [user_interview, bash]\n---\nWrite docs.\n",
+        );
+        assertEquals((await loadAgentDef("docs-writer", cwd)).tools, [
+            "write_docs",
+            "edit_docs",
+            "bash",
+            "background_task",
+            "user_interview",
+            "set_session_name",
+        ]);
+
+        await fsWriteFile(join(directory, "reader.md"), "---\nname: Reader\ntoolSets: [read]\n---\n");
+        const reader = await loadAgentDef("reader", cwd);
+        for (const toolName of [
+            "memory",
+            "user_interview",
+            "work_record_search",
+            "work_record_read",
+            "delegate_agent",
+        ]) {
+            assert(reader.tools.includes(toolName), toolName);
+        }
+        assert(!reader.tools.includes("delegate_agent_read"));
+        assertEquals(reader.delegationModes, ["read"]);
+
+        await fsWriteFile(join(directory, "builder.md"), "---\nname: Builder\ntoolSets: [read, write]\n---\n");
+        const builder = await loadAgentDef("builder", cwd);
+        assertEquals(builder.delegationModes, ["read", "write"]);
+        assertEquals(
+            builder.tools.filter((toolName) => toolName.startsWith("delegate_agent")),
+            ["delegate_agent"],
+        );
+
+        await fsWriteFile(
+            join(directory, "lead.md"),
+            "---\nname: Lead\ntoolSets: [read]\ntools: [delegate_agent]\n---\n",
+        );
+        assertEquals((await loadAgentDef("lead", cwd)).delegationModes, undefined);
+        assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).delegationModes, undefined);
+
+        await fsWriteFile(join(directory, "talker.md"), "---\nname: Talker\n---\nJust talk.\n");
+        assertEquals((await loadAgentDef("talker", cwd)).tools, ["set_session_name"]);
+
+        const bundled = await loadAgentDef(AGENTS.OPERATOR, cwd);
+        const operatorPath = join(directory, "operator.md");
+        await fsWriteFile(operatorPath, "---\ndescription: Read-only\n---\n");
+        assertEquals((await loadAgentDef(AGENTS.OPERATOR, cwd)).tools, bundled.tools);
+        await fsWriteFile(operatorPath, "---\ntoolSets: [read]\n---\n");
+        const narrowed = (await loadAgentDef(AGENTS.OPERATOR, cwd)).tools;
+        assert(narrowed.includes("code_outline"));
+        assert(!narrowed.includes("edit") && !narrowed.includes("bash"));
+        assert(narrowed.includes("task_completed") && narrowed.includes("memory"));
+
+        for (const invalid of ["[reed]", "read", "[read, 3]"]) {
+            await fsWriteFile(operatorPath, `---\ntoolSets: ${invalid}\n---\n`);
+            await assertRejects(() => loadAgentDef(AGENTS.OPERATOR, cwd), Error, "toolSets");
+        }
+    } finally {
+        await removeTempDir(cwd);
+    }
+});
+
+test("Guide command lists merge across bundled, home, and project definitions", async () => {
+    await withProcessGlobalTestLock(async () => {
+        const originalHome = process.env["HOME"];
+        const root = await fsMkdtemp(join(tmpdir(), "runwield-guide-command-layers-"));
+        const home = join(root, "home");
+        const cwd = join(root, "project");
+        try {
+            process.env["HOME"] = home;
+            const homeAgents = join(home, ".wld", "agents");
+            const projectAgents = join(cwd, ".wld", "agents");
+            await fsMkdir(homeAgents, { recursive: true });
+            await fsMkdir(projectAgents, { recursive: true });
+            const bundled = await loadAgentDef(AGENTS.GUIDE, cwd);
+            assert(bundled.bashAllowedCommands);
+            assert(bundled.bashAllowedCommands.includes("git status"));
+            await fsWriteFile(join(homeAgents, "guide.md"), "---\nbashAllowedCommands: [td]\n---\n");
+            assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
+                ...bundled.bashAllowedCommands,
+                "td",
+            ]);
+            await fsWriteFile(join(projectAgents, "guide.md"), "---\nbashAllowedCommands: [td, git version]\n---\n");
+            assertEquals((await loadAgentDef(AGENTS.GUIDE, cwd)).bashAllowedCommands, [
+                ...bundled.bashAllowedCommands,
+                "td",
+                "git version",
+            ]);
+        } finally {
+            if (originalHome === undefined) delete process.env["HOME"];
+            else process.env["HOME"] = originalHome;
+            await removeTempDir(root);
+        }
+    });
 });
 
 test("external CLI bridge filters RunWield background starts but not native host commands", async () => {

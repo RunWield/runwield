@@ -1,7 +1,8 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assertArrayIncludes, assertEquals, assertMatch } from "@std/assert";
-import { basename } from "@std/path";
+import { assertEquals, assertArrayIncludes } from "../../testing/assertions.ts";
+import { match as assertMatch } from "node:assert/strict";
+import { basename } from "node:path";
 import mnemotecaExtension from "./index.ts";
 
 /**

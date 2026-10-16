@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { readdir as fsReaddir } from "node:fs/promises";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import {
     appendTranscriptEntry,
     makeManagedSessionFixture,

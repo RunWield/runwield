@@ -1,6 +1,6 @@
+import { assertEquals } from "../../../../testing/assertions.ts";
 import process from "node:process";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { prepareClaudeCliCommand, removeClaudeCliMcpConfigFile, removeClaudeCliPromptFile } from "./command.ts";
 

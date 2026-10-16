@@ -1,6 +1,6 @@
 import { statSync as fsStatSync } from "node:fs";
 import process from "node:process";
-import { join } from "@std/path";
+import { join } from "node:path";
 
 function isFile(path: string): boolean {
     try {

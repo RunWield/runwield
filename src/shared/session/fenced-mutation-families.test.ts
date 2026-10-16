@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
-import { assertEquals } from "@std/assert";
 import { SESSION_RUNTIME_METHOD_POLICY } from "./session-runtime-method-policy.ts";
 
 const FENCED_METHOD_DRIVERS: Record<string, string> = {

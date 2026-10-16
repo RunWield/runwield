@@ -588,7 +588,7 @@ Agent definitions are loaded from bundled defaults, then home overrides, then pr
 scalar front matter. Prompt bodies append unless a higher layer sets `promptOverride: true`. A higher-layer `tools`
 array replaces the lower one, but protected workflow/code/memory tools present in the lowest existing definition are
 re-added so an override cannot silently remove a Core invariant. Optional `bashAllowedCommands` front matter follows its
-own layered rule: omission inherits the lower layer, a list replaces it, `[]` denies all commands, and `null` resets
+own layered rule: omission inherits the lower layer, non-empty lists merge without duplicate entries, `[]` denies all commands, and `null` resets
 that definition's inherited list to unrestricted. No list at any layer means unrestricted bash. The field never grants
 bash access. A Delegated Agent Session intersects its definition policy with its effective parent's limit; neither an
 omitted child list nor `null` can remove a parent limit. Role ceilings select the read definition when write authority
@@ -1055,7 +1055,7 @@ Git behavior.
 | Agent/Pi bridge              | `session-prompt.test.js`, `session-subscribers.test.js`, `agent-switching.test.js`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
 | Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
 | Plan persistence and state   | `plan-store.test.js`, `plan-lifecycle.test.js`, `src/ui/review/plan-review.test.js`, `plan-written.test.js`                           | Front matter, hierarchy, identity, locks, transition matrix, readiness and submission outcomes  |
-| Execution and validation     | `workflow.test.js`, `validation.test.js`, `git-snapshot.test.js`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
+| Execution and validation     | `workflow.test.js`, `validation.test.js`, `git-snapshot.test.ts`                                                                      | Worktree setup, completion gate, CI/review/repair/merge paths, lifecycle evidence               |
 | Git worktrees                | `worktree.test.js`, `worktree-registry.test.js`, `git.test.js`                                                                        | Real/temp Git operations, branch targets, merge safety, recovery metadata, non-Git behavior     |
 | Configuration and policy     | `settings.test.js`, `model-registry.test.js`, `model-validation.test.js`, `runtime-preflight.test.js`, `session-tools-policy.test.js` | Layering, migration, locking, model discovery, protected-tool and binary policy                 |
 | Collaboration primitives     | Tests under `src/shared/collaboration/`                                                                                               | Crypto, capabilities, protocol normalization, locks, secrets, client behavior                   |

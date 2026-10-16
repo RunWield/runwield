@@ -7,8 +7,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { loadPlan, savePlan } from "../plan-store.js";
 import {
     appendEpicManualQaSection,

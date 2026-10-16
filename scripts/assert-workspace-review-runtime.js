@@ -7,7 +7,8 @@ import process from "node:process";
  * a missing-assets or fallback page in standalone binaries.
  */
 
-import { dirname, extname, join, resolve, toFileUrl } from "@std/path";
+import { dirname, extname, join, resolve } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { collectNestedReviewAssetUrls, collectReviewAssetUrls } from "./release-check.js";
 
 const DEFAULT_RUNTIME_ENTRY = "dist/workspace-runtime/server.mjs";

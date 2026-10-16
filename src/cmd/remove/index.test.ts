@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import {
     mkdir as fsMkdir,
@@ -11,8 +12,8 @@ import { tmpdir } from "node:os";
 import { getCwd } from "../../constants.js";
 import process from "node:process";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { __resetSettingsForTests, getSettingsDir, getSettingsManager } from "../../shared/settings.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { discoverAndRegisterThemes, getAvailableThemes, initRunWieldTheme, setTheme } from "../../ui/theme/theme.js";

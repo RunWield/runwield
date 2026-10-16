@@ -7,7 +7,7 @@ import {
     listDiffFiles,
     parseDiffFiles,
 } from "./review-diff-tool.js";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { __resetSettingsForTests } from "../settings.js";
 

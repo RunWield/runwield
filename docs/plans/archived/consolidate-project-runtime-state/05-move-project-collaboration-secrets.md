@@ -138,7 +138,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 Run through the safe test runner, never `deno test` directly:
 
 ```sh
-deno run -A scripts/run-tests.js src/shared/collaboration/secrets.test.js src/cmd/plans/collaboration-commands.integration.test.ts src/shared/project-runtime-layout.test.ts src/shared/runwield-owned-paths.test.js src/shared/settings.test.js
+deno run -A scripts/run-tests.js src/shared/collaboration/secrets.test.js src/cmd/plans/collaboration-commands.integration.test.ts src/shared/project-runtime-layout.test.ts src/shared/runwield-owned-paths.test.ts src/shared/settings.test.js
 deno task seams:check
 deno task ci
 ```

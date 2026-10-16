@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertArrayIncludes, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertArrayIncludes, assertStringIncludes } from "../../testing/assertions.ts";
 import cymbalExtension from "./index.ts";
 
 /**

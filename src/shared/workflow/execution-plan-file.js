@@ -4,7 +4,7 @@ import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile } from "node
  * Materialize and verify canonical Plan files inside execution worktrees.
  */
 
-import { dirname, join, relative, SEPARATOR } from "@std/path";
+import { dirname, join, relative, sep as SEPARATOR } from "node:path";
 import {
     atomicWriteTextFileIfAbsent,
     getPlanRevisionForText,

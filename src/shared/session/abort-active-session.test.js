@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 /**
@@ -6,7 +7,6 @@ import { test } from "node:test";
  * only streaming roots and transient sub-agents owned by the target HostedSession.
  */
 
-import { assertEquals } from "@std/assert";
 import { abortActiveSession } from "./session.js";
 import { HostedSession } from "./hosted-session.js";
 

@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import type { RuntimeInteractionRequest } from "../shared/session/session-runtime-interactions.js";
 import { formatInterviewQuestion, parseInterviewReply } from "./interview-chat.ts";
 

@@ -54,7 +54,7 @@ Source:
   [`custom Agent`](../../src/shared/session/backends/agy-cli/custom-agent.ts), and
   [`MCP setup`](../../src/shared/session/backends/agy-cli/mcp-setup.ts).
 - Installed Pi package: `dist/core/sdk.js`, `dist/providers/openai-codex.js`, `dist/api/openai-codex-responses.js`, and
-  `dist/auth/oauth/openai-codex.js`. Dependency range is recorded in [`deno.json`](../../deno.json); these package
+  `dist/auth/oauth/openai-codex.js`. Dependency range is recorded in [the historical Deno manifest](https://github.com/gandazgul/runwield/blob/9d4bb0374/deno.json); these package
   internals are not a stable RunWield API promise.
 
 Official provider documentation confirms that remote browser login is not the same as keeping credentials local:

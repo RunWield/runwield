@@ -6,7 +6,7 @@ import { inspectProjectDirectory, requireDirectoryConfirmation } from "../projec
 
 import { readdirSync, realpathSync, statSync } from "node:fs";
 import { deleteProjectRegistration } from "./project-removal.ts";
-import { basename, isAbsolute, resolve } from "@std/path";
+import { basename, isAbsolute, resolve } from "node:path";
 
 /**
  * @typedef {'enabled' | 'disabled' | 'removed'} ProjectLifecycle

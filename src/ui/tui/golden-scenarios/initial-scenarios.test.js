@@ -10,7 +10,8 @@ import {
     stat as fsStat,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../../testing/assertions.ts";
 import {
     escapeCancellationScenario,
     fauxProviderProtocolScenario,
@@ -149,7 +150,7 @@ test("golden scenario child process runs with isolated environment before scenar
 });
 
 test("golden composition cleans up partial startup failure", async () => {
-    const { join } = await import("@std/path");
+    const { join } = await import("node:path");
     const { withProcessGlobalTestLock } = await import("../../../testing/process-global-lock.ts");
     await withProcessGlobalTestLock(async () => {
         const previousHome = process.env["HOME"];

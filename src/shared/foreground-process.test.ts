@@ -1,4 +1,5 @@
-import { assert, assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
 import { isMissingExecutableError, spawnForegroundProcess, spawnForegroundShell } from "./foreground-process.ts";
 import { getCwd } from "../constants.js";
 
@@ -8,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execPath, kill, platform, versions } from "node:process";
+import { execPath, kill, platform } from "node:process";
 
 const IS_WINDOWS = platform === "win32";
 async function makeTempFile(prefix: string): Promise<string> {
@@ -20,7 +21,7 @@ async function makeTempFile(prefix: string): Promise<string> {
 test("spawnForegroundProcess exposes interactive stdin until its owner closes it", async () => {
     const process = spawnForegroundProcess({
         command: execPath,
-        args: [versions.deno ? "eval" : "--eval", 'import { stdin, stdout } from "node:process"; stdin.pipe(stdout);'],
+        args: ["--eval", 'import { stdin, stdout } from "node:process"; stdin.pipe(stdout);'],
         cwd: getCwd(),
         stdin: "piped",
     });
@@ -182,7 +183,7 @@ test(
         try {
             const process = spawnForegroundProcess({
                 command: execPath,
-                args: [...(versions.deno ? ["run", "-A"] : []), script, `literal; touch ${marker}`],
+                args: [...[], script, `literal; touch ${marker}`],
                 cwd,
             });
             const [outcome, stdout, stderr] = await Promise.all([
@@ -373,6 +374,60 @@ test("spawnForegroundShell observes an abort immediately after spawn returns", {
 });
 
 test(
+    "macOS Stop closes inherited pipes when cancellation races a shell fork",
+    { skip: platform !== "darwin", timeout: 60_000 },
+    async () => {
+        for (let attempt = 0; attempt < 400; attempt++) {
+            const controller = new AbortController();
+            const shell = spawnForegroundShell({
+                command: "sleep 5; printf late",
+                cwd: getCwd(),
+                signal: controller.signal,
+            });
+            const drained = Promise.all([shell.done, readAll(shell.stdout), readAll(shell.stderr)]);
+            // Cover the shell's fork/exec window, not only an established descendant.
+            await new Promise((resolve) => setTimeout(resolve, attempt % 10));
+            controller.abort();
+            let deadline: ReturnType<typeof setTimeout> | undefined;
+            let closed = false;
+            try {
+                const result = await Promise.race([
+                    drained,
+                    new Promise<never>((_resolve, reject) => {
+                        deadline = setTimeout(
+                            () => reject(new Error(`Stop left a descendant holding a pipe on attempt ${attempt}`)),
+                            3_000,
+                        );
+                    }),
+                ]);
+                closed = true;
+                assertEquals(result, [{ exitCode: null, terminatedBy: "abort" }, "", ""]);
+            } finally {
+                clearTimeout(deadline);
+                if (!closed && shell.pid) {
+                    // Independent cleanup also works when the implementation left a stopped descendant.
+                    try {
+                        kill(-shell.pid, "SIGKILL");
+                    } catch {
+                        /* The group already exited. */
+                    }
+                }
+                try {
+                    await Promise.race([
+                        drained,
+                        new Promise<void>((resolve) => {
+                            deadline = setTimeout(resolve, 2_000);
+                        }),
+                    ]);
+                } finally {
+                    clearTimeout(deadline);
+                }
+            }
+        }
+    },
+);
+
+test(
     "spawnForegroundShell timeout kills the whole descendant tree and stays distinguishable from abort",
     {
         skip: IS_WINDOWS,
@@ -442,14 +497,14 @@ test("spawnForegroundShell on Windows abort kills a real descendant tree", { ski
         wrapper,
         `import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
-const child = spawn(process.execPath, [process.versions.deno ? "eval" : "--eval", "setInterval(() => {}, 1000)"], { stdio: "inherit" });
+const child = spawn(process.execPath, ["--eval", "setInterval(() => {}, 1000)"], { stdio: "inherit" });
 writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
 child.on("error", (error) => { console.error(error); process.exitCode = 1; });
 child.on("exit", (code) => { process.exitCode = code || 0; });
 `,
     );
     const abortController = new AbortController();
-    const command = `"${execPath}" ${versions.deno ? "run -A" : "run"} "${wrapper}"`;
+    const command = `"${execPath}" ${"run"} "${wrapper}"`;
     const shell = spawnForegroundShell({
         command,
         cwd: getCwd(),
@@ -504,10 +559,7 @@ test("foreground stdin preserves a large payload across pipe backpressure and EO
     const payload = "input π\n".repeat(262144);
     const child = spawnForegroundProcess({
         command: execPath,
-        args: [
-            versions.deno ? "eval" : "--eval",
-            'import { stdin, stdout } from "node:process"; setTimeout(() => stdin.pipe(stdout), 50);',
-        ],
+        args: ["--eval", 'import { stdin, stdout } from "node:process"; setTimeout(() => stdin.pipe(stdout), 50);'],
         cwd: getCwd(),
         stdinText: payload,
         timeoutMs: 10_000,
@@ -528,7 +580,7 @@ test("foreground command receives its explicit cwd and environment", async () =>
         const child = spawnForegroundProcess({
             command: execPath,
             args: [
-                versions.deno ? "eval" : "--eval",
+                "--eval",
                 'import {cwd,env} from "node:process"; console.log(JSON.stringify({cwd:cwd(),marker:env.WLD_FG_MARKER,inherited:env.HOME}));',
             ],
             cwd,

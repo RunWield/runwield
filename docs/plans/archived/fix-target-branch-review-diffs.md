@@ -189,7 +189,7 @@ autonomous.
 Use only the sandboxed test runner. Extend existing files or add focused tests beside them:
 
 ```sh
-deno run -A scripts/run-tests.js src/shared/workflow/git-snapshot.test.js src/shared/workflow/review-diff-tool.test.js src/shared/workflow/validation-loop-review.test.js src/shared/workflow/validation-loop-human-review.test.js src/shared/workflow/validation-owner.test.ts src/ui/review/review-launcher.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
+deno run -A scripts/run-tests.js src/shared/workflow/git-snapshot.test.ts src/shared/workflow/review-diff-tool.test.js src/shared/workflow/validation-loop-review.test.js src/shared/workflow/validation-loop-human-review.test.js src/shared/workflow/validation-owner.test.ts src/ui/review/review-launcher.test.ts src/ui/workspace/workspace-code-review.integration.test.ts
 deno task ci
 ```
 

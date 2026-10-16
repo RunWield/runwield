@@ -4,7 +4,7 @@ import { getCwd } from "../../constants.js";
  * Export current interactive session to HTML (default) or JSONL.
  */
 
-import { isAbsolute, join } from "@std/path";
+import { isAbsolute, join } from "node:path";
 import type { CommandContext } from "../registry.js";
 
 function sanitizeFilenameSegment(value: string): string {

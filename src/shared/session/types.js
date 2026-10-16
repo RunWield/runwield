@@ -14,6 +14,8 @@
  * @typedef {{ base64: string, mimeType: string, ref?: string, path?: string }} ImageAttachment
  */
 
+/** @typedef {import("../../tools/delegate-agent.ts").DelegationMode} DelegationMode */
+
 /**
  * @typedef {Object} AgentDefinition
  * @property {string} name - Agent name (from frontmatter or filename)
@@ -22,6 +24,7 @@
  * @property {string} description - One-line description from merged frontmatter
  * @property {"quick-fix"|"plan-execution"|"frontend-plan-execution"|"validation-repair"} [contextContract] - Declared execution context contract from merged frontmatter; metadata only, never runtime authority
  * @property {string[]} tools - Allowed tool names from merged frontmatter
+ * @property {DelegationMode[]} [delegationModes] - Modes `delegate_agent` may use; absent allows every mode
  * @property {readonly string[]} [bashAllowedCommands] - Restricted RunWield shell selectors; absent means unrestricted
  * @property {boolean} [workflowOnly] - True when merged frontmatter marks the Agent as workflow-activated only, so it is hidden from `/agent` listings and manual selection
  * @property {readonly string[]} [busyLines] - One or more busy indicator lines from frontmatter; the UI picks one at random when the agent is active; absent falls back to "Working..."

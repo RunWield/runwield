@@ -11,7 +11,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";

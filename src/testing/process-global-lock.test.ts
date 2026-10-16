@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import { stat } from "node:fs/promises";
 import { cwd, pid } from "node:process";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "./assertions.ts";
 import { HEARTBEAT_MS, LOCK_DIR, withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 // Every case here goes through withProcessGlobalTestLock rather than touching

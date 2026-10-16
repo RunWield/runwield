@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { makeTempFile } from "../../testing/temp-file.ts";
 import { test } from "node:test";
@@ -10,8 +11,8 @@ import {
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { addEntry, findById } from "../worktree-registry.js";
 import { createTestWorktreeAttempt, git, makeRepo } from "../worktree-test-helpers.ts";
 import { publicationRootForAttempt } from "./publication-machine.ts";

@@ -1,5 +1,8 @@
 import process from "node:process";
-import { writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
+import {
+    removeExecutableFixtureDirectory,
+    writeRuntimeExecutableFixture,
+} from "../../testing/runtime-executable-fixture.ts";
 import { copyFile, symlink } from "node:fs/promises";
 import {
     chmod as fsChmod,
@@ -7,14 +10,14 @@ import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
     realpath as fsRealpath,
-    rm as fsRm,
     stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join, toFileUrl } from "@std/path";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { sha256Bytes } from "../../../scripts/build-metadata.js";
 import { linuxTarget } from "./runtime.js";
 
@@ -90,7 +93,7 @@ async function fixture(fn) {
         await fsWriteFile(artifact + ".build.json", JSON.stringify(metadata));
         await fn({ root, ssh, artifact, module, metadata });
     } finally {
-        await fsRm(root, { recursive: true });
+        await removeExecutableFixtureDirectory(root);
     }
 }
 

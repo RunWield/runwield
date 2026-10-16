@@ -12,7 +12,7 @@ import { effectiveDeliveryBranch } from "./plan-branch.ts";
 
 import { getDeclaredPlanStatus, planDocumentMarkdown, type PlanFrontMatter } from "../../plan-store.js";
 import { isCommitPublishedToTarget } from "../isolated-publication.ts";
-import { dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
 
 /** Detect Git on disk so a missing/broken Git executable cannot imply non-Git completion. */
 async function hasGitDirectory(projectRoot: string): Promise<boolean> {

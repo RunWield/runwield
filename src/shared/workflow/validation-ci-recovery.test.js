@@ -1,6 +1,6 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 

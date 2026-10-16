@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { Image } from "@earendil-works/pi-tui";
 import { initRunWieldTheme } from "../theme/theme.js";
 import { installKeybindings } from "./keybindings.ts";
