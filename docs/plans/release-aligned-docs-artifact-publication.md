@@ -23,13 +23,13 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/release-aligned-docs-artifact-publication"
-status: "reviewed"
 validatedCommit: "352efe7979e49fea05022306bb3272f4de74a828"
 workRecord:
     status: "generated"
     recordId: "3947320a-8ed1-4533-bd1f-9380fa904ae2"
     path: "docs/work-records/2026-10-16-stable-docs-artifacts-and-safe-release-integration.md"
     lastAttemptAt: "2026-10-16T23:48:52.572Z"
+status: "verified"
 ---
 
 # Release Stable Docs as a Release Artifact
