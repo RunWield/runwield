@@ -1,639 +1,320 @@
-/**
- * @module shared/session/file-session-store
- * File-authoritative Session identity, transcript-segment manifests, and
- * single-writer coordination for every local RunWield runtime.
- */
+import { CURRENT_SESSION_VERSION, migrateSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
+import type { FileEntry, SessionHeader } from "@earendil-works/pi-coding-agent";
+import { dirname, join } from "@std/path";
+import { readSessionImageAttachment, saveImageAttachment } from "./image-attachments.ts";
+import type { ImageAttachment } from "./types.js";
+import { rollSessionTranscriptSegment } from "./segment-rollover.ts";
+import type { FileActivationProof, ProcessKind, TranscriptEvidence } from "./file-session-store-types.ts";
+import {
+    inspectRecoverableSessionTranscript,
+    parseRemoteSessionTranscript,
+    type RemoteSessionRequest,
+    type RemoteSessionResponse,
+    sessionDigest,
+    validateSessionRequest,
+} from "../remote/session-protocol.ts";
 
-import { requireLocalSessionWriter } from "../remote/personal-resources.ts";
-import { resolve } from "@std/path";
-import { createHash } from "node:crypto";
-import { createFileSessionControl } from "./file-session-control.ts";
-import {
-    getRunWieldSessionsBaseDir,
-    listCatalogSafeRootSessionLocators,
-    readCatalogSafeRootSessionLocator,
-} from "./root-session.js";
-import { readLineage, reconstructManifestFromLineage } from "./file-session-lineage.ts";
-import {
-    catalogedSession,
-    catalogLockPath,
-    ensurePrivateDir,
-    ensureProject,
-    FILE_SESSION_STORE_VERSION,
-    FileSessionManifestCache,
-    findProject,
-    isoNow,
-    listManifests,
-    listProjectsFromDisk,
-    lockPath,
-    manifestPath,
-    readJson,
-    recoveryDescriptorPath,
-    rootEvidence,
-    sessionDirForManifestPath,
-    sessionDirForProject,
-    sessionDirForRoot,
-} from "./file-session-storage.ts";
-import type {
-    CatalogedTranscriptLocator,
-    FileSessionManifest,
-    FileSessionStore,
-    HeldFileLock,
-    LocatedSegmentLineage,
-    OpenFileSessionStoreOptions,
-    SessionArtifactReference,
-    SessionTranscriptSegment,
-} from "./file-session-store-types.ts";
+import { type LocalFileSessionStore, openLocalFileSessionStore } from "./file-session-store-local.ts";
+import type { FileSessionStore, OpenFileSessionStoreOptions } from "./file-session-store-types.ts";
 
 export type { FileSessionProject, FileSessionStore } from "./file-session-store-types.ts";
 export { FILE_SESSION_STORE_VERSION } from "./file-session-storage.ts";
 
-/**
- * Open the file-authoritative Session store. The store has no database and no
- * Workspace registration side effects.
- */
-export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}): FileSessionStore {
-    requireLocalSessionWriter();
-    const baseDir = options.baseDir || getRunWieldSessionsBaseDir();
-    ensurePrivateDir(baseDir);
-    const locks = new Map<string, HeldFileLock>();
-    const manifests = new FileSessionManifestCache(baseDir);
+interface RemoteOperation {
+    owner: RemoteSessionOwner;
+    store: FileSessionStore;
+}
+const remoteOperations = new Map<string, RemoteOperation>();
 
-    async function ensureCatalogRecord(
-        locator: import("./file-session-store-types.ts").EnsureSessionCatalogOptions,
-        activationOptions?: import("./file-session-store-types.ts").InitialSessionActivationOptions,
-    ) {
-        const project = findProject(baseDir, locator.projectId);
-        if (!project) throw new Error("Session project is unavailable");
-        const sessionDir = sessionDirForProject(baseDir, project);
-        const safe = await readCatalogSafeRootSessionLocator({
-            cwd: locator.transcriptCwd,
-            sessionDir,
-            sessionPath: locator.transcriptPath,
-        });
-        const catalogLock = Deno.openSync(catalogLockPath(sessionDir, safe.sessionPath), {
-            create: true,
-            read: true,
-            write: true,
-            mode: 0o600,
-        });
-        if (!catalogLock.tryLockSync(true)) {
-            catalogLock.close();
-            throw new Error("Session migration is already running in another RunWield surface");
+/** Resolve only an operation constructed by the native file store in this process. */
+export function getRemoteSessionOwner(operation: string): RemoteSessionOwner {
+    const owner = remoteOperations.get(operation)?.owner;
+    if (!owner) throw new Error("Stale Session operation");
+    return owner;
+}
+
+/** Revoke a trusted registration, releasing native locks even if durable uncertainty cannot be recorded. */
+export function releaseRemoteSessionOperation(operation: string): void {
+    const record = remoteOperations.get(operation);
+    if (!record) return;
+    try {
+        record.owner.markUncertain();
+    } finally {
+        remoteOperations.delete(operation);
+    }
+}
+
+/** Construct the real local store and remote owners together, sharing its native lock context. */
+export function openFileSessionStore(options: OpenFileSessionStoreOptions = {}): FileSessionStore {
+    const local = openLocalFileSessionStore(options);
+    const closeLocal = local.close;
+    const store: FileSessionStore = Object.assign(local, {
+        close() {
+            for (const [operation, record] of remoteOperations) {
+                if (record.store === store) remoteOperations.delete(operation);
+            }
+            closeLocal();
+        },
+        createRemoteSessionOwner(proof: FileActivationProof) {
+            const owner = new RemoteSessionOwner(store, proof);
+            Object.freeze(owner);
+            remoteOperations.set(owner.operation, { owner, store });
+            return owner;
+        },
+        recoverRemoteSession(sessionId: string, ownerInstanceId: string, ownerProcessKind?: ProcessKind) {
+            recoverRemoteSession(store, sessionId, ownerInstanceId, ownerProcessKind);
+        },
+    });
+    return Object.freeze(store);
+}
+
+// Only the store can construct operation owners with its held native locks.
+export type { RemoteSessionOwner };
+
+interface SaveReceipt {
+    payload: string;
+    response: RemoteSessionResponse;
+}
+
+/**
+ * Laptop-only operation owner. Proofs come from trusted local activation, never from HTTP.
+ * A new owner/operation is required after checkpoint or uncertainty; remote state is discarded.
+ */
+class RemoteSessionOwner {
+    readonly operation = crypto.randomUUID();
+    #store: FileSessionStore;
+    #proof: FileActivationProof;
+    #contents: string;
+    #transcriptPath: string;
+    #header: SessionHeader;
+    #next = 0;
+    #receipts = new Map<number, SaveReceipt>();
+    #settled = false;
+    #hydrated = false;
+    #failure: Error | null = null;
+
+    constructor(store: FileSessionStore, proof: FileActivationProof) {
+        this.#store = store;
+        this.#proof = { ...proof };
+        if (proof.phase !== "preparing") throw new Error("Remote Session owner requires preparing phase");
+        this.#contents = store.readActiveSessionTranscript(this.#proof);
+        const segment = store.getCurrentSessionSegment(proof.runwieldSessionId);
+        if (!segment) throw new Error("Session transcript is unavailable");
+        this.#transcriptPath = segment.transcriptPath;
+        if (CURRENT_SESSION_VERSION !== 3) throw new Error("Incompatible Pi Session format");
+        const supplied: FileEntry[] = this.#contents.trimEnd().split("\n").map((line) => JSON.parse(line));
+        const header = supplied[0];
+        if (
+            !header || header.type !== "session" ||
+            (header.version !== undefined && ![1, 2, 3].includes(header.version))
+        ) {
+            throw new Error("Invalid laptop Session header");
         }
-        try {
-            let session = store.findSessionByLocator({ transcriptPath: safe.sessionPath });
-            if (!session && locator.source !== "created") {
-                session = store.findSessionByLocator({ projectId: locator.projectId, piSessionId: safe.piSessionId });
-            }
-            if (!session) {
-                const lineageResult = readLineage(safe.sessionPath);
-                if (lineageResult.kind === "malformed") throw new Error(lineageResult.reason);
-                if (lineageResult.kind === "valid") {
-                    const lineageManifest = manifests.resolve(
-                        lineageResult.lineage.runwieldSessionId,
-                        locator.projectId,
-                    );
-                    if (!lineageManifest) throw new Error("Session lineage exists without a recoverable manifest");
-                    session = catalogedSession(lineageManifest.manifest);
-                } else {
-                    const timestamp = isoNow(locator.now || options.now);
-                    const runwieldSessionId = locator.idFactory ? locator.idFactory() : crypto.randomUUID();
-                    const segmentId = `${runwieldSessionId}-segment-0`;
-                    const segment: SessionTranscriptSegment = {
-                        segmentId,
-                        runwieldSessionId,
-                        projectId: project.projectId,
-                        piSessionId: safe.piSessionId,
-                        transcriptPath: safe.sessionPath,
-                        transcriptCwd: safe.headerCwd,
-                        ordinal: 0,
-                        kind: "planning",
-                        sealedAt: null,
-                        headerVersion: safe.headerVersion,
-                        headerTimestamp: safe.headerTimestamp,
-                        firstCatalogedAt: timestamp,
-                        lastCatalogedAt: timestamp,
-                        lineageParentSegmentId: null,
-                        lineageParentPiSessionId: null,
-                        lineageGroupKey: null,
-                        lineageRecordedAt: null,
-                        sealedByteLength: null,
-                        sealedDigestHex: null,
-                        sealedTerminalEntryId: null,
-                    };
-                    const manifest: FileSessionManifest = {
-                        version: FILE_SESSION_STORE_VERSION,
-                        runwieldSessionId,
-                        projectId: project.projectId,
-                        transcriptCwd: safe.headerCwd,
-                        displayName: null,
-                        source: locator.source || "catalog",
-                        createdAt: timestamp,
-                        updatedAt: timestamp,
-                        currentSegmentId: segmentId,
-                        fence: 0,
-                        activation: {
-                            state: "uninitialized",
-                            phase: null,
-                            ownerInstanceId: null,
-                            ownerProcessKind: null,
-                            operationId: null,
-                            expectedGeneration: null,
-                            expectedCurrentSegmentId: null,
-                            acquiredAt: null,
-                            blockedReason: null,
-                            baselineByteLength: null,
-                            baselineDigestHex: null,
-                        },
-                        generation: null,
-                        segments: [segment],
-                        artifacts: [],
-                    };
-                    manifests.write(manifest, manifestPath(sessionDir, runwieldSessionId));
-                    session = catalogedSession(manifest);
-                }
-            }
-            if (!activationOptions) return { session, segment: null, proof: null };
-            const segment = store.getCurrentSessionSegment(session.runwieldSessionId);
-            if (!segment) throw new Error("The Session transcript could not be prepared");
-            const proof = store.acquireSessionActivation({
-                ...activationOptions,
-                runwieldSessionId: session.runwieldSessionId,
-                projectId: session.projectId,
-                expectedGeneration: null,
-                expectedCurrentSegmentId: segment.segmentId,
-            });
-            return { session, segment, proof };
-        } finally {
-            catalogLock.unlockSync();
-            catalogLock.close();
+        const before = JSON.stringify(supplied);
+        migrateSessionEntries(supplied);
+        const migrated = supplied.map((entry) => `${JSON.stringify(entry)}\n`).join("");
+        const entries = parseRemoteSessionTranscript(migrated);
+        if (before !== JSON.stringify(supplied)) {
+            this.#proof = store.migrateActiveSessionTranscript(this.#proof, migrated, sessionDigest(this.#contents));
+            this.#contents = migrated;
+        }
+        this.#header = entries[0] as SessionHeader;
+        const manager = SessionManager.inMemory(this.#header.cwd, undefined, structuredClone(entries));
+        if (JSON.stringify([manager.getHeader(), ...manager.getEntries()]) !== JSON.stringify(entries)) {
+            throw new Error("Incompatible Pi Session hydration contract");
         }
     }
 
-    const store: FileSessionStore = {
-        path: baseDir,
-        close() {
-            for (const [operationId, held] of locks) {
-                locks.delete(operationId);
-                try {
-                    held.file.unlockSync();
-                } catch {
-                    // Closing still releases the operating-system lock.
-                }
-                held.file.close();
-            }
-        },
-        ensureRuntimeProject(projectOptions) {
-            const project = ensureProject(
-                baseDir,
-                projectOptions.root,
-                projectOptions.now || options.now,
-                projectOptions.idFactory,
-            );
-            manifests.rememberProject(project);
-            return project;
-        },
-        listSessionProjects() {
-            // Remote locators are storage records, not laptop runtime Projects.
-            return listProjectsFromDisk(baseDir).filter((project) => !project.remote);
-        },
-        listProjects() {
-            return store.listSessionProjects();
-        },
-        getProjectById(projectId) {
-            const project = findProject(baseDir, projectId);
-            if (!project || project.remote) return null;
-            manifests.rememberProject(project);
-            return project;
-        },
-        listProjectRootEvidence(projectId) {
-            const project = store.getProjectById(projectId);
-            return project ? rootEvidence(project) : [];
-        },
-        requireSessionProjectRoot(projectId) {
-            const project = store.getProjectById(projectId);
-            if (!project) throw new Error("Session project is unavailable");
-            const stat = Deno.statSync(project.registeredRoot);
-            if (!stat.isDirectory) throw new Error("Session project root is unavailable");
-            return project.registeredRoot;
-        },
-        findSessionByLocator(locator) {
-            if (locator.transcriptPath) {
-                const found = manifests.findByTranscriptPath(locator.transcriptPath);
-                if (!found || !store.getProjectById(found.manifest.projectId)) return null;
-                const segment = found.manifest.segments.find((candidate) =>
-                    resolve(candidate.transcriptPath) === resolve(String(locator.transcriptPath))
-                );
-                if (!segment) return null;
-                if (locator.projectId && found.manifest.projectId !== locator.projectId) return null;
-                if (locator.piSessionId && segment.piSessionId !== locator.piSessionId) return null;
-                return catalogedSession(found.manifest);
-            }
-            const projects = store.listSessionProjects()
-                .filter((project) => !locator.projectId || project.projectId === locator.projectId);
-            for (const project of projects) {
-                for (const item of listManifests(sessionDirForProject(baseDir, project))) {
-                    manifests.rememberProject(project);
-                    manifests.remember(item.path, item.manifest);
-                    const segment = item.manifest.segments.find((candidate) =>
-                        candidate.piSessionId === locator.piSessionId
-                    );
-                    if (segment) return catalogedSession(item.manifest);
-                }
-            }
-            return null;
-        },
-        getSessionById(runwieldSessionId, projectId) {
-            const found = manifests.resolve(runwieldSessionId, projectId);
-            return found && store.getProjectById(found.manifest.projectId) ? catalogedSession(found.manifest) : null;
-        },
-        async ensureSessionCatalogRecord(locator) {
-            return (await ensureCatalogRecord(locator)).session;
-        },
-        async ensureSessionCatalogRecordAndAcquire(options) {
-            const result = await ensureCatalogRecord(options.locator, options.activation);
-            if (!result.segment || !result.proof) throw new Error("The Session writer lock could not be acquired");
-            return { session: result.session, segment: result.segment, proof: result.proof };
-        },
-        async listProjectSessions(projectId, sessionOptions = {}) {
-            const project = store.getProjectById(projectId);
-            if (!project) {
-                return {
-                    sessions: [],
-                    diagnostics: [],
-                    page: 0,
-                    pageSize: 30,
-                    total: 0,
-                    hasNext: false,
-                    hasPrevious: false,
-                };
-            }
-            const sessionDir = sessionDirForProject(baseDir, project);
-            const diagnostics: Array<{ sessionPath: string; code: string; message: string }> = [];
-            if (sessionOptions.catalog !== false) {
-                const { locators, diagnostics: locatorDiagnostics } = await listCatalogSafeRootSessionLocators(
-                    project.registeredRoot,
-                    { sessionDir },
-                );
-                diagnostics.push(...locatorDiagnostics);
+    inspect(): RemoteSessionResponse {
+        const contents = this.#settled
+            ? Deno.readTextFileSync(this.#transcriptPath)
+            : this.#store.readActiveSessionTranscript(this.#proof);
+        const entries = parseRemoteSessionTranscript(contents);
+        const last = entries.at(-1);
+        return {
+            operation: this.operation,
+            sequence: this.#next,
+            contents,
+            evidence: {
+                byteLength: new TextEncoder().encode(contents).length,
+                digestHex: sessionDigest(contents),
+                terminalEntryId: last?.type === "session" ? null : last?.id ?? null,
+            },
+        };
+    }
 
-                const lineageGroups = new Map<string, LocatedSegmentLineage[]>();
-                const locatorsByPiSessionId = new Map<string, CatalogedTranscriptLocator>();
-                for (const locator of locators) locatorsByPiSessionId.set(locator.piSessionId, locator);
-                const malformedLineagePaths = new Set<string>();
-                for (const locator of locators) {
-                    const lineageResult = readLineage(locator.sessionPath);
-                    if (lineageResult.kind === "malformed") {
-                        malformedLineagePaths.add(locator.sessionPath);
-                        diagnostics.push({
-                            sessionPath: locator.sessionPath,
-                            code: "lineage_recovery_blocked",
-                            message: lineageResult.reason,
-                        });
-                        continue;
-                    }
-                    if (lineageResult.kind === "absent") continue;
-                    const lineage = lineageResult.lineage;
-                    const group = lineageGroups.get(lineage.runwieldSessionId) || [];
-                    group.push({ locator, lineage });
-                    lineageGroups.set(lineage.runwieldSessionId, group);
-                }
-                for (const [runwieldSessionId, group] of lineageGroups) {
-                    if (manifests.resolve(runwieldSessionId, projectId)) continue;
-                    const representedPiIds = new Set(group.map((item) => item.locator.piSessionId));
-                    for (const item of [...group]) {
-                        const parentPiSessionId = item.lineage.parentPiSessionId;
-                        const parentSegmentId = item.lineage.parentSegmentId;
-                        if (!parentPiSessionId || !parentSegmentId || representedPiIds.has(parentPiSessionId)) continue;
-                        const parentLocator = locatorsByPiSessionId.get(parentPiSessionId);
-                        if (!parentLocator) continue;
-                        const parentLineage = readLineage(parentLocator.sessionPath);
-                        if (parentLineage.kind === "malformed") {
-                            malformedLineagePaths.add(parentLocator.sessionPath);
-                            continue;
-                        }
-                        if (parentLineage.kind === "valid") continue;
-                        group.push({
-                            locator: parentLocator,
-                            lineage: {
-                                runwieldSessionId,
-                                segmentId: parentSegmentId,
-                                parentSegmentId: null,
-                                parentPiSessionId: null,
-                                lineageGroupKey: item.lineage.lineageGroupKey,
-                                kind: "planning",
-                            },
-                        });
-                        representedPiIds.add(parentPiSessionId);
-                    }
-                    const recovered = reconstructManifestFromLineage(project, group, sessionOptions.now || options.now);
-                    if (recovered) {
-                        manifests.write(recovered, manifestPath(sessionDir, runwieldSessionId));
-                    } else {
-                        for (const item of group) {
-                            diagnostics.push({
-                                sessionPath: item.locator.sessionPath,
-                                code: "lineage_recovery_blocked",
-                                message: "This Session's transcript segments could not be ordered safely.",
-                            });
-                        }
-                    }
-                }
-                for (const locator of locators) {
-                    if (malformedLineagePaths.has(locator.sessionPath)) continue;
-                    const lineageResult = readLineage(locator.sessionPath);
-                    if (lineageResult.kind === "malformed") continue;
-                    if (
-                        lineageResult.kind === "valid" &&
-                        !manifests.resolve(lineageResult.lineage.runwieldSessionId, projectId)
-                    ) continue;
-                    try {
-                        await store.ensureSessionCatalogRecord({
-                            projectId,
-                            piSessionId: locator.piSessionId,
-                            transcriptPath: locator.sessionPath,
-                            transcriptCwd: locator.headerCwd,
-                            headerVersion: locator.headerVersion,
-                            headerTimestamp: locator.headerTimestamp,
-                            source: "catalog",
-                            idFactory: sessionOptions.idFactory,
-                            now: sessionOptions.now,
-                        });
-                    } catch (error) {
-                        diagnostics.push({
-                            sessionPath: locator.sessionPath,
-                            code: "catalog_failed",
-                            message: error instanceof Error ? error.message : String(error),
-                        });
-                    }
-                }
+    /** Execute in HTTP arrival order. This synchronous method cannot interleave two admissions. */
+    handle(input: RemoteSessionRequest): RemoteSessionResponse {
+        validateSessionRequest(input);
+        if (input.operation !== this.operation || this.#settled) throw new Error("Stale Session operation");
+        if (this.#failure) throw this.#failure;
+        // Reassert both native-lock ownership and server-owned proof even for retries.
+        const current = this.#store.readActiveSessionTranscript(this.#proof);
+        if (current !== this.#contents) throw new Error("Session transcript evidence changed");
+        const payload = JSON.stringify(input);
+        const prior = this.#receipts.get(input.sequence);
+        if (prior) {
+            if (prior.payload !== payload) throw new Error("Conflicting Session request identity");
+            return structuredClone(prior.response);
+        }
+        if (input.sequence !== this.#next) throw new Error("Out-of-order Session request");
+        if (!this.#hydrated && input.kind !== "hydrate" && input.kind !== "uncertain") {
+            throw new Error("Remote Session has not been hydrated");
+        }
+        let contents = current;
+        let attachment = "";
+        if (input.kind === "hydrate") {
+            if (this.#hydrated) throw new Error("Remote Session is already hydrated");
+        } else if (input.kind === "append" || input.kind === "rewrite") {
+            contents = input.kind === "append" ? current + input.contents : input.contents;
+            const entries = parseRemoteSessionTranscript(contents);
+            if (JSON.stringify(entries[0]) !== JSON.stringify(this.#header)) throw new Error("Session header changed");
+            if (input.kind === "append" && input.contents.trimEnd().split("\n").length !== 1) {
+                throw new Error("Session append must contain exactly one entry");
             }
-            const requestedPage = sessionOptions.page;
-            const page: number =
-                typeof requestedPage === "number" && Number.isInteger(requestedPage) && requestedPage >= 0
-                    ? requestedPage
-                    : 0;
-            const requestedPageSize = sessionOptions.pageSize;
-            const pageSize: number = typeof requestedPageSize === "number" &&
-                    Number.isInteger(requestedPageSize) && requestedPageSize > 0
-                ? Math.min(requestedPageSize, 100)
-                : 30;
-            const listedManifests = listManifests(sessionDir);
-            for (const item of listedManifests) manifests.remember(item.path, item.manifest);
-            const sessions = listedManifests
-                .map((item) => catalogedSession(item.manifest))
-                .filter((session) =>
-                    sessionOptions.archiveState === "all" ||
-                    (sessionOptions.archiveState === "archived" ? Boolean(session.archivedAt) : !session.archivedAt)
-                )
-                .sort((left, right) =>
-                    Date.parse(right.headerTimestamp || "") - Date.parse(left.headerTimestamp || "") ||
-                    right.runwieldSessionId.localeCompare(left.runwieldSessionId)
-                );
-            const start = page * pageSize;
-            return {
-                sessions: sessionOptions.all ? sessions : sessions.slice(start, start + pageSize),
-                diagnostics,
-                page,
-                pageSize,
-                total: sessions.length,
-                hasNext: start + pageSize < sessions.length,
-                hasPrevious: page > 0 && start < sessions.length,
-            };
-        },
-        async catalogProjectSessions(projectId, sessionOptions = {}) {
-            const result = await store.listProjectSessions(projectId, { ...sessionOptions, catalog: true });
-            return { cataloged: result.sessions, diagnostics: result.diagnostics };
-        },
-        listSessionTranscriptSegments(runwieldSessionId) {
-            const found = manifests.resolve(runwieldSessionId);
-            return found ? found.manifest.segments.map((segment) => ({ ...segment })) : [];
-        },
-        listSessionArtifacts(runwieldSessionId, projectId) {
-            const found = manifests.resolve(runwieldSessionId, projectId);
-            if (!found) return [];
-            return (found.manifest.artifacts || []).map((artifact: SessionArtifactReference) => ({ ...artifact }));
-        },
-        listSessionPlanAssociations(runwieldSessionId, projectId) {
-            const found = manifests.resolve(runwieldSessionId, projectId);
-            if (!found) return [];
-            return (found.manifest.planAssociations || [])
-                .filter((association) => association.committedGeneration !== null)
-                .map((association) => ({ ...association }));
-        },
-        getLastPlanReview(runwieldSessionId, projectId) {
-            const found = manifests.resolve(runwieldSessionId, projectId);
-            return found?.manifest.lastPlanReview ? { ...found.manifest.lastPlanReview } : null;
-        },
-        getCurrentSessionSegment(runwieldSessionId) {
-            const found = manifests.resolve(runwieldSessionId);
-            if (!found) return null;
-            return found.manifest.segments.find((segment) => segment.segmentId === found.manifest.currentSegmentId) ||
-                null;
-        },
-        async appendSessionTranscriptSegment(segmentOptions) {
-            const found = manifests.resolve(segmentOptions.runwieldSessionId, segmentOptions.projectId);
-            if (!found) throw new Error("Session identity is unavailable");
-            const safe = await store.validateSuccessorSegmentLocator({
-                ...segmentOptions,
-                projectId: found.manifest.projectId,
-            });
-            const sessionDir = sessionDirForManifestPath(found.path);
-            const file = Deno.openSync(lockPath(sessionDir, found.manifest.runwieldSessionId), {
-                create: true,
-                read: true,
-                write: true,
-                mode: 0o600,
-            });
-            if (!file.tryLockSync(true)) {
-                file.close();
-                throw new Error("Session is open in another RunWield surface");
+            if (input.kind === "rewrite" && contents !== current) {
+                // Pi 1.0.0 uses append-only context edits; uncaptured history replacement fails closed.
+                throw new Error("Remote Session history replacement requires a laptop lifecycle operation");
             }
-            try {
-                const manifest = readJson<FileSessionManifest>(found.path);
-                const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
-                if (!current?.sealedAt) throw new Error("Current segment is still writable");
-                const now = isoNow(segmentOptions.now || options.now);
-                const successor: SessionTranscriptSegment = {
-                    segmentId: segmentOptions.idFactory ? segmentOptions.idFactory() : crypto.randomUUID(),
-                    runwieldSessionId: manifest.runwieldSessionId,
-                    projectId: manifest.projectId,
-                    piSessionId: safe.piSessionId,
-                    transcriptPath: safe.sessionPath,
-                    transcriptCwd: safe.headerCwd,
-                    ordinal: manifest.segments.length,
-                    kind: segmentOptions.kind,
-                    sealedAt: null,
-                    headerVersion: safe.headerVersion,
-                    headerTimestamp: safe.headerTimestamp,
-                    firstCatalogedAt: now,
-                    lastCatalogedAt: now,
-                    lineageParentSegmentId: segmentOptions.lineageParentSegmentId ?? null,
-                    lineageParentPiSessionId: segmentOptions.lineageParentPiSessionId ?? null,
-                    lineageGroupKey: segmentOptions.lineageGroupKey ?? null,
-                    lineageRecordedAt: now,
-                    sealedByteLength: null,
-                    sealedDigestHex: null,
-                    sealedTerminalEntryId: null,
-                };
-                manifest.segments.push(successor);
-                manifest.currentSegmentId = successor.segmentId;
-                manifests.write(manifest, found.path);
-                return successor;
-            } finally {
-                file.unlockSync();
-                file.close();
-            }
-        },
-        sealSessionTranscriptSegment(sealOptions) {
-            const found = manifests.resolve(sealOptions.runwieldSessionId);
-            if (!found) throw new Error("Session identity is unavailable");
-            const sessionDir = sessionDirForManifestPath(found.path);
-            const file = Deno.openSync(lockPath(sessionDir, found.manifest.runwieldSessionId), {
-                create: true,
-                read: true,
-                write: true,
-                mode: 0o600,
-            });
-            if (!file.tryLockSync(true)) {
-                file.close();
-                throw new Error("Session is open in another RunWield surface");
-            }
-            try {
-                const manifest = readJson<FileSessionManifest>(found.path);
-                const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
-                if (!current || current.segmentId !== sealOptions.segmentId || current.sealedAt) {
-                    throw new Error("Segment is not current");
-                }
-                const evidence = sealOptions.evidence;
-                if (!evidence) throw new Error("Sealed segment evidence is required");
-                const bytes = Deno.readFileSync(current.transcriptPath);
+        }
+        let evidence: TranscriptEvidence;
+        try {
+            if (input.kind === "attachment") {
+                const image: ImageAttachment = JSON.parse(input.contents);
                 if (
-                    bytes.byteLength !== evidence.byteLength ||
-                    createHash("sha256").update(bytes).digest("hex") !== evidence.digestHex
+                    !image || Object.keys(image).sort().join(",") !== "base64,mimeType" ||
+                    typeof image.base64 !== "string" || typeof image.mimeType !== "string"
                 ) {
-                    throw new Error("Sealed segment evidence does not match transcript");
+                    throw new Error("Invalid Session attachment");
                 }
-                const now = isoNow(sealOptions.now || options.now);
-                current.sealedAt = now;
-                current.sealedByteLength = evidence.byteLength;
-                current.sealedDigestHex = evidence.digestHex;
-                current.sealedTerminalEntryId = evidence.terminalEntryId ?? null;
-                current.lastCatalogedAt = now;
-                manifests.write(manifest, found.path);
-                return { ...current };
-            } finally {
-                file.unlockSync();
-                file.close();
+                const segment = this.#store.getCurrentSessionSegment(this.#proof.runwieldSessionId);
+                if (!segment) throw new Error("Session segment is unavailable");
+                const saved = saveImageAttachment(
+                    image,
+                    join(dirname(segment.transcriptPath), `${this.#header.id}_images`),
+                );
+                attachment = JSON.stringify({ base64: saved.base64, mimeType: saved.mimeType, ref: saved.ref });
+            } else if (input.kind === "attachment-read") {
+                attachment = JSON.stringify(readSessionImageAttachment(
+                    input.contents,
+                    join(dirname(this.#transcriptPath), `${this.#header.id}_images`),
+                ));
             }
-        },
-        async findOrphanRolloverCandidates(orphanOptions) {
-            const known = new Set(
-                store.listSessionTranscriptSegments(orphanOptions.runwieldSessionId).map((segment) =>
-                    resolve(segment.transcriptPath)
-                ),
-            );
-            const found = manifests.resolve(orphanOptions.runwieldSessionId, orphanOptions.projectId);
-            if (!found) return [];
-            const sessionDir = sessionDirForManifestPath(found.path);
-            const { locators } = await listCatalogSafeRootSessionLocators(orphanOptions.transcriptCwd, { sessionDir });
-            const candidates = [];
-            for (const locator of locators) {
-                if (known.has(resolve(locator.sessionPath))) continue;
-                const lineageResult = readLineage(locator.sessionPath);
-                const parentSegmentId = lineageResult.kind === "valid" ? lineageResult.lineage.parentSegmentId : null;
-                if (
-                    lineageResult.kind !== "valid" ||
-                    lineageResult.lineage.runwieldSessionId !== orphanOptions.runwieldSessionId ||
-                    !parentSegmentId
-                ) continue;
-                const lineage = lineageResult.lineage;
-                candidates.push({
-                    runwieldSessionId: orphanOptions.runwieldSessionId,
-                    projectId: orphanOptions.projectId,
-                    transcriptPath: resolve(locator.sessionPath),
-                    transcriptCwd: locator.headerCwd,
-                    piSessionId: locator.piSessionId,
-                    parentSegmentId,
-                    parentPiSessionId: lineage.parentPiSessionId ?? null,
-                    lineageGroupKey: lineage.lineageGroupKey ?? null,
+            evidence = this.#store.writeActiveSessionTranscript(this.#proof, contents, sessionDigest(current));
+        } catch (error) {
+            this.#failure = error instanceof Error ? error : new Error(String(error));
+            throw this.#failure;
+        }
+        this.#contents = contents;
+        try {
+            if (input.kind === "hydrate") {
+                this.#proof = this.#store.changeSessionActivationPhase(this.#proof, "hydrated");
+                this.#hydrated = true;
+            }
+            if (input.kind === "checkpoint") {
+                this.#proof = this.#store.changeSessionActivationPhase(this.#proof, "checkpointing");
+                this.#store.publishGenerationAndRelease(this.#proof, {
+                    ...evidence,
+                    generation: (this.#proof.expectedGeneration ?? -1) + 1,
                 });
+                this.#settled = true;
+                remoteOperations.delete(this.operation);
+            } else if (input.kind === "uncertain") {
+                this.#store.markSessionUncertain(this.#proof, { reason: "remote_save_uncertain" });
+                this.#settled = true;
+                remoteOperations.delete(this.operation);
             }
-            return candidates;
-        },
-        async inspectSegmentRolloverRecovery(rolloverOptions) {
-            const path = rolloverOptions.successorTranscriptPath
-                ? resolve(rolloverOptions.successorTranscriptPath)
-                : null;
-            let successorExists = false;
-            if (path) {
-                try {
-                    await Deno.stat(path);
-                    successorExists = true;
-                } catch (error) {
-                    if (!(error instanceof Deno.errors.NotFound)) throw error;
-                }
-            }
-            if (!path || !successorExists) {
-                return { state: "no_op_retry", transcriptPath: path, segmentId: null, reason: "successor_not_created" };
-            }
-            const committed = store.listSessionTranscriptSegments(rolloverOptions.runwieldSessionId)
-                .find((segment) => resolve(segment.transcriptPath) === path);
-            if (committed) {
-                return {
-                    state: "database_ahead",
-                    transcriptPath: path,
-                    segmentId: committed.segmentId,
-                    reason: "successor_is_in_manifest_without_matching_generation",
-                };
-            }
-            const lineageResult = readLineage(path);
-            return lineageResult.kind === "valid"
-                ? {
-                    state: "recoverable_orphan",
-                    transcriptPath: path,
-                    segmentId: lineageResult.lineage.segmentId,
-                    reason: "orphan_lineage_valid",
-                }
-                : lineageResult.kind === "malformed"
-                ? {
-                    state: "database_ahead",
-                    transcriptPath: path,
-                    segmentId: null,
-                    reason: "orphan_lineage_malformed",
-                }
-                : { state: "removable_orphan", transcriptPath: path, segmentId: null, reason: "orphan_has_no_lineage" };
-        },
-        async discardOrphanRolloverCandidate(orphanOptions) {
-            const path = resolve(orphanOptions.transcriptPath);
-            if (store.findSessionByLocator({ transcriptPath: path })) {
-                throw new Error("Committed Session transcript cannot be discarded");
-            }
-            const lineageResult = readLineage(path);
-            if (
-                lineageResult.kind !== "valid" ||
-                lineageResult.lineage.runwieldSessionId !== orphanOptions.runwieldSessionId
-            ) {
-                throw new Error("Rollover candidate lineage changed");
-            }
-            await Deno.remove(path);
-            try {
-                await Deno.remove(recoveryDescriptorPath(path));
-            } catch (error) {
-                if (!(error instanceof Deno.errors.NotFound)) throw error;
-            }
-        },
-        async validateSuccessorSegmentLocator(locator) {
-            const project = findProject(baseDir, locator.projectId);
-            if (!project) throw new Error("Session project is unavailable");
-            return await readCatalogSafeRootSessionLocator({
-                cwd: locator.transcriptCwd,
-                sessionDir: sessionDirForRoot(baseDir, locator.transcriptCwd),
-                sessionPath: locator.transcriptPath,
-            });
-        },
-        ...createFileSessionControl({ locks, manifests, now: options.now }),
-    };
-    return store;
+        } catch (error) {
+            this.#failure = error instanceof Error ? error : new Error(String(error));
+            throw this.#failure;
+        }
+        const response: RemoteSessionResponse = {
+            operation: this.operation,
+            sequence: input.sequence,
+            contents: ["hydrate", "inspect"].includes(input.kind) ? contents : attachment,
+            evidence,
+        };
+        this.#receipts.set(input.sequence, { payload, response });
+        this.#next++;
+        return structuredClone(response);
+    }
+
+    /** Commit successor lineage under the existing laptop lock, refusing remote saves during handoff. */
+    async rollover(
+        options: Omit<
+            Parameters<typeof rollSessionTranscriptSegment>[0],
+            "ownerCoordinationStore" | "ownerInstanceId" | "ownerProcessKind" | "operationId" | "activeProof"
+        >,
+    ) {
+        if (this.#settled || !this.#hydrated) throw new Error("Remote Session is not active");
+        if (this.#failure) throw this.#failure;
+        if (this.#store.readActiveSessionTranscript(this.#proof) !== this.#contents) {
+            throw new Error("Session transcript evidence changed");
+        }
+        this.#settled = true;
+        remoteOperations.delete(this.operation);
+        return await rollSessionTranscriptSegment({
+            ...options,
+            ownerCoordinationStore: this.#store,
+            ownerInstanceId: this.#proof.ownerInstanceId,
+            ownerProcessKind: this.#proof.ownerProcessKind,
+            activeProof: this.#proof,
+        });
+    }
+
+    checkpoint(): void {
+        this.handle({ operation: this.operation, sequence: this.#next, kind: "checkpoint", contents: "" });
+    }
+
+    /** Trusted laptop lifecycle path. Recovery uses actual digest-based store APIs, with no effect replay. */
+    markUncertain(): void {
+        if (this.#settled) return;
+        this.#store.markSessionUncertain(this.#proof, { reason: "remote_save_uncertain" });
+        this.#settled = true;
+        remoteOperations.delete(this.operation);
+    }
+
+    recoverUncertain(): void {
+        if (!this.#settled) throw new Error("Stop the active remote operation before recovery");
+        recoverRemoteSession(
+            this.#store,
+            this.#proof.runwieldSessionId,
+            this.#proof.ownerInstanceId,
+            this.#proof.ownerProcessKind,
+        );
+    }
 }
+
+/** Recover laptop evidence after a released or abandoned operation, without replaying effects. */
+function recoverRemoteSession(
+    store: LocalFileSessionStore,
+    sessionId: string,
+    ownerInstanceId: string,
+    ownerProcessKind: ProcessKind = "tui",
+): void {
+    const inspected = store.inspectSessionActivation(sessionId);
+    const activation = inspected.activation;
+    if (!activation || !["uncertain", "reconcile_required"].includes(activation.state)) {
+        throw new Error("Session is not awaiting recovery");
+    }
+    const segment = store.getCurrentSessionSegment(sessionId);
+    if (!segment) throw new Error("Session transcript is unavailable");
+    const bytes = Deno.readFileSync(segment.transcriptPath);
+    const recovered = inspectRecoverableSessionTranscript(bytes);
+    store.recoverSessionControl({
+        runwieldSessionId: sessionId,
+        projectId: segment.projectId,
+        expectedFence: activation.fence,
+        expectedGeneration: inspected.generation?.generation ?? null,
+        expectedCurrentSegmentId: activation.currentSegmentId,
+        ownerInstanceId: ownerInstanceId,
+        ownerProcessKind: ownerProcessKind,
+        transcriptEvidence: {
+            byteLength: bytes.length,
+            digestHex: sessionDigest(bytes),
+            terminalEntryId: recovered.terminalEntryId,
+        },
+    });
+}
+
+Object.freeze(RemoteSessionOwner.prototype);

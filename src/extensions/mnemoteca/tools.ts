@@ -5,6 +5,15 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { HelperBinaryExec } from "../helper-binary-exec.ts";
 
+interface MemoryExportHeader {
+    version: number;
+    collection: string;
+    doc_count: number;
+}
+interface MemoryExportDocument {
+    original_document_id: number;
+}
+
 export interface MnemotecaToolHost {
     cwd: string;
     boundCollection?: string;
@@ -172,25 +181,31 @@ export function createMnemotecaTools(host: MnemotecaToolHost): ToolDefinition[] 
         return sections.join("\n\n");
     }
 
-    function memoryIdPattern(id: number): RegExp {
-        return new RegExp(`(^|[^0-9])${id}([^0-9]|$)`);
-    }
-
     async function scopedIdPresence(
         scope: "project" | "global",
         name: string,
         id: number,
         signal?: AbortSignal,
     ): Promise<ScopePresenceResult> {
-        const args = scope === "global"
-            ? ["list", "--global", "--format", "plain", "--limit", "100000"]
-            : ["list", "--name", name, "--format", "plain", "--limit", "100000"];
+        const directory = await Deno.makeTempDir({ prefix: "wld-memory-scope-" });
+        const output = `${directory}/memories.jsonl`;
+        const args = scope === "global" ? ["export", "--global"] : ["export", "--name", name];
         try {
-            const text = await mnemoteca(args, signal);
+            const text = await mnemoteca([...args, "--no-embeddings", "--output", output], signal);
             if (text.trim() === MISSING_BINARY_MSG) return { status: "failure", message: MISSING_BINARY_MSG };
-            return { status: "success", present: memoryIdPattern(id).test(text) };
+            const [first, ...lines] = (await Deno.readTextFile(output)).trimEnd().split("\n");
+            const header: MemoryExportHeader = JSON.parse(first);
+            const documents: MemoryExportDocument[] = lines.map((line) => JSON.parse(line));
+            if (
+                header.version !== 1 || header.collection !== (scope === "global" ? "global" : name) ||
+                header.doc_count !== documents.length ||
+                documents.some((document) => !Number.isSafeInteger(document.original_document_id))
+            ) throw new Error("Invalid scoped Memory export");
+            return { status: "success", present: documents.some((document) => document.original_document_id === id) };
         } catch (error) {
             return { status: "failure", message: error instanceof Error ? error.message : String(error) };
+        } finally {
+            await Deno.remove(directory, { recursive: true });
         }
     }
 

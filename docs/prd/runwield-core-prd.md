@@ -1913,12 +1913,12 @@ deno run -A scripts/release-assets.js development bin/wld bin/wld-linux-x64 bin/
 Use `bin/remote-build/wld-launcher` with its adjacent Linux GNU target files and `.build.json` files. The current remote
 host needs an OpenSSH server that can allocate a terminal and forward loopback ports, `python3`, a writable private
 cache, SSHFS/FUSE for the personal mount, and a runnable glibc-linked Linux x86-64 or ARM64 executable. Git is optional
-for a non-Git directory. Normal runtime startup also requires `mnemoteca`, `cymbal`, and `ketch` on the remote `PATH`,
-with successful `--help` checks. Staging the RunWield executable does not install these helpers. The `sct` pilot used
-authentic, verified helper installations under `/usr/local/bin`. The launcher starts a stock SFTP/SSHFS personal mount
-before opening the normal remote TUI and connects Session operations to the laptop-owned save service. The matching
-compiled macOS/Linux conversation, offline-history, and resume journey passed with an authenticated synthetic provider.
-See the [Remote SSH proposal](remote-ssh-prd.md#remote-connection-and-setup).
+for a non-Git directory. Normal runtime startup requires `cymbal` and `ketch` on the remote `PATH`, with successful
+`--help` checks. Mnemoteca runs on the laptop, not the server. Staging the RunWield executable does not install these
+helpers. The `sct` pilot used authentic, verified helper installations under `/usr/local/bin`. The launcher starts a
+stock SFTP/SSHFS personal mount before opening the normal remote TUI and connects Session operations to the laptop-owned
+save service. The matching compiled macOS/Linux conversation, offline-history, and resume journey passed with an
+authenticated synthetic provider. See the [Remote SSH proposal](remote-ssh-prd.md#remote-connection-and-setup).
 
 **Acceptance scenarios:**
 

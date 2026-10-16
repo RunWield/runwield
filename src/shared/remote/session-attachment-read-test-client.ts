@@ -3,7 +3,7 @@ import { assertEquals } from "@std/assert";
 import { RemoteSessionSaveBridge } from "./session-save-bridge.ts";
 import type { RemoteSessionConnection } from "./session-protocol.ts";
 import { configureRemotePersonalResources } from "./personal-resources.ts";
-import { createRemoteRootSessionManager } from "../session/root-session.js";
+import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.js";
 import { persistImageAttachment, readImageRef, resolveImageRef } from "../session/image-attachments.ts";
 import { createSeeImageTool } from "../../tools/see-image.ts";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
@@ -19,9 +19,10 @@ const input: Input = JSON.parse(await new Response(Deno.stdin.readable).text());
 configureRemotePersonalResources({ globalRoot: input.mount });
 // No mounted data or root remains available for attachment reads.
 Deno.removeSync(input.mount, { recursive: true });
-const bridge = new RemoteSessionSaveBridge(input.connection);
+let bridge: RemoteSessionSaveBridge | undefined;
 try {
-    const manager = await createRemoteRootSessionManager(input.cwd, bridge);
+    const manager = await createRemoteRootSessionManager(input.cwd, input.connection);
+    bridge = getRemoteSessionSaveBridge(manager)!;
     if (input.mode === "fault") {
         let failed = false;
         try {
@@ -97,5 +98,5 @@ try {
         console.log(JSON.stringify({ attachment, local, images, pathDenied, file: manager.getSessionFile() ?? null }));
     }
 } finally {
-    bridge.close();
+    bridge?.close();
 }

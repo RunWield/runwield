@@ -155,10 +155,18 @@ Deno.test("memory initializes global storage then adds memory", async () => {
 Deno.test("memory delete checks the requested scope before deleting by id", async () => {
     const { getTool, calls } = setup((_command, args) => {
         if (args[0] === "init") return Promise.resolve({ code: 0, stdout: "", stderr: "" });
-        if (args[0] === "list" && args.includes("--global")) {
-            return Promise.resolve({ code: 0, stdout: "42 global memory", stderr: "" });
+        if (args[0] === "export") {
+            const global = args.includes("--global");
+            Deno.writeTextFileSync(
+                args[args.indexOf("--output") + 1],
+                JSON.stringify({
+                    version: 1,
+                    collection: global ? "global" : args[args.indexOf("--name") + 1],
+                    doc_count: 1,
+                }) + "\n" + JSON.stringify({ original_document_id: global ? 42 : 7 }) + "\n",
+            );
+            return Promise.resolve({ code: 0, stdout: "Exported", stderr: "" });
         }
-        if (args[0] === "list") return Promise.resolve({ code: 0, stdout: "7 project memory", stderr: "" });
         return Promise.resolve({ code: 0, stdout: "   ", stderr: "" });
     });
     const tool = getTool("memory");

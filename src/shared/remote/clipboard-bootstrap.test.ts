@@ -56,7 +56,7 @@ Deno.test({
             Deno.env.set("CLIPBOARD_MODE_PATH", hardware.modePath);
             Deno.env.set("CLIPBOARD_PNG_PATH", join(hardware.root, "clipboard.png"));
             const service = startRemoteControlService(identity, {
-                store,
+                baseDir: store.path,
                 targetLabel: `host:${projectRoot}`,
                 target: {
                     host: { hostname: "host.example", user: "tester", port: 22, hostKeyFingerprint: "SHA256:fixture" },

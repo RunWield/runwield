@@ -1,7 +1,6 @@
 import { join } from "@std/path";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.js";
-import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
 import { startRemoteControlService } from "./control.ts";
 import { type RemoteSessionRequest, sessionDigest } from "./session-protocol.ts";
 
@@ -64,7 +63,7 @@ export async function makeSessionFixture(options: SessionFixtureOptions = {}) {
             expectedGeneration: 0,
         });
     }
-    const owner = new RemoteSessionOwner(store, proof);
+    const owner = store.createRemoteSessionOwner(proof);
     return {
         root,
         cwd,
@@ -103,7 +102,7 @@ export async function makeControlFixture() {
     const fixture = await makeSessionFixture();
     const identity = { buildId: "a".repeat(64), protocol: 1 };
     const control = startRemoteControlService(identity);
-    control.registerSessionOwner(fixture.owner);
+    control.registerSessionOperation(fixture.owner.operation);
     const baseUrl = `http://127.0.0.1:${control.port}`;
     async function post(path: string, body: string, credential = control.credential) {
         return await fetch(`${baseUrl}${path}`, {

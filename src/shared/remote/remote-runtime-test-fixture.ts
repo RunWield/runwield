@@ -166,7 +166,7 @@ export async function withRemoteRuntimeFixture(
         const identity = { buildId: "a".repeat(64), protocol: 1 };
         const memoryCollection = await resolveMemoryCollection({ cwd: local.projectRoot });
         const service = startRemoteControlService(identity, {
-            store,
+            baseDir: store.path,
             targetLabel: `fixture:${remoteProject}`,
             target: {
                 host: {

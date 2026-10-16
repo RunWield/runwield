@@ -18,7 +18,9 @@ async function main() {
         while ((newline = buffer.indexOf("\n")) >= 0) {
             const request = JSON.parse(buffer.slice(0, newline)) as Request;
             buffer = buffer.slice(newline + 1);
-            if (log) await Deno.writeTextFile(log, `${JSON.stringify(request)}\n`, { append: true });
+            if (log) {
+                await Deno.writeTextFile(log, `${JSON.stringify({ ...request, pid: Deno.pid })}\n`, { append: true });
+            }
             const respond = <T>(result: T) => console.log(JSON.stringify({ id: request.id, result }));
             switch (request.method) {
                 case "initialize":

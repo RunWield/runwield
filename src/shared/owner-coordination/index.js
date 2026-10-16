@@ -87,6 +87,8 @@ export { OWNER_CSRF_COOKIE, OWNER_DEVICE_COOKIE, OWNER_DEVICE_MAX_AGE_SECONDS } 
  * @property {(deviceId: string, csrf: string) => ReturnType<typeof verifyDeviceCsrf>} verifyDeviceCsrf
  * @property {(deviceId: string, options?: Parameters<typeof revokeDevice>[2]) => ReturnType<typeof revokeDevice>} revokeDevice
  * @property {() => string | null} getDatabaseEpoch
+ * @property {ReturnType<typeof openFileSessionStore>['createRemoteSessionOwner']} createRemoteSessionOwner
+ * @property {ReturnType<typeof openFileSessionStore>['recoverRemoteSession']} recoverRemoteSession
  * @property {ReturnType<typeof openFileSessionStore>['readActiveSessionTranscript']} readActiveSessionTranscript
  * @property {ReturnType<typeof openFileSessionStore>['writeActiveSessionTranscript']} writeActiveSessionTranscript
  * @property {ReturnType<typeof openFileSessionStore>['migrateActiveSessionTranscript']} migrateActiveSessionTranscript
@@ -234,6 +236,9 @@ export function openOwnerCoordinationStore(options = {}) {
         verifyDeviceCsrf: (deviceId, csrf) => verifyDeviceCsrf(database, deviceId, csrf),
         revokeDevice: (deviceId, deviceOptions) => revokeDevice(database, deviceId, deviceOptions),
         getDatabaseEpoch: () => getOwnerCoordinationDatabaseEpoch(database.handle),
+        createRemoteSessionOwner: (proof) => sessionStore.createRemoteSessionOwner(proof),
+        recoverRemoteSession: (sessionId, ownerInstanceId, ownerProcessKind) =>
+            sessionStore.recoverRemoteSession(sessionId, ownerInstanceId, ownerProcessKind),
         readActiveSessionTranscript: (proof) => sessionStore.readActiveSessionTranscript(proof),
         writeActiveSessionTranscript: (proof, contents, expectedDigestHex) =>
             sessionStore.writeActiveSessionTranscript(proof, contents, expectedDigestHex),

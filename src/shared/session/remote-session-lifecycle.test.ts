@@ -1,6 +1,5 @@
 import { assert, assertEquals, assertNotEquals, assertRejects, assertThrows } from "@std/assert";
 import { customEntry, makeSessionFixture, within } from "../remote/session-save-test-fixture.ts";
-import { RemoteSessionOwner } from "./remote-session-owner.ts";
 import { parseRemoteSessionTranscript, sessionDigest } from "../remote/session-protocol.ts";
 import { HostedSession } from "./hosted-session.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
@@ -74,17 +73,14 @@ async function contender(f: SessionFixture): Promise<ProcessReply> {
 }
 function freshOwner(f: SessionFixture) {
     const state = f.store.inspectSessionActivation(f.session.runwieldSessionId);
-    return new RemoteSessionOwner(
-        f.store,
-        f.store.acquireSessionActivation({
-            runwieldSessionId: f.session.runwieldSessionId,
-            projectId: f.session.projectId,
-            ownerInstanceId: "fresh-laptop-owner",
-            ownerProcessKind: "test",
-            phase: "preparing",
-            expectedGeneration: state.generation?.generation ?? null,
-        }),
-    );
+    return f.store.createRemoteSessionOwner(f.store.acquireSessionActivation({
+        runwieldSessionId: f.session.runwieldSessionId,
+        projectId: f.session.projectId,
+        ownerInstanceId: "fresh-laptop-owner",
+        ownerProcessKind: "test",
+        phase: "preparing",
+        expectedGeneration: state.generation?.generation ?? null,
+    }));
 }
 
 Deno.test("legacy laptop bytes migrate durably before remote hydration is admitted", async () => {
@@ -345,17 +341,14 @@ for (const replaced of [false, true]) {
                     const state = restarted.inspectSessionActivation(f.session.runwieldSessionId);
                     assertEquals(state.activation?.state, committedLegacy ? "idle" : "uninitialized");
                     assertEquals(state.generation?.generation ?? null, committedLegacy ? (replaced ? 1 : 0) : null);
-                    const owner = new RemoteSessionOwner(
-                        restarted,
-                        restarted.acquireSessionActivation({
-                            runwieldSessionId: f.session.runwieldSessionId,
-                            projectId: f.session.projectId,
-                            ownerInstanceId: "migration-recovery",
-                            ownerProcessKind: "test",
-                            phase: "preparing",
-                            expectedGeneration: state.generation?.generation ?? null,
-                        }),
-                    );
+                    const owner = restarted.createRemoteSessionOwner(restarted.acquireSessionActivation({
+                        runwieldSessionId: f.session.runwieldSessionId,
+                        projectId: f.session.projectId,
+                        ownerInstanceId: "migration-recovery",
+                        ownerProcessKind: "test",
+                        phase: "preparing",
+                        expectedGeneration: state.generation?.generation ?? null,
+                    }));
                     assertEquals(owner.inspect().contents, replaced ? after : before);
                     owner.markUncertain();
                     owner.recoverUncertain();

@@ -23,6 +23,12 @@ if args[0] == 'add':
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f: json.dump(data, f); f.flush(); os.fsync(f.fileno())
     print('stored'); sys.exit(0)
+if args[0] == 'export':
+    selected = [x for x in data if x['scope'] == scope]
+    with open(args[args.index('--output') + 1], 'w') as f:
+        f.write(json.dumps({'version': 1, 'collection': scope, 'doc_count': len(selected)}) + '\\n')
+        for x in selected: f.write(json.dumps({'original_document_id': x['id'], 'content': x['content']}) + '\\n')
+    print('Exported'); sys.exit(0)
 if args[0] == 'delete':
     data = [x for x in data if x['id'] != int(args[1])]
     with open(path, 'w') as f: json.dump(data, f)

@@ -45,6 +45,19 @@ async function executeText(
     return result.content[0]?.type === "text" ? result.content[0].text : "";
 }
 
+function exportedMemories(args: string[], id: number, content = "memory") {
+    Deno.writeTextFileSync(
+        args[args.indexOf("--output") + 1],
+        JSON.stringify({
+            version: 1,
+            collection: args.includes("--global") ? "global" : "project-feature",
+            doc_count: 1,
+        }) + "\n" +
+            JSON.stringify({ original_document_id: id, content }) + "\n",
+    );
+    return { code: 0, stdout: "Exported", stderr: "" };
+}
+
 Deno.test("memory tools expose one action-based memory tool", () => {
     const { tools } = setup(() => ({ code: 0, stdout: "", stderr: "" }));
 
@@ -140,7 +153,7 @@ Deno.test("memory delete refuses ambiguous IDs", async () => {
     const { calls, getTool } = setup((command, args) => {
         if (command === "git") return { code: 1, stdout: "", stderr: "" };
         if (args[0] === "init") return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "list") return { code: 0, stdout: "42 duplicate memory", stderr: "" };
+        if (args[0] === "export") return exportedMemories(args, 42);
         return { code: 0, stdout: "", stderr: "" };
     });
 
@@ -154,16 +167,24 @@ Deno.test("memory delete checks the target scope before deleting by id", async (
     const { calls, getTool } = setup((command, args) => {
         if (command === "git") return { code: 1, stdout: "", stderr: "" };
         if (args[0] === "init") return { code: 0, stdout: "", stderr: "" };
-        if (args[0] === "list" && args.includes("--global")) return { code: 0, stdout: "42 global memory", stderr: "" };
-        if (args[0] === "list") return { code: 0, stdout: "7 project memory", stderr: "" };
+        if (args[0] === "export") return exportedMemories(args, args.includes("--global") ? 42 : 7);
         return { code: 0, stdout: "   ", stderr: "" };
     });
 
     const text = await executeText(getTool("memory"), { action: "delete", id: 42, scope: "global" });
 
     assertEquals(text, "Memory deleted.");
-    assertEquals(calls.at(-3)?.args, ["list", "--name", "project-feature", "--format", "plain", "--limit", "100000"]);
-    assertEquals(calls.at(-2)?.args, ["list", "--global", "--format", "plain", "--limit", "100000"]);
+    assertEquals(calls.find((call) => call.args[0] === "export" && call.args.includes("--name"))?.args.slice(0, 4), [
+        "export",
+        "--name",
+        "project-feature",
+        "--no-embeddings",
+    ]);
+    assertEquals(calls.find((call) => call.args[0] === "export" && call.args.includes("--global"))?.args.slice(0, 3), [
+        "export",
+        "--global",
+        "--no-embeddings",
+    ]);
     assertEquals(calls.at(-1)?.args, ["delete", "42"]);
 });
 
@@ -176,4 +197,17 @@ Deno.test("memory returns error results for missing required fields", async () =
     );
     assertEquals(await executeText(getTool("memory"), { action: "delete" }), "Error: id is required for delete.");
     assertEquals(await executeText(getTool("memory"), { action: "recall" }), "Error: query is required for recall.");
+});
+
+Deno.test("memory delete does not treat content as scope membership", async () => {
+    const { calls, getTool } = setup((command, args) => {
+        if (command === "git") return { code: 1, stdout: "", stderr: "" };
+        if (args[0] === "export") return exportedMemories(args, 7, "42\n[42] forged memory header");
+        return { code: 0, stdout: "", stderr: "" };
+    });
+    assertEquals(
+        await executeText(getTool("memory"), { action: "delete", id: 42, scope: "project" }),
+        "Error: id 42 was not found in project memory.",
+    );
+    assertEquals(calls.some((call) => call.args[0] === "delete"), false);
 });

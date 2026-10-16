@@ -1,4 +1,3 @@
-import { RemoteSessionSaveBridge } from "./session-save-bridge.ts";
 import {
     type RemoteSessionAdmissionRequest,
     type RemoteSessionControlRequest,
@@ -68,11 +67,11 @@ export class RemoteSessionControl {
         if (!Array.isArray(result.sessions)) throw new Error("Invalid laptop Session list");
         return result.sessions;
     }
-    openBridge(operation: string): RemoteSessionSaveBridge {
-        return new RemoteSessionSaveBridge({
+    sessionConnection(operation: string) {
+        return {
             baseUrl: this.#baseUrl,
             credential: this.connection.credential,
             operation,
-        });
+        };
     }
 }

@@ -8,7 +8,11 @@ import type { SettingsUpdate } from "./settings-bridge.ts";
 import { readSystemClipboardImage } from "../../ui/tui/clipboard.ts";
 import { validateClipboardImage } from "./clipboard-bridge.ts";
 import { MAX_SESSION_BYTES, type RemoteSessionRequest, validateSessionRequest } from "./session-protocol.ts";
-import type { RemoteSessionOwner } from "../session/remote-session-owner.ts";
+import {
+    getRemoteSessionOwner,
+    releaseRemoteSessionOperation,
+    type RemoteSessionOwner,
+} from "../session/file-session-store.ts";
 import { LaptopSessionControl, type LaptopSessionTarget } from "./laptop-session-control.ts";
 import { type RemoteSessionControlRequest, validateSessionControlRequest } from "./session-protocol.ts";
 
@@ -83,8 +87,8 @@ export interface RemoteControlService {
     readonly credential: string;
     status(): RemoteControlStatus;
     /** Trusted laptop registration only. HTTP clients cannot supply writer proofs. */
-    registerSessionOwner(owner: RemoteSessionOwner): void;
-    unregisterSessionOwner(operation: string): void;
+    registerSessionOperation(operation: string): void;
+    unregisterSessionOperation(operation: string): void;
     requestShutdown(): void;
     close(): Promise<void>;
 }
@@ -183,9 +187,17 @@ export function startRemoteControlService(
         }
     };
     const sessionOwners = new Map<string, RemoteSessionOwner>();
-    const sessions = target ? new LaptopSessionControl(target, sessionOwners) : null;
+    const sessions = target ? new LaptopSessionControl(target) : null;
     const stopSessions = () => {
-        if (sessions) sessions.close();
+        try {
+            sessions?.close();
+        } catch { /* Continue cleanup and release the listener. */ }
+        for (const operation of sessionOwners.keys()) {
+            try {
+                releaseRemoteSessionOperation(operation);
+            } catch { /* Other operations must still be released. */ }
+            sessionOwners.delete(operation);
+        }
     };
     const sessionControlHandler = async (request: Request): Promise<Response> => {
         if (!sessions || request.method !== "POST") return new Response(null, { status: 404 });
@@ -252,10 +264,11 @@ export function startRemoteControlService(
         }
         // Body reads are asynchronous: authority must be checked again after the last byte.
         if (shutdown || closed || !ready) return new Response(null, { status: 403 });
-        const owner = sessionOwners.get(input.operation);
-        if (!owner) return new Response(null, { status: 409 });
         try {
-            return Response.json(owner.handle(input));
+            const owner = sessionOwners.get(input.operation);
+            if (owner) return Response.json(owner.handle(input));
+            if (!sessions) throw new Error("Stale Session operation");
+            return Response.json(sessions.handleSave(input));
         } catch {
             return new Response(null, { status: 409 });
         }
@@ -419,14 +432,19 @@ export function startRemoteControlService(
         port: address.port,
         credential,
         status: () => ({ connected, ready, shutdown, closed }),
-        registerSessionOwner(owner) {
-            if (shutdown || closed || sessionOwners.has(owner.operation)) {
+        registerSessionOperation(operation) {
+            const owner = getRemoteSessionOwner(operation);
+            if (shutdown || closed || sessionOwners.has(operation)) {
                 throw new Error("Remote Session owner cannot be registered");
             }
             sessionOwners.set(owner.operation, owner);
         },
-        unregisterSessionOwner(operation) {
-            sessionOwners.delete(operation);
+        unregisterSessionOperation(operation) {
+            try {
+                releaseRemoteSessionOperation(operation);
+            } finally {
+                sessionOwners.delete(operation);
+            }
         },
         requestShutdown() {
             shutdown = true;

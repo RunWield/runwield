@@ -105,14 +105,15 @@ cache, and an executable compatible with the preflight for the matching glibc-li
 local machine needs OpenSSH and an explicitly built matching development bundle; see
 [build steps](runwield-core-prd.md#installation-and-updates). Runtime preparation checks build/protocol identity and
 checksums, reuses or repairs private cache entries, and does not run a remote personal installer or start a personal
-profile. Normal runtime startup also requires executable `mnemoteca`, `cymbal`, and `ketch` helpers on the remote
-`PATH`; private binary staging alone does not supply them. Connection loss and exit clean up owned processes, with
-uncertain termination reported when it cannot be confirmed. The launcher starts a connection-owned stock SFTP server and
-SSHFS mount of the laptop's full `~/.wld` at a fresh private remote root. A direct personal Skill file edit through this
-mount changed the laptop file in both directions on the approved Linux `sct` pilot; the remote project's `.wld` remained
-remote. The normal TUI accepts conversation turns with any Agent and core project tools through the laptop model
-connection. Opening an empty composer creates no saved Session or writer lock. The first message starts laptop-owned
-history; personal resources are not copied. Workflow execution and browser review follow in their owning child Plans.
+profile. Normal runtime startup requires executable `cymbal` and `ketch` helpers on the remote `PATH`; private binary
+staging alone does not supply them. Mnemoteca runs on the laptop, not the server. Connection loss and exit clean up
+owned processes, with uncertain termination reported when it cannot be confirmed. The launcher starts a connection-owned
+stock SFTP server and SSHFS mount of the laptop's full `~/.wld` at a fresh private remote root. A direct personal Skill
+file edit through this mount changed the laptop file in both directions on the approved Linux `sct` pilot; the remote
+project's `.wld` remained remote. The normal TUI accepts conversation turns with any Agent and core project tools
+through the laptop model connection. Opening an empty composer creates no saved Session or writer lock. The first
+message starts laptop-owned history; personal resources are not copied. Workflow execution and browser review follow in
+their owning child Plans.
 
 **Current acceptance scenarios:**
 

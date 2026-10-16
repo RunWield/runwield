@@ -1,5 +1,4 @@
 import { openFileSessionStore } from "./file-session-store.ts";
-import { RemoteSessionOwner } from "./remote-session-owner.ts";
 import { customEntry } from "../remote/session-save-test-fixture.ts";
 import { sessionDigest } from "../remote/session-protocol.ts";
 import { dirname } from "@std/path";
@@ -84,7 +83,7 @@ try {
                 store.releaseUnchangedActivation(proof);
                 console.log(JSON.stringify({ excluded: false }));
             } else {
-                const owner = new RemoteSessionOwner(store, proof);
+                const owner = store.createRemoteSessionOwner(proof);
                 owner.handle({ operation: owner.operation, sequence: 0, kind: "hydrate", contents: "" });
                 // A real owned external-effect marker must remain single after laptop recovery.
                 Deno.writeTextFileSync(input.effectPath, "effect\n", { append: true });

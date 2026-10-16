@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { lockPath, manifestPath, sessionDirForProject } from "../session/file-session-storage.ts";
+import { assertEquals, assertThrows } from "@std/assert";
 import { customEntry, makeControlFixture } from "./session-save-test-fixture.ts";
 
 Deno.test("Session HTTP rejects bad credentials without hydrating laptop authority", async () => {
@@ -28,7 +29,7 @@ Deno.test("Session HTTP requires connection readiness and rejects stale operatio
         );
         assertEquals(stale.status, 409);
         await stale.text();
-        f.control.unregisterSessionOwner(f.owner.operation);
+        f.control.unregisterSessionOperation(f.owner.operation);
         const removed = await f.post("/session/request", JSON.stringify(f.request("hydrate", 0)));
         assertEquals(removed.status, 409);
         await removed.text();
@@ -98,6 +99,37 @@ Deno.test("Session HTTP shutdown refuses further save and checkpoint admission",
         assertEquals(f.owner.inspect().contents, f.initial);
         assertEquals(f.store.inspectSessionActivation(f.session.runwieldSessionId).generation, null);
     } finally {
+        await f.close();
+    }
+});
+
+Deno.test("Session HTTP registration refuses an operation not constructed by the file store", async () => {
+    const f = await makeControlFixture();
+    try {
+        assertThrows(() => f.control.registerSessionOperation(crypto.randomUUID()), Error, "Stale Session operation");
+    } finally {
+        await f.close();
+    }
+});
+
+Deno.test("Session HTTP shutdown releases locks and closes the listener when uncertainty recording fails", async () => {
+    const f = await makeControlFixture();
+    const project = f.store.getProjectById(f.session.projectId)!;
+    const directory = sessionDirForProject(f.baseDir, project);
+    const lock = Deno.openSync(lockPath(directory, f.session.runwieldSessionId), { read: true, write: true });
+    try {
+        assertEquals(lock.tryLockSync(true), false);
+        const path = manifestPath(directory, f.session.runwieldSessionId);
+        const manifest = JSON.parse(Deno.readTextFileSync(path));
+        manifest.activation.ownerInstanceId = "changed-owner";
+        Deno.writeTextFileSync(path, JSON.stringify(manifest));
+        f.control.requestShutdown();
+        assertEquals(lock.tryLockSync(true), true);
+        lock.unlockSync();
+        await f.control.close();
+        assertEquals(f.control.status().closed, true);
+    } finally {
+        lock.close();
         await f.close();
     }
 });

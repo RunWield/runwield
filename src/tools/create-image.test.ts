@@ -626,6 +626,7 @@ Deno.test("OpenCode adapter preserves cancellation and rejects unsupported contr
 
 interface RecordedCodexRequest {
     method: string;
+    pid: number;
     params?: {
         model?: string;
         modelProvider?: string;
@@ -731,7 +732,7 @@ Deno.test({
         }),
 });
 
-Deno.test("Codex adapter interrupts and terminates an in-flight owned helper on cancellation", () =>
+Deno.test("Codex adapter terminates an in-flight owned helper on cancellation without saving", () =>
     withFixture(async (f) => {
         await f.settings({ model: "codex-cli/fixture-model" });
         const log = join(f.cwd, "rpc.jsonl");
@@ -751,6 +752,12 @@ Deno.test("Codex adapter interrupts and terminates an in-flight owned helper on 
             abort.abort();
             await pending;
         }
-        assertStringIncludes(await Deno.readTextFile(log), "turn/interrupt");
+        // The request log can precede the turn acknowledgement, so an interrupt is not always possible.
+        const calls: RecordedCodexRequest[] = (await Deno.readTextFile(log)).trim().split("\n").map((line) =>
+            JSON.parse(line)
+        );
+        const started = calls.find((call) => call.method === "turn/start");
+        assert(started);
+        assertThrows(() => Deno.kill(started.pid, 0), Deno.errors.NotFound);
         await assertRejects(() => Deno.stat(join(f.cwd, "cancelled.png")), Deno.errors.NotFound);
     }));

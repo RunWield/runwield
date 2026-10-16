@@ -30,6 +30,20 @@ Deno.test("production remote bootstrap uses the laptop catalog and mounted setti
                 },
             }),
         );
+        const remoteBin = join(homeDir, "remote-bin");
+        await Deno.mkdir(remoteBin);
+        for (const helper of ["cymbal", "ketch"]) {
+            const path = join(remoteBin, helper);
+            await Deno.writeTextFile(path, `#!/bin/sh\necho 'Usage: ${helper}'\n`);
+            await Deno.chmod(path, 0o755);
+        }
+        // This PATH has project helpers but no laptop Mnemoteca installation.
+        const remotePath = `${remoteBin}:/usr/bin:/bin`;
+        const probe = await new Deno.Command("/bin/sh", {
+            args: ["-c", "command -v mnemoteca"],
+            env: { PATH: remotePath },
+        }).output();
+        assertEquals(probe.success, false);
         const remoteHome = join(homeDir, "remote-account");
         await Deno.mkdir(join(remoteHome, ".wld"), { recursive: true });
         const sentinel = "This remote profile must never be read";
@@ -38,7 +52,7 @@ Deno.test("production remote bootstrap uses the laptop catalog and mounted setti
         const store = openFileSessionStore({ baseDir });
         const identity = { buildId: "a".repeat(64), protocol: 1 };
         const service = startRemoteControlService(identity, {
-            store,
+            baseDir: store.path,
             targetLabel: `host:${projectRoot}`,
             target: {
                 host: { hostname: "host.example", user: "tester", port: 22, hostKeyFingerprint: "SHA256:fixture" },
@@ -78,6 +92,11 @@ await (await import(${
 terminal.typeText("Unsubmitted production prompt");
 await new Promise((resolve) => setTimeout(resolve, 200));
 await terminal.flush();
+// Skill loading follows helper checks; wait for bootstrap, not just the early footer render.
+while (Date.now() < deadline && !returned) {
+    try { await Deno.stat(${JSON.stringify(join(remoteHome, ".wld", "bundled-skills"))}); break; }
+    catch { await new Promise((resolve) => setTimeout(resolve, 20)); }
+}
 console.log(JSON.stringify({ returned, screen: terminal.getScreenText(), home: (await import(${
                 JSON.stringify(new URL("../../constants.js", import.meta.url).href)
             })).getHomeDir() }));
@@ -107,6 +126,7 @@ console.log("RETURNED_AFTER_TERMINATION");
                 ],
                 cwd: projectRoot,
                 env: {
+                    PATH: remotePath,
                     HOME: remoteHome,
                     WLD_TEST_SANDBOX_HOME: remoteHome,
                     MNEMOTECA_DB_PATH: join(remoteHome, "memory.db"),

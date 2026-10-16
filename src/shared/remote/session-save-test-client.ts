@@ -1,8 +1,9 @@
 /** Real remote subprocess used by the focused Session transport tests. */
-import { RemoteSessionSaveBridge } from "./session-save-bridge.ts";
+import type { RemoteSessionSaveBridge } from "./session-save-bridge.ts";
 import {
     createRemoteRootSessionManager,
     createRootSessionManager,
+    getRemoteSessionSaveBridge,
     getRunWieldSessionsBaseDir,
 } from "../session/root-session.js";
 import { openFileSessionStore } from "../session/file-session-store.ts";
@@ -15,7 +16,7 @@ import {
     settleWorkflowToolEvent,
     waitForWorkflowToolEvent,
 } from "../workflow/workflow-tool-events.ts";
-import { MAX_SESSION_BYTES, type RemoteSessionConnection } from "./session-protocol.ts";
+import { MAX_SESSION_BYTES, type RemoteSessionConnection, type SessionWorkerRequest } from "./session-protocol.ts";
 import type { RemoteModelConnection } from "./model-bridge.ts";
 import { makeSaveAgent } from "./session-save-agent-fixture.ts";
 import { persistImageAttachment } from "../session/image-attachments.ts";
@@ -27,6 +28,7 @@ interface ClientInput {
     mount: string;
     mode:
         | "save"
+        | "bridge-override"
         | "fault"
         | "manual-fault"
         | "workflow"
@@ -40,6 +42,7 @@ interface ClientInput {
         | "allocation-fault"
         | "oversized";
     measure?: boolean;
+    holdWorkerAppend?: boolean;
     home?: string;
     modelConnection?: RemoteModelConnection;
     faultPoint?: "before-prompt" | "before-tool" | "after-tool" | "tool-hook";
@@ -78,25 +81,72 @@ interface SaveSample {
 }
 const samples: SaveSample[] = [];
 let hydratedContents = "";
-class MeasuredSaveBridge extends RemoteSessionSaveBridge {
-    override request(kind: Parameters<RemoteSessionSaveBridge["request"]>[0], contents = "") {
-        const start = performance.now();
-        let accepted = false;
-        try {
-            const response = super.request(kind, contents);
-            accepted = true;
-            if (kind === "hydrate") hydratedContents = response.contents;
-            return response;
-        } finally {
-            if (input.measure) {
-                samples.push({ kind, sequence: samples.length, latencyMs: performance.now() - start, accepted });
+// Measure the real bridge at its Worker boundary, without replacing persistence.
+const workerClass = globalThis.Worker;
+const load = Atomics.load;
+let pendingSample: { request: SessionWorkerRequest; start: number } | undefined;
+if (input.measure) {
+    globalThis.Worker = class extends workerClass {
+        override postMessage(request: SessionWorkerRequest) {
+            pendingSample = { request, start: performance.now() };
+            // Model a stalled Worker, so the main-thread deadline must wake the caller itself.
+            if (input.holdWorkerAppend && JSON.parse(request.payload).kind === "append") return;
+            super.postMessage(request);
+        }
+    };
+    Atomics.load = new Proxy(load, {
+        apply(target, receiver, args) {
+            const value = Reflect.apply(target, receiver, args);
+            const sample = pendingSample;
+            if (sample && args[0].buffer === sample.request.result && args[1] === 0 && value !== 0) {
+                const payload = JSON.parse(sample.request.payload);
+                const accepted = value === 1;
+                samples.push({
+                    kind: payload.kind,
+                    sequence: payload.sequence,
+                    latencyMs: performance.now() - sample.start,
+                    accepted,
+                });
+                if (accepted && payload.kind === "hydrate") {
+                    const length = load(new Int32Array(sample.request.result, 0, 2), 1);
+                    const text = new TextDecoder().decode(new Uint8Array(sample.request.result, 8, length));
+                    hydratedContents = JSON.parse(text).contents;
+                }
+                pendingSample = undefined;
             }
+            return value;
+        },
+    });
+}
+let bridgeForCleanup: RemoteSessionSaveBridge | undefined;
+try {
+    const connection = input.mode === "bridge-override"
+        ? {
+            ...input.connection,
+            request() {
+                throw new Error("Caller replaced persistence");
+            },
+        }
+        : input.connection;
+    const manager = await createRemoteRootSessionManager(input.cwd, connection);
+    const bridge = getRemoteSessionSaveBridge(manager)!;
+    bridgeForCleanup = bridge;
+    if (input.mode === "bridge-override") {
+        if (
+            Reflect.set(bridge, "request", () => {
+                throw new Error("Replacement save");
+            })
+        ) {
+            throw new Error("Remote persistence bridge is replaceable");
+        }
+        if (
+            Reflect.set(Object.getPrototypeOf(bridge), "request", () => {
+                throw new Error("Replacement prototype");
+            })
+        ) {
+            throw new Error("Remote persistence prototype is replaceable");
         }
     }
-}
-const bridge = new MeasuredSaveBridge(input.connection);
-try {
-    const manager = await createRemoteRootSessionManager(input.cwd, bridge);
     const retainedRead = manager.getEntries;
     const retainedWrite = manager.appendSessionInfo;
     if (input.mode === "allocation-fault" || input.mode === "oversized") {
@@ -339,6 +389,18 @@ try {
         bridge.request("checkpoint");
     }
 } finally {
-    bridge.close();
+    if (pendingSample) {
+        // A deadline ends the request before another Atomics.load observes its terminal slot.
+        const payload = JSON.parse(pendingSample.request.payload);
+        samples.push({
+            kind: payload.kind,
+            sequence: payload.sequence,
+            latencyMs: performance.now() - pendingSample.start,
+            accepted: false,
+        });
+    }
+    bridgeForCleanup?.close();
+    globalThis.Worker = workerClass;
+    Atomics.load = load;
     if (input.measure) console.log(JSON.stringify({ samples, hydratedContents }));
 }

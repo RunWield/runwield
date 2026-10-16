@@ -15,7 +15,7 @@ import { createSessionRuntime } from "../session/session-runtime.ts";
 import { HostedSession } from "../session/hosted-session.js";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session/session.js";
-import { createRemoteRootSessionManager } from "../session/root-session.js";
+import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.js";
 import { readImageRef } from "../session/image-attachments.ts";
 import { runResumeCommand } from "../../cmd/resume/index.ts";
 
@@ -166,9 +166,10 @@ try {
                     errors.push(String(error));
                 }
                 const operation = await control.create(crypto.randomUUID());
-                const bridge = control.openBridge(operation);
+                let bridge: ReturnType<typeof getRemoteSessionSaveBridge>;
                 try {
-                    const other = await createRemoteRootSessionManager(input.cwd, bridge);
+                    const other = await createRemoteRootSessionManager(input.cwd, control.sessionConnection(operation));
+                    bridge = getRemoteSessionSaveBridge(other);
                     try {
                         await buildAgentSession({
                             hostedSession: hosted,
@@ -181,7 +182,7 @@ try {
                     }
                     await control.checkpoint(operation);
                 } finally {
-                    bridge.close();
+                    bridge?.close();
                 }
                 console.log(JSON.stringify({ kind: "guard", errors }));
             } else if (command.kind === "upload") {
@@ -192,14 +193,18 @@ try {
                 console.log(JSON.stringify({ kind: "upload", ...image }));
             } else if (command.kind === "image-read") {
                 const operation = await control.begin(command.sessionId || "");
-                const bridge = control.openBridge(operation);
+                let bridge: ReturnType<typeof getRemoteSessionSaveBridge>;
                 try {
-                    const manager = await createRemoteRootSessionManager(input.cwd, bridge);
+                    const manager = await createRemoteRootSessionManager(
+                        input.cwd,
+                        control.sessionConnection(operation),
+                    );
+                    bridge = getRemoteSessionSaveBridge(manager);
                     const image = await readImageRef(command.ref || "", { cwd: input.cwd, sessionManager: manager });
                     await control.checkpoint(operation);
                     console.log(JSON.stringify({ kind: "image-read", ...image }));
                 } finally {
-                    bridge.close();
+                    bridge?.close();
                 }
             } else if (command.kind === "snapshots") {
                 console.log(JSON.stringify({ kind: "snapshots", snapshots: runtime.listSessions() }));

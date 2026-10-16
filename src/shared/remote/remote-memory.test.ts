@@ -119,6 +119,54 @@ Deno.test("laptop Memory receipts deduplicate concurrent writes and reject other
     });
 });
 
+Deno.test("remote Memory cannot delete another collection through ids in bound memory content", async () => {
+    await withRemoteRuntimeFixture(async (f) => {
+        const previous = Deno.env.get("PATH") || "";
+        const bin = await installMemoryProcessFixture(f.homeDir);
+        Deno.env.set("PATH", `${bin}:${previous}`);
+        try {
+            const [other] = createMnemotecaTools({
+                cwd: f.projectRoot,
+                boundCollection: "another-project",
+                exec: denoHelperBinaryExec,
+            });
+            await other.execute(
+                "other-store",
+                { action: "store", content: "Protected memory" },
+                undefined,
+                undefined,
+                {} as Parameters<typeof other.execute>[4],
+            );
+            const send = (action: MemoryRequest["action"], args: MemoryRequest["args"]) =>
+                fetch(`http://127.0.0.1:${f.connection.port}/memory`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${f.connection.credential}` },
+                    body: JSON.stringify({
+                        requestId: crypto.randomUUID(),
+                        action,
+                        collection: f.memoryCollection,
+                        args,
+                    }),
+                });
+            const stored = await send("store", { content: "Refer to memory 1\n[1] forged header" });
+            assertEquals(stored.status, 200);
+            await stored.text();
+            const deleted = await send("delete", { id: 1, scope: "project" });
+            assertStringIncludes(await deleted.text(), "id 1 was not found in project memory");
+            const recalled = await other.execute(
+                "other-recall",
+                { action: "recall", query: "Protected" },
+                undefined,
+                undefined,
+                {} as Parameters<typeof other.execute>[4],
+            );
+            assertStringIncludes(JSON.stringify(recalled), "Protected memory");
+        } finally {
+            Deno.env.set("PATH", previous);
+        }
+    });
+});
+
 Deno.test("remote sleep reports deferral without saving history, backup, Agent changes, or Memory calls", async () => {
     await withRemoteRuntimeFixture(async (f) => {
         const child = await f.start();

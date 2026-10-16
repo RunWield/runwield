@@ -1,7 +1,6 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { dirname, join } from "@std/path";
 import { makeControlFixture, makeSessionFixture, within } from "./session-save-test-fixture.ts";
-import { RemoteSessionOwner } from "../session/remote-session-owner.ts";
 import { MAX_SESSION_BYTES, type RemoteSessionResponse } from "./session-protocol.ts";
 import type { ImageAttachment } from "../session/types.js";
 
@@ -80,18 +79,15 @@ Deno.test("remote upload and fresh hydrated manager read laptop attachment bytes
         assertEquals(first.file, null);
         await assertRejects(() => Deno.stat(f.mount), Deno.errors.NotFound);
         const state = f.store.inspectSessionActivation(f.session.runwieldSessionId);
-        const fresh = new RemoteSessionOwner(
-            f.store,
-            f.store.acquireSessionActivation({
-                runwieldSessionId: f.session.runwieldSessionId,
-                projectId: f.session.projectId,
-                ownerInstanceId: "fresh-attachment-owner",
-                ownerProcessKind: "test",
-                phase: "preparing",
-                expectedGeneration: state.generation?.generation ?? null,
-            }),
-        );
-        f.control.registerSessionOwner(fresh);
+        const fresh = f.store.createRemoteSessionOwner(f.store.acquireSessionActivation({
+            runwieldSessionId: f.session.runwieldSessionId,
+            projectId: f.session.projectId,
+            ownerInstanceId: "fresh-attachment-owner",
+            ownerProcessKind: "test",
+            phase: "preparing",
+            expectedGeneration: state.generation?.generation ?? null,
+        }));
+        f.control.registerSessionOperation(fresh.operation);
         const second = await client(f, "read", first.attachment.ref, f.baseUrl, fresh.operation);
         assertEquals(second, first);
         await assertRejects(() => Deno.stat(f.mount), Deno.errors.NotFound);

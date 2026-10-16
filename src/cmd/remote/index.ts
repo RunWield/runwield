@@ -235,24 +235,14 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
     if (executable !== expected) throw new Error("Remote runtime returned an unexpected cache path");
     const memoryCollection = await bindRemoteMemory(target);
     const { startRemoteControlService } = await import("../../shared/remote/control.ts");
-    const { openFileSessionStore } = await import("../../shared/session/file-session-store.ts");
-    const store = openFileSessionStore();
-    let sftp: Awaited<ReturnType<typeof startLaptopSftp>>;
-    try {
-        sftp = await startLaptopSftp();
-    } catch (error) {
-        store.close();
-        throw error;
-    }
+    const sftp = await startLaptopSftp();
     let service: ReturnType<typeof startRemoteControlService>;
     try {
         service = startRemoteControlService({ buildId: BUILD_ID, protocol: REMOTE_PROTOCOL_VERSION }, {
-            store,
             target,
             targetLabel: `${host}:${target.cwd}`,
         }, memoryCollection);
     } catch (error) {
-        store.close();
         await sftp.close();
         throw error;
     }
@@ -400,7 +390,6 @@ export async function runRemoteCommand(args: string[]): Promise<void> {
         try {
             await service.close();
         } finally {
-            store.close();
             await sftp.close();
         }
         if (raw) Deno.stdin.setRaw(false);

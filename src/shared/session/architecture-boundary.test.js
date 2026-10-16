@@ -223,11 +223,10 @@ Deno.test("Session writer mutators stay behind approved state-machine seams", as
             allowPath: (path) =>
                 path.startsWith("src/shared/owner-coordination/") ||
                 path === "src/shared/session/file-session-store.ts" ||
+                path === "src/shared/session/file-session-store-local.ts" ||
                 path === "src/shared/session/file-session-control.ts" ||
                 path === "src/shared/session/file-session-store-types.ts" ||
                 path === "src/shared/session/segment-rollover.ts" ||
-                // ADR-015: the laptop owner coordinates remote saves with its native writer proof.
-                path === "src/shared/session/remote-session-owner.ts" ||
                 // ADR-018: connection-scoped laptop control admits native remote writers.
                 path === "src/shared/remote/laptop-session-control.ts" ||
                 path === "src/shared/session/runtime/lifecycle-loading.ts" ||
@@ -247,7 +246,10 @@ Deno.test("the file Session contract is host-neutral and the store remains decom
 
     const facade = await Deno.readTextFile(join(REPO_ROOT, "src/shared/session/file-session-store.ts"));
     assertEquals(facade.split("\n").length <= 650, true);
-    assertEquals(facade.includes("createFileSessionControl"), true);
+    const local = await Deno.readTextFile(join(REPO_ROOT, "src/shared/session/file-session-store-local.ts"));
+    assertEquals(local.split("\n").length <= 650, true);
+    assertEquals(facade.includes("openLocalFileSessionStore"), true);
+    assertEquals(local.includes("createFileSessionControl"), true);
 });
 
 Deno.test("non-owning Session generation synchronization remains read-only", async () => {

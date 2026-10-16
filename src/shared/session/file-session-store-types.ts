@@ -383,6 +383,8 @@ export interface RolloverCommitResult extends SessionControlSnapshot {
 }
 
 export interface FileSessionStore {
+    createRemoteSessionOwner(proof: FileActivationProof): import("./file-session-store.ts").RemoteSessionOwner;
+    recoverRemoteSession(sessionId: string, ownerInstanceId: string, ownerProcessKind?: ProcessKind): void;
     path: string;
     close(): void;
     ensureRuntimeProject(options: EnsureRuntimeProjectOptions): FileSessionProject;

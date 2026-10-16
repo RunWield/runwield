@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import { fromFileUrl, join, toFileUrl } from "@std/path";
 import { parseRemoteDestination } from "./index.ts";
 
@@ -15,6 +15,7 @@ interface RemoteFixture {
     local: string;
     remote: string;
     sshLog: string;
+    buildIdentity: string;
     run: (args: string[], proof?: string) => Promise<CliResult>;
 }
 
@@ -84,6 +85,7 @@ exec /bin/sh -c "$4"
             local,
             remote,
             sshLog,
+            buildIdentity: identity,
             run: async (args, proof) => {
                 const output = await new Deno.Command(Deno.execPath(), {
                     args: ["run", "-A", "--quiet", "--config", config, cli, "remote", ...args],
@@ -143,42 +145,16 @@ Deno.test("remote CLI help and invalid arity do not contact SSH", async () => {
 });
 
 Deno.test("source remote help works without a generated identity and connection explains the build step", async () => {
-    const root = await Deno.makeTempDir();
-    try {
-        for (const path of ["src/cmd/remote", "src/shared/remote", "scripts"]) {
-            await Deno.mkdir(join(root, path), { recursive: true });
-        }
-        for (
-            const path of [
-                "src/cmd/remote/index.ts",
-                "src/shared/remote/runtime.js",
-                "src/shared/remote/target.ts",
-                "src/shared/remote/control.ts",
-                "src/shared/remote/release-artifact.ts",
-                "src/shared/remote/sftp-mount.ts",
-                "src/shared/remote/model-proof-config.ts",
-                "src/constants.js",
-                "runtime-root.js",
-                "scripts/build-metadata.js",
-                "src/shared/version.js",
-            ]
-        ) await Deno.copyFile(path, join(root, path));
-        const module = await import(toFileUrl(join(root, "src/cmd/remote/index.ts")).href);
-        const originalLog = console.log;
-        let help = "";
-        try {
-            console.log = (message: string) => {
-                help = message;
-            };
-            await module.runRemoteCommand(["--help"]);
-        } finally {
-            console.log = originalLog;
-        }
-        assertStringIncludes(help, "Usage: wld remote");
-        await assertRejects(() => module.runRemoteCommand(["example"]), Error, "scripts/compile.js --output bin/wld");
-    } finally {
-        await Deno.remove(root, { recursive: true });
-    }
+    await withRemoteFixture(async ({ run, buildIdentity, sshLog }) => {
+        await Deno.remove(buildIdentity);
+        const help = await run(["--help"]);
+        assertEquals(help.code, 0, help.stderr);
+        assertStringIncludes(help.stdout, "Usage: wld remote");
+        const connection = await run(["example"]);
+        assertEquals(connection.code, 1);
+        assertStringIncludes(connection.stderr, "scripts/compile.js --output bin/wld");
+        assertEquals(await exists(sshLog), false);
+    });
 });
 
 Deno.test("remote CLI refuses malformed LIVE proof before contacting SSH", async () => {
