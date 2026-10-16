@@ -27,8 +27,8 @@ dependencies:
     - "04-run-and-resume-remote-sessions-with-local-history"
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "14c1259632ed7a11351787322ce083f5ffdc72dc"
+status: "verified"
 ---
 
 # Keep Memory and Integrations on Their Owning Machine
