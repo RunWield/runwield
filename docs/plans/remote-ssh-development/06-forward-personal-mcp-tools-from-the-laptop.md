@@ -18,6 +18,7 @@ dependencies:
     - "04-run-and-resume-remote-sessions-with-local-history"
     - "05-keep-memory-and-integrations-on-their-owning-machine"
 targetBranch: "epic/remote-ssh-development"
+planId: "5df960b5-5c59-41b7-935a-3dc7511ad917"
 ---
 
 # Forward Personal MCP Tools from the Laptop
