@@ -28,6 +28,7 @@ dependencies:
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
 status: "reviewed"
+validatedCommit: "14c1259632ed7a11351787322ce083f5ffdc72dc"
 ---
 
 # Keep Memory and Integrations on Their Owning Machine
