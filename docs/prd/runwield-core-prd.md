@@ -1994,6 +1994,8 @@ after Session reopen and does not mark the Session or its enclosing workflow com
   RunWield stops before another model request and records a visible, recoverable stop reason.
 - Given one request reaches 100 model requests, when a retry or process restart continues it, RunWield stops before
   request 101. A provider retry contributes one count when its next turn starts.
+- Given an interrupted controller-owned task is explicitly resumed after process restart, RunWield keeps its request
+  ID and count even if recovery regenerates the prompt; matching text from fresh user input starts a new request.
 - Given a loop guard stops a request, when the Session is reopened, the stop remains in its transcript and the user can
   send a new instruction; replaying the stopped request does not call the model or complete successfully.
 

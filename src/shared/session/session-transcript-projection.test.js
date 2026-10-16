@@ -157,13 +157,29 @@ test("committed projection replays loop-guard stops without exposing fingerprint
     const events = createReplayEvents("synthetic-loop-guard", [
         {
             type: "custom",
+            id: "synthetic-loop-turn",
+            customType: "runwield.loop_guard_turn",
+            data: { version: 1, requestId: "synthetic-request", turnCount: 2 },
+        },
+        {
+            type: "custom",
+            id: "synthetic-loop-tool",
+            customType: "runwield.loop_guard_tool",
+            data: {
+                version: 1,
+                requestId: "synthetic-request",
+                signature: "private-fingerprint",
+            },
+        },
+        {
+            type: "custom",
             id: "synthetic-loop-stop",
             customType: "runwield.loop_guard_stop",
             data: {
                 version: 1,
                 requestId: "synthetic-request",
                 reason: "repeating_tool_cycle",
-                signature: "private-fingerprint",
+                stoppedAt: "2026-10-16T14:00:00.000Z",
             },
         },
     ]);

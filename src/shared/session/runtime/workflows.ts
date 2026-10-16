@@ -475,6 +475,7 @@ export class RuntimeWorkflows {
                         ...options,
                         hostedSession: session,
                         prepareSegmentHandoff: !interrupted,
+                        resumePreviousRequest: interrupted,
                     },
                 );
             });
@@ -767,6 +768,8 @@ export class RuntimeWorkflows {
                 }),
                 cwd: executionCwd,
                 dispatchKind: "validation_repair",
+                resumePreviousRequest: alreadyManaged,
+                taskId: continuation.activeWorkflow.planName,
                 subAgentDefinition: { id: SUBAGENTS.REVIEWER_FEEDBACK_ENGINEER },
                 customTools: [createReviewDiffTool({ full: diffText }, { hostedSession: session })],
             });

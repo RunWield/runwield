@@ -4538,6 +4538,8 @@ function recordPiExecutionContext(recorder, session, projection, samplingPoint) 
  * @param {import('../mcp/integration.ts').McpIntegration} [opts.mcpIntegration]
  * @param {AbortSignal} [opts.signal]
  * @param {import('./request-dispatch.ts').RequestDispatchKind} [opts.dispatchKind]
+ * @param {boolean} [opts.resumePreviousRequest] Explicitly continue the preceding unfinished request.
+ * @param {string} [opts.taskId] Stable identity for the controller-owned task being continued.
  * @param {boolean} [opts.disableAutoCompaction]
  * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
  * @returns {Promise<import('@earendil-works/pi-agent-core').AgentMessage[]>}
@@ -4550,6 +4552,8 @@ export async function runRootTurn({
     customTools,
     signal,
     dispatchKind = "interactive",
+    resumePreviousRequest = false,
+    taskId,
     disableAutoCompaction = false,
 }) {
     const targetHostedSession = requireHostedSession(hostedSession, "runRootTurn");
@@ -4620,6 +4624,8 @@ export async function runRootTurn({
         dispatch = prepareRequestDispatch(sessionManager, {
             userRequest: effectiveUserRequest,
             dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
+            resumePreviousRequest,
+            ...(!targetHostedSession.generatedTaskTurnId && taskId ? { taskId } : {}),
             ...(targetHostedSession.generatedTaskTurnId ? { taskId: targetHostedSession.generatedTaskTurnId } : {}),
             backend,
         });
@@ -4860,6 +4866,7 @@ export async function runNonInteractiveAgentPrompt({
  * @param {AbortSignal} [opts.signal] - Optional cancellation signal for transient delegated sessions.
  * @param {boolean} [opts.background] - Independent read-only child without foreground ownership.
  * @param {import('./request-dispatch.ts').RequestDispatchKind} [opts.dispatchKind]
+ * @param {boolean} [opts.resumePreviousRequest] Explicitly continue this isolated request's prior failed attempt.
  * @param {import('./managed-operation.ts').ManagedOperationCapability} [opts.managedOperationCapability]
  * @param {ExecutionSessionBuiltCallback} [opts.onExecutionSessionBuilt]
  * @param {string} [opts.parentExecutionId]
@@ -4949,6 +4956,8 @@ export async function runIsolatedAgentSession(opts) {
         const dispatch = prepareRequestDispatch(session.sessionManager, {
             userRequest: opts.userRequest,
             dispatchKind: opts.dispatchKind || "interactive",
+            resumePreviousRequest: opts.resumePreviousRequest === true,
+            ...(opts.taskId ? { taskId: opts.taskId } : {}),
             backend: executionSession?.kind || "pi",
         });
         const beforeCount = getRootExecutionMessages(executionRoot).length;

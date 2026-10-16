@@ -54,11 +54,13 @@ test("an interrupted provider response retries the same request and completes", 
             await session.prompt("Keep this request");
             assertEquals(requests.length, 2);
             assertEquals(
-                session.sessionManager
-                    .getBranch()
-                    .filter((entry) => entry.type === "custom" && entry.customType === "runwield.loop_guard_turn")
-                    .length,
-                2,
+                session.sessionManager.getBranch().flatMap((entry) =>
+                    entry.type === "custom" && entry.customType === "runwield.loop_guard_turn" ? [entry.data] : [],
+                ),
+                [
+                    { version: 1, requestId: "synthetic-provider-retry", turnCount: 1 },
+                    { version: 1, requestId: "synthetic-provider-retry", turnCount: 2 },
+                ],
             );
             assertEquals(retryEvents.length, 1);
             assertStringIncludes(JSON.stringify(requests[1].messages), "Keep this request");
@@ -512,6 +514,107 @@ test("a repeated tool call and result stops before another model request", async
     });
 });
 
+test("different tool calls with shared or changing results do not stop the request", async () => {
+    const scenarios = [
+        {
+            name: "tool names vary",
+            calls: [
+                { toolName: "name_a", args: {}, result: "same synthetic output" },
+                { toolName: "name_b", args: {}, result: "same synthetic output" },
+                { toolName: "name_c", args: {}, result: "same synthetic output" },
+            ],
+        },
+        {
+            name: "arguments vary",
+            calls: [
+                { toolName: "argument_tool", args: { step: 1 }, result: "same synthetic output" },
+                { toolName: "argument_tool", args: { step: 2 }, result: "same synthetic output" },
+                { toolName: "argument_tool", args: { step: 3 }, result: "same synthetic output" },
+            ],
+        },
+        {
+            name: "results vary",
+            calls: [
+                { toolName: "result_tool", args: {}, result: "synthetic output one" },
+                { toolName: "result_tool", args: {}, result: "synthetic output two" },
+                { toolName: "result_tool", args: {}, result: "synthetic output three" },
+            ],
+        },
+    ];
+
+    for (const [scenarioIndex, scenario] of scenarios.entries()) {
+        await withRuntimeCommandFixture(`loop-guard-distinct-calls-${scenarioIndex}-`, async (fixture) => {
+            let executions = 0;
+            let requests = 0;
+            const toolNames = [...new Set(scenario.calls.map((call) => call.toolName))];
+            const tools = toolNames.map((name) => ({
+                name,
+                label: name,
+                description: "Returns a synthetic result for loop guard coverage",
+                parameters: { type: "object", properties: { step: { type: "number" } } },
+                /** @param {string} _toolCallId @param {{step?: number}} args */
+                execute: (_toolCallId, args) => {
+                    executions += 1;
+                    const call = scenario.calls[executions - 1];
+                    if (
+                        !call ||
+                        call.toolName !== name ||
+                        ("step" in call.args ? call.args.step : undefined) !== args.step
+                    ) {
+                        throw new Error(`Unexpected synthetic call to ${name}`);
+                    }
+                    return Promise.resolve({
+                        content: [{ type: /** @type {const} */ ("text"), text: call.result }],
+                        details: null,
+                    });
+                },
+            }));
+            fixture.setModelResponseFactories([
+                ...scenario.calls.map((call) => () => {
+                    requests += 1;
+                    return fauxAssistantMessage(fauxToolCall(call.toolName, call.args));
+                }),
+                () => {
+                    requests += 1;
+                    return fauxAssistantMessage(fauxText("Distinct synthetic calls completed"));
+                },
+            ]);
+            const sessionManager = SessionManager.create(fixture.projectRoot, join(fixture.homeDir, "sessions"));
+            const built = await buildAgentSession({
+                agentName: "guide",
+                cwd: fixture.projectRoot,
+                customTools: tools,
+                toolNames,
+                sessionManager,
+            });
+            try {
+                await runPrompt({
+                    session: built.session,
+                    agentDef: built.agentDef,
+                    agentName: "guide",
+                    userRequest: `Exercise ${scenario.name}`,
+                    finalSystemPrompt: built.promptState.text,
+                    subscriberState: {
+                        resetTurn() {},
+                        drainInvokedToolNames: () => [],
+                        endThinking() {},
+                        unsubscribe() {},
+                    },
+                    requestId: `synthetic-distinct-call-${scenarioIndex}`,
+                });
+                assertEquals(executions, 3, scenario.name);
+                assertEquals(requests, 4, scenario.name);
+                assertStringIncludes(
+                    JSON.stringify(built.session.messages.at(-1)),
+                    "Distinct synthetic calls completed",
+                );
+            } finally {
+                built.session.dispose();
+            }
+        });
+    }
+});
+
 test("a runaway isolated request rejects instead of returning successful messages", async () => {
     await withRuntimeCommandFixture("loop-guard-isolated-stop-", async (fixture) => {
         let executions = 0;
@@ -743,7 +846,13 @@ test("the model-turn budget survives a Session reopen for the same request", asy
         const stoppedSessionPath = reopenedManager.getSessionFile();
         if (!stoppedSessionPath) throw new Error("Missing stopped synthetic session transcript");
         const stoppedManager = SessionManager.open(stoppedSessionPath, join(fixture.homeDir, "sessions"), fixture.projectRoot);
-        fixture.setModelResponseFactories([() => fauxAssistantMessage(fauxText("New instruction answered"))]);
+        const requestsBeforeStoppedReplay = requests;
+        fixture.setModelResponseFactories([
+            () => {
+                requests += 1;
+                return fauxAssistantMessage(fauxText("Unexpected stopped replay response"));
+            },
+        ]);
         const stoppedBuilt = await buildAgentSession({
             agentName: "guide",
             cwd: fixture.projectRoot,
@@ -771,12 +880,17 @@ test("the model-turn budget survives a Session reopen for the same request", asy
                 RunawayLoopGuardStoppedError,
                 "model_turn_limit",
             );
-            assertEquals(requests, 100);
+            assertEquals(requests, requestsBeforeStoppedReplay);
         } finally {
             stoppedBuilt.session.dispose();
         }
 
-        fixture.setModelResponseFactories([() => fauxAssistantMessage(fauxText("New instruction answered"))]);
+        fixture.setModelResponseFactories([
+            () => {
+                requests += 1;
+                return fauxAssistantMessage(fauxText("New instruction answered"));
+            },
+        ]);
         const freshBuilt = await buildAgentSession({
             agentName: "guide",
             cwd: fixture.projectRoot,
@@ -800,6 +914,7 @@ test("the model-turn budget survives a Session reopen for the same request", asy
                 requestId: "synthetic-fresh-request",
             });
             assertStringIncludes(JSON.stringify(freshBuilt.session.messages.at(-1)), "New instruction answered");
+            assertEquals(requests, requestsBeforeStoppedReplay + 1);
         } finally {
             freshBuilt.session.dispose();
         }

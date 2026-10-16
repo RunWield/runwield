@@ -1,13 +1,10 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 
 export const BACKEND_CONTINUATION_REQUEST = "Continue the active agent task after the previous backend failed.";
+export const INTERRUPTED_CONTINUATION_REQUEST = "Continue the active agent task from the saved Session context.";
 
 export type RequestDispatchKind =
-    | "interactive"
-    | "plan_execution"
-    | "quick_fix"
-    | "validation_repair"
-    | "background_task_result";
+    "interactive" | "plan_execution" | "quick_fix" | "validation_repair" | "background_task_result";
 
 export type RequestPromptMode = "original" | "continuation";
 export type RequestAttemptPhase = "started" | "completed" | "failed";
@@ -33,7 +30,22 @@ export interface PreparedRequestDispatch {
     requestHash: string;
     dispatchKind: RequestDispatchKind;
     backend: string;
+    requestRecorded: boolean;
     taskId?: string;
+}
+
+export interface PrepareRequestDispatchOptions {
+    userRequest: string;
+    dispatchKind: RequestDispatchKind;
+    backend: string;
+    taskId?: string;
+    /** True only when the caller explicitly continues the preceding unfinished request. */
+    resumePreviousRequest?: boolean;
+}
+
+interface LocatedRequestAttempt {
+    attempt: RequestAttemptEntry;
+    entryIndex: number;
 }
 
 interface TranscriptCustomEntry {
@@ -49,39 +61,43 @@ interface TranscriptCustomEntry {
  */
 export function prepareRequestDispatch(
     sessionManager: SessionManager,
-    options: {
-        userRequest: string;
-        dispatchKind: RequestDispatchKind;
-        backend: string;
-        taskId?: string;
-    },
+    options: PrepareRequestDispatchOptions,
 ): PreparedRequestDispatch {
-    const requestHash = hashRequest(options.userRequest);
-    const failed = readLatestFailedAttempt(sessionManager);
-    const continuesFailedRequest = failed?.requestHash === requestHash &&
-        failed.dispatchKind === options.dispatchKind;
-    const requestId = continuesFailedRequest ? failed.requestId : `request:${crypto.randomUUID()}`;
-    const promptMode: RequestPromptMode = continuesFailedRequest && failed.requestRecorded
-        ? "continuation"
-        : "original";
+    const userRequestHash = hashRequest(options.userRequest);
+    const previous = readLatestUnfinishedAttempt(sessionManager);
+    const matchesPreviousScope =
+        previous?.attempt.dispatchKind === options.dispatchKind &&
+        (options.taskId
+            ? previous.attempt.taskId === options.taskId ||
+              (previous.attempt.taskId === undefined && previous.attempt.requestHash === userRequestHash)
+            : previous.attempt.taskId === undefined && previous.attempt.requestHash === userRequestHash);
+    const continuesPreviousRequest = matchesPreviousScope && options.resumePreviousRequest === true;
+    const continuedAttempt = previous && continuesPreviousRequest ? previous.attempt : null;
+    const requestRecorded =
+        continuedAttempt && previous
+            ? continuedAttempt.requestRecorded || hasUserMessageAfter(sessionManager, previous.entryIndex)
+            : false;
+    const requestHash = continuedAttempt?.requestHash || userRequestHash;
+    const requestId = continuedAttempt ? continuedAttempt.requestId : `request:${crypto.randomUUID()}`;
+    const promptMode: RequestPromptMode = continuedAttempt && requestRecorded ? "continuation" : "original";
+    const continuationRequest =
+        continuedAttempt?.phase === "started" ? INTERRUPTED_CONTINUATION_REQUEST : BACKEND_CONTINUATION_REQUEST;
     const prepared: PreparedRequestDispatch = {
         requestId,
         attemptId: `attempt:${crypto.randomUUID()}`,
-        userRequest: promptMode === "continuation" ? BACKEND_CONTINUATION_REQUEST : options.userRequest,
+        userRequest: promptMode === "continuation" ? continuationRequest : options.userRequest,
         promptMode,
+        requestRecorded,
         requestHash,
         dispatchKind: options.dispatchKind,
         backend: options.backend,
-        ...(options.taskId ? { taskId: options.taskId } : {}),
+        ...(options.taskId || continuedAttempt?.taskId ? { taskId: options.taskId || continuedAttempt?.taskId } : {}),
     };
-    appendAttempt(sessionManager, prepared, "started", false);
+    appendAttempt(sessionManager, prepared, "started", requestRecorded);
     return prepared;
 }
 
-export function completeRequestDispatch(
-    sessionManager: SessionManager,
-    prepared: PreparedRequestDispatch,
-): void {
+export function completeRequestDispatch(sessionManager: SessionManager, prepared: PreparedRequestDispatch): void {
     appendAttempt(sessionManager, prepared, "completed", true);
 }
 
@@ -90,20 +106,18 @@ export function failRequestDispatch(
     prepared: PreparedRequestDispatch,
     requestRecorded: boolean,
 ): void {
-    appendAttempt(sessionManager, prepared, "failed", requestRecorded);
+    appendAttempt(sessionManager, prepared, "failed", requestRecorded || prepared.requestRecorded);
 }
 
 export function readRequestAttemptEntries(sessionManager: SessionManager): RequestAttemptEntry[] {
-    return sessionManager.getBranch()
+    return sessionManager
+        .getBranch()
         .filter((entry) => entry.type === "custom" && entry.customType === "runwield.request_attempt")
         .map((entry) => (entry as TranscriptCustomEntry).data)
         .filter((entry): entry is RequestAttemptEntry => Boolean(entry));
 }
 
-export function recordRequestAttemptSnapshot(
-    sessionManager: SessionManager,
-    attempt: RequestAttemptEntry,
-): void {
+export function recordRequestAttemptSnapshot(sessionManager: SessionManager, attempt: RequestAttemptEntry): void {
     sessionManager.appendCustomEntry("runwield.request_attempt", { ...attempt });
 }
 
@@ -113,27 +127,40 @@ function appendAttempt(
     phase: RequestAttemptPhase,
     requestRecorded: boolean,
 ): void {
-    sessionManager.appendCustomEntry(
-        "runwield.request_attempt",
-        {
-            version: 1,
-            requestId: prepared.requestId,
-            attemptId: prepared.attemptId,
-            requestHash: prepared.requestHash,
-            dispatchKind: prepared.dispatchKind,
-            backend: prepared.backend,
-            phase,
-            promptMode: prepared.promptMode,
-            requestRecorded,
-            ...(prepared.taskId ? { taskId: prepared.taskId } : {}),
-        } satisfies RequestAttemptEntry,
-    );
+    sessionManager.appendCustomEntry("runwield.request_attempt", {
+        version: 1,
+        requestId: prepared.requestId,
+        attemptId: prepared.attemptId,
+        requestHash: prepared.requestHash,
+        dispatchKind: prepared.dispatchKind,
+        backend: prepared.backend,
+        phase,
+        promptMode: prepared.promptMode,
+        requestRecorded,
+        ...(prepared.taskId ? { taskId: prepared.taskId } : {}),
+    } satisfies RequestAttemptEntry);
 }
 
-function readLatestFailedAttempt(sessionManager: SessionManager): RequestAttemptEntry | null {
-    const attempts = readRequestAttemptEntries(sessionManager);
-    const latest = attempts.at(-1);
-    return latest?.phase === "failed" ? latest : null;
+function readLatestUnfinishedAttempt(sessionManager: SessionManager): LocatedRequestAttempt | null {
+    const entries = sessionManager.getBranch();
+    for (let entryIndex = entries.length - 1; entryIndex >= 0; entryIndex -= 1) {
+        const entry = entries[entryIndex];
+        if (entry.type !== "custom" || entry.customType !== "runwield.request_attempt") continue;
+        const attempt = (entry as TranscriptCustomEntry).data;
+        if (!attempt || (attempt.phase !== "started" && attempt.phase !== "failed")) return null;
+        return { attempt, entryIndex };
+    }
+    return null;
+}
+
+function hasUserMessageAfter(sessionManager: SessionManager, entryIndex: number): boolean {
+    return sessionManager
+        .getBranch()
+        .slice(entryIndex + 1)
+        .some((entry) => {
+            if (entry.type !== "message") return false;
+            return entry.message.role === "user";
+        });
 }
 
 function hashRequest(value: string): string {

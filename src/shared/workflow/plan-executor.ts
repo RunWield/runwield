@@ -70,6 +70,7 @@ export interface ExecutePlanOptions {
     reviewImages?: Array<{ base64: string; mimeType: string }>;
     approvalEvidence?: PlanActionEvidence;
     prepareSegmentHandoff?: boolean;
+    resumePreviousRequest?: boolean;
 }
 
 export interface ExecuteSingleEngineerPlanOptions {
@@ -88,6 +89,7 @@ export interface ExecuteSingleEngineerPlanOptions {
     collaborationStyle?: "autonomous" | "pair";
     collaborationRecommendation?: "autonomous" | "pair";
     prepareSegmentHandoff?: boolean;
+    resumePreviousRequest?: boolean;
 }
 
 export async function executePlan({
@@ -100,6 +102,7 @@ export async function executePlan({
     reviewImages,
     approvalEvidence,
     prepareSegmentHandoff = false,
+    resumePreviousRequest,
 }: ExecutePlanOptions): Promise<PlanExecutionResult> {
     if (!hostedSession) throw new Error("executePlan: hostedSession is required");
     const projectRoot = hostedSession.cwd;
@@ -117,6 +120,7 @@ export async function executePlan({
 
     const initialLoad = await tryLoadPlanForExecution();
     let plan = initialLoad.plan;
+    resumePreviousRequest ??= Boolean(plan && ["in_progress", "failed"].includes(plan.attrs.status || ""));
     if (!plan) {
         emitSystemStatus(hostedSession, `ERROR: Could not load plan ${planName}`, {
             level: "error",
@@ -416,6 +420,7 @@ export async function executePlan({
         collaborationStyle: collaboration.style,
         collaborationRecommendation: collaboration.recommendation,
         prepareSegmentHandoff,
+        resumePreviousRequest,
     });
     if (!result.executionComplete) {
         await recordWorkflowMetric({
@@ -506,6 +511,7 @@ export async function executeSingleEngineerPlan(
         collaborationStyle = CollaborationStyles.AUTONOMOUS,
         collaborationRecommendation = CollaborationStyles.AUTONOMOUS,
         prepareSegmentHandoff = false,
+        resumePreviousRequest = false,
     }: ExecuteSingleEngineerPlanOptions,
 ): Promise<PlanExecutionResult> {
     const approvalSnapshot = approvalEvidence
@@ -614,6 +620,7 @@ export async function executeSingleEngineerPlan(
         reviewFeedback,
         reviewImages,
         runtimeExecutionAgent,
+        resumePreviousRequest,
     );
     if (!engineerResult.completed) {
         return {

@@ -48,8 +48,12 @@ export function attachRunawayLoopGuard({
     hostedSession,
 }: RunawayLoopGuardOptions): RunawayLoopGuard {
     const sessionManager = session.sessionManager;
-    if (!sessionManager || typeof sessionManager.getBranch !== "function") {
-        return { dispose: () => {}, throwIfStopped: () => {} };
+    if (
+        !sessionManager ||
+        typeof sessionManager.getBranch !== "function" ||
+        typeof sessionManager.appendCustomEntry !== "function"
+    ) {
+        throw new Error("Runaway loop guard requires an AgentSession with a SessionManager");
     }
     const branch = sessionManager.getBranch();
 
