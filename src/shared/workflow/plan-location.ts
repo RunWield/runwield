@@ -92,7 +92,7 @@ async function resolveWorkflowPlanLocationInScope(
                     targetBranch
                 ) {
                     const targetPlan = await findTargetBranchPlan(registryRoot, targetBranch, planName);
-                    if (!targetPlan || targetPlan.attrs.planId !== plan.attrs.planId) {
+                    if (!targetPlan || (targetPlan.attrs.planId && targetPlan.attrs.planId !== plan.attrs.planId)) {
                         throw new Error(
                             `Plan ${planName} does not exist on target ${targetBranch} with this identity.`,
                         );

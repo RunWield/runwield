@@ -113,6 +113,88 @@ for (const autocrlf of [false, true]) {
     }
 }
 
+for (const secondWorktree of [false, true]) {
+    for (const staged of [false, true]) {
+        for (const path of [planPath, recordPath]) {
+            test(`local metadata edits pause before moving the target (second worktree: ${secondWorktree}, staged: ${staged}, path: ${path})`, async () => {
+                const root = await fixture.checkout();
+                try {
+                    const candidate = await git(root, ["rev-parse", "HEAD"]);
+                    const checkout = secondWorktree ? join(root, "target checkout") : root;
+                    const target = secondWorktree ? "release/next" : "main";
+                    if (secondWorktree) await git(root, ["worktree", "add", "-b", target, checkout]);
+                    const edited = `${await fsReadFile(join(checkout, path), "utf8")}\nUser note\n`;
+                    await fsWriteFile(join(checkout, path), edited);
+                    if (staged) await git(checkout, ["add", "--", path]);
+                    const index = await git(checkout, ["show", `:${path}`]);
+                    const failure = await assertRejects(
+                        () => finalizeLocalPublicationLifecycle(root, target, "feature", candidate, [planPath]),
+                        Error,
+                        "Preserved edited delivery metadata",
+                    );
+                    assertEquals(await git(root, ["rev-parse", `refs/heads/${target}`]), candidate);
+                    assertEquals(await fsReadFile(join(checkout, path), "utf8"), edited);
+                    assertEquals(await git(checkout, ["show", `:${path}`]), index);
+                    assert("mergeFailureKind" in failure);
+                    assertEquals(failure.mergeFailureKind, "primary_checkout_dirty");
+                    assert("blockingPaths" in failure);
+                    assertEquals(failure.blockingPaths, [path]);
+                } finally {
+                    await fsRm(root, { recursive: true });
+                }
+            });
+        }
+    }
+}
+
+test("local delivery lists all metadata blockers through retries", async () => {
+    const root = await fixture.checkout();
+    try {
+        const candidate = await git(root, ["rev-parse", "HEAD"]);
+        for (const path of [planPath, recordPath]) {
+            await fsWriteFile(join(root, path), `${await fsReadFile(join(root, path), "utf8")}\nUser note\n`);
+        }
+        await git(root, ["add", "--", planPath]);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const failure = await assertRejects(
+                () => finalizeLocalPublicationLifecycle(root, "main", "feature", candidate, [planPath]),
+                Error,
+                "Preserved edited delivery metadata",
+            );
+            assert("blockingPaths" in failure);
+            assertEquals(failure.blockingPaths, [planPath, recordPath]);
+            assertEquals(await git(root, ["rev-parse", "HEAD"]), candidate);
+            assertStringIncludes(await fsReadFile(join(root, planPath), "utf8"), "User note");
+            assertStringIncludes(await fsReadFile(join(root, recordPath), "utf8"), "User note");
+        }
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
+});
+
+test("local delivery refreshes the target branch in a second worktree", async () => {
+    const root = await fixture.checkout();
+    try {
+        const candidate = await git(root, ["rev-parse", "HEAD"]);
+        const checkout = join(root, "target checkout");
+        await git(root, ["worktree", "add", "-b", "release/next", checkout]);
+        const delivered = await finalizeLocalPublicationLifecycle(root, "release/next", "feature", candidate, [
+            planPath,
+        ]);
+        assert(delivered !== candidate);
+        assertEquals(await git(checkout, ["rev-parse", "HEAD"]), delivered);
+        assertEquals(await git(checkout, ["status", "--porcelain"]), "");
+        assertEquals(parsePlanFrontMatter(await fsReadFile(join(checkout, planPath), "utf8")).attrs.status, "verified");
+        assertEquals(await git(root, ["rev-parse", "HEAD"]), candidate);
+        assertEquals(
+            await finalizeLocalPublicationLifecycle(root, "release/next", "feature", candidate, [planPath]),
+            delivered,
+        );
+    } finally {
+        await fsRm(root, { recursive: true });
+    }
+});
+
 test("metadata recovery settles an interrupted checkout refresh and preserves subsequent user edits", async () => {
     const root = await fixture.checkout();
     try {

@@ -331,15 +331,17 @@ export async function ensureEpicBranch(
     const namedBranch = epicTargetBranch(epic.attrs);
     // Sequences are lightweight on purpose: they get a branch only when the user asks for one.
     if (!namedBranch && isSequenceEpic(epic.attrs)) return { kind: "none", reason: "sequence_without_branch" };
-    if (!namedBranch && !(await canAdoptEpicBranch(primaryRoot, children))) {
+    const branch = await resolveTargetBranchName(primaryRoot, namedBranch || defaultEpicBranchName(epicPlanName));
+    const branchExists = await epicBranchExists(primaryRoot, branch);
+    // Started children prevent creating a new default branch, not using one that already owns the family.
+    if (!namedBranch && !branchExists && !(await canAdoptEpicBranch(primaryRoot, children))) {
         return { kind: "none", reason: "started_without_branch" };
     }
-    const branch = await resolveTargetBranchName(primaryRoot, namedBranch || defaultEpicBranchName(epicPlanName));
 
     // Create the branch before recording anything, so a failure never leaves the
     // Epic pointing at a branch that does not exist.
     let created = false;
-    if (!(await epicBranchExists(primaryRoot, branch))) {
+    if (!branchExists) {
         try {
             await prepareTargetBranchRef(primaryRoot, branch);
         } catch (error) {

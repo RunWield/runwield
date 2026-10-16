@@ -401,9 +401,11 @@ drafts on it while the user's checkout stays as it is. An existing branch keeps 
 started before Epic branches existed keep their earlier behavior.
 
 **Requirement: Load children from the Epic branch.** Once the Epic branch exists, `/load-plan` uses it for child
-membership, names, and published content, not the current checkout. Loading does not publish stale checkout drafts.
-A published rename keeps the child's stable identity and compatible saved planning edits. Active execution keeps its
-own document authority.
+membership, names, and published content, not the current checkout. This includes an existing default Epic branch when
+its name is not yet recorded on the Epic, even if children have already started. Loading does not publish stale
+checkout drafts. A published rename keeps the child's stable identity and compatible saved planning edits. Active
+execution keeps its own document authority. If a selected child has no Plan ID, Core creates one before worktree
+preparation and saves it in the child's planning document. Later loads reuse that identity and worktree.
 
 **Requirement: Each child starts with the preceding children's published code.** Before the next child is prepared,
 Core fetches the latest Epic branch. The child's planning worktree starts from, or imports, that commit while keeping
@@ -441,6 +443,10 @@ siblings active. Listings show held work separately from active and finished wor
 - Given Planner renumbers children on the Epic branch, `/load-plan` lists the new names, excludes removed names, and
   opens the selected branch Plan without restoring stale checkout drafts. A renamed child's saved planning edits stay
   in its planning worktree.
+- Given an existing default Epic branch and completed children, but no recorded Epic target, `/load-plan` lists that
+  branch's current children and opens its next child, not a stale primary-checkout name.
+- Given a target-branch child without a Plan ID, loading it creates a durable identity and planning worktree. Repeated
+  or concurrent loading reuses both without changing the primary checkout or publishing to the Epic branch.
 - Given a child published from another checkout, preparing the next child includes that publication.
 - Given the next child already has a planning worktree with saved edits, continuation imports the published code and
   keeps those edits.
@@ -681,7 +687,10 @@ branch makes the Plan Verified. Epic and Sequence children deliver to their pare
 non-Git execution keep their existing delivery behavior.
 
 **Requirement: Identify publication blockers.** When local publication pauses for tracked or staged user changes, the
-recovery notice lists the blocking paths and keeps those changes. The paths stay visible through retries.
+recovery notice lists the blocking paths and keeps those changes. The paths stay visible through retries. Before moving
+a local target ref for delivery metadata, RunWield finds the checkout that holds that branch and checks its index and
+files. User edits pause publication before the ref moves. If RunWield cannot read the checkout list, it keeps the ref
+unchanged. After publication, it refreshes the checkout that holds the target branch, even in another worktree.
 
 **Requirement: Publication conflicts resolve inside publication.** A publication-conflict repair belongs to the
 publication attempt. When the repair Agent's completion is accepted, Git verification and publication continue
@@ -708,6 +717,10 @@ after publication is an explicit user choice.
 - Given an Epic or Sequence child, delivery reaches the parent's branch.
 - Given a dirty tracked file that blocks local publication, the recovery prompt names that file and its contents and
   the target branch stay as they were.
+- Given staged or unstaged edits to delivery metadata in the target checkout, publication pauses before moving the
+  target ref, lists the blocking paths, and keeps the index and files unchanged.
+- Given the target branch checked out in another worktree, metadata publication refreshes that worktree's index and
+  files to the new commit without creating staged reversions.
 - Given an execution Plan edited to target `release/next` after the Session loaded it, validation and publication use
   `release/next`.
 - Given a Plan targeting `main` while Git config points `main` at another upstream, publication updates and verifies
@@ -1393,6 +1406,8 @@ continues on `main`. Stable promotion uses the exact tested Candidate.
 native Windows and macOS Homebrew package checks before GitHub publication; a failed or timed-out check blocks
 publication. Candidate checks leave Stable channels unchanged. Package recovery keeps the released tag and asset bytes,
 verifies the existing assets, and resumes package publication. Missing or inconsistent assets stop publication.
+Workspace runtime packaging waits for the final server manifest and its imports; it does not bundle an intermediate
+manifest placeholder.
 
 **Acceptance scenarios:**
 
@@ -1410,6 +1425,8 @@ verifies the existing assets, and resumes package publication. Missing or incons
   feature work.
 - Given a tested Candidate and an advanced Release Branch, Stable uses the tested commit.
 - Given a failed package check, no GitHub Release is created.
+- Given an Astro server entry whose manifest is still being written, Workspace runtime packaging waits for the final
+  manifest before it invokes the bundler.
 - Given Stable assets published and a failed tap publication, recovery reuses the verified assets and the tag.
 - Given a native Windows package check, the packaged Agent creates a Git branch and the Dashboard stream completes.
 

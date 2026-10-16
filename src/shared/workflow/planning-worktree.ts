@@ -8,7 +8,9 @@ import {
     canonicalizeStoredPlanName,
     getPlanRevisionForText,
     loadPlan,
+    mergeFrontMatterText,
     parsePlanFrontMatter,
+    withPlanCatalogLock,
 } from "../../plan-store.js";
 import {
     addEntry as addWorktreeRegistryEntry,
@@ -279,7 +281,22 @@ export async function preparePlanningWorktreeForPlan(
 ): Promise<PlanningWorktreeResult> {
     const projectRoot = resolvePrimaryCheckoutRoot(cwd);
     const planId = typeof planAttrs.planId === "string" ? planAttrs.planId.trim() : "";
-    if (!planId) throw new Error(`Planning worktree for ${planName} requires a stable planId.`);
+    if (!planId) {
+        // Serialize onboarding until the generated identity is saved in a registered document.
+        return await withPlanCatalogLock(projectRoot, async () => {
+            const registered = (await listWorktreeRegistryEntries(projectRoot)).find(
+                (entry) => entry.planName === planName && entry.status !== "abandoned",
+            );
+            let stablePlanId = registered?.planId;
+            if (!stablePlanId) {
+                const target = await resolveExistingTargetSnapshot(projectRoot, targetBranchForPlan(planAttrs));
+                const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
+                if (!targetPlan) throw new Error(`Plan ${planName} does not exist on target ${target.baseBranch}.`);
+                stablePlanId = targetPlan.attrs.planId || crypto.randomUUID();
+            }
+            return await preparePlanningWorktreeForPlan(projectRoot, planName, { ...planAttrs, planId: stablePlanId });
+        });
+    }
 
     let existing = (await listWorktreeRegistryEntries(projectRoot)).find(
         (entry) => entry.planId === planId && entry.status !== "abandoned",
@@ -318,7 +335,7 @@ export async function preparePlanningWorktreeForPlan(
             }
             if (target.baseRef !== existing.baseCommit) {
                 const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
-                if (!targetPlan || targetPlan.attrs.planId !== planId) {
+                if (!targetPlan || (targetPlan.attrs.planId && targetPlan.attrs.planId !== planId)) {
                     throw new Error(
                         `Target Plan ${planName} is missing or has a different Plan ID. Your files were not changed.`,
                     );
@@ -339,9 +356,16 @@ export async function preparePlanningWorktreeForPlan(
     const target = await resolveExistingTargetSnapshot(projectRoot, targetBranch);
     const targetPlan = await loadTargetPlan(projectRoot, planName, target.baseRef);
     if (!targetPlan) throw new Error(`Plan ${planName} does not exist on target ${target.baseBranch}.`);
-    if (targetPlan.attrs.planId !== planId) {
-        throw new Error(`Target Plan ${planName} has a different or missing Plan ID. Your files were not changed.`);
+    if (targetPlan.attrs.planId && targetPlan.attrs.planId !== planId) {
+        throw new Error(`Target Plan ${planName} has a different Plan ID. Your files were not changed.`);
     }
+    const canonicalPlan = targetPlan.attrs.planId
+        ? targetPlan
+        : {
+              ...targetPlan,
+              attrs: { ...targetPlan.attrs, planId },
+              markdown: mergeFrontMatterText(targetPlan.markdown, { planId }),
+          };
 
     const attemptId = crypto.randomUUID().slice(0, 8);
     const transition = await runExecutionPreparationTransition({
@@ -399,8 +423,8 @@ export async function preparePlanningWorktreeForPlan(
             const planFile = await ensureExecutionPlanFile({
                 executionCwd: entry.path,
                 planName,
-                canonicalSource: loadedCanonicalSource(planName, targetPlan),
-                reconcileFromCanonical: false,
+                canonicalSource: loadedCanonicalSource(planName, canonicalPlan),
+                reconcileFromCanonical: !targetPlan.attrs.planId,
                 replaceFromCanonical: false,
             });
             if (!["present", "restored", "reconciled"].includes(planFile.kind)) {

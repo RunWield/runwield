@@ -35,11 +35,16 @@ async function mergePlanningDocument(
     const baseAttrs = parsePlanFrontMatter(base).attrs;
     const currentAttrs = parsePlanFrontMatter(current).attrs;
     const incomingAttrs = parsePlanFrontMatter(incoming).attrs;
-    if (currentAttrs.planId !== incomingAttrs.planId) {
+    const locallyAssignedIdentity = own && !baseAttrs.planId && !incomingAttrs.planId;
+    if (currentAttrs.planId !== incomingAttrs.planId && !locallyAssignedIdentity) {
         throw new Error(`Cannot refresh ${path}: the published Plan has a different identity.`);
     }
     const lifecycle = own || incomingAttrs.status === baseAttrs.status ? currentAttrs : incomingAttrs;
-    const overrides = { status: lifecycle.status, userVerifiedAt: lifecycle.userVerifiedAt };
+    const overrides = {
+        ...(locallyAssignedIdentity ? { planId: currentAttrs.planId } : {}),
+        status: lifecycle.status,
+        userVerifiedAt: lifecycle.userVerifiedAt,
+    };
     const versions = [current, base, incoming].map((text) => planDocumentMarkdown(injectFrontMatter(text, overrides)));
     const scratch = await mkdtemp(join(tmpdir(), "runwield-planning-merge-"));
     try {
@@ -112,7 +117,8 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
             const head = (await git(entry.path, ["rev-parse", "HEAD"])).trim();
             const base = (await git(entry.path, ["merge-base", head, targetCommit])).trim();
             const changed = (await git(entry.path, ["diff", "--name-only", "-z", base, head, "--", "docs/plans"]))
-                .split("\0").filter((path) => path.endsWith(".md"));
+                .split("\0")
+                .filter((path) => path.endsWith(".md"));
             const documents = new Map<string, string>();
             for (const path of changed) {
                 const original = await readPlanAt(entry.path, base, path);
@@ -149,7 +155,8 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                         ],
                     });
                     const conflicts = (await git(entry.path, ["diff", "--name-only", "-z", "--diff-filter=U"]))
-                        .split("\0").filter(Boolean);
+                        .split("\0")
+                        .filter(Boolean);
                     if ((!merged.success && !conflicts.length) || conflicts.some((path) => !documents.has(path))) {
                         throw new Error(
                             `Cannot refresh planning for ${entry.planName}: ${new TextDecoder().decode(merged.stderr)}`,

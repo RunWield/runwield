@@ -10,7 +10,7 @@ updatedAt: "2026-10-16"
 **Document role: Living central PRD.** Principles and lasting requirements for the personal browser Workspace and its
 continuity with the TUI and phone.
 
-**Status:** The personal local Workspace is delivered (Personal Remote Workspace v1 and v2). Collaborative SaaS
+**Status:** The personal local Workspace is delivered in its first iteration. Collaborative SaaS
 Workspace requirements are collected in [Collaborative SaaS Workspace](#collaborative-saas-workspace) until they move
 to their own PRD. External-client and chat access are owned by the [ACP PRD](runwield-acp-protocol-prd.md); external
 Agent hosts are owned by the [Connect PRD](runwield-connect-prd.md).
@@ -224,7 +224,7 @@ The [Collaborative Planning PRD](collaborative-planning-PRD.md) defines these jo
 
 ### Attention dashboard
 
-**Scope and maturity:** Current, delivered with Personal Remote Workspace v2 and progressive loading.
+**Scope and maturity:** Current.
 
 **Requirement: Surface the owner's next consequential action.** The Workspace home is an attention-first queue across
 registered Projects. It answers one question:
@@ -659,8 +659,8 @@ every action stays available.
 
 ### Durable knowledge search
 
-**Scope and maturity:** Current, delivered with Personal Remote Workspace v2. Search opt-out, research retrieval, full
-Session Transcript search, and history filters are deferred.
+**Scope and maturity:** Current. Search opt-out, research retrieval, full Session Transcript search, and history filters
+are deferred.
 
 **Requirement: Retrieve eligible knowledge with scope and confidence visible.** Workspace Search offers a quick-search
 dialog and a full results page across enabled registered Projects. Both use the same query, Project and type filters,
@@ -923,13 +923,6 @@ review, or memory; required review gate
 **Project Evidence Graph**: a rebuildable provenance projection that connects project intent, decisions, Plans,
 delivery evidence, and outcomes, with source artifacts as project truth. _Avoid_: Plan Evidence Graph, Session
 Transcript graph, source of truth
-
-## Proposed Domain Language
-
-**Workspace Intelligence Search**: deliberate retrieval over eligible durable artifacts and Session entry points across
-registered Projects, keeping source Project, artifact type, status, and freshness. _Avoid_: public global search,
-Session Transcript search, unscoped organization access. The capability shipped as
-[Durable knowledge search](#durable-knowledge-search); the glossary update is pending.
 
 ## References
 
