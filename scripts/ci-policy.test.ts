@@ -412,6 +412,7 @@ test("publication requires every product and source gate including actual packag
     ];
     assertEquals(release.needs, [
         "metadata",
+        "docs-artifact",
         "ci",
         "golden",
         "release-check",
