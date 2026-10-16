@@ -9,13 +9,7 @@ import { isSequencePlan, projectPlanType } from "../../shared/project-plan.ts";
  */
 
 import { isPlannedChangeClassification } from "../../constants.js";
-import {
-    compareChildPlansByOrder,
-    findPlansByParent,
-    isTerminalArchivableStatus,
-    loadPlan,
-    resolvePlan,
-} from "../../plan-store.js";
+import { compareChildPlansByOrder, findPlansByParent, isTerminalArchivableStatus, loadPlan } from "../../plan-store.js";
 import { isInValidation, isProjectPlan, recordPlanEvent } from "../../shared/workflow/plan-lifecycle.js";
 import { resolveWorkRecordSupersessionProposalsWithUi } from "../../shared/workflow/validation-helpers.ts";
 import {
@@ -28,6 +22,7 @@ import { isGitRepository } from "../../shared/git.ts";
 import { ensureEpicBranch } from "../../shared/workflow/epic-branch.ts";
 import { reconcileEpicDelivery } from "../../shared/workflow/epic-integration.ts";
 import { archiveEpicWithChildren } from "./plan-epic-archive.ts";
+import { resolvePlanWithPrimaryRecovery } from "./primary-plan-recovery.ts";
 import { buildPlanSummary } from "../../shared/plan-presentation.ts";
 import { readControllerWorktree } from "../../shared/workflow/controller-registry.ts";
 import {
@@ -90,7 +85,7 @@ export async function handleEpicPlan({
     let epicGateReady = false;
     if (await isGitRepository(projectRoot)) {
         try {
-            const branch = await ensureEpicBranch(projectRoot, plan.planName);
+            const branch = await ensureEpicBranch(projectRoot, plan.planName, { seedChildren: false });
             if (branch.kind === "ready" && branch.created) {
                 uiAPI.appendSystemMessage(
                     `Created the Epic branch ${branch.branch} from the latest primary branch.`,
@@ -452,7 +447,10 @@ export async function handleEpicPlan({
 
                     if (childAction === "view") {
                         try {
-                            const childPlan = await resolvePlan(projectRoot, String(childPlanName));
+                            const { plan: childPlan } = await resolvePlanWithPrimaryRecovery(
+                                projectRoot,
+                                String(childPlanName),
+                            );
                             uiAPI.appendSystemMessage(
                                 `Planned Change: ${childPlan.planName}\n\n${buildPlanSummary(childPlan)}`,
                                 false,

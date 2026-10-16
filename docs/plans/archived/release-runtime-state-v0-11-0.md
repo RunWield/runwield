@@ -268,7 +268,7 @@ package runs, published assets, and installed Candidate behavior. These later ch
 pre-merge results. Record each result against its exact source commit.
 
 ```sh
-deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/collaboration/secrets.test.js src/cmd/plans/collaboration-commands.integration.test.ts src/cmd/plans/doctor.test.ts src/shared/isolated-publication.test.ts src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/worktree-creation.test.js scripts/release-policy.test.js scripts/release.test.js
+deno run -A scripts/run-tests.js src/shared/project-runtime-layout.test.ts src/shared/project-runtime-entry.integration.test.ts src/shared/collaboration/secrets.test.js src/cmd/plans/collaboration-commands.integration.test.ts src/cmd/plans/doctor.test.ts src/shared/isolated-publication.test.ts src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/workflow/publication-machine.e2e.test.ts src/shared/worktree-creation.test.ts scripts/release-policy.test.js scripts/release.test.js
 deno task pr:check
 deno task release:check --build-version v0.11.0-rc.1
 ```

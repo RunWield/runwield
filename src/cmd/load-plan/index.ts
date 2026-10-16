@@ -59,7 +59,11 @@ import { printCommandHelp } from "../help/index.js";
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { resolvePlanWithPrimaryRecovery, resumePlanPublicationCleanup } from "./primary-plan-recovery.ts";
-import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import {
+    needsSessionPlanningWorktree,
+    PlanningNotStartedError,
+    resolveWorkflowPlanLocation,
+} from "../../shared/workflow/plan-location.ts";
 import type { CommandContext } from "../registry.js";
 import type { UiAPI } from "../../ui/tui/types.js";
 import {
@@ -355,7 +359,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 );
             }
         }
-        if (!plan.attrs.planId) {
+        if (!plan.attrs.planId && !needsSessionPlanningWorktree(plan.attrs)) {
             const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { migrateRegistry: false });
             const identified = await ensurePlanIdentity(location.documentRoot, plan.planName);
             plan.attrs = identified.attrs;

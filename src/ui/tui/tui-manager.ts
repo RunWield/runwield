@@ -5,6 +5,7 @@
 
 import { writeSync } from "node:fs";
 import { env } from "node:process";
+import type { TuiStopOptions } from "@earendil-works/pi-tui";
 
 import {
     type FocusReportingTerminal,
@@ -14,7 +15,7 @@ import {
 
 interface ManagedTui {
     start?(): void;
-    stop?(): void;
+    stop?(options?: TuiStopOptions): void;
     requestRender?(force?: boolean): void;
 }
 
@@ -70,6 +71,7 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
         tuiInstance = pair.tui;
         try {
             tuiInstance.start?.();
+            focusStateOwner?.activate();
             started = true;
             installCrashGuards();
             crashGuardsInstalled = true;
@@ -83,12 +85,12 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
                 }
             }
             try {
-                tuiInstance?.stop?.();
+                focusStateOwner?.dispose();
             } catch {
                 // Preserve the original construction/start failure.
             }
             try {
-                focusStateOwner?.dispose();
+                tuiInstance?.stop?.({ preserveScreen: true });
             } catch {
                 // Preserve the original construction/start failure.
             }
@@ -105,7 +107,7 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
         if (tuiInstance) return tuiInstance;
         const terminal = new TerminalCtor();
         if (!env.WLD_GOLDEN_TUI && !env.WLD_GOLDEN_TUI_CHILD) {
-            focusStateOwner = installTerminalFocusState(terminal, () => tuiInstance?.requestRender?.(true));
+            focusStateOwner = installTerminalFocusState(terminal, () => tuiInstance?.requestRender?.(true), false);
         }
         try {
             const tui = new TuiCtor(terminal);
@@ -158,7 +160,8 @@ export function createTuiManager<TTerminal extends FocusReportingTerminal, TTui 
             // Focus reporting cleanup is best effort.
         }
         if (tui && wasStarted) {
-            tui.stop?.();
+            // Restore the shell without copying the fullscreen input into its history.
+            tui.stop?.({ preserveScreen: true });
         }
     }
 

@@ -86,11 +86,11 @@
         "@codemirror/legacy-modes": "6.5.3",
         "@codemirror/state": "6.7.6",
         "@codemirror/view": "6.43.14",
-        "@earendil-works/pi-agent-core": "1.0.0",
-        "@earendil-works/pi-ai": "1.0.0",
-        "@earendil-works/pi-coding-agent": "1.0.0",
-        "@earendil-works/pi-mcp": "1.0.0",
-        "@earendil-works/pi-tui": "1.0.3",
+        "@earendil-works/pi-agent-core": "1.0.4",
+        "@earendil-works/pi-ai": "1.0.4",
+        "@earendil-works/pi-coding-agent": "1.0.4",
+        "@earendil-works/pi-mcp": "1.0.4",
+        "@earendil-works/pi-tui": "1.0.4",
         "@lezer/common": "1.5.2",
         "@lezer/highlight": "1.2.5",
         "@modelcontextprotocol/sdk": "1.30.0",
@@ -169,8 +169,13 @@
         "typescript-eslint": "8.71.1"
     },
     "overrides": {
-        "@earendil-works/chord": "1.0.0",
-        "@earendil-works/pi-codemode": "1.0.0",
-        "@earendil-works/pi-telemetry": "1.0.0"
+        "@earendil-works/chord": "1.0.4",
+        "@earendil-works/pi-codemode": "1.0.4",
+        "@earendil-works/pi-telemetry": "1.0.4",
+        "@earendil-works/pi-agent-core": "1.0.4",
+        "@earendil-works/pi-ai": "1.0.4",
+        "@earendil-works/pi-coding-agent": "1.0.4",
+        "@earendil-works/pi-mcp": "1.0.4",
+        "@earendil-works/pi-tui": "1.0.4"
     }
 }

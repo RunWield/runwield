@@ -1,4 +1,4 @@
-import { loadPlan } from "../../plan-store.js";
+import { loadPlan, mergeFrontMatterText } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
 import { executionWorktreePathExists, recoverMissingExecutionWorktree } from "./execution-worktree-rescue.ts";
@@ -29,7 +29,7 @@ export async function prepareSessionPlanningWorktree(projectRoot: string, planNa
         return location;
 
     if (location.plan.attrs.parentPlan) {
-        await ensureEpicBranch(location.registryRoot, location.plan.attrs.parentPlan);
+        await ensureEpicBranch(location.registryRoot, location.plan.attrs.parentPlan, { seedChildren: false });
     }
     const planning = await preparePlanningWorktreeForPlan(location.registryRoot, planName, location.plan.attrs);
     // Sequence review can save the approved child in its parent's worktree before the child has its own.
@@ -37,7 +37,13 @@ export async function prepareSessionPlanningWorktree(projectRoot: string, planNa
         const result = await ensureExecutionPlanFile({
             executionCwd: planning.entry.path,
             planName,
-            canonicalSource: { kind: "loaded", ...location.plan, relativePath: `docs/plans/${planName}.md` },
+            canonicalSource: {
+                kind: "loaded",
+                ...location.plan,
+                attrs: { ...location.plan.attrs, planId: planning.plan.attrs.planId },
+                markdown: mergeFrontMatterText(location.plan.markdown, { planId: planning.plan.attrs.planId }),
+                relativePath: `docs/plans/${planName}.md`,
+            },
             replaceFromCanonical: true,
         });
         if (!["present", "restored", "reconciled"].includes(result.kind)) {

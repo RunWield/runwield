@@ -38,21 +38,15 @@ function idFactory(prefix = "id") {
     return () => `${prefix}-${++next}`;
 }
 
-/**
- * @typedef {Object} TranscriptOptions
- * @property {string} [timestamp]
- * @property {string} [filenamePiSessionId]
- * @property {number} [headerVersion]
- * @property {string} [headerCwd]
- * @property {string} [body]
- */
+interface TranscriptOptions {
+    timestamp?: string;
+    filenamePiSessionId?: string;
+    headerVersion?: number;
+    headerCwd?: string;
+    body?: string;
+}
 
-/**
- * @param {string} cwd
- * @param {string} piSessionId
- * @param {TranscriptOptions} [options]
- */
-async function writeTranscript(cwd, piSessionId, options = {}) {
+async function writeTranscript(cwd: string, piSessionId: string, options: TranscriptOptions = {}) {
     const sessionDir = getRunWieldSessionDir(cwd);
     await fsMkdir(sessionDir, { recursive: true });
     const timestamp = options.timestamp || "2026-01-01T00:00:00.000Z";
@@ -71,8 +65,7 @@ async function writeTranscript(cwd, piSessionId, options = {}) {
     return sessionPath;
 }
 
-/** @param {string} dbPath */
-function createVersion5Database(dbPath) {
+function createVersion5Database(dbPath: string) {
     const db = new DatabaseSync(dbPath);
     try {
         db.exec("PRAGMA foreign_keys = ON");

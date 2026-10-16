@@ -8,7 +8,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
-import { getCwdInitState } from "./init-state.ts";
+import { getCwdInitState, recordInitDone } from "./init-state.ts";
 import { runInitCommand } from "./index.ts";
 import type { InteractiveSessionPort } from "../../ui/tui/interactive-session-port.ts";
 import type {
@@ -37,7 +37,11 @@ function createUi(): InitUi {
 }
 
 async function readJsonFile(path: string) {
-    return JSON.parse(await fsReadFile(path, "utf8")) as { verification_command?: string; codereview?: string };
+    return JSON.parse(await fsReadFile(path, "utf8")) as {
+        verification_command?: string;
+        worktree_setup_command?: string;
+        codereview?: string;
+    };
 }
 
 function choose(value: string): RuntimeInteractionResponse {
@@ -48,7 +52,7 @@ function text(value: string): RuntimeInteractionResponse {
     return { outcome: "text", value };
 }
 
-test("init confirms and saves verification through the real interaction flow", async () => {
+test("init confirms verification and setup and saves both through the existing tool", async () => {
     await withRuntimeCommandFixture(
         "init-verification-confirm-",
         async ({ projectRoot, settingsPath, setModelMessages }) => {
@@ -58,24 +62,46 @@ test("init confirms and saves verification through the real interaction flow", a
             const originalGlobalSettings = await fsReadFile(settingsPath, "utf8");
             process.chdir(projectRoot);
             setModelMessages([
-                fauxAssistantMessage(fauxToolCall("user_interview", {
-                    question: {
-                        id: "verification_command",
-                        type: "multiple_choice",
-                        prompt: "Which command should RunWield use to verify this project?",
-                        choices: [
-                            { value: "deno task ci", label: "deno task ci" },
-                            { value: "deno task test", label: "deno task test" },
-                            { value: "no_verification", label: "No verification command" },
-                        ],
-                        default: "deno task ci",
-                    },
-                })),
-                fauxAssistantMessage(fauxToolCall("init_save_verification_command", { command: "deno task ci" })),
-                fauxAssistantMessage(fauxToolCall("write", {
-                    path: "docs/domain-language.md",
-                    content: "# Domain Language\n\n## Fixture\n\nCurrent fixture terminology.\n",
-                })),
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        question: {
+                            id: "verification_command",
+                            type: "multiple_choice",
+                            prompt: "Which command should RunWield use to verify this project?",
+                            choices: [
+                                { value: "deno task ci", label: "deno task ci" },
+                                { value: "deno task test", label: "deno task test" },
+                                { value: "no_verification", label: "No verification command" },
+                            ],
+                            default: "deno task ci",
+                        },
+                    }),
+                ),
+                fauxAssistantMessage(
+                    fauxToolCall("user_interview", {
+                        question: {
+                            id: "worktree_setup_command",
+                            type: "multiple_choice",
+                            prompt: "Which command prepares fresh worktrees and their hooks?",
+                            choices: [
+                                { value: "bun run install:locked", label: "bun run install:locked" },
+                                { value: "none", label: "No setup required" },
+                            ],
+                        },
+                    }),
+                ),
+                fauxAssistantMessage(
+                    fauxToolCall("init_save_verification_command", {
+                        command: "deno task ci",
+                        setupCommand: "bun run install:locked",
+                    }),
+                ),
+                fauxAssistantMessage(
+                    fauxToolCall("write", {
+                        path: "docs/domain-language.md",
+                        content: "# Domain Language\n\n## Fixture\n\nCurrent fixture terminology.\n",
+                    }),
+                ),
                 fauxAssistantMessage(fauxText("Initialization inspection complete.")),
             ]);
             const runtime = createSessionRuntime();
@@ -86,7 +112,7 @@ test("init confirms and saves verification through the real interaction flow", a
                 requestInteraction: (request) => {
                     if (request.id === "init-project-files") return choose("yes");
                     requests.push(request);
-                    return choose("deno task ci");
+                    return choose(requests.length === 1 ? "deno task ci" : "bun run install:locked");
                 },
             });
             const ui = createUi();
@@ -99,20 +125,24 @@ test("init confirms and saves verification through the real interaction flow", a
                     sessionPort: UNEXPECTED_SESSION_PORT,
                 });
 
-                assertEquals(requests.length, 1);
+                assertEquals(requests.length, 2);
+                assertStringIncludes(requests[1].prompt, "fresh worktrees");
                 assertStringIncludes(requests[0].prompt, "verify this project");
                 assert(requests[0].options?.some((option) => option.value === "deno task ci"));
                 assert(requests[0].options?.some((option) => option.label === "No verification command"));
                 assertEquals(await readJsonFile(join(projectRoot, ".wld", "settings.json")), {
                     codereview: "ask",
                     verification_command: "deno task ci",
+                    worktree_setup_command: "bun run install:locked",
                 });
                 assertEquals(await fsReadFile(settingsPath, "utf8"), originalGlobalSettings);
                 assertEquals((await getCwdInitState())?.initDone, true);
-                assertEquals(ui.messages, [{
-                    message: "✅ Init complete. docs/domain-language.md has been written.",
-                    error: undefined,
-                }]);
+                assertEquals(ui.messages, [
+                    {
+                        message: "✅ Init complete. docs/domain-language.md has been written.",
+                        error: undefined,
+                    },
+                ]);
             } finally {
                 runtime.closeSession(created.sessionId);
             }
@@ -121,13 +151,12 @@ test("init confirms and saves verification through the real interaction flow", a
 });
 
 test("init saves an Other verification command after user free text", async () => {
-    await withRuntimeCommandFixture(
-        "init-verification-other-",
-        async ({ projectRoot, setModelMessages }) => {
-            await fsWriteFile(join(projectRoot, "package.json"), JSON.stringify({ scripts: { test: "vitest" } }));
-            process.chdir(projectRoot);
-            setModelMessages([
-                fauxAssistantMessage(fauxToolCall("user_interview", {
+    await withRuntimeCommandFixture("init-verification-other-", async ({ projectRoot, setModelMessages }) => {
+        await fsWriteFile(join(projectRoot, "package.json"), JSON.stringify({ scripts: { test: "vitest" } }));
+        process.chdir(projectRoot);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("user_interview", {
                     question: {
                         id: "verification_command",
                         type: "multiple_choice",
@@ -137,51 +166,54 @@ test("init saves an Other verification command after user free text", async () =
                             { value: "no_verification", label: "No verification command" },
                         ],
                     },
-                })),
-                fauxAssistantMessage(fauxToolCall("init_save_verification_command", { command: "pnpm test" })),
-                fauxAssistantMessage(fauxToolCall("write", {
+                }),
+            ),
+            fauxAssistantMessage(
+                fauxToolCall("init_save_verification_command", { command: "pnpm test", setupCommand: "" }),
+            ),
+            fauxAssistantMessage(
+                fauxToolCall("write", {
                     path: "docs/domain-language.md",
                     content: "# Domain Language\n\n## Fixture\n\nOther command terminology.\n",
-                })),
-                fauxAssistantMessage(fauxText("Initialization inspection complete.")),
-            ]);
-            const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-            const answers = [choose("other"), text("pnpm test")];
-            runtime.setInteractionAdapter(created.sessionId, {
-                supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
-                requestInteraction: (request) =>
-                    request.id === "init-project-files" ? choose("yes") : answers.shift() || { outcome: "canceled" },
+                }),
+            ),
+            fauxAssistantMessage(fauxText("Initialization inspection complete.")),
+        ]);
+        const runtime = createSessionRuntime();
+        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        const answers = [choose("other"), text("pnpm test")];
+        runtime.setInteractionAdapter(created.sessionId, {
+            supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
+            requestInteraction: (request) =>
+                request.id === "init-project-files" ? choose("yes") : answers.shift() || { outcome: "canceled" },
+        });
+
+        try {
+            await runInitCommand([], {
+                uiAPI: createUi().uiAPI,
+                sessionRuntime: runtime,
+                sessionId: created.sessionId,
+                sessionPort: UNEXPECTED_SESSION_PORT,
             });
 
-            try {
-                await runInitCommand([], {
-                    uiAPI: createUi().uiAPI,
-                    sessionRuntime: runtime,
-                    sessionId: created.sessionId,
-                    sessionPort: UNEXPECTED_SESSION_PORT,
-                });
-
-                assertEquals(
-                    (await readJsonFile(join(projectRoot, ".wld", "settings.json"))).verification_command,
-                    "pnpm test",
-                );
-                assertEquals((await getCwdInitState())?.initDone, true);
-            } finally {
-                runtime.closeSession(created.sessionId);
-            }
-        },
-    );
+            assertEquals(
+                (await readJsonFile(join(projectRoot, ".wld", "settings.json"))).verification_command,
+                "pnpm test",
+            );
+            assertEquals((await getCwdInitState())?.initDone, true);
+        } finally {
+            runtime.closeSession(created.sessionId);
+        }
+    });
 });
 
 test("init cancellation leaves verification unset and init incomplete", async () => {
-    await withRuntimeCommandFixture(
-        "init-verification-cancel-",
-        async ({ projectRoot, setModelMessages }) => {
-            await fsWriteFile(join(projectRoot, "README.md"), "# fixture\n");
-            process.chdir(projectRoot);
-            setModelMessages([
-                fauxAssistantMessage(fauxToolCall("user_interview", {
+    await withRuntimeCommandFixture("init-verification-cancel-", async ({ projectRoot, setModelMessages }) => {
+        await fsWriteFile(join(projectRoot, "README.md"), "# fixture\n");
+        process.chdir(projectRoot);
+        setModelMessages([
+            fauxAssistantMessage(
+                fauxToolCall("user_interview", {
                     question: {
                         id: "verification_command",
                         type: "multiple_choice",
@@ -191,43 +223,41 @@ test("init cancellation leaves verification unset and init incomplete", async ()
                             { value: "no_verification", label: "No verification command" },
                         ],
                     },
-                })),
-                fauxAssistantMessage(fauxToolCall("write", {
+                }),
+            ),
+            fauxAssistantMessage(
+                fauxToolCall("write", {
                     path: "docs/domain-language.md",
                     content: "# Domain Language\n\n## Fixture\n\nCanceled command terminology.\n",
-                })),
-                fauxAssistantMessage(fauxText("Verification command still needs confirmation.")),
-            ]);
-            const runtime = createSessionRuntime();
-            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-            runtime.setInteractionAdapter(created.sessionId, {
-                supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
-                requestInteraction: (request) =>
-                    request.id === "init-project-files" ? choose("yes") : { outcome: "canceled" },
+                }),
+            ),
+            fauxAssistantMessage(fauxText("Verification command still needs confirmation.")),
+        ]);
+        const runtime = createSessionRuntime();
+        const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+        runtime.setInteractionAdapter(created.sessionId, {
+            supportsInteraction: (typeName) => typeName === "select" || typeName === "text",
+            requestInteraction: (request) =>
+                request.id === "init-project-files" ? choose("yes") : { outcome: "canceled" },
+        });
+        const ui = createUi();
+
+        try {
+            await runInitCommand([], {
+                uiAPI: ui.uiAPI,
+                sessionRuntime: runtime,
+                sessionId: created.sessionId,
+                sessionPort: UNEXPECTED_SESSION_PORT,
             });
-            const ui = createUi();
 
-            try {
-                await runInitCommand([], {
-                    uiAPI: ui.uiAPI,
-                    sessionRuntime: runtime,
-                    sessionId: created.sessionId,
-                    sessionPort: UNEXPECTED_SESSION_PORT,
-                });
-
-                await assertRejects(
-                    () => fsStat(join(projectRoot, ".wld", "settings.json")),
-                    Error,
-                    "ENOENT",
-                );
-                assertEquals((await getCwdInitState())?.initDone, false);
-                assertStringIncludes(ui.messages[0].message, "without saving a confirmed verification command");
-                assertEquals(ui.messages[0].error, true);
-            } finally {
-                runtime.closeSession(created.sessionId);
-            }
-        },
-    );
+            await assertRejects(() => fsStat(join(projectRoot, ".wld", "settings.json")), Error, "ENOENT");
+            assertEquals((await getCwdInitState())?.initDone, false);
+            assertStringIncludes(ui.messages[0].message, "without saving a confirmed verification command");
+            assertEquals(ui.messages[0].error, true);
+        } finally {
+            runtime.closeSession(created.sessionId);
+        }
+    });
 });
 
 for (const outcome of ["no", "canceled", "unsupported"] as const) {
@@ -241,10 +271,12 @@ for (const outcome of ["no", "canceled", "unsupported"] as const) {
             await fsWriteFile(join(projectRoot, "README.md"), "Existing project\n");
             process.chdir(projectRoot);
             let modelCalls = 0;
-            setModelResponseFactories([() => {
-                modelCalls++;
-                return fauxAssistantMessage(fauxText("Unexpected Init"));
-            }]);
+            setModelResponseFactories([
+                () => {
+                    modelCalls++;
+                    return fauxAssistantMessage(fauxText("Unexpected Init"));
+                },
+            ]);
             const runtime = createSessionRuntime();
             const sessionId = await runtime.createPromptReadySession({
                 cwd: projectRoot,
@@ -279,6 +311,61 @@ for (const outcome of ["no", "canceled", "unsupported"] as const) {
                 assertEquals(await fsReadFile(join(projectRoot, "README.md"), "utf8"), "Existing project\n");
             } finally {
                 await runtime.closeAllSessionsWhenIdle();
+            }
+        });
+    });
+}
+
+for (const legacyInit of [false, true]) {
+    test(`Init requires setup confirmation and can backfill an older Init: legacy=${legacyInit}`, async () => {
+        await withRuntimeCommandFixture("init-setup-required-", async ({ projectRoot, setModelMessages }) => {
+            await fsWriteFile(join(projectRoot, "README.md"), "# fixture\n");
+            process.chdir(projectRoot);
+            await fsMkdir(join(projectRoot, "docs"));
+            await fsWriteFile(
+                join(projectRoot, "docs/domain-language.md"),
+                "# Domain Language\n\nCurrent terminology.\n",
+            );
+            if (legacyInit) await recordInitDone(projectRoot);
+            setModelMessages([
+                fauxAssistantMessage(fauxToolCall("init_save_verification_command", { command: "bun run ci" })),
+                fauxAssistantMessage(fauxText("Setup still needs confirmation.")),
+            ]);
+            const runtime = createSessionRuntime();
+            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            runtime.setInteractionAdapter(created.sessionId, {
+                supportsInteraction: () => true,
+                requestInteraction: () => choose("yes"),
+            });
+            const ui = createUi();
+            try {
+                const options = {
+                    uiAPI: ui.uiAPI,
+                    sessionRuntime: runtime,
+                    sessionId: created.sessionId,
+                    sessionPort: UNEXPECTED_SESSION_PORT,
+                };
+                await runInitCommand([], options);
+                assertStringIncludes(
+                    ui.messages.at(-1)?.message || "",
+                    "without saving a confirmed worktree setup command",
+                );
+                assertEquals(
+                    (await readJsonFile(join(projectRoot, ".wld/settings.json"))).worktree_setup_command,
+                    undefined,
+                );
+                if (!legacyInit) assertEquals((await getCwdInitState())?.initDone, false);
+                setModelMessages([
+                    fauxAssistantMessage(fauxToolCall("init_save_verification_command", { command: "bun run ci" })),
+                    fauxAssistantMessage(fauxToolCall("init_save_verification_command", { setupCommand: "" })),
+                    fauxAssistantMessage(fauxText("Both choices confirmed.")),
+                ]);
+                await runInitCommand([], options);
+                assertEquals((await readJsonFile(join(projectRoot, ".wld/settings.json"))).worktree_setup_command, "");
+                assertEquals((await getCwdInitState())?.initDone, true);
+                assertStringIncludes(ui.messages.at(-1)?.message || "", "Init complete");
+            } finally {
+                runtime.closeSession(created.sessionId);
             }
         });
     });

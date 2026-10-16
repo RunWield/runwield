@@ -5,6 +5,7 @@ import { type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import type { BrowserPort } from "../../shared/browser-port.ts";
 import { VirtualTerminal } from "./testing/virtual-terminal.js";
 import { getTUI, initTUIWithPair, RunWieldTui, stopTUI } from "./tui.ts";
+import { createTuiManager } from "./tui-manager.ts";
 
 class CompatibleVirtualTerminal extends VirtualTerminal {
     override drainInput(): Promise<void> {
@@ -68,6 +69,70 @@ test("RunWield TUI opens a rendered hyperlink when clicked", async () => {
     } finally {
         tui.stop();
     }
+});
+
+test("TUI exit restores the shell without leaving the input behind", async () => {
+    const terminal = new CompatibleVirtualTerminal({ columns: 100, rows: 30 });
+    terminal.write("shell history\r\n$ wld\r\n");
+    await terminal.flush();
+    const shellScreen = terminal.getScreenText();
+    const tui = new RunWieldTui(terminal);
+    tui.setLayoutRoot({
+        render: () => ["─".repeat(100), "draft input", "─".repeat(100)],
+        invalidate() {},
+    });
+
+    initTUIWithPair({ terminal, tui });
+    try {
+        tui.renderNow();
+        await terminal.flush();
+        assertEquals(terminal.getScreenText().includes("draft input"), true);
+    } finally {
+        stopTUI();
+    }
+    await terminal.flush();
+
+    assertEquals(terminal.getScreenText(), shellScreen);
+    assertEquals(terminal.stopped, true);
+    const screenEnteredAt = terminal.writes.lastIndexOf("\x1b[?1049h");
+    const focusReportingEnabledAt = terminal.writes.lastIndexOf("\x1b[?1004h");
+    const focusReportingDisabledAt = terminal.writes.lastIndexOf("\x1b[?1004l");
+    const screenRestoredAt = terminal.writes.lastIndexOf("\x1b[?1049l");
+    assertEquals(focusReportingEnabledAt > screenEnteredAt, true);
+    assertEquals(focusReportingDisabledAt > focusReportingEnabledAt, true);
+    assertEquals(focusReportingDisabledAt < screenRestoredAt, true);
+    stopTUI();
+    await terminal.flush();
+    assertEquals(terminal.getScreenText(), shellScreen);
+});
+
+test("TUI startup failure restores the shell without leaving the input behind", async () => {
+    const terminal = new CompatibleVirtualTerminal({ columns: 100, rows: 30 });
+    terminal.write("shell history\r\n$ wld\r\n");
+    await terminal.flush();
+    const shellScreen = terminal.getScreenText();
+    const tui = new RunWieldTui(terminal);
+    tui.setLayoutRoot({
+        render: () => ["─".repeat(100), "draft input", "─".repeat(100)],
+        invalidate() {},
+    });
+    const manager = createTuiManager({
+        TerminalCtor: CompatibleVirtualTerminal,
+        TuiCtor: RunWieldTui,
+        installCrashGuards: () => {
+            tui.renderNow();
+            throw new Error("signal listener setup failed");
+        },
+        uninstallCrashGuards: () => {},
+        restoreTitle: () => {},
+    });
+
+    assertThrows(() => manager.initTUIWithPair({ terminal, tui }), Error, "signal listener setup failed");
+    await terminal.flush();
+
+    assertEquals(terminal.getScreenText(), shellScreen);
+    assertEquals(terminal.stopped, true);
+    assertThrows(() => manager.getTUI(), Error, "TUI not initialized");
 });
 
 test("TUI singleton stop is idempotent and clears deterministic pair state", () => {

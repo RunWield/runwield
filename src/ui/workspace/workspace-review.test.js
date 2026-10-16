@@ -1,4 +1,7 @@
-import { removeExecutableFixtureDirectory, writeRuntimeExecutableFixture } from "../../testing/runtime-executable-fixture.ts";
+import {
+    removeExecutableFixtureDirectory,
+    writeRuntimeExecutableFixture,
+} from "../../testing/runtime-executable-fixture.ts";
 import { delimiter } from "node:path";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
@@ -7,6 +10,7 @@ import { tmpdir } from "node:os";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import process from "node:process";
+import { defineGitFixture, git } from "../../shared/git-test-fixture.ts";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { join } from "node:path";
 import { encodeGuidedReviewMetadata } from "../../cmd/guided-review/protocol.ts";
@@ -1386,4 +1390,37 @@ test("review API returns 401 for invalid token and 404 for expired matching toke
         }),
     );
     assertEquals(expiredResponse.status, 404);
+});
+
+const standaloneFileFixture = defineGitFixture(async (cwd) => {
+    await fsWriteFile(`${cwd}/review.ts`, "base text\n");
+    await git(cwd, ["add", "."]);
+    await git(cwd, ["commit", "-m", "base"]);
+    await git(cwd, ["switch", "-c", "execution"]);
+    await fsWriteFile(`${cwd}/review.ts`, "execution text\n");
+});
+
+test("standalone Code Review file content returns merge-base before text and requires its token", async () => {
+    const cwd = await standaloneFileFixture.checkout();
+    const app = createReviewWorkspaceApp({
+        cwd,
+        token: "file-review-secret",
+        reviewPayload: { rawPatch: "", targetBranch: "main" },
+        reviewType: "code",
+    }).handler();
+    try {
+        const url = "http://localhost/api/file-content?path=review.ts";
+        assertEquals((await app(new Request(url))).status, 401);
+        const response = await app(
+            new Request(url, {
+                headers: { referer: "http://localhost/review/code?token=file-review-secret" },
+            }),
+        );
+        assertEquals(response.status, 200);
+        const body = await response.json();
+        assertEquals(body.oldContent, "base text\n");
+        assertEquals(body.newContent, "execution text\n");
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
 });

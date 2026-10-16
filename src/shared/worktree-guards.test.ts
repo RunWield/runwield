@@ -12,14 +12,10 @@ import { tmpdir } from "node:os";
 import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 
 import { loadPlan, savePlan } from "../plan-store.js";
+import type { PlanFrontMatterInput } from "../plan-store.js";
+import type { WorktreeRegistryEntry } from "./worktree-registry.js";
 
-/**
- * @param {string} cwd
- * @param {string} planName
- * @param {string} content
- * @param {import('../plan-store.js').PlanFrontMatterInput} attrs
- */
-async function savePlanForTest(cwd, planName, content, attrs) {
+async function savePlanForTest(cwd: string, planName: string, content: string, attrs: PlanFrontMatterInput) {
     const existing = await loadPlan(cwd, planName).catch(() => null);
     return await savePlan(cwd, planName, content, attrs, existing ? { expectedRevision: existing.revision } : {});
 }
@@ -80,8 +76,7 @@ test("worktree helpers report Git requirement outside Git", async () => {
 test("mergeExecutionWorktree rejects post-seal implementation edits outside finalized Plan paths", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: WorktreeRegistryEntry | undefined;
     try {
         await savePlanForTest(projectRoot, "feature", "# Feature", { status: "ready_for_work" });
         await git(projectRoot, ["add", "docs/plans/feature.md"]);
@@ -131,8 +126,7 @@ test("mergeExecutionWorktree rejects post-seal implementation edits outside fina
 test("execution preparation retry still rejects branches containing implementation commits", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-    let worktree;
+    let worktree: WorktreeRegistryEntry | undefined;
     try {
         worktree = await createTestWorktreeAttempt({
             projectRoot,

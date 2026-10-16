@@ -4,6 +4,7 @@ import { canonicalizeStoredPlanName, isCompletedPlanStatus, loadPlan } from "../
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { findActiveByPlanName } from "../worktree-registry.js";
 import { isGitRepository } from "../git.ts";
+import { isSequencePlan } from "../project-plan.ts";
 import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 import { findTargetBranchPlan } from "./planning-worktree.ts";
@@ -19,6 +20,8 @@ export type { MissingExecutionWorktreeRecovery } from "./execution-worktree-resc
 
 interface ResolveWorkflowPlanLocationOptions {
     migrateRegistry?: boolean;
+    /** Explicit child loading reads the published family, not sibling copies in the parent's planning checkout. */
+    loadFromTarget?: boolean;
     /** Return an unstarted Plan snapshot instead of requiring a writable document root. Lookups never prepare worktrees. */
     readOnly?: boolean;
 }
@@ -65,6 +68,7 @@ async function resolveWorkflowPlanLocationInScope(
     planName = canonicalizeStoredPlanName(planName).name;
     const registryRoot = resolvePrimaryCheckoutRoot(cwd);
     const registryReadOptions = options.migrateRegistry === false ? { migrate: false } : undefined;
+    let registeredParentTarget = "";
     const attempt = await findActiveByPlanName(registryRoot, planName, registryReadOptions);
     if (attempt && !isPublicationCleanupPending(attempt.publication)) {
         const plan = await loadPlan(attempt.path, planName);
@@ -95,8 +99,9 @@ async function resolveWorkflowPlanLocationInScope(
         );
         if (registered) {
             const plan = await loadPlan(registered.path, planName);
-            if (plan && (!registered.planId || plan.attrs.planId === registered.planId))
+            if (plan && (!registered.planId || plan.attrs.planId === registered.planId)) {
                 return { registryRoot, documentRoot: registered.path, plan };
+            }
             if (await loadPlan(registered.path, `archived/${planName}`)) {
                 return { registryRoot, documentRoot: registered.path, plan: null, archived: true };
             }
@@ -114,7 +119,13 @@ async function resolveWorkflowPlanLocationInScope(
             if (!parent || (parentEntry.planId && parent.attrs.planId !== parentEntry.planId)) {
                 throw new Error(`The registered parent Plan ${parentName} is missing or has a different identity.`);
             }
-            const child = await loadPlan(parentEntry.path, planName);
+            registeredParentTarget =
+                typeof parent.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
+            // Sequence review saves the whole group in its parent's document. Epic siblings use the published branch.
+            const child =
+                options.loadFromTarget || !isSequencePlan(parent.attrs)
+                    ? null
+                    : await loadPlan(parentEntry.path, planName);
             if (child?.attrs.parentPlan === parentName) {
                 const planningNotStarted = needsSessionPlanningWorktree(child.attrs);
                 if (planningNotStarted && !options.readOnly) throw new PlanningNotStartedError(planName);
@@ -128,7 +139,13 @@ async function resolveWorkflowPlanLocationInScope(
             }
         }
     }
-    const plan = await loadPlan(cwd, planName);
+    if (options.loadFromTarget && !registeredParentTarget) {
+        const parentName = inferParentPlanName(planName);
+        const parent = parentName ? await loadPlan(cwd, parentName) : null;
+        registeredParentTarget = typeof parent?.attrs.targetBranch === "string" ? parent.attrs.targetBranch.trim() : "";
+    }
+    // A checkout child is not an input once its parent's branch is known.
+    const plan = options.loadFromTarget && registeredParentTarget ? null : await loadPlan(cwd, planName);
     if (plan?.attrs.planId) {
         const registered = (await listControllerDocumentWorktrees(registryRoot)).find(
             (entry) => entry.planId === plan.attrs.planId,
@@ -146,26 +163,23 @@ async function resolveWorkflowPlanLocationInScope(
         typeof plan?.attrs.parentPlan === "string" && plan.attrs.parentPlan.trim()
             ? plan.attrs.parentPlan.trim()
             : inferParentPlanName(planName);
-    let targetBranch = localTargetBranch;
+    let targetBranch = registeredParentTarget || localTargetBranch;
     if (!targetBranch && parentPlanName) {
         const parentPlan = await loadPlan(cwd, parentPlanName);
         targetBranch = typeof parentPlan?.attrs.targetBranch === "string" ? parentPlan.attrs.targetBranch.trim() : "";
     }
     if (targetBranch && (parentPlanName || plan?.attrs.deliveryBranch)) {
         const targetPlan = await findTargetBranchPlan(registryRoot, targetBranch, planName);
-        if (
-            targetPlan &&
-            (!plan?.attrs.planId || !targetPlan.attrs.planId || targetPlan.attrs.planId === plan.attrs.planId)
-        ) {
+        if (targetPlan) {
             // Reading a published child must not start a fresh planning attempt after its worktree was cleaned up.
             if (!needsSessionPlanningWorktree(targetPlan.attrs)) {
                 return {
                     registryRoot,
                     documentRoot: cwd,
-                    // The local document owns its bytes and carries the current shared
-                    // lifecycle. A Git snapshot has neither a writable path nor newer events.
-                    plan: plan || targetPlan,
-                    publishedSnapshot: !plan,
+                    // Explicit child loading reads the published snapshot; document
+                    // operations and standalone Plans retain their local lifecycle state.
+                    plan: options.loadFromTarget && parentPlanName ? targetPlan : plan || targetPlan,
+                    publishedSnapshot: Boolean(options.loadFromTarget && parentPlanName) || !plan,
                 };
             }
             if (options.readOnly) {
@@ -179,8 +193,10 @@ async function resolveWorkflowPlanLocationInScope(
             }
             throw new PlanningNotStartedError(planName);
         }
-        if (targetPlan) {
-            throw new Error(`Target Plan ${planName} has a different Plan ID. Your files have not been changed.`);
+        if (options.loadFromTarget && parentPlanName && targetPlan === null) {
+            throw new Error(
+                `Plan ${planName} does not exist on target ${targetBranch}. The current checkout is not used.`,
+            );
         }
         // A saved Plan can name a branch this checkout has not fetched yet.
         // Session preparation fetches it; lookup only returns the saved metadata.

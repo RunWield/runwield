@@ -23,21 +23,21 @@ import {
     listProjectSessions,
 } from "./sessions.js";
 
-/**
- * @param {string} [prefix]
- * @returns {() => string}
- */
-function idFactory(prefix = "id") {
+interface TranscriptOptions {
+    headerCwd?: string;
+    headerVersion?: number;
+    headerTimestamp?: string;
+    body?: string;
+}
+
+type CatalogedSession = Awaited<ReturnType<typeof ensureSessionCatalogRecord>>;
+
+function idFactory(prefix = "id"): () => string {
     let next = 0;
     return () => `${prefix}-${++next}`;
 }
 
-/**
- * @param {string} cwd
- * @param {string} piSessionId
- * @param {{ headerCwd?: string, headerVersion?: number, headerTimestamp?: string, body?: string }} [options]
- */
-async function writeTranscript(cwd, piSessionId, options = {}) {
+async function writeTranscript(cwd: string, piSessionId: string, options: TranscriptOptions = {}) {
     const sessionDir = getRunWieldSessionDir(cwd);
     await fsMkdir(sessionDir, { recursive: true });
     const sessionPath = join(sessionDir, `2026-01-01T00-00-00-000Z_${piSessionId}.jsonl`);
@@ -52,14 +52,13 @@ async function writeTranscript(cwd, piSessionId, options = {}) {
     return sessionPath;
 }
 
-/** @param {string} dir */
-async function removeTempDir(dir) {
+async function removeTempDir(dir: string) {
     for (let attempt = 0; attempt < 5; attempt++) {
         try {
             await fsRm(dir, { recursive: true });
             return;
         } catch (error) {
-            if ((error instanceof Error && "code" in error && error.code === "ENOENT")) return;
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
             if (attempt === 4) throw error;
             await new Promise((resolve) => setTimeout(resolve, 20));
         }
@@ -172,11 +171,26 @@ test("Session listing is incremental and full rescan remains explicit", async ()
                 now: () => "t4",
             });
 
-            assertEquals(first.sessions.map((session) => session.piSessionId), ["valid"]);
-            assertEquals(first.diagnostics.map((diagnostic) => diagnostic.code), ["invalid_locator"]);
-            assertEquals(second.sessions.map((session) => session.piSessionId), ["valid"]);
-            assertEquals(second.diagnostics.map((diagnostic) => diagnostic.code), ["invalid_locator"]);
-            assertEquals(fullRescan.diagnostics.map((diagnostic) => diagnostic.code), ["invalid_locator"]);
+            assertEquals(
+                first.sessions.map((session) => session.piSessionId),
+                ["valid"],
+            );
+            assertEquals(
+                first.diagnostics.map((diagnostic) => diagnostic.code),
+                ["invalid_locator"],
+            );
+            assertEquals(
+                second.sessions.map((session) => session.piSessionId),
+                ["valid"],
+            );
+            assertEquals(
+                second.diagnostics.map((diagnostic) => diagnostic.code),
+                ["invalid_locator"],
+            );
+            assertEquals(
+                fullRescan.diagnostics.map((diagnostic) => diagnostic.code),
+                ["invalid_locator"],
+            );
 
             await fsWriteFile(
                 brokenPath,
@@ -313,7 +327,10 @@ test("Session locator conflicts are diagnostics and do not reassign existing sta
                 idFactory: idFactory(),
                 now: () => "t3",
             });
-            assertEquals(result.diagnostics.map((diagnostic) => diagnostic.code), ["catalog_conflict"]);
+            assertEquals(
+                result.diagnostics.map((diagnostic) => diagnostic.code),
+                ["catalog_conflict"],
+            );
             assertEquals(
                 findSessionByLocator(database, { transcriptPath: firstPath })?.runwieldSessionId,
                 first.runwieldSessionId,
@@ -417,27 +434,30 @@ test("two database connections racing to catalog one locator converge on one sta
                 transcriptCwd: root,
             };
             const [first, second] = await Promise.all([
-                new Promise((resolvePromise, reject) =>
-                    setTimeout(() =>
-                        ensureSessionCatalogRecord(firstDb, {
-                            ...locator,
-                            idFactory: idFactory("first"),
-                            now: () => "t2",
-                        }).then(resolvePromise, reject), 0)
+                new Promise<CatalogedSession>((resolvePromise, reject) =>
+                    setTimeout(
+                        () =>
+                            ensureSessionCatalogRecord(firstDb, {
+                                ...locator,
+                                idFactory: idFactory("first"),
+                                now: () => "t2",
+                            }).then(resolvePromise, reject),
+                        0,
+                    ),
                 ),
-                new Promise((resolvePromise, reject) =>
-                    setTimeout(() =>
-                        ensureSessionCatalogRecord(secondDb, {
-                            ...locator,
-                            idFactory: idFactory("second"),
-                            now: () => "t3",
-                        }).then(resolvePromise, reject), 0)
+                new Promise<CatalogedSession>((resolvePromise, reject) =>
+                    setTimeout(
+                        () =>
+                            ensureSessionCatalogRecord(secondDb, {
+                                ...locator,
+                                idFactory: idFactory("second"),
+                                now: () => "t3",
+                            }).then(resolvePromise, reject),
+                        0,
+                    ),
                 ),
             ]);
-            assertEquals(
-                /** @type {any} */ (first).runwieldSessionId,
-                /** @type {any} */ (second).runwieldSessionId,
-            );
+            assertEquals(first.runwieldSessionId, second.runwieldSessionId);
         } finally {
             firstDb.close();
             secondDb.close();
@@ -529,7 +549,10 @@ test("Session catalog does not let an encoded-directory collision rejected candi
                 now: () => "t3",
             });
 
-            assertEquals(result.cataloged.map((session) => session.piSessionId), ["collision-pi"]);
+            assertEquals(
+                result.cataloged.map((session) => session.piSessionId),
+                ["collision-pi"],
+            );
         } finally {
             database.close();
             if (previousHome === undefined) delete process.env["HOME"];
@@ -563,7 +586,10 @@ test("Session catalog rejects symlink-retargeted roots even when entered root te
             });
 
             assertEquals(result.cataloged, []);
-            assertEquals(result.diagnostics.map((diagnostic) => diagnostic.code), ["wrong_cwd"]);
+            assertEquals(
+                result.diagnostics.map((diagnostic) => diagnostic.code),
+                ["wrong_cwd"],
+            );
         } finally {
             database.close();
             if (previousHome === undefined) delete process.env["HOME"];

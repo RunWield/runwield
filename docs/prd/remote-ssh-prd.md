@@ -88,7 +88,7 @@ host verification, resolves an existing remote directory (remote home by default
 dormant remote TUI. Git is optional. The remote Linux host needs `python3`, SSHFS/FUSE for the personal mount, a
 writable private cache, and an executable compatible with the preflight for the matching glibc-linked Linux x86-64 or
 ARM64 build. The local machine needs OpenSSH and an explicitly built matching development bundle; see
-[build steps](runwield-core-prd.md#installation-and-updates). Runtime preparation checks build/protocol identity and
+[build steps](../contributing.md#remote-development-bundle). Runtime preparation checks build/protocol identity and
 checksums, reuses or repairs private cache entries, and does not run a remote personal installer or start a personal
 profile. Connection loss and exit clean up owned processes, with uncertain termination reported when it cannot be
 confirmed. The launcher starts a connection-owned stock SFTP server and SSHFS mount of the laptop's full `~/.wld` at a

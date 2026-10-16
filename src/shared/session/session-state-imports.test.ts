@@ -4,12 +4,7 @@ import { getCwd } from "../../constants.js";
 import { readdir as fsReaddir, readFile as fsReadFile } from "node:fs/promises";
 import { join } from "node:path";
 
-/**
- * @param {string} dir
- * @param {boolean} [includeTests]
- * @returns {AsyncGenerator<string>}
- */
-async function* walkJsFiles(dir, includeTests = false) {
+async function* walkJsFiles(dir: string, includeTests = false): AsyncGenerator<string> {
     for await (const entry of await fsReaddir(dir, { withFileTypes: true })) {
         const path = `${dir}/${entry.name}`;
         if (entry.isDirectory()) {
@@ -22,8 +17,7 @@ async function* walkJsFiles(dir, includeTests = false) {
 }
 
 test("production code does not import removed mutable session-state singleton", async () => {
-    /** @type {string[]} */
-    const matches = [];
+    const matches: string[] = [];
     const root = import.meta.dirname ?? getCwd();
     for await (const path of walkJsFiles(join(root, "..", "..", "..", "src"))) {
         const source = await fsReadFile(path, "utf8");
@@ -34,8 +28,7 @@ test("production code does not import removed mutable session-state singleton", 
 });
 
 test("shared core and tools never import UI or ACP adapters", async () => {
-    /** @type {string[]} */
-    const matches = [];
+    const matches: string[] = [];
     const base = import.meta.dirname ?? getCwd();
     const projectRoot = join(base, "..", "..", "..");
     for (const root of [join(projectRoot, "src", "shared"), join(projectRoot, "src", "tools")]) {

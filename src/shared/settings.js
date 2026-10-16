@@ -49,6 +49,7 @@ const RUNWIELD_CUSTOM_SETTING_KEYS = [
     "imageGeneration",
     "compactOnResumeThresholdPercent",
     "verification_command",
+    "worktree_setup_command",
     "codereview",
     "guidedReview",
     "cleanupMergedWorktrees",
@@ -141,13 +142,15 @@ function acquireSettingsLockSyncWithRetry(path) {
         try {
             return lockfile.lockSync(path, { realpath: false });
         } catch (error) {
-            const code = (error && typeof error === "object" && "code" in error) ? String(error.code) : undefined;
+            const code = error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
             if (code !== "ELOCKED" || attempt === maxAttempts) {
                 throw error;
             }
             lastError = error;
             const start = Date.now();
-            while (Date.now() - start < delayMs) { /* busy-wait */ }
+            while (Date.now() - start < delayMs) {
+                /* busy-wait */
+            }
         }
     }
 
@@ -166,7 +169,9 @@ function ensureSettingsFileForLock(path) {
         const parentDir = dirname(path);
         try {
             mkdirSync(parentDir, { recursive: true });
-        } catch (_e2) { /* ignore */ }
+        } catch (_e2) {
+            /* ignore */
+        }
         writeFileSync(path, "{}");
     }
 }
@@ -192,7 +197,9 @@ function writeSettingsContent(path, content) {
     const parentDir = dirname(path);
     try {
         mkdirSync(parentDir, { recursive: true });
-    } catch (_e) { /* ignore */ }
+    } catch (_e) {
+        /* ignore */
+    }
 
     writeFileSync(path, content);
 }
@@ -350,9 +357,8 @@ class RunWieldSettingsStorage {
                 // The first read can be stale. Recompute under the local lock.
                 const current = this.#readSettings(scope);
                 const changed = callback(current);
-                const next = changed === undefined
-                    ? undefined
-                    : preserveRunWieldCustomSettingsForWrite(current, changed);
+                const next =
+                    changed === undefined ? undefined : preserveRunWieldCustomSettingsForWrite(current, changed);
                 if (next !== undefined && next !== current) this.#writeSettings(scope, next);
             } finally {
                 release();
@@ -527,8 +533,12 @@ export function preserveRunWieldCustomSettingsForWrite(previousContent, nextCont
         const previous = /** @type {Record<string, any>} */ (parseJsonc(previousContent));
         const next = /** @type {Record<string, any>} */ (parseJsonc(nextContent));
         if (
-            !previous || typeof previous !== "object" || Array.isArray(previous) ||
-            !next || typeof next !== "object" || Array.isArray(next)
+            !previous ||
+            typeof previous !== "object" ||
+            Array.isArray(previous) ||
+            !next ||
+            typeof next !== "object" ||
+            Array.isArray(next)
         ) {
             return nextContent;
         }
@@ -536,7 +546,8 @@ export function preserveRunWieldCustomSettingsForWrite(previousContent, nextCont
         let changed = false;
         for (const key of RUNWIELD_CUSTOM_SETTING_KEYS) {
             if (
-                Object.prototype.hasOwnProperty.call(previous, key) && !Object.prototype.hasOwnProperty.call(next, key)
+                Object.prototype.hasOwnProperty.call(previous, key) &&
+                !Object.prototype.hasOwnProperty.call(next, key)
             ) {
                 next[key] = previous[key];
                 changed = true;
@@ -566,7 +577,9 @@ export function getCustomSetting(key, scope = "project", projectRoot = getCwd())
             try {
                 const parsed = /** @type {Record<string, any>} */ (parseJsonc(content));
                 result = parsed[key];
-            } catch (_e) { /* ignore */ }
+            } catch (_e) {
+                /* ignore */
+            }
         }
 
         return undefined; // Return undefined to signify no file changes
@@ -601,7 +614,9 @@ export async function setCustomSetting(key, value, scope = "project", projectRoo
         if (content) {
             try {
                 parsed = /** @type {Record<string, any>} */ (parseJsonc(content));
-            } catch (_e) { /* ignore */ }
+            } catch (_e) {
+                /* ignore */
+            }
         }
         parsed[key] = value;
 
@@ -654,7 +669,9 @@ export function setExactProjectCustomSetting(key, value, projectRoot) {
         if (content) {
             try {
                 parsed = /** @type {Record<string, unknown>} */ (parseJsonc(content));
-            } catch (_e) { /* ignore */ }
+            } catch (_e) {
+                /* ignore */
+            }
         }
         parsed[key] = value;
         const nextContent = preserveRunWieldCustomSettingsForWrite(content, JSON.stringify(parsed, null, 2));
@@ -708,7 +725,9 @@ export async function setGlobalCompactionSetting(key, value) {
         if (content) {
             try {
                 parsed = /** @type {Record<string, any>} */ (parseJsonc(content));
-            } catch (_e) { /* ignore */ }
+            } catch (_e) {
+                /* ignore */
+            }
         }
 
         const existing = parsed.compaction;
@@ -764,8 +783,12 @@ export function getMergedCustomSetting(key, projectRoot = getCwd()) {
 
     // Both present: merge if both are plain objects, otherwise project wins.
     if (
-        typeof globalVal === "object" && globalVal !== null && !Array.isArray(globalVal) &&
-        typeof projectVal === "object" && projectVal !== null && !Array.isArray(projectVal)
+        typeof globalVal === "object" &&
+        globalVal !== null &&
+        !Array.isArray(globalVal) &&
+        typeof projectVal === "object" &&
+        projectVal !== null &&
+        !Array.isArray(projectVal)
     ) {
         return { ...globalVal, ...projectVal };
     }
@@ -809,8 +832,9 @@ export async function setDefaultPlanServerUrl(value, scope = "project") {
  * @returns {string | undefined}
  */
 export function getResolvedVisionFallbackModelSetting(projectRoot) {
-    const activeModelPreset =
-        /** @type {string | undefined} */ (getMergedCustomSetting("activeModelPreset", projectRoot));
+    const activeModelPreset = /** @type {string | undefined} */ (
+        getMergedCustomSetting("activeModelPreset", projectRoot)
+    );
     if (activeModelPreset) {
         const modelPresets = /** @type {Record<string, { visionFallback?: { model?: unknown } }> | undefined} */ (
             getMergedCustomSetting("modelPresets", projectRoot)
@@ -819,8 +843,9 @@ export function getResolvedVisionFallbackModelSetting(projectRoot) {
         if (typeof presetModel === "string" && presetModel.trim()) return presetModel.trim();
     }
 
-    const visionFallback =
-        /** @type {{ model?: unknown } | undefined} */ (getMergedCustomSetting("visionFallback", projectRoot));
+    const visionFallback = /** @type {{ model?: unknown } | undefined} */ (
+        getMergedCustomSetting("visionFallback", projectRoot)
+    );
     const model = visionFallback?.model;
     return typeof model === "string" && model.trim() ? model.trim() : undefined;
 }
@@ -863,8 +888,7 @@ export function shouldAutoMergePlansIntoTargetBranch(projectRoot) {
     if (!projectRoot) throw new Error("shouldAutoMergePlansIntoTargetBranch: projectRoot is required");
     const plans = getMergedCustomSetting("plans", projectRoot);
     return Boolean(
-        plans && typeof plans === "object" && !Array.isArray(plans) &&
-            plans.autoMergeIntoTargetBranch === true,
+        plans && typeof plans === "object" && !Array.isArray(plans) && plans.autoMergeIntoTargetBranch === true,
     );
 }
 

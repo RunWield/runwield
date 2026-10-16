@@ -86,7 +86,10 @@ async function runGit(cwd: string, args: string[], env?: Record<string, string>)
 /** The branch RunWield gives an Epic whose author did not choose one: `epic/<epic-name>`. */
 export function defaultEpicBranchName(epicPlanName: string): string {
     const name = epicPlanName.trim().replace(/\.md$/, "").split("/").filter(Boolean).at(-1) || "";
-    const slug = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "");
     if (!slug) throw new Error(`Cannot name an Epic branch for ${epicPlanName}.`);
     return `${EPIC_BRANCH_PREFIX}${slug}`;
 }
@@ -258,16 +261,16 @@ async function seedEpicChildren(
             await runGit(primaryRoot, ["update-index", "--add", "--cacheinfo", `100644,${blob},${relativePath}`], env);
         }
         const tree = (await runGit(primaryRoot, ["write-tree"], env)).trim();
-        const message = `Add ${epicPlanName} child drafts to the Epic branch\n\n${
-            pending.map((child) => `- ${child.name}`).join("\n")
-        }\n`;
+        const message = `Add ${epicPlanName} child drafts to the Epic branch\n\n${pending
+            .map((child) => `- ${child.name}`)
+            .join("\n")}\n`;
         const commit = (await runGit(primaryRoot, ["commit-tree", tree, "-p", head, "-m", message])).trim();
         if (remote) {
             // Origin holds the Epic family; a plain push fails rather than overwriting work published meanwhile.
             await runGit(primaryRoot, ["push", "origin", `${commit}:refs/heads/${branch}`]);
             // Push normally advances the tracking ref itself. Only settle it
             // explicitly when it still holds the old head; never rewind a newer fetch.
-            if (await refCommit(primaryRoot, `refs/remotes/origin/${branch}`) === head) {
+            if ((await refCommit(primaryRoot, `refs/remotes/origin/${branch}`)) === head) {
                 await runGit(primaryRoot, ["update-ref", `refs/remotes/origin/${branch}`, commit, head]);
             }
             const local = await refCommit(primaryRoot, `refs/heads/${branch}`);
@@ -306,8 +309,17 @@ async function localEpicChildren(primaryRoot: string, documentRoot: string, epic
  *   commit is recorded as `epicBaseCommit`. An existing branch is used as it is.
  * - Child drafts missing from the branch are committed onto it.
  */
-export async function ensureEpicBranch(projectRoot: string, epicPlanName: string): Promise<EpicBranchState> {
-    if (!await isGitRepository(projectRoot)) return { kind: "none", reason: "not_git" };
+interface EnsureEpicBranchOptions {
+    /** Loading an existing Epic reads its branch without publishing checkout drafts. */
+    seedChildren?: boolean;
+}
+
+export async function ensureEpicBranch(
+    projectRoot: string,
+    epicPlanName: string,
+    options: EnsureEpicBranchOptions = {},
+): Promise<EpicBranchState> {
+    if (!(await isGitRepository(projectRoot))) return { kind: "none", reason: "not_git" };
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName);
     const epic = location.plan;
@@ -319,15 +331,17 @@ export async function ensureEpicBranch(projectRoot: string, epicPlanName: string
     const namedBranch = epicTargetBranch(epic.attrs);
     // Sequences are lightweight on purpose: they get a branch only when the user asks for one.
     if (!namedBranch && isSequenceEpic(epic.attrs)) return { kind: "none", reason: "sequence_without_branch" };
-    if (!namedBranch && !await canAdoptEpicBranch(primaryRoot, children)) {
+    const branch = await resolveTargetBranchName(primaryRoot, namedBranch || defaultEpicBranchName(epicPlanName));
+    const branchExists = await epicBranchExists(primaryRoot, branch);
+    // Started children prevent creating a new default branch, not using one that already owns the family.
+    if (!namedBranch && !branchExists && !(await canAdoptEpicBranch(primaryRoot, children))) {
         return { kind: "none", reason: "started_without_branch" };
     }
-    const branch = await resolveTargetBranchName(primaryRoot, namedBranch || defaultEpicBranchName(epicPlanName));
 
     // Create the branch before recording anything, so a failure never leaves the
     // Epic pointing at a branch that does not exist.
     let created = false;
-    if (!await epicBranchExists(primaryRoot, branch)) {
+    if (!branchExists) {
         try {
             await prepareTargetBranchRef(primaryRoot, branch);
         } catch (error) {
@@ -351,6 +365,8 @@ export async function ensureEpicBranch(projectRoot: string, epicPlanName: string
             });
         }
     }
+
+    if (!created && options.seedChildren === false) return { kind: "ready", branch, created, seededChildren: [] };
 
     // Children are found on the Epic branch by Plan ID, so every draft needs one before it goes there.
     if (children.some((child) => !child.attrs.planId)) {

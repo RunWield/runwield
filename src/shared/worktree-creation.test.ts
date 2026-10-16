@@ -18,6 +18,7 @@ import { basename, dirname, join } from "node:path";
 
 import { resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { addEntry, findByPlanId } from "./worktree-registry.js";
+import type { WorktreeRegistryEntry } from "./worktree-registry.js";
 import {
     findReusableWorktree,
     getWorktreeStatus,
@@ -148,10 +149,8 @@ test("createTestWorktreeAttempt leaves dirty primary checkout unchanged", async 
 test("createTestWorktreeAttempt leaves created Git evidence when registry settlement fails", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
-    /** @type {string | undefined} */
-    let createdPath;
-    /** @type {string | undefined} */
-    let createdBranch;
+    let createdPath: string | undefined;
+    let createdBranch: string | undefined;
     try {
         await addEntry(projectRoot, {
             id: "existing",
@@ -204,8 +203,7 @@ test("createTestWorktreeAttempt initializes submodules", async () => {
         const submoduleRoot = await makeRepo();
         const worktreeRoot = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         const previousAllowedProtocols = process.env.GIT_ALLOW_PROTOCOL;
-        /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>> | undefined} */
-        let worktree;
+        let worktree: WorktreeRegistryEntry | undefined;
         try {
             await fsWriteFile(`${submoduleRoot}/module.css`, "body { color: red; }\n");
             await git(submoduleRoot, ["add", "."]);
@@ -255,8 +253,7 @@ test("createTestWorktreeAttempt initializes submodules", async () => {
 test("createTestWorktreeAttempt rejects duplicate live legacy plan-name attempts", async () => {
     const projectRoot = await makeRepo();
     const worktreeRoot = await fsRealpath(await fsMkdtemp(join(tmpdir(), "portable-fixture-")));
-    /** @type {Awaited<ReturnType<typeof createTestWorktreeAttempt>>[]} */
-    const worktrees = [];
+    const worktrees: WorktreeRegistryEntry[] = [];
     try {
         worktrees.push(
             await createTestWorktreeAttempt({
