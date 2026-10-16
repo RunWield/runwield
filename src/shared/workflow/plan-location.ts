@@ -83,21 +83,6 @@ async function resolveWorkflowPlanLocationInScope(
         if (registered) {
             const plan = await loadPlan(registered.path, planName);
             if (plan && (!registered.planId || plan.attrs.planId === registered.planId)) {
-                const targetBranch = effectiveDeliveryBranch(plan.attrs);
-                if (
-                    options.loadFromTarget &&
-                    !options.readOnly &&
-                    registered.status === "planning" &&
-                    plan.attrs.parentPlan &&
-                    targetBranch
-                ) {
-                    const targetPlan = await findTargetBranchPlan(registryRoot, targetBranch, planName);
-                    if (!targetPlan || (targetPlan.attrs.planId && targetPlan.attrs.planId !== plan.attrs.planId)) {
-                        throw new Error(
-                            `Plan ${planName} does not exist on target ${targetBranch} with this identity.`,
-                        );
-                    }
-                }
                 return { registryRoot, documentRoot: registered.path, plan };
             }
             if (await loadPlan(registered.path, `archived/${planName}`)) {

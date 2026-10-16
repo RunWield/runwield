@@ -1,4 +1,5 @@
 import {
+    chmod as fsChmod,
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
@@ -14,7 +15,7 @@ import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js";
 import { listEntries, updateEntry } from "../worktree-registry.js";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
-import { loadControllerView } from "./controller-registry.ts";
+import { loadControllerView, writeControllerState } from "./controller-registry.ts";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 
@@ -39,39 +40,54 @@ async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes
 
 const fixture = defineGitFixture(async (repo) => {
     await fsWriteFile(join(repo, "README.md"), "base\n");
-    await writePlan(repo, "epic", {
-        planId: "plan-epic",
-        classification: "PROJECT",
-        complexity: "HIGH",
-        status: "ready_for_work",
-        targetBranch: "epic-target",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Epic\n");
-    await writePlan(repo, "epic/01-child", {
-        planId: "plan-child-01",
-        classification: "FEATURE",
-        complexity: "MEDIUM",
-        status: "draft",
-        parentPlan: "epic",
-        targetBranch: "epic-target",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Child\n\nPRIMARY STALE MARKER\n");
+    await writePlan(
+        repo,
+        "epic",
+        {
+            planId: "plan-epic",
+            classification: "PROJECT",
+            complexity: "HIGH",
+            status: "ready_for_work",
+            targetBranch: "epic-target",
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Epic\n",
+    );
+    await writePlan(
+        repo,
+        "epic/01-child",
+        {
+            planId: "plan-child-01",
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            status: "draft",
+            parentPlan: "epic",
+            targetBranch: "epic-target",
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Child\n\nPRIMARY STALE MARKER\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "main stale plans"]);
     await git(repo, ["switch", "-c", "epic-target"]);
     await fsWriteFile(join(repo, "src-target-only.js"), "export const targetOnly = true;\n");
-    await writePlan(repo, "epic/01-child", {
-        planId: "plan-child-01",
-        classification: "FEATURE",
-        complexity: "MEDIUM",
-        status: "draft",
-        parentPlan: "epic",
-        targetBranch: "epic-target",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Child\n\nTARGET PLAN BODY\n");
+    await writePlan(
+        repo,
+        "epic/01-child",
+        {
+            planId: "plan-child-01",
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            status: "draft",
+            parentPlan: "epic",
+            targetBranch: "epic-target",
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Child\n\nTARGET PLAN BODY\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "target delivered context"]);
     await git(repo, ["switch", "main"]);
@@ -105,6 +121,167 @@ test("planning worktree starts from the target branch and is not execution", asy
     assertEquals(view.state.executionMode, undefined);
 });
 
+test("planning identity checkpoint works before hook dependencies are installed", async () => {
+    const repo = await fixture.checkout();
+    await git(repo, ["switch", "epic-target"]);
+    const path = join(repo, "docs/plans/epic/01-child.md");
+    await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace('planId: "plan-child-01"\n', ""));
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "target child without identity"]);
+    await git(repo, ["switch", "main"]);
+    const hooks = join(repo, ".git/hooks");
+    await fsWriteFile(join(hooks, "pre-commit"), "#!/bin/sh\nexec bun node_modules/prettier/bin/prettier.cjs\n");
+    await fsChmod(join(hooks, "pre-commit"), 0o755);
+    await git(repo, ["config", "core.hooksPath", hooks]);
+
+    const result = await preparePlanningWorktreeForPlan(repo, "epic/01-child", { targetBranch: "epic-target" });
+    assertEquals(result.entry.status, "planning");
+    assertEquals(Boolean(result.plan.attrs.planId), true);
+    assertEquals(await git(result.entry.path, ["status", "--porcelain"]), "");
+    assertStringIncludes(
+        await git(result.entry.path, ["show", "HEAD:docs/plans/epic/01-child.md"]),
+        result.plan.attrs.planId!,
+    );
+    // The checkpoint exception must not disable hooks for ordinary commits.
+    await assertRejects(
+        () => git(result.entry.path, ["commit", "--allow-empty", "-m", "ordinary commit still runs hooks"]),
+        Error,
+        "Module not found",
+    );
+});
+
+test("planning checkpoints respect relative custom hook configuration without requiring project setup", async () => {
+    const repo = await fixture.checkout();
+    await git(repo, ["switch", "epic-target"]);
+    const path = join(repo, "docs/plans/epic/01-child.md");
+    await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace('planId: "plan-child-01"\n', ""));
+    await fsMkdir(join(repo, ".checks"));
+    const hook = join(repo, ".checks/prepare-commit-msg");
+    await fsWriteFile(hook, "#!/bin/sh\necho 'custom project setup is required' >&2\nexit 17\n");
+    await fsChmod(hook, 0o755);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "custom hook and anonymous child"]);
+    await git(repo, ["switch", "main"]);
+    await git(repo, ["config", "core.hooksPath", ".checks"]);
+    const primaryHead = await git(repo, ["rev-parse", "HEAD"]);
+
+    const result = await preparePlanningWorktreeForPlan(repo, "epic/01-child", { targetBranch: "epic-target" });
+    assertEquals(result.entry.status, "planning");
+    assertEquals(Boolean(result.plan.attrs.planId), true);
+    assertEquals(await git(result.entry.path, ["config", "--get", "core.hooksPath"]), ".checks");
+    assertEquals(await git(repo, ["rev-parse", "HEAD"]), primaryHead);
+    // prepare-commit-msg also runs with --no-verify; only the internal checkpoint is exempt.
+    await assertRejects(
+        () => git(result.entry.path, ["commit", "--no-verify", "--allow-empty", "-m", "normal commit"]),
+        Error,
+        "custom project setup is required",
+    );
+});
+
+test("planning refresh preserves edits and imports publication before hook dependencies are installed", async () => {
+    const repo = await fixture.checkout();
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const path = join(first.entry.path, "docs/plans/epic/01-child.md");
+    await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"));
+    await git(repo, ["switch", "epic-target"]);
+    await fsWriteFile(join(repo, "new-publication.js"), "export const published = true;\n");
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "publish target code"]);
+    await git(repo, ["switch", "main"]);
+    const hooks = join(repo, ".git/hooks");
+    await fsWriteFile(join(hooks, "pre-commit"), "#!/bin/sh\nexec bun node_modules/prettier/bin/prettier.cjs\n");
+    await fsChmod(join(hooks, "pre-commit"), 0o755);
+    await git(repo, ["config", "core.hooksPath", hooks]);
+
+    const refreshed = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    assertEquals(refreshed.entry.id, first.entry.id);
+    assertEquals(refreshed.entry.status, "planning");
+    assertStringIncludes(refreshed.plan.markdown, "SAVED PLANNER EDIT");
+    assertStringIncludes(await fsReadFile(join(refreshed.entry.path, "new-publication.js"), "utf8"), "published");
+    assertEquals(await git(refreshed.entry.path, ["status", "--porcelain"]), "");
+});
+
+for (const legacyAuthority of [false, true]) {
+    test(`loading retries a rolled-back anonymous planning creation${legacyAuthority ? " with legacy ownership" : ""}`, async () => {
+        const repo = await fixture.checkout();
+        await git(repo, ["switch", "epic-target"]);
+        const path = join(repo, "docs/plans/epic/01-child.md");
+        await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace('planId: "plan-child-01"\n', ""));
+        await git(repo, ["add", "."]);
+        await git(repo, ["commit", "-m", "target child without identity"]);
+        await git(repo, ["switch", "main"]);
+        await git(repo, ["config", "gpg.program", "runwield-test-signing-program-does-not-exist"]);
+        await git(repo, ["config", "commit.gpgSign", "true"]);
+        await assertRejects(
+            () => preparePlanningWorktreeForPlan(repo, "epic/01-child", { targetBranch: "epic-target" }),
+            Error,
+            "gpg failed to sign",
+        );
+        const [failed] = await listEntries(repo);
+        assertEquals(failed.status, "abandoned");
+        if (legacyAuthority) {
+            // Earlier versions published document ownership before preparation completed.
+            await writeControllerState(
+                repo,
+                { planName: failed.planName, planId: failed.planId },
+                {
+                    documentWorktreeId: failed.id,
+                },
+            );
+        }
+        await git(repo, ["config", "commit.gpgSign", "false"]);
+
+        const loaded = await resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true });
+        assertEquals(Boolean(loaded.plan?.attrs.planId), true);
+        assertEquals(loaded.documentRoot === repo, false);
+        assertEquals(loaded.documentRoot === failed.path, false);
+        assertStringIncludes(loaded.plan!.markdown, "TARGET PLAN BODY");
+        assertEquals((await listEntries(repo)).filter((entry) => entry.status === "planning").length, 1);
+    });
+}
+
+test("explicit loading keeps the created planning document when its target copy is removed", async () => {
+    const repo = await fixture.checkout();
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    const path = join(first.entry.path, "docs/plans/epic/01-child.md");
+    await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("TARGET PLAN BODY", "WORKTREE OWNS THIS PLAN"));
+    await git(repo, ["switch", "epic-target"]);
+    await git(repo, ["rm", "docs/plans/epic/01-child.md"]);
+    await git(repo, ["commit", "-m", "remove target copy"]);
+    await git(repo, ["switch", "main"]);
+
+    const loaded = await resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true });
+    assertEquals(loaded.documentRoot, first.entry.path);
+    assertEquals(loaded.plan?.attrs.planId, "plan-child-01");
+    assertStringIncludes(loaded.plan!.markdown, "WORKTREE OWNS THIS PLAN");
+});
+
+test("a missing established document is not replaced by the source after retirement", async () => {
+    const repo = await fixture.checkout();
+    const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
+        planId: "plan-child-01",
+        targetBranch: "epic-target",
+    });
+    await updateEntry(repo, first.entry.id, { status: "abandoned" });
+    await git(repo, ["worktree", "remove", "--force", first.entry.path]);
+    // An identified Plan at the original base is established evidence, not failed ID onboarding.
+    await git(repo, ["branch", "--force", first.entry.branch, first.entry.baseCommit]);
+    await assertRejects(
+        () => resolveWorkflowPlanLocation(repo, "epic/01-child", { loadFromTarget: true }),
+        Error,
+        "The registered Plan is missing or has a different identity",
+    );
+});
+
 test("planning worktree resume reuses saved Plan edits", async () => {
     const repo = await fixture.checkout();
     const first = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
@@ -112,10 +289,7 @@ test("planning worktree resume reuses saved Plan edits", async () => {
         targetBranch: "epic-target",
     });
     const planPath = join(first.entry.path, "docs", "plans", "epic", "01-child.md");
-    await fsWriteFile(
-        planPath,
-        (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"),
-    );
+    await fsWriteFile(planPath, (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"));
 
     const second = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
         planId: "plan-child-01",
@@ -181,7 +355,8 @@ test("reused child planning imports remote publication and preserves its saved P
     const planPath = join(first.entry.path, "docs/plans/epic/01-child.md");
     await fsWriteFile(
         planPath,
-        (await fsReadFile(planPath, "utf8")).replace('status: "draft"', 'status: "approved"')
+        (await fsReadFile(planPath, "utf8"))
+            .replace('status: "draft"', 'status: "approved"')
             .replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"),
     );
     const parentPath = join(first.entry.path, "docs/plans/epic.md");
@@ -323,10 +498,7 @@ test("target child catalog uses saved planning documents over target branch copi
         targetBranch: "epic-target",
     });
     const planPath = join(planning.entry.path, "docs", "plans", "epic", "01-child.md");
-    await fsWriteFile(
-        planPath,
-        (await fsReadFile(planPath, "utf8")).replace('status: "draft"', 'status: "approved"'),
-    );
+    await fsWriteFile(planPath, (await fsReadFile(planPath, "utf8")).replace('status: "draft"', 'status: "approved"'));
 
     const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
 
@@ -351,10 +523,7 @@ test("planning document is selected by load and catalog", async () => {
         targetBranch: "epic-target",
     });
     const planPath = join(planning.entry.path, "docs", "plans", "epic", "01-child.md");
-    await fsWriteFile(
-        planPath,
-        (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED CATALOG BODY"),
-    );
+    await fsWriteFile(planPath, (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED CATALOG BODY"));
 
     const location = await resolveWorkflowPlanLocation(repo, "epic/01-child");
     const plans = await listPlans(repo);
@@ -386,25 +555,26 @@ test("planning preparation stops when target fetch fails", async () => {
 test("target discovery errors stop the catalog before stale overlays", async () => {
     const repo = await fixture.checkout();
     await git(repo, ["switch", "epic-target"]);
-    await writePlan(repo, "epic/01-child", {
-        planId: "different-child-id",
-        classification: "FEATURE",
-        complexity: "MEDIUM",
-        status: "draft",
-        parentPlan: "epic",
-        targetBranch: "epic-target",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Child\n");
+    await writePlan(
+        repo,
+        "epic/01-child",
+        {
+            planId: "different-child-id",
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            status: "draft",
+            parentPlan: "epic",
+            targetBranch: "epic-target",
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Child\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "break target identity"]);
     await git(repo, ["switch", "main"]);
 
-    await assertRejects(
-        () => listPlans(repo),
-        Error,
-        "Target Plan epic/01-child has a different Plan ID",
-    );
+    await assertRejects(() => listPlans(repo), Error, "Target Plan epic/01-child has a different Plan ID");
 });
 
 test("planning preparation serializes duplicate callers", async () => {
@@ -445,23 +615,33 @@ test("planning preparation returns live execution instead of registering twice",
 });
 
 const standaloneLandingFixture = defineGitFixture(async (repo) => {
-    await writePlan(repo, "standalone", {
-        planId: "standalone-recovery",
-        classification: "PLANNED_CHANGE",
-        status: "draft",
-        targetBranch: "main",
-        deliveryBranch: "plan/standalone",
-    }, "# Standalone\n\nPRIMARY BODY\n");
+    await writePlan(
+        repo,
+        "standalone",
+        {
+            planId: "standalone-recovery",
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            targetBranch: "main",
+            deliveryBranch: "plan/standalone",
+        },
+        "# Standalone\n\nPRIMARY BODY\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "primary plan"]);
     await git(repo, ["switch", "-c", "plan/standalone"]);
-    await writePlan(repo, "standalone", {
-        planId: "standalone-recovery",
-        classification: "PLANNED_CHANGE",
-        status: "draft",
-        targetBranch: "main",
-        deliveryBranch: "plan/standalone",
-    }, "# Standalone\n\nLANDING BODY\n");
+    await writePlan(
+        repo,
+        "standalone",
+        {
+            planId: "standalone-recovery",
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            targetBranch: "main",
+            deliveryBranch: "plan/standalone",
+        },
+        "# Standalone\n\nLANDING BODY\n",
+    );
     await fsWriteFile(join(repo, "landing-only.txt"), "landing context\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "unfinished landing"]);
@@ -489,13 +669,18 @@ test("unfinished standalone without an attempt recovers planning from its record
 test("published-only read snapshots cannot be used as archive document paths", async () => {
     const repo = await fixture.checkout();
     await git(repo, ["switch", "epic-target"]);
-    await writePlan(repo, "epic/01-child", {
-        planId: "plan-child-01",
-        classification: "FEATURE",
-        status: "user_verified",
-        parentPlan: "epic",
-        targetBranch: "epic-target",
-    }, "# Published child\n");
+    await writePlan(
+        repo,
+        "epic/01-child",
+        {
+            planId: "plan-child-01",
+            classification: "FEATURE",
+            status: "user_verified",
+            parentPlan: "epic",
+            targetBranch: "epic-target",
+        },
+        "# Published child\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "published child"]);
     await git(repo, ["switch", "main"]);
@@ -507,6 +692,11 @@ test("published-only read snapshots cannot be used as archive document paths", a
     assertThrows(() => getPlanDocumentRoot(snapshot.plan?.path || ""), Error, "not a writable document path");
     assertEquals(await listEntries(repo), []);
     await assertRejects(() => archivePlan(repo, "epic/01-child"), Error, "published read snapshot");
-    assertEquals(await fsStat(path).then(() => true).catch(() => false), false);
+    assertEquals(
+        await fsStat(path)
+            .then(() => true)
+            .catch(() => false),
+        false,
+    );
     assertEquals(await listEntries(repo), []);
 });

@@ -406,6 +406,10 @@ its name is not yet recorded on the Epic, even if children have already started.
 checkout drafts. A published rename keeps the child's stable identity and compatible saved planning edits. Active
 execution keeps its own document authority. If a selected child has no Plan ID, Core creates one before worktree
 preparation and saves it in the child's planning document. Later loads reuse that identity and worktree.
+Before successful worktree creation, the Epic branch or primary checkout owns the Plan document. After creation, the
+worktree owns the document, even if the source copy changes or is removed. The registry owns attempt metadata keyed by
+Plan ID; it does not replace document content. A failed creation that was rolled back does not transfer document
+ownership.
 
 **Requirement: Each child starts with the preceding children's published code.** Before the next child is prepared,
 Core fetches the latest Epic branch. The child's planning worktree starts from, or imports, that commit while keeping
@@ -447,6 +451,10 @@ siblings active. Listings show held work separately from active and finished wor
   branch's current children and opens its next child, not a stale primary-checkout name.
 - Given a target-branch child without a Plan ID, loading it creates a durable identity and planning worktree. Repeated
   or concurrent loading reuses both without changing the primary checkout or publishing to the Epic branch.
+- Given a failed creation that removed its worktree before it saved an identified Plan, loading retries from the source
+  automatically. A stale ownership reference from that failed creation does not block the retry.
+- Given an established planning document, loading keeps its saved contents and identity even when its source copy is
+  removed. A missing established document is not replaced by an older source copy.
 - Given a child published from another checkout, preparing the next child includes that publication.
 - Given the next child already has a planning worktree with saved edits, continuation imports the published code and
   keeps those edits.
@@ -554,7 +562,9 @@ files and staging for retry.
 evidence, and leave unrelated edits out of discussion and Plans. A dirty checkout is ordinary context.
 
 **Requirement: Planning work carries into execution.** Draft Plans, parent Epic edits, and metadata updates made in a
-reused planning worktree carry into execution as part of its starting baseline.
+reused planning worktree carry into execution as part of its starting baseline. Planning checkpoints and target refreshes
+do not run project Git hooks or require dependency setup. This exception applies only to planning; execution preparation
+and implementation commits still run the project's hooks.
 
 **Acceptance scenarios:**
 
@@ -563,8 +573,11 @@ reused planning worktree carry into execution as part of its starting baseline.
 - Given Init discovery, the user confirms verification and setup independently or together; the same save tool preserves
   omitted commands. Canceling either choice leaves Init incomplete, and older projects can rerun Init to supply a
   missing setup choice.
-- Given a dependency-backed Git hook and an approved setup command, setup runs before the first preparation commit, the
-  hook passes, and one preparation commit precedes Agent work.
+- Given a fresh planning worktree with dependency-backed Git hooks, opening a child without a Plan ID saves its new
+  identity without installing dependencies or running hooks. Refreshing the target preserves saved planning edits under
+  the same rule. Normal commits still run the hooks.
+- Given a dependency-backed Git hook and an approved setup command, setup runs before the first execution preparation
+  commit, the hook passes, and one execution preparation commit precedes Agent work.
 - Given failed setup, the Plan stays ready and the worktree and diagnostics remain; a corrected retry continues that
   attempt.
 - Given a prepared worktree, resuming keeps its baseline without a second setup or preparation commit.

@@ -418,8 +418,6 @@ export async function preparePlanningWorktreeForPlan(
                 branch: entry.branch,
                 status: entry.status,
             });
-            await writeControllerState(projectRoot, { planName, planId }, { documentWorktreeId: entry.id });
-            await markEffect("controller_document_worktree_recorded", { worktreeId: entry.id });
             const planFile = await ensureExecutionPlanFile({
                 executionCwd: entry.path,
                 planName,
@@ -435,6 +433,7 @@ export async function preparePlanningWorktreeForPlan(
             const dirty = (await runGit(entry.path, ["status", "--porcelain"])).trim();
             if (dirty) {
                 const preparation = await checkpointExecutionPreparation({
+                    phase: "planning",
                     worktreePath: entry.path,
                     branch: entry.branch,
                     baseCommit: entry.baseCommit,
@@ -451,6 +450,8 @@ export async function preparePlanningWorktreeForPlan(
             await updateWorktreeRegistryEntry(projectRoot, entry.id, { status: "planning" });
             const plan = await loadPlan(entry.path, planName);
             if (!plan) throw new Error(`Planning worktree is missing its Plan after preparation: ${entry.path}`);
+            await writeControllerState(projectRoot, { planName, planId }, { documentWorktreeId: entry.id });
+            await markEffect("controller_document_worktree_recorded", { worktreeId: entry.id });
             return { entry, plan, reused: false };
         },
         verifyPreparation: (result) => ({

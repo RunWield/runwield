@@ -7,7 +7,11 @@ import { join } from "node:path";
 import { injectFrontMatter, parsePlanFrontMatter, planDocumentMarkdown } from "../../plan-store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { isRunWieldOwnedRuntimePath } from "../runwield-owned-paths.ts";
-import { checkpointExecutionPreparation, hasExecutionChangesSince } from "../worktree.js";
+import {
+    checkpointExecutionPreparation,
+    hasExecutionChangesSince,
+    PLANNING_CHECKPOINT_GIT_OPTIONS,
+} from "../worktree.js";
 import { findById, refreshPlanningWorktreeBase, type WorktreeRegistryEntry } from "../worktree-registry.js";
 import { runExecutionPreparationTransition } from "./state-transition.ts";
 
@@ -107,6 +111,7 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
             const dirty = (await gitStatusPaths(entry.path)).filter((path) => !isRunWieldOwnedRuntimePath(path));
             if (dirty.length) {
                 await checkpointExecutionPreparation({
+                    phase: "planning",
                     worktreePath: entry.path,
                     branch: entry.branch,
                     baseCommit: importedBase,
@@ -145,6 +150,7 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                     const merged = await captureForegroundProcess("git", {
                         cwd: entry.path,
                         args: [
+                            ...PLANNING_CHECKPOINT_GIT_OPTIONS,
                             "merge",
                             "--no-ff",
                             "--no-squash",
@@ -166,7 +172,12 @@ export async function refreshPlanningWorktree(projectRoot: string, entry: Worktr
                         await fsWriteFile(join(entry.path, path), markdown);
                         await git(entry.path, ["add", "--", path]);
                     }
-                    await git(entry.path, ["commit", "-m", `Refresh ${entry.planName} from ${entry.baseBranch}`]);
+                    await git(entry.path, [
+                        ...PLANNING_CHECKPOINT_GIT_OPTIONS,
+                        "commit",
+                        "-m",
+                        `Refresh ${entry.planName} from ${entry.baseBranch}`,
+                    ]);
                 } catch (error) {
                     await git(entry.path, ["merge", "--abort"]).catch(() => {});
                     throw error;
