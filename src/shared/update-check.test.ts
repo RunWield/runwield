@@ -20,13 +20,13 @@ import {
     writeUpdateCheckCache,
 } from "./update-check.js";
 
-/** @param {number} value */
-function fixedClock(value) {
+import type { FetchRequest } from "./fetch-request.ts";
+
+function fixedClock(value: number) {
     return { now: () => value };
 }
 
-/** @param {import("./fetch-request.ts").FetchRequest} fetch */
-function updatePorts(fetch, now = 10) {
+function updatePorts(fetch: FetchRequest, now = 10) {
     return { network: { fetch }, clock: fixedClock(now) };
 }
 
@@ -99,10 +99,8 @@ test("cached availability recomputes against current version", async () => {
 });
 
 test("refresh fetches GitHub latest and ignores cache write failures", async () => {
-    /** @type {string[]} */
-    const calls = [];
-    /** @param {string | URL | Request} url */
-    const fetchImpl = (url) => {
+    const calls: string[] = [];
+    const fetchImpl: FetchRequest = (url) => {
         calls.push(String(url));
         return Promise.resolve(new Response(JSON.stringify({ tag_name: "v3.0.0" }), { status: 200 }));
     };
@@ -112,7 +110,7 @@ test("refresh fetches GitHub latest and ignores cache write failures", async () 
         await fsWriteFile(regularFile, "preserved");
         const result = await refreshUpdateCheckCache(
             { currentVersion: "v2.0.0", cachePath: join(regularFile, "update-check.json") },
-            updatePorts(/** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl)),
+            updatePorts(fetchImpl),
         );
         assertEquals(calls, [LATEST_RELEASE_API_URL]);
         assertEquals(result.available, true);
@@ -127,25 +125,19 @@ test("refresh fetches GitHub latest and ignores cache write failures", async () 
 test("latest API rejects malformed release data", async () => {
     const fetchImpl = () => Promise.resolve(new Response(JSON.stringify({ name: "RunWield" }), { status: 200 }));
     await assertRejects(
-        () =>
-            refreshUpdateCheckCache(
-                { currentVersion: "v1.0.0" },
-                updatePorts(/** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl)),
-            ),
+        () => refreshUpdateCheckCache({ currentVersion: "v1.0.0" }, updatePorts(fetchImpl)),
         Error,
         "tag_name",
     );
 });
 
 test("latest release lookup falls back to GitHub web redirect after API 403", async () => {
-    /** @type {string[]} */
-    const calls = [];
+    const calls: string[] = [];
     const webResponse = new Response("", { status: 200 });
     Object.defineProperty(webResponse, "url", {
         value: "https://github.com/gandazgul/runwield/releases/tag/v4.5.6",
     });
-    /** @param {string | URL | Request} url */
-    const fetchImpl = (url) => {
+    const fetchImpl: FetchRequest = (url) => {
         calls.push(String(url));
         return Promise.resolve(
             String(url) === LATEST_RELEASE_API_URL ? new Response("forbidden", { status: 403 }) : webResponse,
@@ -154,7 +146,7 @@ test("latest release lookup falls back to GitHub web redirect after API 403", as
 
     assertEquals(
         await fetchLatestRunWieldRelease({
-            fetch: /** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl),
+            fetch: fetchImpl,
         }),
         {
             tagName: "v4.5.6",
@@ -165,10 +157,8 @@ test("latest release lookup falls back to GitHub web redirect after API 403", as
 });
 
 test("latest RC lookup selects the highest published candidate", async () => {
-    /** @type {string[]} */
-    const calls = [];
-    /** @param {string | URL | Request} url */
-    const fetchImpl = (url) => {
+    const calls: string[] = [];
+    const fetchImpl: FetchRequest = (url) => {
         calls.push(String(url));
         return Promise.resolve(
             new Response(
@@ -185,7 +175,7 @@ test("latest RC lookup selects the highest published candidate", async () => {
 
     assertEquals(
         await fetchLatestRunWieldRcRelease({
-            fetch: /** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl),
+            fetch: fetchImpl,
         }),
         {
             tagName: "v1.2.4-rc.2",
@@ -196,10 +186,8 @@ test("latest RC lookup selects the highest published candidate", async () => {
 });
 
 test("latest RC lookup falls back to the releases page when the API rate limit is exhausted", async () => {
-    /** @type {string[]} */
-    const calls = [];
-    /** @param {string | URL | Request} url */
-    const fetchImpl = (url) => {
+    const calls: string[] = [];
+    const fetchImpl: FetchRequest = (url) => {
         calls.push(String(url));
         if (String(url) === RELEASES_API_URL) return Promise.resolve(new Response("rate limited", { status: 403 }));
         return Promise.resolve(
@@ -214,7 +202,7 @@ test("latest RC lookup falls back to the releases page when the API rate limit i
 
     assertEquals(
         await fetchLatestRunWieldRcRelease({
-            fetch: /** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl),
+            fetch: fetchImpl,
         }),
         {
             tagName: "v1.2.4-rc.2",
@@ -229,7 +217,7 @@ test("latest RC lookup reports when no candidate is published", async () => {
     await assertRejects(
         () =>
             fetchLatestRunWieldRcRelease({
-                fetch: /** @type {import("./fetch-request.ts").FetchRequest} */ (fetchImpl),
+                fetch: fetchImpl,
             }),
         Error,
         "No RunWield release candidate is published.",

@@ -13,27 +13,30 @@ const base = {
     script: plannedChangeCiRepairReentryScenario.script.map((turn) =>
         turn.id === "engineer-repairs-failing-ci"
             ? {
-                ...turn,
-                toolCalls: [...(turn.toolCalls ?? []), {
-                    name: "write",
-                    arguments: {
-                        path: ".wld/settings.json",
-                        content: JSON.stringify({ verification_command: repairedCommand }) + "\n",
-                    },
-                }],
-            }
+                  ...turn,
+                  toolCalls: [
+                      ...(turn.toolCalls ?? []),
+                      {
+                          name: "write",
+                          arguments: {
+                              path: ".wld/settings.json",
+                              content: JSON.stringify({ verification_command: repairedCommand }) + "\n",
+                          },
+                      },
+                  ],
+              }
             : turn.requiredTools?.includes("review_diff")
-            ? {
-                ...turn,
-                toolCalls: [
-                    ...turn.toolCalls,
-                    {
-                        name: "review_diff",
-                        arguments: { command: "show", scope: "full", path: ".wld/settings.json" },
-                    },
-                ],
-            }
-            : turn
+              ? {
+                    ...turn,
+                    toolCalls: [
+                        ...turn.toolCalls,
+                        {
+                            name: "review_diff",
+                            arguments: { command: "show", scope: "full", path: ".wld/settings.json" },
+                        },
+                    ],
+                }
+              : turn,
     ),
 } satisfies GoldenScenario;
 
@@ -52,11 +55,7 @@ function assertCommandPrompts(result: GoldenScenarioResult, expected: number) {
     );
     for (const key of ["settingsAtFailure", "savedSettings"]) {
         const savedSettings = JSON.parse(String(result.state[key])) as ValidationSettings;
-        assertEquals(
-            savedSettings.verification_command,
-            command,
-            `Project command must persist at ${key}.`,
-        );
+        assertEquals(savedSettings.verification_command, command, `Project command must persist at ${key}.`);
     }
     const publication = result.state.commandPublication as CommandPublication;
     const deliveredSettings = JSON.parse(publication.deliveredText) as ValidationSettings;
@@ -94,11 +93,13 @@ export const routerValidationCommandRepairScenario: GoldenScenario = {
     coverage: [],
     committedProjectFiles: [],
     interactiveSelectPrompts: [],
-    scriptedInteractions: [{
-        type: "text",
-        promptIncludes: "Enter the command that runs this project's tests",
-        value: command,
-    }],
+    scriptedInteractions: [
+        {
+            type: "text",
+            promptIncludes: "Enter the command that runs this project's tests",
+            value: command,
+        },
+    ],
     script: [
         {
             id: "router-routes-new-project-to-planner",
@@ -106,10 +107,16 @@ export const routerValidationCommandRepairScenario: GoldenScenario = {
             phase: "triage",
             ordinal: 1,
             requiredTools: ["triage_report"],
-            toolCalls: [{
-                name: "triage_report",
-                arguments: { routingIntent: "PLANNED_CHANGE", complexity: "LOW", summary: "Implement a small change." },
-            }],
+            toolCalls: [
+                {
+                    name: "triage_report",
+                    arguments: {
+                        routingIntent: "PLANNED_CHANGE",
+                        complexity: "LOW",
+                        summary: "Implement a small change.",
+                    },
+                },
+            ],
         },
         ...base.script,
     ],
@@ -145,26 +152,30 @@ export const initTutorialValidationCommandScenario: GoldenScenario = {
             phase: "init",
             ordinal: 1,
             requiredTools: ["user_interview"],
-            toolCalls: [{
-                name: "user_interview",
-                arguments: {
-                    question: {
-                        id: "verification_command",
-                        type: "multiple_choice",
-                        prompt: "Which command should RunWield use to verify this project?",
-                        choices: [
-                            { value: command, label: command },
-                            { value: "no_verification", label: "No verification command" },
-                        ],
+            toolCalls: [
+                {
+                    name: "user_interview",
+                    arguments: {
+                        question: {
+                            id: "verification_command",
+                            type: "multiple_choice",
+                            prompt: "Which command should RunWield use to verify this project?",
+                            choices: [
+                                { value: command, label: command },
+                                { value: "no_verification", label: "No verification command" },
+                            ],
+                        },
                     },
                 },
-            }],
+            ],
         },
         ...startupInitScenario.script.map((turn) => ({
             ...turn,
             ordinal: turn.ordinal + 1,
             toolCalls: turn.toolCalls?.map((call) =>
-                call.name === "init_save_verification_command" ? { ...call, arguments: { command } } : call
+                call.name === "init_save_verification_command"
+                    ? { ...call, arguments: { command, setupCommand: "" } }
+                    : call,
             ),
         })),
         {

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
+import type { OwnerCoordinationDatabase } from "./database.js";
 import {
     acquireSessionActivation,
     changeSessionActivationPhase,
@@ -11,18 +12,23 @@ import {
     publishGenerationAndRelease,
 } from "./session-activations.js";
 
-/** @param {import('./database.js').OwnerCoordinationDatabase} database */
-function insertCatalogedSessionWithSegment(database) {
+function insertCatalogedSessionWithSegment(database: OwnerCoordinationDatabase) {
     database.transaction(() => {
-        database.handle.prepare(
-            "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('project-1', 'Project', '/tmp/project', '/tmp/project', 'enabled', 't0', 't0')",
-        ).run();
-        database.handle.prepare(
-            "INSERT INTO runwield_sessions(id, project_id, source, created_at, updated_at) VALUES ('session-1', 'project-1', 'catalog', 't0', 't0')",
-        ).run();
-        database.handle.prepare(
-            "INSERT INTO session_transcript_segments(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, ordinal, kind, header_version, header_timestamp, first_cataloged_at, last_cataloged_at) VALUES ('segment-1', 'session-1', 'project-1', 'pi-1', '/tmp/project/.wld/sessions/2026-01-01T00-00-00-000Z_pi-1.jsonl', '/tmp/project', 0, 'planning', 3, '2026-01-01T00:00:00.000Z', 't1', 't1')",
-        ).run();
+        database.handle
+            .prepare(
+                "INSERT INTO projects(id, display_name, registered_root, current_root, lifecycle, created_at, updated_at) VALUES ('project-1', 'Project', '/tmp/project', '/tmp/project', 'enabled', 't0', 't0')",
+            )
+            .run();
+        database.handle
+            .prepare(
+                "INSERT INTO runwield_sessions(id, project_id, source, created_at, updated_at) VALUES ('session-1', 'project-1', 'catalog', 't0', 't0')",
+            )
+            .run();
+        database.handle
+            .prepare(
+                "INSERT INTO session_transcript_segments(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, ordinal, kind, header_version, header_timestamp, first_cataloged_at, last_cataloged_at) VALUES ('segment-1', 'session-1', 'project-1', 'pi-1', '/tmp/project/.wld/sessions/2026-01-01T00-00-00-000Z_pi-1.jsonl', '/tmp/project', 0, 'planning', 3, '2026-01-01T00:00:00.000Z', 't1', 't1')",
+            )
+            .run();
     });
 }
 
@@ -110,23 +116,33 @@ test("publishGenerationAndRelease rejects a wrong-current-segment proof", async 
             });
             assertThrows(
                 () =>
-                    publishGenerationAndRelease(database, { ...checkpointProof, expectedCurrentSegmentId: "wrong" }, {
-                        generation: 0,
-                        byteLength: 42,
-                        terminalEntryId: "entry-1",
-                        digestHex: "a".repeat(64),
-                        currentSegmentId: "wrong",
-                    }, { now: () => "2026-01-01T00:00:01.000Z" }),
+                    publishGenerationAndRelease(
+                        database,
+                        { ...checkpointProof, expectedCurrentSegmentId: "wrong" },
+                        {
+                            generation: 0,
+                            byteLength: 42,
+                            terminalEntryId: "entry-1",
+                            digestHex: "a".repeat(64),
+                            currentSegmentId: "wrong",
+                        },
+                        { now: () => "2026-01-01T00:00:01.000Z" },
+                    ),
                 Error,
                 "proof",
             );
-            publishGenerationAndRelease(database, checkpointProof, {
-                generation: 0,
-                byteLength: 42,
-                terminalEntryId: "entry-1",
-                digestHex: "b".repeat(64),
-                currentSegmentId: "segment-1",
-            }, { now: () => "2026-01-01T00:00:02.000Z" });
+            publishGenerationAndRelease(
+                database,
+                checkpointProof,
+                {
+                    generation: 0,
+                    byteLength: 42,
+                    terminalEntryId: "entry-1",
+                    digestHex: "b".repeat(64),
+                    currentSegmentId: "segment-1",
+                },
+                { now: () => "2026-01-01T00:00:02.000Z" },
+            );
             const inspected = inspectSessionActivation(database, "session-1");
             assertEquals(inspected.activation?.state, "idle");
             assertEquals(inspected.generation?.currentSegmentId, "segment-1");

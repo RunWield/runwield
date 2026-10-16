@@ -2,7 +2,7 @@
 export const WIDTH = 20;
 export const HEIGHT = 18;
 export const ROLES = ["base", "guide", "planner", "architect", "engineer", "operator", "reviewer", "ideator"] as const;
-export type Role = typeof ROLES[number];
+export type Role = (typeof ROLES)[number];
 export const AGENT_MASCOT_ALIASES: Readonly<Record<string, Role>> = {
     init: "base",
     router: "base",
@@ -66,13 +66,12 @@ export function pixelsFor(role: Role, frame: number, pose: Pose = "thinking"): s
     // Leave a black pixel between the moving eyes and the white face border.
     rect(2, 7, 9, 3, ".");
     const step = pose === "thinking" ? frame % 6 : 1;
-    const eyeOffset = role === "reviewer"
-        ? [-1, 0, 1, 1, -1, -1][step]
-        : role === "operator" && (step === 2 || step === 3)
-        ? 1
-        : 0;
+    const eyeOffset =
+        role === "reviewer" ? [-1, 0, 1, 1, -1, -1][step] : role === "operator" && (step === 2 || step === 3) ? 1 : 0;
     const baseStep = frame % 8;
-    const blink = pose === "thinking" && role !== "reviewer" &&
+    const blink =
+        pose === "thinking" &&
+        role !== "reviewer" &&
         (role === "base" ? baseStep === 2 || baseStep === 6 : role === "architect" ? frame === 11 : step === 5);
     rect(4 + eyeOffset, 8, 2, blink ? 1 : 2);
     rect(7 + eyeOffset, 8, 2, blink ? 1 : 2);
@@ -138,7 +137,7 @@ export function pixelsFor(role: Role, frame: number, pose: Pose = "thinking"): s
         const tipX = 16 + tilt * 2;
         const tipY = tilt === 0 ? 8 : 9;
         for (let y = tipY; y <= 14; y++) {
-            const x = Math.round(tipX + (16 - tipX) * (y - tipY) / (14 - tipY));
+            const x = Math.round(tipX + ((16 - tipX) * (y - tipY)) / (14 - tipY));
             rect(x, y, 1, 1);
         }
         rect(tipX - 1, tipY - 1, 3, 2);
@@ -166,7 +165,7 @@ export function pixelsFor(role: Role, frame: number, pose: Pose = "thinking"): s
             "...##..",
         ]);
         rect(19, 2, 1, 2);
-        const fill = pose === "answering" ? 4 : pose === "idle" ? 0 : [0, 1, 2, 3, 2, 0][step];
+        const fill = pose === "answering" ? 4 : pose === "idle" ? 0 : [0, 1, 2, 3, 4, 2, 0][step];
         for (let row = 5 - fill; row < 5; row++) {
             const wide = row === 2 || row === 3;
             rect(wide ? 14 : 15, row, wide ? 5 : 4, 1);
@@ -177,15 +176,14 @@ export function pixelsFor(role: Role, frame: number, pose: Pose = "thinking"): s
 
 export const animations: Animation[] = ROLES.map((role) => ({
     role,
-    frames:
-        (role === "architect"
-            ? [70, 70, 70, 260, 70, 70, 70, 260, 70, 70, 70, 500, 280]
-            : role === "base"
-            ? [300, 300, 300, 300, 300, 300, 300, 300]
-            : role === "operator"
+    frames: (role === "architect"
+        ? [70, 70, 70, 260, 70, 70, 70, 260, 70, 70, 70, 500, 280]
+        : role === "base"
+          ? [300, 300, 300, 300, 300, 300, 300, 300]
+          : role === "operator"
             ? [400, 200, 140, 400, 200, 140]
-            : [480, 220, 260, 440, 240, 160])
-            .map((duration, index) => ({ pixels: pixelsFor(role, index), duration })),
+            : [480, 220, 260, 440, 240, 160]
+    ).map((duration, index) => ({ pixels: pixelsFor(role, index), duration })),
     idle: pixelsFor(role, 0, "idle"),
     answering: pixelsFor(role, 0, "answering"),
 }));
@@ -196,12 +194,13 @@ export function terminalLines(pixels: string[]): string[] {
         Array.from({ length: WIDTH }, (_, col) => {
             const top = pixels[row * 2][col] === "#";
             const bottom = pixels[row * 2 + 1][col] === "#";
-            return top ? bottom ? "█" : "▀" : bottom ? "▄" : " ";
-        }).join(""));
+            return top ? (bottom ? "█" : "▀") : bottom ? "▄" : " ";
+        }).join(""),
+    );
 }
 
 export function svgPath(pixels: string[]): string {
-    return pixels.flatMap((row, y) => [...row].flatMap((pixel, x) => pixel === "#" ? [`M${x} ${y}h1v1h-1z`] : [])).join(
-        "",
-    );
+    return pixels
+        .flatMap((row, y) => [...row].flatMap((pixel, x) => (pixel === "#" ? [`M${x} ${y}h1v1h-1z`] : [])))
+        .join("");
 }

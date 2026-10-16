@@ -11,7 +11,7 @@ Add the release schema URL to either settings file for editor autocomplete and v
 
 ```jsonc
 {
-    "$schema": "https://github.com/gandazgul/runwield/releases/latest/download/config.schema.json"
+    "$schema": "https://github.com/gandazgul/runwield/releases/latest/download/config.schema.json",
 }
 ```
 
@@ -44,20 +44,20 @@ used by later invocations.
     "theme": "catppuccin-mocha",
 
     "visionFallback": {
-        "model": "lmstudio/google/gemma-4-12B-it"
+        "model": "lmstudio/google/gemma-4-12B-it",
     },
 
     "agents": {
         "router": {
             "model": "openai/gpt-5-mini",
             "thinkingLevel": "minimal",
-            "temperature": 0.1
+            "temperature": 0.1,
         },
         "engineer": {
             "model": "anthropic/claude-sonnet-4-5",
             "thinkingLevel": "high",
-            "temperature": 0.4
-        }
+            "temperature": 0.4,
+        },
     },
 
     "activeModelPreset": "fast",
@@ -67,35 +67,35 @@ used by later invocations.
                 "router": {
                     "model": "openai/gpt-5-mini",
                     "thinkingLevel": "minimal",
-                    "temperature": 0.1
+                    "temperature": 0.1,
                 },
                 "engineer": {
                     "model": "anthropic/claude-haiku-4-5",
                     "thinkingLevel": "low",
-                    "temperature": 0.3
-                }
-            }
+                    "temperature": 0.3,
+                },
+            },
         },
         "quality": {
             "agents": {
                 "router": {
                     "model": "anthropic/claude-sonnet-4-5",
                     "thinkingLevel": "medium",
-                    "temperature": 0.1
+                    "temperature": 0.1,
                 },
                 "engineer": {
                     "model": "anthropic/claude-opus-4-5",
                     "thinkingLevel": "xhigh",
-                    "temperature": 0.4
-                }
-            }
-        }
+                    "temperature": 0.4,
+                },
+            },
+        },
     },
 
     "compaction": {
         "enabled": true,
         "reserveTokens": 16384,
-        "keepRecentTokens": 20000
+        "keepRecentTokens": 20000,
     },
 
     "compactOnResumeThresholdPercent": 50,
@@ -103,7 +103,7 @@ used by later invocations.
     "codereview": "ask",
     "cleanupMergedWorktrees": true,
     "workRecords": { "autoGenerateOnPlanCompletion": true },
-    "workflowMetrics": { "enabled": true }
+    "workflowMetrics": { "enabled": true },
 }
 ```
 
@@ -124,9 +124,9 @@ Maps agent names to base per-agent overrides:
         "router": {
             "model": "openai/gpt-5-mini",
             "thinkingLevel": "minimal",
-            "temperature": 0.1
-        }
-    }
+            "temperature": 0.1,
+        },
+    },
 }
 ```
 
@@ -192,10 +192,10 @@ You can also define your own preset:
     "modelPresets": {
         "fast": {
             "agents": {
-                "router": { "model": "openai/gpt-5-mini" }
-            }
-        }
-    }
+                "router": { "model": "openai/gpt-5-mini" },
+            },
+        },
+    },
 }
 ```
 
@@ -255,22 +255,22 @@ Example with LM Studio and Gemma 4 12B:
 ```jsonc
 {
     "visionFallback": {
-        "model": "lmstudio/google/gemma-4-12B-it"
+        "model": "lmstudio/google/gemma-4-12B-it",
     },
 
     "activeModelPreset": "local",
     "modelPresets": {
         "local": {
             "visionFallback": {
-                "model": "lmstudio/google/gemma-4-12B-it"
+                "model": "lmstudio/google/gemma-4-12B-it",
             },
             "agents": {
                 "engineer": {
-                    "model": "lmstudio/some-text-only-code-model"
-                }
-            }
-        }
-    }
+                    "model": "lmstudio/some-text-only-code-model",
+                },
+            },
+        },
+    },
 }
 ```
 
@@ -345,8 +345,8 @@ See [Login commands](providers.md#login-commands) for `/login`.
     "imageGeneration": {
         "model": "openrouter/google/gemini-3.1-flash-image",
         "thinkingLevel": "high",
-        "temperature": 1
-    }
+        "temperature": 1,
+    },
 }
 ```
 
@@ -361,8 +361,8 @@ Choose an image-output model. A chat model that only accepts images as input can
 ```jsonc
 {
     "imageGeneration": {
-        "model": "opencode/<model>"
-    }
+        "model": "opencode/<model>",
+    },
 }
 ```
 
@@ -378,8 +378,8 @@ generation. To edit reference images, the model must also accept image input.
 {
     "imageGeneration": {
         "model": "codex-cli/gpt-5.6-sol",
-        "thinkingLevel": "low"
-    }
+        "thinkingLevel": "low",
+    },
 }
 ```
 
@@ -397,8 +397,8 @@ an accepted alias for `codex-cli/<model>`.
 {
     "imageGeneration": {
         "model": "agy-cli/gemini-3.8-flash",
-        "thinkingLevel": "medium"
-    }
+        "thinkingLevel": "medium",
+    },
 }
 ```
 
@@ -447,7 +447,7 @@ Verified; it does not mean the onward merge has happened.
 
 ```jsonc
 {
-    "plans": { "autoMergeIntoTargetBranch": true }
+    "plans": { "autoMergeIntoTargetBranch": true },
 }
 ```
 
@@ -462,8 +462,8 @@ RunWield writes a [Work Record](usage.md#work-records) whenever a Plan finishes.
 ```jsonc
 {
     "workRecords": {
-        "autoGenerateOnPlanCompletion": false
-    }
+        "autoGenerateOnPlanCompletion": false,
+    },
 }
 ```
 
@@ -480,7 +480,7 @@ URL only:
 
 ```jsonc
 {
-    "planServerUrl": "https://plans.example.com"
+    "planServerUrl": "https://plans.example.com",
 }
 ```
 
@@ -495,26 +495,27 @@ See [Self-hosted collaborative planning](collaboration.md) for Podman/OCI setup 
 
 These keys are read by RunWield outside the upstream Pi `SettingsManager` schema.
 
-| Key                                        | Type              | Values / default                                | Scope            | Description                                                                                                                                                                                                                                           |
-| ------------------------------------------ | ----------------- | ----------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agents`                                   | object            | agent-name map                                  | global + project | Base per-agent `model`, `thinkingLevel`, and `temperature` overrides.                                                                                                                                                                                 |
-| `activeModelPreset`                        | string            | unset                                           | global + project | Selects a named preset from `modelPresets`.                                                                                                                                                                                                           |
-| `modelPresets`                             | object            | preset-name map                                 | global + project | Named per-agent override sets.                                                                                                                                                                                                                        |
-| `visionFallback`                           | object            | unset                                           | global + project | Vision-capable fallback model used by `see_image` when the active model is text-only.                                                                                                                                                                 |
-| `imageGeneration`                          | object            | unset                                           | global + project | Image model used by the `create_image` tool. See [`imageGeneration`](#imagegeneration).                                                                                                                                                               |
-| `compactOnResumeThresholdPercent`          | integer           | `1`-`100`, default `50`                         | global + project | `/resume` offers compaction when estimated context reaches this percentage of the selected model context window.                                                                                                                                      |
-| `verification_command`                     | string            | no default                                      | project          | Command used by Workflow Validation. Init infers candidates from repository evidence, asks the user to confirm one, and saves the confirmed project command. Selecting no implemented verification saves `echo "verification not implemented yet"`.   |
-| `codereview`                               | string            | `none`, `ask`, `always`; default `ask`          | global + project | Optional Plannotator human code review gate after local validation and semantic review pass, before merge-back. Invalid values fall back to `none`.                                                                                                   |
-| `guidedReview`                             | string            | `none`, `ask`, `auto`, `always`; default `auto` | global + project | Guided Review Explainer generation policy inside human code review. Invalid values fall back to `none`; manual generation remains available when supported.                                                                                           |
-| `cleanupMergedWorktrees`                   | boolean           | default `true`                                  | global + project | When true, successful merge-back removes a clean execution checkout, deletes its registry entry, and clears Plan worktree metadata. Unexpected dirty state is preserved rather than force-deleted. Set false to keep merged worktrees for inspection. |
-| `plans.autoMergeIntoTargetBranch`          | boolean           | default `false`                                 | global + project | Standalone Plans deliver to a Plan Branch when off, or directly to `targetBranch` when on. See [Plan Delivery](#plan-delivery).                                                                                                                       |
-| `workRecords.autoGenerateOnPlanCompletion` | boolean           | default `true`                                  | global + project | Writes a Work Record when a Plan finishes. Only `false` turns it off.                                                                                                                                                                                 |
-| `mascot`                                   | boolean           | default `true`                                  | global + project | Hides the agent mascot in TUI and Workspace when false.                                                                                                                                                                                               |
-| `notifications`                            | object            | enabled by default                              | global + project | Attention notifications. TUI uses terminal BEL/OSC for agent stops, `plan_written`, `user_interview`, and `/compact`. Workspace uses browser alerts for live `agentStopped` events. Focused surfaces stay quiet by default.                           |
-| `workflowMetrics`                          | boolean or object | default disabled                                | global + project | Opt-in local-only JSONL workflow metrics under `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`. Linked worktrees write to the primary project file. Accepts `true` or `{ "enabled": true }`.                                           |
-| `planServerUrl`                            | string            | unset                                           | global + project | Default Plan Server for `wld plans share`. See [`planServerUrl`](#planserverurl).                                                                                                                                                                     |
-| `enableExternalSkills`                     | boolean           | default `true`                                  | global           | When true, RunWield includes project `.agents/skills` and home `~/.agents/skills`. When false, it omits both folders. External skills cannot conflict with bundled names or aliases.                                                                  |
-| `enableExternalGlobalAgentsMd`             | boolean           | default `true`                                  | global           | When true, global prompt loading includes `~/.agents/AGENTS.md` after `~/.wld/RUNWIELD.md` and `~/.wld/AGENTS.md`.                                                                                                                                    |
+| Key                                        | Type              | Values / default                                | Scope            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------ | ----------------- | ----------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agents`                                   | object            | agent-name map                                  | global + project | Base per-agent `model`, `thinkingLevel`, and `temperature` overrides.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `activeModelPreset`                        | string            | unset                                           | global + project | Selects a named preset from `modelPresets`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `modelPresets`                             | object            | preset-name map                                 | global + project | Named per-agent override sets.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `visionFallback`                           | object            | unset                                           | global + project | Vision-capable fallback model used by `see_image` when the active model is text-only.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `imageGeneration`                          | object            | unset                                           | global + project | Image model used by the `create_image` tool. See [`imageGeneration`](#imagegeneration).                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `compactOnResumeThresholdPercent`          | integer           | `1`-`100`, default `50`                         | global + project | `/resume` offers compaction when estimated context reaches this percentage of the selected model context window.                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `worktree_setup_command`                   | string            | unset                                           | project          | Approved setup command run in the execution worktree before its first preparation commit and Git hooks. For example, `bun run install:locked`. Use an idempotent command that leaves versioned files unchanged and writes dependencies only to ignored paths. An empty string declares that no setup is required. Without configuration, commit hooks prompt for a command or confirmation that setup is already complete; no installer is inferred. Failed or canceled setup pauses execution and preserves command output for retry. |
+| `verification_command`                     | string            | no default                                      | project          | Command used by Workflow Validation. Init infers candidates from repository evidence, asks the user to confirm one, and saves the confirmed project command. Selecting no implemented verification saves `echo "verification not implemented yet"`.                                                                                                                                                                                                                                                                                    |
+| `codereview`                               | string            | `none`, `ask`, `always`; default `ask`          | global + project | Optional Plannotator human code review gate after local validation and semantic review pass, before merge-back. Invalid values fall back to `none`.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `guidedReview`                             | string            | `none`, `ask`, `auto`, `always`; default `auto` | global + project | Guided Review Explainer generation policy inside human code review. Invalid values fall back to `none`; manual generation remains available when supported.                                                                                                                                                                                                                                                                                                                                                                            |
+| `cleanupMergedWorktrees`                   | boolean           | default `true`                                  | global + project | When true, successful merge-back removes a clean execution checkout, deletes its registry entry, and clears Plan worktree metadata. Unexpected dirty state is preserved rather than force-deleted. Set false to keep merged worktrees for inspection.                                                                                                                                                                                                                                                                                  |
+| `plans.autoMergeIntoTargetBranch`          | boolean           | default `false`                                 | global + project | Standalone Plans deliver to a Plan Branch when off, or directly to `targetBranch` when on. See [Plan Delivery](#plan-delivery).                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `workRecords.autoGenerateOnPlanCompletion` | boolean           | default `true`                                  | global + project | Writes a Work Record when a Plan finishes. Only `false` turns it off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `mascot`                                   | boolean           | default `true`                                  | global + project | Hides the agent mascot in TUI and Workspace when false.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `notifications`                            | object            | enabled by default                              | global + project | Attention notifications. TUI uses terminal BEL/OSC for agent stops, `plan_written`, `user_interview`, and `/compact`. Workspace uses browser alerts for live `agentStopped` events. Focused surfaces stay quiet by default.                                                                                                                                                                                                                                                                                                            |
+| `workflowMetrics`                          | boolean or object | default disabled                                | global + project | Opt-in local-only JSONL workflow metrics under `~/.wld/workflow-metrics/<encoded-project-root>/metrics.jsonl`. Linked worktrees write to the primary project file. Accepts `true` or `{ "enabled": true }`.                                                                                                                                                                                                                                                                                                                            |
+| `planServerUrl`                            | string            | unset                                           | global + project | Default Plan Server for `wld plans share`. See [`planServerUrl`](#planserverurl).                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `enableExternalSkills`                     | boolean           | default `true`                                  | global           | When true, RunWield includes project `.agents/skills` and home `~/.agents/skills`. When false, it omits both folders. External skills cannot conflict with bundled names or aliases.                                                                                                                                                                                                                                                                                                                                                   |
+| `enableExternalGlobalAgentsMd`             | boolean           | default `true`                                  | global           | When true, global prompt loading includes `~/.agents/AGENTS.md` after `~/.wld/RUNWIELD.md` and `~/.wld/AGENTS.md`.                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ### `workflowMetrics`
 
@@ -683,7 +684,7 @@ Example:
 
 ```jsonc
 {
-    "codereview": "ask"
+    "codereview": "ask",
 }
 ```
 
@@ -711,7 +712,7 @@ Example:
 ```jsonc
 {
     "codereview": "always",
-    "guidedReview": "auto"
+    "guidedReview": "auto",
 }
 ```
 
@@ -776,9 +777,9 @@ Example:
             "agentStopped": true,
             "planWritten": true,
             "userInterview": true,
-            "compactionFinished": true
-        }
-    }
+            "compactionFinished": true,
+        },
+    },
 }
 ```
 
@@ -787,8 +788,8 @@ To suppress all BEL-derived terminal effects while keeping native OSC notificati
 ```jsonc
 {
     "notifications": {
-        "terminalBell": false
-    }
+        "terminalBell": false,
+    },
 }
 ```
 
@@ -797,8 +798,8 @@ To keep alerts active even when RunWield knows the TUI terminal is focused:
 ```jsonc
 {
     "notifications": {
-        "suppressWhenFocused": false
-    }
+        "suppressWhenFocused": false,
+    },
 }
 ```
 
@@ -808,9 +809,9 @@ To disable only routine agent-stop notifications while keeping prompts/review/co
 {
     "notifications": {
         "events": {
-            "agentStopped": false
-        }
-    }
+            "agentStopped": false,
+        },
+    },
 }
 ```
 
@@ -948,9 +949,9 @@ Type: object. Values are token budgets for token-budgeted thinking providers.
             "themes": ["themes/theme-a.json"],
             "extensions": [],
             "skills": [],
-            "prompts": []
-        }
-    ]
+            "prompts": [],
+        },
+    ],
 }
 ```
 

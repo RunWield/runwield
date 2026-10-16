@@ -127,12 +127,14 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
         const otherProject = store.registerProject({ root: otherProjectRoot, displayName: "Other Project" });
         let closedConnections = 0;
-        appObject = /** @type {any} */ (createOwnerWorkspaceApp({
-            mode: "owner",
-            publicOrigin: "http://127.0.0.1:8787",
-            store,
-        }));
-        appObject.ownerConnections.register(claimed.deviceId, { close: () => closedConnections += 1 });
+        appObject = /** @type {any} */ (
+            createOwnerWorkspaceApp({
+                mode: "owner",
+                publicOrigin: "http://127.0.0.1:8787",
+                store,
+            })
+        );
+        appObject.ownerConnections.register(claimed.deviceId, { close: () => (closedConnections += 1) });
         const app = appObject.handler();
 
         const rejected = await app(
@@ -153,7 +155,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         if (page.status === 503) {
             assertStringIncludes(html, "Workspace Astro build unavailable");
         } else {
-            assertEquals(page.status, 200);
+            assertEquals(page.status, 200, html);
             assertStringIncludes(html, "Owner Project Plan Board");
             assertStringIncludes(html, "Visible owner plan");
             assertStringIncludes(html, "Project Plan views");
@@ -298,21 +300,27 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             [
                 { type: "session", id: "phone-session", cwd: projectRoot },
                 { type: "session_info", name: "Phone Ideation" },
-            ].map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+            ]
+                .map((entry) => JSON.stringify(entry))
+                .join("\n") + "\n",
         );
         /** @type {any} */ (store).listProjectSessions = () =>
             Promise.resolve({
-                sessions: [{
-                    runwieldSessionId: "session-owned",
-                    projectId: project.projectId,
-                    displayName: "Phone Ideation",
-                    transcriptPath,
-                }],
-                diagnostics: [{
-                    code: "path_leak_regression",
-                    sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
-                    message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
-                }],
+                sessions: [
+                    {
+                        runwieldSessionId: "session-owned",
+                        projectId: project.projectId,
+                        displayName: "Phone Ideation",
+                        transcriptPath,
+                    },
+                ],
+                diagnostics: [
+                    {
+                        code: "path_leak_regression",
+                        sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
+                        message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
+                    },
+                ],
             });
         /** @type {any} */ (store).inspectSessionActivation = () => ({
             activation: { state: "idle", ownerProcessKind: null },
@@ -439,7 +447,7 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
             runwieldSessionId: "session-owned",
             events: [],
             liveInteraction: { interactionId: "interaction-owned", request: { prompt: "Pick" } },
-            answer: { resolve: () => answered = true, reject: () => {} },
+            answer: { resolve: () => (answered = true), reject: () => {} },
         });
         const wrongProjectAnswer = await app(
             new Request(
@@ -513,28 +521,29 @@ test("owner Workspace requires CSRF for Project mutation and resolves Project Pl
         /** @type {any} */ (store).getSessionById = (runwieldSessionId) =>
             runwieldSessionId === "session-owned"
                 ? {
-                    runwieldSessionId,
-                    projectId: "file-project-identity",
-                    transcriptCwd: projectRoot,
-                }
+                      runwieldSessionId,
+                      projectId: "file-project-identity",
+                      transcriptCwd: projectRoot,
+                  }
                 : null;
         const sessionDetailPage = await app(
-            new Request(
-                `http://127.0.0.1:8787/projects/${project.projectId}/sessions/session-owned`,
-                { headers: { cookie: cookiePair(claimed.credential) } },
-            ),
+            new Request(`http://127.0.0.1:8787/projects/${project.projectId}/sessions/session-owned`, {
+                headers: { cookie: cookiePair(claimed.credential) },
+            }),
         );
         assertEquals(sessionDetailPage.status === 404, false);
 
         store.catalogProjectSessions = () =>
             Promise.resolve({
                 cataloged: [],
-                diagnostics: [{
-                    code: "path_leak_regression",
-                    sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
-                    message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
-                    nested: { cwd: `${projectRoot}/nested` },
-                }],
+                diagnostics: [
+                    {
+                        code: "path_leak_regression",
+                        sessionPath: `${projectRoot}/.runwield/sessions/session.json`,
+                        message: `Transcript cwd ${projectRoot}/worktree does not match registered Project root`,
+                        nested: { cwd: `${projectRoot}/nested` },
+                    },
+                ],
             });
         const rescan = await app(
             new Request(`http://127.0.0.1:8787/api/owner/projects/${project.projectId}/action`, {
@@ -655,11 +664,13 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
     let appObject;
     try {
         const project = store.registerProject({ root: projectRoot, displayName: "Owner Project" });
-        appObject = /** @type {any} */ (createOwnerWorkspaceApp({
-            mode: "owner",
-            publicOrigin: "http://127.0.0.1:8787",
-            store,
-        }));
+        appObject = /** @type {any} */ (
+            createOwnerWorkspaceApp({
+                mode: "owner",
+                publicOrigin: "http://127.0.0.1:8787",
+                store,
+            })
+        );
         const plan = await loadPlan(projectRoot, "owner-plan");
         const openedRevision = await getPlanRevisionForText(plan.markdown);
         await fsWriteFile(plan.path, injectFrontMatter(plan.markdown, { status: "feedback" }));
@@ -693,8 +704,8 @@ test("owner Workspace rejects stale live Plan review before answering Runtime", 
                 },
             },
             answer: {
-                resolve: () => resolved = true,
-                reject: (error) => rejectedMessage = error instanceof Error ? error.message : String(error),
+                resolve: () => (resolved = true),
+                reject: (error) => (rejectedMessage = error instanceof Error ? error.message : String(error)),
             },
         });
 

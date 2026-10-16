@@ -246,7 +246,7 @@ No Work Record supersession is proposed.
 Use the sandboxed runner only. Wrap in-process home/cwd mutations in `withProcessGlobalTestLock`. Add focused files
 where listed as new below, or record the actual replacement names if implementation consolidates them.
 
-- `deno run -A scripts/run-tests.js src/shared/project-directory.test.ts src/shared/owner-coordination/projects.test.js`
+- `deno run -A scripts/run-tests.js src/shared/project-directory.test.ts src/shared/owner-coordination/projects.test.ts`
     - Cover the full directory table, home and root, trailing separators, `.`/`..` normalization, real symlink aliases,
       Windows casing/drive/UNC roots, ordinary descendants, and paths such as `/binary`.
     - Registration and relink without acknowledgement must leave both Project rows and root evidence unchanged. Correct

@@ -148,7 +148,7 @@ function epicBranchOf(attrs: Partial<PlanFrontMatter> | undefined): string {
 }
 
 async function canonicalEpicRef(primaryRoot: string, branch: string): Promise<string> {
-    return await refCommit(primaryRoot, `refs/remotes/origin/${branch}`)
+    return (await refCommit(primaryRoot, `refs/remotes/origin/${branch}`))
         ? `refs/remotes/origin/${branch}`
         : `refs/heads/${branch}`;
 }
@@ -189,9 +189,9 @@ export async function readEpicDeliveryState(
     projectRoot: string,
     epicPlanName: string,
 ): Promise<EpicDeliveryState | null> {
-    if (!await isGitRepository(projectRoot)) return null;
+    if (!(await isGitRepository(projectRoot))) return null;
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
-    const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName);
+    const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName, { readOnly: true });
     const epic = location.plan;
     if (!epic || epic.attrs.classification !== "PROJECT" || epic.attrs.type === "sequence") return null;
     const branch = epicBranchOf(epic.attrs);
@@ -210,21 +210,24 @@ export async function readEpicDeliveryState(
     for (const child of await findPlansByParent(location.documentRoot, epicPlanName)) {
         if (!family.has(child.name)) family.set(child.name, child);
     }
-    const included = [...family.values()].filter((child) => isPlannedChangeClassification(child.attrs.classification))
+    const included = [...family.values()]
+        .filter((child) => isPlannedChangeClassification(child.attrs.classification))
         .sort(compareChildPlansByOrder);
-    const children = await Promise.all(included.map(async (child) => {
-        const evidence = child.attrs.deliveryEvidence;
-        const delivery = evidence?.mode === "worktree_merge" && evidence.executionCommit &&
-                evidence.targetHeadBeforeMerge
-            ? { from: evidence.targetHeadBeforeMerge, to: evidence.executionCommit }
-            : undefined;
-        return {
-            name: child.name,
-            status: child.attrs.status,
-            settled: await isChildSettled(primaryRoot, ref, head, child),
-            ...(delivery ? { delivery } : {}),
-        };
-    }));
+    const children = await Promise.all(
+        included.map(async (child) => {
+            const evidence = child.attrs.deliveryEvidence;
+            const delivery =
+                evidence?.mode === "worktree_merge" && evidence.executionCommit && evidence.targetHeadBeforeMerge
+                    ? { from: evidence.targetHeadBeforeMerge, to: evidence.executionCommit }
+                    : undefined;
+            return {
+                name: child.name,
+                status: child.attrs.status,
+                settled: await isChildSettled(primaryRoot, ref, head, child),
+                ...(delivery ? { delivery } : {}),
+            };
+        }),
+    );
     return {
         epicPlanName,
         branch,
@@ -262,28 +265,35 @@ export async function reconcileEpicDelivery(projectRoot: string, epicPlanName: s
         });
         status = attrs.status;
     } else if (
-        (status === "reviewed" || status === "validated") && epic.attrs.epicCompletionMode !== "done_enough" &&
-        typeof epic.attrs.validatedCommit === "string" && state.head
+        (status === "reviewed" || status === "validated") &&
+        epic.attrs.epicCompletionMode !== "done_enough" &&
+        typeof epic.attrs.validatedCommit === "string" &&
+        state.head
     ) {
-        const unchanged = state.head === epic.attrs.validatedCommit ||
-            (await isContained(primaryRoot, epic.attrs.validatedCommit, state.ref) &&
-                (await runGitResult(primaryRoot, [
-                    "diff",
-                    "--quiet",
-                    epic.attrs.validatedCommit,
-                    state.head,
-                    "--",
-                    ".",
-                    `:(exclude)docs/plans/${epicPlanName}.md`,
-                ])).success);
+        const unchanged =
+            state.head === epic.attrs.validatedCommit ||
+            ((await isContained(primaryRoot, epic.attrs.validatedCommit, state.ref)) &&
+                (
+                    await runGitResult(primaryRoot, [
+                        "diff",
+                        "--quiet",
+                        epic.attrs.validatedCommit,
+                        state.head,
+                        "--",
+                        ".",
+                        `:(exclude)docs/plans/${epicPlanName}.md`,
+                    ])
+                ).success);
         const target = epic.attrs.epicDeliveryTargetBranch;
         if (
-            unchanged && target && target !== state.branch &&
-            await isCommitPublishedToTarget({
+            unchanged &&
+            target &&
+            target !== state.branch &&
+            (await isCommitPublishedToTarget({
                 projectRoot: primaryRoot,
                 targetBranch: target,
                 commit: epic.attrs.validatedCommit,
-            })
+            }))
         ) {
             const attrs = await recordPlanEvent({
                 cwd: primaryRoot,
@@ -313,22 +323,23 @@ async function epicDeliveryTarget(primaryRoot: string, epicBranch: string): Prom
     for (const branch of [...new Set([named, "main", "master"].filter(Boolean))]) {
         if (
             branch !== epicBranch &&
-            (await refCommit(primaryRoot, `refs/heads/${branch}`) ||
-                await refCommit(primaryRoot, `refs/remotes/origin/${branch}`))
-        ) return branch;
+            ((await refCommit(primaryRoot, `refs/heads/${branch}`)) ||
+                (await refCommit(primaryRoot, `refs/remotes/origin/${branch}`)))
+        )
+            return branch;
     }
     return undefined;
 }
 
 /** The commit the Epic diff starts from: the recorded branch base, or where the branch left the primary branch. */
 async function resolveEpicDiffBase(primaryRoot: string, epic: PlanFrontMatter, head: string): Promise<string> {
-    if (typeof epic.epicBaseCommit === "string" && await refCommit(primaryRoot, epic.epicBaseCommit)) {
+    if (typeof epic.epicBaseCommit === "string" && (await refCommit(primaryRoot, epic.epicBaseCommit))) {
         return epic.epicBaseCommit;
     }
     const remoteHead = await runGitResult(primaryRoot, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
     const candidates = [remoteHead.success ? remoteHead.stdout.trim() : "", "refs/heads/main", "refs/heads/master"];
     for (const candidate of candidates.filter(Boolean)) {
-        if (!await refCommit(primaryRoot, candidate)) continue;
+        if (!(await refCommit(primaryRoot, candidate))) continue;
         const base = await runGitResult(primaryRoot, ["merge-base", head, candidate]);
         if (base.success && base.stdout.trim()) return base.stdout.trim();
     }
@@ -467,8 +478,7 @@ async function runGateCodeReview(
     if (mode === "ask") {
         const offer = await port.requestInteraction({
             type: ValidationInteractionTypes.SELECT,
-            prompt:
-                `The integration gate passed for ${epicPlanName}. Review the whole Epic before it is marked reviewed?`,
+            prompt: `The integration gate passed for ${epicPlanName}. Review the whole Epic before it is marked reviewed?`,
             options: [
                 { value: "open", label: "Open code review" },
                 { value: "skip", label: "Skip code review" },
@@ -484,8 +494,11 @@ async function runGateCodeReview(
         prompt: `Review the assembled Epic ${epicPlanName}.`,
         _meta: {
             planName: epicPlanName,
-            planTitle: epicMarkdown.split(/\r?\n/).find((line) => /^#\s+\S/.test(line))?.replace(/^#\s+/, "") ||
-                epicPlanName,
+            planTitle:
+                epicMarkdown
+                    .split(/\r?\n/)
+                    .find((line) => /^#\s+\S/.test(line))
+                    ?.replace(/^#\s+/, "") || epicPlanName,
             planContent: epicMarkdown,
             planAttrs: epicAttrs,
             diffText,
@@ -496,7 +509,8 @@ async function runGateCodeReview(
     const review = normalizeHumanReview(response);
     if (review.approved) return { kind: "approved", mode };
     const annotations = formatCodeReviewAnnotations(review.annotations);
-    const feedback = [review.feedback.trim(), annotations ? `Annotations:\n${annotations}` : ""].filter(Boolean)
+    const feedback = [review.feedback.trim(), annotations ? `Annotations:\n${annotations}` : ""]
+        .filter(Boolean)
         .join("\n\n");
     if (!feedback) {
         return {
@@ -517,9 +531,13 @@ function renderFindings(findings: GateFinding[]): string {
         integration_review: "Integration review",
         code_review: "Code Review",
     };
-    return findings.map((finding, index) =>
-        [`### ${index + 1}. ${finding.title}`, "", `Source: ${labels[finding.source]}`, "", finding.detail].join("\n")
-    ).join("\n\n");
+    return findings
+        .map((finding, index) =>
+            [`### ${index + 1}. ${finding.title}`, "", `Source: ${labels[finding.source]}`, "", finding.detail].join(
+                "\n",
+            ),
+        )
+        .join("\n\n");
 }
 
 function renderReport(epicPlanName: string, state: EpicDeliveryState, base: string, findings: GateFinding[]): string {
@@ -543,11 +561,13 @@ function reviewFindings(outcome: ValidationReviewOutcome): GateFinding[] {
     if (outcome.approved) return [];
     const findings = outcome.findings.filter((finding) => finding.status !== "fix_confirmed" && !finding.resolved);
     if (findings.length === 0) {
-        return [{
-            source: "integration_review",
-            title: "Integration review requested changes",
-            detail: outcome.feedback || "The reviewer did not approve the Epic.",
-        }];
+        return [
+            {
+                source: "integration_review",
+                title: "Integration review requested changes",
+                detail: outcome.feedback || "The reviewer did not approve the Epic.",
+            },
+        ];
     }
     return findings.map((finding) => ({
         source: "integration_review",
@@ -568,7 +588,7 @@ async function addRepairChild(
     const highestOrder = Math.max(
         0,
         ...state.children.map((child) => Number(child.name.split("/").at(-1)?.slice(0, 2)) || 0),
-        ...siblings.map((child) => typeof child.attrs.order === "number" ? child.attrs.order : 0),
+        ...siblings.map((child) => (typeof child.attrs.order === "number" ? child.attrs.order : 0)),
     );
     const repairs = siblings.filter((child) => child.name.includes("repair-integration-findings")).length;
     const title = repairs === 0 ? "Repair integration findings" : `Repair integration findings ${repairs + 1}`;
@@ -593,16 +613,18 @@ async function addRepairChild(
     const [written] = await withPlanCatalogLock(
         documentRoot,
         async () =>
-            await saveChildFeaturePlans(documentRoot, epicPlanName, [{
-                title,
-                summary: `Repair ${findings.length} integration finding(s) on ${state.branch}.`,
-                affectedPaths: [],
-                dependencies: [],
-                content,
-                order: highestOrder + 1,
-                targetBranch: state.branch,
-                workKind: "BUG_FIX",
-            }]),
+            await saveChildFeaturePlans(documentRoot, epicPlanName, [
+                {
+                    title,
+                    summary: `Repair ${findings.length} integration finding(s) on ${state.branch}.`,
+                    affectedPaths: [],
+                    dependencies: [],
+                    content,
+                    order: highestOrder + 1,
+                    targetBranch: state.branch,
+                    workKind: "BUG_FIX",
+                },
+            ]),
     );
     const child = await loadPlan(documentRoot, written.name);
     if (!child) throw new Error(`Repair child was not saved: ${written.name}`);
@@ -727,8 +749,8 @@ export async function runEpicIntegrationGate(
             details: {
                 triageMeta: current.attrs,
                 integrationCommit: head,
-                epicDeliveryTargetBranch: current.attrs.epicDeliveryTargetBranch ||
-                    await epicDeliveryTarget(primaryRoot, state.branch),
+                epicDeliveryTargetBranch:
+                    current.attrs.epicDeliveryTargetBranch || (await epicDeliveryTarget(primaryRoot, state.branch)),
                 humanReviewMode: run.codeReview.mode,
                 humanReviewDecision: run.codeReview.kind,
                 humanReviewedAt: reviewedAt,

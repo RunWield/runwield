@@ -92,6 +92,8 @@ self.addEventListener('fetch', (event) => {
         try {
             const response = await fetch(request, {
                 cache: 'no-store',
+                referrer: request.referrer,
+                referrerPolicy: request.referrerPolicy,
                 ...(request.mode === 'navigate' ? { signal: AbortSignal.timeout(10000) } : {})
             });
             event.waitUntil(tellPage(event, response.status < 500));

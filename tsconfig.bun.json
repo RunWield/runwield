@@ -1,9 +1,6 @@
 {
     "extends": "./tsconfig.json",
-    "include": [
-        "src/**/*.ts",
-        "src/**/*.js"
-    ],
+    "include": ["src/**/*.ts", "src/**/*.js"],
     "exclude": [
         "src/**/*.test.ts",
         "src/**/*.test.js",
@@ -29,36 +26,16 @@
             "@modelcontextprotocol/sdk/server/stdio": [
                 "./node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.d.ts"
             ],
-            "@modelcontextprotocol/sdk/types": [
-                "./node_modules/@modelcontextprotocol/sdk/dist/esm/types.d.ts"
-            ],
-            "@plannotator/ui/*": [
-                "./third_party/plannotator/packages/ui/*"
-            ],
-            "@plannotator/guide-viewer/*": [
-                "./third_party/plannotator/packages/guide-viewer/*"
-            ],
-            "@plannotator/core/*": [
-                "./third_party/plannotator/packages/core/*"
-            ],
-            "@plannotator/core/code-file": [
-                "./third_party/plannotator/packages/core/code-file.ts"
-            ],
-            "@plannotator/core/extract-code-paths": [
-                "./third_party/plannotator/packages/core/extract-code-paths.ts"
-            ],
-            "@plannotator/core/feedback-templates": [
-                "./third_party/plannotator/packages/core/feedback-templates.ts"
-            ],
-            "@plannotator/shared/*": [
-                "./third_party/plannotator/packages/shared/*"
-            ],
-            "@plannotator/ai/*": [
-                "./third_party/plannotator/packages/ai/*"
-            ],
-            "@pierre/diffs/worker/worker.js": [
-                "./src/ui/workspace/react/pierre-diffs-worker-shim.ts"
-            ],
+            "@modelcontextprotocol/sdk/types": ["./node_modules/@modelcontextprotocol/sdk/dist/esm/types.d.ts"],
+            "@plannotator/ui/*": ["./third_party/plannotator/packages/ui/*"],
+            "@plannotator/guide-viewer/*": ["./third_party/plannotator/packages/guide-viewer/*"],
+            "@plannotator/core/*": ["./third_party/plannotator/packages/core/*"],
+            "@plannotator/core/code-file": ["./third_party/plannotator/packages/core/code-file.ts"],
+            "@plannotator/core/extract-code-paths": ["./third_party/plannotator/packages/core/extract-code-paths.ts"],
+            "@plannotator/core/feedback-templates": ["./third_party/plannotator/packages/core/feedback-templates.ts"],
+            "@plannotator/shared/*": ["./third_party/plannotator/packages/shared/*"],
+            "@plannotator/ai/*": ["./third_party/plannotator/packages/ai/*"],
+            "@pierre/diffs/worker/worker.js": ["./src/ui/workspace/react/pierre-diffs-worker-shim.ts"],
             "@modelcontextprotocol/sdk/client/stdio": [
                 "./node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.d.ts"
             ]
@@ -107,6 +84,8 @@
         "src/shared/git-evidence-cache.ts",
         "src/shared/git-evidence-cache.test.ts",
         "src/shared/git-test-fixture.ts",
-        "scripts/check-bun-provider.ts"
+        "scripts/check-bun-provider.ts",
+        "src/ui/workspace/react/code-review-edit-suggestions.test.ts",
+        "src/ui/workspace/routes/api/review-file-handlers.test.ts"
     ]
 }

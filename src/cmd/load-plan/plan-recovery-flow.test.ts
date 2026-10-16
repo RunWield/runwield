@@ -1428,3 +1428,77 @@ test("recovery preserves a surviving attached HEAD when the checkout and branch 
         await fsRm(root, { recursive: true });
     }
 });
+
+for (const status of ["failed", "implemented"] as const) {
+    test(`recovery resumes ${status} work from a unique rescue branch only after selection`, async () => {
+        const container = await fsMkdtemp(join(tmpdir(), "runwield-rescue-menu-"));
+        const worktreePath = join(container, "execution");
+        const branch = "worktree/rescued-attempt";
+        const project = await makeRealRecoveryProject({
+            status: "ready_for_work",
+            executionMode: "worktree",
+            worktreeId: "rescued-attempt",
+            worktreePath,
+            worktreeBranch: branch,
+            worktreeBaseBranch: "main",
+        });
+        try {
+            await enterProjectRuntime(project.projectRoot);
+            await runGit(project.projectRoot, ["switch", "-c", "rescue/saved-work"]);
+            await updatePlanFrontMatter(
+                project.projectRoot,
+                project.plan.planName,
+                { status, documentWorktreeId: "rescued-attempt" },
+                project.plan.attrs,
+                {
+                    expectedRevision: project.plan.revision,
+                },
+            );
+            await fsWriteFile(join(project.projectRoot, "saved-work.ts"), "// saved implementation\n");
+            await runGit(project.projectRoot, ["add", "docs", "saved-work.ts"]);
+            await runGit(project.projectRoot, ["commit", "-m", "save rescued execution"]);
+            const rescuedCommit = await runGit(project.projectRoot, ["rev-parse", "HEAD"]);
+            await runGit(project.projectRoot, ["switch", "main"]);
+            const primaryBytes = await fsReadFile(project.plan.path, "utf8");
+            const refs = await runGit(project.projectRoot, ["show-ref"]);
+            const worktrees = await runGit(project.projectRoot, ["worktree", "list", "--porcelain"]);
+            const selected = await resolvePlanWithPrimaryRecovery(project.projectRoot, project.plan.planName);
+            const action = status === "failed" ? "continue" : "validate";
+            const cancelled = makeUi(["cancel"]);
+            assertEquals(
+                await handlePlanRecovery(makeOptions(selected.plan, cancelled, project.projectRoot)),
+                "handled",
+            );
+            assertEquals(cancelled.prompts[0].includes(action), true);
+            assertEquals(cancelled.prompts[0].includes("stop_lost"), false);
+            assertEquals(await fileExists(worktreePath), false);
+            assertEquals(await runGit(project.projectRoot, ["show-ref"]), refs);
+            assertEquals(await runGit(project.projectRoot, ["worktree", "list", "--porcelain"]), worktrees);
+
+            const ui = makeUi([action]);
+            const options = makeOptions(selected.plan, ui, project.projectRoot);
+            let resumed = false;
+            const resume = async () => {
+                resumed = true;
+                assertEquals(
+                    await fsReadFile(join(worktreePath, "saved-work.ts"), "utf8"),
+                    "// saved implementation\n",
+                );
+                assertEquals(await runGit(worktreePath, ["rev-parse", "HEAD"]), rescuedCommit);
+                return { result: "complete" };
+            };
+            options.session.executePlan = resume;
+            options.session.runValidation = resume;
+            assertEquals(await handlePlanRecovery(options), "handled");
+            assertEquals(resumed, true);
+            assertEquals(
+                (await findWorktreeRegistryEntryById(project.projectRoot, "rescued-attempt"))?.path,
+                worktreePath,
+            );
+            assertEquals(await fsReadFile(project.plan.path, "utf8"), primaryBytes);
+        } finally {
+            await fsRm(project.projectRoot, { recursive: true });
+            await fsRm(container, { recursive: true });
+        }
+    });
+}

@@ -28,11 +28,7 @@ export const slashResumeScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    actions: [
-        { type: "type", text: "/resume" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/resume" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         (result: GoldenResult) => assertEventIncludes(result, "terminal:type:/resume"),
         (result: GoldenResult) => assertScreenIncludes(result, "No recent sessions found to resume."),
@@ -45,11 +41,7 @@ export const slashCompactScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    actions: [
-        { type: "type", text: "/compact" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/compact" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         (result: GoldenResult) => assertEventIncludes(result, "terminal:type:/compact"),
         (result: GoldenResult) => assertScreenIncludes(result, "Nothing to compact"),
@@ -62,11 +54,7 @@ export const slashInitScenario = {
     composedTui: true,
     initialAgentName: "guide",
     terminal: { columns: 100, rows: 30 },
-    actions: [
-        { type: "type", text: "/init" },
-        { type: "enter" },
-        { type: "waitForIdle" },
-    ],
+    actions: [{ type: "type", text: "/init" }, { type: "enter" }, { type: "waitForIdle" }],
     assertions: [
         (result: GoldenResult) => assertEventIncludes(result, "terminal:type:/init"),
         (result: GoldenResult) => assertScreenIncludes(result, "already initialized"),
@@ -94,7 +82,7 @@ export const startupInitScenario = {
             toolCalls: [
                 {
                     name: "init_save_verification_command",
-                    arguments: { command: "deno task ci" },
+                    arguments: { command: "deno task ci", setupCommand: "" },
                 },
                 {
                     name: "write",
@@ -113,10 +101,7 @@ export const startupInitScenario = {
             text: "Initialization completed after verifying the domain language artifact.",
         },
     ],
-    actions: [
-        { type: "waitForIdle" },
-        { type: "assertProjectFile", path: "docs/domain-language.md", exists: true },
-    ],
+    actions: [{ type: "waitForIdle" }, { type: "assertProjectFile", path: "docs/domain-language.md", exists: true }],
     assertions: [
         (result: GoldenResult) => assertEventIncludes(result, "model:faux-provider:init:init"),
         (result: GoldenResult) => assertScreenIncludes(result, "Init complete"),

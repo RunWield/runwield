@@ -59,18 +59,20 @@ import { printCommandHelp } from "../help/index.js";
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { resolvePlanWithPrimaryRecovery, resumePlanPublicationCleanup } from "./primary-plan-recovery.ts";
-import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import {
+    needsSessionPlanningWorktree,
+    PlanningNotStartedError,
+    resolveWorkflowPlanLocation,
+} from "../../shared/workflow/plan-location.ts";
 import type { CommandContext } from "../registry.js";
 import type { UiAPI } from "../../ui/tui/types.js";
 import {
     buildPlanRecoveryUserMessage,
     buildValidationRecoveryNotice,
 } from "../../shared/workflow/validation-user-messages.ts";
-import { isGitRepository } from "../../shared/git.ts";
 import { openFileSessionStore } from "../../shared/session/file-session-store.ts";
 import { findPlanAssociatedSessions, verifyPlanAssociatedSession } from "../../shared/session/plan-session-lookup.ts";
-import { preparePlanningWorktreeForPlan } from "../../shared/workflow/planning-worktree.ts";
-import { ensureEpicBranch } from "../../shared/workflow/epic-branch.ts";
+import { prepareSessionPlanningWorktree } from "../../shared/workflow/session-planning-worktree.ts";
 import { isPublicationCleanupPending } from "../../shared/workflow/publication-attempt.ts";
 
 export { getLoadPlanCompletions } from "./getArgumentCompletions.ts";
@@ -125,9 +127,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             if (!activeSnapshot) throw new Error("runLoadPlanCommand runtime session is missing");
             const plans = await listPlanDocuments(activeSnapshot.cwd);
             if (plans.length === 0) {
-                options.uiAPI.appendSystemMessage(
-                    "No plans available, start one by entering a new request",
-                );
+                options.uiAPI.appendSystemMessage("No plans available, start one by entering a new request");
                 clearEditor();
                 return;
             }
@@ -189,19 +189,16 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 lookupStore.close();
             }
         }
-        uiAPI = await startInteractiveSession(
-            null,
-            {
-                browser: SYSTEM_BROWSER_PORT,
-                ...(cliResumeSessionId
-                    ? { sessionStartMode: "continue" as const, resumeSessionId: cliResumeSessionId }
-                    : {}),
-                onSessionReady: (nextSessionId, nextRuntime) => {
-                    runtimeSessionId = nextSessionId;
-                    sessionRuntime = nextRuntime;
-                },
+        uiAPI = await startInteractiveSession(null, {
+            browser: SYSTEM_BROWSER_PORT,
+            ...(cliResumeSessionId
+                ? { sessionStartMode: "continue" as const, resumeSessionId: cliResumeSessionId }
+                : {}),
+            onSessionReady: (nextSessionId, nextRuntime) => {
+                runtimeSessionId = nextSessionId;
+                sessionRuntime = nextRuntime;
             },
-        );
+        });
     }
 
     if (!uiAPI) return;
@@ -362,7 +359,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 );
             }
         }
-        if (!plan.attrs.planId) {
+        if (!plan.attrs.planId && !needsSessionPlanningWorktree(plan.attrs)) {
             const location = await resolveWorkflowPlanLocation(projectRoot, plan.planName, { migrateRegistry: false });
             const identified = await ensurePlanIdentity(location.documentRoot, plan.planName);
             plan.attrs = identified.attrs;
@@ -372,29 +369,22 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         }
         let planDocumentRoot = projectRoot;
         const planId = typeof plan.attrs.planId === "string" ? plan.attrs.planId : "";
-        if (
-            plan.attrs.parentPlan && planId && typeof plan.attrs.targetBranch === "string" &&
-            ["draft", "feedback", "approved", "ready_for_work"].includes(plan.attrs.status) &&
-            plan.attrs.worktreeStatus !== "active" && await isGitRepository(projectRoot)
-        ) {
-            await ensureEpicBranch(projectRoot, String(plan.attrs.parentPlan));
-            const planning = await preparePlanningWorktreeForPlan(projectRoot, plan.planName, plan.attrs);
-            await switchPlanAgent(session.getEffectiveAgentName() || AGENTS.ROUTER, {
-                cwd: planning.entry.path,
-                forceRebuild: true,
-            });
-            refreshSessionSurface();
-            planDocumentRoot = planning.entry.path;
-            plan.path = planning.plan.path;
-            plan.attrs = planning.plan.attrs;
-            plan.markdown = planning.plan.markdown;
-            plan.body = planning.plan.body;
-            plan.revision = planning.plan.revision;
-            plan.hasFrontMatter = true;
-        }
+        const prepareSession = async () => {
+            const location = await prepareSessionPlanningWorktree(projectRoot, plan.planName);
+            planDocumentRoot = location.documentRoot;
+            if (location.plan) Object.assign(plan, location.plan);
+            await session.activateForPlan(plan.planName);
+            if (session.cwd !== planDocumentRoot) {
+                await switchPlanAgent(session.getEffectiveAgentName() || AGENTS.ROUTER, {
+                    cwd: planDocumentRoot,
+                    forceRebuild: true,
+                });
+                refreshSessionSurface();
+            }
+        };
         const associations = planId ? await runtime.listPlanAssociatedSessions(projectRoot, planId) : [];
-        const safeAssociations = associations.filter((candidate) =>
-            candidate.safePlanningResume && candidate.displayName?.trim()
+        const safeAssociations = associations.filter(
+            (candidate) => candidate.safePlanningResume && candidate.displayName?.trim(),
         );
         const activeElsewhere = associations.find((candidate) => candidate.reason === "active_elsewhere");
         let candidateToAdopt: (typeof safeAssociations)[number] | null = null;
@@ -526,7 +516,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         });
         if (epicResult === "direct_review") {
             restoreAgentName = planFlowRestoreAgent;
-            await session.activateForPlan(plan.planName);
+            await prepareSession();
             const reviewResult = await reviewLoadedPlanDirectly({
                 projectRoot,
                 plan,
@@ -553,7 +543,8 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         // from Plan Recovery whatever the Plan's status is. Otherwise a draft or
         // verified Plan is told it is blocked and offered nothing.
         if (
-            (!cleanupPending && !["verified", "user_verified"].includes(plan.attrs.status) &&
+            (!cleanupPending &&
+                !["verified", "user_verified"].includes(plan.attrs.status) &&
                 (["in_progress", "failed"].includes(plan.attrs.status) ||
                     isInValidation(plan.attrs.status) ||
                     isRecoverableWorktreeStatus(plan.attrs.worktreeStatus) ||
@@ -589,8 +580,10 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         const directReviewEligibility = getDirectPlanReviewEligibility(plan);
 
         if (
-            plan.attrs.status === "validated" || plan.attrs.status === "verified" ||
-            plan.attrs.status === "user_verified" || cleanupPending
+            plan.attrs.status === "validated" ||
+            plan.attrs.status === "verified" ||
+            plan.attrs.status === "user_verified" ||
+            cleanupPending
         ) {
             uiAPI.appendSystemMessage(
                 cleanupPending || plan.attrs.status === "validated" || plan.attrs.status === "verified"
@@ -603,14 +596,14 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 const answer = await uiAPI.promptSelect("What would you like to do?", [
                     ...(cleanupPending
                         ? [
-                            { value: "view", label: "View plan details" },
-                            { value: "cleanup", label: "Remove published worktree and branch" },
-                        ]
+                              { value: "view", label: "View plan details" },
+                              { value: "cleanup", label: "Remove published worktree and branch" },
+                          ]
                         : [
-                            { value: "archive", label: "Archive plan" },
-                            { value: "review", label: "Re-open for review (planner/architect)" },
-                            { value: "view", label: "View plan details" },
-                        ]),
+                              { value: "archive", label: "Archive plan" },
+                              { value: "review", label: "Re-open for review (planner/architect)" },
+                              { value: "view", label: "View plan details" },
+                          ]),
                     { value: "cancel", label: "Cancel" },
                 ]);
                 if (!answer || answer === "cancel") {
@@ -627,7 +620,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 if (answer === "archive") {
                     if (plan.attrs.status === "user_verified") {
                         const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
-                        if (!await completeUserVerification({ projectRoot, plan, uiAPI, session })) continue;
+                        if (!(await completeUserVerification({ projectRoot, plan, uiAPI, session }))) continue;
                         projectRoot = primaryRoot;
                     }
                     const archived = await archivePlan(projectRoot, plan.planName, {
@@ -642,7 +635,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                     if (nudge) uiAPI.appendSystemMessage(nudge, false, "RunWield");
                     return;
                 }
-                await session.activateForPlan(plan.planName);
+                await prepareSession();
                 await reopenPlanForReview({
                     projectRoot,
                     plan,
@@ -656,27 +649,32 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         if (plan.attrs.status === "approved" || isExecutablePlanStatus(plan.attrs.status)) {
             let reviewForced = forceReview;
             while (true) {
-                const answer = reviewForced ? "review" : await uiAPI.promptSelect("What would you like to do?", [
-                    { value: "proceed", label: "Proceed with execution" },
-                    ...(plan.attrs.status === "ready_for_work"
-                        ? [{ value: "planner_re_review", label: "Send back to Planner for re-review" }]
-                        : []),
-                    ...(directReviewEligibility.eligible
-                        ? [{
-                            value: "review",
-                            label: plan.attrs.status === "ready_for_work"
-                                ? "Review plan"
-                                : "Re-open for review (edit/annotate)",
-                        }]
-                        : []),
-                    {
-                        value: "user_verify",
-                        label: "Mark as User Verified (user attestation; no Workflow Validation claim)",
-                    },
-                    { value: "hold", label: "Put on hold" },
-                    { value: "view", label: "View plan details" },
-                    { value: "cancel", label: "Cancel" },
-                ]);
+                const answer = reviewForced
+                    ? "review"
+                    : await uiAPI.promptSelect("What would you like to do?", [
+                          { value: "proceed", label: "Proceed with execution" },
+                          ...(plan.attrs.status === "ready_for_work"
+                              ? [{ value: "planner_re_review", label: "Send back to Planner for re-review" }]
+                              : []),
+                          ...(directReviewEligibility.eligible
+                              ? [
+                                    {
+                                        value: "review",
+                                        label:
+                                            plan.attrs.status === "ready_for_work"
+                                                ? "Review plan"
+                                                : "Re-open for review (edit/annotate)",
+                                    },
+                                ]
+                              : []),
+                          {
+                              value: "user_verify",
+                              label: "Mark as User Verified (user attestation; no Workflow Validation claim)",
+                          },
+                          { value: "hold", label: "Put on hold" },
+                          { value: "view", label: "View plan details" },
+                          { value: "cancel", label: "Cancel" },
+                      ]);
                 reviewForced = false;
 
                 if (!answer || answer === "cancel") return;
@@ -698,12 +696,9 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
 
                 if (answer === "proceed") {
                     restoreAgentName = planFlowRestoreAgent;
+                    await prepareSession();
                     if (plan.attrs.status === "approved") {
-                        const ready = await prepareApprovedPlanForWork(
-                            projectRoot,
-                            plan,
-                            uiAPI,
-                        );
+                        const ready = await prepareApprovedPlanForWork(projectRoot, plan, uiAPI);
                         if (!ready) {
                             skipRouterRestore = true;
                             return;
@@ -727,9 +722,8 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
 
                 if (answer === "planner_re_review") {
                     restoreAgentName = planFlowRestoreAgent;
+                    await prepareSession();
                     const preReviewStatus = plan.attrs.status;
-
-                    await session.activateForPlan(plan.planName);
                     await reopenPlanForReview({
                         projectRoot,
                         plan,
@@ -767,7 +761,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
 
                 if (answer === "review") {
                     restoreAgentName = planFlowRestoreAgent;
-                    await session.activateForPlan(plan.planName);
+                    await prepareSession();
                     const reviewResult = await reviewLoadedPlanDirectly({
                         projectRoot,
                         plan,
@@ -798,10 +792,12 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                     { value: "resume", label: "Resume planning" },
                     ...(directReviewEligibility.eligible ? [{ value: "review", label: "Review plan" }] : []),
                     ...(isUserVerifiableStatus(plan.attrs.status)
-                        ? [{
-                            value: "user_verify",
-                            label: "Mark as User Verified (user attestation; no Workflow Validation claim)",
-                        }]
+                        ? [
+                              {
+                                  value: "user_verify",
+                                  label: "Mark as User Verified (user attestation; no Workflow Validation claim)",
+                              },
+                          ]
                         : []),
                     ...(isHoldableStatus(plan.attrs.status) ? [{ value: "hold", label: "Put on hold" }] : []),
                     { value: "view", label: "View plan details" },
@@ -827,7 +823,7 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
                 }
                 if (answer === "review") {
                     restoreAgentName = planFlowRestoreAgent;
-                    await session.activateForPlan(plan.planName);
+                    await prepareSession();
                     const reviewResult = await reviewLoadedPlanDirectly({
                         projectRoot,
                         plan,
@@ -848,9 +844,9 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             }
         }
 
+        await prepareSession();
         uiAPI.appendSystemMessage(buildPlanSummary(plan), false, "Plan");
         restoreAgentName = planFlowRestoreAgent;
-        await session.activateForPlan(plan.planName);
         await switchPlanAgent(agentName, { cwd: planDocumentRoot, forceRebuild: true });
 
         const outcome = await runPlanningAgent({
@@ -878,6 +874,10 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
             skipRouterRestore = true;
         }
     } catch (error) {
+        if (error instanceof PlanningNotStartedError) {
+            uiAPI.appendSystemMessage(error.message, true, "RunWield");
+            return;
+        }
         if (!isManagedUnsupportedError(error)) throw error;
         uiAPI.appendSystemMessage(buildManagedUnsupportedLoadPlanMessage(loadedPlanName), true, "RunWield");
     } finally {

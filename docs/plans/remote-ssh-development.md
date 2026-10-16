@@ -24,6 +24,7 @@ createdAt: "2026-09-20"
 status: "ready_for_work"
 origin: "internal"
 userVerifiedAt: null
+targetBranch: "epic/remote-ssh-development"
 ---
 
 # Remote SSH Development

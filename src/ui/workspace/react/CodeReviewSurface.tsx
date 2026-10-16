@@ -30,6 +30,7 @@ import { ReviewContextBar } from "./ReviewContextBar.tsx";
 import { ArtifactConversationSidebar } from "./ArtifactConversationSidebar.tsx";
 import { buildArtifactConversationFeedback, collectArtifactConversationReply } from "./artifact-conversation.ts";
 import { useReviewAnnotations } from "./use-review-annotations.ts";
+import { editHunksToAnnotations, editorCommentToAnnotation } from "./code-review-edit-suggestions.ts";
 import { useCodeReviewHighlighting } from "./code-review-highlighting.ts";
 import { formatGuidedReviewGenerator, formatGuidedReviewUsageStatus } from "./guided-review-status.ts";
 import "./plannotator.css";
@@ -101,7 +102,7 @@ async function waitForGuideJob(jobId, token, setGuideJob) {
         const response = await fetch(`/api/agents/jobs?token=${encodeURIComponent(token)}`, {
             headers: { "x-runwield-review-token": token },
         });
-        if (!response.ok) throw new Error(await response.text() || `Guide job status failed: ${response.status}`);
+        if (!response.ok) throw new Error((await response.text()) || `Guide job status failed: ${response.status}`);
         const data = await response.json();
         const job = (data.jobs || []).find((candidate) => candidate.id === jobId);
         if (job) {
@@ -120,11 +121,12 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const [activeRawPatch, setActiveRawPatch] = useState(initialPayload.rawPatch || "");
     const [activeReviewStatus, setActiveReviewStatus] = useState(initialPayload.reviewStatus || null);
     const files = useMemo(() => parseDiffToFiles(activeRawPatch), [activeRawPatch]);
-    const codeReviewPlanTitle = typeof initialPayload.planTitle === "string" && initialPayload.planTitle.trim()
-        ? initialPayload.planTitle.trim()
-        : typeof initialPayload.planName === "string" && initialPayload.planName.trim()
-        ? initialPayload.planName.trim()
-        : "Code changes";
+    const codeReviewPlanTitle =
+        typeof initialPayload.planTitle === "string" && initialPayload.planTitle.trim()
+            ? initialPayload.planTitle.trim()
+            : typeof initialPayload.planName === "string" && initialPayload.planName.trim()
+              ? initialPayload.planName.trim()
+              : "Code changes";
     const codeReviewHeading = `Code Review - ${codeReviewPlanTitle}`;
     useEffect(() => {
         document.title = codeReviewHeading;
@@ -132,6 +134,15 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     const highlightingReady = useCodeReviewHighlighting(files);
     const [activeFileIndex, setActiveFileIndex] = useState(0);
     const [annotations, setAnnotations] = useState([]);
+    const editSuggestions = useConfigValue("editSuggestions") === true;
+    const addSuggestionsForFile = useCallback((filePath, hunks) => {
+        const additions = editHunksToAnnotations(filePath, hunks);
+        setAnnotations((items) => [...items, ...additions]);
+    }, []);
+    const addEditorCommentForFile = useCallback((filePath, comment) => {
+        const annotation = editorCommentToAnnotation(filePath, comment);
+        if (annotation) setAnnotations((items) => [...items, annotation]);
+    }, []);
     const [selectedAnnotationId, setSelectedAnnotationId] = useState(null);
     const [scrollTargetAnnotation, setScrollTargetAnnotation] = useState(null);
     const [pendingSelection, setPendingSelection] = useState(null);
@@ -214,22 +225,22 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setReviewPanelView(toReviewPanelView(mode));
     }, []);
     const currentFile = files[activeFileIndex] || files[0] || null;
-    const sections = useMemo(
-        () => buildReviewSections(files, activeReviewStatus),
-        [files, activeReviewStatus],
+    const sections = useMemo(() => buildReviewSections(files, activeReviewStatus), [files, activeReviewStatus]);
+    const stagedFiles = useMemo(
+        () =>
+            new Set(
+                Object.entries(sections.files)
+                    .filter(([, entry]) => entry?.staged === true)
+                    .map(([filePath]) => filePath),
+            ),
+        [sections],
     );
-    const stagedFiles = useMemo(() =>
-        new Set(
-            Object.entries(sections.files)
-                .filter(([, entry]) => entry?.staged === true)
-                .map(([filePath]) => filePath),
-        ), [sections]);
     const accordionFiles = useMemo(
-        () => filePanelMode === "changes" ? orderFilesForChanges(files, sections, stagedFiles) : files,
+        () => (filePanelMode === "changes" ? orderFilesForChanges(files, sections, stagedFiles) : files),
         [filePanelMode, files, sections, stagedFiles],
     );
     const feedbackMarkdown = useMemo(
-        () => annotations.length > 0 ? exportReviewFeedbackWithImages(annotations) : "",
+        () => (annotations.length > 0 ? exportReviewFeedbackWithImages(annotations) : ""),
         [annotations],
     );
     const [standaloneReview, setStandaloneReview] = useState(initialPayload.standaloneReview);
@@ -246,18 +257,24 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
     }, [initialPayload.standaloneReview, initialPayload.token]);
     const [standaloneResult, setStandaloneResult] = useState("");
     const agentLabel = initialPayload.agentLabel || "Reviewer Feedback Engineer";
-    const conversationEnabled = initialPayload.mode === "dev" || Boolean(initialPayload.conversationStatusUrl) ||
+    const conversationEnabled =
+        initialPayload.mode === "dev" ||
+        Boolean(initialPayload.conversationStatusUrl) ||
         Boolean(initialPayload.operationStatusUrl && initialPayload.interactionAnswerBaseUrl);
-    const attachedContextLabel = conversationContextAttached && annotations.length > 0
-        ? `${annotations.length} code ${annotations.length === 1 ? "annotation" : "annotations"} attached`
-        : undefined;
-    const guidePolicy = initialPayload.guidedReview ||
-        { mode: "auto", autoStart: false, manualAvailable: true, reasons: [] };
+    const attachedContextLabel =
+        conversationContextAttached && annotations.length > 0
+            ? `${annotations.length} code ${annotations.length === 1 ? "annotation" : "annotations"} attached`
+            : undefined;
+    const guidePolicy = initialPayload.guidedReview || {
+        mode: "auto",
+        autoStart: false,
+        manualAvailable: true,
+        reasons: [],
+    };
     const guideReady = Boolean(guide);
     const guideCapabilitiesKnown = initialPayload.mode === "dev" || guideCapabilities !== null;
-    const guideProviderAvailable = initialPayload.mode === "dev"
-        ? guideCapabilities?.available !== false
-        : Boolean(guideCapabilities?.available);
+    const guideProviderAvailable =
+        initialPayload.mode === "dev" ? guideCapabilities?.available !== false : Boolean(guideCapabilities?.available);
 
     useEffect(() => {
         // Read again after hydration: SSR cannot see this browser's saved layout.
@@ -276,11 +293,14 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         }
         fetch(`/api/agents/capabilities?token=${encodeURIComponent(initialPayload.token)}`, {
             headers: { "x-runwield-review-token": initialPayload.token },
-        }).then((response) => response.ok ? response.json() : null).then((capabilities) => {
-            if (!canceled) setGuideCapabilities(capabilities);
-        }).catch(() => {
-            if (!canceled) setGuideCapabilities({ available: false, providers: [] });
-        });
+        })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((capabilities) => {
+                if (!canceled) setGuideCapabilities(capabilities);
+            })
+            .catch(() => {
+                if (!canceled) setGuideCapabilities({ available: false, providers: [] });
+            });
         return () => {
             canceled = true;
         };
@@ -314,7 +334,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 },
                 body: JSON.stringify({ provider: "guide", label: "Guided Review Explainer" }),
             });
-            if (!response.ok) throw new Error(await response.text() || `Guide launch failed: ${response.status}`);
+            if (!response.ok) throw new Error((await response.text()) || `Guide launch failed: ${response.status}`);
             const data = await response.json();
             const job = data.job;
             setGuideJob(job);
@@ -327,7 +347,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 },
             );
             if (!guideResponse.ok) {
-                throw new Error(await guideResponse.text() || `Guide load failed: ${guideResponse.status}`);
+                throw new Error((await guideResponse.text()) || `Guide load failed: ${guideResponse.status}`);
             }
             setGuide(await guideResponse.json());
         } catch (err) {
@@ -344,17 +364,20 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         void generateGuide();
     }, [generateGuide, guideCapabilitiesKnown, guidePolicy.autoStart, guideProviderAvailable, guideReady]);
 
-    const startFilePanelResize = useCallback((event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        filePanelResizeRef.current = {
-            pointerId: event.pointerId,
-            startX: event.clientX,
-            startWidth: filePanelWidth,
-        };
-        setResizingFilePanel(true);
-    }, [filePanelWidth]);
+    const startFilePanelResize = useCallback(
+        (event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            filePanelResizeRef.current = {
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startWidth: filePanelWidth,
+            };
+            setResizingFilePanel(true);
+        },
+        [filePanelWidth],
+    );
 
     const resizeFilePanel = useCallback((event) => {
         const resize = filePanelResizeRef.current;
@@ -387,40 +410,49 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         }
     }, []);
 
-    const toggleViewedFile = useCallback((filePath) => {
-        const wasViewed = viewedFiles.has(filePath);
-        setViewedFiles((items) => {
-            const next = new Set(items);
-            if (next.has(filePath)) next.delete(filePath);
-            else next.add(filePath);
-            return next;
-        });
-        if (!wasViewed) return;
+    const toggleViewedFile = useCallback(
+        (filePath) => {
+            const wasViewed = viewedFiles.has(filePath);
+            setViewedFiles((items) => {
+                const next = new Set(items);
+                if (next.has(filePath)) next.delete(filePath);
+                else next.add(filePath);
+                return next;
+            });
+            if (!wasViewed) return;
 
-        const file = files.find((item) => item.path === filePath);
-        if (!file) return;
-        const scrollport = allFilesHostRef.current?.querySelector(".overflow-y-auto");
-        setFileNavigationTarget({
-            ...buildFileNavigationTarget(file),
-            preserveScroll: true,
-            scrollTop: scrollport?.scrollTop ?? 0,
-        });
-    }, [files, viewedFiles]);
+            const file = files.find((item) => item.path === filePath);
+            if (!file) return;
+            const scrollport = allFilesHostRef.current?.querySelector(".overflow-y-auto");
+            setFileNavigationTarget({
+                ...buildFileNavigationTarget(file),
+                preserveScroll: true,
+                scrollTop: scrollport?.scrollTop ?? 0,
+            });
+        },
+        [files, viewedFiles],
+    );
 
-    const navigateToFile = useCallback((index) => {
-        const file = files[index];
-        if (!file) return;
-        navigationLockRef.current = file.path;
-        setActiveFileIndex(index);
-        setPendingSelection(null);
-        setFileNavigationTarget(buildFileNavigationTarget(file));
-    }, [files]);
+    const navigateToFile = useCallback(
+        (index) => {
+            const file = files[index];
+            if (!file) return;
+            navigationLockRef.current = file.path;
+            setActiveFileIndex(index);
+            setPendingSelection(null);
+            setFileNavigationTarget(buildFileNavigationTarget(file));
+        },
+        [files],
+    );
 
-    const handleVisibleFileChange = useCallback((filePath) => {
-        if (navigationLockRef.current && navigationLockRef.current !== filePath) return;
-        const index = files.findIndex((file) => file.path === filePath);
-        if (index >= 0) setActiveFileIndex(index);
-    }, [files]);
+    const handleVisibleFileChange = useCallback(
+        (filePath) => {
+            if (navigationLockRef.current && navigationLockRef.current !== filePath) return;
+            const index = files.findIndex((file) => file.path === filePath);
+            if (index >= 0) setActiveFileIndex(index);
+        },
+        [files],
+    );
 
     useEffect(() => {
         if (!fileNavigationTarget || guideOpen) return;
@@ -438,7 +470,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     frame = requestAnimationFrame(preservePosition);
                     return;
                 }
-                setFileNavigationTarget((target) => target?.id === fileNavigationTarget.id ? null : target);
+                setFileNavigationTarget((target) => (target?.id === fileNavigationTarget.id ? null : target));
             };
 
             frame = requestAnimationFrame(preservePosition);
@@ -453,8 +485,9 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             if (canceled) return;
             const host = allFilesHostRef.current;
             const scrollport = host?.querySelector(".overflow-y-auto");
-            const header = Array.from(host?.querySelectorAll("[slot='header-custom']") || [])
-                .find((node) => node.textContent?.includes(fileNavigationTarget.filePath));
+            const header = Array.from(host?.querySelectorAll("[slot='header-custom']") || []).find((node) =>
+                node.textContent?.includes(fileNavigationTarget.filePath),
+            );
 
             if (!scrollport || !header) {
                 if (attempts++ < 20) timer = globalThis.setTimeout(alignSelectedFile, 25);
@@ -583,17 +616,17 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             items.map((item) =>
                 item.id === id
                     ? {
-                        ...item,
-                        ...(text !== undefined && { text }),
-                        ...(suggestedCode !== undefined && { suggestedCode }),
-                        ...(originalCode !== undefined && { originalCode }),
-                        ...(conventionalLabel !== undefined && {
-                            conventionalLabel: conventionalLabel ?? undefined,
-                        }),
-                        ...(decorations !== undefined && { decorations }),
-                    }
-                    : item
-            )
+                          ...item,
+                          ...(text !== undefined && { text }),
+                          ...(suggestedCode !== undefined && { suggestedCode }),
+                          ...(originalCode !== undefined && { originalCode }),
+                          ...(conventionalLabel !== undefined && {
+                              conventionalLabel: conventionalLabel ?? undefined,
+                          }),
+                          ...(decorations !== undefined && { decorations }),
+                      }
+                    : item,
+            ),
         );
     }
 
@@ -648,7 +681,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                         setFileNavigationTarget(null);
                         setViewedFiles(new Set());
                         setConversationContextAttached(false);
-                        setGuide((current) => current ? { ...current, moved: true } : current);
+                        setGuide((current) => (current ? { ...current, moved: true } : current));
                         setStandaloneResult(
                             `${
                                 next.standaloneReview?.resultMessage || "Review changed."
@@ -706,9 +739,10 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
 
     async function sendAgentMessage(attachAnnotations = false) {
         const message = conversationComposer.trim();
-        const attachedFeedback = (attachAnnotations === true || conversationContextAttached) && annotations.length > 0
-            ? feedbackMarkdown
-            : "";
+        const attachedFeedback =
+            (attachAnnotations === true || conversationContextAttached) && annotations.length > 0
+                ? feedbackMarkdown
+                : "";
         if ((!message && !attachedFeedback) || agentWorking) return;
         const userMessageId = `user-${crypto.randomUUID()}`;
         const agentMessageId = `agent-${crypto.randomUUID()}`;
@@ -720,13 +754,17 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
         setAgentError("");
         setError("");
         setConversationComposer("");
-        setConversationMessages((items) => [...items, {
-            id: userMessageId,
-            role: "user",
-            body: message || "Review annotations",
-            ...(attachedFeedback &&
-                { contextLabel: attachedContextLabel || `${annotations.length} code annotations attached` }),
-        }]);
+        setConversationMessages((items) => [
+            ...items,
+            {
+                id: userMessageId,
+                role: "user",
+                body: message || "Review annotations",
+                ...(attachedFeedback && {
+                    contextLabel: attachedContextLabel || `${annotations.length} code annotations attached`,
+                }),
+            },
+        ]);
 
         try {
             if (initialPayload.mode !== "dev") {
@@ -760,7 +798,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     rawPatch: revisedRawPatch,
                     reviewStatus: activeReviewStatus,
                     interactionId: `dev-${crypto.randomUUID()}`,
-                    reply: initialPayload.agentConversation?.reply ||
+                    reply:
+                        initialPayload.agentConversation?.reply ||
                         "I applied the request. Code Review has reloaded the current file changes.",
                     agentMessageId,
                     clearAttachedContext: Boolean(attachedFeedback),
@@ -833,18 +872,22 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             const interaction = operation.liveInteraction;
             const codeReview = interaction?.request?.codeReview;
             if (
-                interaction?.interactionId && interaction.interactionId !== options.previousInteractionId &&
-                interaction.request?.type === "code_review" && typeof codeReview?.rawPatch === "string"
+                interaction?.interactionId &&
+                interaction.interactionId !== options.previousInteractionId &&
+                interaction.request?.type === "code_review" &&
+                typeof codeReview?.rawPatch === "string"
             ) {
                 applyAgentRevision({
                     rawPatch: codeReview.rawPatch,
                     reviewStatus: codeReview.reviewStatus || null,
                     interactionId: interaction.interactionId,
-                    reply: collectArtifactConversationReply(
-                        codeReview.conversationEvents || [],
-                        options.conversationEventStartIndex,
-                    ).text ||
-                        reply.text || "I updated the working files. Code Review has reloaded the current diff.",
+                    reply:
+                        collectArtifactConversationReply(
+                            codeReview.conversationEvents || [],
+                            options.conversationEventStartIndex,
+                        ).text ||
+                        reply.text ||
+                        "I updated the working files. Code Review has reloaded the current diff.",
                     agentMessageId: options.agentMessageId,
                     clearAttachedContext: options.clearAttachedContext,
                 });
@@ -876,7 +919,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             }
         }
         // Keep the guide's organization and UI state, but label its prose as from the prior revision.
-        setGuide((current) => current ? { ...current, moved: true } : current);
+        setGuide((current) => (current ? { ...current, moved: true } : current));
         setViewedFiles(new Set());
         setFileNavigationTarget(null);
         if (options.clearAttachedContext || initialPayload.standaloneReview) {
@@ -893,7 +936,7 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             const existing = items.findIndex((item) => item.id === messageId);
             const message = { id: messageId, role: "agent", body };
             if (existing < 0) return [...items, message];
-            return items.map((item, index) => index === existing ? message : item);
+            return items.map((item, index) => (index === existing ? message : item));
         });
     }
 
@@ -908,7 +951,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                 animateSidebarUpdate(() => {
                     if (compactLayout && !fileTreeOpen) setAnnotationsOpen(false);
                     setFileTreeOpen((open) => !open);
-                })}
+                })
+            }
         />
     );
 
@@ -951,27 +995,31 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     }`}
                     data-review-mode={initialPayload.mode}
                 >
-                    {presentation === "workspace"
-                        ? <WorkspaceHeaderActionsPortal>{reviewActions}</WorkspaceHeaderActionsPortal>
-                        : (
-                            <>
-                                <header className="rw-plannotator-toolbar">
-                                    <div className="rw-plan-review-heading">
-                                        {reviewOptions}
-                                        <img src="/brand/logo.svg" alt="" aria-hidden="true" />
-                                        <h1 title={codeReviewHeading}>{codeReviewHeading}</h1>
-                                        {initialPayload.mode === "dev" && (
-                                            <p className="rw-plan-review-dev-notice" role="status">
-                                                DEV MODE — Feedback and approval won’t go anywhere.
-                                            </p>
-                                        )}
-                                    </div>
-                                    {reviewActions}
-                                </header>
-                                <ReviewContextBar context={initialPayload.reviewContext} artifactLabel="Code review" />
-                            </>
-                        )}
-                    {error && <p className="rw-review-error" role="alert">{error}</p>}
+                    {presentation === "workspace" ? (
+                        <WorkspaceHeaderActionsPortal>{reviewActions}</WorkspaceHeaderActionsPortal>
+                    ) : (
+                        <>
+                            <header className="rw-plannotator-toolbar">
+                                <div className="rw-plan-review-heading">
+                                    {reviewOptions}
+                                    <img src="/brand/logo.svg" alt="" aria-hidden="true" />
+                                    <h1 title={codeReviewHeading}>{codeReviewHeading}</h1>
+                                    {initialPayload.mode === "dev" && (
+                                        <p className="rw-plan-review-dev-notice" role="status">
+                                            DEV MODE — Feedback and approval won’t go anywhere.
+                                        </p>
+                                    )}
+                                </div>
+                                {reviewActions}
+                            </header>
+                            <ReviewContextBar context={initialPayload.reviewContext} artifactLabel="Code review" />
+                        </>
+                    )}
+                    {error && (
+                        <p className="rw-review-error" role="alert">
+                            {error}
+                        </p>
+                    )}
                     <div
                         className="rw-plannotator-code-layout"
                         data-annotations-open={annotationsOpen}
@@ -1036,36 +1084,34 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                     tabIndex={0}
                                 />
                                 <div className="rw-code-file-panel">
-                                    {filePanelMode === "tree"
-                                        ? (
-                                            <FileTree
-                                                files={files}
-                                                activeFileIndex={activeFileIndex}
-                                                scrollHighlightIndex={activeFileIndex}
-                                                onSelectFile={navigateToFile}
-                                                annotations={annotations}
-                                                viewedFiles={viewedFiles}
-                                                stagedFiles={stagedFiles}
-                                                onToggleViewed={toggleViewedFile}
-                                                onSelectDiff={() => {}}
-                                                activeDiffType="working"
-                                                onSelectPanelView={() => {}}
-                                            />
-                                        )
-                                        : (
-                                            <SectionsPanel
-                                                files={files}
-                                                sections={sections}
-                                                activeFileIndex={activeFileIndex}
-                                                scrollHighlightIndex={activeFileIndex}
-                                                onSelectFile={navigateToFile}
-                                                annotations={annotations}
-                                                viewedFiles={viewedFiles}
-                                                stagedFiles={stagedFiles}
-                                                onToggleViewed={toggleViewedFile}
-                                                onSelectPanelView={() => {}}
-                                            />
-                                        )}
+                                    {filePanelMode === "tree" ? (
+                                        <FileTree
+                                            files={files}
+                                            activeFileIndex={activeFileIndex}
+                                            scrollHighlightIndex={activeFileIndex}
+                                            onSelectFile={navigateToFile}
+                                            annotations={annotations}
+                                            viewedFiles={viewedFiles}
+                                            stagedFiles={stagedFiles}
+                                            onToggleViewed={toggleViewedFile}
+                                            onSelectDiff={() => {}}
+                                            activeDiffType="working"
+                                            onSelectPanelView={() => {}}
+                                        />
+                                    ) : (
+                                        <SectionsPanel
+                                            files={files}
+                                            sections={sections}
+                                            activeFileIndex={activeFileIndex}
+                                            scrollHighlightIndex={activeFileIndex}
+                                            onSelectFile={navigateToFile}
+                                            annotations={annotations}
+                                            viewedFiles={viewedFiles}
+                                            stagedFiles={stagedFiles}
+                                            onToggleViewed={toggleViewedFile}
+                                            onSelectPanelView={() => {}}
+                                        />
+                                    )}
                                 </div>
                             </aside>
                         )}
@@ -1083,7 +1129,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                     animateSidebarUpdate(() => {
                                         if (compactLayout) setAnnotationsOpen(false);
                                         setFileTreeOpen(true);
-                                    })}
+                                    })
+                                }
                                 onRestoreAnnotations={() => animateSidebarUpdate(() => setAnnotationsOpen(true))}
                                 guideReady={guideReady}
                                 guideOpen={guideOpen}
@@ -1123,9 +1170,10 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                                     reviewed: current.sections.map((_, sectionIndex) =>
                                                         sectionIndex === index
                                                             ? !current.reviewed?.[sectionIndex]
-                                                            : !!current.reviewed?.[sectionIndex]
+                                                            : !!current.reviewed?.[sectionIndex],
                                                     ),
-                                                }))}
+                                                }))
+                                            }
                                             diffProps={{
                                                 fileNavigationTarget,
                                                 diffStyle,
@@ -1159,110 +1207,115 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                     className="rw-code-review-retained-view"
                                     hidden={Boolean(guideOpen && guide)}
                                 >
-                                    {files.length > 0
-                                        ? (
-                                            <AllFilesCodeView
-                                                key={[
-                                                    diffStyle,
-                                                    diffOverflow,
-                                                    diffIndicators,
-                                                    diffLineDiffType,
-                                                    diffShowLineNumbers,
-                                                    diffShowBackground,
-                                                    diffExpandUnchanged,
-                                                    diffFontFamily,
-                                                    diffFontSize,
-                                                ].join("|")}
-                                                files={accordionFiles}
-                                                diffStyle={diffStyle}
-                                                diffOverflow={diffOverflow}
-                                                diffIndicators={diffIndicators}
-                                                lineDiffType={diffLineDiffType}
-                                                disableLineNumbers={!diffShowLineNumbers}
-                                                disableBackground={!diffShowBackground}
-                                                expandUnchanged={diffExpandUnchanged}
-                                                fontFamily={diffFontFamily}
-                                                fontSize={diffFontSize}
-                                                annotations={annotations}
-                                                selectedAnnotationId={selectedAnnotationId}
-                                                scrollTargetAnnotation={scrollTargetAnnotation}
-                                                pendingSelection={pendingSelection}
-                                                onLineSelection={setPendingSelection}
-                                                onAddAnnotationForFile={(filePath, ...args) =>
-                                                    addAnnotationForFile(
-                                                        files.find((file) => file.path === filePath),
-                                                        ...args,
-                                                    )}
-                                                onEditAnnotation={editAnnotation}
-                                                onSelectAnnotation={setSelectedAnnotationId}
-                                                onDeleteAnnotation={(id) =>
-                                                    setAnnotations((items) => items.filter((item) => item.id !== id))}
-                                                onAddFileCommentForFile={addFileComment}
-                                                viewedFiles={viewedFiles}
-                                                onToggleViewed={toggleViewedFile}
-                                                stagedFiles={stagedFiles}
-                                                activeSearchMatchId={fileNavigationTarget?.id ?? null}
-                                                activeSearchMatch={fileNavigationTarget}
-                                                onVisibleFileChange={handleVisibleFileChange}
-                                                fileOrder={filePanelMode === "tree" ? "tree" : "list"}
-                                                isActive={!guideOpen}
-                                            />
-                                        )
-                                        : <div className="rw-empty-diff">No diff content.</div>}
+                                    {files.length > 0 ? (
+                                        <AllFilesCodeView
+                                            key={[
+                                                diffStyle,
+                                                diffOverflow,
+                                                diffIndicators,
+                                                diffLineDiffType,
+                                                diffShowLineNumbers,
+                                                diffShowBackground,
+                                                diffExpandUnchanged,
+                                                diffFontFamily,
+                                                diffFontSize,
+                                            ].join("|")}
+                                            files={accordionFiles}
+                                            enableEditSuggestions={editSuggestions}
+                                            onAddSuggestionsForFile={addSuggestionsForFile}
+                                            onAddEditorCommentForFile={addEditorCommentForFile}
+                                            diffStyle={diffStyle}
+                                            diffOverflow={diffOverflow}
+                                            diffIndicators={diffIndicators}
+                                            lineDiffType={diffLineDiffType}
+                                            disableLineNumbers={!diffShowLineNumbers}
+                                            disableBackground={!diffShowBackground}
+                                            expandUnchanged={diffExpandUnchanged}
+                                            fontFamily={diffFontFamily}
+                                            fontSize={diffFontSize}
+                                            annotations={annotations}
+                                            selectedAnnotationId={selectedAnnotationId}
+                                            scrollTargetAnnotation={scrollTargetAnnotation}
+                                            pendingSelection={pendingSelection}
+                                            onLineSelection={setPendingSelection}
+                                            onAddAnnotationForFile={(filePath, ...args) =>
+                                                addAnnotationForFile(
+                                                    files.find((file) => file.path === filePath),
+                                                    ...args,
+                                                )
+                                            }
+                                            onEditAnnotation={editAnnotation}
+                                            onSelectAnnotation={setSelectedAnnotationId}
+                                            onDeleteAnnotation={(id) =>
+                                                setAnnotations((items) => items.filter((item) => item.id !== id))
+                                            }
+                                            onAddFileCommentForFile={addFileComment}
+                                            viewedFiles={viewedFiles}
+                                            onToggleViewed={toggleViewedFile}
+                                            stagedFiles={stagedFiles}
+                                            activeSearchMatchId={fileNavigationTarget?.id ?? null}
+                                            activeSearchMatch={fileNavigationTarget}
+                                            onVisibleFileChange={handleVisibleFileChange}
+                                            fileOrder={filePanelMode === "tree" ? "tree" : "list"}
+                                            isActive={!guideOpen}
+                                        />
+                                    ) : (
+                                        <div className="rw-empty-diff">No diff content.</div>
+                                    )}
                                 </div>
-                                {guideError && <p className="rw-review-error" role="alert">{guideError}</p>}
+                                {guideError && (
+                                    <p className="rw-review-error" role="alert">
+                                        {guideError}
+                                    </p>
+                                )}
                             </div>
                         </main>
                         {annotationsOpen && (
                             <div className="rw-code-review-annotation-sidebar">
                                 <div className="rw-review-annotation-heading">
-                                    {conversationEnabled
-                                        ? (
-                                            <div
-                                                className="rw-underline-tabs rw-review-sidebar-tabs"
-                                                role="tablist"
-                                                aria-label="Review sidebar"
+                                    {conversationEnabled ? (
+                                        <div
+                                            className="rw-underline-tabs rw-review-sidebar-tabs"
+                                            role="tablist"
+                                            aria-label="Review sidebar"
+                                        >
+                                            <button
+                                                className={rightSidebarView === "annotations" ? "active" : ""}
+                                                type="button"
+                                                role="tab"
+                                                aria-selected={rightSidebarView === "annotations"}
+                                                onClick={() => setRightSidebarView("annotations")}
+                                                title="Annotations"
                                             >
-                                                <button
-                                                    className={rightSidebarView === "annotations" ? "active" : ""}
-                                                    type="button"
-                                                    role="tab"
-                                                    aria-selected={rightSidebarView === "annotations"}
-                                                    onClick={() => setRightSidebarView("annotations")}
-                                                    title="Annotations"
-                                                >
-                                                    <CommentIcon />
-                                                    <span>Annotations</span>
-                                                    {annotations.length > 0 && (
-                                                        <span className="rw-review-annotation-count">
-                                                            {annotations.length}
-                                                        </span>
-                                                    )}
-                                                </button>
-                                                <button
-                                                    className={rightSidebarView === "agent" ? "active" : ""}
-                                                    type="button"
-                                                    role="tab"
-                                                    aria-selected={rightSidebarView === "agent"}
-                                                    onClick={() => setRightSidebarView("agent")}
-                                                    title={agentLabel}
-                                                >
-                                                    <CommentIcon />
-                                                    <span>{agentLabel}</span>
-                                                </button>
-                                            </div>
-                                        )
-                                        : (
-                                            <div>
                                                 <CommentIcon />
-                                                <h2>Annotations</h2>
+                                                <span>Annotations</span>
                                                 {annotations.length > 0 && (
                                                     <span className="rw-review-annotation-count">
                                                         {annotations.length}
                                                     </span>
                                                 )}
-                                            </div>
-                                        )}
+                                            </button>
+                                            <button
+                                                className={rightSidebarView === "agent" ? "active" : ""}
+                                                type="button"
+                                                role="tab"
+                                                aria-selected={rightSidebarView === "agent"}
+                                                onClick={() => setRightSidebarView("agent")}
+                                                title={agentLabel}
+                                            >
+                                                <CommentIcon />
+                                                <span>{agentLabel}</span>
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <CommentIcon />
+                                            <h2>Annotations</h2>
+                                            {annotations.length > 0 && (
+                                                <span className="rw-review-annotation-count">{annotations.length}</span>
+                                            )}
+                                        </div>
+                                    )}
                                     <RunWieldIconButton
                                         className="rw-code-annotation-sidebar-close"
                                         type="button"
@@ -1273,74 +1326,72 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                                         <PanelCollapseIcon side="right" />
                                     </RunWieldIconButton>
                                 </div>
-                                {rightSidebarView === "annotations"
-                                    ? (
-                                        <>
-                                            {(standaloneReview?.mode !== "pr" || reviewDestination === "engineer") && (
-                                                <div className="rw-review-feedback-action rw-review-action">
-                                                    <FeedbackButton
-                                                        onClick={submitFeedback}
-                                                        disabled={annotations.length === 0 || submitting !== null ||
-                                                            agentWorking}
-                                                        isLoading={submitting === "feedback"}
-                                                        label={standaloneReview
-                                                            ? "Send to Engineer"
-                                                            : "Send Annotations"}
-                                                        loadingLabel={
-                                                            <RunWieldThinkingDots label="Sending Annotations" />
-                                                        }
-                                                        title={annotations.length === 0
+                                {rightSidebarView === "annotations" ? (
+                                    <>
+                                        {(standaloneReview?.mode !== "pr" || reviewDestination === "engineer") && (
+                                            <div className="rw-review-feedback-action rw-review-action">
+                                                <FeedbackButton
+                                                    onClick={submitFeedback}
+                                                    disabled={
+                                                        annotations.length === 0 || submitting !== null || agentWorking
+                                                    }
+                                                    isLoading={submitting === "feedback"}
+                                                    label={standaloneReview ? "Send to Engineer" : "Send Annotations"}
+                                                    loadingLabel={<RunWieldThinkingDots label="Sending Annotations" />}
+                                                    title={
+                                                        annotations.length === 0
                                                             ? "Add an annotation before sending annotations"
-                                                            : "Send annotations"}
-                                                    />
-                                                    {conversationEnabled && (
-                                                        <button
-                                                            className="rw-review-context-to-chat"
-                                                            type="button"
-                                                            disabled={annotations.length === 0 || agentWorking}
-                                                            onClick={attachReviewContextToConversation}
-                                                        >
-                                                            <CommentIcon />
-                                                            Add to {agentLabel} chat
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-                                            <ReviewSidebar
-                                                isOpen
-                                                width={352}
-                                                onClose={() => animateSidebarUpdate(() => setAnnotationsOpen(false))}
-                                                activeTab="annotations"
-                                                annotations={annotations}
-                                                files={files}
-                                                selectedAnnotationId={selectedAnnotationId}
-                                                onSelectAnnotation={setSelectedAnnotationId}
-                                                onNavigateToAnnotation={(id) => {
-                                                    setSelectedAnnotationId(id);
-                                                    if (id) setScrollTargetAnnotation({ id, token: Date.now() });
-                                                }}
-                                                onDeleteAnnotation={(id) =>
-                                                    setAnnotations((items) => items.filter((item) => item.id !== id))}
-                                                feedbackMarkdown={feedbackMarkdown}
-                                                activeFilePath={currentFile?.path}
-                                            />
-                                        </>
-                                    )
-                                    : (
-                                        <ArtifactConversationSidebar
-                                            agentLabel={agentLabel}
-                                            artifactLabel="code changes"
-                                            messages={conversationMessages}
-                                            composer={conversationComposer}
-                                            attachedContextLabel={attachedContextLabel}
-                                            working={agentWorking}
-                                            disabled={submitting !== null}
-                                            error={agentError}
-                                            onComposerChange={setConversationComposer}
-                                            onSend={sendAgentMessage}
-                                            onDetachContext={() => setConversationContextAttached(false)}
+                                                            : "Send annotations"
+                                                    }
+                                                />
+                                                {conversationEnabled && (
+                                                    <button
+                                                        className="rw-review-context-to-chat"
+                                                        type="button"
+                                                        disabled={annotations.length === 0 || agentWorking}
+                                                        onClick={attachReviewContextToConversation}
+                                                    >
+                                                        <CommentIcon />
+                                                        Add to {agentLabel} chat
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                        <ReviewSidebar
+                                            isOpen
+                                            width={352}
+                                            onClose={() => animateSidebarUpdate(() => setAnnotationsOpen(false))}
+                                            activeTab="annotations"
+                                            annotations={annotations}
+                                            files={files}
+                                            selectedAnnotationId={selectedAnnotationId}
+                                            onSelectAnnotation={setSelectedAnnotationId}
+                                            onNavigateToAnnotation={(id) => {
+                                                setSelectedAnnotationId(id);
+                                                if (id) setScrollTargetAnnotation({ id, token: Date.now() });
+                                            }}
+                                            onDeleteAnnotation={(id) =>
+                                                setAnnotations((items) => items.filter((item) => item.id !== id))
+                                            }
+                                            feedbackMarkdown={feedbackMarkdown}
+                                            activeFilePath={currentFile?.path}
                                         />
-                                    )}
+                                    </>
+                                ) : (
+                                    <ArtifactConversationSidebar
+                                        agentLabel={agentLabel}
+                                        artifactLabel="code changes"
+                                        messages={conversationMessages}
+                                        composer={conversationComposer}
+                                        attachedContextLabel={attachedContextLabel}
+                                        working={agentWorking}
+                                        disabled={submitting !== null}
+                                        error={agentError}
+                                        onComposerChange={setConversationComposer}
+                                        onSend={sendAgentMessage}
+                                        onDetachContext={() => setConversationContextAttached(false)}
+                                    />
+                                )}
                             </div>
                         )}
                     </div>
@@ -1364,11 +1415,13 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
                     <ReviewCompletion
                         payload={initialPayload}
                         submitted={submitted}
-                        title={submitted === "standalone"
-                            ? standaloneResult
-                            : submitted === "approved"
-                            ? "Changes approved"
-                            : "Feedback sent"}
+                        title={
+                            submitted === "standalone"
+                                ? standaloneResult
+                                : submitted === "approved"
+                                  ? "Changes approved"
+                                  : "Feedback sent"
+                        }
                         subtitle="You can return to RunWield."
                         agentLabel="RunWield"
                     />
@@ -1383,8 +1436,8 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             console.log("Code review dev decision", { endpoint, body });
             return;
         }
-        const targetUrl = activeInteractionAnswerUrl ||
-            `/api/review/${endpoint}?token=${encodeURIComponent(initialPayload.token)}`;
+        const targetUrl =
+            activeInteractionAnswerUrl || `/api/review/${endpoint}?token=${encodeURIComponent(initialPayload.token)}`;
         const headers = {
             "content-type": "application/json",
             "x-runwield-review-token": initialPayload.token,
@@ -1396,13 +1449,13 @@ export function CodeReviewSurface({ payload, presentation = "standalone" }) {
             body: JSON.stringify(
                 initialPayload.interactionAnswerUrl
                     ? {
-                        requestId: crypto.randomUUID(),
-                        runwieldSessionId: initialPayload.runwieldSessionId,
-                        response: {
-                            outcome: body.approved ? "accepted" : "selected",
-                            _meta: body,
-                        },
-                    }
+                          requestId: crypto.randomUUID(),
+                          runwieldSessionId: initialPayload.runwieldSessionId,
+                          response: {
+                              outcome: body.approved ? "accepted" : "selected",
+                              _meta: body,
+                          },
+                      }
                     : body,
             ),
         });
@@ -1451,11 +1504,17 @@ function DiffStyleToggle({
                         disabled={guideGenerating || (!guideReady && !guideProviderAvailable)}
                         title="Guided Review generation uses an additional LLM call when backed by an agent provider."
                     >
-                        {guideGenerating
-                            ? <RunWieldThinkingDots label="Generating guided review" />
-                            : guideReady
-                            ? (guideOpen ? "Back to diff" : "Guided Review ready")
-                            : "Generate guided review"}
+                        {guideGenerating ? (
+                            <RunWieldThinkingDots label="Generating guided review" />
+                        ) : guideReady ? (
+                            guideOpen ? (
+                                "Back to diff"
+                            ) : (
+                                "Guided Review ready"
+                            )
+                        ) : (
+                            "Generate guided review"
+                        )}
                     </button>
                     <span className="rw-guide-cost-note">
                         {formatGuideStatus(guideJob, guideCapabilities, guidePolicy)}
@@ -1522,8 +1581,8 @@ function PanelCollapseIcon({ side }) {
 function formatGuideStatus(job, capabilities, policy) {
     if (job) {
         const elapsed = typeof job.elapsedMs === "number" ? `${(job.elapsedMs / 1000).toFixed(1)}s` : "elapsed pending";
-        const model = [job.providerName || job.engine || job.provider, job.model].filter(Boolean).join("/") ||
-            "provider unknown";
+        const model =
+            [job.providerName || job.engine || job.provider, job.model].filter(Boolean).join("/") || "provider unknown";
         const usage = formatGuidedReviewUsageStatus(job);
         return `${job.status} · ${model} · ${elapsed} · ${usage.tokens} · ${usage.cost}`;
     }
@@ -1557,20 +1616,24 @@ function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, onR
         const placed = new Set();
         const sections = (guide.sections || []).map((section) => ({
             title: section.title,
-            overview: (section.blocks || []).filter((block) => block.type === "prose")
-                .map((block) => block.markdown || block.text || "").join("\n\n"),
+            overview: (section.blocks || [])
+                .filter((block) => block.type === "prose")
+                .map((block) => block.markdown || block.text || "")
+                .join("\n\n"),
             diffs: (section.blocks || []).filter((block) => {
                 if (block.type !== "diff" || placed.has(block.file)) return false;
                 placed.add(block.file);
                 return true;
             }),
         }));
-        const remaining = [...(guide.everythingElse || []).map((ref) => ref.file), ...files.map((file) => file.path)]
-            .filter((file) => {
-                if (placed.has(file)) return false;
-                placed.add(file);
-                return true;
-            });
+        const remaining = [
+            ...(guide.everythingElse || []).map((ref) => ref.file),
+            ...files.map((file) => file.path),
+        ].filter((file) => {
+            if (placed.has(file)) return false;
+            placed.add(file);
+            return true;
+        });
         return {
             title: guide.title || "Guided Review",
             intent: guide.intent,
@@ -1581,8 +1644,11 @@ function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, onR
     }, [guide, files]);
     const sectionNotes = (guide.sections || []).map((section, index) => (
         <div key={index} className="rw-guide-notes">
-            {(section.blocks || []).filter((block) => !["prose", "diff"].includes(block.type))
-                .map((block, index) => <GuideBlock key={index} block={block} token={token} />)}
+            {(section.blocks || [])
+                .filter((block) => !["prose", "diff"].includes(block.type))
+                .map((block, index) => (
+                    <GuideBlock key={index} block={block} token={token} />
+                ))}
         </div>
     ));
     const host = {
@@ -1607,7 +1673,10 @@ function GuidedReviewExplainer({ guide, job, files, token, onToggleReviewed, onR
             pendingSelection: focused ? diffProps.pendingSelection : null,
             onLineSelection: diffProps.setPendingSelection,
             onAddAnnotationForFile: (filePath, ...args) =>
-                diffProps.addAnnotationForFile(files.find((file) => file.path === filePath), ...args),
+                diffProps.addAnnotationForFile(
+                    files.find((file) => file.path === filePath),
+                    ...args,
+                ),
             onEditAnnotation: diffProps.editAnnotation,
             onSelectAnnotation: diffProps.setSelectedAnnotationId,
             onDeleteAnnotation: (id) => diffProps.setAnnotations((items) => items.filter((item) => item.id !== id)),
@@ -1682,13 +1751,14 @@ function MermaidBlock({ block }) {
         setError("");
         setSvg("");
         mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark" });
-        mermaid.render(`guide-${crypto.randomUUID()}`, block.source || "flowchart TD\nA[Empty diagram]").then(
-            (result) => {
+        mermaid
+            .render(`guide-${crypto.randomUUID()}`, block.source || "flowchart TD\nA[Empty diagram]")
+            .then((result) => {
                 if (!canceled) setSvg(result.svg || "");
-            },
-        ).catch((err) => {
-            if (!canceled) setError(err instanceof Error ? err.message : String(err));
-        });
+            })
+            .catch((err) => {
+                if (!canceled) setError(err instanceof Error ? err.message : String(err));
+            });
         return () => {
             canceled = true;
         };
@@ -1726,15 +1796,17 @@ function buildReviewSections(files, reviewStatus) {
     const unstaged = new Set(Array.isArray(reviewStatus?.unstagedFiles) ? reviewStatus.unstagedFiles : []);
     const untracked = new Set(Array.isArray(reviewStatus?.untrackedFiles) ? reviewStatus.untrackedFiles : []);
     return {
-        files: Object.fromEntries(files.map((file) => {
-            const isStaged = staged.has(file.path);
-            const group = untracked.has(file.path)
-                ? "untracked"
-                : isStaged || unstaged.has(file.path)
-                ? "changes"
-                : "committed";
-            return [file.path, { group, staged: isStaged }];
-        })),
+        files: Object.fromEntries(
+            files.map((file) => {
+                const isStaged = staged.has(file.path);
+                const group = untracked.has(file.path)
+                    ? "untracked"
+                    : isStaged || unstaged.has(file.path)
+                      ? "changes"
+                      : "committed";
+                return [file.path, { group, staged: isStaged }];
+            }),
+        ),
     };
 }
 
@@ -1761,11 +1833,7 @@ function orderFilesForChanges(files, sections, stagedFiles) {
 
     grouped.changes.sort((left, right) => Number(right.staged) - Number(left.staged) || left.index - right.index);
 
-    return [
-        ...grouped.committed,
-        ...grouped.changes,
-        ...grouped.untracked,
-    ].map(({ file }) => file);
+    return [...grouped.committed, ...grouped.changes, ...grouped.untracked].map(({ file }) => file);
 }
 
 function toWorkflowAnnotations(annotations) {
@@ -1781,14 +1849,15 @@ function toWorkflowAnnotations(annotations) {
 function exportReviewFeedbackWithImages(annotations) {
     const feedback = exportReviewFeedback(annotations);
     const references = annotations.flatMap((annotation) =>
-        Array.isArray(annotation.images) ? annotation.images.map((image) => ({ annotation, image })) : []
+        Array.isArray(annotation.images) ? annotation.images.map((image) => ({ annotation, image })) : [],
     );
     if (references.length === 0) return feedback;
 
     const lines = references.map(({ annotation, image }) => {
-        const scope = annotation.scope === "general"
-            ? "Global comment"
-            : `${annotation.filePath || "Code review"}:${annotation.lineStart || 1}`;
+        const scope =
+            annotation.scope === "general"
+                ? "Global comment"
+                : `${annotation.filePath || "Code review"}:${annotation.lineStart || 1}`;
         return `- ${scope}: [${image.name || "image"}](${image.path})`;
     });
     return `${feedback}\n\n## Attached images\n\n${lines.join("\n")}`;

@@ -115,6 +115,32 @@ test("standalone Workspace bundle omits runner environment without changing buil
     }
 });
 
+test("standalone Workspace bundle waits for Astro to replace its manifest placeholder", async () => {
+    const root = await fsMkdtemp(join(tmpdir(), "wld-workspace-manifest-"));
+    const serverEntry = join(root, "entry.mjs");
+    const clientDir = join(root, "client");
+    const runtimeDir = join(root, "runtime");
+    const finalized = 'export const manifest = { key: "ready" };\n';
+    let delayedWrite;
+    try {
+        await fsWriteFile(serverEntry, 'export const manifest = "@@ASTRO_MANIFEST_REPLACE@@";\n');
+        await fsMkdir(clientDir);
+        delayedWrite = new Promise((resolve, reject) => {
+            setTimeout(() => fsWriteFile(serverEntry, finalized).then(resolve, reject), 120);
+        });
+        await buildWorkspaceRuntime(
+            { serverEntry, clientDir, runtimeDir },
+            {
+                run: async () => fsWriteFile(join(runtimeDir, "server.mjs"), await fsReadFile(serverEntry, "utf8")),
+            },
+        );
+        assertEquals(await fsReadFile(join(runtimeDir, "server.mjs"), "utf8"), finalized);
+    } finally {
+        await delayedWrite;
+        await fsRm(root, { recursive: true });
+    }
+});
+
 test("standalone Workspace runtime is identical across manifest asset discovery orders", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "wld-workspace-asset-order-"));
     const serverEntry = join(root, "entry.mjs");

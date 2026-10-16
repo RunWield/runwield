@@ -102,6 +102,23 @@ Deno-specific test flags are rejected, including permissions, coverage, watch an
 options remain available. Workspace development/build commands require explicitly exported environment variables;
 ambient `.env` loading is disabled. Production-equivalent container sandboxing is deferred for the test images.
 
+### Remote development bundle
+
+`wld remote` uses an explicitly built development bundle. Build the launcher and both Linux targets from the same
+unchanged checkout, then assemble them:
+
+```bash
+bun run compile --output bin/wld
+BUILD_ID=$(bun -e 'console.log((await Bun.file("bin/wld.build.json").json()).buildId)')
+bun run compile --target x86_64-unknown-linux-gnu --output bin/wld-linux-x64 --expect-build-id "$BUILD_ID"
+bun run compile --target aarch64-unknown-linux-gnu --output bin/wld-linux-arm64 --expect-build-id "$BUILD_ID"
+bun scripts/release-assets.js development bin/wld bin/wld-linux-x64 bin/wld-linux-arm64 bin/remote-build
+```
+
+Use `bin/remote-build/wld-launcher` with its adjacent Linux target files and `.build.json` files. A connection never
+compiles on demand or substitutes a released binary. Remote host prerequisites are in the
+[Core PRD](prd/runwield-core-prd.md#remote-connection).
+
 ## Codebase guide
 
 Use this as an orientation map, not a directory inventory:

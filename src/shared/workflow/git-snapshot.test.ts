@@ -9,12 +9,15 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { defineGitFixture, git as fixtureGit } from "../git-test-fixture.ts";
 import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     captureWorktreeTree,
     getWorkflowDiff,
     getWorktreeReviewDiff,
     listCommitsTouchingPathsSince,
+    readWorktreeReviewBaseFile,
+    resolveWorktreeReviewBaseTree,
     restoreWorktreeTree,
     WorktreeReviewComparisonError,
     WorktreeReviewTargetError,
@@ -465,5 +468,50 @@ test("git snapshot helpers fail gracefully outside Git", async () => {
         );
     } finally {
         await fsRm(dir, { recursive: true });
+    }
+});
+
+const reviewBaseFixture = defineGitFixture(async (cwd) => {
+    await fsWriteFile(`${cwd}/shared.js`, "merge base\n");
+    await fixtureGit(cwd, ["add", "."]);
+    await fixtureGit(cwd, ["commit", "-m", "base"]);
+    await fixtureGit(cwd, ["switch", "-c", "execution"]);
+    await fixtureGit(cwd, ["switch", "main"]);
+    await fsWriteFile(`${cwd}/shared.js`, "target advanced\n");
+    await fixtureGit(cwd, ["add", "."]);
+    await fixtureGit(cwd, ["commit", "-m", "target advance"]);
+    await fixtureGit(cwd, ["switch", "execution"]);
+    await fsWriteFile(`${cwd}/shared.js`, "execution text\n");
+    await fsWriteFile(`${cwd}/added.js`, "addition\n");
+});
+
+test("review base file returns merge-base text rather than advanced target or worktree text", async () => {
+    const cwd = await reviewBaseFixture.checkout();
+    try {
+        assertEquals(await readWorktreeReviewBaseFile(cwd, "main", "shared.js"), "merge base\n");
+        assertEquals(
+            await resolveWorktreeReviewBaseTree(cwd, "main"),
+            await fixtureGit(cwd, ["rev-parse", "HEAD^{tree}"]),
+        );
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("review base file returns null for a worktree-only addition", async () => {
+    const cwd = await reviewBaseFixture.checkout();
+    try {
+        assertEquals(await readWorktreeReviewBaseFile(cwd, "main", "added.js"), null);
+    } finally {
+        await fsRm(cwd, { recursive: true });
+    }
+});
+
+test("review base file rejects an unavailable target", async () => {
+    const cwd = await reviewBaseFixture.checkout();
+    try {
+        await assertRejects(() => readWorktreeReviewBaseFile(cwd, "missing", "shared.js"), WorktreeReviewTargetError);
+    } finally {
+        await fsRm(cwd, { recursive: true });
     }
 });

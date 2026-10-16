@@ -34,8 +34,12 @@ export interface EpicReviewContext {
 const NOTES_HEADING = "### Integration Notes";
 
 function hasEpicBranch(attrs: Partial<PlanFrontMatter>): boolean {
-    return attrs.classification === "PROJECT" && attrs.type !== "sequence" &&
-        typeof attrs.targetBranch === "string" && attrs.targetBranch.trim() !== "";
+    return (
+        attrs.classification === "PROJECT" &&
+        attrs.type !== "sequence" &&
+        typeof attrs.targetBranch === "string" &&
+        attrs.targetBranch.trim() !== ""
+    );
 }
 
 /** The body of one `## Heading` section, without its heading. */
@@ -51,10 +55,11 @@ function markdownSection(markdown: string, heading: string): string {
 /** The Epic family as the Epic branch and registered worktrees see it, falling back to the document checkout. */
 async function epicChildren(primaryRoot: string, epicPlanName: string, epic: PlanFrontMatter) {
     const branch = String(epic.targetBranch || "").trim();
-    const family = branch && await isGitRepository(primaryRoot)
-        ? await findTargetBranchPlansByParent(primaryRoot, branch, epicPlanName).catch(() => null)
-        : null;
-    return (family || await findPlansByParent(primaryRoot, epicPlanName))
+    const family =
+        branch && (await isGitRepository(primaryRoot))
+            ? await findTargetBranchPlansByParent(primaryRoot, branch, epicPlanName).catch(() => null)
+            : null;
+    return (family || (await findPlansByParent(primaryRoot, epicPlanName)))
         .filter((child) => isPlannedChangeClassification(child.attrs.classification))
         .sort(compareChildPlansByOrder);
 }
@@ -140,8 +145,7 @@ export function withIntegrationNotes(markdown: string, childPlanName: string, no
     }
 
     const verificationIndex = lines.findIndex((line) => /^##\s+Verification Plan\s*$/i.test(line));
-    const section =
-        `${NOTES_HEADING}\n\nLeft by the reviewers of individual children for the integration review. These are places to look, not requirements.\n\n${block}`;
+    const section = `${NOTES_HEADING}\n\nLeft by the reviewers of individual children for the integration review. These are places to look, not requirements.\n\n${block}`;
     if (verificationIndex < 0) return `${lines.join("\n")}\n\n${section}\n`;
     const after = lines.slice(verificationIndex + 1).findIndex((line) => /^##\s/.test(line));
     const insertAt = after < 0 ? lines.length : verificationIndex + 1 + after;
@@ -163,7 +167,7 @@ export async function recordIntegrationNotes(
 ): Promise<string | null> {
     if (!notes || notes.length === 0) return null;
     const primaryRoot = resolvePrimaryCheckoutRoot(projectRoot);
-    const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName, { readOnly: true });
+    const location = await resolveWorkflowPlanLocation(primaryRoot, epicPlanName);
     const epic = location.plan ? await loadPlan(location.documentRoot, epicPlanName) : null;
     if (!epic) return null;
     const next = withIntegrationNotes(epic.markdown, childPlanName, notes);

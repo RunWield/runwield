@@ -1,6 +1,6 @@
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
-import { normalize } from "node:path";
-import { stat as fsStat } from "node:fs/promises";
+import { basename, dirname, join, normalize } from "node:path";
+import { realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 /**
  * @module cmd/load-plan/plan-recovery-flow
  * The Plan Recovery menu coordinator for in-progress, failed, and implemented Plans.
@@ -8,6 +8,11 @@ import { stat as fsStat } from "node:fs/promises";
 
 import { resolvePlanExecutionPolicy } from "../../plan-store.js";
 import { resolveWorkflowPlanLocation } from "../../shared/workflow/plan-location.ts";
+import {
+    executionWorktreePathExists,
+    readMissingExecutionPlan,
+} from "../../shared/workflow/execution-worktree-rescue.ts";
+import { prepareSessionPlanningWorktree } from "../../shared/workflow/session-planning-worktree.ts";
 import { probeGitRepository } from "../../shared/git.ts";
 import { createGitPort } from "../../shared/git-port.ts";
 import {
@@ -111,10 +116,19 @@ export async function handlePlanRecovery(
     // `plans doctor`: that diagnosis is available through `wld plans doctor`, and
     // running it here made every recovery menu wait on unrelated Plans,
     // worktrees, journals, and branches.
+    const recordedAttempt =
+        opts.recordedAttempt !== undefined
+            ? opts.recordedAttempt
+            : await resolveRecoveryWorktree(projectRoot, plan, { migrateRegistry: false });
+    const missingCheckout = recordedAttempt?.path && !(await executionWorktreePathExists(recordedAttempt.path));
     try {
-        const { plan: refreshed } = await resolveWorkflowPlanLocation(projectRoot, plan.planName, {
-            migrateRegistry: false,
-        });
+        // A lost checkout still needs the recovery menu. Do not recreate it or read the stale primary document.
+        const { plan: refreshed } = missingCheckout
+            ? { plan: null }
+            : await resolveWorkflowPlanLocation(projectRoot, plan.planName, {
+                  migrateRegistry: false,
+                  readOnly: true,
+              });
         if (refreshed) {
             plan.path = refreshed.path;
             plan.markdown = refreshed.markdown;
@@ -170,11 +184,8 @@ export async function handlePlanRecovery(
     // Plans. Persisting discovered worktree metadata is a lifecycle mutation, so
     // it still waits for an action that actually needs it
     // (`refreshRecoveryWorktree`), keeping the first menu cheap.
-    context.worktreeContext =
-        opts.recordedAttempt !== undefined
-            ? opts.recordedAttempt
-            : await resolveRecoveryWorktree(projectRoot, plan, { migrateRegistry: false });
-    if (context.worktreeContext?.path && context.worktreeContext.path !== projectRoot) {
+    context.worktreeContext = recordedAttempt;
+    if (!missingCheckout && context.worktreeContext?.path && context.worktreeContext.path !== projectRoot) {
         const executionRecovery = await healSettledTransitionRecords(context.worktreeContext.path, {
             planName: plan.planName,
             evidenceProjectRoot: projectRoot,
@@ -223,7 +234,7 @@ export async function handlePlanRecovery(
     let physicallyLostCache: boolean | null = null;
     const getGitProbe = async () => (gitProbeCache ??= await opts.ports.probeGitRepository(projectRoot));
     const getPhysicallyLost = async () =>
-        (physicallyLostCache ??= await isAttemptPhysicallyLost(projectRoot, context.worktreeContext));
+        (physicallyLostCache ??= await isAttemptPhysicallyLost(projectRoot, context.worktreeContext, plan));
     const invalidateRecoveryFacts = () => {
         gitProbeCache = null;
         physicallyLostCache = null;
@@ -264,6 +275,7 @@ export async function handlePlanRecovery(
 async function isAttemptPhysicallyLost(
     projectRoot: string,
     worktree: RecoveryWorktreeContext | null,
+    plan: RecoveryFlowPlan,
 ): Promise<boolean> {
     if (!worktree?.id || !worktree.path || !worktree.branch) return false;
     const pathExists = await fsStat(worktree.path)
@@ -275,10 +287,23 @@ async function isAttemptPhysicallyLost(
         .then(() => true)
         .catch(() => false);
     if (branchExists) return false;
+    if (
+        worktree.baseCommit &&
+        (await readMissingExecutionPlan(projectRoot, {
+            id: worktree.id,
+            path: worktree.path,
+            branch: worktree.branch,
+            baseCommit: worktree.baseCommit,
+            planName: plan.planName,
+            planId: plan.attrs.planId,
+        }))
+    )
+        return false;
     const command = captureForegroundProcess("git", { cwd: projectRoot, args: ["worktree", "list", "--porcelain"] });
     const output = await command.catch(() => null);
     if (!output || !output.success) return true;
-    const expectedPath = normalize(worktree.path);
+    const parentPath = dirname(worktree.path);
+    const expectedPath = normalize(join(await fsRealpath(parentPath).catch(() => parentPath), basename(worktree.path)));
     const records = new TextDecoder().decode(output.stdout).trim().split(/\n\n+/);
     const record = records.find((value) =>
         value.split("\n").some((line) => line.startsWith("worktree ") && normalize(line.slice(9)) === expectedPath),
@@ -400,6 +425,14 @@ async function dispatchRecoveryAction(
         context.uiAPI.appendSystemMessage(buildPlanRecoveryUserMessage({ kind: "git_blocked" }), true, "RunWield");
         await context.recordRecoveryResult(action, "blocked", { gitState });
         return { kind: "menu" };
+    }
+    if (
+        ["continue", "validate", "follow_up", "review"].includes(action) &&
+        context.worktreeContext?.path &&
+        !(await executionWorktreePathExists(context.worktreeContext.path))
+    ) {
+        const prepared = await prepareSessionPlanningWorktree(context.projectRoot, context.plan.planName);
+        if (prepared.plan) Object.assign(context.plan, prepared.plan);
     }
     // Session claiming lives in the action handlers, not here: each continuation
     // action calls `session.activateForPlan` right before its workflow work

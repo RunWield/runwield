@@ -522,7 +522,7 @@ The relevant current call paths and evidence are:
 - `materializeChildFeaturePlans` inherits `targetBranch`. `prepareTargetBranchRef` currently creates missing targets
   from local `main`; that is not an adequate implicit rule for named Epic branches. `recordPlanEvent` and
   `advanceParentEpicWhenAllChildrenVerified` can advance the parent before publication. Both need assembly evidence, not
-  just terminal child statuses. Tests in `workflow-slicer.integration.test.ts`, `worktree-creation.test.js`, and
+  just terminal child statuses. Tests in `workflow-slicer.integration.test.ts`, `worktree-creation.test.ts`, and
   `plan-lifecycle.test.js` expose these paths.
 - `publishExecutionWorktreeIsolated` and the publication machine already protect target movement, isolated remote
   publication and retry. `artifactEvidence` expects a specific commit shape and recorded Plan paths. Migration must

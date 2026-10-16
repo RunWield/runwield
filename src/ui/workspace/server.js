@@ -288,7 +288,12 @@ export function createOwnerWorkspaceApp(options) {
             ) {
                 response = renewDeviceCookies(ctx.req, response, ctx.state, ctx.state.ownerDevice.deviceId);
             }
-            return withOwnerSecurityHeaders(response);
+            response = withOwnerSecurityHeaders(response);
+            // File-content requests need the live review context, but never send it to another origin.
+            if (/^\/projects\/[^/]+\/sessions\/[^/]+\/review\/code$/.test(path)) {
+                response.headers.set("referrer-policy", "same-origin");
+            }
+            return response;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             if (ctx.url.pathname.startsWith("/api/")) return ownerJsonResponse({ error: message }, 403);
@@ -610,6 +615,8 @@ export function createReviewWorkspaceApp({ cwd, token, reviewPayload, reviewType
                             typeof source.headRef === "string"
                                 ? source.headRef
                                 : undefined,
+                        targetBranch:
+                            typeof reviewPayload.targetBranch === "string" ? reviewPayload.targetBranch : undefined,
                     });
                 }
                 if (request.method === "GET" && url.pathname === "/api/open-in/apps") {
@@ -1039,13 +1046,34 @@ function ownerReviewProjectId(request) {
     }
 }
 
+/** @param {Request} request */
+function ownerCodeReviewContext(request) {
+    try {
+        const url = new URL(request.headers.get("referer") || "");
+        const match = /^\/projects\/([^/]+)\/sessions\/([^/]+)\/review\/code$/.exec(url.pathname);
+        const operationId = url.searchParams.get("operation");
+        const interactionId = url.searchParams.get("interaction");
+        if (!match || !operationId || !interactionId) return null;
+        return {
+            projectId: decodeURIComponent(match[1]),
+            runwieldSessionId: decodeURIComponent(match[2]),
+            operationId,
+            interactionId,
+        };
+    } catch {
+        return null;
+    }
+}
+
 /** @param {any} ctx */
 async function ownerInSituReviewFileContent(ctx) {
     const projectId = ownerReviewProjectId(ctx.req);
     if (!projectId) return ownerErrorJson(new Error("Review Project context is missing."), 400);
     try {
         const root = requireOwnerProjectRoot(ctx.state.store, projectId);
-        return await reviewFileContentApi(ctx.req, { cwd: root });
+        const context = ownerCodeReviewContext(ctx.req);
+        const checkout = context ? await ctx.state.sessionContinuation.getLiveCodeReviewCheckout(context) : null;
+        return await reviewFileContentApi(ctx.req, checkout || { cwd: root });
     } catch (error) {
         return ownerErrorJson(error, 404);
     }

@@ -27,8 +27,9 @@ import {
     setProjectEnabled,
 } from "./projects.js";
 
-/** @returns {() => string} */
-function idFactory() {
+type RegisteredProject = ReturnType<typeof registerProject>;
+
+function idFactory(): () => string {
     let next = 0;
     return () => `id-${++next}`;
 }
@@ -47,7 +48,9 @@ test("Project registration converges symlink duplicates and re-adding after remo
         assertEquals(viaLink.projectId, direct.projectId);
         assertEquals(viaLink.lifecycle, "enabled");
         assertEquals(
-            listProjectRootEvidence(database, direct.projectId).map((rootEvidence) => rootEvidence.enteredRoot).sort(),
+            listProjectRootEvidence(database, direct.projectId)
+                .map((rootEvidence) => rootEvidence.enteredRoot)
+                .sort(),
             [link, root].sort(),
         );
 
@@ -108,11 +111,7 @@ test("disabled Projects stay disabled on duplicate registration", async () => {
         assertEquals(duplicate.projectId, project.projectId);
         assertEquals(duplicate.lifecycle, "disabled");
         assertEquals(getProjectHealth(database, project.projectId).status, "available");
-        assertThrows(
-            () => requireEnabledProjectRoot(database, project.projectId),
-            Error,
-            "not enabled",
-        );
+        assertThrows(() => requireEnabledProjectRoot(database, project.projectId), Error, "not enabled");
     } finally {
         database.close();
         await fsRm(dir, { recursive: true });
@@ -135,24 +134,28 @@ test("Project health is filesystem-based and non-Git directories are available",
     }
 });
 
-test("Project health reports unreadable registered roots distinctly from missing roots", { skip: platform === "win32" }, async () => {
-    const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-unreadable-"));
-    const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
-    const root = join(dir, `repo`);
-    try {
-        await fsMkdir(root);
-        const project = registerProject(database, { root, idFactory: idFactory(), now: () => "t1" });
+test(
+    "Project health reports unreadable registered roots distinctly from missing roots",
+    { skip: platform === "win32" },
+    async () => {
+        const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-unreadable-"));
+        const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
+        const root = join(dir, `repo`);
         try {
-            fsChmodSync(root, 0o000);
-            assertEquals(getProjectHealth(database, project.projectId).status, "unreadable");
+            await fsMkdir(root);
+            const project = registerProject(database, { root, idFactory: idFactory(), now: () => "t1" });
+            try {
+                fsChmodSync(root, 0o000);
+                assertEquals(getProjectHealth(database, project.projectId).status, "unreadable");
+            } finally {
+                fsChmodSync(root, 0o700);
+            }
         } finally {
-            fsChmodSync(root, 0o700);
+            database.close();
+            await fsRm(dir, { recursive: true });
         }
-    } finally {
-        database.close();
-        await fsRm(dir, { recursive: true });
-    }
-});
+    },
+);
 
 test("Project removal clears dependent database records and rolls back on failure", async () => {
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-remove-"));
@@ -167,8 +170,9 @@ test("Project removal clears dependent database records and rolls back on failur
         db.prepare(
             "INSERT INTO session_transcript_segments(id, runwield_session_id, project_id, pi_session_id, transcript_path, transcript_cwd, ordinal, kind, sealed_at, first_cataloged_at, last_cataloged_at) VALUES ('segment', 'session', ?, 'pi', '/transcript', ?, 0, 'planning', 'now', 'now', 'now')",
         ).run(id, dir);
-        db.prepare("UPDATE session_transcript_segment_state SET current_segment_id = 'segment' WHERE project_id = ?")
-            .run(id);
+        db.prepare(
+            "UPDATE session_transcript_segment_state SET current_segment_id = 'segment' WHERE project_id = ?",
+        ).run(id);
         db.prepare(
             "INSERT INTO session_committed_generations(runwield_session_id, project_id, generation, digest_algorithm, byte_length, digest_hex, operation_id, fence, committed_at) VALUES ('session', ?, 0, 'sha256', 0, 'digest', 'operation', 1, 'now')",
         ).run(id);
@@ -189,20 +193,18 @@ test("Project removal clears dependent database records and rolls back on failur
         assertEquals(db.prepare("SELECT COUNT(*) AS count FROM session_committed_generations").get()?.count, 1);
         db.exec("DROP TRIGGER fail_removal");
         removeProject(database, id);
-        for (
-            const table of [
-                "projects",
-                "project_roots",
-                "runwield_sessions",
-                "session_transcript_locators",
-                "project_session_catalog_scans",
-                "session_activation_state",
-                "session_committed_generations",
-                "owner_session_operations",
-                "session_transcript_segments",
-                "session_transcript_segment_state",
-            ]
-        ) {
+        for (const table of [
+            "projects",
+            "project_roots",
+            "runwield_sessions",
+            "session_transcript_locators",
+            "project_session_catalog_scans",
+            "session_activation_state",
+            "session_committed_generations",
+            "owner_session_operations",
+            "session_transcript_segments",
+            "session_transcript_segment_state",
+        ]) {
             assertEquals(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()?.count, 0, table);
         }
         assertEquals(db.prepare("PRAGMA foreign_key_check").all(), []);
@@ -229,11 +231,14 @@ test("migration deletes previously removed registrations and preserves other Pro
     }
     const migrated = openOwnerCoordinationDatabase({ dbPath });
     try {
-        assertEquals(listProjects(migrated).map((project) => project.projectId), [keptId]);
+        assertEquals(
+            listProjects(migrated).map((project) => project.projectId),
+            [keptId],
+        );
         assertEquals(migrated.handle.prepare("PRAGMA foreign_key_check").all(), []);
         assertEquals((await fsStat(join(dir, `kept`))).isDirectory(), true);
         const backups = Array.from(fsReaddirSync(dir, { withFileTypes: true })).filter((entry) =>
-            entry.name.includes("backup-v9")
+            entry.name.includes("backup-v9"),
         );
         assertEquals(backups.length, 1);
     } finally {
@@ -264,13 +269,16 @@ test("Project relink preserves root history and rejects another Project root", a
         assertEquals(relinked.projectId, project.projectId);
         assertEquals(relinked.currentRoot, await fsRealpath(newRoot));
         const roots = listProjectRootEvidence(database, project.projectId);
-        assertEquals(roots.map((root) => root.rootState), ["current", "historical"]);
+        assertEquals(
+            roots.map((root) => root.rootState),
+            ["current", "historical"],
+        );
         const duplicateHistorical = registerProject(database, { root: oldRoot, idFactory: ids, now: () => "t4" });
         assertEquals(duplicateHistorical.currentRoot, await fsRealpath(newRoot));
         assertEquals(
-            listProjectRootEvidence(database, project.projectId).filter((root) => root.rootState === "current").map((
-                root,
-            ) => root.canonicalRoot),
+            listProjectRootEvidence(database, project.projectId)
+                .filter((root) => root.rootState === "current")
+                .map((root) => root.canonicalRoot),
             [await fsRealpath(newRoot)],
         );
         assertThrows(
@@ -324,20 +332,20 @@ test("two database connections racing to register one Project converge on one st
         const root = join(dir, `repo`);
         await fsMkdir(root);
         const [first, second] = await Promise.all([
-            new Promise((resolvePromise) =>
+            new Promise<RegisteredProject>((resolvePromise) =>
                 setTimeout(
                     () => resolvePromise(registerProject(firstDb, { root, idFactory: idFactory(), now: () => "t1" })),
                     0,
-                )
+                ),
             ),
-            new Promise((resolvePromise) =>
+            new Promise<RegisteredProject>((resolvePromise) =>
                 setTimeout(
                     () => resolvePromise(registerProject(secondDb, { root, idFactory: idFactory(), now: () => "t2" })),
                     0,
-                )
+                ),
             ),
         ]);
-        assertEquals(/** @type {any} */ (first).projectId, /** @type {any} */ (second).projectId);
+        assertEquals(first.projectId, second.projectId);
     } finally {
         firstDb.close();
         secondDb.close();
@@ -349,11 +357,7 @@ test("Project registration rejects relative roots before filesystem resolution",
     const dir = await fsMkdtemp(join(tmpdir(), "runwield-project-relative-"));
     const database = openOwnerCoordinationDatabase({ dbPath: join(dir, `owner.sqlite3`) });
     try {
-        assertThrows(
-            () => registerProject(database, { root: "relative/project" }),
-            Error,
-            "absolute path",
-        );
+        assertThrows(() => registerProject(database, { root: "relative/project" }), Error, "absolute path");
         assertThrows(
             () => relinkProject(database, { projectId: "missing", newRoot: "relative/project" }),
             Error,
@@ -371,11 +375,7 @@ test("Project registration rejects files", async () => {
     try {
         const file = join(dir, `not-directory`);
         await fsWriteFile(file, "x");
-        assertThrows(
-            () => registerProject(database, { root: file }),
-            Error,
-            "must be a directory",
-        );
+        assertThrows(() => registerProject(database, { root: file }), Error, "must be a directory");
     } finally {
         database.close();
         await fsRm(dir, { recursive: true });
