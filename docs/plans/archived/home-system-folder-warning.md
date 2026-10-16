@@ -25,6 +25,9 @@ status: "ready_for_work"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/home-system-folder-warning"
+archivedAt: "2026-10-16T19:04:59.594Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/home-system-folder-warning.md"
 ---
 
 # Warn Before Using Home or System Folders

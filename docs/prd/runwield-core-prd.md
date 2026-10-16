@@ -439,7 +439,8 @@ delivered to the Epic branch. The integration gate then checks the exact branch 
 checks, an integration review of the whole Epic diff, and Code Review per the user's `codereview` setting. A pass
 marks the Epic reviewed for that commit. Findings go to an Epic report and become a draft repair child that the user
 reviews like any child; its delivery runs the gate again. A later commit on the Epic branch returns the Epic to
-implemented. The user merges the reviewed Epic branch or opens a pull request.
+implemented. The user merges the reviewed Epic branch or opens a pull request. Child manual checks are collected in
+an advisory [Manual QA checklist](#manual-qa-checklist) for the Epic.
 
 **Requirement: Hold and resume.** **On hold** means paused and resumable. A held Plan keeps its previous stage and an
 optional reason. **Resume from hold** checks for relevant changes or missing work, then resumes, warns, or offers
@@ -660,6 +661,37 @@ progress display comes from the confirmed validation and publication results of 
 - Given a Session that shows failed checks from an earlier attempt, a resumed delivery that publishes successfully
   reports completion with current results.
 - Given failed checks or review, the user sees repair progress or a concrete recovery choice.
+
+#### Manual QA checklist
+
+**Scope and maturity:** Current advisory checklist generation. Automated Tester execution and QA Environment Profiles
+remain deferred in the [Automated QA proposal](automated-qa-prd.md).
+
+**Requirement: Give the owner concrete manual checks.** Checklist generation is part of the normal workflow; a
+configurable QA mode remains proposed. After Mechanical Validation passes, a QUICK_FIX receives a short unchecked
+checklist. Standalone Planned Changes receive it during publication preparation, after automated validation and the
+applicable Code Review decision. Use the Plan's explicit manual checks first; otherwise infer the smallest observable
+checks from the supplied context, aiming for one to six unchecked actions. The checklist contains manual user actions
+rather than automated test, lint, type-check, or build commands. It appears in the Session and stays available in saved
+history.
+
+**Requirement: Keep Epic checks together.** Each child contributes a section to the Epic's durable Manual QA artifact
+before delivery. Retries reuse its existing section and preserve user edits and checked boxes. The artifact stays with
+the Epic through archive and restore.
+
+**Requirement: Keep advice separate from proof.** The checklist describes checks for the owner to perform; generation
+is not evidence that they ran. Publication proceeds without requiring completion of its items. A standalone generation
+failure shows a warning and preserves successful validation. Operational failures during Epic checklist preparation
+use normal publication recovery; their pause remains distinct from a failed implementation check.
+
+**Acceptance scenarios:**
+
+- Given a QUICK_FIX whose checks pass, RunWield shows and saves an unchecked checklist. If generation fails, it reports
+  a warning while retaining the successful Mechanical Validation result.
+- Given a standalone Planned Change with explicit manual checks, publication preparation turns them into a user
+  checklist; the items are unchecked rather than presented as executed proof, and publication can continue.
+- Given an Epic child whose checklist contains user edits and checked boxes, a publication retry keeps that section
+  intact instead of replacing it or adding a duplicate.
 
 #### Code Review gate
 

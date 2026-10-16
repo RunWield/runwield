@@ -1,6 +1,8 @@
 # Product Requirements Document: Team Memories
 
-Last updated: 2026-07-23 08:28 EDT
+**Status: Deferred pending customer feedback.** The owner has not decided whether team Memory sharing belongs in
+Core, the paid Workspace, or neither. This document preserves a proposal, not a delivery commitment. Revisit product
+placement and demand when customer feedback provides evidence; the approach below remains conditional.
 
 ## Objective
 

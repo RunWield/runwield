@@ -128,6 +128,8 @@ Each capability owns its browser requirements and links to Core for shared behav
 - [Project access and navigation](#project-access-and-navigation)
 - [Installable app and alerts](#installable-app-and-alerts)
 - [Browser Sessions](#browser-sessions)
+- [Session snapshot sharing](#session-snapshot-sharing) — undelivered
+- [Session export](#session-export) — undelivered
 - [Document reader](#document-reader)
 - [TUI and phone continuity](#tui-and-phone-continuity)
 - [Browser Plan review and workflow](#browser-plan-review-and-workflow)
@@ -211,9 +213,23 @@ self-hosted Shared Spaces:
 - the browser supports comments, resolving and reopening, and Revision switching;
 - one agreed shared review version, with clear publishing and unsharing actions.
 
-The [Collaborative Planning PRD](collaborative-planning-PRD.md) defines these journeys, and the
-[collaboration documentation](../user-documentation/collaboration.md) covers storage and protocol. Shared review uses
-[Core Plan review](runwield-core-prd.md#plan-review) and [Plan lifecycle](runwield-core-prd.md#plan-lifecycle).
+**Requirement: One link through successive Revisions.** Reviewers use a stable browser link without accounts or local
+tooling. Comments attach to selected text or the whole Revision and stay with that Revision. A maintainer pulls the
+latest Revision and feedback into Planner or Architect, revises locally, and publishes the next Revision at the same
+link. A maintainer link allows deliberate handoff to another maintainer. Publishing protects newer shared work from
+stale local changes. Unshare deletes the remote content and returns the local Plan to independent use, with recovery
+guidance if remote content is already gone.
+
+**Requirement: Private content and visible retention.** The hosting service cannot read Plan bodies, comments, display
+names, or annotations. Guidance distinguishes reviewer and maintainer links and explains their bearer access. When
+expiry is enabled, users see when the Shared Space will expire. Operators receive setup, access, abuse-control,
+retention, and backup/restore guidance in the [collaboration documentation](../user-documentation/collaboration.md).
+Shared review follows [Core Plan review](runwield-core-prd.md#plan-review) and
+[Plan lifecycle](runwield-core-prd.md#plan-lifecycle).
+
+**Deferred:** public creation credentials and their rotation/recovery, signed multi-architecture image publication,
+activity/audit feeds, Revision diffs, comment attachments, and closed-Space export. Hosted and browser-management scope
+stays in [Collaborative SaaS Workspace](#collaborative-saas-workspace).
 
 **Acceptance scenarios:**
 
@@ -221,6 +237,10 @@ The [Collaborative Planning PRD](collaborative-planning-PRD.md) defines these jo
   receiving maintainer secrets.
 - When the maintainer publishes a new review version or unshares, participants see that outcome, and repository
   documents stay free of sharing secrets.
+- Given comments on an earlier Revision, publishing a new one keeps the same review link and leaves each comment with
+  its original Revision.
+- Given optional expiry, the maintainer sees the expiry time; restoring a Shared Space from backup restores access to
+  its Revisions and comments.
 
 ### Attention dashboard
 
@@ -470,6 +490,51 @@ universal process-memory limit; memory use of live observation remains a targete
 - Given many completed turns, the browser reconnects to the same Session, sees the complete saved output, and submits a
   follow-up once.
 - Given a Pair checkpoint, it appears in the normal timeline and a later message in the ordinary composer resolves it.
+
+### Session snapshot sharing
+
+**Scope and maturity:** Undelivered Workspace capability. The existing Gist-based sharing path is not this capability.
+
+**Requirement: Share an explicit, read-only snapshot.** `/share` in Workspace previews committed Session history before
+creating an anyone-with-the-link snapshot. The preview makes the content being shared explicit. A TUI connected to
+Workspace uses the same sharing flow. Each Session has at most one active snapshot. It includes committed user and Agent messages and completed tool calls in collapsed,
+expandable groups with their original tool headers. Model thinking and temporary live waits stay private.
+
+**Requirement: Owner-controlled publication and access.** Later Session activity stays private until the owner updates
+the snapshot. An update replaces its content at the same link. Rotating the secret creates a new link and disables the
+old one; revocation disables sharing while preserving the original Session. The link grants access only to the
+snapshot, not control of the Session, its Project, or live activity. Existing Workspace hosting and network boundaries
+still apply. Team identity and collaboration controls remain separate future scope.
+
+**Acceptance scenarios:**
+
+- Given a private Session, when the owner previews and creates a snapshot, its link shows the previewed committed history
+  read-only, with tool groups collapsed and thinking omitted.
+- Given an active snapshot, when the original Session receives another message, the shared copy stays unchanged until
+  the owner explicitly updates it; the update keeps the same link.
+- Given a shared link, rotating it disables the old link, and revocation disables the active link without changing the
+  original Session.
+- Given a TUI connected to Workspace, `/share` uses the same preview, snapshot, update, rotation, and revocation flow.
+
+**Proposed Domain Language — Shared Session Snapshot:** The one active, revocable, read-only copy of committed Session
+history published by its owner through a bearer link. It changes only on explicit update. Affected terms: Workspace,
+Session, Session Transcript, and Session Control. The source Session remains private and authoritative; snapshot access
+confers no Session Control or Project access. _Avoid_: shared Session, public Session, live Session link, collaborative
+Session. This term remains proposed until the capability ships.
+
+### Session export
+
+**Scope and maturity:** Undelivered browser capability. Output-format choices are deferred to its implementation work.
+
+**Requirement: Download a Session from the browser.** The owner can export a Session through its actions or `/export`
+and receive a browser download. Export keeps the existing Session available and preserves its workflow state. This is
+an owner download, separate from publishing a shared snapshot.
+
+**Acceptance scenarios:**
+
+- Given a saved Session, when the owner chooses Export or invokes `/export`, the browser offers its exported
+  conversation as a download and the original Session stays available.
+- Given a canceled or failed download, the original conversation, draft, and workflow remain intact.
 
 ### Document reader
 
@@ -779,7 +844,8 @@ This cross-capability journey shows that the capabilities work together. One tru
 
 - Public-internet exposure without a private network.
 - Team accounts, roles, organization membership, and shared-machine concurrency in the personal Workspace.
-- Collaborator access to Session Transcripts, or cross-Session Agent retrieval from them.
+- Ambient collaborator access to private Session Transcripts, or cross-Session Agent retrieval from them. Explicit
+  owner-published [snapshots](#session-snapshot-sharing) are a separate undelivered capability.
 - A generic Work Item, Task, ticket, Scrum, or issue-tracker layer.
 - Database-only replacements for Markdown Plans, PRDs, ADRs, or Work Records.
 - A browser IDE: editors, language servers, terminals, debugging, or extension management.
@@ -928,7 +994,6 @@ Transcript graph, source of truth
 
 - [RunWield Core PRD](runwield-core-prd.md)
 - [ACP PRD](runwield-acp-protocol-prd.md) and [Connect PRD](runwield-connect-prd.md)
-- [Collaborative Planning PRD](collaborative-planning-PRD.md)
 - [Forge Change Request Delivery PRD](forge-change-request-delivery-prd.md)
 - [ADR-007: Local-First Workspace Plan Board](../adr/007-local-first-workspace-plan-board.md)
 - [ADR-008: Remote-Canonical Collaborative Shared Spaces](../adr/008-remote-canonical-collaborative-shared-spaces.md)
