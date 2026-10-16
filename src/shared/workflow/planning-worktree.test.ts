@@ -511,6 +511,23 @@ test("unfinished standalone without an attempt recovers planning from its record
     assertEquals((await resolveWorkflowPlanLocation(repo, "standalone")).documentRoot, recovered.documentRoot);
 });
 
+test("session preparation fetches a recorded standalone landing absent from local refs", async () => {
+    const repo = await standaloneLandingFixture.checkout();
+    const remote = await fsMkdtemp(join(tmpdir(), "standalone-remote-"));
+    await git(remote, ["init", "--bare", "--initial-branch=main"]);
+    await git(repo, ["remote", "add", "origin", remote]);
+    await git(repo, ["push", "origin", "plan/standalone"]);
+    await git(repo, ["update-ref", "-d", "refs/heads/plan/standalone"]);
+    await git(repo, ["update-ref", "-d", "refs/remotes/origin/plan/standalone"]);
+    const refs = await git(repo, ["show-ref"]);
+    const snapshot = await resolveWorkflowPlanLocation(repo, "standalone", { readOnly: true });
+    assertEquals(snapshot.planningNotStarted, true);
+    assertEquals(await git(repo, ["show-ref"]), refs);
+    const prepared = await prepareSessionPlanningWorktree(repo, "standalone");
+    assertStringIncludes(prepared.plan?.body || "", "LANDING BODY");
+    assertEquals((await listEntries(repo)).length, 1);
+});
+
 test("published-only read snapshots cannot be used as archive document paths", async () => {
     const repo = await fixture.checkout();
     await git(repo, ["switch", "epic-target"]);

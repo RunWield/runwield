@@ -20,8 +20,9 @@ function assertProjectPlanReviewJourney(result, capability) {
     assertEventIncludes(result, "review_approved");
     assertEventIncludes(result, "runtime:tool:start:plan_written");
     assertScreenIncludes(result, 'Plan "plan" approved');
-    const planReview =
-        /** @type {{ attrs?: Record<string, unknown>, plan?: string } | undefined} */ (result.state.planReview);
+    const planReview = /** @type {{ attrs?: Record<string, unknown>, plan?: string } | undefined} */ (
+        result.state.planReview
+    );
     assert(planReview?.attrs?.classification === "PROJECT", "Expected reviewed Plan to use PROJECT classification.");
     assert(
         String(planReview.plan || "").includes("Golden PROJECT revised content."),
@@ -42,8 +43,9 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
     // The Slicer materialized these through the real decomposition transaction, so
     // their shape is the product's output rather than fixture setup.
     const children =
-        /** @type {Array<{ name?: string, status?: string, classification?: string, order?: unknown, parentPlan?: string }> | undefined} */ (result
-            .state.projectChildren);
+        /** @type {Array<{ name?: string, status?: string, classification?: string, order?: unknown, parentPlan?: string }> | undefined} */ (
+            result.state.projectChildren
+        );
     assert(children?.length === 2, `Expected two materialized child Plans; got ${JSON.stringify(children)}`);
     assert(
         children.every((child) => child.classification === "PLANNED_CHANGE" && child.parentPlan === "epic"),
@@ -55,8 +57,9 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
     );
 
     const replacement =
-        /** @type {{ previousSessionId?: string, currentSessionId?: string, reason?: string, childPlanName?: string } | undefined} */ (result
-            .state.replacedSession);
+        /** @type {{ previousSessionId?: string, currentSessionId?: string, reason?: string, childPlanName?: string } | undefined} */ (
+            result.state.replacedSession
+        );
     assert(replacement?.previousSessionId && replacement?.currentSessionId, "Expected previous/current Session IDs.");
     assert(
         replacement.previousSessionId !== replacement.currentSessionId,
@@ -69,12 +72,16 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
     );
 
     const plans =
-        /** @type {{ parent?: Record<string, unknown>, firstChild?: Record<string, unknown>, secondChild?: Record<string, unknown> } | undefined} */ (result
-            .state.projectPlans);
+        /** @type {{ parent?: Record<string, unknown>, firstChild?: Record<string, unknown>, secondChild?: Record<string, unknown> } | undefined} */ (
+            result.state.projectPlans
+        );
     assert(plans?.parent?.classification === "PROJECT", "Expected parent Epic PROJECT metadata.");
     // Both children reached a terminal verified state through their own real
     // execution and Workflow Validation, not a harness status write.
-    for (const [label, attrs] of [["first", plans?.firstChild], ["second", plans?.secondChild]]) {
+    for (const [label, attrs] of [
+        ["first", plans?.firstChild],
+        ["second", plans?.secondChild],
+    ]) {
         const childAttrs = /** @type {Record<string, unknown> | undefined} */ (attrs);
         assert(
             childAttrs?.classification === "PLANNED_CHANGE",
@@ -87,8 +94,9 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
     }
 
     const durability =
-        /** @type {{ trackedFiles?: string, primaryTrackedFiles?: string, epicBranch?: string, deliveryLog?: string, liveRegistryEntries?: string[], registryEntryCount?: number } | undefined} */ (result
-            .state.projectDurability);
+        /** @type {{ trackedFiles?: string, primaryTrackedFiles?: string, epicBranch?: string, deliveryLog?: string, liveRegistryEntries?: string[], registryEntryCount?: number } | undefined} */ (
+            result.state.projectDurability
+        );
     // Each child ran a real Engineer turn in a real worktree and a real Direct
     // Delivery merge to the Epic branch, so its file has to be tracked there and
     // the primary branch must not have received partial Epic work.
@@ -106,9 +114,9 @@ function assertRuntimeSessionReplacementAndEpicEvidence(result, capability) {
     assert(String(durability?.deliveryLog || "").length > 0, "Expected Git ancestry evidence for child deliveries.");
     assert(
         (durability?.liveRegistryEntries || []).length === 0,
-        `Expected every child worktree attempt to reach a terminal state; live=${
-            (durability?.liveRegistryEntries || []).join(", ")
-        }`,
+        `Expected every child worktree attempt to reach a terminal state; live=${(
+            durability?.liveRegistryEntries || []
+        ).join(", ")}`,
     );
 }
 
@@ -120,30 +128,30 @@ export const projectPlanReviewScenario = {
     coverage: ["workflow:PROJECT", "durable:plan-lifecycle"],
     reviewDecisions: [{ approved: true, feedback: "PROJECT approved for later.", approvalAction: "later" }],
     reviewedPlan: "# Golden PROJECT\n\nGolden PROJECT revised content.\n",
-    script: [{
-        id: "planner-submit-project-for-review",
-        agent: "planner",
-        phase: "plan_review",
-        ordinal: 1,
-        requiredTools: ["plan_written"],
-        thinking: "Submit PROJECT Plan for real Plan Review approval.",
-        toolCalls: [{ name: "plan_written", arguments: { planName: "plan" } }],
-    }],
+    script: [
+        {
+            id: "planner-submit-project-for-review",
+            agent: "planner",
+            phase: "plan_review",
+            ordinal: 1,
+            requiredTools: ["plan_written"],
+            thinking: "Submit PROJECT Plan for real Plan Review approval.",
+            toolCalls: [{ name: "plan_written", arguments: { planName: "plan" } }],
+        },
+    ],
     actions: [
         {
             type: "writeProjectFile",
             path: "docs/plans/plan.md",
-            text:
-                "---\nclassification: PROJECT\ncomplexity: MEDIUM\nsummary: Golden PROJECT\naffectedPaths: []\nstatus: draft\n---\n# Golden PROJECT\n\nDraft PROJECT content.\n",
+            text: "---\nclassification: PROJECT\ncomplexity: MEDIUM\nsummary: Golden PROJECT\naffectedPaths: []\nstatus: draft\n---\n# Golden PROJECT\n\nDraft PROJECT content.\n",
         },
         { type: "type", text: "submit the project plan for review" },
         { type: "enter" },
         { type: "waitForIdle", timeoutMs: 12000 },
     ],
     assertions: [
-        assertsGoldenCoverage(
-            "workflow:PROJECT",
-            (result) => assertProjectPlanReviewJourney(result, "workflow:PROJECT"),
+        assertsGoldenCoverage("workflow:PROJECT", (result) =>
+            assertProjectPlanReviewJourney(result, "workflow:PROJECT"),
         ),
         assertsGoldenCoverage("durable:plan-lifecycle", (result) => {
             assertEventIncludes(result, "review_approved");
@@ -169,11 +177,10 @@ export const twoChildProjectContinuationScenario = {
     timeoutMs: 600000,
     coverage: ["durable:session-replaced", "durable:epic-evidence", "durable:work-record", "durable:epic-completion"],
     interactiveSelectPrompts: ["What would you like to do next?"],
-    scriptedInteractions: [{
-        type: "select",
-        promptIncludes: "What would you like to do with this Epic",
-        value: "cancel",
-    }],
+    scriptedInteractions: [
+        { type: "select", promptIncludes: "What would you like to do?", value: "resume" },
+        { type: "select", promptIncludes: "What would you like to do with this Epic", value: "cancel" },
+    ],
     // Three real Plan Reviews: the Architect defers the Epic, then each child is
     // approved for execution. The second child's review is reached only through the
     // Runtime's own Epic continuation.
@@ -208,34 +215,36 @@ export const twoChildProjectContinuationScenario = {
             ordinal: 1,
             requiredTools: ["slicer_finalize_decomposition"],
             thinking: "Materialize two real child PLANNED_CHANGE plans for the approved Epic.",
-            toolCalls: [{
-                name: "slicer_finalize_decomposition",
-                arguments: {
-                    confirmation: "User confirmed the two-child decomposition.",
-                    children: [
-                        {
-                            title: "Child one",
-                            order: 1,
-                            summary: "First child lifecycle",
-                            dependencies: [],
-                            affectedPaths: [],
-                            executionAgent: "engineer",
-                            collaborationRecommendation: "autonomous",
-                            content: "# Child one\n\nFirst Golden child.",
-                        },
-                        {
-                            title: "Child two",
-                            order: 2,
-                            summary: "Second child lifecycle",
-                            dependencies: ["01-child-one"],
-                            affectedPaths: [],
-                            executionAgent: "engineer",
-                            collaborationRecommendation: "autonomous",
-                            content: "# Child two\n\nSecond Golden child.",
-                        },
-                    ],
+            toolCalls: [
+                {
+                    name: "slicer_finalize_decomposition",
+                    arguments: {
+                        confirmation: "User confirmed the two-child decomposition.",
+                        children: [
+                            {
+                                title: "Child one",
+                                order: 1,
+                                summary: "First child lifecycle",
+                                dependencies: [],
+                                affectedPaths: [],
+                                executionAgent: "engineer",
+                                collaborationRecommendation: "autonomous",
+                                content: "# Child one\n\nFirst Golden child.",
+                            },
+                            {
+                                title: "Child two",
+                                order: 2,
+                                summary: "Second child lifecycle",
+                                dependencies: ["01-child-one"],
+                                affectedPaths: [],
+                                executionAgent: "engineer",
+                                collaborationRecommendation: "autonomous",
+                                content: "# Child two\n\nSecond Golden child.",
+                            },
+                        ],
+                    },
                 },
-            }],
+            ],
         },
         {
             // The Slicer's agent loop, like every other, runs until a turn answers
@@ -253,12 +262,14 @@ export const twoChildProjectContinuationScenario = {
             ordinal: 2,
             requiredTools: ["plan_written"],
             thinking: "Finalize the first child Planned Change and submit it for review.",
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "epic/01-child-one",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "epic/01-child-one",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "engineer-implements-first-child",
@@ -312,9 +323,7 @@ export const twoChildProjectContinuationScenario = {
             planName: "epic/01-child-one",
             ordinal: 2,
             requiredTools: ["review_complete"],
-            toolCalls: [
-                { name: "review_complete", arguments: { approved: true, feedback: "First child approved." } },
-            ],
+            toolCalls: [{ name: "review_complete", arguments: { approved: true, feedback: "First child approved." } }],
         },
         {
             // Everything from here is driven by the Runtime's real Epic continuation
@@ -326,12 +335,14 @@ export const twoChildProjectContinuationScenario = {
             ordinal: 3,
             requiredTools: ["plan_written"],
             thinking: "Finalize the second child Planned Change and submit it for review.",
-            toolCalls: [{
-                name: "plan_written",
-                arguments: {
-                    planName: "epic/02-child-two",
+            toolCalls: [
+                {
+                    name: "plan_written",
+                    arguments: {
+                        planName: "epic/02-child-two",
+                    },
                 },
-            }],
+            ],
         },
         {
             id: "engineer-implements-second-child",
@@ -390,9 +401,7 @@ export const twoChildProjectContinuationScenario = {
             planName: "epic/02-child-two",
             ordinal: 2,
             requiredTools: ["review_complete"],
-            toolCalls: [
-                { name: "review_complete", arguments: { approved: true, feedback: "Second child approved." } },
-            ],
+            toolCalls: [{ name: "review_complete", arguments: { approved: true, feedback: "Second child approved." } }],
         },
         {
             // Both children are on the Epic branch, so the integration gate reviews the
@@ -422,8 +431,7 @@ export const twoChildProjectContinuationScenario = {
         {
             type: "writeProjectFile",
             path: "docs/plans/epic.md",
-            text:
-                "---\nclassification: PROJECT\ncomplexity: MEDIUM\nsummary: Golden Epic\naffectedPaths: []\nstatus: draft\n---\n# Golden Epic\n\nDraft PROJECT content.\n",
+            text: "---\nclassification: PROJECT\ncomplexity: MEDIUM\nsummary: Golden Epic\naffectedPaths: []\nstatus: draft\n---\n# Golden Epic\n\nDraft PROJECT content.\n",
         },
         { type: "type", text: "submit the epic project plan for architect review" },
         { type: "enter" },
@@ -442,10 +450,11 @@ export const twoChildProjectContinuationScenario = {
         // Switch through the Runtime test API; slash-command coverage owns `/agent` input semantics.
         { type: "switchAgent", agentName: "planner" },
         { type: "waitForIdle", timeoutMs: 15000 },
-        // Explicit launch of the first child, as a real user message: Epic approval is
+        // Start the first child through Resume planning: Epic approval is
         // not Epic execution. Its Plan Review, execution and validation all run for
         // real, and the Runtime continues into the second child on its own.
-        { type: "type", text: "finalize and submit the first child planned change for review" },
+        { type: "type", text: "/load-plan epic/01-child-one" },
+        { type: "enter" },
         { type: "enter" },
         {
             type: "waitForPlanStatus",
@@ -508,9 +517,9 @@ export const twoChildProjectContinuationScenario = {
     assertions: [
         assertsGoldenCoverage("durable:session-replaced", (result) => {
             assertRuntimeEvent("durable:session-replaced", "runtime:session-replaced:epic_continuation")(result);
-            const replacement =
-                /** @type {{ previousSessionId?: string, currentSessionId?: string } | undefined} */ (result.state
-                    .replacedSession);
+            const replacement = /** @type {{ previousSessionId?: string, currentSessionId?: string } | undefined} */ (
+                result.state.replacedSession
+            );
             assert(
                 replacement?.previousSessionId !== replacement?.currentSessionId,
                 "Expected typed Session replacement identity.",
@@ -522,8 +531,9 @@ export const twoChildProjectContinuationScenario = {
         }),
         assertsGoldenCoverage("durable:epic-completion", (result) => {
             const projectState =
-                /** @type {{ plans?: Array<{ name?: string, attrs?: Record<string, unknown> | null }>, registryEntries?: unknown[], nonTerminalRegistryEntries?: unknown[], workRecordNames?: string[] } | undefined} */ (result
-                    .state.projectState);
+                /** @type {{ plans?: Array<{ name?: string, attrs?: Record<string, unknown> | null }>, registryEntries?: unknown[], nonTerminalRegistryEntries?: unknown[], workRecordNames?: string[] } | undefined} */ (
+                    result.state.projectState
+                );
             const parent = /** @type {EpicCompletionAttrs | undefined} */ (
                 projectState?.plans?.find((plan) => plan.name === "epic")?.attrs || undefined
             );
@@ -557,23 +567,24 @@ export const twoChildProjectContinuationScenario = {
             );
             assert(
                 (projectState?.nonTerminalRegistryEntries || []).length === 0,
-                `Expected no live project registry entries; got ${
-                    JSON.stringify(projectState?.nonTerminalRegistryEntries)
-                }`,
+                `Expected no live project registry entries; got ${JSON.stringify(
+                    projectState?.nonTerminalRegistryEntries,
+                )}`,
             );
             assert(
                 parent?.workRecord?.status === "generated" &&
                     typeof parent.workRecord.path === "string" &&
                     (projectState?.workRecordNames || []).includes(parent.workRecord.path),
-                `Expected the Epic's own generated Work Record in storage; got ${
-                    JSON.stringify(parent?.workRecord)
-                } files=${(projectState?.workRecordNames || []).join(", ")}`,
+                `Expected the Epic's own generated Work Record in storage; got ${JSON.stringify(
+                    parent?.workRecord,
+                )} files=${(projectState?.workRecordNames || []).join(", ")}`,
             );
         }),
         assertsGoldenCoverage("durable:work-record", (result) => {
             const workRecord =
-                /** @type {{ status?: string, path?: string, error?: string, recordNames?: string[] } | undefined} */ (result
-                    .state.workRecord);
+                /** @type {{ status?: string, path?: string, error?: string, recordNames?: string[] } | undefined} */ (
+                    result.state.workRecord
+                );
             // Loading the externally delivered Epic writes its Work Record in the primary checkout.
             assert(
                 workRecord?.status === "local" || workRecord?.status === "published",
@@ -617,7 +628,10 @@ export const projectChildCiFailureStopScenario = {
         { approved: true, feedback: "Architect approved the two-child PROJECT.", approvalAction: "later" },
         { approved: true, feedback: "First child approved to run.", approvalAction: "run" },
     ],
-    scriptedInteractions: [{ type: "select", promptIncludes: "tests for", value: "stop" }],
+    scriptedInteractions: [
+        { type: "select", promptIncludes: "What would you like to do?", value: "resume" },
+        { type: "select", promptIncludes: "tests for", value: "stop" },
+    ],
     script: [
         epicTurn("architect-approves-epic-plan"),
         epicTurn("slicer-materializes-two-children"),
@@ -647,10 +661,12 @@ export const projectChildCiFailureStopScenario = {
                 planName: "epic/01-child-one",
                 ordinal: attempt * 2 + 2,
                 requiredTools: ["task_completed"],
-                toolCalls: [{
-                    name: "task_completed",
-                    arguments: { message: `- CI repair ${attempt} could not fix the external validation command.` },
-                }],
+                toolCalls: [
+                    {
+                        name: "task_completed",
+                        arguments: { message: `- CI repair ${attempt} could not fix the external validation command.` },
+                    },
+                ],
             },
         ]),
     ],
@@ -658,8 +674,7 @@ export const projectChildCiFailureStopScenario = {
         {
             type: "writeProjectFile",
             path: "docs/plans/epic.md",
-            text:
-                "---\nclassification: PROJECT\ncomplexity: MEDIUM\nsummary: Golden Epic\naffectedPaths: []\nstatus: draft\n---\n# Golden Epic\n\nDraft PROJECT content.\n",
+            text: "---\nclassification: PROJECT\ncomplexity: MEDIUM\nsummary: Golden Epic\naffectedPaths: []\nstatus: draft\n---\n# Golden Epic\n\nDraft PROJECT content.\n",
         },
         { type: "type", text: "submit the epic project plan for architect review" },
         { type: "enter" },
@@ -668,7 +683,8 @@ export const projectChildCiFailureStopScenario = {
         { type: "waitForIdle", timeoutMs: 15000 },
         { type: "switchAgent", agentName: "planner" },
         { type: "waitForIdle", timeoutMs: 15000 },
-        { type: "type", text: "finalize and submit the first child planned change for review" },
+        { type: "type", text: "/load-plan epic/01-child-one" },
+        { type: "enter" },
         { type: "enter" },
         { type: "waitForIdle", timeoutMs: 240000 },
         { type: "captureProjectDurability", planName: "epic" },

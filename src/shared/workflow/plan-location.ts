@@ -8,7 +8,11 @@ import { withProjectRuntimeReadScope } from "../project-runtime-layout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
 import { findTargetBranchPlan } from "./planning-worktree.ts";
 import { isPublicationCleanupPending } from "./publication-attempt.ts";
-import type { MissingExecutionWorktreeRecovery } from "./execution-worktree-rescue.ts";
+import {
+    executionWorktreePathExists,
+    readMissingExecutionPlan,
+    type MissingExecutionWorktreeRecovery,
+} from "./execution-worktree-rescue.ts";
 
 export { recoverMissingExecutionWorktreesForPlanLoading } from "./execution-worktree-rescue.ts";
 export type { MissingExecutionWorktreeRecovery } from "./execution-worktree-rescue.ts";
@@ -71,6 +75,11 @@ async function resolveWorkflowPlanLocationInScope(
             }
             return { registryRoot, documentRoot: attempt.path, plan, recoveredWorktree };
         }
+        if (options.readOnly && !(await executionWorktreePathExists(attempt.path))) {
+            const snapshot = await readMissingExecutionPlan(registryRoot, attempt);
+            if (snapshot)
+                return { registryRoot, documentRoot: attempt.path, plan: snapshot, missingExecutionCheckout: true };
+        }
         if (await loadPlan(attempt.path, `archived/${planName}`)) {
             return { registryRoot, documentRoot: attempt.path, plan: null, archived: true };
         }
@@ -107,7 +116,15 @@ async function resolveWorkflowPlanLocationInScope(
             }
             const child = await loadPlan(parentEntry.path, planName);
             if (child?.attrs.parentPlan === parentName) {
-                return { registryRoot, documentRoot: parentEntry.path, plan: child, parentDocument: true };
+                const planningNotStarted = needsSessionPlanningWorktree(child.attrs);
+                if (planningNotStarted && !options.readOnly) throw new PlanningNotStartedError(planName);
+                return {
+                    registryRoot,
+                    documentRoot: parentEntry.path,
+                    plan: child,
+                    parentDocument: true,
+                    planningNotStarted,
+                };
             }
         }
     }
@@ -164,6 +181,12 @@ async function resolveWorkflowPlanLocationInScope(
         }
         if (targetPlan) {
             throw new Error(`Target Plan ${planName} has a different Plan ID. Your files have not been changed.`);
+        }
+        // A saved Plan can name a branch this checkout has not fetched yet.
+        // Session preparation fetches it; lookup only returns the saved metadata.
+        if (targetPlan === undefined && plan && needsSessionPlanningWorktree(plan.attrs)) {
+            if (!options.readOnly) throw new PlanningNotStartedError(planName);
+            return { registryRoot, documentRoot: cwd, plan, planningNotStarted: true };
         }
     }
     return { registryRoot, documentRoot: cwd, plan };

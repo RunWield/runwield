@@ -21,7 +21,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/create-epic-child-worktrees-at-session-start"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Create Epic Child Worktrees Only When a Session Starts

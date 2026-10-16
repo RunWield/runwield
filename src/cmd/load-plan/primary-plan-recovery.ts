@@ -144,7 +144,7 @@ export async function resolvePlanWithPrimaryRecovery(
         throw new Error(`This Plan is archived. Run wld plans archive restore ${name} before continuing it.`);
     }
     const resolvedPlan = location.plan ? { ...location.plan, planName: name } : await resolvePlan(projectRoot, planArg);
-    if (location.planningNotStarted) return { plan: resolvedPlan };
+    if (location.planningNotStarted || location.missingExecutionCheckout) return { plan: resolvedPlan };
     const repaired = await repairRetiredPlanStatus(location.documentRoot, name, resolvedPlan);
     return { ...repaired, recoveredWorktree: location.recoveredWorktree };
 }

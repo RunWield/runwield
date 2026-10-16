@@ -170,7 +170,7 @@ async function readTargetPlanMarkdowns(
     return found;
 }
 
-async function loadTargetPlan(projectRoot: string, planName: string, baseRef: string) {
+export async function loadTargetPlan(projectRoot: string, planName: string, baseRef: string) {
     const source = await readTargetPlanMarkdown(projectRoot, planName, baseRef);
     if (!source) return null;
     const temp = await mkdtemp(join(tmpdir(), "runwield-"));
@@ -197,9 +197,9 @@ export async function findTargetBranchPlan(cwd: string, targetBranch: string, pl
     // Lookup uses the known snapshot. Only session preparation fetches into project refs.
     const remoteRef = `refs/remotes/origin/${branch}`;
     const ref = (await gitRefExists(projectRoot, remoteRef)) ? remoteRef : `refs/heads/${branch}`;
-    if (!(await gitRefExists(projectRoot, ref))) {
-        throw new Error(`Target branch does not exist: ${targetBranch}. Create it before planning.`);
-    }
+    // Undefined means this checkout has not fetched the branch; null means the
+    // known branch has no document at this path.
+    if (!(await gitRefExists(projectRoot, ref))) return undefined;
     const commit = (await runGit(projectRoot, ["rev-parse", `${ref}^{commit}`])).trim();
     return await loadTargetPlan(projectRoot, canonicalizeStoredPlanName(planName).name, commit);
 }

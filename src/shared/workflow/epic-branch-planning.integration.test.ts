@@ -3,6 +3,8 @@ import {
     mkdtemp as fsMkdtemp,
     readFile as fsReadFile,
     realpath as fsRealpath,
+    rm as fsRm,
+    stat as fsStat,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { test } from "node:test";
@@ -29,6 +31,8 @@ import { recordPlanEvent } from "./plan-lifecycle.js";
 import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
+import { executePlan } from "./plan-executor.ts";
+import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 
 type PlanFixtureAttribute = string | number | boolean | string[];
 type PlanFixtureAttributes = Record<string, PlanFixtureAttribute>;
@@ -695,6 +699,159 @@ test("Workspace saved review starts an unstarted target-only child session", asy
             assertEquals(await loadPlan(repo, "epic/02-next"), null);
         } finally {
             await runtime.closeAllSessionsWhenIdle();
+        }
+    });
+});
+
+for (const parentDocument of [false, true]) {
+    test(`unstarted child refuses lifecycle and collaboration writes with parent document ${parentDocument}`, async () => {
+        const repo = await journeyFixture.checkout();
+        if (parentDocument) {
+            await preparePlanningWorktreeForPlan(repo, "epic", { planId: "plan-epic", targetBranch: "epic-target" });
+        }
+        const location = await resolveWorkflowPlanLocation(repo, "epic/02-next", { readOnly: true });
+        assert(location.plan);
+        const before = location.plan.markdown;
+        const entries = await listEntries(repo);
+        const refs = await git(repo, ["show-ref"]);
+        await assertRejects(
+            () =>
+                recordPlanEvent({
+                    cwd: repo,
+                    planName: "epic/02-next",
+                    event: "plan_held",
+                    currentStatus: "ready_for_work",
+                }),
+            PlanningNotStartedError,
+        );
+        await assertRejects(
+            () =>
+                updatePlanCollaborationMetadata(
+                    repo,
+                    "epic/02-next",
+                    {
+                        collaborationRevision: 7,
+                    },
+                    COLLABORATION_LOCK_BYPASS.pull,
+                ),
+            PlanningNotStartedError,
+        );
+        const evidence = await loadPlanActionEvidence(repo, "plan-child-02");
+        assert(evidence.kind === "success", JSON.stringify(evidence));
+        const result = await executePlanAction(repo, {
+            planId: evidence.evidence.planId,
+            expectedRevision: evidence.evidence.revision,
+            expectedStatus: evidence.evidence.status,
+            expectedWorktree: evidence.evidence.worktree,
+            action: "put_on_hold",
+        });
+        assertEquals(result.kind, "invalid_action");
+        assertStringIncludes(result.message, "Start planning epic/02-next first");
+        assertStringIncludes(result.message, "Nothing was changed.");
+        assertEquals(
+            (await resolveWorkflowPlanLocation(repo, "epic/02-next", { readOnly: true })).plan?.markdown,
+            before,
+        );
+        assertEquals(await listEntries(repo), entries);
+        assertEquals(await git(repo, ["show-ref"]), refs);
+    });
+}
+
+test("execution sends Engineer the fetched child scope instead of the primary snapshot", async () => {
+    await withRuntimeCommandFixture("epic-engineer-scope-", async ({ setModelResponseFactory }) => {
+        const repo = await journeyFixture.checkout();
+        const target = await resolveWorkflowPlanLocation(repo, "epic/02-next", { readOnly: true });
+        assert(target.plan);
+        await fsMkdir(join(repo, "docs/plans/epic"), { recursive: true });
+        await fsWriteFile(
+            join(repo, "docs/plans/epic/02-next.md"),
+            target.plan.markdown.replace("TARGET NEXT BODY", "STALE PRIMARY SCOPE"),
+        );
+        await advanceRemoteEpic(repo, "ready_for_work");
+        const remote = await git(repo, ["remote", "get-url", "origin"]);
+        const publisher = await journeyFixture.checkout();
+        await git(publisher, ["remote", "add", "origin", remote]);
+        await git(publisher, ["fetch", "origin"]);
+        await git(publisher, ["switch", "epic-target"]);
+        await git(publisher, ["merge", "--ff-only", "origin/epic-target"]);
+        const path = join(publisher, "docs/plans/epic/02-next.md");
+        await fsWriteFile(path, (await fsReadFile(path, "utf8")).replace("TARGET NEXT BODY", "NEW REMOTE SCOPE"));
+        await git(publisher, ["add", "."]);
+        await git(publisher, ["commit", "-m", "update child scope"]);
+        await git(publisher, ["push", "origin", "epic-target"]);
+        let prompt = "";
+        setModelResponseFactory((context) => {
+            prompt = JSON.stringify(context.messages);
+            return fauxAssistantMessage(fauxText("Paused after reading the Plan."));
+        });
+        const sessionManager = SessionManager.inMemory(repo);
+        const hostedSession = new HostedSession({ id: "fresh-engineer-scope", cwd: repo, sessionManager });
+        hostedSession.setRootSessionManager(sessionManager);
+        try {
+            const result = await executePlan({ planName: "epic/02-next", sessionManager, hostedSession });
+            assert(!result.error, result.error || "Execution should start");
+            assertStringIncludes(prompt, "NEW REMOTE SCOPE");
+            assertEquals(prompt.includes("STALE PRIMARY SCOPE"), false);
+            assertEquals(prompt.includes("TARGET NEXT BODY"), false);
+        } finally {
+            hostedSession.dispose();
+        }
+    });
+});
+
+test("load-plan can cancel missing checkout recovery then continue from the saved execution branch", async () => {
+    await withRuntimeCommandFixture("epic-lost-checkout-", async ({ setModelMessages }) => {
+        const repo = await journeyFixture.checkout();
+        const hostedSession = new HostedSession({ id: "lost-checkout", cwd: repo, sessionManager: null });
+        await startActiveExecutionWorkflow({
+            planName: "epic/02-next",
+            triageMeta: {},
+            currentStatus: "ready_for_work",
+            hostedSession,
+            ports: createExecutionStartPorts(),
+        });
+        const workflow = hostedSession.getActiveExecutionWorkflow();
+        assert(workflow?.executionCwd);
+        await fsWriteFile(join(workflow.executionCwd, "saved-work.js"), "saved execution work\n");
+        await git(workflow.executionCwd, ["add", "."]);
+        await git(workflow.executionCwd, ["commit", "-m", "save execution work"]);
+        await fsRm(workflow.executionCwd, { recursive: true });
+        const runtime = createSessionRuntime();
+        const sessionId = await runtime.createPromptReadySession({ cwd: repo, agentName: "router" });
+        try {
+            const cancelled = makeLoadUi(["cancel"]);
+            await runLoadPlanCommand(["epic/02-next"], {
+                sessionRuntime: runtime,
+                sessionId,
+                uiAPI: cancelled.uiAPI,
+                editor: cancelled.editor,
+            });
+            assertStringIncludes(cancelled.messages.join("\n"), "Plan loaded: epic/02-next");
+            assertEquals(
+                await fsStat(workflow.executionCwd)
+                    .then(() => true)
+                    .catch(() => false),
+                false,
+            );
+            setModelMessages([fauxAssistantMessage(fauxText("Saved execution resumed."))]);
+            const resumed = makeLoadUi(["continue"]);
+            await runLoadPlanCommand(["epic/02-next"], {
+                sessionRuntime: runtime,
+                sessionId,
+                uiAPI: resumed.uiAPI,
+                editor: resumed.editor,
+            });
+            assertEquals(
+                await fsStat(workflow.executionCwd)
+                    .then(() => true)
+                    .catch(() => false),
+                true,
+            );
+            assertEquals((await listEntries(repo))[0].id, workflow.worktreeId);
+            assertEquals((await loadPlan(workflow.executionCwd, "epic/02-next"))?.attrs.status, "in_progress");
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+            hostedSession.dispose();
         }
     });
 });

@@ -580,6 +580,16 @@ export async function executeSingleEngineerPlan({
         });
         return { repairRequired: false, executionComplete: false, error: message };
     }
+    const preparedPlan = (await resolveWorkflowPlanLocation(executionContext.executionCwd, planName)).plan;
+    if (!preparedPlan) {
+        return {
+            repairRequired: false,
+            executionComplete: false,
+            error: `Prepared execution Plan is missing: ${planName}`,
+        };
+    }
+    planBody = projectEngineerPlanBody(preparedPlan.markdown);
+    approvedMarkdown = preparedPlan.markdown;
     if (prepareSegmentHandoff) {
         const managed = hostedSession.getManagedMetadata?.();
         if (!managed?.runwieldSessionId) {

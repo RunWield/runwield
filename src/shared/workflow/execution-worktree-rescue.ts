@@ -4,6 +4,7 @@ import { lstat as fsLstat } from "node:fs/promises";
 import { loadPlan, parsePlanFrontMatter } from "../../plan-store.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import { listControllerDocumentWorktrees } from "./controller-registry.ts";
+import { loadTargetPlan } from "./planning-worktree.ts";
 
 interface GitResult {
     code: number;
@@ -89,12 +90,7 @@ async function commitContainsExecutionPlan(
         return false;
     }
     if (attempt.baseCommit) {
-        const ancestor = await runGitResult(projectRoot, [
-            "merge-base",
-            "--is-ancestor",
-            attempt.baseCommit,
-            commit,
-        ]);
+        const ancestor = await runGitResult(projectRoot, ["merge-base", "--is-ancestor", attempt.baseCommit, commit]);
         if (ancestor.code !== 0) return false;
     }
     return true;
@@ -115,7 +111,7 @@ async function findUniqueRescueCandidate(
     for (const line of refsResult.stdout.split("\n").filter(Boolean)) {
         const [ref = "", commit = ""] = line.split("\0");
         if (!ref || !commit || /\/HEAD$/.test(ref)) continue;
-        if (!await commitContainsExecutionPlan(projectRoot, attempt, commit, true)) continue;
+        if (!(await commitContainsExecutionPlan(projectRoot, attempt, commit, true))) continue;
         const existing = candidatesByCommit.get(commit);
         if (existing) existing.refs.push(ref);
         else candidatesByCommit.set(commit, { commit, refs: [ref] });
@@ -142,6 +138,17 @@ async function findUniqueRescueCandidate(
     return tips.length === 1 ? tips[0] : null;
 }
 
+/** Read recoverable execution evidence without recreating its checkout or changing refs. */
+export async function readMissingExecutionPlan(projectRoot: string, attempt: RegisteredExecutionAttempt) {
+    const recorded = await runGitResult(projectRoot, ["rev-parse", "--verify", `refs/heads/${attempt.branch}`]);
+    if (recorded.code === 0) {
+        if (!(await commitContainsExecutionPlan(projectRoot, attempt, recorded.stdout, false))) return null;
+        return await loadTargetPlan(projectRoot, attempt.planName, recorded.stdout);
+    }
+    const candidate = await findUniqueRescueCandidate(projectRoot, attempt);
+    return candidate ? await loadTargetPlan(projectRoot, attempt.planName, candidate.commit) : null;
+}
+
 /**
  * Recreate RunWield's missing checkout from Git when a user has deliberately
  * rescued its commits onto one unambiguous branch. The Plan ID, lifecycle
@@ -160,10 +167,7 @@ export async function recoverMissingExecutionWorktree(
     let sourceRef = expectedBranchRef;
     let sourceCommit = expectedBranch.stdout;
     let createdBranch = false;
-    if (
-        expectedBranch.code !== 0 ||
-        !await commitContainsExecutionPlan(projectRoot, attempt, sourceCommit, false)
-    ) {
+    if (expectedBranch.code !== 0 || !(await commitContainsExecutionPlan(projectRoot, attempt, sourceCommit, false))) {
         const candidate = await findUniqueRescueCandidate(projectRoot, attempt);
         if (!candidate) {
             return { recovered: false, reason: "no unique matching rescue branch was found" };
