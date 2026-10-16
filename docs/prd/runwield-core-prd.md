@@ -887,7 +887,10 @@ Execution requirements:
 - work on the approved Plan in an isolated worktree;
 - prepare worktree dependencies before the initial preparation commit invokes project Git hooks. Run only the explicit
   project `worktree_setup_command` or a command the user confirms; never infer an installer or bypass hooks. When hooks
-  exist without configuration, ask for setup or confirmation that the checkout is ready. Setup failure or cancellation
+  exist without configuration, ask for an approved setup command or confirmation that fresh worktrees need no setup.
+  Save confirmed answers, including retry corrections, to project `.wld/settings.json` alongside `verification_command`;
+  an empty `worktree_setup_command` explicitly means no setup is needed. Reuse the project default when a checkout has
+  no explicit override. Setup failure or cancellation
   must not start an Agent, mark the Plan in progress, or silently resume an incomplete attempt. Preserve setup output
   for retry; never commit setup-created versioned files, unrelated edits, or staging as preparation. Successful setup
   and a completed preparation checkpoint must not run again merely because the Session resumes;
@@ -1097,6 +1100,11 @@ global edit does not replace an explicit project override.
 
 **Acceptance scenarios: Completion recovery and preparation.**
 
+- Given a confirmed setup answer or retry correction, project settings retain it for future worktrees without changing
+  the verification command or unrelated settings. A checkout-specific setup override wins over the project default.
+- Given Init discovery, the user confirms verification and setup independently or together; the same save tool preserves
+  omitted commands. Canceling either choice cannot report fresh Init complete, and older projects can rerun Init to
+  supply a missing setup choice.
 - Given a fresh execution worktree with a dependency-backed Git hook and an approved setup command, setup completes
   before the first preparation commit, the hook runs normally, and exactly one preparation commit precedes Agent work.
 - Given failed bootstrap, the Plan remains ready and the worktree and diagnostics survive. Retrying the corrected setup
@@ -1384,7 +1392,7 @@ connection does not start Init, project tools, an Agent, or a saved Session. Ful
 **Requirement: Preserve useful project facts and retrieve relevant context.**
 
 - **Mnemoteca:** project/global persistent memory for preferences, project facts, and critical context.
-- **Init:** `wld init` / `/init` explores the project, confirms verification setup, writes context, stores memories, and
+- **Init:** `wld init` / `/init` explores the project, confirms verification and fresh-worktree setup commands, writes context, stores memories, and
   records initialization. It does not search for fake test seams or require a test-seam risk report; that audit is an
   explicit bundled `/test-seams` Prompt Template invocation.
 - **Sleep:** `wld sleep` / `/sleep` runs memory and context cleanup prompts.
@@ -1472,8 +1480,14 @@ and failures remain distinct.
 
 **Target: concise project briefing.** Provide compressed project context where useful without flooding every prompt.
 
+**Requirement: Discover and retain both project commands during Init.** Init discovers repository-supported verification
+and fresh-worktree setup candidates, asks the user to confirm each (including no setup required), and saves them in
+`.wld/settings.json` through one tool that accepts either command or both. Omitted commands remain unchanged. Discovery
+must not run installers. Init cannot claim completion until both choices are saved. Explicit `/init` may run again for
+an older initialized project whose setup command is missing.
+
 **Requirement: Confirm Init's project file changes mechanically.** Before starting the Init Agent or writing its project
-files, the command host asks permission and lists `.wld/settings.json` (project settings and verification command),
+files, the command host asks permission and lists `.wld/settings.json` (project settings, verification command, and worktree setup command),
 `docs/domain-language.md` (project glossary), and `.gitignore` (managed runtime ignore rules that preserve unrelated
 rules). The prompt also discloses ignored internal state, indexing, and project memories. This confirmation applies to
 CLI Init, `/init`, startup, and Tutorial Init entry points. Choosing No, canceling, or lacking a supported confirmation

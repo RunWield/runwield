@@ -104,7 +104,7 @@ export async function captureWorktreeProjectContext(root: string, targetRef: str
         files.push({
             path,
             content,
-            ...(await isOwnedProjectContext(root, path) ? { sourceDigest: await digest(source) } : {}),
+            ...((await isOwnedProjectContext(root, path)) ? { sourceDigest: await digest(source) } : {}),
         });
     }
     const ignore = await readProjectContextFile(root, ".gitignore");
@@ -153,7 +153,7 @@ async function readContextReceipt(root: string): Promise<ContextReceipt> {
         const receipt: ContextReceipt = JSON.parse(await fsReadFile(receiptPath(root), "utf8"));
         return { files: Array.isArray(receipt?.files) ? receipt.files : [] };
     } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT" || error instanceof SyntaxError) {
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT") || error instanceof SyntaxError) {
             return { files: [] };
         }
         throw error;
@@ -167,9 +167,11 @@ export async function recordedProjectContextPaths(root: string): Promise<string[
     for (const path of PROJECT_CONTEXT_PATHS) {
         const file = receipt.files.find((entry) => entry?.path === path);
         if (
-            typeof file?.digest === "string" && /^[a-f0-9]{64}$/.test(file.digest) &&
-            await readProjectContextFile(root, path) !== null
-        ) paths.push(path);
+            typeof file?.digest === "string" &&
+            /^[a-f0-9]{64}$/.test(file.digest) &&
+            (await readProjectContextFile(root, path)) !== null
+        )
+            paths.push(path);
     }
     return paths;
 }
@@ -187,11 +189,11 @@ export async function captureValidationSettingsWrite(executionRoot: string): Pro
     const path = ".wld/settings.json";
     const before = await readProjectContextFile(primaryRoot, path);
     const head = await git(primaryRoot, ["rev-parse", "HEAD"]);
-    const ownedPrimary = head.code === 0 && (
-        before === await readProjectContextRevision(primaryRoot, "HEAD", path) ||
-        await isOwnedProjectContext(primaryRoot, path) ||
-        await isUnchangedTransferredSource(primaryRoot, executionRoot, path)
-    );
+    const ownedPrimary =
+        head.code === 0 &&
+        (before === (await readProjectContextRevision(primaryRoot, "HEAD", path)) ||
+            (await isOwnedProjectContext(primaryRoot, path)) ||
+            (await isUnchangedTransferredSource(primaryRoot, executionRoot, path)));
     return { primaryRoot, executionRoot, before, ownedPrimary };
 }
 
@@ -200,23 +202,38 @@ interface SettingValues {
     [key: string]: SettingValue;
 }
 
-function onlyCommandChanged(before: string | null, after: string, command: string): boolean {
+type ProjectCommandKey = "verification_command" | "worktree_setup_command";
+
+/** The exact normalized bytes written by the settings API, for durable host-write intent. */
+export function projectCommandSettingsContent(before: string | null, command: string, key: ProjectCommandKey): string {
+    const settings = parseJsonc(before ?? "{}") as SettingValues;
+    if (!settings || Array.isArray(settings) || typeof settings !== "object") {
+        throw new Error("Project settings must be a JSON object before saving a command.");
+    }
+    return JSON.stringify({ ...settings, [key]: command }, null, 2);
+}
+
+function onlyCommandChanged(before: string | null, after: string, command: string, key: ProjectCommandKey): boolean {
     const previous = parseJsonc(before ?? "{}") as SettingValues;
     const current = parseJsonc(after) as SettingValues;
-    if (current.verification_command !== command) return false;
-    delete previous.verification_command;
-    delete current.verification_command;
+    if (current[key] !== command) return false;
+    delete previous[key];
+    delete current[key];
     return JSON.stringify(previous) === JSON.stringify(current);
 }
 
 /** Retain the host-written command's provenance without replacing other context receipts. */
-export async function recordValidationSettingsWrite(snapshot: ValidationSettingsWrite, command: string): Promise<void> {
+export async function recordValidationSettingsWrite(
+    snapshot: ValidationSettingsWrite,
+    command: string,
+    key: ProjectCommandKey = "verification_command",
+): Promise<void> {
     const path = ".wld/settings.json";
     const execution = await readProjectContextFile(snapshot.executionRoot, path);
     if (execution === null) return;
     const primary = await readProjectContextFile(snapshot.primaryRoot, path);
-    const sourceOwned = snapshot.ownedPrimary && primary !== null &&
-        onlyCommandChanged(snapshot.before, primary, command);
+    const sourceOwned =
+        snapshot.ownedPrimary && primary !== null && onlyCommandChanged(snapshot.before, primary, command, key);
     const receipt = await readContextReceipt(snapshot.executionRoot);
     receipt.files = receipt.files.filter((file) => file?.path !== path);
     receipt.files.push({
@@ -249,7 +266,7 @@ export async function isTransferredProjectContext(root: string, path: string, re
     try {
         receipt = JSON.parse(await fsReadFile(receiptPath(root), "utf8"));
     } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT" || error instanceof SyntaxError) {
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT") || error instanceof SyntaxError) {
             return false;
         }
         throw error;
@@ -257,14 +274,14 @@ export async function isTransferredProjectContext(root: string, path: string, re
     const recorded = Array.isArray(receipt?.files) ? receipt.files.find((file) => file?.path === path) : undefined;
     if (typeof recorded?.digest !== "string") return false;
     const content = ref ? await readProjectContextRevision(root, ref, path) : await readProjectContextFile(root, path);
-    return content !== null && await digest(content) === recorded.digest;
+    return content !== null && (await digest(content)) === recorded.digest;
 }
 
 /** Transfer identity alone does not prove that RunWield authored the copied edits. */
 export async function isOwnedProjectContext(root: string, path: string): Promise<boolean> {
     const receipt = await readContextReceipt(root);
     const file = receipt.files.find((entry) => entry?.path === path);
-    return file?.owned === true && await isTransferredProjectContext(root, path);
+    return file?.owned === true && (await isTransferredProjectContext(root, path));
 }
 
 /** Remember successful Init output without copying or changing the output files. */
@@ -291,7 +308,7 @@ export async function isUnchangedTransferredSource(
     try {
         receipt = JSON.parse(await fsReadFile(receiptPath(executionRoot), "utf8"));
     } catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT" || error instanceof SyntaxError) {
+        if ((error instanceof Error && "code" in error && error.code === "ENOENT") || error instanceof SyntaxError) {
             return false;
         }
         throw error;
@@ -300,5 +317,5 @@ export async function isUnchangedTransferredSource(
     const expected = file?.sourceDigest;
     if (typeof expected !== "string") return false;
     const content = await readProjectContextFile(root, path);
-    return content !== null && await digest(content) === expected;
+    return content !== null && (await digest(content)) === expected;
 }

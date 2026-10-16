@@ -26,7 +26,7 @@ export async function confirmInitFiles(options: InitConsentOptions): Promise<boo
         { value: "no", label: "No, stop initialization" },
     ];
     if (options.uiAPI?.promptSelect) {
-        return await options.uiAPI.promptSelect(INIT_FILE_CONFIRMATION, choices) === "yes";
+        return (await options.uiAPI.promptSelect(INIT_FILE_CONFIRMATION, choices)) === "yes";
     }
     if (options.sessionRuntime && options.sessionId) {
         const answer = await options.sessionRuntime.requestInteraction(options.sessionId, {

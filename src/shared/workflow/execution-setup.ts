@@ -12,7 +12,22 @@ import { stripRuntimeFields } from "./controller-state.ts";
 import { platform } from "node:process";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { spawnForegroundShell } from "../foreground-process.ts";
-import { getExactProjectCustomSetting } from "../settings.js";
+import {
+    getCustomSetting,
+    getExactProjectCustomSetting,
+    setCustomSetting,
+    setExactProjectCustomSetting,
+} from "../settings.js";
+import {
+    captureValidationSettingsWrite,
+    recordValidationSettingsWrite,
+    type ValidationSettingsWrite,
+    readProjectContextFile,
+    readProjectContextRevision,
+    isTransferredProjectContext,
+    projectCommandSettingsContent,
+    recordedProjectContextPaths,
+} from "../worktree-project-context.ts";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import type { HostedSession } from "../session/hosted-session.js";
 import { requestHostedSessionInteraction, RuntimeInteractionTypes } from "../session/session-runtime-interactions.js";
@@ -29,6 +44,13 @@ interface SetupLifecyclePlan {
     expected: string;
 }
 
+interface SetupSettingsWrite {
+    ownership: ValidationSettingsWrite;
+    executionBefore: string | null;
+    executionAfter: string;
+    primaryAfter: string;
+}
+
 interface SetupReceipt {
     state: "pending" | "ready" | "prepared";
     command: string;
@@ -38,6 +60,8 @@ interface SetupReceipt {
     index: string;
     checkpointTree?: string;
     lifecyclePlan?: SetupLifecyclePlan;
+    settingsWrite?: SetupSettingsWrite;
+    settingsContent?: string | null;
 }
 
 function receiptPath(cwd: string): string {
@@ -94,22 +118,28 @@ async function hasCommitHooks(cwd: string): Promise<boolean> {
     return false;
 }
 
-async function selectSetupCommand(session: HostedSession, cwd: string): Promise<string | null> {
-    const configured = getExactProjectCustomSetting("worktree_setup_command", cwd);
-    if (typeof configured === "string") return configured.trim();
+interface SetupSelection {
+    command: string;
+    confirmed: boolean;
+}
+
+async function selectSetupCommand(session: HostedSession, cwd: string): Promise<SetupSelection | null> {
+    const exact = getExactProjectCustomSetting("worktree_setup_command", cwd);
+    const configured = typeof exact === "string" ? exact : getCustomSetting("worktree_setup_command", "project", cwd);
+    if (typeof configured === "string") return { command: configured.trim(), confirmed: false };
     if (!(await hasCommitHooks(cwd))) return null;
     const response = await requestHostedSessionInteraction(
         session,
         {
             type: RuntimeInteractionTypes.TEXT,
-            prompt: `This worktree has Git commit hooks. Enter the project's approved setup command to prepare their dependencies in ${cwd}, or leave empty if it is already ready. Cancel to pause execution. RunWield will not choose an installer automatically.`,
+            prompt: `This worktree has Git commit hooks. Enter the project's approved setup command to prepare their dependencies in ${cwd}, or leave empty if this project needs no setup in fresh worktrees. Your answer will be saved in .wld/settings.json for future worktrees. Cancel to pause execution. RunWield will not choose an installer automatically.`,
             allowEmpty: true,
         },
         undefined,
         session.getManagedOperationCapability?.() || null,
     );
     if (response.outcome !== "text") throw new Error("Worktree setup was not confirmed; no Agent work began.");
-    return String(response.value || "").trim();
+    return { command: String(response.value || "").trim(), confirmed: true };
 }
 
 async function snapshot(cwd: string) {
@@ -117,10 +147,11 @@ async function snapshot(cwd: string) {
         head: await git(cwd, ["rev-parse", "HEAD"]),
         tree: await captureWorktreeTree(cwd),
         index: await git(cwd, ["diff", "--cached", "--binary", "--no-ext-diff"]),
+        settingsContent: await readProjectContextFile(cwd, ".wld/settings.json"),
     };
 }
 
-async function assertSetupFilesUnchanged(cwd: string, receipt: SetupReceipt): Promise<void> {
+async function assertSetupFilesUnchanged(cwd: string, receipt: SetupReceipt) {
     const current = await snapshot(cwd);
     const allowedTrees = [receipt.tree, ...(receipt.checkpointTree ? [receipt.checkpointTree] : [])];
     if (receipt.state === "ready" && receipt.lifecyclePlan && !allowedTrees.includes(current.tree)) {
@@ -137,8 +168,19 @@ async function assertSetupFilesUnchanged(cwd: string, receipt: SetupReceipt): Pr
             }
         }
     }
+    if (
+        receipt.settingsWrite &&
+        !allowedTrees.includes(current.tree) &&
+        (await git(cwd, ["diff", "--name-only", receipt.tree, current.tree])) === ".wld/settings.json" &&
+        (await readProjectContextFile(cwd, ".wld/settings.json")) === receipt.settingsWrite.executionAfter
+    ) {
+        allowedTrees.push(current.tree);
+    }
     const preparationStaged = receipt.state === "ready" && allowedTrees.includes(await git(cwd, ["write-tree"]));
     if (
+        (receipt.settingsContent !== undefined &&
+            current.settingsContent !== receipt.settingsContent &&
+            current.settingsContent !== receipt.settingsWrite?.executionAfter) ||
         current.head !== receipt.head ||
         !allowedTrees.includes(current.tree) ||
         (current.index !== receipt.index && !preparationStaged)
@@ -148,27 +190,85 @@ async function assertSetupFilesUnchanged(cwd: string, receipt: SetupReceipt): Pr
                 "The files are preserved; reconcile those changes before retrying. They will not be committed as preparation.",
         );
     }
+    return current;
+}
+
+/** Finish only the exact recorded host write, including after a process interruption. */
+async function finishSettingsWrite(cwd: string, receipt: SetupReceipt): Promise<SetupReceipt> {
+    const intent = receipt.settingsWrite;
+    if (!intent) return receipt;
+    await assertSetupFilesUnchanged(cwd, receipt);
+    const path = ".wld/settings.json";
+    const primary = await readProjectContextFile(intent.ownership.primaryRoot, path);
+    const execution = await readProjectContextFile(cwd, path);
+    if (
+        (primary !== intent.ownership.before && primary !== intent.primaryAfter) ||
+        (execution !== intent.executionBefore && execution !== intent.executionAfter)
+    ) {
+        throw new Error(
+            "Project settings changed during setup command saving; files are preserved and execution remains paused.",
+        );
+    }
+    if (primary !== intent.primaryAfter)
+        await setCustomSetting("worktree_setup_command", receipt.command, "project", cwd);
+    if (execution !== intent.executionAfter)
+        setExactProjectCustomSetting("worktree_setup_command", receipt.command, cwd);
+    if (
+        (await readProjectContextFile(intent.ownership.primaryRoot, path)) !== intent.primaryAfter ||
+        (await readProjectContextFile(cwd, path)) !== intent.executionAfter
+    ) {
+        throw new Error(
+            "Project settings changed during setup command saving; files are preserved and execution remains paused.",
+        );
+    }
+    await recordValidationSettingsWrite(intent.ownership, receipt.command, "worktree_setup_command");
+    // Revalidate after asynchronous settings and provenance writes. Never accept a
+    // fresh unrestricted snapshot that could absorb edits made while saving.
+    const current = await assertSetupFilesUnchanged(cwd, receipt);
+    const next = { ...receipt, settingsWrite: undefined, ...current };
+    await writeReceipt(cwd, next);
+    return next;
+}
+
+async function captureSettingsWrite(cwd: string, command: string): Promise<SetupSettingsWrite> {
+    const path = ".wld/settings.json";
+    const executionBefore = await readProjectContextFile(cwd, path);
+    if (
+        executionBefore !== (await readProjectContextRevision(cwd, "HEAD", path)) &&
+        !(await isTransferredProjectContext(cwd, path))
+    ) {
+        throw new Error(
+            "Worktree settings contain unrelated edits; they are preserved and will not be committed as preparation.",
+        );
+    }
+    const ownership = await captureValidationSettingsWrite(cwd);
+    return {
+        ownership,
+        executionBefore,
+        executionAfter: projectCommandSettingsContent(executionBefore, command, "worktree_setup_command"),
+        primaryAfter: projectCommandSettingsContent(ownership.before, command, "worktree_setup_command"),
+    };
 }
 
 /** Run only explicit project configuration or an interactive answer, before lifecycle writes or Git hooks. */
 export async function prepareExecutionSetup(session: HostedSession, cwd: string): Promise<void> {
     await enterProjectRuntime(cwd);
-    const previous = await readExecutionSetup(cwd);
+    const saved = await readExecutionSetup(cwd);
+    const previous = saved ? await finishSettingsWrite(cwd, saved) : null;
     if (previous?.state === "prepared") return;
     const interactionId = `execution-setup:${crypto.randomUUID()}`;
     const controller = new AbortController();
     session.addActiveInteraction(interactionId, { abortController: controller });
     try {
         if (previous) await assertSetupFilesUnchanged(cwd, previous);
-        let command: string | null;
+        let selection: SetupSelection | null;
         if (previous) {
-            // Retry is also the repair path for a mistyped or obsolete command. Keep
-            // corrections in runtime state so they cannot become unrelated source edits.
+            // Retry is also the repair path for a mistyped or obsolete command.
             const response = await requestHostedSessionInteraction(
                 session,
                 {
                     type: RuntimeInteractionTypes.TEXT,
-                    prompt: `Worktree setup did not complete in ${cwd}. Confirm or correct the setup command to retry. Cancel to keep execution paused.`,
+                    prompt: `Worktree setup did not complete in ${cwd}. Confirm or correct the setup command to retry and save it in .wld/settings.json. Empty means no setup is required for fresh worktrees. Cancel to keep execution paused.`,
                     defaultValue: previous.command,
                     allowEmpty: true,
                 },
@@ -178,18 +278,25 @@ export async function prepareExecutionSetup(session: HostedSession, cwd: string)
             if (response.outcome !== "text") {
                 throw new Error("Worktree setup retry was not confirmed; execution remains paused.");
             }
-            command = String(response.value || "").trim();
+            selection = { command: String(response.value || "").trim(), confirmed: true };
         } else {
-            command = await selectSetupCommand(session, cwd);
+            selection = await selectSetupCommand(session, cwd);
         }
         if (controller.signal.aborted) throw new Error("Worktree setup canceled; no Agent work began.");
-        if (command === null) return;
-        const receipt: SetupReceipt = previous
-            ? { ...previous, command, state: "pending", ...(await snapshot(cwd)) }
-            : { state: "pending", command, commitToken: crypto.randomUUID(), ...(await snapshot(cwd)) };
-        // A failed setup must not become the next attempt's baseline or absorb user edits.
-        await assertSetupFilesUnchanged(cwd, receipt);
+        if (selection === null) return;
+        const { command } = selection;
+        if (previous) await assertSetupFilesUnchanged(cwd, previous);
+        let receipt: SetupReceipt = {
+            state: "pending",
+            command,
+            commitToken: previous?.commitToken ?? crypto.randomUUID(),
+            ...(await snapshot(cwd)),
+            ...(selection.confirmed ? { settingsWrite: await captureSettingsWrite(cwd, command) } : {}),
+        };
+        // Persist the exact command-only write before touching either settings file.
+        // A crash can then complete it without adopting unrelated settings edits.
         await writeReceipt(cwd, receipt);
+        receipt = await finishSettingsWrite(cwd, receipt);
         if (!command) {
             await writeReceipt(cwd, { ...receipt, state: "ready" });
             if (controller.signal.aborted) throw new Error("Worktree setup canceled; no Agent work began.");
@@ -225,8 +332,9 @@ export async function completeExecutionSetup(cwd: string): Promise<void> {
 
 /** Check before Plan reconciliation can normalize changes left by a failed hook. */
 export async function assertExecutionSetupRetrySafe(cwd: string): Promise<void> {
-    const receipt = await readExecutionSetup(cwd);
-    if (!receipt || receipt.state === "prepared") return;
+    const saved = await readExecutionSetup(cwd);
+    if (!saved || saved.state === "prepared") return;
+    const receipt = await finishSettingsWrite(cwd, saved);
     // The unique token is written before Git invokes hooks and included in the
     // commit. Hooks may format those files, so prove the owned commit and path
     // boundary rather than demanding the pre-hook bytes survived unchanged.
@@ -257,7 +365,12 @@ export async function assertExecutionSetupRetrySafe(cwd: string): Promise<void> 
 export async function recordExecutionSetupCheckpoint(cwd: string): Promise<string | undefined> {
     const receipt = await readExecutionSetup(cwd);
     if (!receipt) return undefined;
-    await writeReceipt(cwd, { ...receipt, checkpointTree: await captureWorktreeTree(cwd) });
+    if (receipt.state === "prepared") return receipt.commitToken;
+    const forcedPaths: string[] = [];
+    for (const path of await recordedProjectContextPaths(cwd)) {
+        if (await isTransferredProjectContext(cwd, path)) forcedPaths.push(path);
+    }
+    await writeReceipt(cwd, { ...receipt, checkpointTree: await captureWorktreeTree(cwd, forcedPaths) });
     return receipt.commitToken;
 }
 

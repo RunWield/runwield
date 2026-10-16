@@ -10,7 +10,15 @@ import { removeWorktreeGitArtifacts } from "../worktree.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { resolveProjectRuntimeLayout } from "../project-runtime-layout.ts";
 import { buildEffectProver } from "./transition-recovery.ts";
-import { readExecutionSetup } from "./execution-setup.ts";
+import { prepareExecutionSetup, readExecutionSetup } from "./execution-setup.ts";
+
+import { createTestWorktreeAttempt } from "../worktree-test-helpers.ts";
+import { getExactProjectCustomSetting, setExactProjectCustomSetting } from "../settings.js";
+import {
+    captureValidationSettingsWrite,
+    recordValidationSettingsWrite,
+    projectCommandSettingsContent,
+} from "../worktree-project-context.ts";
 
 const repo = defineCommittedGitFixture();
 const planName = "dependency-hook";
@@ -20,6 +28,7 @@ async function fixture(
         failure?: boolean;
         mutation?: boolean;
         configured?: boolean;
+        ignoredSettings?: boolean;
         hookFailure?: boolean;
         hookMutation?: boolean;
         hookFormat?: boolean;
@@ -28,7 +37,7 @@ async function fixture(
     const root = await repo.checkout({ prefix: "execution-setup-" });
     await mkdir(join(root, ".hooks"));
     await mkdir(join(root, ".wld"), { recursive: true });
-    await writeFile(join(root, ".gitignore"), "node_modules/\n");
+    await writeFile(join(root, ".gitignore"), "node_modules/\n" + (options.ignoredSettings ? ".wld/\n" : ""));
     await writeFile(
         join(root, ".wld/settings.json"),
         JSON.stringify(
@@ -171,7 +180,7 @@ test("unconfigured hooks require a setup answer and cancellation cannot start ex
     }
 });
 
-test("a failed command can be corrected on retry without editing or committing project files", async () => {
+test("a failed command correction is saved and included in the single preparation commit", async () => {
     const f = await fixture({ configured: false });
     try {
         f.session.setInteractionAdapter({
@@ -184,6 +193,11 @@ test("a failed command can be corrected on retry without editing or committing p
         assert.equal(workflow.executionCwd, attempt.path);
         assert.equal(await git(attempt.path, ["rev-list", "--count", `${attempt.baseCommit}..HEAD`]), "1");
         assert.equal((await readExecutionSetup(attempt.path))?.command, "bun setup.cjs");
+        assert.equal(getExactProjectCustomSetting("worktree_setup_command", f.root), "bun setup.cjs");
+        assert.equal(
+            JSON.parse(await git(attempt.path, ["show", "HEAD:.wld/settings.json"])).worktree_setup_command,
+            "bun setup.cjs",
+        );
     } finally {
         await f.cleanup();
     }
@@ -334,6 +348,143 @@ test("declaring existing setup still preserves a failed hook for command-based r
         f.session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "text", value: "bun setup.cjs" }) });
         await f.start();
         assert.equal(await git(attempt.path, ["rev-list", "--count", `${attempt.baseCommit}..HEAD`]), "1");
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("a confirmed setup command is reused by older and fresh worktrees while preserving verification", async () => {
+    const f = await fixture({ configured: false });
+    try {
+        const older = await createTestWorktreeAttempt({ projectRoot: f.root, planName: "older" });
+        setExactProjectCustomSetting("verification_command", "bun run ci", f.root);
+        const workflow = await f.start();
+        assert.equal(getExactProjectCustomSetting("worktree_setup_command", f.root), "bun setup.cjs");
+        assert.equal(getExactProjectCustomSetting("verification_command", f.root), "bun run ci");
+        assert.equal(getExactProjectCustomSetting("verification_command", workflow.executionCwd!), "bun run ci");
+        const fresh = await createTestWorktreeAttempt({ projectRoot: f.root, planName: "fresh" });
+        f.session.setInteractionAdapter({
+            requestInteraction: () => {
+                throw new Error("Saved setup must not prompt again");
+            },
+        });
+        for (const entry of [older, fresh]) {
+            await prepareExecutionSetup(f.session, entry.path);
+            assert.equal((await readExecutionSetup(entry.path))?.command, "bun setup.cjs");
+            assert.equal(await readFile(join(entry.path, "node_modules/runs"), "utf8"), "run\n");
+        }
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("an explicit checkout setup override wins over the saved project default", async () => {
+    const f = await fixture({ configured: false });
+    try {
+        const entry = await createTestWorktreeAttempt({ projectRoot: f.root, planName: "override" });
+        setExactProjectCustomSetting("worktree_setup_command", "bun missing.cjs", f.root);
+        setExactProjectCustomSetting("worktree_setup_command", "", entry.path);
+        f.session.setInteractionAdapter({
+            requestInteraction: () => {
+                throw new Error("Explicit override must not prompt");
+            },
+        });
+        await prepareExecutionSetup(f.session, entry.path);
+        assert.equal((await readExecutionSetup(entry.path))?.command, "");
+        assert.equal(getExactProjectCustomSetting("worktree_setup_command", f.root), "bun missing.cjs");
+    } finally {
+        await f.cleanup();
+    }
+});
+
+test("saving setup cannot adopt unrelated settings edits in an existing worktree", async () => {
+    const f = await fixture({ configured: false });
+    try {
+        const entry = await createTestWorktreeAttempt({ projectRoot: f.root, planName: "dirty-settings" });
+        setExactProjectCustomSetting("theme", "personal-edit", entry.path);
+        const before = await readFile(join(entry.path, ".wld/settings.json"), "utf8");
+        await assert.rejects(() => prepareExecutionSetup(f.session, entry.path), /unrelated edits/);
+        assert.equal(await readFile(join(entry.path, ".wld/settings.json"), "utf8"), before);
+        assert.equal(getExactProjectCustomSetting("worktree_setup_command", f.root), undefined);
+        assert.equal(await readExecutionSetup(entry.path), null);
+    } finally {
+        await f.cleanup();
+    }
+});
+
+for (const phase of ["intent", "primary", "execution", "provenance", "unrelated-edit"] as const) {
+    test(`interrupted setup command persistence recovers only its recorded settings write: ${phase}`, async () => {
+        const f = await fixture({ configured: false });
+        try {
+            f.session.setInteractionAdapter({
+                requestInteraction: () => ({ outcome: "text", value: "bun missing.cjs" }),
+            });
+            await assert.rejects(f.start, /Worktree setup failed/);
+            const [entry] = await listEntries(f.root);
+            const receipt = await readExecutionSetup(entry.path);
+            assert(receipt);
+            const command = "bun setup.cjs";
+            const ownership = await captureValidationSettingsWrite(entry.path);
+            const executionBefore = await readFile(join(entry.path, ".wld/settings.json"), "utf8");
+            const settingsWrite = {
+                ownership,
+                executionBefore,
+                executionAfter: projectCommandSettingsContent(executionBefore, command, "worktree_setup_command"),
+                primaryAfter: projectCommandSettingsContent(ownership.before, command, "worktree_setup_command"),
+            };
+            await writeFile(
+                join(resolveProjectRuntimeLayout(entry.path).selected.internalRoot, "execution-setup.json"),
+                JSON.stringify({ ...receipt, command, settingsWrite }),
+            );
+            if (phase !== "intent") setExactProjectCustomSetting("worktree_setup_command", command, f.root);
+            if (["execution", "provenance", "unrelated-edit"].includes(phase)) {
+                setExactProjectCustomSetting("worktree_setup_command", command, entry.path);
+            }
+            if (phase === "provenance")
+                await recordValidationSettingsWrite(ownership, command, "worktree_setup_command");
+            if (phase === "unrelated-edit") {
+                setExactProjectCustomSetting("theme", "user-edit", entry.path);
+                await assert.rejects(f.start, /will not be committed as preparation/);
+                assert.equal(getExactProjectCustomSetting("theme", entry.path), "user-edit");
+                assert.equal(await git(entry.path, ["rev-parse", "HEAD"]), entry.baseCommit);
+            } else {
+                f.session.setInteractionAdapter({ requestInteraction: () => ({ outcome: "text", value: command }) });
+                await f.start();
+                assert.equal((await readExecutionSetup(entry.path))?.state, "prepared");
+                assert.equal(getExactProjectCustomSetting("worktree_setup_command", f.root), command);
+                assert.equal(await git(entry.path, ["rev-list", "--count", `${entry.baseCommit}..HEAD`]), "1");
+            }
+        } finally {
+            await f.cleanup();
+        }
+    });
+}
+
+test("ignored setup settings survive a postcommit receipt interruption without a duplicate preparation commit", async () => {
+    const f = await fixture({ configured: false, ignoredSettings: true });
+    try {
+        const workflow = await f.start();
+        const cwd = workflow.executionCwd!;
+        const receipt = await readExecutionSetup(cwd);
+        assert(receipt);
+        const head = await git(cwd, ["rev-parse", "HEAD"]);
+        assert.equal(
+            JSON.parse(await git(cwd, ["show", "HEAD:.wld/settings.json"])).worktree_setup_command,
+            "bun setup.cjs",
+        );
+        await writeFile(
+            join(resolveProjectRuntimeLayout(cwd).selected.internalRoot, "execution-setup.json"),
+            JSON.stringify({ ...receipt, state: "ready" }),
+        );
+        f.session.setInteractionAdapter({
+            requestInteraction: () => {
+                throw new Error("A committed preparation must not rerun setup");
+            },
+        });
+        await f.start();
+        assert.equal(await git(cwd, ["rev-parse", "HEAD"]), head);
+        assert.equal((await readExecutionSetup(cwd))?.state, "prepared");
+        assert.equal(await readFile(join(cwd, "node_modules/runs"), "utf8"), "run\n");
     } finally {
         await f.cleanup();
     }
