@@ -11,7 +11,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
 import { setCustomSetting } from "../settings.js";
 import { loadPlan, parsePlanFrontMatter, savePlan } from "../../plan-store.js";

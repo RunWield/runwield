@@ -1,8 +1,9 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, realpath as fsRealpath, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { findPlansByParent, loadPlan, savePlan, updatePlanFrontMatter } from "../../plan-store.js";
 import { defineCommittedGitFixture, git } from "../git-test-fixture.ts";
 import { createGitPort } from "../git-port.ts";

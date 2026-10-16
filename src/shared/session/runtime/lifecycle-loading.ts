@@ -12,7 +12,7 @@ import { createReplayEvents as createProjectedReplayEvents } from ".././session-
 import { requestHostedSessionInteraction } from ".././session-runtime-interactions.js";
 import { sessionDirForRoot } from ".././file-session-storage.ts";
 import { recordSegmentLineageEvidence } from ".././workflow-context-session.js";
-import { isAbsolute } from "@std/path";
+import { isAbsolute } from "node:path";
 
 import { enterGitProjectRuntime, isRuntimeRootSessionManager } from "./support.ts";
 import type { LoadSessionOptions } from "./types.ts";
@@ -29,7 +29,12 @@ import type { RuntimeTurns } from "./turns.ts";
 
 type RuntimeEventsDependency = Pick<
     RuntimeEvents,
-    "attachRuntimeEventSink" | "consumePendingReplayEvents" | "emitSessionEvent" | "replacePendingReplayEvents"
+    | "attachRuntimeEventSink"
+    | "consumePendingReplayEvents"
+    | "emitSessionEvent"
+    | "replacePendingReplayEvents"
+    | "beginBusyOperation"
+    | "endBusyOperation"
 >;
 type RuntimeManagedOperationsDependency = Pick<
     RuntimeManagedOperations,
@@ -108,11 +113,13 @@ export class RuntimeLifecycleLoading {
             if (managed) {
                 await this.turns.rollManagedSessionSegment(oldSession.id, {
                     kind: "execution",
-                    continuation: JSON.parse(JSON.stringify({
-                        kind: "execution",
-                        activeWorkflow: workflow,
-                        executionOwner: executionAgent,
-                    })),
+                    continuation: JSON.parse(
+                        JSON.stringify({
+                            kind: "execution",
+                            activeWorkflow: workflow,
+                            executionOwner: executionAgent,
+                        }),
+                    ),
                     expectedGeneration: managed.generation,
                 });
             }
@@ -175,6 +182,36 @@ export class RuntimeLifecycleLoading {
             throw new Error("SessionRuntime.loadSession requires a session id");
         }
         await enterGitProjectRuntime(options.cwd);
+        if (this.services.remotePersistence) {
+            const hostedSession = this.services.sessionHost.createSession({
+                id: crypto.randomUUID(),
+                cwd: options.cwd,
+                sessionManager: null,
+            });
+            this.events.beginBusyOperation(hostedSession.id);
+            try {
+                await this.services.remotePersistence.resume(hostedSession, options.sessionId);
+                if (options.modelOverride) {
+                    hostedSession.mergePendingManagedTurnIntent({ model: options.modelOverride, manualModel: true });
+                }
+                this.events.attachRuntimeEventSink(hostedSession);
+                this.events.emitSessionEvent(hostedSession.id, {
+                    type: RuntimeEventTypes.SESSION_LOADED,
+                    cwd: hostedSession.cwd,
+                });
+                return {
+                    sessionId: hostedSession.id,
+                    cwd: hostedSession.cwd,
+                    sessionManagerId: options.sessionId,
+                    replayEvents: [],
+                };
+            } catch (error) {
+                await this.services.sessionHost.disposeSession(hostedSession.id);
+                throw error;
+            } finally {
+                this.events.endBusyOperation(hostedSession.id);
+            }
+        }
         const ownerCoordinationStore = this.services.sessionStore;
         if (!ownerCoordinationStore) {
             throw new Error("Session Manager load is blocked: session_store_unavailable");
@@ -198,9 +235,7 @@ export class RuntimeLifecycleLoading {
         if (classified.kind === "managed") {
             if (classified.session) {
                 const managedSession = classified.session;
-                let inspected = ownerCoordinationStore.inspectSessionActivation(
-                    managedSession.runwieldSessionId,
-                );
+                let inspected = ownerCoordinationStore.inspectSessionActivation(managedSession.runwieldSessionId);
                 if (
                     ["uncertain", "reconcile_required"].includes(inspected.activation?.state || "") ||
                     (!inspected.generation && inspected.activation?.state === "uninitialized")
@@ -224,8 +259,8 @@ export class RuntimeLifecycleLoading {
                     const setupEvents = this.events.consumePendingReplayEvents(adopted.sessionId);
                     const replayEvents = sync.ok
                         ? setupEvents.concat(
-                            (sync.events || []).map((event) => createSessionRuntimeEvent(adopted.sessionId, event)),
-                        )
+                              (sync.events || []).map((event) => createSessionRuntimeEvent(adopted.sessionId, event)),
+                          )
                         : setupEvents;
                     this.events.replacePendingReplayEvents(adopted.sessionId, replayEvents);
                     return {
@@ -276,9 +311,10 @@ export class RuntimeLifecycleLoading {
                 parentSegmentId: managedSegment.lineageParentSegmentId,
                 parentPiSessionId: managedSegment.lineageParentPiSessionId,
                 lineageGroupKey: managedSegment.lineageGroupKey || managedSegment.segmentId,
-                kind: managedSegment.kind === "execution" || managedSegment.kind === "semantic_repair"
-                    ? managedSegment.kind
-                    : "planning",
+                kind:
+                    managedSegment.kind === "execution" || managedSegment.kind === "semantic_repair"
+                        ? managedSegment.kind
+                        : "planning",
             });
             agentName = await resolveResumeAgentName(sessionManager);
         } catch (error) {
@@ -323,11 +359,9 @@ export class RuntimeLifecycleLoading {
             });
             const setupEvents = this.events.consumePendingReplayEvents(hostedSession.id);
             const replayEvents = setupEvents.concat(
-                createProjectedReplayEvents(
-                    hostedSession.id,
-                    getRootSessionBranchEntries(sessionManager),
-                )
-                    .map((event) => createSessionRuntimeEvent(hostedSession.id, event)),
+                createProjectedReplayEvents(hostedSession.id, getRootSessionBranchEntries(sessionManager)).map(
+                    (event) => createSessionRuntimeEvent(hostedSession.id, event),
+                ),
             );
             this.events.replacePendingReplayEvents(hostedSession.id, replayEvents);
             this.events.emitSessionEvent(hostedSession.id, {

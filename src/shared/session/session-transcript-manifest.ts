@@ -4,7 +4,7 @@ import { stat as fsStat } from "node:fs/promises";
  * Aggregate non-mutating reader for segmented Session transcripts.
  */
 
-import { dirname, resolve } from "@std/path";
+import { dirname, resolve } from "node:path";
 import { readCatalogSafeRootSessionLocator } from "./root-session.js";
 import type { TutorialContextCandidate } from "./tutorial-context-session.ts";
 import {

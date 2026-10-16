@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -10,8 +11,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assert, assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { join } from "node:path";
 import { openOwnerCoordinationDatabase } from "../owner-coordination/database.js";
 import { registerProject } from "../owner-coordination/projects.js";
 import {

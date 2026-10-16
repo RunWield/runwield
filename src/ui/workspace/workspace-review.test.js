@@ -7,8 +7,8 @@ import { tmpdir } from "node:os";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
 import process from "node:process";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { encodeGuidedReviewMetadata } from "../../cmd/guided-review/protocol.ts";
 
 import { PLAN_UI_TOKEN_HEADER } from "../../constants.js";

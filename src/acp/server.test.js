@@ -16,9 +16,11 @@ import process from "node:process";
  * ACP protocol coverage over the real RunWield Session Runtime.
  */
 
-import { assert, assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes, assertThrows } from "../testing/assertions.ts";
 import { fauxAssistantMessage, fauxText, fauxToolCall, getSystemMessageText } from "@earendil-works/pi-ai";
-import { dirname, fromFileUrl, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import { savePlan } from "../plan-store.js";
 import { captureTranscriptEvidence } from "../shared/session/session-transcript-projection.js";

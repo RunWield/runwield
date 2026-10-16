@@ -16,7 +16,7 @@ import { mkdir as fsMkdir, rm as fsRm, writeFile as fsWriteFile } from "node:fs/
  * into the primary branch.
  */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 import {
     compareChildPlansByOrder,
     findPlansByParent,

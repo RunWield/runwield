@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { createCollaborationClient } from "./client.js";
 
 /**

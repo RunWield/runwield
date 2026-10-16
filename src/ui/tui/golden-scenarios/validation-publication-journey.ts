@@ -1,4 +1,5 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { ok as assert } from "node:assert/strict";
 
 const planName = "validation-publication-journey";
 const deliveredPath = "feature.txt";

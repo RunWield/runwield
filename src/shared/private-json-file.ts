@@ -21,15 +21,21 @@ function syncParent(path: string): void {
         } finally {
             closeSync(directory);
         }
-    } catch {
-        // Some platforms do not permit directory fsync. The atomic rename still
-        // prevents readers from observing a partially written JSON document.
+    } catch (error) {
+        const code = error instanceof Error && "code" in error ? error.code : undefined;
+        if (code === "EINVAL" || code === "ENOTSUP" || code === "EOPNOTSUPP") return;
+        if (process.platform === "win32" && (code === "EACCES" || code === "EPERM" || code === "EISDIR")) return;
+        throw error;
     }
 }
 
 /** Replace a JSON document without exposing a partial write to readers. */
 export function writeJsonAtomically<Value>(path: string, value: Value): void {
-    const text = `${JSON.stringify(value, null, 2)}\n`;
+    writeTextAtomically(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** Replace text durably using the same private and Windows-safe path as JSON. */
+export function writeTextAtomically(path: string, text: string): void {
     ensurePrivateDir(dirname(path));
     const temporaryPath = `${path}.tmp-${randomUUID()}`;
     const file = openSync(temporaryPath, "wx", 0o600);

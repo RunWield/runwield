@@ -67,6 +67,9 @@ export async function prepareClaudeCliCommand(request: ClaudeCliCommandRequest):
         selector,
         "--output-format",
         "stream-json",
+        "--input-format",
+        "stream-json",
+        "--replay-user-messages",
         "--verbose",
         "--include-partial-messages",
         "--no-session-persistence",
@@ -83,10 +86,7 @@ export async function prepareClaudeCliCommand(request: ClaudeCliCommandRequest):
         args.push("--mcp-config", mcpConfigPath);
     }
     const allowedToolNames = [
-        ...new Set([
-            ...CLAUDE_CLI_PROJECT_TOOL_NAMES,
-            ...(request.allowedToolNames || []),
-        ]),
+        ...new Set([...CLAUDE_CLI_PROJECT_TOOL_NAMES, ...(request.allowedToolNames || [])]),
     ].filter((name) => name.trim().length > 0);
     args.push("--allowedTools", ...allowedToolNames);
     return {

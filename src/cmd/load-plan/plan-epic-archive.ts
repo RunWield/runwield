@@ -17,7 +17,7 @@ import { runArchiveTransition } from "../../shared/workflow/state-transition.ts"
 import { formatArchiveRetentionNudge } from "../../shared/plan-archive-retention.ts";
 import { formatEpicProgressSummary } from "./plan-epic-children.ts";
 import { transitionFailureError } from "./transition-failure.ts";
-import { relative } from "@std/path";
+import { relative } from "node:path";
 import type { PlanFrontMatter } from "../../plan-store.js";
 import type { UiAPI } from "../../ui/tui/types.js";
 

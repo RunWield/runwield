@@ -1,6 +1,6 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import {
     createSessionRuntimeEvent,

@@ -1,7 +1,7 @@
 import process from "node:process";
 import { rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
 import { runPlansCommand } from "./index.ts";
 import { addEntry } from "../../shared/worktree-registry.js";

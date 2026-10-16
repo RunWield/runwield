@@ -9,8 +9,9 @@ import {
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertMatch, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname } from "@std/path";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { dirname } from "node:path";
 
 import {
     assertPublicationCandidateContainsTarget,

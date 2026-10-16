@@ -1,7 +1,7 @@
 /** @module shared/workspace-search-refresh */
 
 import { mkdir, realpath, writeFile } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getHomeDir } from "../constants.js";
 
 function refreshDirectory() {

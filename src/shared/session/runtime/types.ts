@@ -13,6 +13,7 @@ export type OwnerProcessKind = "workspace" | "tui" | "acp" | "test";
 export interface SessionRuntimeComposition {
     sessionHost: SessionHost;
     sessionStore: FileSessionStore | null;
+    remoteSessionControl?: import("../../remote/session-control-client.ts").RemoteSessionControl;
     ownsSessionStore?: boolean;
     ownerProcessKind: OwnerProcessKind;
     ownerInstanceId: string;
@@ -20,6 +21,7 @@ export interface SessionRuntimeComposition {
 
 export interface CreateSessionRuntimeOptions {
     sessionStore?: FileSessionStore | null;
+    remoteSessionControl?: import("../../remote/session-control-client.ts").RemoteSessionControl;
     ownerProcessKind?: OwnerProcessKind;
     ownerInstanceId?: string;
 }
@@ -164,11 +166,15 @@ export interface ManagedOperationRunFailure extends ManagedOperationFailure {
     turns: 0;
 }
 
-export function isManagedOperationFailure<T>(
-    value: T | ManagedOperationFailure,
-): value is ManagedOperationFailure {
-    return typeof value === "object" && value !== null && "ok" in value && value.ok === false &&
-        "error" in value && typeof value.error === "string";
+export function isManagedOperationFailure<T>(value: T | ManagedOperationFailure): value is ManagedOperationFailure {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        "ok" in value &&
+        value.ok === false &&
+        "error" in value &&
+        typeof value.error === "string"
+    );
 }
 
 export interface ActiveSessionInfoCacheEntry {

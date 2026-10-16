@@ -11,7 +11,8 @@ import { test } from "node:test";
  * model was handed, the `agent_changed` identity, the durable workflow owner,
  * and whether the Plan reached `implemented`.
  */
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     fauxAssistantMessage,
     fauxText,

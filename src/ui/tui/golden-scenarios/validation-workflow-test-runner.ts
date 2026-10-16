@@ -1,6 +1,6 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
 import { assertValidationEvidenceRejectsCounterfeits } from "../testing/validation-workflow-coverage.ts";
 import type { ValidationWorkflowBranchId } from "../testing/validation-workflow-coverage.ts";
 

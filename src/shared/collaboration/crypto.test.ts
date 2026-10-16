@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import {
     decryptJsonPayload,
     encryptJsonPayload,

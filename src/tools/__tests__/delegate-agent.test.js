@@ -9,8 +9,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 import { createDelegateAgentTool, diffDelegatedChangeSnapshot, resolveDelegatedToolNames } from "../delegate-agent.ts";
 import { loadSubAgentDefinition } from "../../shared/session/subagent-definitions.ts";
@@ -158,13 +158,7 @@ test("diffDelegatedChangeSnapshot compares the full pre/post workspace baseline"
 });
 
 test("diffDelegatedChangeSnapshot refuses attribution when HEAD changes", () => {
-    assertEquals(
-        diffDelegatedChangeSnapshot(
-            { head: "before", entries: [] },
-            { head: "after", entries: [] },
-        ),
-        null,
-    );
+    assertEquals(diffDelegatedChangeSnapshot({ head: "before", entries: [] }, { head: "after", entries: [] }), null);
 });
 
 test("delegated agent prompt includes inherited repository context placeholders", async () => {
@@ -209,15 +203,7 @@ test("delegate_agent returns child output without inheriting workflow tools", as
     const tool = createDelegateAgentTool({
         hostedSession,
         cwd: getCwd(),
-        parentTools: [
-            "read",
-            "web_search",
-            "web_fetch",
-            "web_docs_search",
-            "bash",
-            "task_completed",
-            "delegate_agent",
-        ],
+        parentTools: ["read", "web_search", "web_fetch", "web_docs_search", "bash", "task_completed", "delegate_agent"],
         runIsolatedAgentSession: (opts) => {
             calls.push(opts);
             return assistantDone();
@@ -328,6 +314,55 @@ test("delegate_agent rejects an unknown role before a child session starts", asy
     assertEquals(result.details.validRoles, ["general", "verification-adversary"]);
     assertStringIncludes(result.content[0].text, "verification-adversary");
     assertEquals(hostedSession.getDelegatedAgentLeaseState(), { readers: 0, writer: false });
+});
+
+test("delegate_agent limited to read mode advertises and accepts only read", async () => {
+    let sessionStarts = 0;
+    const hostedSession = new HostedSession({ id: "delegate-read-only", cwd: getCwd() });
+    const tool = createDelegateAgentTool({
+        hostedSession,
+        cwd: getCwd(),
+        parentTools: ["read", "edit"],
+        delegationModes: ["read"],
+        runIsolatedAgentSession: () => {
+            sessionStarts += 1;
+            return assistantDone();
+        },
+    });
+
+    assertEquals(tool.parameters.properties.mode.enum, ["read"]);
+    assertStringIncludes(tool.description, "Only mode 'read'");
+
+    const denied = await execute(tool, { mode: "write", brief: "Implement" });
+    assertEquals(sessionStarts, 0);
+    assertEquals(denied.isError, true);
+    assertEquals(denied.details.error, "delegation_mode_denied");
+    assertStringIncludes(denied.content[0].text, "Allowed: read");
+
+    const allowed = await execute(tool, { mode: "read", brief: "Investigate" });
+    assertEquals(allowed.details.ok, true);
+    assertEquals(sessionStarts, 1);
+    assertEquals(hostedSession.getDelegatedAgentLeaseState(), { readers: 0, writer: false });
+});
+
+test("delegate_agent limited to write mode refuses a role that reduces it to read", async () => {
+    let sessionStarts = 0;
+    const tool = createDelegateAgentTool({
+        hostedSession: new HostedSession({ id: "delegate-write-only", cwd: getCwd() }),
+        cwd: getCwd(),
+        parentTools: ["read", "edit"],
+        delegationModes: ["write"],
+        runIsolatedAgentSession: () => {
+            sessionStarts += 1;
+            return assistantDone();
+        },
+    });
+
+    assertEquals(tool.parameters.properties.mode.enum, ["write"]);
+    assertEquals(tool.description.includes("background"), false);
+    const denied = await execute(tool, { mode: "write", role: "verification-adversary", brief: "Attack" });
+    assertEquals(sessionStarts, 0);
+    assertEquals(denied.details.error, "delegation_mode_denied");
 });
 
 test("delegate_agent propagates parent model and thinking state", async () => {

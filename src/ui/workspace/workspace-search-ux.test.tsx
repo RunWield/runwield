@@ -1,6 +1,6 @@
 // @ts-nocheck: browser component tests provide a small DOM boundary.
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { Window } from "happy-dom";
 import { RunWieldSearchDialog } from "../design-system/components/react/RunWieldSearchPrimitives.tsx";
 import { fullSearchHref, resultHref, UnifiedWorkspaceSearch } from "./react/UnifiedWorkspaceSearch.tsx";

@@ -1,5 +1,5 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { AcpSessionMap } from "./session-map.ts";
 
 test("ACP identity remains bound to runwieldSessionId rather than the current piSessionId", () => {

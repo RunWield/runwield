@@ -4,7 +4,7 @@ import { mkdtemp as fsMkdtemp, rm as fsRm, stat as fsStat, writeFile as fsWriteF
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import {
     archiveWorkRecord,
     buildWorkRecordFileName,

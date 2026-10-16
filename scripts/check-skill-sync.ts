@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env bun
 import { readdir as fsReaddir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 
@@ -7,7 +7,7 @@ import process from "node:process";
  *
  * A skill derived from an Agent Definition records the hash of both files. When either side changes, this check fails
  * and names the side that moved, so the edit is carried across before the baseline is accepted again with
- * `deno task skills:sync:update`. A skill that stands on its own records no source and is held to its own hashes.
+ * `bun run skills:sync:update`. A skill that stands on its own records no source and is held to its own hashes.
  *
  * Every Markdown file in a published skill directory is tracked, not only its SKILL.md, and the file list comes from
  * disk rather than from the baseline. A support file added and never registered is still scanned and still reported.
@@ -20,7 +20,7 @@ import process from "node:process";
  * opts out.
  */
 
-import { fromFileUrl } from "@std/path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const BASELINE_PATH = new URL("./skill-sync-baseline.json", import.meta.url);
 const REPO_ROOT = new URL("../", import.meta.url);
@@ -133,7 +133,7 @@ export function formatDrift(drift: SkillSyncDrift[]): string {
         "Published skills no longer match the baseline:",
         ...lines,
         "",
-        "Review each file above, then run: deno task skills:sync:update",
+        "Review each file above, then run: bun run skills:sync:update",
     ].join("\n");
 }
 

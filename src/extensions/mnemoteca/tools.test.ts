@@ -1,5 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals, assertMatch } from "@std/assert";
+import { match as assertMatch } from "node:assert/strict";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { createMnemotecaTools, type MnemotecaToolHost } from "./tools.ts";
 import type { HelperBinaryExecResult } from "../helper-binary-exec.ts";

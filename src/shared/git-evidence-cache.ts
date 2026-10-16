@@ -16,7 +16,7 @@ import { env } from "node:process";
  * timestamp-resolution window. RunWield-owned runtime files are not evidence
  * here; callers keep checking them on every entry.
  */
-import { join, resolve } from "@std/path";
+import { join, resolve } from "node:path";
 
 /** Files changed this recently may change again without a visible timestamp difference. */
 const RACY_WINDOW_MS = 100;

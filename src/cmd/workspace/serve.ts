@@ -4,7 +4,7 @@
  */
 
 import process, { platform } from "node:process";
-import { parseArgs } from "@std/cli/parse-args";
+import { parseArgs } from "../../shared/cli-args.ts";
 import { CLI_BIN } from "../../constants.js";
 import { getOwnerCoordinationDatabasePath, openOwnerCoordinationStore } from "../../shared/owner-coordination/index.js";
 import { isLoopbackHost, parsePort } from "../plans/ui.ts";

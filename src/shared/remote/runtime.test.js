@@ -13,8 +13,9 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects } from "@std/assert";
-import { join, toFileUrl } from "@std/path";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { sha256Bytes } from "../../../scripts/build-metadata.js";
 import { linuxTarget } from "./runtime.js";
 

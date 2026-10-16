@@ -1,7 +1,7 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { withRuntimeCommandFixture } from "../cmd/testing/runtime-command-fixture.ts";
 import {
     __resetSettingsForTests,

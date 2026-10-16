@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { buildWorkflowPresentation } from "./workflow-presentation.ts";
 
 test("workflow presentation derives current stage and blocker from raw progress facts without fabricating recovery", () => {

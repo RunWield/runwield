@@ -12,8 +12,9 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 
 const cli = fromFileUrl(new URL("../../cli.ts", import.meta.url));
 const projectRoot = dirname(dirname(dirname(cli)));
@@ -28,20 +29,14 @@ def terminal_session():
 child = subprocess.Popen([runtime] + json.loads(runtime_args) + [cli, '--remote-view'], cwd=cwd, env=env, stdin=slave, stdout=slave, stderr=slave, preexec_fn=terminal_session)
 os.close(slave)
 config = dict(host='isolated-host', cwd=cwd, status='Connected', trust='SSH verified', readiness='No user turns')
-os.write(master, (json.dumps(config) + '\n').encode())
+os.write(master, (json.dumps(config) + '\nhello\r/settings\r! touch BAD\r@secret.txt\r').encode())
 output = b''
 deadline = time.monotonic() + 20
 try:
-    while b'Press q' not in output and time.monotonic() < deadline:
+    while b'Invalid remote interactive configuration' not in output and time.monotonic() < deadline:
         if select.select([master], [], [], .2)[0]:
             try: output += os.read(master, 65536)
             except OSError: break
-    if b'Press q' in output:
-        for data in (b'hello\r', b'\x1b[200~pasted text\x1b[201~', b'/settings\r', b'! touch BAD\r', b'@secret.txt\r'):
-            os.write(master, data)
-            time.sleep(.2)
-        time.sleep(.5)
-    if b'Press q' in output: os.write(master, b'q')
     time.sleep(.2)
     if child.poll() is None: child.kill()
     child.wait(timeout=5)
@@ -85,23 +80,8 @@ async function nativeTerminalSession(project: string, home: string): Promise<{ c
                 readiness: "No user turns",
             }) + (process.platform === "win32" ? "\r" : "\n"),
         );
-        const deadline = Date.now() + 20_000;
-        while (!screen.includes("Press q") && !exited && Date.now() < deadline) {
-            await new Promise((resolve) => setTimeout(resolve, 20));
-        }
-        if (!screen.includes("Press q")) throw new Error(`Remote view did not become ready: ${screen}`);
-        for (const input of [
-            "hello\r",
-            "\x1b[200~pasted text\x1b[201~",
-            "/settings\r",
-            "! touch BAD\r",
-            "@secret.txt\r",
-        ]) {
-            child.terminal.write(input);
-            await new Promise((resolve) => setTimeout(resolve, 200));
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        child.terminal.write("q");
+        // Stale status-only data must be rejected before any ordinary TUI input is consumed.
+        child.terminal.write("hello\r/settings\r! touch BAD\r@secret.txt\r");
         const code = await finished;
         screen += decoder.decode();
         return { code, screen };
@@ -126,7 +106,7 @@ async function files(root: string): Promise<string[]> {
 }
 
 for (const populated of [false, true]) {
-    test(`private remote view rejects input in ${populated ? "sentinel" : "empty"} home under a pseudo-terminal`, async () => {
+    test(`private remote bootstrap rejects stale status-only input in ${populated ? "sentinel" : "empty"} home under a pseudo-terminal`, async () => {
         const root = await fsMkdtemp(join(tmpdir(), "portable-fixture-"));
         const home = join(root, "home");
         const project = join(root, "project");
@@ -150,29 +130,14 @@ for (const populated of [false, true]) {
                 ? await nativeTerminalSession(project, home)
                 : await (async () => {
                       const result = await captureForegroundProcess("python3", {
-                          args: [
-                              "-c",
-                              pty,
-                              cli,
-                              project,
-                              home,
-                              process.execPath,
-                              JSON.stringify(["run", ...(process.versions.deno ? ["-A", "--quiet"] : [])]),
-                          ],
+                          args: ["-c", pty, cli, project, home, process.execPath, JSON.stringify(["run", ...[]])],
                           cwd: projectRoot,
                       });
                       assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
                       return JSON.parse(new TextDecoder().decode(result.stdout));
                   })();
-            assertEquals([0, -9].includes(code), true, screen);
-            assertStringIncludes(screen, "isolated-host");
-            // The terminal wraps long absolute directories across rows.
-            assertStringIncludes(
-                // deno-lint-ignore no-control-regex -- Strip terminal hyperlink controls before comparing wrapped text.
-                screen.replaceAll(/\x1b\]8;;\x07|\s/g, ""),
-                project.replaceAll(/\s/g, "").slice(0, 70),
-            );
-            assertStringIncludes(screen, "No user turns");
+            assertEquals(code, 1, screen);
+            assertStringIncludes(screen, "Invalid remote interactive configuration");
             assertEquals(await files(home), before);
             assertEquals(await files(project), projectBefore);
             assertEquals(await fsReadFile(join(project, "secret.txt"), "utf8"), "project sentinel");

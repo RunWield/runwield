@@ -1,7 +1,6 @@
 import { captureForegroundProcess } from "../../shared/captured-process.ts";
 /**
  * @param {Record<string, string | undefined>} values
- * @returns {Deno.Env}
  */
 export function createTestEnv(values) {
     return {

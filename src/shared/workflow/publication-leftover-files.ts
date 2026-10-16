@@ -1,7 +1,7 @@
 import { rename } from "node:fs/promises";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { lstat as fsLstat, mkdir as fsMkdir, readFile as fsReadFile, realpath as fsRealpath } from "node:fs/promises";
-import { dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
 
 async function git(root: string, args: string[]): Promise<string> {
     const result = await captureForegroundProcess("git", { cwd: root, args });

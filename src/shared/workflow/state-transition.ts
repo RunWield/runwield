@@ -4,7 +4,7 @@ import { mkdir as fsMkdir, readdir as fsReaddir, readFile as fsReadFile, rm as f
  * Transaction boundary helpers for Plan Lifecycle mutations.
  */
 
-import { dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { CLI_BIN } from "../../constants.js";
 import { pickControllerState, type WorkflowControllerState, WORKTREE_CONTEXT_FIELDS } from "./controller-state.ts";

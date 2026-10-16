@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assert, assertEquals, assertMatch, assertRejects } from "@std/assert";
+import { ok as assert, match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { createCymbalTools, type CymbalToolHost, MAX_CODE_BATCH_OUTPUT_CHARS } from "./tools.ts";
 import type { HelperBinaryExecResult } from "../helper-binary-exec.ts";

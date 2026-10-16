@@ -24,10 +24,10 @@ export { isEpicPlan, isProjectPlan, isSequencePlan } from "./shared/project-plan
  * External plans (missing front matter) get sensible defaults applied.
  */
 
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
+import { extractYaml, test as hasFrontMatter } from "./shared/front-matter.ts";
 import { readLockFileSnapshot, removeLockFileIfSnapshotMatches } from "./shared/lock-file-snapshot.ts";
 import { getLockHostname, isLockHolderGone } from "./shared/process-liveness.ts";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "@std/path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
     CLI_BIN,
@@ -1164,7 +1164,7 @@ export function injectFrontMatter(markdown, overrides = {}) {
  * @returns {{ attrs: PlanFrontMatter, body: string }}
  */
 export function parsePlanFrontMatter(markdown, opts = {}) {
-    const missingOrigin = opts.missingOrigin || DEFAULT_FRONT_MATTER.origin;
+    const missingOrigin = /** @type {PlanFrontMatter["origin"]} */ (opts.missingOrigin || DEFAULT_FRONT_MATTER.origin);
     if (/^(<<<<<<<|=======|>>>>>>>)\s/m.test(markdown)) {
         throw new Error("Plan contains unresolved merge conflict markers.");
     }
@@ -1180,14 +1180,14 @@ export function parsePlanFrontMatter(markdown, opts = {}) {
             body: markdown,
         };
     }
-    const { attrs, body } = extractYaml(markdown);
+    const { attrs, body } = /** @type {import("./shared/front-matter.ts").FrontMatter<PlanFrontMatter>} */ (extractYaml(markdown));
     const collaborationAttrs = normalizeCollaborationFrontMatter(attrs);
     const sourceAttrs = { ...attrs };
-    for (const key of OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS) delete sourceAttrs[key];
+    for (const key of OBSOLETE_OBJECTIVE_CHECK_FRONT_MATTER_KEYS) Reflect.deleteProperty(sourceAttrs, key);
     for (const key of Object.values(COLLABORATION_FRONT_MATTER_KEYS)) {
-        delete sourceAttrs[key];
+        Reflect.deleteProperty(sourceAttrs, key);
     }
-    delete sourceAttrs.collaborationMode;
+    Reflect.deleteProperty(sourceAttrs, "collaborationMode");
     delete sourceAttrs.type;
     return {
         attrs: {

@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assertEquals, assertInstanceOf, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertInstanceOf, assertStringIncludes } from "../../testing/assertions.ts";
 import { Container, Editor, Image, Spacer, Text, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { RunWieldModelSelectorComponent } from "./model-selector.ts";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

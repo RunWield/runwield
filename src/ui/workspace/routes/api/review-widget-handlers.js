@@ -4,7 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 /** Sandboxed Guided Review widget serving helpers. */
 
-import { join } from "@std/path";
+import { join } from "node:path";
 
 /**
  * @typedef {{ dir: string, assets: Map<string, string>, contentTypes: Map<string, string> }} StoredWidget

@@ -2,7 +2,7 @@ import { lstatSync } from "node:fs";
 import { realpathSync as fsRealpathSync, type BigIntStats, statSync as fsStatSync } from "node:fs";
 import { lstat as fsLstat, realpath as fsRealpath, stat as fsStat } from "node:fs/promises";
 import { platform } from "node:process";
-import { dirname, isAbsolute, join, normalize, relative } from "@std/path";
+import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { getHomeDir } from "../../constants.js";
 
 /** Resource roots for one explicitly activated remote connection. Never set during connection-only startup. */

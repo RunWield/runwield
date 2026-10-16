@@ -1,17 +1,16 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import {
+    type FileActivationProof,
+    type FileSessionActivation,
+    type FileSessionGeneration,
+    type FileSessionManifest,
+    type HeldFileLock,
+} from "./file-session-store-types.ts";
 /**
  * @module shared/session/file-session-activation-state
  * Writer proof, lock ownership, and abandoned-writer recovery state.
  */
-
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import type {
-    FileActivationProof,
-    FileSessionActivation,
-    FileSessionGeneration,
-    FileSessionManifest,
-    HeldFileLock,
-} from "./file-session-store-types.ts";
 
 export function activationView(manifest: FileSessionManifest) {
     const activation = manifest.activation;
@@ -41,10 +40,12 @@ export function generationView(manifest: FileSessionManifest): FileSessionGenera
 export function assertProof(manifest: FileSessionManifest, proof: FileActivationProof): void {
     const activation = manifest.activation;
     if (
-        activation.state !== "active" || manifest.fence !== proof.fence ||
+        activation.state !== "active" ||
+        manifest.fence !== proof.fence ||
         activation.ownerInstanceId !== proof.ownerInstanceId ||
         activation.ownerProcessKind !== proof.ownerProcessKind ||
-        activation.operationId !== proof.operationId || activation.phase !== proof.phase ||
+        activation.operationId !== proof.operationId ||
+        activation.phase !== proof.phase ||
         activation.expectedGeneration !== proof.expectedGeneration ||
         activation.expectedCurrentSegmentId !== (proof.expectedCurrentSegmentId ?? null)
     ) {
@@ -68,10 +69,7 @@ export function idleActivation(manifest: FileSessionManifest): FileSessionActiva
     };
 }
 
-export function requireHeldLock(
-    locks: Map<string, HeldFileLock>,
-    proof: FileActivationProof,
-): HeldFileLock {
+export function requireHeldLock(locks: Map<string, HeldFileLock>, proof: FileActivationProof): HeldFileLock {
     const held = locks.get(proof.operationId);
     if (!held) throw new Error("Session writer lock is not held");
     return held;
@@ -88,7 +86,39 @@ export function releaseHeldLock(locks: Map<string, HeldFileLock>, proof: FileAct
     }
 }
 
+/** Called only while holding the native lock. Atomic replacement leaves exactly the before or after bytes. */
+export function reconcilePendingTranscriptMigration(manifest: FileSessionManifest, now: string): void {
+    const pending = manifest.activation.pendingMigration;
+    if (!pending) return;
+    const segment = manifest.segments.find((item) => item.segmentId === manifest.currentSegmentId);
+    if (!segment) throw new Error("Session migration transcript is unavailable");
+    const bytes = readFileSync(segment.transcriptPath);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.length === pending.after.byteLength && digest === pending.after.digestHex) {
+        manifest.activation.baselineByteLength = pending.after.byteLength;
+        manifest.activation.baselineDigestHex = pending.after.digestHex;
+        segment.headerVersion = pending.headerVersion;
+        if (manifest.generation) {
+            const generation = manifest.generation.generation + 1;
+            manifest.generation = {
+                ...manifest.generation,
+                ...pending.after,
+                currentSegmentId: manifest.currentSegmentId,
+                generation,
+                operationId: manifest.activation.operationId ?? manifest.generation.operationId,
+                fence: manifest.fence,
+                committedAt: now,
+            };
+            manifest.activation.expectedGeneration = generation;
+        }
+    } else if (bytes.length !== pending.beforeByteLength || digest !== pending.beforeDigestHex) {
+        throw new Error("Session migration bytes do not match saved intent");
+    }
+    delete manifest.activation.pendingMigration;
+}
+
 export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, now: string): void {
+    reconcilePendingTranscriptMigration(manifest, now);
     if (manifest.activation.state !== "active") return;
     const current = manifest.segments.find((segment) => segment.segmentId === manifest.currentSegmentId);
     if (!current) {
@@ -104,15 +134,18 @@ export function markRecoveryAfterAbandonedWriter(manifest: FileSessionManifest, 
         const bytes = readFileSync(current.transcriptPath);
         const baselineByteLength = manifest.activation.baselineByteLength;
         const baselineDigestHex = manifest.activation.baselineDigestHex;
-        const unchanged = baselineByteLength === bytes.byteLength &&
+        const unchanged =
+            baselineByteLength === bytes.byteLength &&
             baselineDigestHex === createHash("sha256").update(bytes).digest("hex");
-        manifest.activation = unchanged ? idleActivation(manifest) : {
-            ...idleActivation(manifest),
-            state: "reconcile_required",
-            blockedReason: "transcript_changed_before_initial_checkpoint",
-            baselineByteLength,
-            baselineDigestHex,
-        };
+        manifest.activation = unchanged
+            ? idleActivation(manifest)
+            : {
+                  ...idleActivation(manifest),
+                  state: "reconcile_required",
+                  blockedReason: "transcript_changed_before_initial_checkpoint",
+                  baselineByteLength,
+                  baselineDigestHex,
+              };
         manifest.updatedAt = now;
         return;
     }

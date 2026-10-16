@@ -116,23 +116,39 @@ Plan status, Session status, ownership reason
 requests. It is distinct from the terminal window or tab title. _Avoid_: Tab title, conversation name
 
 **Remote SSH connection**: A connected-only Core interaction started with `wld remote` for an existing directory on a
-remote Linux host. The current connection prepares a matching runtime, mounts laptop personal files on the approved
-Linux `sct` pilot, and opens a dormant remote TUI. An optional bounded native Pi bridge proof is not an ordinary user
-turn; the normal connection does not create or resume a saved Session. Guarded Session history and remote project
-workflows remain target behavior. _Avoid_: Personal Workspace, unattended worker, remote Session type
+remote Linux host. It prepares a matching runtime, mounts laptop personal files, and opens the normal remote TUI for
+conversation turns with Agents, core project tools, and laptop models. It can create and continue a saved Session whose
+history stays on the laptop; the first submitted message creates history, not connection alone. `wld remote sessions`
+reads that history offline in the normal renderer without a composer and with a reconnect footer. Connected `/resume`
+continues only this target's Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide remote Sessions. This
+journey passed on matching-identity compiled macOS/Linux `sct` runtimes with an authenticated synthetic streaming
+provider. On macOS laptops, Ctrl+V reads current laptop clipboard image bytes; saved attachment references and markers
+remain stable through history and reconnect. Remote Memory and delivery workflows remain target scope;
+production-provider and platform matrices retain separate qualification. _Avoid_: Personal Workspace, unattended worker,
+remote Session type
+
+**Remote project locator**: The laptop history relationship between a Project and an exact remote host identity plus
+canonical remote project root. Host identity uses the effective OpenSSH hostname, user, port, and verified host key
+fingerprint; the SSH alias is only a display label. A certificate connection without a reported stable fingerprint uses
+`null`, with exact hostname, user, and port matching; it does not match a known fingerprint. Any identity difference
+creates a distinct target and never merges history. The root is remote `primaryRoot`, or `gitRoot`, or `cwd` when the
+preceding value is absent. A worktree shares its primary checkout's project identity while the Session keeps execution
+cwd separately. Laptop paths and temporary mount paths are not remote project identity. This does not establish a remote
+Memory binding. _Avoid_: SSH alias identity, mount root, local checkout path
 
 **Remote personal mount**: A connection-owned SSHFS view of the laptop’s full `~/.wld` at a fresh private remote path.
 Personal file edits through it change laptop files directly, not a copied resource tree. The remote project’s `.wld`
 stays on the server. The path is private for normal use, but standard SFTP permits broad laptop-account access by the
-trusted remote host; this is not a sandbox. This mount is not the guarded operation-scoped Session writer mount. Direct
-bidirectional Skill file access was verified on the approved Linux `sct` pilot before the connection-only view. This
-does not qualify other hosts or saved Sessions. _Avoid_: Resource sync, copied profile, confined mount
+trusted remote host; this is not a sandbox and does not grant Session writer authority. Direct bidirectional Skill file
+access was verified on the approved Linux `sct` pilot. The later compiled conversation journey also verified laptop
+history and connected resume with an authenticated synthetic provider; other hosts retain separate qualification.
+_Avoid_: Resource sync, copied profile, confined mount
 
 **Project Runtime State**: Machine-owned RunWield state inside a Project checkout. The current reserved root is
 `.wld/internal/`. User-derived `.wld/settings.json`, `.wld/agents/`, `.wld/skills/`, and `.wld/prompts/` are not Project
-Runtime State. A Remote SSH connection can identify a remote checkout but does not enter or create its Project Runtime
-State; future remote project work would keep that state with the remote checkout. _Avoid_: project settings, project
-config, all of `.wld/`
+Runtime State. Remote location discovery alone does not enter or create Project Runtime State. Remote project-owned
+state stays with the remote checkout, not with laptop personal history. Remote workflow support remains target scope.
+_Avoid_: project settings, project config, all of `.wld/`
 
 **Project Runtime Entry**: The shared migration-or-verification operation that runs before normal Project Runtime State
 access. It can adopt eligible legacy state, confirm the selected and primary checkout layout, or refuse access with a
@@ -379,6 +395,13 @@ compares the approved Plan with the full proposed branch patch from the recorded
 current execution-worktree files. TUI and Workspace progress copy calls this **AI review**. _Avoid_: Code Review, Forge
 review, automated tests
 
+**Standalone Code Review**: Code Review of a PR, branch, or uncommitted changes without a Plan or Plan lifecycle.
+Started with `wld review`. The gate **Code Review** still means the Plan validation gate.
+
+**Review Worktree**: A worktree created on demand for Standalone Code Review, outside the Plan worktree registry.
+RunWield preserves it when it holds uncommitted or unpushed work. An existing branch checkout can be reused but is not
+owned or removed by Standalone Code Review.
+
 **Code Review**: The optional RunWield gate where a person reviews the same full proposed branch patch used by Semantic
 Review before delivery. Reload recomputes it from the recorded target, execution HEAD, and current worktree files. The
 user approves the diff or sends feedback. Internal compatibility identifiers can still use `humanReview` or
@@ -519,7 +542,7 @@ bug-finding. _Avoid_: Unit test writer, test framework specialist
 
 **Agent Definition**: A markdown file with YAML front matter defining an Agent's display name, model, tools, and system
 prompt. An optional `bashAllowedCommands` list limits RunWield-managed bash and background shell starts without granting
-bash. Layered definitions inherit an omitted field, replace with a list, deny all with `[]`, or reset the definition's
+bash. Layered definitions inherit an omitted field, merge non-empty lists without duplicate entries, deny all with `[]`, or reset the definition's
 inherited list with `null`; an absent list means unrestricted bash. This best-effort filter is not a sandbox and does
 not limit external CLI native shells. _Avoid_: Agent def, agent prompt, agent config
 
@@ -876,7 +899,7 @@ _Avoid_: Durable prompt, recoverable continuation, database interaction record
   Proposal**. RunWield asks for a separate decision for each proposed predecessor in the interactive TUI and after
   interactive backfill.
 - Headless completion leaves each **Supersession Proposal** pending and reports `wld wr supersede
-  <successorRecordId>`
+<successorRecordId>`
   for later confirmation or rejection. The command also lists pending proposals and their reasons.
 - **Superseded Work Records** and **Archived Work Records** remain durable but are excluded from default planning
   retrieval. Supersession does not change a Work Record's completion mode or remove its applicable confidence notices

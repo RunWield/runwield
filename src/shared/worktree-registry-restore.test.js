@@ -1,7 +1,7 @@
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
+import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { addEntry, removeEntry, restoreEntryFromPlanEvidence } from "./worktree-registry.js";
 

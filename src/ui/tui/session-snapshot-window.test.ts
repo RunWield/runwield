@@ -1,6 +1,7 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { withSessionViewFixture } from "./testing/session-view-fixture.ts";
-import { assert, assertEquals, assertNotStrictEquals, assertStrictEquals } from "@std/assert";
+import { ok as assert, notStrictEqual as assertNotStrictEquals, strictEqual as assertStrictEquals } from "node:assert/strict";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { createSessionRuntime, type SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { createSessionSnapshotWindow } from "./session-snapshot-window.ts";

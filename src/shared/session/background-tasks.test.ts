@@ -1,11 +1,10 @@
-import { fileURLToPath } from "node:url";
-import { execPath, platform, versions } from "node:process";
+import { execPath, platform } from "node:process";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { BackgroundTasks } from "./background-tasks.ts";
 import { createRunWieldReadToolDefinition } from "../../tools/read.js";
@@ -19,7 +18,7 @@ async function fixture() {
         command: async (source: string) => {
             const script = join(cwd, `${crypto.randomUUID()}.mjs`);
             await fsWriteFile(script, source);
-            return [execPath, ...(versions.deno ? ["run", "-A"] : ["--no-env-file", "--no-install"]), script]
+            return [execPath, ...["--no-env-file", "--no-install"], script]
                 .map((value) => (platform === "win32" ? `"${value}"` : `'${value.replaceAll("'", "'\"'\"'")}'`))
                 .join(" ");
         },
@@ -111,15 +110,7 @@ try {
 `,
         );
         const output = await captureForegroundProcess(execPath, {
-            args: [
-                ...(versions.deno
-                    ? ["run", "-A", "--config", fileURLToPath(new URL("../../../deno.json", import.meta.url))]
-                    : ["--no-env-file", "--no-install"]),
-                script,
-                f.session.id,
-                f.cwd,
-                parents[0].task_id,
-            ],
+            args: [...["--no-env-file", "--no-install"], script, f.session.id, f.cwd, parents[0].task_id],
             cwd: f.cwd,
         });
         assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));

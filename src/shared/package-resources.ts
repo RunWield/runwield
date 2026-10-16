@@ -8,7 +8,7 @@ import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import type { PackageSource, ResolvedPaths, ResolvedResource, SettingsManager } from "@earendil-works/pi-coding-agent";
 export type { PathMetadata, ResolvedPaths, ResolvedResource } from "@earendil-works/pi-coding-agent";
 
-import { isAbsolute, join, relative } from "@std/path";
+import { isAbsolute, join, relative } from "node:path";
 import { getCwd } from "../constants.js";
 import { getSettingsDir, getSettingsManager } from "./settings.js";
 import {

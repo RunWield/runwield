@@ -1,8 +1,8 @@
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { runRemoteModelProof } from "./model-proof.ts";
 
 test("LIVE proof does not start after its connection closes", async () => {

@@ -18,8 +18,8 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 /* Connection-owned laptop SFTP transport and remote SSHFS mounts. No HOME substitution. */
-import { join } from "@std/path";
-import { parse as parseJsonc } from "@std/jsonc";
+import { join } from "node:path";
+import { parse as parseJsonc } from "../jsonc.ts";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getCwd, getHomeDir } from "../../constants.js";
 

@@ -1,6 +1,7 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
     BACKEND_CONTINUATION_REQUEST,

@@ -1,4 +1,3 @@
-import { captureScriptProcess } from "./script-process.ts";
 import { requirePinnedBun } from "./check-bun-runtime.ts";
 import { tmpdir } from "node:os";
 import {
@@ -12,54 +11,29 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 /**
- * Runs the test suite with each file in its own process and its own sandbox.
+ * Runs the test suite with each file in its own process and disposable home.
  *
- * `deno test --parallel` runs every test file in one process, giving each its
- * own module realm but sharing cwd, environment and the filesystem. Realms are
- * initialized at arbitrary moments, so one file's `Deno.chdir` or `Deno.env.set`
- * is visible to every other file — and a module-scope snapshot taken during that
- * window keeps the wrong value for the life of the realm. That is the root of
- * every flake and every stray write this runner exists to prevent, including
- * test runs rewriting the developer's real ~/.wld and mnemoteca database.
- *
- * One process per file removes the sharing instead of policing it, and no child
- * can reach the real HOME or the real mnemoteca database.
- *
- * Every file gets a fresh HOME and temporary directory, including files sharing
- * a worker slot. Only dependency caches and immutable fixture templates may be
- * shared; mutable settings, stores, registry entries, and locks stay isolated.
- *
- * DENO_DIR is shared across all slot sandboxes for one run, but it is still a
- * temp directory owned by this runner rather than the developer's real cache.
- * The shared cache is prewarmed once with `deno test --no-run` before isolated
- * children start, so slot-local HOME does not force every child through a
- * separate cold module cache.
- * Prewarming also installs npm dependencies. Workers use that node_modules
- * directory in manual mode, avoiding repeated installation scans in every file.
+ * Each file gets a fresh HOME, temporary directory and Mnemoteca database, even
+ * when worker slots are reused. Only dependency caches and immutable fixture
+ * templates may be shared. Mutable settings, stores, registries and locks stay
+ * isolated; process-global environment or cwd changes cannot affect other files.
  *
  * Usage:
- *   deno run -A scripts/run-tests.js                    isolated run of every test file
- *   deno run -A scripts/run-tests.js --isolated <paths> isolated parallel run of matching files
- *   deno run -A scripts/run-tests.js <deno test args>   single sandboxed `deno test` (subsets, filters)
+ *   bun scripts/run-tests.js                    isolated run of every test file
+ *   bun scripts/run-tests.js --isolated <paths>  isolated run of matching files
  *
- * `--exclude <path>` drops a file or directory from the discovered set. It is how
- * `deno task test` leaves the Golden TUI portfolio to `deno task test:golden-tui`,
- * while `deno task ci` includes both in one worker pool. It applies to
- * discovery only, so it has no effect on the passthrough `deno test` form.
+ * `--exclude <path>` removes matching files from discovery. `bun run test`
+ * excludes the Golden portfolio; `bun run ci` includes source and Golden tests.
+ * Type checking is a separate `bun run check` gate.
  *
- * The passthrough form injects `-A` unless the caller passed their own
- * permission flags: without env access the sandbox marker in src/constants.js
- * is unreadable and its guard misfires, blaming a direct `deno test` run.
- * It also injects `--no-check` (matching the full-suite path and every task
- * invocation) unless the caller passed it: type-checking here resolves
- * deno.json's `compilerOptions.types` graph, whose `"vite/client"` entry pulls
- * npm:vite on every run — a large registry download on cold caches. The type
- * gate is `deno task check`, not these sandboxed executions.
+ * Bun refuses legacy runtime permission flags instead of silently dropping
+ * their restrictions. Only the frozen, installed dependency graph is used.
  */
 import { retainTestEvidence } from "./retain-test-evidence.js";
-import { basename, dirname, fromFileUrl, join, relative, resolve } from "@std/path";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
-import { runBoundedTest, writeSnipCommandResult } from "./run-with-snip.ts";
+import { runBoundedTest } from "./run-with-snip.ts";
 import { mergeTestTimings, orderTestsByTiming, readTestTimings, writeTestTimings } from "./test-timings.js";
 
 const TEST_FILE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -102,10 +76,9 @@ async function* findTestFiles(dir) {
 /**
  * @param {string} sandboxRoot
  * @param {string} name
- * @param {string} denoDir
  * @returns {Promise<Record<string, string>>}
  */
-async function createSandboxEnv(sandboxRoot, name, denoDir) {
+async function createSandboxEnv(sandboxRoot, name) {
     const home = join(sandboxRoot, name);
     const temp = join(home, "tmp");
     const snipFiltersDir = join(home, ".config", "snip", "filters");
@@ -141,32 +114,10 @@ async function createSandboxEnv(sandboxRoot, name, denoDir) {
         TMPDIR: temp,
         TEMP: temp,
         TMP: temp,
-        DENO_DIR: denoDir,
         XDG_CONFIG_HOME: join(home, ".config"),
         XDG_CACHE_HOME: join(home, ".cache"),
         XDG_DATA_HOME: join(home, ".local", "share"),
     };
-}
-
-/**
- * @param {Record<string, string>} env
- * @param {string[]} testArgs
- * @returns {Promise<void>}
- */
-async function prewarmDenoDir(env, testArgs) {
-    if (process.versions.bun) return; // Bun executes only the frozen, already-installed dependency graph.
-    const result = await captureScriptProcess(process.execPath, {
-        args: ["test", "--no-run", ...testArgs],
-        cwd: REPO_ROOT,
-        env,
-        stdout: "piped",
-        stderr: "piped",
-    });
-    if (result.success) return;
-
-    const decoder = new TextDecoder();
-    const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
-    throw new Error(`Deno cache prewarm failed:\n${output}`);
 }
 
 /**
@@ -176,6 +127,7 @@ async function prewarmDenoDir(env, testArgs) {
  * @property {string | undefined} timingsFile timing history input and output path
  * @property {string | undefined} shard one-based shard index/count
  * @property {string | undefined} reportDir directory for per-test JUnit reports
+ * @property {string | undefined} filter Deno-compatible test name substring or /regular expression/
  * @property {string[]} rest every remaining argument, in the order it was given
  */
 
@@ -189,11 +141,17 @@ export function parseRunnerArguments(args) {
     /** @type {string[]} */
     const rest = [];
     let failFast = false;
+    let filter;
     let timingsFile;
     let reportDir;
     let shard = process.env["WLD_TEST_SHARD"];
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
+        if (arg === "--filter" || arg.startsWith("--filter=")) {
+            filter = arg === "--filter" ? args[++index] : arg.slice("--filter=".length);
+            if (filter === undefined || filter.startsWith("--")) throw new Error("--filter requires a value.");
+            continue;
+        }
         if (arg === "--fail-fast") {
             failFast = true;
             continue;
@@ -223,7 +181,7 @@ export function parseRunnerArguments(args) {
         if (!value) throw new Error("--exclude requires a test file or directory.");
         excludedPaths.push(resolve(REPO_ROOT, value));
     }
-    return { excludedPaths, failFast, timingsFile, reportDir, shard, rest };
+    return { excludedPaths, failFast, timingsFile, reportDir, shard, filter, rest };
 }
 
 /**
@@ -276,17 +234,17 @@ function isExcluded(file, excludedPaths) {
  * @property {string} [timingsFile]
  * @property {string} [reportDir]
  * @property {string} [shard]
+ * @property {string} [filter]
  */
 
 /**
  * @param {string} sandboxRoot
- * @param {string} denoDir
  * @param {string[]} [roots]
  * @param {string[]} [excludedPaths]
  * @param {SuiteOptions} [options]
  * @returns {Promise<number>} process exit code
  */
-async function runIsolatedSuite(sandboxRoot, denoDir, roots = [REPO_ROOT], excludedPaths = [], options = {}) {
+async function runIsolatedSuite(sandboxRoot, roots = [REPO_ROOT], excludedPaths = [], options = {}) {
     const suiteStart = performance.now();
     if (options.reportDir) await fsMkdir(options.reportDir, { recursive: true });
     const discovered = new Set();
@@ -323,12 +281,6 @@ async function runIsolatedSuite(sandboxRoot, denoDir, roots = [REPO_ROOT], exclu
         await prepareGoldenRepositoryTemplates(goldenFixtureRoot);
     }
 
-    const prewarmStart = performance.now();
-    const prewarmEnv = await createSandboxEnv(sandboxRoot, "prewarm", denoDir);
-    if (files.length) await prewarmDenoDir(prewarmEnv, ["-A", "--no-check", "--quiet", ...files]);
-
-    const prewarmMs = performance.now() - prewarmStart;
-
     // Most integration work waits on Git and other subprocesses. Keep enough
     // independent files in flight to use the machine, with an explicit override
     // for smaller CI runners and concurrent local workloads.
@@ -355,54 +307,50 @@ async function runIsolatedSuite(sandboxRoot, denoDir, roots = [REPO_ROOT], exclu
             const name = relative(REPO_ROOT, file);
             const fileStartedAt = Date.now();
 
-            const env = await createSandboxEnv(sandboxRoot, `slot-${slot}-file-${slotRuns}`, denoDir);
+            const env = await createSandboxEnv(sandboxRoot, `slot-${slot}-file-${slotRuns}`);
             for (const key of ["WLD_TEST_SSHFS", "WLD_TEST_SSHFS_STALL"]) {
                 if (process.env[key] === "1") env[key] = "1";
             }
-            if (process.versions.bun) {
-                for (const key of [
-                    "PATH",
-                    "SystemRoot",
-                    "WINDIR",
-                    "COMSPEC",
-                    "PATHEXT",
-                    "LANG",
-                    "LC_ALL",
-                    "TERM",
-                    "TZ",
-                ]) {
-                    if (process.env[key]) env[key] = process.env[key];
-                }
+
+            for (const key of ["PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TERM", "TZ"]) {
+                if (process.env[key]) env[key] = process.env[key];
             }
+
             // Nested runner tests must exercise their entire fixture suite.
             env.WLD_TEST_SHARD = "";
             if (goldenFixtureRoot) env.WLD_GOLDEN_FIXTURE_ROOT = goldenFixtureRoot;
             slotRuns += 1;
             const reportArgs = options.reportDir
-                ? process.versions.bun
-                    ? [
-                          "--reporter=junit",
-                          `--reporter-outfile=${join(options.reportDir, `${name.replace(/[^a-zA-Z0-9.-]/g, "_")}.xml`)}`,
-                      ]
-                    : ["--junit-path", join(options.reportDir, `${name.replace(/[^a-zA-Z0-9.-]/g, "_")}.xml`)]
-                : [];
-            const testArgs = process.versions.bun
                 ? [
-                      "test",
-                      "--no-env-file",
-                      "--no-install",
-                      "--no-orphans",
-                      "--preload",
-                      join(REPO_ROOT, "scripts", "bun-test-sandbox.ts"),
-                      "--timeout",
-                      String(TEST_FILE_TIMEOUT_MS),
-                      ...reportArgs,
-                      file,
+                      "--reporter=junit",
+                      `--reporter-outfile=${join(options.reportDir, `${name.replace(/[^a-zA-Z0-9.-]/g, "_")}.xml`)}`,
                   ]
-                : ["test", "-A", "--no-check", "--node-modules-dir=manual", "--quiet", ...reportArgs, file];
+                : [];
+            const filterArgs =
+                options.filter === undefined
+                    ? []
+                    : [
+                          "--test-name-pattern",
+                          options.filter.startsWith("/") && options.filter.endsWith("/")
+                              ? options.filter.slice(1, -1)
+                              : options.filter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                      ];
+            const testArgs = [
+                "test",
+                "--no-env-file",
+                "--no-install",
+                "--no-orphans",
+                "--preload",
+                join(REPO_ROOT, "scripts", "bun-test-sandbox.ts"),
+                "--timeout",
+                String(TEST_FILE_TIMEOUT_MS),
+                ...reportArgs,
+                ...filterArgs,
+                file,
+            ];
             const result = await runBoundedTest(testArgs, {
                 command: process.execPath,
-                clearEnv: Boolean(process.versions.bun),
+                clearEnv: true,
                 cwd: REPO_ROOT,
                 env,
                 failureLabel: `tests (${name})`,
@@ -435,7 +383,7 @@ async function runIsolatedSuite(sandboxRoot, denoDir, roots = [REPO_ROOT], exclu
             JSON.stringify(
                 {
                     elapsedMs: performance.now() - suiteStart,
-                    prewarmMs,
+                    prewarmMs: 0,
                     concurrency,
                     shard: options.shard || null,
                     completed,
@@ -457,22 +405,30 @@ async function runIsolatedSuite(sandboxRoot, denoDir, roots = [REPO_ROOT], exclu
 }
 
 export async function main(args = process.argv.slice(2)) {
-    if (process.versions.bun) requirePinnedBun();
+    requirePinnedBun();
     const {
         excludedPaths,
         failFast,
+        filter,
         shard,
         timingsFile: requestedTimingsFile,
         reportDir: requestedReportDir,
         rest: runnerArgs,
     } = parseRunnerArguments(args);
     selectTestShard([], shard);
-    const sandboxRoot = await fsMkdtemp(join(tmpdir(), "runwield-test-sandboxes-"));
-    const denoDir = process.env["WLD_TEST_DENO_DIR"] || join(sandboxRoot, "deno-dir");
-    await fsMkdir(denoDir, { recursive: true });
 
-    // Deliberately do not call Deno.exit() inside try/finally: it terminates without
-    // running finally blocks, which left ~600MB of sandboxes behind per run.
+    const unsupported = runnerArgs.filter(
+        (arg, index) => arg.startsWith("-") && !(index === 0 && arg === "--isolated"),
+    );
+    if (unsupported.length) {
+        throw new Error(
+            `Unsupported Bun test runner options: ${unsupported.join(", ")}. ` +
+                "Deno runtime flags cannot be ignored. See docs/contributing.md#task-compatibility.",
+        );
+    }
+
+    const sandboxRoot = await fsMkdtemp(join(tmpdir(), "runwield-test-sandboxes-"));
+    // Return through finally so every isolated sandbox is cleaned before exit.
     let exitCode = 0;
     const suite =
         runnerArgs.some((arg) => arg.includes("src/ui/tui/golden-scenarios")) &&
@@ -487,61 +443,25 @@ export async function main(args = process.argv.slice(2)) {
         if (runnerArgs[0] === "--isolated") {
             const roots = runnerArgs.slice(1);
             if (roots.length === 0) throw new Error("--isolated requires at least one test file or directory.");
-            exitCode = await runIsolatedSuite(sandboxRoot, denoDir, roots, excludedPaths, {
+            exitCode = await runIsolatedSuite(sandboxRoot, roots, excludedPaths, {
                 failFast,
-                timingsFile,
-                reportDir,
-                shard,
-            });
-        } else if (process.versions.bun && runnerArgs.length > 0) {
-            if (runnerArgs.some((arg) => arg.startsWith("-"))) {
-                throw new Error("Bun tests require isolated paths; Deno permission flags cannot be ignored.");
-            }
-            exitCode = await runIsolatedSuite(sandboxRoot, denoDir, runnerArgs, excludedPaths, {
-                failFast,
+                filter,
                 timingsFile,
                 reportDir,
                 shard,
             });
         } else if (runnerArgs.length > 0) {
-            // Explicit paths or flags: one sandboxed process, arguments passed through.
-            if (shard) throw new Error("--shard requires isolated discovery; use --isolated <paths>.");
-            const env = await createSandboxEnv(sandboxRoot, "single", denoDir);
-            // Grant full permissions unless the caller passed their own permission
-            // flags — `-A` conflicts with explicit `--allow-*` grants, so it cannot
-            // be injected unconditionally. `--deny-*` narrows allow-all safely.
-            const hasPermissionFlags = runnerArgs.some(
-                (arg) => arg === "-A" || arg === "--allow-all" || arg.startsWith("--allow-"),
-            );
-            const testArgs = hasPermissionFlags ? runnerArgs : ["-A", ...runnerArgs];
-            // Match the full-suite path (runIsolatedSuite) and every task invocation
-            // (test:golden-tui, workspace:test) by running tests with `--no-check`
-            // unless the caller already asked for type-checking. Type-checking here
-            // resolves deno.json's whole `compilerOptions.types` graph — the
-            // `"vite/client"` entry pulls npm:vite and its dependencies on every
-            // invocation, a large registry download on any machine without a warm
-            // cache that can blow past minute-scale budgets before a single test
-            // runs. `deno task check` owns type-checking; these children are
-            // sandboxed executions, not the type gate.
-            if (!testArgs.includes("--no-check")) testArgs.push("--no-check");
-            await prewarmDenoDir(env, testArgs);
-            // Preserve explicit dependency modes for loader diagnostics. Otherwise
-            // use the installation just prepared by the real no-run invocation.
-            const executionArgs = testArgs.some((arg) => arg.startsWith("--node-modules-dir"))
-                ? testArgs
-                : ["--node-modules-dir=manual", ...testArgs];
-            const result = await runBoundedTest(["test", ...executionArgs], {
-                env,
-                stdin: "inherit",
-                failureLabel: "tests",
-                timeoutMs: TEST_FILE_TIMEOUT_MS,
-            });
-            await writeSnipCommandResult(result);
-
-            exitCode = result.code;
-        } else {
-            exitCode = await runIsolatedSuite(sandboxRoot, denoDir, [REPO_ROOT], excludedPaths, {
+            exitCode = await runIsolatedSuite(sandboxRoot, runnerArgs, excludedPaths, {
                 failFast,
+                filter,
+                timingsFile,
+                reportDir,
+                shard,
+            });
+        } else {
+            exitCode = await runIsolatedSuite(sandboxRoot, [REPO_ROOT], excludedPaths, {
+                failFast,
+                filter,
                 timingsFile,
                 reportDir,
                 shard,

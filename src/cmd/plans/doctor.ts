@@ -8,8 +8,8 @@ import { effectiveDeliveryBranch } from "../../shared/workflow/plan-branch.ts";
  * Report and safely repair Plan/worktree lifecycle drift.
  */
 
-import { parseArgs } from "@std/cli/parse-args";
-import { join } from "@std/path";
+import { parseArgs } from "../../shared/cli-args.ts";
+import { join } from "node:path";
 import { CLI_BIN, getCwd, isPlannedChangeClassification, WORKTREE_BRANCH_PREFIX } from "../../constants.js";
 import {
     ensurePlanIdentity,

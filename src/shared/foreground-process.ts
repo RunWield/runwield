@@ -42,9 +42,6 @@ export interface NativeSpawnOptions {
     signal?: AbortSignal;
     windowsRawArguments?: boolean;
 }
-interface DenoProcessRuntime {
-    Command: new (command: string, options: NativeSpawnOptions) => { spawn(): NativeProcess };
-}
 interface BunInputSink {
     write(chunk: Uint8Array): number;
     flush(wait: true): Promise<number>;
@@ -73,11 +70,7 @@ interface BunProcessRuntime {
 }
 
 export function spawnNativeProcess(command: string, options: NativeSpawnOptions): NativeProcess {
-    if (versions.deno) {
-        const deno: DenoProcessRuntime = Reflect.get(globalThis, String("Deno"));
-        return new deno.Command(command, options).spawn();
-    }
-    if (!versions.bun) throw new Error("Foreground processes require Bun or Deno");
+    if (!versions.bun) throw new Error("Foreground processes require Bun");
     options.signal?.throwIfAborted();
     const bun = Reflect.get(globalThis, "Bun") as BunProcessRuntime;
     const child = bun.spawn({

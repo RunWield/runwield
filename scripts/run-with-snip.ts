@@ -1,10 +1,10 @@
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env bun
 import { captureScriptProcess, type ScriptProcessOutput } from "./script-process.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
 
 import { makeTempFile } from "../src/testing/temp-file.ts";
-import { basename } from "@std/path";
+import { basename } from "node:path";
 
 export interface SnipCommandOptions {
     cwd?: string;
@@ -52,7 +52,10 @@ export function extractDenoFailureOutput(command: string, args: string[], output
 }
 
 function failureLogPrefix(label: string): string {
-    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const slug = label
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
     return `${slug || "command"}-failure-`;
 }
 
@@ -95,7 +98,8 @@ async function formatCommandResult(
             : { code: 0, stdout, stderr: withoutSnipNoise(stderr) };
     }
 
-    const filtered = extractDenoFailureOutput(command, args, `${stdout}${stderr}`) ||
+    const filtered =
+        extractDenoFailureOutput(command, args, `${stdout}${stderr}`) ||
         `${options.failureLabel} failed with exit code ${result.code}.`;
     const failureLogPath = await makeTempFile({ prefix: failureLogPrefix(options.failureLabel), suffix: ".log" });
     await fsWriteFile(failureLogPath, `${filtered}\n`);
@@ -131,7 +135,7 @@ export async function runBoundedTest(
         controller.abort();
     }, options.timeoutMs);
     try {
-        const result = await captureScriptProcess(options.command ?? "deno", {
+        const result = await captureScriptProcess(options.command ?? process.execPath, {
             args,
             cwd: options.cwd,
             env: options.clearEnv ? options.env : { ...process.env, ...options.env },
@@ -143,7 +147,7 @@ export async function runBoundedTest(
         });
         clearTimeout(timer);
         if (timedOut) return await testTimeoutResult(options.timeoutMs);
-        return await formatCommandResult(options.command ?? "deno", args, options, result);
+        return await formatCommandResult(options.command ?? process.execPath, args, options, result);
     } catch (error) {
         if (!timedOut) throw error;
         return await testTimeoutResult(options.timeoutMs);
@@ -155,12 +159,12 @@ export async function runBoundedTest(
 export async function writeSnipCommandResult(result: SnipCommandResult): Promise<void> {
     if (result.stdout) {
         await new Promise<void>((resolve, reject) =>
-            process.stdout.write(result.stdout, (error) => error ? reject(error) : resolve())
+            process.stdout.write(result.stdout, (error) => (error ? reject(error) : resolve())),
         );
     }
     if (result.stderr) {
         await new Promise<void>((resolve, reject) =>
-            process.stderr.write(result.stderr, (error) => error ? reject(error) : resolve())
+            process.stderr.write(result.stderr, (error) => (error ? reject(error) : resolve())),
         );
     }
 }

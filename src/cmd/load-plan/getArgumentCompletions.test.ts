@@ -1,7 +1,7 @@
 import process from "node:process";
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import { savePlan, getStoredPlanPath, loadPlan, PlanFrontMatterParseError } from "../../plan-store.js";
 import { defineCommittedGitFixture } from "../../shared/git-test-fixture.ts";

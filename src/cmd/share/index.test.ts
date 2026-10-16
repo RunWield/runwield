@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { readFile as fsReadFile, stat as fsStat } from "node:fs/promises";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { withRuntimeCommandFixture } from "../testing/runtime-command-fixture.ts";
 import { createSessionRuntime } from "../../shared/session/session-runtime.ts";
 import { type GitHubCliPort, runShareCommand } from "./index.ts";

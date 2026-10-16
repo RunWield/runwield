@@ -13,8 +13,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../../../testing/process-global-lock.ts";
 import { HostedSession } from "../../hosted-session.js";
 import type { ManagedOperationCapability } from "../../managed-operation.ts";
@@ -275,16 +275,6 @@ test("Agy MCP setup approval works during a managed operation", async () => {
             runtimeSessionId: approved.id,
             runwieldSessionId: "managed-session",
             operationId: "setup-test",
-            proof: {
-                runwieldSessionId: "managed-session",
-                projectId: "project",
-                ownerInstanceId: "owner",
-                ownerProcessKind: "test",
-                operationId: "setup-test",
-                fence: 1,
-                phase: "turning",
-                expectedGeneration: 1,
-            },
             settled: false,
             registerArtifact: () => ({
                 artifactId: "artifact",
@@ -295,7 +285,6 @@ test("Agy MCP setup approval works during a managed operation", async () => {
                 registeredBy: "test",
                 sourceSegmentId: null,
             }),
-            updateProof() {},
             assertLive() {},
             settle() {},
         };

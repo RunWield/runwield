@@ -14,8 +14,10 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, fromFileUrl, join, resolve } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
 import {
     registerScriptedOAuthProvider,
@@ -365,7 +367,7 @@ test("terminal auth setup succeeds against a temporary source mutation where cre
         const childScript = join(tempRoot, "mutation-proof.ts");
         await fsWriteFile(
             childScript,
-            `import { assertEquals } from ${JSON.stringify(import.meta.resolve("@std/assert"))};\n` +
+            `import { assertEquals } from ${JSON.stringify(import.meta.resolve("../../testing/assertions.ts"))};\n` +
                 `import { TuiMainScreen } from "@earendil-works/pi-tui";\n` +
                 `import { withRuntimeCommandFixture } from "./src/cmd/testing/runtime-command-fixture.ts";\n` +
                 `import { getModelRegistry } from "./src/shared/models/model-registry.ts";\n` +

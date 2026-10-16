@@ -1,8 +1,9 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 /**
  * Golden /load-plan workflow scenarios.
  */
 
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 import { assertsGoldenCoverage } from "../testing/portfolio-assertions.js";
 interface GoldenScenarioResult {

@@ -31,8 +31,8 @@ on:
             - "scripts/check-public-docs.ts"
             - "scripts/docs-dev.ts"
             - "scripts/verify-docs-source.ts"
-            - "deno.json"
-            - "deno.lock"
+            - "docs-site/bun.lock"
+            - "docs-site/bunfig.toml"
 
 permissions:
     contents: read
@@ -50,11 +50,16 @@ jobs:
         outputs:
             tag: ${{ steps.release.outputs.tag }}
             sha: ${{ steps.source.outputs.sha }}
+            tooling_sha: ${{ steps.tooling.outputs.sha }}
         steps:
             - name: Checkout workflow revision
               uses: actions/checkout@v5
               with:
                   fetch-depth: 0
+
+            - name: Record immutable tooling revision
+              id: tooling
+              run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
             - name: Select latest Stable release
               id: release
@@ -71,10 +76,13 @@ jobs:
                   git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
                   echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  deno-version: v2.9.7
+                  bun-version-file: .bun-version
+
+            - name: Install frozen dependencies
+              run: bun run install:locked
 
             - name: Verify complete qualified release assets
               env:
@@ -84,7 +92,7 @@ jobs:
                   set -euo pipefail
                   gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP/docs-release-assets"
                   gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/docs-release.json"
-                  deno run -A scripts/release-assets.js \
+                  bun scripts/release-assets.js \
                     "$RUNNER_TEMP/docs-release-assets" "$RUNNER_TEMP/verified-docs-release" \
                     "$RELEASE_TAG" published "$RUNNER_TEMP/docs-release.json"
 
@@ -115,37 +123,51 @@ jobs:
               uses: actions/checkout@v5
               with:
                   ref: ${{ needs.sync.outputs.sha || github.sha }}
+                  path: source
                   fetch-depth: 0
 
-            - name: Setup Deno
-              uses: denoland/setup-deno@v2
+            - name: Checkout Bun documentation tooling
+              uses: actions/checkout@v5
               with:
-                  deno-version: v2.9.7
+                  # Push corrections use the current default-branch toolchain, never old Stable scripts.
+                  ref: ${{ needs.sync.outputs.tooling_sha || github.event.repository.default_branch }}
+                  path: tooling
+                  persist-credentials: false
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: tooling/.bun-version
+
+            - name: Install frozen tooling dependencies
+              working-directory: tooling
+              run: bun run install:locked
 
             - name: Verify documentation source and qualified release
+              working-directory: source
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   set -euo pipefail
-                  documented=$(deno eval 'console.log(JSON.parse(Deno.readTextFileSync("docs-site/release.json")).version)')
+                  documented=$(bun -e 'console.log(JSON.parse(await Bun.file("docs-site/release.json").text()).version)')
                   latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft --jq 'select(.isPrerelease == false and .isDraft == false) | .tagName')
                   test "$documented" = "$latest" || { echo "Documented $documented is stale; latest is $latest" >&2; exit 1; }
-                  deno run -A scripts/verify-docs-source.ts "$documented" "$(git rev-parse HEAD)"
+                  bun ../tooling/scripts/verify-docs-source.ts "$documented" "$(git rev-parse HEAD)"
                   gh release download "$documented" --dir "$RUNNER_TEMP/docs-release-assets"
                   gh api "repos/$GITHUB_REPOSITORY/releases/tags/$documented" > "$RUNNER_TEMP/docs-release.json"
-                  deno run -A scripts/release-assets.js \
+                  bun ../tooling/scripts/release-assets.js \
                     "$RUNNER_TEMP/docs-release-assets" "$RUNNER_TEMP/verified-docs-release" \
                     "$documented" published "$RUNNER_TEMP/docs-release.json"
                   source_ref=$(git rev-parse HEAD)
-                  deno eval '
+                  bun -e '
                     const path = "docs-site/release.json";
-                    const release = JSON.parse(await Deno.readTextFile(path));
-                    release.sourceRef = Deno.args[0];
-                    await Deno.writeTextFile(path, `${JSON.stringify(release, null, 2)}\n`);
+                    const release = JSON.parse(await Bun.file(path).text());
+                    release.sourceRef = process.argv[1];
+                    await Bun.write(path, `${JSON.stringify(release, null, 2)}\n`);
                   ' "$source_ref"
 
             - name: Build and check documentation
-              run: deno task docs:check
+              run: bun tooling/scripts/build-stable-docs.ts source
 
             - name: Configure Pages
               uses: actions/configure-pages@v5
@@ -155,17 +177,18 @@ jobs:
             - name: Upload Pages artifact
               uses: actions/upload-pages-artifact@v4
               with:
-                  path: dist/docs
+                  path: source/dist/docs
 
             - name: Reject stale build before deployment
+              working-directory: source
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   set -euo pipefail
-                  documented=$(deno eval 'console.log(JSON.parse(Deno.readTextFileSync("docs-site/release.json")).version)')
+                  documented=$(bun -e 'console.log(JSON.parse(await Bun.file("docs-site/release.json").text()).version)')
                   latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft --jq 'select(.isPrerelease == false and .isDraft == false) | .tagName')
                   test "$documented" = "$latest" || { echo "Documented $documented became stale; latest is $latest" >&2; exit 1; }
-                  deno run -A scripts/verify-docs-source.ts "$documented" "$(git rev-parse HEAD)"
+                  bun ../tooling/scripts/verify-docs-source.ts "$documented" "$(git rev-parse HEAD)"
 
             - name: Deploy Pages
               id: deployment

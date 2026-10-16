@@ -4,7 +4,7 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import { assertEquals, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
 import { savePlan } from "../../plan-store.js";
 import { type BrowserPort, NO_OPEN_BROWSER_PORT } from "../../shared/browser-port.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import process from "node:process";
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { encodeCwdForSessionDir } from "./root-session.js";
 import {

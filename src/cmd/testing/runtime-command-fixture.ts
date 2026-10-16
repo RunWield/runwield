@@ -9,7 +9,7 @@ import { fauxAssistantMessage, type FauxResponseFactory, fauxText, type Provider
 import { createProvider } from "@earendil-works/pi-ai";
 import type { AuthInteraction, OAuthCredential } from "@earendil-works/pi-ai";
 import { registerFauxProvider } from "@earendil-works/pi-ai/compat";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { __resetSettingsForTests, ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY } from "../../shared/settings.js";
 import { getModelRegistry } from "../../shared/models/model-registry.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

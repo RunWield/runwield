@@ -1,7 +1,8 @@
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { dirname, join } from "node:path";
 import { loadPlan } from "../../plan-store.js";
 import { defineGitFixture, git } from "../git-test-fixture.ts";
 import { loadEpicReviewContext, recordIntegrationNotes, withIntegrationNotes } from "./epic-review-context.ts";

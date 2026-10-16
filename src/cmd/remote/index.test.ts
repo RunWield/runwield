@@ -19,8 +19,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "@std/assert";
-import { fromFileUrl, join, toFileUrl } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl, pathToFileURL as toFileUrl } from "node:url";
+import { join } from "node:path";
 import { parseRemoteDestination } from "./index.ts";
 
 const cli = fromFileUrl(new URL("../../cli.ts", import.meta.url));
@@ -79,6 +80,16 @@ import { existsSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 const args = process.argv.slice(2);
 const readyFile = process.env.SSH_LOG + ".ready";
+if (args[0] === "-G") {
+    console.log("hostname remote.example\\nuser tester\\nport 22");
+    process.exit(0);
+}
+if (args[0] === "-v") {
+    if (args[1] !== "-o" || args[2] !== "ControlPath=none" || args[3] !== "-oFingerprintHash=sha256") process.exit(42);
+    args.splice(0, 4);
+    process.stderr.write("debug1: Server host key: ssh-ed25519 SHA256:fixture\\n");
+}
+
 if (args[0] === "-tt") {
     if (!args.includes("ExitOnForwardFailure=yes") || !args.includes("remote-alias")) process.exit(42);
     process.stdout.write("REMOTE_SUPERVISOR_READY:/tmp/wld-remote-fixture/control.sock\\n");
@@ -132,6 +143,16 @@ import { writeFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 const args = process.argv.slice(2);
 writeFileSync(process.env.SSH_LOG, args.join("\\n") + "\\n");
+if (args[0] === "-G") {
+    console.log("hostname remote.example\\nuser tester\\nport 22");
+    process.exit(0);
+}
+if (args[0] === "-v") {
+    if (args[1] !== "-o" || args[2] !== "ControlPath=none" || args[3] !== "-oFingerprintHash=sha256") process.exit(42);
+    args.splice(0, 4);
+    process.stderr.write("debug1: Server host key: ssh-ed25519 SHA256:fixture\\n");
+}
+
 if (args.length !== 4 || args[0] !== "-T" || args[1] !== "--") process.exit(42);
 let input = "";
 for await (const chunk of process.stdin) input += chunk.toString();
@@ -155,7 +176,11 @@ console.log(JSON.stringify({ ok: true, cwd: "/remote/home/" + (request.path || "
                 join(bin, "ssh"),
                 `#!/bin/sh
 printf '%s\\n' "$@" > "$SSH_LOG"
+if [ "$1" = -G ]; then printf 'hostname remote.example\\nuser tester\\nport 22\\n'; exit 0; fi
+[ "$1" = -v ] && [ "$2" = -o ] && [ "$3" = ControlPath=none ] || exit 42
+shift 4
 [ "$1" = -T ] && [ "$2" = -- ] && [ "$#" = 4 ] || exit 42
+echo 'debug1: Server host key: ssh-ed25519 SHA256:fixture' >&2
 HOME="$REMOTE_HOME" PYTHONPATH="$REMOTE_PYTHONPATH" export HOME PYTHONPATH
 tee "$SSH_LOG.json" | /bin/sh -c "$4"
 `,
@@ -172,38 +197,14 @@ tee "$SSH_LOG.json" | /bin/sh -c "$4"
         // A development launcher requires a local Linux artifact, regardless of the release build version.
         const version = join(root, "version.js");
         await fsWriteFile(version, 'export const VERSION = "development";\n');
-        const config = join(root, "deno.json");
-        const projectConfig = new URL("../../../deno.json", import.meta.url);
-        const { imports } = JSON.parse(await fsReadFile(projectConfig, "utf8"));
-        await fsWriteFile(
-            config,
-            JSON.stringify({
-                extends: fromFileUrl(projectConfig),
-                // The isolated CLI config has no project lockfile; resolve the just-upgraded Pi packages.
-                minimumDependencyAge: 0,
-                imports: {
-                    ...Object.fromEntries(
-                        Object.entries(imports).map(([key, value]) => [
-                            key,
-                            typeof value === "string" && value.startsWith("./")
-                                ? new URL(value, projectConfig).href
-                                : value,
-                        ]),
-                    ),
-                    [new URL("../../shared/build-identity.js", import.meta.url).href]: toFileUrl(identity).href,
-                    [new URL("../../shared/version.js", import.meta.url).href]: toFileUrl(version).href,
-                },
-            }),
-        );
         const preload = join(root, "build-boundary.ts");
-        if (!process.versions.deno) {
-            const replacements = {
-                [fromFileUrl(new URL("../../shared/build-identity.js", import.meta.url))]: identity,
-                [fromFileUrl(new URL("../../shared/version.js", import.meta.url))]: version,
-            };
-            await fsWriteFile(
-                preload,
-                `import { plugin } from "bun";
+        const replacements = {
+            [fromFileUrl(new URL("../../shared/build-identity.js", import.meta.url))]: identity,
+            [fromFileUrl(new URL("../../shared/version.js", import.meta.url))]: version,
+        };
+        await fsWriteFile(
+            preload,
+            `import { plugin } from "bun";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 const replacements = ${JSON.stringify(replacements)};
@@ -215,12 +216,13 @@ plugin({ name: "fixture-build-boundary", setup(build) {
     });
 }});
 `,
-            );
-        }
-        const cliArgs = (args: string[]) =>
-            process.versions.deno
-                ? runtimeSourceArgs(["run", "-A", "--quiet", "--config", config, cli, "remote", ...args])
-                : ["run", "--preload", preload, ...runtimeSourceArgs(["run", "-A", cli, "remote", ...args]).slice(1)];
+        );
+        const cliArgs = (args: string[]) => [
+            "run",
+            "--preload",
+            preload,
+            ...runtimeSourceArgs(["run", "-A", cli, "remote", ...args]).slice(1),
+        ];
         const cliEnv = (proof?: string) => ({
             ...process.env,
             HOME: local,
@@ -331,8 +333,9 @@ test("remote CLI help and invalid arity do not contact SSH", async () => {
         assertEquals(help.code, 0);
         assertStringIncludes(help.stdout, "Usage: wld remote <ssh-host>");
         const missing = await run([]);
-        assertEquals(missing.code, 1);
-        assertStringIncludes(missing.stderr, "Usage: wld remote <ssh-host>");
+        assertEquals(missing.code, 0);
+        assertStringIncludes(missing.stdout, "wld remote sessions");
+        assertStringIncludes(help.stdout, "wld remote sessions");
         const excess = await run(["alias", "other"]);
         assertEquals(excess.code, 1);
         assertEquals(await exists(sshLog), false);
@@ -352,6 +355,7 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/captured-process.ts",
             "src/shared/socket-listener.ts",
             "src/shared/stdin-stream.ts",
+            "src/shared/jsonc.ts",
             "src/shared/remote/runtime.js",
             "src/shared/remote/target.ts",
             "src/shared/remote/control.ts",
@@ -364,13 +368,13 @@ test("source remote help works without a generated identity and connection expla
             "src/shared/version.js",
         ])
             await fsCopyFile(path, join(root, path));
-        if (!process.versions.deno) {
-            await fsSymlink(
-                fromFileUrl(new URL("../../../node_modules", import.meta.url)),
-                join(root, "node_modules"),
-                "dir",
-            );
-        }
+
+        await fsSymlink(
+            fromFileUrl(new URL("../../../node_modules", import.meta.url)),
+            join(root, "node_modules"),
+            "dir",
+        );
+
         const module = await import(toFileUrl(join(root, "src/cmd/remote/index.ts")).href);
         const originalLog = console.log;
         let help = "";
@@ -383,7 +387,7 @@ test("source remote help works without a generated identity and connection expla
             console.log = originalLog;
         }
         assertStringIncludes(help, "Usage: wld remote");
-        await assertRejects(() => module.runRemoteCommand(["example"]), Error, "scripts/compile.js --output bin/wld");
+        await assertRejects(() => module.runRemoteCommand(["example"]), Error, "bun run compile --output bin/wld");
     } finally {
         await fsRm(root, { recursive: true });
     }
@@ -420,8 +424,16 @@ test("remote CLI resolves a host home without initializing a local project and r
         const result = await run(["remote-alias"]);
         assertEquals(result.code, 1);
         assertStringIncludes(result.stderr, "Missing x86_64-unknown-linux-gnu artifact");
-        assertStringIncludes(result.stderr, "scripts/compile.js --target x86_64-unknown-linux-gnu");
-        assertEquals((await fsReadFile(sshLog, "utf8")).split("\n").slice(0, 3), ["-T", "--", "remote-alias"]);
+        assertStringIncludes(result.stderr, "bun run compile --target x86_64-unknown-linux-gnu");
+        assertEquals((await fsReadFile(sshLog, "utf8")).split("\n").slice(0, 7), [
+            "-v",
+            "-o",
+            "ControlPath=none",
+            "-oFingerprintHash=sha256",
+            "-T",
+            "--",
+            "remote-alias",
+        ]);
         assertEquals(await exists(join(local, ".wld")), false);
         assertEquals(await exists(join(local, ".git")), false);
         assertEquals(await exists(join(remote, ".cache")), false);
@@ -465,4 +477,22 @@ test("remote CLI exits after authenticated SSH closes while terminal stdin remai
         assertStringIncludes(result.stdout, "REMOTE_EXIT_AFTER_INPUT");
         assertEquals(await fsReadFile(sshLog + ".ready", "utf8"), "authenticated");
     }, true);
+});
+
+test("remote sessions reads empty laptop history before identity, proof, or SSH setup", async () => {
+    await withRemoteFixture(async ({ run, local, sshLog }) => {
+        const result = await run(["sessions"], "malformed-proof-must-not-be-read");
+        assertEquals(result.code, 0, result.stderr);
+        assertStringIncludes(result.stdout, "No saved remote Sessions.");
+        assertEquals(await exists(sshLog), false);
+        assertEquals(await exists(join(local, ".wld")), false);
+    });
+});
+
+test("a host alias named sessions remains reachable with a colon", async () => {
+    await withRemoteFixture(async ({ run, sshLog }) => {
+        const result = await run(["sessions:"]);
+        assertStringIncludes(result.stderr, "Missing x86_64-unknown-linux-gnu artifact");
+        assertStringIncludes(await fsReadFile(sshLog, "utf8"), "sessions");
+    });
 });

@@ -8,8 +8,8 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { parse as parseJsonc } from "@std/jsonc";
-import { basename, dirname, join } from "@std/path";
+import { parse as parseJsonc } from "./jsonc.ts";
+import { basename, dirname, join } from "node:path";
 import { enterProjectRuntime, resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { ensureRunWieldOwnedGitignoreBlock, RUNWIELD_GITIGNORE_BLOCK } from "./runwield-owned-paths.ts";
 import { resolvePrimaryCheckoutRoot } from "./primary-checkout.ts";

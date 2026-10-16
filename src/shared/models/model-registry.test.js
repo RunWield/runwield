@@ -2,8 +2,9 @@ import { test } from "node:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
-import { assert, assertEquals, assertObjectMatch, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { ok as assert, partialDeepStrictEqual as assertObjectMatch } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import {
     discoverProviderModel,
     migratePiModelConfigOnce,

@@ -6,6 +6,12 @@ with it.
 
 This guide uses placeholder addresses such as `https://plans.example.com`; replace them with your own.
 
+The current `Containerfile` and `compose.yml` are **test-only, non-hardened Bun definitions**. They retain a nonroot
+user, loopback publishing, persistent `/data`, and Compose read-only/capability restrictions. Bun does not enforce the
+former Deno read/write allowlists or subprocess denial. Equivalent isolation is deferred; do not mount credentials or
+sensitive host directories into these test containers. The deployment profiles below describe operational requirements,
+not production qualification of the current image.
+
 ## Deployment profiles
 
 ### Private or VPN deployment
@@ -80,7 +86,7 @@ to record authorization headers.
 
 The Plan Server rejects JSON request bodies larger than `RUNWIELD_REMOTE_MAX_REQUEST_BYTES` with `413`. This protects
 the app if the proxy is misconfigured. Your reverse proxy should enforce the same or smaller body limit so oversized
-requests fail before reaching Deno.
+requests fail before reaching Bun.
 
 The Nginx example applies a stricter rate limit to `POST /api/spaces` than to ordinary review traffic. Anyone can call
 that endpoint, so on a public server, watch disk use and request rates.

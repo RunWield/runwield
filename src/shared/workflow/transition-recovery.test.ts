@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import {
@@ -16,8 +17,7 @@ import process from "node:process";
  * a journal that belongs to another Plan.
  */
 
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { healSettledTransitionRecords } from "./transition-recovery.ts";
 import { getTransitionJournalPath } from "./state-transition.ts";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";

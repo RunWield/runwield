@@ -2,7 +2,8 @@ import { copyFile, link, mkdir as fsMkdir, mkdtemp, readFile as fsReadFile, syml
 import { rmSync } from "node:fs";
 import process, { execPath, platform, versions } from "node:process";
 import { tmpdir } from "node:os";
-import { fromFileUrl, join } from "@std/path";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { captureForegroundProcess } from "../shared/captured-process.ts";
 
 // Only the executable contents are shared. Every fixture has its own command

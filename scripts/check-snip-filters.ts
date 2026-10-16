@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run -A
+#!/usr/bin/env bun
 import { captureScriptProcess } from "./script-process.ts";
 import {
     mkdir as fsMkdir,
@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import process from "node:process";
 
-import { basename, join } from "@std/path";
+import { basename, join } from "node:path";
 import { SNIP_FILTERS_DIR } from "../src/constants.js";
 
 const FILTERS = ["deno-check.yaml", "deno-fmt.yaml", "deno-lint.yaml", "deno-test.yaml", "deno-task.yaml"];

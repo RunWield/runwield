@@ -4,7 +4,7 @@ import { captureForegroundProcess } from "../../shared/captured-process.ts";
 import { getCwd } from "../../constants.js";
 import { readFile as fsReadFile, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import snipExtension, { __testing } from "./index.js";
 
 /** @param {string} command @param {string | null} [failureLabel] */

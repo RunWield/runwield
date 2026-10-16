@@ -9,7 +9,7 @@ import {
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 
 import { loadPlan, savePlan } from "../plan-store.js";
 

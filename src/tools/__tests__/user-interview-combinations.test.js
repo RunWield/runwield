@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { createUserInterviewTool } from "../../tools/user-interview.ts";
 import { HostedSession } from "../../shared/session/hosted-session.js";
 

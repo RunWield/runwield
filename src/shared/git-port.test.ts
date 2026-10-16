@@ -1,6 +1,6 @@
 import { rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../testing/assertions.ts";
 import { createGitPort } from "./git-port.ts";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 

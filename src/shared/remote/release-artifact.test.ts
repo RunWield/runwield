@@ -2,8 +2,8 @@ import { captureForegroundProcess } from "../captured-process.ts";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertThrows } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { sha256Bytes } from "../../../scripts/build-metadata.js";
 import { extractReleaseRuntime, releaseRuntimeName } from "./release-artifact.ts";
 

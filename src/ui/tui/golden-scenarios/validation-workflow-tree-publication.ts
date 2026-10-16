@@ -1,4 +1,5 @@
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals } from "../../../testing/assertions.ts";
+import { ok as assert } from "node:assert/strict";
 import { PLAN_RUNTIME_FIELDS } from "../../../shared/workflow/controller-state.ts";
 import { RUNWIELD_GITIGNORE_BLOCK } from "../../../shared/runwield-owned-paths.ts";
 import { withValidationBranches } from "./validation-workflow-tree-shared.ts";

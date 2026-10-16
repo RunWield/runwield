@@ -12,8 +12,9 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertMatch, assertRejects, assertStringIncludes } from "@std/assert";
-import { basename, dirname, join } from "@std/path";
+import { match as assertMatch } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
+import { basename, dirname, join } from "node:path";
 
 import { resolveProjectRuntimeLayout } from "./project-runtime-layout.ts";
 import { addEntry, findByPlanId } from "./worktree-registry.js";

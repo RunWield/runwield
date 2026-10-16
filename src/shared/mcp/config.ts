@@ -2,8 +2,8 @@ import { platform } from "node:process";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { type Stats } from "node:fs";
 import { lstat as fsLstat, readFile as fsReadFile } from "node:fs/promises";
-import { parse as parseJsonc } from "@std/jsonc";
-import { join } from "@std/path";
+import { parse as parseJsonc } from "../jsonc.ts";
+import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 

@@ -1,5 +1,5 @@
 import { readFileSync as fsReadFileSync, type Stats, statSync as fsStatSync } from "node:fs";
-import { dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
 
 function isGitEntry(path: string): boolean {
     try {

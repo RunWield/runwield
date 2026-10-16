@@ -3,7 +3,7 @@
  * Fresh PROJECT requests routed through the real Router, Architect, and Slicer composition.
  */
 
-import { assert } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { assertEventIncludes, assertScreenIncludes } from "../testing/scenario-runner.js";
 
 type GoldenScenarioResult = Parameters<typeof assertEventIncludes>[0];

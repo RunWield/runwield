@@ -1,3 +1,4 @@
+import { gc } from "bun";
 import { isStandaloneExecutable } from "../src/shared/runtime-identity.ts";
 import { serveHttp } from "../src/shared/http-server.ts";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
@@ -5,7 +6,7 @@ import process from "node:process";
 // Disposable real Workspace page and saved-operation handlers. This file is
 // also the entry point of the standalone diagnostic executable. Do not import application modules until
 // HOME and MNEMOTECA_DB_PATH have been set by the parent process.
-import { join } from "@std/path";
+import { join } from "node:path";
 
 interface Fixture {
     routes: Array<{ path: string; marker: string }>;
@@ -30,9 +31,8 @@ export async function createRendererFixture(root: string, origin: string): Promi
     const { openOwnerCoordinationStore } = await import("../src/shared/owner-coordination/index.js");
     const { createOwnerWorkspaceApp, createWorkspaceApp, createReviewWorkspaceApp, createSessionQuestionWorkspaceApp } =
         await import("../src/ui/workspace/server.js");
-    const { createWorkRecordMnemotecaFixture } = await import(
-        "../src/shared/work-records/test-fixtures/mnemoteca-port.ts"
-    );
+    const { createWorkRecordMnemotecaFixture } =
+        await import("../src/shared/work-records/test-fixtures/mnemoteca-port.ts");
     const projects = [join(root, "project-a"), join(root, "project-b")];
     for (const [index, project] of projects.entries()) {
         await fsMkdir(project, { recursive: true });
@@ -66,8 +66,8 @@ export async function createRendererFixture(root: string, origin: string): Promi
         credentialFactory: () => "memory-credential",
         csrfFactory: () => "memory-csrf",
     });
-    const ids = projects.map((project, index) =>
-        store.registerProject({ root: project, displayName: `Memory Project ${index}` }).projectId
+    const ids = projects.map(
+        (project, index) => store.registerProject({ root: project, displayName: `Memory Project ${index}` }).projectId,
     );
     const { writeBareSessionTranscript } = await import("../src/testing/bare-session-transcript-fixture.ts");
     const runtimeProject = store.ensureRuntimeProject({ root: projects[0] });
@@ -75,12 +75,7 @@ export async function createRendererFixture(root: string, origin: string): Promi
     for (let index = 0; index < 2; index++) {
         const piSessionId = `memory-session-${index}`;
         const timestamp = `2026-01-0${index + 1}T00:00:00.000Z`;
-        const transcriptPath = await writeBareSessionTranscript(
-            sessionBaseDir,
-            projects[0],
-            piSessionId,
-            timestamp,
-        );
+        const transcriptPath = await writeBareSessionTranscript(sessionBaseDir, projects[0], piSessionId, timestamp);
         const session = await store.ensureSessionCatalogRecord({
             projectId: runtimeProject.projectId,
             piSessionId,
@@ -104,11 +99,12 @@ export async function createRendererFixture(root: string, origin: string): Promi
             cwd: projects[0],
             token,
             reviewConversation: undefined,
-            reviewType: reviewType === "code" ? "code" as const : "plan" as const,
-            reviewPayload: reviewType === "code"
-                ? { rawPatch: "diff --git a/a b/a\n+Memory code review marker", title: "Memory code review marker" }
-                : { plan: "# Memory plan review marker", planPath: "docs/plans/fixture.md" },
-        })
+            reviewType: reviewType === "code" ? ("code" as const) : ("plan" as const),
+            reviewPayload:
+                reviewType === "code"
+                    ? { rawPatch: "diff --git a/a b/a\n+Memory code review marker", title: "Memory code review marker" }
+                    : { plan: "# Memory plan review marker", planPath: "docs/plans/fixture.md" },
+        }),
     );
     const question = createSessionQuestionWorkspaceApp({
         cwd: projects[0],
@@ -137,8 +133,9 @@ export async function createRendererFixture(root: string, origin: string): Promi
         // the same unprefixed URLs that Astro emits in its rendered pages.
         if (
             !match &&
-            /^\/(?:_astro\/[^/]+|brand\/logo\.svg|tokens\.css|components\.css|workspace\.css|theme\.css|styles\.css|workspace-shell\.js|design-system\/sidebar-motion\.js)$/
-                .test(path)
+            /^\/(?:_astro\/[^/]+|brand\/logo\.svg|tokens\.css|components\.css|workspace\.css|theme\.css|styles\.css|workspace-shell\.js|design-system\/sidebar-motion\.js)$/.test(
+                path,
+            )
         ) {
             return await local.handler()(new Request(`${origin}${path}`));
         }
@@ -157,8 +154,10 @@ export async function createRendererFixture(root: string, origin: string): Promi
             if (pathname.startsWith("/review/")) return "review";
             if (pathname === "/session-question") return "question";
         };
-        const kind = match?.[1] ?? routeKind(path) ??
-            (path.startsWith("/api/") || path === "/" ? from?.[1] ?? routeKind(fromPath) : undefined);
+        const kind =
+            match?.[1] ??
+            routeKind(path) ??
+            (path.startsWith("/api/") || path === "/" ? (from?.[1] ?? routeKind(fromPath)) : undefined);
         if (!kind) return new Response("Fixture route not found", { status: 404 });
         const suffix = match?.[2] ?? path;
         const headers = new Headers(incoming?.headers);
@@ -178,8 +177,8 @@ export async function createRendererFixture(root: string, origin: string): Promi
         const reviewPage = targetPath.startsWith("/review/")
             ? targetPath
             : from?.[1] === "review"
-            ? `/review${from[2]}`
-            : fromPath;
+              ? `/review${from[2]}`
+              : fromPath;
         return await reviews[reviewPage === "/review/code" ? 1 : 0].handler()(req);
     }
     return {
@@ -218,14 +217,16 @@ async function configureModelFixture(home: string) {
                     baseUrl: "http://127.0.0.1:0",
                     apiKey: "fixture-key",
                     api,
-                    models: [{
-                        id: model,
-                        name: "Memory fixture model",
-                        api,
-                        input: ["text", "image"],
-                        contextWindow: 128000,
-                        maxTokens: 4096,
-                    }],
+                    models: [
+                        {
+                            id: model,
+                            name: "Memory fixture model",
+                            api,
+                            input: ["text", "image"],
+                            contextWindow: 128000,
+                            maxTokens: 4096,
+                        },
+                    ],
                 },
             },
         }),
@@ -261,9 +262,8 @@ async function runOperationWorkload(root: string, combined: boolean, forceGc: bo
     const { fauxAssistantMessage, fauxText } = await import("@earendil-works/pi-ai");
     const { makeManagedSessionFixture } = await import("../src/testing/managed-session-fixture.ts");
     const { WorkspaceSessionContinuationService } = await import("../src/ui/workspace/server/session-continuation.js");
-    const { ownerSessionOperationStatusApi, ownerSessionOperationStreamApi } = await import(
-        "../src/ui/workspace/routes/owner-session-api.js"
-    );
+    const { ownerSessionOperationStatusApi, ownerSessionOperationStreamApi } =
+        await import("../src/ui/workspace/routes/owner-session-api.js");
     const { createOwnerConnectionRegistry } = await import("../src/ui/workspace/server/owner-connections.ts");
     const home = process.env["HOME"]!;
     const projectRoot = join(root, "operation-project");
@@ -370,10 +370,8 @@ async function sample(
     counts?: { scenario: string; completed: number; pages: number },
 ): Promise<void> {
     if (forceGc) {
-        const gc = Reflect.get(globalThis, "gc");
-        if (typeof gc !== "function") throw new Error("INCOMPLETE: GC not exposed");
         for (let i = 0; i < 3; i++) {
-            gc();
+            gc(true);
             await new Promise((resolve) => setTimeout(resolve, 0));
         }
     }
@@ -414,28 +412,31 @@ async function main(): Promise<void> {
         if (process.argv.slice(2).includes("--serve")) {
             let origin = "";
             const ready = Promise.withResolvers<Fixture>();
-            const server = serveHttp({
-                hostname: "127.0.0.1",
-                port: 0,
-                onListen({ port }) {
-                    origin = `http://127.0.0.1:${port}`;
+            const server = serveHttp(
+                {
+                    hostname: "127.0.0.1",
+                    port: 0,
+                    onListen({ port }) {
+                        origin = `http://127.0.0.1:${port}`;
+                    },
                 },
-            }, async (req) => {
-                const current = await ready.promise;
-                const url = new URL(req.url);
-                if (url.pathname === "/__memory") {
-                    return Response.json({
-                        ...process.memoryUsage(),
-                        responses,
-                        elapsedMs: Math.round(performance.now() - started),
-                    });
-                }
-                if (url.pathname === "/" && !req.headers.has("referer")) return Response.json(current.routes);
-                const result = await current.request(url.pathname, req);
-                responses++;
-                guard();
-                return result;
-            });
+                async (req) => {
+                    const current = await ready.promise;
+                    const url = new URL(req.url);
+                    if (url.pathname === "/__memory") {
+                        return Response.json({
+                            ...process.memoryUsage(),
+                            responses,
+                            elapsedMs: Math.round(performance.now() - started),
+                        });
+                    }
+                    if (url.pathname === "/" && !req.headers.has("referer")) return Response.json(current.routes);
+                    const result = await current.request(url.pathname, req);
+                    responses++;
+                    guard();
+                    return result;
+                },
+            );
             let modelBoundary: Awaited<ReturnType<typeof configureModelFixture>> | undefined;
             try {
                 modelBoundary = await configureModelFixture(process.env["HOME"]!);
@@ -481,8 +482,10 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.main) {
-    main().then(() => process.exit(0)).catch((error) => {
-        console.error(error);
-        process.exit(1);
-    });
+    main()
+        .then(() => process.exit(0))
+        .catch((error) => {
+            console.error(error);
+            process.exit(1);
+        });
 }

@@ -5,7 +5,8 @@ import { readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "no
  * Slicer pseudo-agent orchestration for PROJECT plans.
  */
 
-import { dirname, fromFileUrl } from "@std/path";
+import { dirname } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { AGENTS, isPlannedChangeClassification, SUBAGENTS } from "../../constants.js";

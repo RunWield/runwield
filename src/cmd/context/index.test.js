@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import process from "node:process";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import stripAnsi from "strip-ansi";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";

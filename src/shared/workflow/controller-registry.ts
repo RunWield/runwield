@@ -11,7 +11,7 @@ import {
     rm as fsRm,
 } from "node:fs/promises";
 /** File-backed controller state shared by all worktrees of one project. */
-import { dirname, join, resolve } from "@std/path";
+import { dirname, join, resolve } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 import {

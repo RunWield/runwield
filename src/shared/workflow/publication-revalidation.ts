@@ -8,7 +8,7 @@ import {
     writeFile as fsWriteFile,
 } from "node:fs/promises";
 /** Recover a changed, unpublished source without reusing stale validation evidence. */
-import { join } from "@std/path";
+import { join } from "node:path";
 import { loadPlan, updatePlanFrontMatter, withPlanLock } from "../../plan-store.js";
 import { gitStatusPaths } from "../git-runtime-safety.ts";
 import { recoverSealedPlanFormatting } from "../publication-plan-formatting.ts";

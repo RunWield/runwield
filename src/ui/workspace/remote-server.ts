@@ -8,7 +8,7 @@ import { mkdir as fsMkdir } from "node:fs/promises";
  * Plan Board authority and stores remote Shared Space state in SQLite.
  */
 
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { DEFAULT_REMOTE_MAX_REQUEST_BYTES } from "./routes/remote-api.js";
 import { createRemoteWorkspaceApp } from "./server.js";
 

@@ -1,5 +1,5 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import { runCopyCommand } from "./index.ts";
 import { initRunWieldTheme } from "../../ui/theme/theme.js";
 

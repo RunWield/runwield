@@ -29,10 +29,10 @@ git check-ignore prototypes/<slug>/
 Use whatever the host project uses. Match the existing toolchain; don't add a new package manager or runtime just for
 the prototype.
 
-In RunWield, put a local `deno.json` under `prototypes/<slug>/` with a `dev` task and run:
+In RunWield, put a local `package.json` under `prototypes/<slug>/` with a `scripts.dev` command and run:
 
 ```bash
-deno task prototype <slug>
+bun run prototype <slug>
 ```
 
 In other projects, use the equivalent project-native local task config and document the one command in the prototype

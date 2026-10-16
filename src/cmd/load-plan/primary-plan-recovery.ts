@@ -12,7 +12,7 @@ import {
     type MissingExecutionWorktreeRecovery,
     resolveWorkflowPlanLocation,
 } from "../../shared/workflow/plan-location.ts";
-import { basename, dirname, isAbsolute, relative, resolve } from "@std/path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { resolvePrimaryCheckoutRoot } from "../../shared/primary-checkout.ts";
 import { listEntries } from "../../shared/worktree-registry.js";
 import { cleanupStoredPublication, loadPublicationAttempt } from "../../shared/workflow/publication-machine.ts";

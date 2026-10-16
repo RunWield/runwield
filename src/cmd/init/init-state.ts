@@ -9,7 +9,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
  * conditionally hide `/init` from autocomplete once done.
  */
 
-import { dirname, join } from "@std/path";
+import { dirname, join } from "node:path";
 import { getCwd, getHomeDir } from "../../constants.js";
 
 interface InitStateEntry {

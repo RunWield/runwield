@@ -1,7 +1,8 @@
+import { assertEquals } from "./assertions.ts";
 import process from "node:process";
 import { stat as fsStat } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
 import { withProcessGlobalTestLock } from "./process-global-lock.ts";
 
 // Tripwire. The suite writes to ~/.wld through both a live Deno.env.get("HOME")
@@ -14,7 +15,7 @@ test("suite runs against a sandboxed HOME", async () => {
     const sandbox = process.env["WLD_TEST_SANDBOX_HOME"];
     assert(
         sandbox,
-        "Tests must run via `deno task test` (or scripts/run-tests.js), which points HOME at a sandbox. " +
+        "Tests must run via `bun run test` (or scripts/run-tests.js), which points HOME at a sandbox. " +
             "Running `deno test` directly lets tests write to the real ~/.wld.",
     );
 

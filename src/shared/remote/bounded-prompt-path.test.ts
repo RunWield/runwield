@@ -8,8 +8,8 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertRejects } from "@std/assert";
-import { join } from "@std/path";
+import { assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { createProvider, InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { createBoundedRemoteModelSession } from "./bounded-model-session.ts";

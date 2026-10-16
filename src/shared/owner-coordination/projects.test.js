@@ -12,7 +12,8 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";
+import { notDeepStrictEqual as assertNotEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { openOwnerCoordinationDatabase } from "./database.js";
 import {
     getProjectById,

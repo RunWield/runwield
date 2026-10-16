@@ -24,6 +24,7 @@ import {
 import { createAssistantMessageEventStream, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { formatProviderError, formatProviderRetryExhaustion, normalizeProviderStream } from "./provider-errors.ts";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
+import { getRemoteSessionSaveBridge } from "./root-session.js";
 import { WorkflowStepCompleted } from "../workflow/workflow-tool-events.ts";
 import { createSingleEditToolDefinition } from "../../tools/edit.js";
 import { createEditDocsToolDefinition, createWriteDocsToolDefinition } from "../../tools/docs-file-tools.js";
@@ -32,8 +33,8 @@ import { createRunWieldGrepToolDefinition } from "../../tools/grep.js";
 import { createRunWieldReadToolDefinition } from "../../tools/read.js";
 import { createRunWieldBashToolDefinition } from "../../tools/bash.ts";
 import { intersectBashAllowedCommands } from "../bash-command-policy.ts";
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
-import { basename, dirname, isAbsolute, join, relative } from "@std/path";
+import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { AGENTS, getCwd, getHomeDir, PROMPT_TEMPLATES_DIR } from "../../constants.js";
 import {
     emitHostedSessionRuntimeEvent,
@@ -142,6 +143,24 @@ function homePromptsDir() {
     return join(personalGlobalRoot(), "prompts");
 }
 
+/** Pi provider hooks cannot execute across the remote model transport. */
+const REMOTE_PROVIDER_EXTENSION_OPTIONS = new Map([
+    ["before_provider_request", "onPayload"],
+    ["before_provider_headers", "transformHeaders"],
+    ["after_provider_response", "onResponse"],
+    ["provider_stream_event", "onProviderStreamEvent"],
+]);
+
+/** @param {import('@earendil-works/pi-coding-agent').AgentSession} session */
+function assertRemoteProviderExtensionsSupported(session) {
+    if (!remotePersonalResourcesActive()) return;
+    for (const [event, option] of REMOTE_PROVIDER_EXTENSION_OPTIONS) {
+        if (session.hasExtensionHandlers(event)) {
+            throw new Error(`Unsupported remote model option: ${option} (extension event: ${event})`);
+        }
+    }
+}
+
 const UNSUPPORTED_TEMPERATURE_RE =
     /\bunsupported (?:parameter|field|argument)\b[^.:\n]*(?::|\b)\s*["']?temperature["']?|\btemperature\b[^.:\n]*\b(?:unsupported|not supported|not allowed|not accepted|invalid temperature)\b|\binvalid temperature\b.*\bonly\b.*\ballowed\b/i;
 
@@ -177,7 +196,11 @@ function requireHostedSession(hostedSession, caller) {
  * @returns {boolean}
  */
 function isAbortSignalMessage(msg) {
-    return String(msg || "").trim().toLowerCase() === "the signal has been aborted";
+    return (
+        String(msg || "")
+            .trim()
+            .toLowerCase() === "the signal has been aborted"
+    );
 }
 
 /**
@@ -225,7 +248,7 @@ function formatDebugJson(value) {
 export function resolveEffectiveSessionToolNames(agentTools, toolNames, customToolNames) {
     const resolvedTools = resolveSessionToolNames(agentTools, toolNames, customToolNames);
     const normalizedTools = resolvedTools.map((toolName) =>
-        toolName === "multi_replace_file_content" ? "multi_file_edit" : toolName
+        toolName === "multi_replace_file_content" ? "multi_file_edit" : toolName,
     );
     return [...new Set(normalizedTools)];
 }
@@ -242,7 +265,8 @@ export function assertThinkingLevelSupportedForInvocation(model, thinkingLevel, 
     if (
         model?.executionBackend === "agy-cli" &&
         ["minimal", "low", "medium", "high", "xhigh", "max"].includes(thinkingLevel)
-    ) return;
+    )
+        return;
     if (model?.reasoning === true) return;
     throw new Error(
         `Model ${model?.provider || ""}/${model?.id || ""} does not support thinkingLevel "${thinkingLevel}".`,
@@ -368,17 +392,21 @@ async function parsePromptTemplateMeta(filePath) {
     }
 
     const frontmatterDescription = typeof attrs.description === "string" ? attrs.description.trim() : "";
-    const inferredDescription = body.split("\n").map((line) => line.trim()).find((line) => line.length > 0) || "";
+    const inferredDescription =
+        body
+            .split("\n")
+            .map((line) => line.trim())
+            .find((line) => line.length > 0) || "";
 
-    const argumentHint = typeof attrs["argument-hint"] === "string" && attrs["argument-hint"].trim()
-        ? attrs["argument-hint"].trim()
-        : undefined;
+    const argumentHint =
+        typeof attrs["argument-hint"] === "string" && attrs["argument-hint"].trim()
+            ? attrs["argument-hint"].trim()
+            : undefined;
 
     const model = typeof attrs.model === "string" && attrs.model.trim() ? attrs.model.trim() : undefined;
     const agent = typeof attrs.agent === "string" && attrs.agent.trim() ? attrs.agent.trim() : undefined;
-    const thinkingLevel = typeof attrs.thinkingLevel === "string" && attrs.thinkingLevel.trim()
-        ? attrs.thinkingLevel.trim()
-        : undefined;
+    const thinkingLevel =
+        typeof attrs.thinkingLevel === "string" && attrs.thinkingLevel.trim() ? attrs.thinkingLevel.trim() : undefined;
 
     return {
         description: frontmatterDescription || inferredDescription,
@@ -447,9 +475,9 @@ export async function listPromptTemplates(options = {}) {
     const packagePromptResources = Array.isArray(options.packagePromptResources)
         ? options.packagePromptResources
         : await resolveInstalledPackagePromptResources({ cwd }).catch((error) => {
-            if (error instanceof PersonalResourcePathError) throw error;
-            return [];
-        });
+              if (error instanceof PersonalResourcePathError) throw error;
+              return [];
+          });
 
     for (const resource of packagePromptResources || []) {
         const name = resource.path.split(/[\\/]/).pop()?.replace(/\.md$/, "") || "";
@@ -497,8 +525,8 @@ export { listSkills } from "./skill-catalog.ts";
  */
 export function getGlobalAgentMdPaths(homeDir, options = {}) {
     if (!homeDir) return [];
-    const includeExternal = options.includeExternal ??
-        (getCustomSetting("enableExternalGlobalAgentsMd", "global") ?? true);
+    const includeExternal =
+        options.includeExternal ?? getCustomSetting("enableExternalGlobalAgentsMd", "global") ?? true;
     const globalRoot = remotePersonalResourcesActive() ? personalGlobalRoot() : join(homeDir, ".wld");
     const agentsRoot = remotePersonalResourcesActive() ? personalAgentsRoot() : join(homeDir, ".agents");
     return [
@@ -542,9 +570,10 @@ export async function listLoadedAgentMdFiles(cwd) {
     for (const homePath of getGlobalAgentMdPaths(homeDir)) {
         await assertPersonalResourcePath(homePath, "global instruction");
         if (await fileExists(homePath)) {
-            const source = homePath === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md")
-                ? /** @type {"external"} */ ("external")
-                : /** @type {"home"} */ ("home");
+            const source =
+                homePath === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md")
+                    ? /** @type {"external"} */ ("external")
+                    : /** @type {"home"} */ ("home");
             results.push({ path: homePath, source });
             break;
         }
@@ -579,20 +608,26 @@ export function abortActiveSession(hostedSession) {
     if (rootTarget && rootTarget.isStreaming) {
         try {
             rootTarget.abort();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
         aborted = true;
     }
     // Clear any stale steering/follow-up messages from the agent's queue
     if (rootTarget) {
         try {
             rootTarget.clearQueue();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
     }
     for (const subSession of targetHostedSession.getSubAgentSessions()) {
         const sub = /** @type {any} */ (subSession);
         try {
             sub.abort();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
         aborted = true;
     }
     return aborted;
@@ -625,14 +660,16 @@ export async function steerAgentSessionWithTarget(session, text, images) {
     if (typeof session.steer !== "function") return null;
     const activeModel = session.model || { input: ["text", "image"] };
     const projectRoot = /** @type {any} */ (session).runWieldProjectRoot;
-    const fallback = images && images.length > 0 && session.model && !modelSupportsImageInput(session.model)
-        ? await resolveVisionFallbackModel(
-            /** @type {any} */ (session).runWieldModelRegistry || /** @type {any} */ (session).modelRegistry ||
-                getModelRegistry(),
-            SYSTEM_MODEL_DISCOVERY_NETWORK,
-            projectRoot,
-        )
-        : undefined;
+    const fallback =
+        images && images.length > 0 && session.model && !modelSupportsImageInput(session.model)
+            ? await resolveVisionFallbackModel(
+                  /** @type {any} */ (session).runWieldModelRegistry ||
+                      /** @type {any} */ (session).modelRegistry ||
+                      getModelRegistry(),
+                  SYSTEM_MODEL_DISCOVERY_NETWORK,
+                  projectRoot,
+              )
+            : undefined;
     const prepared = prepareImagesForModel({
         text: /** @type {string} */ (text),
         images,
@@ -824,8 +861,13 @@ function isKnownNoSamplingModelFamily(model) {
     const provider = String(model.provider || "").toLowerCase();
     const api = String(model.api || "").toLowerCase();
     const id = String(model.id || "").toLowerCase();
-    return provider === "openai-codex" || api === "openai-codex-responses" ||
-        provider.includes("kimi") || id.includes("kimi-code") || id.includes("kimi-coding");
+    return (
+        provider === "openai-codex" ||
+        api === "openai-codex-responses" ||
+        provider.includes("kimi") ||
+        id.includes("kimi-code") ||
+        id.includes("kimi-coding")
+    );
 }
 
 /**
@@ -1087,11 +1129,10 @@ function emitAgentModelFallback(hostedSession, agentName, displayName, engineerM
         emitted.add(key);
     }
     const subject = agentName === AGENTS.REVIEWER_FEEDBACK_ENGINEER ? "The repair Engineer" : displayName;
-    emitSystemStatus(
-        hostedSession,
-        `${subject} is using the Engineer model: ${engineerModel}.`,
-        { level: "info", header: "RunWield" },
-    );
+    emitSystemStatus(hostedSession, `${subject} is using the Engineer model: ${engineerModel}.`, {
+        level: "info",
+        header: "RunWield",
+    });
 }
 
 /**
@@ -1135,13 +1176,18 @@ export async function resolveModel(
     // A manual choice is scoped to the current Agent. Build a replacement
     // without borrowing that choice, while retaining it if construction fails.
     const activeModelState = hostedSession?.getActiveModelState?.() || { model: "", provider: "" };
-    const activeAgentName = hostedSession?.getRootAgentName?.() ||
+    const activeAgentName =
+        hostedSession?.getRootAgentName?.() ||
         readPersistedActiveAgentName(hostedSession?.getRootSessionManager?.() || undefined) ||
         hostedSession?.getActiveAgentInfo?.()?.agentName;
-    const sameAgent = !activeAgentName || !agentName ||
+    const sameAgent =
+        !activeAgentName ||
+        !agentName ||
         normalizeAgentInternalName(activeAgentName) === normalizeAgentInternalName(agentName);
     if (
-        !options.ignoreManualModelOverride && activeModelState.model && hostedSession?.isUserModelOverride?.() &&
+        !options.ignoreManualModelOverride &&
+        activeModelState.model &&
+        hostedSession?.isUserModelOverride?.() &&
         sameAgent
     ) {
         candidateModels.push({
@@ -1303,9 +1349,8 @@ export async function resolveModel(
         }
 
         const authConfigured = modelRegistry.hasConfiguredAuth(found);
-        const selectable = typeof modelRegistry.isSelectable === "function"
-            ? modelRegistry.isSelectable(found)
-            : authConfigured;
+        const selectable =
+            typeof modelRegistry.isSelectable === "function" ? modelRegistry.isSelectable(found) : authConfigured;
         if (!selectable) {
             await recordModelMetric({
                 category: "model_selection",
@@ -1464,9 +1509,8 @@ function serializeToolContextForProjection(name, tool, fallbackDescription) {
     const parts = [`Tool: ${name}`];
     const label = typeof tool?.label === "string" && tool.label ? tool.label : "";
     if (label && label !== name) parts.push(`Label: ${label}`);
-    const description = typeof tool?.description === "string" && tool.description
-        ? tool.description
-        : fallbackDescription;
+    const description =
+        typeof tool?.description === "string" && tool.description ? tool.description : fallbackDescription;
     if (description) parts.push(`Description: ${description}`);
     if (typeof tool?.promptSnippet === "string" && tool.promptSnippet) {
         parts.push(`Prompt snippet: ${tool.promptSnippet}`);
@@ -1523,9 +1567,10 @@ async function readGlobalInstructionFile(homeDir) {
     for (const path of getGlobalAgentMdPaths(homeDir)) {
         try {
             await assertPersonalResourcePath(path, "global instruction");
-            const source = path === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md")
-                ? /** @type {"external"} */ ("external")
-                : /** @type {"home"} */ ("home");
+            const source =
+                path === join(personalAgentsRoot() ?? join(homeDir, ".agents"), "AGENTS.md")
+                    ? /** @type {"external"} */ ("external")
+                    : /** @type {"home"} */ ("home");
             return { text: await fsReadFile(path, "utf8"), path, source };
         } catch (error) {
             if (error instanceof PersonalResourcePathError) throw error;
@@ -1656,9 +1701,8 @@ export async function assembleFinalSystemPromptWithContextProjection(
     const projectStateSections = [];
     if (projectStateContext) projectStateSections.push(["### Project State", "", projectStateContext].join("\n"));
     if (gitPromptState) projectStateSections.push(formatGitPromptState(gitPromptState));
-    const projectStateContextSection = hasProjectStatePlaceholder && projectStateSections.length > 0
-        ? `${projectStateSections.join("\n\n")}\n`
-        : "";
+    const projectStateContextSection =
+        hasProjectStatePlaceholder && projectStateSections.length > 0 ? `${projectStateSections.join("\n\n")}\n` : "";
     finalSystemPrompt = finalSystemPrompt.replace("{{PROJECT_STATE_CONTEXT}}", projectStateContextSection);
 
     let memories = "";
@@ -1684,8 +1728,8 @@ export async function assembleFinalSystemPromptWithContextProjection(
     if (hasSkillsPlaceholder) {
         try {
             const skills = await listSkills({ cwd });
-            const visibleSkills = skills.filter((skill) =>
-                skill.name && skill.description && !skill.disableModelInvocation
+            const visibleSkills = skills.filter(
+                (skill) => skill.name && skill.description && !skill.disableModelInvocation,
             );
             skillsBlock = visibleSkills
                 .map((skill) => {
@@ -1707,23 +1751,24 @@ export async function assembleFinalSystemPromptWithContextProjection(
 
     // Conditionally include the Image Attachments section only when see_image is available
     // (i.e. the active model is text-only with a vision fallback configured).
-    const imageAttachmentsSection = hasImageAttachmentsPlaceholder && tools.includes("see_image")
-        ? [
-            "## Image Attachments",
-            "",
-            "When the user pastes an image and your current model cannot receive images directly, the image is stored as a session",
-            "artifact and a text marker is placed in the conversation instead:",
-            "",
-            "```",
-            "[Image attached: attachment:<uuid> <mimeType>]",
-            "```",
-            "",
-            "If `see_image` is listed in your available tools, use it to inspect these markers. Call `see_image` with",
-            '`imageRef: "attachment:<uuid>"` (the full reference from the marker) to get a textual description of the image from the',
-            "configured vision fallback model. You can also pass an optional `question` parameter to ask about a specific aspect of",
-            "the image.",
-        ].join("\n")
-        : "";
+    const imageAttachmentsSection =
+        hasImageAttachmentsPlaceholder && tools.includes("see_image")
+            ? [
+                  "## Image Attachments",
+                  "",
+                  "When the user pastes an image and your current model cannot receive images directly, the image is stored as a session",
+                  "artifact and a text marker is placed in the conversation instead:",
+                  "",
+                  "```",
+                  "[Image attached: attachment:<uuid> <mimeType>]",
+                  "```",
+                  "",
+                  "If `see_image` is listed in your available tools, use it to inspect these markers. Call `see_image` with",
+                  '`imageRef: "attachment:<uuid>"` (the full reference from the marker) to get a textual description of the image from the',
+                  "configured vision fallback model. You can also pass an optional `question` parameter to ask about a specific aspect of",
+                  "the image.",
+              ].join("\n")
+            : "";
 
     finalSystemPrompt = finalSystemPrompt.replace("{{IMAGE_ATTACHMENTS_SECTION}}", imageAttachmentsSection);
 
@@ -1744,7 +1789,9 @@ export async function assembleFinalSystemPromptWithContextProjection(
         imageAttachmentsSection,
         bundledAgentDefsPath,
         timezoneLine,
-    ].filter(Boolean).join("\n");
+    ]
+        .filter(Boolean)
+        .join("\n");
     const agentInstructionsItem = createContextProjectionItem("Agent Definition", agentText, { source: "agent" });
     const memoriesItem = createContextProjectionItem("Core Memories", memories, { source: "mnemoteca" });
     const projectStateItem = createContextProjectionItem("Project State", projectStateContextSection, {
@@ -1859,9 +1906,9 @@ function readNamedInvocationContextEntry(entry) {
     const data = /** @type {NamedInvocationContextDataInput} */ (entry.data);
     if (data.version !== 1 || typeof data.expandedRequest !== "string") return null;
     const imageReferences = Array.isArray(data.imageReferences)
-        ? data.imageReferences.filter((image) =>
-            image !== null && typeof image === "object" && typeof image.mimeType === "string"
-        )
+        ? data.imageReferences.filter(
+              (image) => image !== null && typeof image === "object" && typeof image.mimeType === "string",
+          )
         : [];
     return { version: data.version, expandedRequest: data.expandedRequest, imageReferences };
 }
@@ -1883,16 +1930,13 @@ function namedInvocationImageMarker(image) {
 function namedInvocationExpandedContent(message, namedInvocation) {
     const content = "content" in message && Array.isArray(message.content) ? message.content : [];
     const nonTextContent = content.filter((block) => block.type !== "text");
-    const imageMarkers = nonTextContent.length === 0
-        ? namedInvocation.imageReferences.map(namedInvocationImageMarker)
-        : [];
-    const expandedText = imageMarkers.length > 0
-        ? `${namedInvocation.expandedRequest}\n\n${imageMarkers.join("\n")}`
-        : namedInvocation.expandedRequest;
-    return [
-        { type: "text", text: expandedText },
-        ...nonTextContent,
-    ];
+    const imageMarkers =
+        nonTextContent.length === 0 ? namedInvocation.imageReferences.map(namedInvocationImageMarker) : [];
+    const expandedText =
+        imageMarkers.length > 0
+            ? `${namedInvocation.expandedRequest}\n\n${imageMarkers.join("\n")}`
+            : namedInvocation.expandedRequest;
+    return [{ type: "text", text: expandedText }, ...nonTextContent];
 }
 
 /**
@@ -1917,8 +1961,10 @@ function repairNamedInvocationContextEdits(sessionManager) {
 
         const userEntry = branch[index + 1];
         if (
-            userEntry.type !== "message" || userEntry.message.role !== "user" ||
-            userEntry.parentId !== metadataEntry.id || !retainedIds.has(userEntry.id) ||
+            userEntry.type !== "message" ||
+            userEntry.message.role !== "user" ||
+            userEntry.parentId !== metadataEntry.id ||
+            !retainedIds.has(userEntry.id) ||
             editedTargetIds.has(userEntry.id)
         ) {
             continue;
@@ -2000,7 +2046,13 @@ export async function buildAgentSession({
     const targetHostedSession = hostedSession ? requireHostedSession(hostedSession, "buildAgentSession") : null;
     const sessionCwd = cwd || targetHostedSession?.cwd;
     if (!sessionCwd) throw new Error("buildAgentSession: cwd or hostedSession cwd is required");
-    if (remotePersonalResourcesActive()) {
+    if (
+        remotePersonalResourcesActive() &&
+        (!targetHostedSession ||
+            subAgentDefinition ||
+            sessionManager !== targetHostedSession.getRootSessionManager() ||
+            !getRemoteSessionSaveBridge(sessionManager))
+    ) {
         throw new Error("Remote managed agent sessions are not approved; use bounded model integration only");
     }
     await ensureMnemotecaBinary();
@@ -2038,14 +2090,16 @@ export async function buildAgentSession({
     const finalCustomTools = [...(customTools || [])];
     const settingsManager = getSettingsManager(sessionCwd);
     if (tools.includes("bash") && !finalCustomTools.some((t) => t.name === "bash")) {
-        finalCustomTools.push(createRunWieldBashToolDefinition(sessionCwd, allowedCommands, {
-            shellPath: settingsManager.getShellPath(),
-            commandPrefix: settingsManager.getShellCommandPrefix(),
-        }));
+        finalCustomTools.push(
+            createRunWieldBashToolDefinition(sessionCwd, allowedCommands, {
+                shellPath: settingsManager.getShellPath(),
+                commandPrefix: settingsManager.getShellCommandPrefix(),
+            }),
+        );
     }
     const effectiveMcpRootTools = mcpRootTools || targetHostedSession?.getMcpRootTools?.() || [];
-    const effectiveMcpIntegration = mcpIntegration ||
-        (mcpRootTools?.length === 0 ? undefined : targetHostedSession?.getMcpIntegration?.());
+    const effectiveMcpIntegration =
+        mcpIntegration || (mcpRootTools?.length === 0 ? undefined : targetHostedSession?.getMcpIntegration?.());
     for (const tool of effectiveMcpRootTools) {
         if (!effectiveMcpIntegration && !finalCustomTools.find((existing) => existing.name === tool.name)) {
             finalCustomTools.push(tool);
@@ -2057,14 +2111,17 @@ export async function buildAgentSession({
     }
     if (
         tools.some((name) => ["write", "edit", "multi_file_edit", "create_image"].includes(name)) &&
-        resolveImageGenerationSettings(sessionCwd) && !finalCustomTools.some((tool) => tool.name === "create_image")
+        resolveImageGenerationSettings(sessionCwd) &&
+        !finalCustomTools.some((tool) => tool.name === "create_image")
     ) {
         if (!tools.includes("create_image")) tools.push("create_image");
-        finalCustomTools.push(createImageTool({
-            cwd: sessionCwd,
-            sessionManager: effectiveSessionManager,
-            includeImage: activeModelSupportsImages,
-        }));
+        finalCustomTools.push(
+            createImageTool({
+                cwd: sessionCwd,
+                sessionManager: effectiveSessionManager,
+                includeImage: activeModelSupportsImages,
+            }),
+        );
     }
 
     // Auto-wire internal custom tools if requested by name and not already provided.
@@ -2072,7 +2129,8 @@ export async function buildAgentSession({
     // while RunWield runtime injects the concrete tool implementations.
 
     if (
-        tools.includes("plan_written") && targetHostedSession &&
+        tools.includes("plan_written") &&
+        targetHostedSession &&
         !finalCustomTools.find((t) => t.name === "plan_written")
     ) {
         const { createPlanWrittenTool } = await import("../../tools/plan-written.ts");
@@ -2086,7 +2144,8 @@ export async function buildAgentSession({
     }
 
     if (
-        tools.includes("record_plan_deviation") && targetHostedSession &&
+        tools.includes("record_plan_deviation") &&
+        targetHostedSession &&
         !finalCustomTools.find((tool) => tool.name === "record_plan_deviation")
     ) {
         const { createPlanDeviationTool } = await import("../../tools/plan-deviation.ts");
@@ -2094,7 +2153,8 @@ export async function buildAgentSession({
     }
 
     if (
-        tools.includes("artifact_written") && targetHostedSession &&
+        tools.includes("artifact_written") &&
+        targetHostedSession &&
         !finalCustomTools.find((t) => t.name === "artifact_written")
     ) {
         const { createArtifactWrittenTool } = await import("../../tools/artifact-written.ts");
@@ -2112,16 +2172,19 @@ export async function buildAgentSession({
     }
 
     if (
-        tools.includes("background_task") && targetHostedSession &&
+        tools.includes("background_task") &&
+        targetHostedSession &&
         !finalCustomTools.find((t) => t.name === "background_task")
     ) {
         const { createBackgroundTaskTool } = await import("../../tools/background-task.ts");
-        finalCustomTools.push(createBackgroundTaskTool({
-            hostedSession: targetHostedSession,
-            cwd: sessionCwd,
-            allowShellStart: tools.includes("bash"),
-            allowedCommands,
-        }));
+        finalCustomTools.push(
+            createBackgroundTaskTool({
+                hostedSession: targetHostedSession,
+                cwd: sessionCwd,
+                allowShellStart: tools.includes("bash"),
+                allowedCommands,
+            }),
+        );
     }
 
     if (tools.includes("user_interview") && !finalCustomTools.find((t) => t.name === "user_interview")) {
@@ -2132,11 +2195,13 @@ export async function buildAgentSession({
     if (tools.includes("work_record_search") && !finalCustomTools.find((t) => t.name === "work_record_search")) {
         const { createWorkRecordSearchTool } = await import("../../tools/work-record-search.ts");
         const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
-        finalCustomTools.push(createWorkRecordSearchTool({
-            cwd: sessionCwd,
-            accessMode: workRecordAccessMode,
-            mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-        }));
+        finalCustomTools.push(
+            createWorkRecordSearchTool({
+                cwd: sessionCwd,
+                accessMode: workRecordAccessMode,
+                mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+            }),
+        );
     }
     if (tools.includes("work_record_read") && !finalCustomTools.find((t) => t.name === "work_record_read")) {
         const { createWorkRecordReadTool } = await import("../../tools/work-record-read.ts");
@@ -2144,7 +2209,8 @@ export async function buildAgentSession({
     }
 
     if (
-        tools.includes("task_completed") && targetHostedSession &&
+        tools.includes("task_completed") &&
+        targetHostedSession &&
         !finalCustomTools.find((t) => t.name === "task_completed")
     ) {
         const { createTaskCompletedTool } = await import("../../tools/task-completed.ts");
@@ -2154,7 +2220,8 @@ export async function buildAgentSession({
     }
 
     if (
-        tools.includes("review_complete") && targetHostedSession &&
+        tools.includes("review_complete") &&
+        targetHostedSession &&
         !finalCustomTools.find((t) => t.name === "review_complete")
     ) {
         const { createReviewCompletedTool } = await import("../../tools/review-complete.ts");
@@ -2164,17 +2231,21 @@ export async function buildAgentSession({
     }
 
     if (
-        tools.includes("delegate_agent") && targetHostedSession &&
+        tools.includes("delegate_agent") &&
+        targetHostedSession &&
         !finalCustomTools.find((t) => t.name === "delegate_agent")
     ) {
         const { createDelegateAgentTool } = await import("../../tools/delegate-agent.ts");
-        finalCustomTools.push(createDelegateAgentTool({
-            hostedSession: targetHostedSession,
-            cwd: sessionCwd,
-            parentTools: parentDelegableTools,
-            bashAllowedCommands: allowedCommands,
-            runIsolatedAgentSession,
-        }));
+        finalCustomTools.push(
+            createDelegateAgentTool({
+                hostedSession: targetHostedSession,
+                cwd: sessionCwd,
+                parentTools: parentDelegableTools,
+                bashAllowedCommands: allowedCommands,
+                delegationModes: agentDef.delegationModes,
+                runIsolatedAgentSession,
+            }),
+        );
     }
 
     // Override the built-in read tool to block Git internals and unsafe binary/control-byte output.
@@ -2206,28 +2277,41 @@ export async function buildAgentSession({
     }
 
     if (
-        tools.includes("see_image") && visionFallbackModelRef && !finalCustomTools.find((t) => t.name === "see_image")
+        tools.includes("see_image") &&
+        visionFallbackModelRef &&
+        !finalCustomTools.find((t) => t.name === "see_image")
     ) {
-        finalCustomTools.push(createSeeImageTool({
-            cwd: sessionCwd,
-            sessionManager: effectiveSessionManager,
-            completeSimpleFn: completeSimple,
-        }));
+        const remoteFallback = remotePersonalResourcesActive()
+            ? await resolveVisionFallbackModel(modelRegistry, SYSTEM_MODEL_DISCOVERY_NETWORK, sessionCwd)
+            : undefined;
+        finalCustomTools.push(
+            createSeeImageTool({
+                cwd: sessionCwd,
+                sessionManager: effectiveSessionManager,
+                remoteModel: remoteFallback?.model,
+                completeSimpleFn: remoteFallback
+                    ? (model, context, options) => modelRuntime.streamSimple(model, context, options).result()
+                    : completeSimple,
+            }),
+        );
     }
 
     // Resolve system prompt placeholders
-    const { prompt: finalSystemPrompt, projection: contextProjection, effectiveToolDefinitions } =
-        await assembleFinalSystemPromptWithContextProjection(
-            agentDef,
-            tools,
-            finalCustomTools,
-            sessionCwd,
-            projectStateContext,
-            {
-                hostedSession: targetHostedSession || undefined,
-                sessionManager: effectiveSessionManager,
-            },
-        );
+    const {
+        prompt: finalSystemPrompt,
+        projection: contextProjection,
+        effectiveToolDefinitions,
+    } = await assembleFinalSystemPromptWithContextProjection(
+        agentDef,
+        tools,
+        finalCustomTools,
+        sessionCwd,
+        projectStateContext,
+        {
+            hostedSession: targetHostedSession || undefined,
+            sessionManager: effectiveSessionManager,
+        },
+    );
     const promptState = {
         text: finalSystemPrompt,
     };
@@ -2253,7 +2337,7 @@ export async function buildAgentSession({
     ];
     const mcpRootBinding = effectiveMcpIntegration?.bindRoot(tools);
     if (mcpRootBinding) extensionFactories.push(mcpRootBinding.extensionFactory);
-    if (allowedCommands === undefined && await hasSnipBinary()) {
+    if (allowedCommands === undefined && (await hasSnipBinary())) {
         extensionFactories.push((pi) => snipExtension(pi));
     }
 
@@ -2276,8 +2360,7 @@ export async function buildAgentSession({
     await loader.reload();
 
     if (!sessionManager && shouldWriteDebugLog(debugLogPath)) {
-        const debugMsg =
-            `[RunWield] buildAgentSession("${agentName}"): no sessionManager — using in-memory. Messages will NOT persist.`;
+        const debugMsg = `[RunWield] buildAgentSession("${agentName}"): no sessionManager — using in-memory. Messages will NOT persist.`;
         appendDebugLog(debugLogPath, debugMsg);
     }
 
@@ -2286,21 +2369,21 @@ export async function buildAgentSession({
     // Pi to register and withdraw the trusted session's MCP tools dynamically.
     const excludedRootTools = mcpRootBinding
         ? [
-            ...new Set([
-                "read",
-                "bash",
-                "powershell",
-                "edit",
-                "write",
-                "grep",
-                "find",
-                "ls",
-                "codemode",
-                "tool_search",
-                ...finalCustomTools.map((tool) => tool.name),
-                ...loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()]),
-            ]),
-        ].filter((name) => !tools.includes(name))
+              ...new Set([
+                  "read",
+                  "bash",
+                  "powershell",
+                  "edit",
+                  "write",
+                  "grep",
+                  "find",
+                  "ls",
+                  "codemode",
+                  "tool_search",
+                  ...finalCustomTools.map((tool) => tool.name),
+                  ...loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()]),
+              ]),
+          ].filter((name) => !tools.includes(name))
         : [];
     const { session, extensionsResult } = await createAgentSession({
         cwd: sessionCwd,
@@ -2313,6 +2396,15 @@ export async function buildAgentSession({
         sessionManager: effectiveSessionManager,
         ...(resolvedModel ? { model: resolvedModel } : {}),
     });
+    // noExtensions only disables discovery: explicit factories and package paths still load.
+    // Keep core/tool lifecycle extensions, but reject provider callbacks before Pi can discard them.
+    try {
+        assertRemoteProviderExtensionsSupported(session);
+    } catch (error) {
+        session.dispose();
+        mcpRootBinding?.dispose();
+        throw error;
+    }
     if (mcpRootBinding) {
         const dispose = session.dispose.bind(session);
         session.dispose = () => {
@@ -2329,15 +2421,21 @@ export async function buildAgentSession({
 
     const agent = session.agent;
     const providerStream = agent.streamFunction;
-    agent.streamFunction = (model, context, options) =>
-        normalizeProviderStream(providerStream, model, context, options);
+    agent.streamFunction = (model, context, options) => {
+        // Extensions can register new handlers during lifecycle events after construction.
+        assertRemoteProviderExtensionsSupported(session);
+        return normalizeProviderStream(providerStream, model, context, options);
+    };
 
     const configuredTemperature = agentName ? getConfiguredAgentTemperature(agentName, sessionCwd) : undefined;
-    const temperatureSource = temperatureOverride !== undefined ? "explicit temperature override" : (
-        configuredTemperature !== undefined ? "settings agent temperature" : (
-            agentDef.temperature !== undefined ? "agent definition temperature" : undefined
-        )
-    );
+    const temperatureSource =
+        temperatureOverride !== undefined
+            ? "explicit temperature override"
+            : configuredTemperature !== undefined
+              ? "settings agent temperature"
+              : agentDef.temperature !== undefined
+                ? "agent definition temperature"
+                : undefined;
     const resolvedTemperature = temperatureOverride ?? configuredTemperature ?? agentDef.temperature;
     applySessionTemperature(session, resolvedTemperature);
 
@@ -2376,30 +2474,36 @@ export async function buildAgentSession({
     await session.bindExtensions({});
     session.setActiveToolsByName([...new Set([...tools, ...session.getActiveToolNames()])]);
 
-    const imageMode = activeModelSupportsImages ? "direct" : (visionFallbackModelRef ? "fallback" : "blocked");
-    await recordWorkflowMetric({
-        category: "model_selection",
-        event: "session_configured",
-        agentName,
-        details: {
-            provider: resolvedModel?.provider,
-            model: resolvedModel?.id,
-            source: resolvedModel && typeof resolvedModel === "object"
-                ? modelSelectionSourceByModel.get(resolvedModel)
-                : undefined,
-            selectedProvider: resolvedModel?.provider,
-            selectedModel: resolvedModel?.id,
-            selectedSource: resolvedModel && typeof resolvedModel === "object"
-                ? modelSelectionSourceByModel.get(resolvedModel)
-                : undefined,
-            imageMode,
-            hasVisionFallback: Boolean(visionFallbackModelRef),
-            resolvedThinkingLevel,
-            thinkingLevelSource,
-            temperatureConfigured: resolvedTemperature !== undefined,
-            temperatureSource,
+    const imageMode = activeModelSupportsImages ? "direct" : visionFallbackModelRef ? "fallback" : "blocked";
+    await recordWorkflowMetric(
+        {
+            category: "model_selection",
+            event: "session_configured",
+            agentName,
+            details: {
+                provider: resolvedModel?.provider,
+                model: resolvedModel?.id,
+                source:
+                    resolvedModel && typeof resolvedModel === "object"
+                        ? modelSelectionSourceByModel.get(resolvedModel)
+                        : undefined,
+                selectedProvider: resolvedModel?.provider,
+                selectedModel: resolvedModel?.id,
+                selectedSource:
+                    resolvedModel && typeof resolvedModel === "object"
+                        ? modelSelectionSourceByModel.get(resolvedModel)
+                        : undefined,
+                imageMode,
+                hasVisionFallback: Boolean(visionFallbackModelRef),
+                resolvedThinkingLevel,
+                thinkingLevelSource,
+                temperatureConfigured: resolvedTemperature !== undefined,
+                temperatureSource,
+            },
         },
-    }, sessionCwd);
+        sessionCwd,
+    );
+    getRemoteSessionSaveBridge(effectiveSessionManager)?.bindAgentSession(session);
     return {
         session,
         agentDef,
@@ -2460,15 +2564,15 @@ export async function composeClaudeCliBridgedTools({
 
     if (
         declaredTools.some((name) => ["write", "edit", "multi_file_edit", "create_image"].includes(name)) &&
-        resolveImageGenerationSettings(cwd) && !hasTool("create_image")
+        resolveImageGenerationSettings(cwd) &&
+        !hasTool("create_image")
     ) {
         // Capture the real runtime/storage context in the tool, not the minimal MCP extension context.
         finalCustomTools.push(createImageTool({ cwd, sessionManager }));
     }
 
-    const { createClaudeCliCapabilityTools, CLAUDE_CLI_CAPABILITY_TOOL_NAMES } = await import(
-        "./backends/claude-cli/capability-tools.ts"
-    );
+    const { createClaudeCliCapabilityTools, CLAUDE_CLI_CAPABILITY_TOOL_NAMES } =
+        await import("./backends/claude-cli/capability-tools.ts");
     const capabilityNameSet = new Set(/** @type {readonly string[]} */ (CLAUDE_CLI_CAPABILITY_TOOL_NAMES));
     for (const tool of createClaudeCliCapabilityTools({ cwd })) {
         if (declared.has(tool.name) && capabilityNameSet.has(tool.name) && !hasTool(tool.name)) {
@@ -2512,11 +2616,13 @@ export async function composeClaudeCliBridgedTools({
     if (declared.has("work_record_search") && !hasTool("work_record_search")) {
         const { createWorkRecordSearchTool } = await import("../../tools/work-record-search.ts");
         const { SYSTEM_WORK_RECORD_MNEMOTECA_PORT } = await import("../work-records/mnemoteca-port.ts");
-        finalCustomTools.push(createWorkRecordSearchTool({
-            cwd,
-            accessMode: workRecordAccessMode,
-            mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
-        }));
+        finalCustomTools.push(
+            createWorkRecordSearchTool({
+                cwd,
+                accessMode: workRecordAccessMode,
+                mnemotecaPort: SYSTEM_WORK_RECORD_MNEMOTECA_PORT,
+            }),
+        );
     }
     if (declared.has("work_record_read") && !hasTool("work_record_read")) {
         const { createWorkRecordReadTool } = await import("../../tools/work-record-read.ts");
@@ -2528,12 +2634,17 @@ export async function composeClaudeCliBridgedTools({
     }
     if (declared.has("background_task") && hostedSession && !hasTool("background_task")) {
         const { createBackgroundTaskTool } = await import("../../tools/background-task.ts");
-        finalCustomTools.push(createBackgroundTaskTool({
-            hostedSession,
-            cwd,
-            allowShellStart: declared.has("bash"),
-            allowedCommands: intersectBashAllowedCommands(inheritedBashAllowedCommands, agentDef.bashAllowedCommands),
-        }));
+        finalCustomTools.push(
+            createBackgroundTaskTool({
+                hostedSession,
+                cwd,
+                allowShellStart: declared.has("bash"),
+                allowedCommands: intersectBashAllowedCommands(
+                    inheritedBashAllowedCommands,
+                    agentDef.bashAllowedCommands,
+                ),
+            }),
+        );
     }
     const effectiveMcpRootTools = mcpRootTools || hostedSession?.getMcpRootTools?.() || [];
     for (const tool of effectiveMcpRootTools) {
@@ -2639,115 +2750,131 @@ export async function buildExecutionSession(opts) {
         );
     }
     const effectiveSessionManager = opts.sessionManager || SessionManager.inMemory(sessionCwd);
-    const finalCustomTools = backend === "claude-cli"
-        ? await composeClaudeCliBridgedTools({
-            agentDef,
-            sessionManager: effectiveSessionManager,
-            inheritedBashAllowedCommands: opts.inheritedBashAllowedCommands,
-            agentName: opts.agentName,
-            hostedSession: targetHostedSession,
-            triageMeta: opts.triageMeta,
-            cwd: sessionCwd,
-            customTools: opts.customTools,
-            mcpRootTools: opts.mcpRootTools,
-        })
-        : await composeAgyCliBridgedTools({
-            agentDef,
-            sessionManager: effectiveSessionManager,
-            inheritedBashAllowedCommands: opts.inheritedBashAllowedCommands,
-            agentName: opts.agentName,
-            hostedSession: targetHostedSession,
-            triageMeta: opts.triageMeta,
-            cwd: sessionCwd,
-            customTools: opts.customTools,
-            mcpRootTools: opts.mcpRootTools,
-        });
+    const finalCustomTools =
+        backend === "claude-cli"
+            ? await composeClaudeCliBridgedTools({
+                  agentDef,
+                  sessionManager: effectiveSessionManager,
+                  inheritedBashAllowedCommands: opts.inheritedBashAllowedCommands,
+                  agentName: opts.agentName,
+                  hostedSession: targetHostedSession,
+                  triageMeta: opts.triageMeta,
+                  cwd: sessionCwd,
+                  customTools: opts.customTools,
+                  mcpRootTools: opts.mcpRootTools,
+              })
+            : await composeAgyCliBridgedTools({
+                  agentDef,
+                  sessionManager: effectiveSessionManager,
+                  inheritedBashAllowedCommands: opts.inheritedBashAllowedCommands,
+                  agentName: opts.agentName,
+                  hostedSession: targetHostedSession,
+                  triageMeta: opts.triageMeta,
+                  cwd: sessionCwd,
+                  customTools: opts.customTools,
+                  mcpRootTools: opts.mcpRootTools,
+              });
     const rebuildToolNames = resolveEffectiveSessionToolNames(
         agentDef.tools,
         opts.toolNames,
         finalCustomTools.map((tool) => tool.name),
     );
-    const { prompt: finalSystemPrompt, projection: contextProjection, effectiveToolDefinitions } =
-        await assembleFinalSystemPromptWithContextProjection(
-            agentDef,
-            rebuildToolNames,
-            finalCustomTools,
-            sessionCwd,
-            opts.projectStateContext,
-            {
-                hostedSession: targetHostedSession || undefined,
-                sessionManager: effectiveSessionManager,
-            },
-        );
-    const effectiveMcpIntegration = opts.mcpIntegration ||
+    const {
+        prompt: finalSystemPrompt,
+        projection: contextProjection,
+        effectiveToolDefinitions,
+    } = await assembleFinalSystemPromptWithContextProjection(
+        agentDef,
+        rebuildToolNames,
+        finalCustomTools,
+        sessionCwd,
+        opts.projectStateContext,
+        {
+            hostedSession: targetHostedSession || undefined,
+            sessionManager: effectiveSessionManager,
+        },
+    );
+    const effectiveMcpIntegration =
+        opts.mcpIntegration ||
         (opts.mcpRootTools?.length === 0 ? undefined : targetHostedSession?.getMcpIntegration?.() || undefined);
     const mcpToolNames = new Set(effectiveMcpIntegration?.getTools().map((tool) => tool.name));
     const stableBridgedTools = finalCustomTools.filter((tool) => !mcpToolNames.has(tool.name));
-    const backendPrompt = backend === "agy-cli"
-        ? finalSystemPrompt + buildBridgedToolPromptAppendix(stableBridgedTools, "Antigravity CLI", rebuildToolNames) +
-            (mcpToolNames.size > 0 ? "\nExternal server tools are available through the current MCP tool list.\n" : "")
-        : finalSystemPrompt;
+    const backendPrompt =
+        backend === "agy-cli"
+            ? finalSystemPrompt +
+              buildBridgedToolPromptAppendix(stableBridgedTools, "Antigravity CLI", rebuildToolNames) +
+              (mcpToolNames.size > 0
+                  ? "\nExternal server tools are available through the current MCP tool list.\n"
+                  : "")
+            : finalSystemPrompt;
     const promptState = {
         text: backendPrompt,
     };
     if (backend === "agy-cli") {
         await ensureAgyCliMcpSetup({
             hostedSession: targetHostedSession,
-            capability: opts.managedOperationCapability || targetHostedSession?.getManagedOperationCapability?.() ||
-                null,
+            capability:
+                opts.managedOperationCapability || targetHostedSession?.getManagedOperationCapability?.() || null,
         });
     }
-    const session = backend === "claude-cli"
-        ? new ClaudeCliExecutionSession({
-            cwd: sessionCwd,
+    const session =
+        backend === "claude-cli"
+            ? new ClaudeCliExecutionSession({
+                  cwd: sessionCwd,
+                  agentName: opts.agentName,
+                  agentDisplayName: agentDef.displayName,
+                  finalSystemPrompt: promptState.text,
+                  model: resolvedModel,
+                  sessionManager: effectiveSessionManager,
+                  hostedSession: targetHostedSession || undefined,
+                  bridgedTools: finalCustomTools,
+                  mcpIntegration: effectiveMcpIntegration,
+                  persistModelChange: opts.persistModelChange !== false,
+              })
+            : await AgyCliExecutionSession.create({
+                  cwd: sessionCwd,
+                  agentName: opts.agentName,
+                  agentDisplayName: agentDef.displayName,
+                  finalSystemPrompt: promptState.text,
+                  model: resolvedModel,
+                  sessionManager: effectiveSessionManager,
+                  hostedSession: targetHostedSession || undefined,
+                  bridgedTools: finalCustomTools,
+                  mcpIntegration: effectiveMcpIntegration,
+                  thinkingLevel: backendThinking,
+                  persistModelChange: opts.persistModelChange !== false,
+                  declaredTools: rebuildToolNames,
+              });
+    await recordWorkflowMetric(
+        {
+            category: "model_selection",
+            event: "session_configured",
             agentName: opts.agentName,
-            agentDisplayName: agentDef.displayName,
-            finalSystemPrompt: promptState.text,
-            model: resolvedModel,
-            sessionManager: effectiveSessionManager,
-            hostedSession: targetHostedSession || undefined,
-            bridgedTools: finalCustomTools,
-            mcpIntegration: effectiveMcpIntegration,
-            persistModelChange: opts.persistModelChange !== false,
-        })
-        : await AgyCliExecutionSession.create({
-            cwd: sessionCwd,
-            agentName: opts.agentName,
-            agentDisplayName: agentDef.displayName,
-            finalSystemPrompt: promptState.text,
-            model: resolvedModel,
-            sessionManager: effectiveSessionManager,
-            hostedSession: targetHostedSession || undefined,
-            bridgedTools: finalCustomTools,
-            mcpIntegration: effectiveMcpIntegration,
-            thinkingLevel: backendThinking,
-            persistModelChange: opts.persistModelChange !== false,
-            declaredTools: rebuildToolNames,
-        });
-    await recordWorkflowMetric({
-        category: "model_selection",
-        event: "session_configured",
-        agentName: opts.agentName,
-        details: {
-            provider: resolvedModel.provider,
-            model: resolvedModel.id,
-            source: resolvedModel && typeof resolvedModel === "object"
-                ? modelSelectionSourceByModel.get(resolvedModel)
-                : undefined,
-            selectedProvider: resolvedModel.provider,
-            selectedModel: resolvedModel.id,
-            selectedSource: resolvedModel && typeof resolvedModel === "object"
-                ? modelSelectionSourceByModel.get(resolvedModel)
-                : undefined,
-            imageMode: "blocked",
-            hasVisionFallback: false,
-            resolvedThinkingLevel: backendThinking,
+            details: {
+                provider: resolvedModel.provider,
+                model: resolvedModel.id,
+                source:
+                    resolvedModel && typeof resolvedModel === "object"
+                        ? modelSelectionSourceByModel.get(resolvedModel)
+                        : undefined,
+                selectedProvider: resolvedModel.provider,
+                selectedModel: resolvedModel.id,
+                selectedSource:
+                    resolvedModel && typeof resolvedModel === "object"
+                        ? modelSelectionSourceByModel.get(resolvedModel)
+                        : undefined,
+                imageMode: "blocked",
+                hasVisionFallback: false,
+                resolvedThinkingLevel: backendThinking,
+            },
         },
-    }, sessionCwd);
+        sessionCwd,
+    );
     return {
-        executionSession: backend === "claude-cli"
-            ? createClaudeExecutionSession(/** @type {ClaudeCliExecutionSession} */ (session))
-            : createAgyExecutionSession(/** @type {AgyCliExecutionSession} */ (session)),
+        executionSession:
+            backend === "claude-cli"
+                ? createClaudeExecutionSession(/** @type {ClaudeCliExecutionSession} */ (session))
+                : createAgyExecutionSession(/** @type {AgyCliExecutionSession} */ (session)),
         session,
         agentDef,
         promptState,
@@ -2955,8 +3082,9 @@ export function shouldBypassAutoCompactionForAssistantMessage(message) {
 
     return typedMessage.content.some((block) => {
         const typedBlock = /** @type {AssistantToolCallContent} */ (block);
-        return (typedBlock.type === "tool_use" || typedBlock.type === "toolCall") &&
-            typedBlock.name === "task_completed";
+        return (
+            (typedBlock.type === "tool_use" || typedBlock.type === "toolCall") && typedBlock.name === "task_completed"
+        );
     });
 }
 
@@ -2991,10 +3119,7 @@ function installTaskCompletedAutoCompactionExclusion(session) {
 export function installPairCheckpointAutoCompactionPreservation(session, hostedSession) {
     if (!hostedSession) return;
     const target = /** @type {AutoCompactionSessionPatch} */ (/** @type {unknown} */ (session));
-    if (
-        target.__runWieldPairCheckpointCompactionPreserved ||
-        typeof target._runAutoCompaction !== "function"
-    ) return;
+    if (target.__runWieldPairCheckpointCompactionPreserved || typeof target._runAutoCompaction !== "function") return;
 
     const originalRunAutoCompaction = target._runAutoCompaction;
     target._runAutoCompaction = async function (reason, willRetry) {
@@ -3035,10 +3160,7 @@ export function installPairCheckpointAutoCompactionPreservation(session, hostedS
 function estimatePendingPromptTokens(prepared) {
     const pendingUserMessage = {
         role: "user",
-        content: [
-            { type: "text", text: prepared.text },
-            ...(prepared.images || []),
-        ],
+        content: [{ type: "text", text: prepared.text }, ...(prepared.images || [])],
         timestamp: Date.now(),
     };
     return estimateTokens(/** @type {any} */ (pendingUserMessage));
@@ -3094,12 +3216,14 @@ async function compactBeforePromptIfNeeded(session, prepared, agentName) {
     const currentTokens = estimateCurrentContextTokens(session);
     const totalTokens = currentTokens + estimatePendingPromptTokens(prepared);
     const engineerThreshold = getEngineerCompactionThreshold(agentName, contextWindow);
-    const needsCompaction = engineerThreshold === null
-        ? shouldCompact(totalTokens, contextWindow, settings)
-        : shouldRunEngineerCompaction(session, currentTokens, totalTokens, engineerThreshold, contextWindow);
+    const needsCompaction =
+        engineerThreshold === null
+            ? shouldCompact(totalTokens, contextWindow, settings)
+            : shouldRunEngineerCompaction(session, currentTokens, totalTokens, engineerThreshold, contextWindow);
     if (!needsCompaction) return;
 
-    const runAutoCompaction = /** @type {{ _runAutoCompaction?: (reason: string, willRetry: boolean) => Promise<boolean> }} */
+    const runAutoCompaction =
+        /** @type {{ _runAutoCompaction?: (reason: string, willRetry: boolean) => Promise<boolean> }} */
         (/** @type {unknown} */ (session))._runAutoCompaction;
     if (typeof runAutoCompaction !== "function") return;
     await runAutoCompaction.call(session, "threshold", false);
@@ -3194,8 +3318,11 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
             return;
         }
         if (
-            !recorder && event.type === "entry_appended" && event.entry.type === "branch_summary" &&
-            branchSummaryRetries && summarizationRetryAttempt !== null
+            !recorder &&
+            event.type === "entry_appended" &&
+            event.entry.type === "branch_summary" &&
+            branchSummaryRetries &&
+            summarizationRetryAttempt !== null
         ) {
             void branchSummaryRetries.retryFinish(summarizationRetryAttempt, "succeeded");
             summarizationRetryAttempt = null;
@@ -3251,12 +3378,14 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                 void recorder.recordRetry({
                     retrySource: "model",
                     attempt: event.attempt,
-                    outcome: (event.success || /** @type {any} */ (event).outcome === "success" ||
-                            /** @type {any} */ (event).outcome === "succeeded")
-                        ? "success"
-                        : event.finalError === "Retry cancelled"
-                        ? "canceled"
-                        : "failed",
+                    outcome:
+                        event.success ||
+                        /** @type {any} */ (event).outcome === "success" ||
+                        /** @type {any} */ (event).outcome === "succeeded"
+                            ? "success"
+                            : event.finalError === "Retry cancelled"
+                              ? "canceled"
+                              : "failed",
                     finalError: event.finalError ? "failed" : null,
                 });
                 break;
@@ -3434,11 +3563,7 @@ export function attachSessionEventSubscribers(
                     if (shouldWriteDebugLog(debugLogPath) && debugLogPath) {
                         appendDebugLog(
                             debugLogPath,
-                            [
-                                `Event: ASSISTANT THINKING END`,
-                                `Timestamp: ${new Date().toISOString()}`,
-                                "",
-                            ].join("\n"),
+                            [`Event: ASSISTANT THINKING END`, `Timestamp: ${new Date().toISOString()}`, ""].join("\n"),
                         );
                     }
                     endThinking();
@@ -3473,8 +3598,9 @@ export function attachSessionEventSubscribers(
             case "message_end": {
                 if (shouldWriteDebugLog(debugLogPath) && debugLogPath) {
                     const message =
-                        /** @type {import('@earendil-works/pi-agent-core').AgentMessage & { stopReason?: string, errorMessage?: string, usage?: unknown }} */ (event
-                            .message);
+                        /** @type {import('@earendil-works/pi-agent-core').AgentMessage & { stopReason?: string, errorMessage?: string, usage?: unknown }} */ (
+                            event.message
+                        );
                     appendDebugLog(
                         debugLogPath,
                         [
@@ -3484,7 +3610,9 @@ export function attachSessionEventSubscribers(
                             message.stopReason ? `Stop Reason: ${message.stopReason}` : "",
                             message.errorMessage ? `Error: ${message.errorMessage}` : "",
                             "",
-                        ].filter((line) => line !== "").join("\n"),
+                        ]
+                            .filter((line) => line !== "")
+                            .join("\n"),
                     );
                 }
                 if (event.message.role === "assistant") {
@@ -3501,8 +3629,10 @@ export function attachSessionEventSubscribers(
                 }
 
                 if (
-                    event.message.role === "assistant" && event.message.stopReason === "error" &&
-                    !cancellationSignal?.aborted && !isAbortSignalMessage(event.message.errorMessage)
+                    event.message.role === "assistant" &&
+                    event.message.stopReason === "error" &&
+                    !cancellationSignal?.aborted &&
+                    !isAbortSignalMessage(event.message.errorMessage)
                 ) {
                     const message = formatProviderError(event.message.errorMessage);
                     emitRuntimeEvent({
@@ -3688,9 +3818,10 @@ export function attachSessionEventSubscribers(
             case "compaction_start": {
                 // Manual /compact has its own UI in cmd/compact/index.ts — avoid duplicate status.
                 if (event.reason !== "manual") {
-                    const label = event.reason === "overflow"
-                        ? "Context overflow detected, auto-compacting..."
-                        : "Auto-compacting context...";
+                    const label =
+                        event.reason === "overflow"
+                            ? "Context overflow detected, auto-compacting..."
+                            : "Auto-compacting context...";
                     emitRuntimeEvent({
                         type: RuntimeEventTypes.SYSTEM_STATUS,
                         level: "info",
@@ -3757,7 +3888,10 @@ export function attachSessionEventSubscribers(
  * @param {AgentTransitionSteeringEntry[]} steering
  */
 function buildAgentTransitionPrompt(userRequest, images, steering) {
-    const steeringText = steering.map((entry) => entry.text.trim()).filter(Boolean).join("\n\n");
+    const steeringText = steering
+        .map((entry) => entry.text.trim())
+        .filter(Boolean)
+        .join("\n\n");
     return {
         text: steeringText
             ? `${userRequest}\n\nUser steering received during Agent handoff:\n${steeringText}`
@@ -3768,11 +3902,13 @@ function buildAgentTransitionPrompt(userRequest, images, steering) {
 
 /** @param {AgentTransitionSteeringEntry[]} steering */
 function agentTransitionSteeringSignature(steering) {
-    return JSON.stringify(steering.map((entry) => ({
-        id: entry.message?.id,
-        text: entry.text,
-        images: entry.images,
-    })));
+    return JSON.stringify(
+        steering.map((entry) => ({
+            id: entry.message?.id,
+            text: entry.text,
+            images: entry.images,
+        })),
+    );
 }
 
 /**
@@ -3824,14 +3960,16 @@ export async function runPrompt({
     let transitionPrompt = buildAgentTransitionPrompt(userRequest, baseImages, transitionSteering);
     let rawText = transitionPrompt.text;
     let rawImages = transitionPrompt.images;
-    let fallback = rawImages.length > 0 && !modelSupportsImageInput(session.model)
-        ? await resolveVisionFallbackModel(
-            /** @type {any} */ (session).runWieldModelRegistry || /** @type {any} */ (session).modelRegistry ||
-                getModelRegistry(),
-            SYSTEM_MODEL_DISCOVERY_NETWORK,
-            projectRoot,
-        )
-        : undefined;
+    let fallback =
+        rawImages.length > 0 && !modelSupportsImageInput(session.model)
+            ? await resolveVisionFallbackModel(
+                  /** @type {any} */ (session).runWieldModelRegistry ||
+                      /** @type {any} */ (session).modelRegistry ||
+                      getModelRegistry(),
+                  SYSTEM_MODEL_DISCOVERY_NETWORK,
+                  projectRoot,
+              )
+            : undefined;
     let preparedImages = prepareImagesForModel({
         text: rawText,
         images: rawImages,
@@ -3847,9 +3985,10 @@ export async function runPrompt({
 
     const debugEnabled = shouldWriteDebugLog(debugLogPath);
     if (debugEnabled) {
-        const startTitle = agentName === AGENTS.ROUTER
-            ? "ROUTER INVOCATION START"
-            : `AGENT INVOCATION START: ${agentDef.name} (${agentName})`;
+        const startTitle =
+            agentName === AGENTS.ROUTER
+                ? "ROUTER INVOCATION START"
+                : `AGENT INVOCATION START: ${agentDef.name} (${agentName})`;
         const logEntry = [
             `Event: ${startTitle}`,
             `Timestamp: ${new Date().toISOString()}`,
@@ -3893,7 +4032,8 @@ export async function runPrompt({
                 if (rawImages.length > 0 && !modelSupportsImageInput(session.model) && !fallback) {
                     fallback = await resolveVisionFallbackModel(
                         /** @type {any} */ (session).runWieldModelRegistry ||
-                            /** @type {any} */ (session).modelRegistry || getModelRegistry(),
+                            /** @type {any} */ (session).modelRegistry ||
+                            getModelRegistry(),
                         SYSTEM_MODEL_DISCOVERY_NETWORK,
                         projectRoot,
                     );
@@ -3905,21 +4045,28 @@ export async function runPrompt({
                     fallbackModelRef: fallback?.modelRef,
                 });
                 if (!preparedImages.ok) throw new Error(preparedImages.message);
-                requestOptions.images = preparedImages.images && preparedImages.images.length > 0
-                    ? preparedImages.images
-                    : undefined;
+                requestOptions.images =
+                    preparedImages.images && preparedImages.images.length > 0 ? preparedImages.images : undefined;
             }
 
             if (!disableAutoCompaction) {
-                await compactBeforePromptIfNeeded(session, {
-                    text: preparedImages.text,
-                    images: preparedImages.images,
-                }, agentName);
+                await compactBeforePromptIfNeeded(
+                    session,
+                    {
+                        text: preparedImages.text,
+                        images: preparedImages.images,
+                    },
+                    agentName,
+                );
             } else {
-                assertPreparedPromptFitsContext(session, {
-                    text: preparedImages.text,
-                    images: preparedImages.images,
-                }, resolvedModel);
+                assertPreparedPromptFitsContext(
+                    session,
+                    {
+                        text: preparedImages.text,
+                        images: preparedImages.images,
+                    },
+                    resolvedModel,
+                );
             }
             signal?.throwIfAborted();
             if (!hostedSession) break;
@@ -3930,8 +4077,9 @@ export async function runPrompt({
             const latestSteering = hostedSession.listAgentTransitionSteering();
             if (
                 agentTransitionSteeringSignature(latestSteering) !==
-                    agentTransitionSteeringSignature(transitionSteering)
-            ) continue;
+                agentTransitionSteeringSignature(transitionSteering)
+            )
+                continue;
             const consumedSteering = hostedSession.consumeAgentTransitionSteering();
             transitionSteering.splice(0, transitionSteering.length, ...consumedSteering);
             publishTransitionSteeringConsumption(hostedSession, consumedSteering);
@@ -3961,29 +4109,30 @@ export async function runPrompt({
             const messages = session.agent.state.messages;
             const summary = extractAssistantSummary(messages);
             const invokedToolNames = subscriberState.drainInvokedToolNames();
-            const logEntry = agentName === AGENTS.ROUTER
-                ? [
-                    `Event: ROUTER INVOCATION END`,
-                    `Timestamp: ${new Date().toISOString()}`,
-                    `Provider: ${resolvedModel?.provider || "(session default)"}`,
-                    `Model: ${resolvedModel?.id || "(session default)"}`,
-                    `Thinking Level: ${resolvedThinkingLevel || "(default)"}`,
-                    `Router Tools Used: ${invokedToolNames.join(", ") || "(none)"}`,
-                    promptError ? `Status: ERROR (${promptError.message})` : `Status: OK`,
-                    "",
-                ].join("\n")
-                : [
-                    `Event: AGENT INVOCATION END: ${agentDef.name} (${agentName})`,
-                    `Timestamp: ${new Date().toISOString()}`,
-                    `Provider: ${resolvedModel?.provider || "(session default)"}`,
-                    `Model: ${resolvedModel?.id || "(session default)"}`,
-                    `Thinking Level: ${resolvedThinkingLevel || "(default)"}`,
-                    `Tools Used: ${invokedToolNames.join(", ") || "(none)"}`,
-                    promptError ? `Status: ERROR (${promptError.message})` : `Status: OK`,
-                    `Summary:`,
-                    summary || "(empty)",
-                    "",
-                ].join("\n");
+            const logEntry =
+                agentName === AGENTS.ROUTER
+                    ? [
+                          `Event: ROUTER INVOCATION END`,
+                          `Timestamp: ${new Date().toISOString()}`,
+                          `Provider: ${resolvedModel?.provider || "(session default)"}`,
+                          `Model: ${resolvedModel?.id || "(session default)"}`,
+                          `Thinking Level: ${resolvedThinkingLevel || "(default)"}`,
+                          `Router Tools Used: ${invokedToolNames.join(", ") || "(none)"}`,
+                          promptError ? `Status: ERROR (${promptError.message})` : `Status: OK`,
+                          "",
+                      ].join("\n")
+                    : [
+                          `Event: AGENT INVOCATION END: ${agentDef.name} (${agentName})`,
+                          `Timestamp: ${new Date().toISOString()}`,
+                          `Provider: ${resolvedModel?.provider || "(session default)"}`,
+                          `Model: ${resolvedModel?.id || "(session default)"}`,
+                          `Thinking Level: ${resolvedThinkingLevel || "(default)"}`,
+                          `Tools Used: ${invokedToolNames.join(", ") || "(none)"}`,
+                          promptError ? `Status: ERROR (${promptError.message})` : `Status: OK`,
+                          `Summary:`,
+                          summary || "(empty)",
+                          "",
+                      ].join("\n");
             appendDebugLog(debugLogPath, logEntry);
         }
     }
@@ -4002,13 +4151,7 @@ export function applyAttentionNudge(agentName, userRequest, rootTurnCount) {
     if (!nudge) return userRequest;
     if (rootTurnCount <= 1 || rootTurnCount % ATTENTION_NUDGE_TURN_INTERVAL !== 0) return userRequest;
 
-    return [
-        "<attention_nudge>",
-        nudge,
-        "</attention_nudge>",
-        "",
-        userRequest,
-    ].join("\n");
+    return ["<attention_nudge>", nudge, "</attention_nudge>", "", userRequest].join("\n");
 }
 
 /** @type {WeakMap<import('@earendil-works/pi-coding-agent').AgentSession, ExecutionMetricsRecorder>} */
@@ -4133,14 +4276,20 @@ export function disposeRootAgentSessionForNewSession(hostedSession) {
         try {
             meta?.subscriberState.unsubscribe();
             meta?.unsubscribeMetrics();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
         try {
             if (meta?.steeringTargetId) targetHostedSession.popSteeringTargetSession(meta.steeringTargetId);
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
         try {
             if (isExecutionSession(existing)) existing.session.dispose();
             else existing.dispose();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
         rootSessionMetadata.delete(existing);
     }
     targetHostedSession.setRootAgentSession(null);
@@ -4207,35 +4356,45 @@ export async function ensureRootAgentSession(opts) {
         try {
             if (executionSession) await disposeExecutionSession(executionSession);
             else session.dispose();
-        } catch (_disposeError) { /* ignore */ }
+        } catch (_disposeError) {
+            /* ignore */
+        }
         throw error;
     }
 
-    const unsubscribeMetrics = executionSession && executionSession.kind !== "pi"
-        ? () => {}
-        : attachSessionMetricsObserver(session, hostedSession, contextProjection);
-    const subscriberState = executionSession && executionSession.kind !== "pi"
-        ? {
-            resetTurn: () => {},
-            drainInvokedToolNames: () => [],
-            endThinking: () => {},
-            unsubscribe: () => {},
-        }
-        : attachSessionEventSubscribers(session, agentDef, opts.debugLogPath, hostedSession);
+    const unsubscribeMetrics =
+        executionSession && executionSession.kind !== "pi"
+            ? () => {}
+            : attachSessionMetricsObserver(session, hostedSession, contextProjection);
+    const subscriberState =
+        executionSession && executionSession.kind !== "pi"
+            ? {
+                  resetTurn: () => {},
+                  drainInvokedToolNames: () => [],
+                  endThinking: () => {},
+                  unsubscribe: () => {},
+              }
+            : attachSessionEventSubscribers(session, agentDef, opts.debugLogPath, hostedSession);
 
     if (existing) {
         try {
             existingMeta?.subscriberState.unsubscribe();
             existingMeta?.unsubscribeMetrics();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
         try {
             if (existingMeta?.steeringTargetId) hostedSession.popSteeringTargetSession(existingMeta.steeringTargetId);
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
         rootSessionMetadata.delete(existing);
         if (isExecutionSession(existing) && existing.kind === "agy-cli") {
             try {
                 await disposeExecutionSession(existing);
-            } catch (_e) { /* ignore */ }
+            } catch (_e) {
+                /* ignore */
+            }
         }
     }
 
@@ -4254,9 +4413,10 @@ export async function ensureRootAgentSession(opts) {
     hostedSession.setRootAgentName(opts.agentName, opts.managedOperationCapability || null);
     if (opts.activeHandler) hostedSession.setActiveOnMessage(opts.activeHandler);
     const activeSessionManager = /** @type {import('@earendil-works/pi-coding-agent').SessionManager | undefined} */ (
-        opts.sessionManager || hostedSession.getRootSessionManager?.() ||
-        /** @type {{ sessionManager?: import('@earendil-works/pi-coding-agent').SessionManager }} */ (session)
-            .sessionManager
+        opts.sessionManager ||
+            hostedSession.getRootSessionManager?.() ||
+            /** @type {{ sessionManager?: import('@earendil-works/pi-coding-agent').SessionManager }} */ (session)
+                .sessionManager
     );
     // Pi writes the initial model, but does not write model changes when a
     // replacement root shares an existing transcript. Always save the selected
@@ -4265,17 +4425,14 @@ export async function ensureRootAgentSession(opts) {
     if (activeSessionManager && resolvedModel) {
         const persistedModel = readPersistedModelState(activeSessionManager);
         if (
-            !persistedModel || persistedModel.provider !== resolvedModel.provider ||
+            !persistedModel ||
+            persistedModel.provider !== resolvedModel.provider ||
             persistedModel.model !== resolvedModel.id
         ) {
             activeSessionManager.appendModelChange(resolvedModel.provider, resolvedModel.id);
         }
     }
-    recordActiveAgent(
-        /** @type {any} */ (activeSessionManager),
-        opts.agentName,
-        agentDef.displayName,
-    );
+    recordActiveAgent(/** @type {any} */ (activeSessionManager), opts.agentName, agentDef.displayName);
     rootSessionMetadata.set(rootSession, {
         agentDef,
         subAgentDefinition: opts.subAgentDefinition,
@@ -4348,9 +4505,9 @@ function publishTransitionSteeringCancellation(hostedSession, transitionSteering
 function assembleToolExposureDefinitions(toolNames, definitions, projection) {
     const byName = new Map(definitions.map((tool) => [tool.name, tool]));
     const projected = new Map(
-        projection?.categories.find((category) => category.id === "tools")?.items?.map((
-            item,
-        ) => [item.name, item.tokens]) || [],
+        projection?.categories
+            .find((category) => category.id === "tools")
+            ?.items?.map((item) => [item.name, item.tokens]) || [],
     );
     return toolNames.map((name) => {
         const definition = byName.get(name);
@@ -4501,9 +4658,10 @@ export async function runRootTurn({
             backend,
         });
         meta.rootTurnCount += 1;
-        const finalRequest = dispatch.promptMode === "continuation"
-            ? dispatch.userRequest
-            : applyAttentionNudge(agentName, dispatch.userRequest, meta.rootTurnCount);
+        const finalRequest =
+            dispatch.promptMode === "continuation"
+                ? dispatch.userRequest
+                : applyAttentionNudge(agentName, dispatch.userRequest, meta.rootTurnCount);
         let messages;
         if (isExecutionSession(session) && (session.kind === "claude-cli" || session.kind === "agy-cli")) {
             publishTransitionSteeringConsumption(targetHostedSession, transitionSteering);
@@ -4525,8 +4683,8 @@ export async function runRootTurn({
                 dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
                 executionKind: "root",
                 mode: "foreground",
-                sourceSurface: targetHostedSession.localInputSurface || targetHostedSession.notificationSurface ||
-                    "cli",
+                sourceSurface:
+                    targetHostedSession.localInputSurface || targetHostedSession.notificationSurface || "cli",
                 taskId: targetHostedSession.generatedTaskTurnId || undefined,
             });
         } else {
@@ -4546,8 +4704,8 @@ export async function runRootTurn({
                 dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
                 executionKind: "root",
                 mode: "foreground",
-                sourceSurface: targetHostedSession.localInputSurface || targetHostedSession.notificationSurface ||
-                    "cli",
+                sourceSurface:
+                    targetHostedSession.localInputSurface || targetHostedSession.notificationSurface || "cli",
                 taskId: targetHostedSession.generatedTaskTurnId || undefined,
             });
             await recorder.recordExecutionStart();
@@ -4559,9 +4717,9 @@ export async function runRootTurn({
             await recorder.recordToolExposure(exposureTools);
             await recordPiExecutionContext(recorder, piSession, meta.contextProjection, "execution_start");
             const priorEntryIds = new Set(
-                sessionManager.getEntries().map((
-                    /** @type {import('@earendil-works/pi-coding-agent').SessionEntry} */ entry,
-                ) => entry.id),
+                sessionManager
+                    .getEntries()
+                    .map((/** @type {import('@earendil-works/pi-coding-agent').SessionEntry} */ entry) => entry.id),
             );
             executionMetricsForSession.set(piSession, recorder);
             let piOutcome = "succeeded";
@@ -4584,11 +4742,12 @@ export async function runRootTurn({
                     },
                 });
             } catch (err) {
-                piOutcome = signal?.reason instanceof WorkflowStepCompleted
-                    ? "succeeded"
-                    : signal?.aborted
-                    ? "canceled"
-                    : "failed";
+                piOutcome =
+                    signal?.reason instanceof WorkflowStepCompleted
+                        ? "succeeded"
+                        : signal?.aborted
+                          ? "canceled"
+                          : "failed";
                 piReason = piOutcome === "succeeded" ? "completed" : piOutcome;
                 throw err;
             } finally {
@@ -4686,7 +4845,9 @@ export async function runNonInteractiveAgentPrompt({
     } finally {
         try {
             session.dispose();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
     }
 }
 
@@ -4737,8 +4898,9 @@ export async function runNonInteractiveAgentPrompt({
 export async function runIsolatedAgentSession(opts) {
     const { withWorkflowToolEventSource, WorkflowStepCompleted } = await import("../workflow/workflow-tool-events.ts");
     const hostedSession = requireHostedSession(opts.hostedSession, "runIsolatedAgentSession");
-    const managedOperationCapability = opts.background ? null : opts.managedOperationCapability ||
-        hostedSession.getManagedOperationCapability?.() || null;
+    const managedOperationCapability = opts.background
+        ? null
+        : opts.managedOperationCapability || hostedSession.getManagedOperationCapability?.() || null;
     const projectStateContext = opts.projectStateContext ?? hostedSession.getProjectStateContext();
 
     const built = await buildExecutionSession({
@@ -4771,28 +4933,32 @@ export async function runIsolatedAgentSession(opts) {
     const abortChild = () => {
         try {
             steeringTarget.abort();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
     };
 
     try {
         opts.signal?.throwIfAborted();
-        unsubscribeMetrics = executionSession && executionSession.kind !== "pi"
-            ? () => {}
-            : attachSessionMetricsObserver(session, hostedSession, contextProjection);
-        subscriberState = executionSession && executionSession.kind !== "pi"
-            ? {
-                resetTurn: () => {},
-                drainInvokedToolNames: () => [],
-                endThinking: () => {},
-                unsubscribe: () => {},
-            }
-            : attachSessionEventSubscribers(
-                session,
-                agentDef,
-                opts.debugLogPath,
-                opts.background ? undefined : hostedSession,
-                opts.signal,
-            );
+        unsubscribeMetrics =
+            executionSession && executionSession.kind !== "pi"
+                ? () => {}
+                : attachSessionMetricsObserver(session, hostedSession, contextProjection);
+        subscriberState =
+            executionSession && executionSession.kind !== "pi"
+                ? {
+                      resetTurn: () => {},
+                      drainInvokedToolNames: () => [],
+                      endThinking: () => {},
+                      unsubscribe: () => {},
+                  }
+                : attachSessionEventSubscribers(
+                      session,
+                      agentDef,
+                      opts.debugLogPath,
+                      opts.background ? undefined : hostedSession,
+                      opts.signal,
+                  );
         if (!opts.background) {
             hostedSession.addSubAgentSession(steeringTarget, managedOperationCapability);
             registeredSubAgent = true;
@@ -4820,30 +4986,30 @@ export async function runIsolatedAgentSession(opts) {
             let messages;
             if (executionSession?.kind === "claude-cli" || executionSession?.kind === "agy-cli") {
                 if (opts.disableAutoCompaction === true) {
-                    assertPreparedPromptFitsContext(session, {
-                        text: dispatch.userRequest,
-                        images: opts.images || [],
-                    }, resolvedModel);
+                    assertPreparedPromptFitsContext(
+                        session,
+                        {
+                            text: dispatch.userRequest,
+                            images: opts.images || [],
+                        },
+                        resolvedModel,
+                    );
                 }
-                messages = await withWorkflowToolEventSource(
-                    hostedSession,
-                    steeringTarget,
-                    () =>
-                        executionSession.session.runTurn({
-                            userRequest: dispatch.userRequest,
-                            images: opts.images,
-                            signal: opts.signal,
-                            requestId: dispatch.requestId,
-                            attemptId: dispatch.attemptId,
-                            dispatchKind: opts.dispatchKind || "interactive",
-                            executionKind,
-                            mode,
-                            parentExecutionId: opts.parentExecutionId,
-                            parentToolCallId: opts.parentToolCallId,
-                            taskId: opts.taskId,
-                            sourceSurface: hostedSession.localInputSurface || hostedSession.notificationSurface ||
-                                "cli",
-                        }),
+                messages = await withWorkflowToolEventSource(hostedSession, steeringTarget, () =>
+                    executionSession.session.runTurn({
+                        userRequest: dispatch.userRequest,
+                        images: opts.images,
+                        signal: opts.signal,
+                        requestId: dispatch.requestId,
+                        attemptId: dispatch.attemptId,
+                        dispatchKind: opts.dispatchKind || "interactive",
+                        executionKind,
+                        mode,
+                        parentExecutionId: opts.parentExecutionId,
+                        parentToolCallId: opts.parentToolCallId,
+                        taskId: opts.taskId,
+                        sourceSurface: hostedSession.localInputSurface || hostedSession.notificationSurface || "cli",
+                    }),
                 );
             } else {
                 const turnSubscribers = subscriberState;
@@ -4875,9 +5041,9 @@ export async function runIsolatedAgentSession(opts) {
                 await recorder.recordToolExposure(exposureTools);
                 await recordPiExecutionContext(recorder, session, contextProjection, "execution_start");
                 const priorEntryIds = new Set(
-                    session.sessionManager.getEntries().map((
-                        /** @type {import('@earendil-works/pi-coding-agent').SessionEntry} */ entry,
-                    ) => entry.id),
+                    session.sessionManager
+                        .getEntries()
+                        .map((/** @type {import('@earendil-works/pi-coding-agent').SessionEntry} */ entry) => entry.id),
                 );
                 executionMetricsForSession.set(session, recorder);
                 let piOutcome = "succeeded";
@@ -4898,13 +5064,15 @@ export async function runIsolatedAgentSession(opts) {
                             debugLogPath: opts.debugLogPath,
                             signal: opts.signal,
                             disableAutoCompaction: opts.disableAutoCompaction === true,
-                        }));
+                        }),
+                    );
                 } catch (err) {
-                    piOutcome = opts.signal?.reason instanceof WorkflowStepCompleted
-                        ? "succeeded"
-                        : opts.signal?.aborted
-                        ? "canceled"
-                        : "failed";
+                    piOutcome =
+                        opts.signal?.reason instanceof WorkflowStepCompleted
+                            ? "succeeded"
+                            : opts.signal?.aborted
+                              ? "canceled"
+                              : "failed";
                     piReason = piOutcome === "succeeded" ? "completed" : piOutcome;
                     throw err;
                 } finally {
@@ -4937,26 +5105,36 @@ export async function runIsolatedAgentSession(opts) {
         if (steeringTargetId) {
             try {
                 hostedSession.popSteeringTargetSession(steeringTargetId);
-            } catch (_e) { /* ignore */ }
+            } catch (_e) {
+                /* ignore */
+            }
         }
         if (agentInfoId) {
             try {
                 hostedSession.popAgentInfo(agentInfoId);
-            } catch (_e) { /* ignore */ }
+            } catch (_e) {
+                /* ignore */
+            }
         }
         if (registeredSubAgent) {
             try {
                 hostedSession.removeSubAgentSession(steeringTarget);
-            } catch (_e) { /* ignore */ }
+            } catch (_e) {
+                /* ignore */
+            }
         }
         try {
             subscriberState?.unsubscribe();
             unsubscribeMetrics();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
         try {
             if (isExecutionSession(executionRoot)) await disposeExecutionSession(executionRoot);
             else session.dispose();
-        } catch (_e) { /* ignore */ }
+        } catch (_e) {
+            /* ignore */
+        }
     }
 }
 

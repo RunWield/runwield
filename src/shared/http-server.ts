@@ -1,4 +1,4 @@
-/** Native request/response HTTP serving during the Deno-to-Bun transition. */
+/** Native Bun request/response HTTP serving. */
 import { versions } from "node:process";
 
 export interface HttpAddress {
@@ -23,9 +23,6 @@ export interface HttpServerOptions {
     onError?(error: Error): Response | Promise<Response>;
 }
 export type HttpHandler = (request: Request) => Response | Promise<Response>;
-interface DenoHttpRuntime {
-    serve(options: Omit<HttpServerOptions, "onError">, handler: HttpHandler): HttpServer;
-}
 interface BunHttpServer {
     hostname: string;
     port: number;
@@ -59,13 +56,16 @@ function acceptsGzip(header: string): boolean {
 function compressResponse(request: Request, response: Response): Response {
     const type = response.headers.get("content-type") || "";
     if (
-        request.method === "HEAD" || !response.body || response.status === 206 ||
+        request.method === "HEAD" ||
+        !response.body ||
+        response.status === 206 ||
         response.headers.has("content-encoding") ||
         /\bno-transform\b/i.test(response.headers.get("cache-control") || "") ||
         type.startsWith("text/event-stream") ||
         !/^(text\/|application\/(json|javascript|xml)|image\/svg\+xml)/i.test(type) ||
         !acceptsGzip(request.headers.get("accept-encoding") || "")
-    ) return response;
+    )
+        return response;
     const headers = new Headers(response.headers);
     headers.set("content-encoding", "gzip");
     headers.delete("content-length");
@@ -83,23 +83,7 @@ function compressResponse(request: Request, response: Response): Response {
 }
 
 export function serveHttp(options: HttpServerOptions, handler: HttpHandler): HttpServer {
-    if (versions.deno) {
-        const deno: DenoHttpRuntime = Reflect.get(globalThis, String("Deno"));
-        const { onError, ...nativeOptions } = options;
-        return deno.serve(
-            nativeOptions,
-            onError
-                ? async (request) => {
-                    try {
-                        return await handler(request);
-                    } catch (error) {
-                        return onError(error instanceof Error ? error : new Error(String(error)));
-                    }
-                }
-                : handler,
-        );
-    }
-    if (!versions.bun) throw new Error("HTTP serving requires Bun or Deno");
+    if (!versions.bun) throw new Error("HTTP serving requires Bun");
     const bun = Reflect.get(globalThis, "Bun") as BunHttpRuntime;
     const server = bun.serve({
         hostname: options.hostname,
@@ -110,10 +94,12 @@ export function serveHttp(options: HttpServerOptions, handler: HttpHandler): Htt
         fetch: options.automaticCompression
             ? async (request) => compressResponse(request, await handler(request))
             : handler,
-        error: options.onError || ((error) => {
-            console.error(error);
-            return new Response("Internal Server Error", { status: 500 });
-        }),
+        error:
+            options.onError ||
+            ((error) => {
+                console.error(error);
+                return new Response("Internal Server Error", { status: 500 });
+            }),
     });
     let resolveFinished!: () => void;
     let rejectFinished!: (error: Error) => void;
@@ -125,10 +111,13 @@ export function serveHttp(options: HttpServerOptions, handler: HttpHandler): Htt
     function stop(force: boolean): Promise<void> {
         if (stopping && force) void server.stop(true).catch(() => {});
         if (!stopping) {
-            stopping = server.stop(force).then(resolveFinished, (error: Error) => {
-                rejectFinished(error);
-                throw error;
-            }).finally(() => options.signal?.removeEventListener("abort", abort));
+            stopping = server
+                .stop(force)
+                .then(resolveFinished, (error: Error) => {
+                    rejectFinished(error);
+                    throw error;
+                })
+                .finally(() => options.signal?.removeEventListener("abort", abort));
         }
         return stopping;
     }

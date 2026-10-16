@@ -16,7 +16,8 @@ import process from "node:process";
  * Build the Windows x64 portable package ZIP from a compiled wld.exe and pinned helper assets.
  */
 
-import { basename, fromFileUrl, join, resolve } from "@std/path";
+import { basename, join, resolve } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { parseReleaseTag } from "./release.js";
 
 const DEFAULT_INPUTS_PATH = "packaging/windows/tested-dependencies.json";

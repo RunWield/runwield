@@ -1,3 +1,4 @@
+/** @typedef {import("../front-matter.ts").FrontMatterRecord & { bashAllowedCommands?: import("../bash-command-policy.ts").BashAllowedCommands | null }} AgentDefinitionFrontMatter */
 import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 /**
@@ -5,8 +6,9 @@ import { readdir, readFile } from "node:fs/promises";
  * Agent discovery — scans agent definitions (bundled + overrides) and returns merged metadata.
  */
 
-import { basename, dirname, fromFileUrl, join } from "@std/path";
-import { extractYaml, test as hasFrontMatter } from "@std/front-matter";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { extractYaml, test as hasFrontMatter } from "../front-matter.ts";
 import { AGENT_DEFS_DIR, AGENTS, SYSTEM_PROMPT_TEMPLATE_PATH } from "../../constants.js";
 import { directoryExists, fileExists } from "../helpers.ts";
 import {
@@ -15,7 +17,12 @@ import {
     personalGlobalRoot,
     PersonalResourcePathError,
 } from "../remote/personal-resources.ts";
-import { PROTECTED_TOOL_NAMES, UNIVERSAL_AGENT_TOOL_NAMES } from "../../tools/registry.ts";
+import {
+    AGENT_TOOL_SETS,
+    DELEGATE_AGENT_MODE_TOOL_NAMES,
+    PROTECTED_TOOL_NAMES,
+    UNIVERSAL_AGENT_TOOL_NAMES,
+} from "../../tools/registry.ts";
 import { normalizeBashAllowedCommands } from "../bash-command-policy.ts";
 
 /** @returns {string | null} */
@@ -227,9 +234,9 @@ export function getAgentDisplayName(internalName, projectRoot) {
 
     throw new Error(
         `getAgentDisplayName: no agent definition with a frontmatter "name:" field was found for "${canonicalName}". ` +
-            `Searched: ${
-                getAgentDefDirsByPriority(projectRoot).map((dir) => join(dir, `${canonicalName}.md`)).join(", ")
-            }.`,
+            `Searched: ${getAgentDefDirsByPriority(projectRoot)
+                .map((dir) => join(dir, `${canonicalName}.md`))
+                .join(", ")}.`,
     );
 }
 
@@ -294,11 +301,23 @@ export function getAgentBusyLines(internalName, projectRoot) {
  * @returns {Promise<string[]>}
  */
 export async function listAgentDefNames(projectRoot) {
+    return (await discoverAgentDefinitions(projectRoot)).names;
+}
+
+/**
+ * Scan each layer once. Absent layers stay absent for this discovery only.
+ *
+ * @param {string | undefined} projectRoot
+ * @returns {Promise<AgentDiscovery>}
+ */
+async function discoverAgentDefinitions(projectRoot) {
     const names = new Set();
+    const layerDirs = [];
 
     for (const dir of getAgentDefLayerDirs(projectRoot)) {
         await assertPersonalResourcePath(dir, "Agent definitions directory");
         if (!(await directoryExists(dir))) continue;
+        layerDirs.push(dir);
         for (const entry of await readdir(dir, { withFileTypes: true })) {
             if ((!entry.isFile() && !entry.isSymbolicLink()) || !entry.name.endsWith(".md")) continue;
             await assertPersonalResourcePath(join(dir, entry.name), "Agent definition");
@@ -313,7 +332,7 @@ export async function listAgentDefNames(projectRoot) {
         }
     }
 
-    return [...names].sort((a, b) => a.localeCompare(b));
+    return { names: [...names].sort((a, b) => a.localeCompare(b)), layerDirs };
 }
 
 /**
@@ -335,6 +354,30 @@ function normalizeToolNames(tools) {
     }
 
     return normalized;
+}
+
+/**
+ * Expand `toolSets` front matter into the tool names of each named set.
+ * Unknown names fail so a typo can't silently drop an Agent's tools.
+ *
+ * @param {unknown} value
+ * @param {string} source
+ * @returns {string[]}
+ */
+function expandToolSets(value, source) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || !value.every((name) => typeof name === "string")) {
+        throw new Error(`${source}: toolSets must be a list of set names.`);
+    }
+    return value.flatMap((name) => {
+        const setName = name.trim();
+        if (!Object.hasOwn(AGENT_TOOL_SETS, setName)) {
+            throw new Error(
+                `${source}: unknown toolSets entry "${name}". Expected one of: ${Object.keys(AGENT_TOOL_SETS).join(", ")}.`,
+            );
+        }
+        return AGENT_TOOL_SETS[setName];
+    });
 }
 
 /**
@@ -398,7 +441,7 @@ export function resolveSessionToolNames(agentTools, toolNames, customToolNames) 
     const normalizedCustomToolNames = normalizeToolNames(customToolNames);
     const allowedToolNames = new Set(normalizedAgentTools);
     const universalAgentToolNames = normalizedAgentTools.filter((toolName) =>
-        UNIVERSAL_AGENT_TOOL_NAMES.includes(toolName)
+        UNIVERSAL_AGENT_TOOL_NAMES.includes(toolName),
     );
 
     /** @type {string[]} */
@@ -418,6 +461,18 @@ export function resolveSessionToolNames(agentTools, toolNames, customToolNames) 
 }
 
 /**
+ * @typedef {Object} AgentDiscovery
+ * @property {string[]} names
+ * @property {string[]} layerDirs Existing definition layers, lowest priority first.
+ */
+
+/**
+ * @typedef {Object} SharedPracticeDiscovery
+ * @property {string[]} layerDirs Existing practice layers, highest priority first.
+ * @property {Map<string, string>} prompts Composed bodies for ordered normalized names.
+ */
+
+/**
  * List every merged agent definition, including the workflow-only ones. Callers
  * that offer the user a choice want `listAvailableAgents` instead.
  *
@@ -425,20 +480,26 @@ export function resolveSessionToolNames(agentTools, toolNames, customToolNames) 
  * @returns {Promise<import('./types.js').AgentDefinition[]>}
  */
 export async function listAllAgentDefinitions(projectRoot) {
-    const names = await listAgentDefNames(projectRoot);
+    const { names, layerDirs } = await discoverAgentDefinitions(projectRoot);
+    const practiceLayerDirs = [];
+    for (const dir of [...layerDirs].reverse()) {
+        const practiceDir = join(dir, SHARED_PRACTICE_DIR);
+        await assertPersonalResourcePath(practiceDir, "Shared practice directory");
+        if (await directoryExists(practiceDir)) practiceLayerDirs.push(dir);
+    }
+    /** @type {SharedPracticeDiscovery} */
+    const sharedPractice = { layerDirs: practiceLayerDirs, prompts: new Map() };
     /** @type {import('./types.js').AgentDefinition[]} */
     const agents = [];
 
     for (const name of names) {
         try {
-            const def = await loadAgentDef(name, projectRoot);
+            const def = await loadNamedAgentDef(name, projectRoot, layerDirs, sharedPractice);
             agents.push(def);
         } catch (err) {
             if (err instanceof PersonalResourcePathError) throw err;
             // Surface malformed agent definitions instead of silently dropping them.
-            console.error(
-                `[RunWield] Skipping agent "${name}": ${err instanceof Error ? err.message : String(err)}`,
-            );
+            console.error(`[RunWield] Skipping agent "${name}": ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 
@@ -493,8 +554,10 @@ export async function isWorkflowOnlyAgent(agentName, projectRoot) {
  */
 export function buildWorkflowOnlyAgentMessage(agentName, projectRoot) {
     const displayName = getAgentDisplayName(agentName, projectRoot);
-    return `${displayName} is activated by RunWield as part of a workflow, not by hand. ` +
-        `Staying with the current agent.`;
+    return (
+        `${displayName} is activated by RunWield as part of a workflow, not by hand. ` +
+        `Staying with the current agent.`
+    );
 }
 
 /**
@@ -530,12 +593,11 @@ function normalizeSharedPracticeNames(value, agentName) {
  * as agent definitions so a project or home layer can override bundled practice.
  *
  * @param {string} name
- * @param {string | undefined} projectRoot
+ * @param {string[]} layerDirs - Highest priority first
  * @returns {Promise<string>}
  */
-async function readSharedPracticeBody(name, projectRoot) {
-    const candidatePaths = getAgentDefDirsByPriority(projectRoot)
-        .map((dir) => join(dir, SHARED_PRACTICE_DIR, `${name}.md`));
+async function readSharedPracticeBody(name, layerDirs) {
+    const candidatePaths = layerDirs.map((dir) => join(dir, SHARED_PRACTICE_DIR, `${name}.md`));
 
     for (const filePath of candidatePaths) {
         await assertPersonalResourcePath(filePath, `shared practice "${name}"`);
@@ -563,11 +625,42 @@ async function readSharedPracticeBody(name, projectRoot) {
  * @returns {Promise<string>}
  */
 export async function composeSharedPracticePrompt(value, agentName, projectRoot) {
+    return await composeSharedPracticeNames(
+        normalizeSharedPracticeNames(value, agentName),
+        getAgentDefDirsByPriority(projectRoot),
+    );
+}
+
+/**
+ * @param {string[]} names
+ * @param {string[]} layerDirs - Highest priority first
+ * @returns {Promise<string>}
+ */
+async function composeSharedPracticeNames(names, layerDirs) {
     const segments = [];
-    for (const name of normalizeSharedPracticeNames(value, agentName)) {
-        segments.push(await readSharedPracticeBody(name, projectRoot));
+    for (const name of names) {
+        segments.push(await readSharedPracticeBody(name, layerDirs));
     }
     return segments.join("\n\n").trim();
+}
+
+/**
+ * Cache only successful compositions, within one discovery. Validate each
+ * definition before lookup, so malformed declarations still name their owner.
+ *
+ * @param {unknown} value
+ * @param {string} agentName
+ * @param {SharedPracticeDiscovery} discovery
+ * @returns {Promise<string>}
+ */
+async function composeDiscoveredSharedPractice(value, agentName, discovery) {
+    const names = normalizeSharedPracticeNames(value, agentName);
+    const key = JSON.stringify(names);
+    const cached = discovery.prompts.get(key);
+    if (cached !== undefined) return cached;
+    const prompt = await composeSharedPracticeNames(names, discovery.layerDirs);
+    discovery.prompts.set(key, prompt);
+    return prompt;
 }
 
 /**
@@ -578,16 +671,18 @@ export async function composeSharedPracticePrompt(value, agentName, projectRoot)
  * layer sets `promptOverride: true`, lower-layer prompt content is discarded.
  * Fragments named by the merged `sharedPractice:` list are appended last, so an
  * agent prompt reads persona → process → universal practice.
- * Tool lists are replaced when a higher layer defines `tools`. Tools declared
+ * Tool lists are replaced when a higher layer defines `tools` or `toolSets`;
+ * that layer's list is its expanded sets followed by its `tools`. Tools declared
  * in the lowest existing layer are treated as "bundled" for protected-tool
  * enforcement (always re-added even if a higher layer narrows the list).
  *
  * @param {string} agentName - the file name to load (without .md)
  * @param {string[]} filePaths - Paths to attempt, ordered low → high priority
  * @param {string | undefined} projectRoot
+ * @param {SharedPracticeDiscovery} [sharedPractice]
  * @returns {Promise<import('./types.js').AgentDefinition>}
  */
-async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
+async function loadAgentDefFromPaths(agentName, filePaths, projectRoot, sharedPractice) {
     /** @type {{ name?: string, model?: string, description?: string, contextContract?: unknown, promptOverride?: boolean, thinkingLevel?: string, temperature?: unknown, tools?: unknown[], busyLines?: unknown, [key: string]: unknown }} */
     let mergedAttrs = {};
     /** @type {string[]} */
@@ -608,14 +703,23 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
             throw new Error(`Agent def ${filePath} has no frontmatter`);
         }
 
-        const { attrs, body } = extractYaml(raw);
+        const { attrs, body } = /** @type {import("../front-matter.ts").FrontMatter<AgentDefinitionFrontMatter>} */ (
+            extractYaml(raw)
+        );
         if (Object.hasOwn(attrs, "bashAllowedCommands")) {
-            attrs.bashAllowedCommands = normalizeBashAllowedCommands(attrs.bashAllowedCommands, filePath);
+            const commands = normalizeBashAllowedCommands(attrs.bashAllowedCommands, filePath);
+            const inherited = mergedAttrs.bashAllowedCommands;
+            attrs.bashAllowedCommands = commands?.length
+                ? [...new Set([...(Array.isArray(inherited) ? inherited : []), ...commands])]
+                : commands;
         }
         found = true;
 
-        if (Object.prototype.hasOwnProperty.call(attrs, "tools")) {
-            const normalized = normalizeToolNames(attrs.tools);
+        if (Object.hasOwn(attrs, "tools") || Object.hasOwn(attrs, "toolSets")) {
+            const normalized = normalizeToolNames([
+                ...expandToolSets(attrs.toolSets, filePath),
+                ...normalizeToolNames(attrs.tools),
+            ]);
             if (!bundledToolsSet) {
                 bundledTools = normalized;
                 bundledToolsSet = true;
@@ -634,20 +738,18 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
     }
 
     if (!found) {
-        throw new Error(
-            `Could not find agent def for "${agentName}". Checked: ${filePaths.join(", ")}`,
-        );
+        throw new Error(`Could not find agent def for "${agentName}". Checked: ${filePaths.join(", ")}`);
     }
 
-    const displayName = typeof mergedAttrs.name === "string" && mergedAttrs.name.trim()
-        ? mergedAttrs.name.trim()
-        : agentName;
+    const displayName =
+        typeof mergedAttrs.name === "string" && mergedAttrs.name.trim() ? mergedAttrs.name.trim() : agentName;
     const model = typeof mergedAttrs.model === "string" && mergedAttrs.model.trim() ? mergedAttrs.model.trim() : "";
     const description = typeof mergedAttrs.description === "string" ? mergedAttrs.description.trim() : "";
-    const thinkingLevel = typeof mergedAttrs.thinkingLevel === "string" &&
-            ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(mergedAttrs.thinkingLevel)
-        ? mergedAttrs.thinkingLevel
-        : undefined;
+    const thinkingLevel =
+        typeof mergedAttrs.thinkingLevel === "string" &&
+        ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(mergedAttrs.thinkingLevel)
+            ? mergedAttrs.thinkingLevel
+            : undefined;
     const temperature = normalizeTemperature(mergedAttrs.temperature);
     const contextContract = normalizeContextContract(mergedAttrs.contextContract, agentName);
     // Merged, so a project or home layer can mark its own Agent workflow-only —
@@ -660,7 +762,9 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         `Agent definition "${agentName}"`,
     );
 
-    const sharedPracticePrompt = await composeSharedPracticePrompt(mergedAttrs.sharedPractice, agentName, projectRoot);
+    const sharedPracticePrompt = sharedPractice
+        ? await composeDiscoveredSharedPractice(mergedAttrs.sharedPractice, agentName, sharedPractice)
+        : await composeSharedPracticePrompt(mergedAttrs.sharedPractice, agentName, projectRoot);
     if (sharedPracticePrompt) promptSegments.push(sharedPracticePrompt);
 
     const mergedPromptBody = promptSegments.join("\n\n").trim();
@@ -673,6 +777,8 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         if (!tools.includes(toolName)) tools.push(toolName);
     }
 
+    const { tools: resolvedTools, delegationModes } = resolveDelegationModes(tools);
+
     displayNameCache.set(displayNameCacheKey(projectRoot, agentName), displayName);
     if (busyLines) busyLinesCache.set(displayNameCacheKey(projectRoot, agentName), busyLines);
 
@@ -684,12 +790,43 @@ async function loadAgentDefFromPaths(agentName, filePaths, projectRoot) {
         contextContract,
         thinkingLevel,
         temperature,
-        tools,
+        tools: resolvedTools,
+        delegationModes,
         bashAllowedCommands,
         workflowOnly,
         busyLines,
         systemPrompt,
     };
+}
+
+/**
+ * @typedef {Object} ResolvedDelegationTools
+ * @property {string[]} tools - Tool names with mode-limited delegation names folded into `delegate_agent`
+ * @property {import('./types.js').DelegationMode[] | undefined} delegationModes - Allowed modes; absent allows all
+ */
+
+/**
+ * Fold `delegate_agent_read` and `delegate_agent_write` into the one `delegate_agent` tool and record which modes
+ * they allow. Plain `delegate_agent` keeps every mode.
+ *
+ * @param {string[]} tools
+ * @returns {ResolvedDelegationTools}
+ */
+function resolveDelegationModes(tools) {
+    /** @type {import('./types.js').DelegationMode[]} */
+    const modes = [];
+    /** @type {string[]} */
+    const resolved = [];
+    for (const toolName of tools) {
+        const mode = Object.hasOwn(DELEGATE_AGENT_MODE_TOOL_NAMES, toolName)
+            ? DELEGATE_AGENT_MODE_TOOL_NAMES[/** @type {keyof typeof DELEGATE_AGENT_MODE_TOOL_NAMES} */ (toolName)]
+            : undefined;
+        if (mode && !modes.includes(mode)) modes.push(mode);
+        const name = mode ? "delegate_agent" : toolName;
+        if (!resolved.includes(name)) resolved.push(name);
+    }
+    const unlimited = tools.includes("delegate_agent") || !modes.length;
+    return { tools: resolved, delegationModes: unlimited ? undefined : modes };
 }
 
 /**
@@ -715,13 +852,27 @@ function addUniversalAgentTools(agentDef) {
  * @returns {Promise<import('./types.js').AgentDefinition>}
  */
 export async function loadAgentDef(agentName, projectRoot) {
+    return await loadNamedAgentDef(agentName, projectRoot, getAgentDefLayerDirs(projectRoot));
+}
+
+/**
+ * Own the ordered paths for both discovery and individual loads, including the
+ * workflow-only bundled repair definition. Public loaders always read fresh.
+ *
+ * @param {string} agentName
+ * @param {string | undefined} projectRoot
+ * @param {string[]} layerDirs - Lowest priority first
+ * @param {SharedPracticeDiscovery} [sharedPractice]
+ * @returns {Promise<import('./types.js').AgentDefinition>}
+ */
+async function loadNamedAgentDef(agentName, projectRoot, layerDirs, sharedPractice) {
     const canonicalName = normalizeAgentInternalName(agentName);
-    const filePaths = getAgentDefLayerDirs(projectRoot).map((dir) => join(dir, `${canonicalName}.md`));
+    const filePaths = layerDirs.map((dir) => join(dir, `${canonicalName}.md`));
     if (canonicalName === AGENTS.REVIEWER_FEEDBACK_ENGINEER) {
         filePaths.splice(1, 0, join(AGENT_DEFS_DIR, "subagent-definitions", `${canonicalName}.md`));
     }
 
-    return addUniversalAgentTools(await loadAgentDefFromPaths(canonicalName, filePaths, projectRoot));
+    return addUniversalAgentTools(await loadAgentDefFromPaths(canonicalName, filePaths, projectRoot, sharedPractice));
 }
 
 /**

@@ -2,21 +2,25 @@ import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import process from "node:process";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../src/testing/assertions.ts";
 import { captureScriptProcess, waitForScriptExit } from "./script-process.ts";
 
-test("script processes preserve signal exit codes across capture and inherited I/O", {
-    skip: process.platform === "win32",
-}, async () => {
-    const args = ["-c", "kill -TERM $$"];
-    const expected = 128 + constants.signals.SIGTERM;
-    const captured = await captureScriptProcess("/bin/sh", { args });
-    const inherited = await waitForScriptExit(spawn("/bin/sh", args, { stdio: "ignore" }));
-    for (const output of [captured, inherited]) {
-        assertEquals(output.code, expected);
-        assertEquals(output.success, false);
-    }
-});
+test(
+    "script processes preserve signal exit codes across capture and inherited I/O",
+    {
+        skip: process.platform === "win32",
+    },
+    async () => {
+        const args = ["-c", "kill -TERM $$"];
+        const expected = 128 + constants.signals.SIGTERM;
+        const captured = await captureScriptProcess("/bin/sh", { args });
+        const inherited = await waitForScriptExit(spawn("/bin/sh", args, { stdio: "ignore" }));
+        for (const output of [captured, inherited]) {
+            assertEquals(output.code, expected);
+            assertEquals(output.success, false);
+        }
+    },
+);
 
 test("script process capture transports stdin bytes and starts with only the requested environment", async () => {
     const options = {
@@ -29,7 +33,7 @@ test("script process capture transports stdin bytes and starts with only the req
         env: { WLD_CAPTURE_MARKER: "only requested" },
     };
     // Deno's eval spelling differs, while the fixture itself uses the portable node API.
-    if (process.versions.deno) options.args[0] = "eval";
+
     const output = await captureScriptProcess(process.execPath, options);
     assertEquals(output.code, 0, new TextDecoder().decode(output.stderr));
     assertEquals(JSON.parse(new TextDecoder().decode(output.stdout)), {

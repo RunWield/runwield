@@ -1,9 +1,9 @@
+import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
 import { mkdtemp as fsMkdtemp } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import {
     loadPlanActionEvidence,

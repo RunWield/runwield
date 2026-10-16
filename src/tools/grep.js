@@ -9,7 +9,7 @@ import { stat as fsStat } from "node:fs/promises";
 
 import { createGrepToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import { basename, dirname, isAbsolute, join, normalize, relative } from "@std/path";
+import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { getHomeDir } from "../constants.js";
 
 const grepSchema = Type.Object({

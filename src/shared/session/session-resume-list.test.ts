@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import process from "node:process";
 import {
     mkdir as fsMkdir,
@@ -8,8 +9,7 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { getHomeDir } from "../../constants.js";
 import { withProcessGlobalTestLock } from "../../testing/process-global-lock.ts";
 import { openFileSessionStore } from "./file-session-store.ts";

@@ -8,8 +8,9 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { join, toFileUrl } from "@std/path";
+import { assertEquals, assertRejects, assertStringIncludes } from "../src/testing/assertions.ts";
+import { join } from "node:path";
+import { pathToFileURL as toFileUrl } from "node:url";
 import { normalizeGitHubBlobUrl, packageWindows, sha256 } from "./package-windows.js";
 
 async function run(command: string, args: string[], cwd?: string): Promise<string> {

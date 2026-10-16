@@ -11,8 +11,8 @@ import {
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import process from "node:process";
-import { assertEquals, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertThrows } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import { parseRunnerArguments, selectTestShard } from "./run-tests.js";
 import { mergeTestTimings, orderTestsByTiming, readTestTimings, writeTestTimings } from "./test-timings.js";
 

@@ -2,7 +2,7 @@ import { mkdtemp as fsMkdtemp, rm as fsRm } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals, assertInstanceOf, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertInstanceOf, assertStringIncludes } from "../testing/assertions.ts";
 import {
     assertGitRepository,
     GitRepositoryRequiredError,

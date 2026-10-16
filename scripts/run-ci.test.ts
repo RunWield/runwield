@@ -1,20 +1,19 @@
+import { assertEquals } from "../src/testing/assertions.ts";
 import { runtimeSourceArgs } from "../src/testing/runtime-source-args.ts";
 import { captureScriptProcess } from "./script-process.ts";
 import { test } from "node:test";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import process from "node:process";
-import { assertEquals } from "@std/assert";
-import { fromFileUrl, join } from "@std/path";
+import { fileURLToPath as fromFileUrl } from "node:url";
+import { join } from "node:path";
 import { type CiTaskName, type CiTaskResult, PRE_TEST_TASKS, runCi } from "./run-ci.ts";
 
 test("CI collects all failures by default and supports explicit fail-fast", async () => {
     const root = await fsMkdtemp(join(tmpdir(), "ci-command-fixture-"));
     try {
         const executable = `'${process.execPath.replaceAll("'", "'\\''")}'`;
-        const tasks = Object.fromEntries(
-            PRE_TEST_TASKS.map((name) => [name, `${executable} ${process.versions.deno ? "eval" : "--eval"} 'void 0'`]),
-        );
+        const tasks = Object.fromEntries(PRE_TEST_TASKS.map((name) => [name, `${executable} ${"--eval"} 'void 0'`]));
         await fsWriteFile(
             join(root, "deno.json"),
             JSON.stringify({

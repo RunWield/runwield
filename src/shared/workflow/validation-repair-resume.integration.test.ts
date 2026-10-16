@@ -1,9 +1,9 @@
 import process from "node:process";
 import { readFile as fsReadFile, stat as fsStat, utimes as fsUtimes, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "../../testing/assertions.ts";
 import { executeWorkflowTestTools } from "../../testing/workflow-agent-tools.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 import { loadPlan, savePlan } from "../../plan-store.js";

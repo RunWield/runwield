@@ -1,4 +1,5 @@
 ---
+planId: "fca9ebb0-e78c-4f04-ba12-2cbd7ded93b8"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -21,8 +22,8 @@ order: 6
 dependencies:
     - "04-run-and-resume-remote-sessions-with-local-history"
     - "05-keep-memory-and-integrations-on-their-owning-machine"
+userVerifiedAt: null
 targetBranch: "epic/remote-ssh-development"
-planId: "fca9ebb0-e78c-4f04-ba12-2cbd7ded93b8"
 ---
 
 # Carry Remote Context Through Delivery Workflows
@@ -92,6 +93,11 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 
 ## Implementation Steps
 
+- Child04 admits only a root remote Session with a laptop save bridge. The remaining remote guards in
+  `buildAgentSession` (`src/shared/session/session.js`) and `requireLocalSessionWriter` no longer block workflow
+  handoffs, child Sessions, write delegation, or Plan review in a connected remote Session.
+- Segment rollover at execution and repair handoff runs through `RemoteSessionOwner.rollover` on the laptop. The
+  predecessor and successor segments and their lineage are committed on the laptop, and no remote transcript exists.
 - Root, planning, execution, repair, delegated, semantic-review, and Guided Review Session construction receives the
   same remote project locator, current remote cwd/worktree, local personal-service handle, local Session ownership, and
   connection supervisor.
@@ -124,6 +130,8 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - Live: use a remote-only Plan to perform isolated execution, validation, AI review, repair, Code Review where selected,
   Work Record generation, merge, and confirmed publication. Continuously verify the laptop sentinel tree remains
   unchanged.
+- Live (moved from child04): trigger a segment rollover in a remote Session, disconnect, reconnect, and confirm
+  `/resume` continues from the successor segment with laptop lineage intact.
 - Failure evidence: cut transport during tool execution, validation, repair, generation commit, merge, and publication.
   Reconnect and confirm proven outcomes are retained, uncertain outcomes are reported, and no external effect is
   repeated automatically.

@@ -4,7 +4,6 @@
  * Starts the compiled Workspace question page for Runtime interactions.
  */
 
-import { versions } from "node:process";
 import { startSessionQuestionWorkspaceServer } from "../../ui/workspace/server.js";
 
 /**
@@ -41,8 +40,7 @@ export function startBrowserQuestionServer({ interaction, acpSessionId = "", ans
         token,
         url: `${origin}/session-question?token=${encodeURIComponent(token)}`,
         shutdown: async ({ drain = false } = {}) => {
-            // Deno's native abort delivers this response; abort after shutdown() raises BadResource.
-            if (!drain || versions.deno) {
+            if (!drain) {
                 controller.abort();
                 await server.finished;
                 return;

@@ -1,6 +1,7 @@
 import { getCwd } from "../../constants.js";
 import { test } from "node:test";
-import { assert, assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../../testing/assertions.ts";
 import { HostedSession } from "./hosted-session.js";
 import { WORKFLOW_CONTEXT_CUSTOM_TYPE } from "./workflow-context-session.js";
 import { TUTORIAL_CONTEXT_CUSTOM_TYPE } from "./tutorial-context-session.ts";
@@ -35,11 +36,7 @@ function makeDisposableSession(id) {
 }
 
 test("HostedSession requires an absolute project root", () => {
-    assertThrows(
-        () => new HostedSession({ id: "missing-root" }),
-        Error,
-        "requires an absolute project root",
-    );
+    assertThrows(() => new HostedSession({ id: "missing-root" }), Error, "requires an absolute project root");
     assertThrows(
         () => new HostedSession({ id: "relative-root", cwd: "relative/project" }),
         Error,
@@ -457,12 +454,18 @@ test("HostedSession removes delegated agent display entries by id when completio
 
     session.popAgentInfo(readerA);
 
-    assertEquals(session.getAgentInfoStack().map((agentInfo) => agentInfo.displayName), ["Router", "Reader B"]);
+    assertEquals(
+        session.getAgentInfoStack().map((agentInfo) => agentInfo.displayName),
+        ["Router", "Reader B"],
+    );
     assertEquals(session.getActiveAgentName(), "Reader B");
 
     session.popAgentInfo(readerB);
 
-    assertEquals(session.getAgentInfoStack().map((agentInfo) => agentInfo.displayName), ["Router"]);
+    assertEquals(
+        session.getAgentInfoStack().map((agentInfo) => agentInfo.displayName),
+        ["Router"],
+    );
     assertEquals(session.getActiveAgentName(), "Router");
 });
 
@@ -555,11 +558,7 @@ test("HostedSession dispose clears owned runtime references and rejects later mu
     assertEquals(session.getSubAgentSessions().size, 0);
     assertEquals(session.getActiveExecutionWorkflow(), null);
     assertEquals(session.getWorkflowContext(), null);
-    assertThrows(
-        () => session.setThinkingLevel("medium"),
-        Error,
-        'HostedSession "disposing" is disposed',
-    );
+    assertThrows(() => session.setThinkingLevel("medium"), Error, 'HostedSession "disposing" is disposed');
 });
 
 test("HostedSession delegated-agent leases allow three readers and reject a fourth", () => {
@@ -619,16 +618,18 @@ test("HostedSession preserves workflow context across empty root manager swap an
         planName: "epic-name/footer-plan",
         parentPlan: "epic-name",
     });
-    assertEquals(secondEntries, [{
-        type: "custom",
-        customType: WORKFLOW_CONTEXT_CUSTOM_TYPE,
-        data: {
-            routingIntent: "PLANNED_CHANGE",
-            complexity: "MEDIUM",
-            planName: "epic-name/footer-plan",
-            parentPlan: "epic-name",
+    assertEquals(secondEntries, [
+        {
+            type: "custom",
+            customType: WORKFLOW_CONTEXT_CUSTOM_TYPE,
+            data: {
+                routingIntent: "PLANNED_CHANGE",
+                complexity: "MEDIUM",
+                planName: "epic-name/footer-plan",
+                parentPlan: "epic-name",
+            },
         },
-    }]);
+    ]);
 });
 
 test("HostedSession null root manager does not clear workflow context", () => {
@@ -699,16 +700,6 @@ function makeManagedCapability() {
         runtimeSessionId: "runtime-managed",
         runwieldSessionId: "runwield-managed",
         operationId: "operation-managed",
-        proof: {
-            runwieldSessionId: "runwield-managed",
-            projectId: "project-managed",
-            ownerInstanceId: "owner-managed",
-            ownerProcessKind: "test",
-            operationId: "operation-managed",
-            fence: 1,
-            phase: "preparing",
-            expectedGeneration: 0,
-        },
         settled: false,
         registerArtifact: () => ({
             artifactId: "artifact-managed",
@@ -721,7 +712,6 @@ function makeManagedCapability() {
         }),
         stagePlanAssociation: (entry) => ({ ...entry, committedGeneration: null }),
         getCurrentSegmentKind: () => "planning",
-        updateProof: () => {},
         assertLive: () => {},
         settle: () => {},
     };
@@ -778,17 +768,19 @@ test("HostedSession requires the current managed operation capability for writab
 
 test("HostedSession restores tutorial context and requires managed writer ownership", () => {
     /** @type {Array<Record<string, unknown>>} */
-    const entries = [{
-        type: "custom",
-        customType: TUTORIAL_CONTEXT_CUSTOM_TYPE,
-        data: {
-            version: 1,
-            guidanceEnabled: true,
-            shownExplanationIds: ["welcome"],
-            recapShown: false,
-            planId: null,
+    const entries = [
+        {
+            type: "custom",
+            customType: TUTORIAL_CONTEXT_CUSTOM_TYPE,
+            data: {
+                version: 1,
+                guidanceEnabled: true,
+                shownExplanationIds: ["welcome"],
+                recapShown: false,
+                planId: null,
+            },
         },
-    }];
+    ];
     const manager = makeSessionManager("tutorial-context-session", entries);
     const session = new HostedSession({
         id: "tutorial-context-runtime",
@@ -823,15 +815,17 @@ test("HostedSession restores tutorial context and requires managed writer owners
     );
     const updated = session.updateTutorialContext(
         { guidanceEnabled: false, shownExplanationIds: ["welcome", "plans", "plans"], planId: "plan-1" },
-        [{
-            planId: "plan-1",
-            planName: "example-plan",
-            purpose: "planning",
-            segmentId: "segment-1",
-            segmentKind: "planning",
-            recordedAt: "2026-01-01T00:00:00.000Z",
-            committedGeneration: 0,
-        }],
+        [
+            {
+                planId: "plan-1",
+                planName: "example-plan",
+                purpose: "planning",
+                segmentId: "segment-1",
+                segmentKind: "planning",
+                recordedAt: "2026-01-01T00:00:00.000Z",
+                committedGeneration: 0,
+            },
+        ],
     );
 
     assertEquals(updated, {

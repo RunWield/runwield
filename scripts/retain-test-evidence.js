@@ -1,6 +1,6 @@
 import { mkdir as fsMkdir, readdir as fsReaddir, rename as fsRename } from "node:fs/promises";
 /** Keep Golden diagnostics outside the disposable test sandbox, not its cache or HOME. */
-import { join } from "@std/path";
+import { join } from "node:path";
 
 /** @param {string} sandbox @param {string} destination */
 export async function retainTestEvidence(sandbox, destination) {

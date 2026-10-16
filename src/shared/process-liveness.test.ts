@@ -2,7 +2,7 @@ import { equal, ok } from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { hostname } from "node:os";
-import { execPath, pid, versions } from "node:process";
+import { execPath, pid } from "node:process";
 import { test } from "node:test";
 import { getLockHostname, isLockHolderGone, isLockHolderUnattributable, isPidAlive } from "./process-liveness.ts";
 
@@ -16,7 +16,7 @@ test("process liveness recognizes this host and rejects invalid process identiti
 
 test("lock holder follows a real child from live to exited without signaling it", async () => {
     const source = 'console.log("ready"); setInterval(() => {}, 1000);';
-    const child = spawn(execPath, versions.deno ? ["eval", source] : ["-e", source], {
+    const child = spawn(execPath, ["-e", source], {
         stdio: ["ignore", "pipe", "pipe"],
     });
     const closed = once(child, "close");

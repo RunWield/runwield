@@ -9,6 +9,12 @@ import { join } from "node:path";
 import { platform } from "node:process";
 import { getCwd } from "../../constants.js";
 import { spawnForegroundProcess } from "../../shared/foreground-process.ts";
+import { createRemoteClipboardReader, type RemoteClipboardConnection } from "../../shared/remote/clipboard-bridge.ts";
+
+export interface ClipboardImage {
+    base64: string;
+    mimeType: "image/png";
+}
 
 interface ClipboardCommandResult {
     success: boolean;
@@ -24,7 +30,7 @@ export interface ClipboardSystemPort {
 
 export interface ClipboardReader {
     hasClipboardImage(): Promise<boolean>;
-    readClipboardImage(): Promise<{ base64: string; mimeType: "image/png" } | null>;
+    readClipboardImage(): Promise<ClipboardImage | null>;
 }
 
 const systemClipboardPort: ClipboardSystemPort = {
@@ -63,8 +69,8 @@ export function createClipboardReader(port: ClipboardSystemPort): ClipboardReade
         return new TextDecoder().decode(result.stdout).trim() === "image";
     }
 
-    async function readClipboardImage(): Promise<{ base64: string; mimeType: "image/png" } | null> {
-        if (!await hasClipboardImage()) return null;
+    async function readClipboardImage(): Promise<ClipboardImage | null> {
+        if (!(await hasClipboardImage())) return null;
 
         const tempFile = await port.makeTempFile({
             prefix: "runwield-clipboard-",
@@ -106,5 +112,25 @@ export function createClipboardReader(port: ClipboardSystemPort): ClipboardReade
 
 const systemClipboard = createClipboardReader(systemClipboardPort);
 
-export const hasClipboardImage = systemClipboard.hasClipboardImage;
-export const readClipboardImage = systemClipboard.readClipboardImage;
+/** Laptop service must use this export, never the selected TUI reader. */
+export const readSystemClipboardImage = systemClipboard.readClipboardImage;
+
+let selectedClipboard: ClipboardReader = systemClipboard;
+let remoteConfigured = false;
+
+/** Select before TUI startup. Cleanup leaves the closed remote reader selected, fail-closed. */
+export function configureRemoteClipboardConnection(connection: RemoteClipboardConnection): () => void {
+    if (remoteConfigured) throw new Error("Remote clipboard connection is already configured");
+    const reader = createRemoteClipboardReader(connection);
+    selectedClipboard = reader;
+    remoteConfigured = true;
+    return () => reader.close();
+}
+
+export function hasClipboardImage(): Promise<boolean> {
+    return selectedClipboard.hasClipboardImage();
+}
+
+export function readClipboardImage(): Promise<ClipboardImage | null> {
+    return selectedClipboard.readClipboardImage();
+}

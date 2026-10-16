@@ -3,7 +3,8 @@ import { test } from "node:test";
  * @module acp/protocol-smoke.test
  */
 
-import { assert, assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { ok as assert, strictEqual as assertStrictEquals } from "node:assert/strict";
+import { assertEquals, assertThrows } from "../testing/assertions.ts";
 import { agent, methods, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import { assertAcpFrameSchema, findAcpSchemaViolations } from "./schema-conformance.ts";
 

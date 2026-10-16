@@ -1,8 +1,8 @@
 import process from "node:process";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertStringIncludes } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { Container, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";
 import { getCwdInitState } from "../../cmd/init/init-state.ts";

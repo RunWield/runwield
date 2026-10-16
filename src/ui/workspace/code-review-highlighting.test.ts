@@ -1,6 +1,6 @@
+import { assertEquals } from "../../testing/assertions.ts";
 // @ts-nocheck: Astro workspace check uses browser tsconfig without Deno/JSR test globals.
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 import {
     getCustomExtensionsMap,
     getCustomExtensionsVersion,

@@ -1,6 +1,6 @@
 import { opendir as fsOpendir } from "node:fs/promises";
 import { readFile as fsReadFile } from "node:fs/promises";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { AGENTS } from "../../constants.js";
 import { RuntimeEventTypes } from "../../shared/session/session-runtime-events.js";
 import { listWorkRecords } from "../../shared/work-records/store.js";

@@ -1,7 +1,7 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { createAssistantMessageEventStream, fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import { estimateTokens, SessionManager } from "@earendil-works/pi-coding-agent";
 import { withRuntimeCommandFixture } from "../../cmd/testing/runtime-command-fixture.ts";

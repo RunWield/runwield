@@ -1,8 +1,9 @@
 import { mkdir as fsMkdir, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertRejects, assertStringIncludes } from "../testing/assertions.ts";
 import { buildWorkRecordIndexDocument } from "./work-records/index-adapter.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { defineGitFixture, git } from "./git-test-fixture.ts";
 import { parsePlanFrontMatter } from "../plan-store.js";
 import { formatWorkRecordMarkdown, parseWorkRecordMarkdown } from "./work-records/markdown.js";

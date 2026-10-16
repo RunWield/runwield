@@ -1,6 +1,6 @@
 import { mkdir as fsMkdir, readdir as fsReaddir, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "../../testing/assertions.ts";
 import { archivePlan, listArchivedPlans, listPlans, loadArchivedPlan, loadPlan, savePlan } from "../../plan-store.js";
 import { getTransitionJournalDir, getTransitionJournalPath } from "../../shared/workflow/state-transition.ts";
 import { runPlansArchiveCommand } from "./archive.ts";

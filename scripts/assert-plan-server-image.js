@@ -20,9 +20,7 @@ export const REQUIRED_IMAGE_FILES = Object.freeze([
     "/app/src/ui/theme/catppuccin-mocha.json",
 ]);
 
-export const REQUIRED_IMAGE_DIRECTORIES = Object.freeze([
-    "/data",
-]);
+export const REQUIRED_IMAGE_DIRECTORIES = Object.freeze(["/data"]);
 
 const ALLOWED_APP_SRC_FILES = new Set([
     "/app/src/agent-definitions/architect.md",
@@ -72,11 +70,22 @@ export function isProhibitedImageFile(file) {
     if (file.startsWith("/app/dist/workspace-runtime/")) return false;
     if (ALLOWED_APP_SRC_FILES.has(file)) return false;
 
-    return file.startsWith("/app/docs/plans/") || file.startsWith("/app/.wld/") || file.startsWith("/app/.git/") ||
-        file.startsWith("/app/sessions/") || file.includes("/sessions/") ||
-        file.includes("collaboration-secrets.json") || file.endsWith(".sqlite") || file.includes(".sqlite-") ||
-        file.endsWith(".db") || file.includes(".db-") || file.includes(".test.") || file.startsWith("/app/src/") ||
-        file === "/app/deno.json" || file === "/app/deno.lock";
+    return (
+        file.startsWith("/app/docs/plans/") ||
+        file.startsWith("/app/.wld/") ||
+        file.startsWith("/app/.git/") ||
+        file.startsWith("/app/sessions/") ||
+        file.includes("/sessions/") ||
+        file.includes("collaboration-secrets.json") ||
+        file.endsWith(".sqlite") ||
+        file.includes(".sqlite-") ||
+        file.endsWith(".db") ||
+        file.includes(".db-") ||
+        file.includes(".test.") ||
+        file.startsWith("/app/src/") ||
+        file === "/app/deno.json" ||
+        file === "/app/deno.lock"
+    );
 }
 
 /**
@@ -89,10 +98,12 @@ const IMAGE_DIRECTORY_DELIMITER = "__RUNWIELD_IMAGE_DIRECTORIES__";
 
 /**
  * @param {string} image
+ * @param {string} [engine]
  * @returns {Promise<ImageFilesystemListing>}
  */
-export async function listImageFilesystem(image) {
-    const result = await captureScriptProcess("podman", {
+export async function listImageFilesystem(image, engine = "podman") {
+    if (!["podman", "docker"].includes(engine)) throw new Error(`Unsupported container engine: ${engine}`);
+    const result = await captureScriptProcess(engine, {
         args: [
             "run",
             "--rm",
@@ -107,12 +118,12 @@ export async function listImageFilesystem(image) {
     });
     const decoder = new TextDecoder();
     if (!result.success) {
-        throw new Error(decoder.decode(result.stderr).trim() || `podman run failed with exit code ${result.code}`);
+        throw new Error(decoder.decode(result.stderr).trim() || `${engine} run failed with exit code ${result.code}`);
     }
     const lines = decoder.decode(result.stdout).trim().split("\n").filter(Boolean);
     const delimiterIndex = lines.indexOf(IMAGE_DIRECTORY_DELIMITER);
     if (delimiterIndex === -1) {
-        throw new Error("podman image filesystem listing did not include the directory delimiter");
+        throw new Error(`${engine} image filesystem listing did not include the directory delimiter`);
     }
     return {
         files: lines.slice(0, delimiterIndex),
@@ -133,7 +144,8 @@ if (import.meta.main) {
     const listing = await listImageFilesystem(image);
     const result = assertPlanServerImageFileList(listing.files, listing.directories);
     if (
-        result.missingRequired.length > 0 || result.missingRequiredDirectories.length > 0 ||
+        result.missingRequired.length > 0 ||
+        result.missingRequiredDirectories.length > 0 ||
         result.prohibited.length > 0
     ) {
         console.error(JSON.stringify(result, null, 2));

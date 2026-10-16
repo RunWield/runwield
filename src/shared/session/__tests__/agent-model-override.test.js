@@ -1,3 +1,4 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 /**
@@ -8,7 +9,6 @@ import { test } from "node:test";
  * The fixture isolates HOME and restores process-global state after each read.
  */
 
-import { assertEquals } from "@std/assert";
 import { withRuntimeCommandFixture } from "../../../cmd/testing/runtime-command-fixture.ts";
 import { getConfiguredAgentModel } from "../session.js";
 

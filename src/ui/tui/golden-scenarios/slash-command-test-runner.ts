@@ -1,5 +1,5 @@
+import { assertEquals } from "../../../testing/assertions.ts";
 import { test } from "node:test";
-import { assertEquals } from "@std/assert";
 
 type SlashCommandScenario = { name: string; timeoutMs?: number; initDone?: boolean; initArtifact?: boolean };
 

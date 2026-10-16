@@ -1,3 +1,4 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
@@ -7,8 +8,7 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { join } from "@std/path";
+import { join } from "node:path";
 import { DatabaseSync } from "../sqlite.ts";
 import { openFileSessionStore } from "../session/file-session-store.ts";
 import { encodeCwdForSessionDir } from "../session/root-session.js";

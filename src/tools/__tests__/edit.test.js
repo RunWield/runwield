@@ -8,8 +8,9 @@ import {
 } from "node:fs/promises";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
-import { assertEquals, assertMatch, assertNotMatch, assertRejects, fail } from "@std/assert";
-import { join } from "@std/path";
+import { match as assertMatch, doesNotMatch as assertNotMatch, fail } from "node:assert/strict";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
+import { join } from "node:path";
 import { createSingleEditToolDefinition } from "../edit.js";
 
 /**

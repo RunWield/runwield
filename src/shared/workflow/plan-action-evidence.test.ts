@@ -1,9 +1,9 @@
+import { assertEquals } from "../../testing/assertions.ts";
 import { mkdir as fsMkdir, mkdtemp as fsMkdtemp, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
-import { dirname } from "@std/path";
+import { dirname } from "node:path";
 import { loadPlan, savePlan } from "../../plan-store.js";
 import { getWorktreeRegistryPath } from "../worktree-registry.js";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";

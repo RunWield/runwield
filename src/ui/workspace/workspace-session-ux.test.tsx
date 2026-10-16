@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import { readSessionDraft, saveSessionDraft } from "./browser/session-drafts.ts";
 import { readWorkspaceStyles } from "./workspace-styles.ts";
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import {
     activePlanProgressApiUrl,
     draftRecoveryDecision,

@@ -9,8 +9,8 @@ import {
     rm as fsRm,
     writeFile as fsWriteFile,
 } from "node:fs/promises";
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { join } from "@std/path";
+import { assertEquals, assertRejects, assertThrows } from "../src/testing/assertions.ts";
+import { join } from "node:path";
 import {
     assertBinaryVersionOutput,
     assertBunRuntimeIdentity,
@@ -71,6 +71,7 @@ async function withTemporaryVersionProject(fn) {
     try {
         await fsMkdir(join(root, "src", "shared"), { recursive: true });
         await fsWriteFile(join(root, "src", "shared", "version.js"), 'export const VERSION = "original";\n');
+        await fsWriteFile(join(root, ".bun-version"), "1.4.3\n");
         await fn(root);
     } finally {
         await fsRm(root, { recursive: true });
@@ -93,7 +94,7 @@ test("runReleaseCheck propagates build identity to compile and preserves stage o
                 remove: () => Promise.resolve(),
                 async run(command, args, options = {}) {
                     calls.push({ command, args, env: options.env });
-                    if (command === "deno" && args.includes("scripts/compile.js")) {
+                    if (command === "bun" && args.includes("compile")) {
                         stages.push("compile");
                         await fsWriteFile(
                             join(root, "src", "shared", "version.js"),
@@ -101,13 +102,22 @@ test("runReleaseCheck propagates build identity to compile and preserves stage o
                         );
                         return { success: true, code: 0, stdout: "", stderr: "" };
                     }
-                    if (command === "deno" && args.includes("test:golden-tui:extensive")) {
+                    if (command === "bun" && args.includes("test:golden-tui:extensive")) {
                         stages.push("golden-tui");
                         return { success: true, code: 0, stdout: "", stderr: "" };
                     }
-                    if (command === "deno") {
+                    if (command === "bun") {
                         stages.push("workspace-review-routes");
                         return { success: true, code: 0, stdout: "", stderr: "" };
+                    }
+                    if (args[0] === "--remote-preflight") {
+                        stages.push("runtime-identity");
+                        return {
+                            success: true,
+                            code: 0,
+                            stdout: JSON.stringify({ runtime: "bun", runtimeVersion: "1.4.3" }),
+                            stderr: "",
+                        };
                     }
                     if (args[0] === "package-smoke") {
                         assertEquals(args, ["package-smoke", "image-resize"]);
@@ -143,6 +153,7 @@ test("runReleaseCheck propagates build identity to compile and preserves stage o
             "compile",
             "workspace-review-routes",
             "version",
+            "runtime-identity",
             "image-resize",
             "references",
             "plans-ui",
@@ -171,7 +182,12 @@ test("runReleaseCheck can leave Golden qualification to a parallel CI job", asyn
                     return Promise.resolve({
                         success: true,
                         code: 0,
-                        stdout: command === "deno" ? "" : "runwield test-version (test-target)\n",
+                        stdout:
+                            args[0] === "--remote-preflight"
+                                ? JSON.stringify({ runtime: "bun", runtimeVersion: "1.4.3" })
+                                : command === "bun"
+                                  ? ""
+                                  : "runwield test-version (test-target)\n",
                         stderr: "",
                     });
                 },
@@ -203,7 +219,7 @@ test("runReleaseCheck short-circuits after compile failure and restores generate
                         makeTempDir: () => Promise.resolve("release-temp"),
                         remove: () => Promise.resolve(),
                         async run(command) {
-                            stages.push(command === "deno" ? "compile" : "version");
+                            stages.push(command === "bun" ? "compile" : "version");
                             await fsWriteFile(
                                 join(root, "src", "shared", "version.js"),
                                 'export const VERSION = "failed";\n',
@@ -254,7 +270,10 @@ test("release check rejects worker errors even when image fallback exits success
                             return Promise.resolve({
                                 success: true,
                                 code: 0,
-                                stdout: "",
+                                stdout:
+                                    args[0] === "--remote-preflight"
+                                        ? JSON.stringify({ runtime: "bun", runtimeVersion: "1.4.3" })
+                                        : "",
                                 stderr:
                                     args[0] === "package-smoke"
                                         ? "error: Uncaught (in worker) Module not found: image-resize-worker.js"
@@ -288,7 +307,7 @@ test("runReleaseCheck restores generated version after binary version mismatch",
                         makeTempDir: () => Promise.resolve("release-temp"),
                         remove: () => Promise.resolve(),
                         async run(command, args) {
-                            if (command === "deno" && args.includes("scripts/compile.js")) {
+                            if (command === "bun" && args.includes("compile")) {
                                 stages.push("compile");
                                 await fsWriteFile(
                                     join(root, "src", "shared", "version.js"),
@@ -296,7 +315,7 @@ test("runReleaseCheck restores generated version after binary version mismatch",
                                 );
                                 return { success: true, code: 0, stdout: "", stderr: "" };
                             }
-                            if (command === "deno") {
+                            if (command === "bun") {
                                 stages.push("workspace-review-routes");
                                 return { success: true, code: 0, stdout: "", stderr: "" };
                             }
@@ -504,7 +523,12 @@ test("Bun release gate compiles and checks the Bun runtime without invoking the 
             },
         );
         assertEquals(calls[0].command, "bun");
-        assertEquals(calls[0].args.slice(0, 2), ["run", "compile:bun"]);
+        assertEquals(calls[0].args, [
+            "run",
+            "compile",
+            "--output",
+            join("release-temp", process.platform === "win32" ? "wld.exe" : "wld"),
+        ]);
         assertEquals(calls[1], {
             command: "bun",
             args: ["run", "scripts/assert-workspace-review-runtime.js", "--bun"],

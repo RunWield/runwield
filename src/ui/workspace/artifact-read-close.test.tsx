@@ -1,8 +1,9 @@
 // @ts-nocheck: browser tests install happy-dom globals around React.
 import { test } from "node:test";
 import { importTestBundle } from "../../testing/import-test-bundle.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { fromFileUrl } from "@std/path";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
+import { fileURLToPath as fromFileUrl } from "node:url";
 import { build, stop } from "esbuild";
 import { Window } from "happy-dom";
 import { act } from "react";

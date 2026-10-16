@@ -25,7 +25,8 @@ import { createProgressRecord } from "./validation-emit.ts";
 import { createGitPort } from "../git-port.ts";
 import { createWorkRecordMnemotecaFixture } from "../work-records/test-fixtures/mnemoteca-port.ts";
 import { buildVerifiedResult } from "./validation-publication.ts";
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { ok as assert } from "node:assert/strict";
+import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 import { loadPlan, PlanLockTimeoutError, savePlan } from "../../plan-store.js";
 
 import { classifyValidationOperationalError, type GitPublicationErrorKind } from "./validation-operational-errors.ts";

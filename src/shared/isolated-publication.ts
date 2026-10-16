@@ -13,7 +13,7 @@ import {
  * exists. Local-only projects publish through their checked-out target branch.
  */
 
-import { basename, dirname, join } from "@std/path";
+import { basename, dirname, join } from "node:path";
 import lockfile from "proper-lockfile";
 import { assertPreMergeCandidateUnchanged, mergeExecutionWorktree } from "./worktree.js";
 import { prepareProjectContextPublication, settleProjectContextPublication } from "./project-context-publication.ts";

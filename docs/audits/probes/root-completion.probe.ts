@@ -1,5 +1,6 @@
+import { test } from "node:test";
 // Historical audit probe; run explicitly through scripts/run-tests.js. See ../2026-09-07-plan-workflow-transitions.md.
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../../src/testing/assertions.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -51,36 +52,33 @@ async function activateHandler(
     return { handler, hostedSession, sessionManager };
 }
 
-Deno.test({
-    name: "AUDIT: root producer cannot run another tool after accepted completion",
-    fn: async () => {
-        await withRuntimeCommandFixture("authority-audit-", async ({ projectRoot, setModelMessages }) => {
-            let ranAfterCompletion = false;
-            const afterTool = defineTool({
-                name: "audit_after_completion",
-                label: "Audit after completion",
-                description: "Observe whether another tool executes after accepted completion.",
-                parameters: Type.Object({}),
-                execute() {
-                    ranAfterCompletion = true;
-                    return Promise.resolve({ content: [{ type: "text" as const, text: "after" }], details: {} });
-                },
-            });
-            setModelMessages([
-                fauxAssistantMessage([
-                    fauxToolCall("task_completed", { message: "Done." }),
-                    fauxToolCall("audit_after_completion", {}),
-                ]),
-                fauxAssistantMessage("Turn finally ends."),
-            ]);
-            const fixture = await activateHandler(projectRoot, "operator", [], [afterTool]);
-            try {
-                await fixture.handler("Do the operation.", [], fixture.sessionManager);
-                console.log("AUDIT root tool ran after completion", ranAfterCompletion);
-                assertEquals(ranAfterCompletion, false, "Accepted root task_completed must stop subsequent tools.");
-            } finally {
-                fixture.hostedSession.dispose();
-            }
+test("AUDIT: root producer cannot run another tool after accepted completion", async () => {
+    await withRuntimeCommandFixture("authority-audit-", async ({ projectRoot, setModelMessages }) => {
+        let ranAfterCompletion = false;
+        const afterTool = defineTool({
+            name: "audit_after_completion",
+            label: "Audit after completion",
+            description: "Observe whether another tool executes after accepted completion.",
+            parameters: Type.Object({}),
+            execute() {
+                ranAfterCompletion = true;
+                return Promise.resolve({ content: [{ type: "text" as const, text: "after" }], details: {} });
+            },
         });
-    },
+        setModelMessages([
+            fauxAssistantMessage([
+                fauxToolCall("task_completed", { message: "Done." }),
+                fauxToolCall("audit_after_completion", {}),
+            ]),
+            fauxAssistantMessage("Turn finally ends."),
+        ]);
+        const fixture = await activateHandler(projectRoot, "operator", [], [afterTool]);
+        try {
+            await fixture.handler("Do the operation.", [], fixture.sessionManager);
+            console.log("AUDIT root tool ran after completion", ranAfterCompletion);
+            assertEquals(ranAfterCompletion, false, "Accepted root task_completed must stop subsequent tools.");
+        } finally {
+            fixture.hostedSession.dispose();
+        }
+    });
 });

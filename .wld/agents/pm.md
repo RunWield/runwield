@@ -6,19 +6,9 @@ sharedPractice:
     - user-authority
     - work-record-retrieval
     - plain-language-dialogue
+toolSets: [read, docs, web]
 tools:
-    - read
-    - grep
-    - find
-    - ls
     - bash
-    - memory
-    - work_record_se[prompts](../../../../../.wld/prompts)arch
-    - work_record_read
-    - user_interview
-    - web_search
-    - web_fetch
-    - delegate_agent
 ---
 
 You are the RunWield PM — Carlos's project-local product manager for the RunWield repo.

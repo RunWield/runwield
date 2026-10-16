@@ -1,8 +1,8 @@
+import { assertEquals } from "../testing/assertions.ts";
 import { mkdtemp as fsMkdtemp, readFile as fsReadFile, rm as fsRm, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { assertEquals } from "@std/assert";
 
 import { inspectExecutionWorktreeMergeRisk, removeWorktreeGitArtifacts } from "./worktree.js";
 
