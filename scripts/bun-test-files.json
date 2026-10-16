@@ -25,6 +25,7 @@
     "scripts/install-integrity.test.js",
     "scripts/install-interaction.test.js",
     "scripts/install-platforms.test.js",
+    "scripts/integrate-release-branch.test.ts",
     "scripts/package-homebrew-check.test.js",
     "scripts/package-homebrew.test.js",
     "scripts/package-windows.test.ts",

@@ -8,10 +8,13 @@ source_sha=${3:-${GITHUB_SHA:-HEAD}}
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git fetch origin "refs/tags/$tag:refs/tags/$tag"
+release_parent=$(git rev-parse "$tag^{commit}")
+parents=(-p "$release_parent")
 if git ls-remote --exit-code --heads origin docs/stable >/dev/null 2>&1; then
   git fetch origin docs/stable:refs/remotes/origin/docs/stable
+  docs_parent=$(git rev-parse refs/remotes/origin/docs/stable)
   read -r previous_tag previous_source_ref < <(
-    git show refs/remotes/origin/docs/stable:docs-site/release.json |
+    git show "$docs_parent":docs-site/release.json |
       bun -e '
 const release = JSON.parse((await import("node:fs")).readFileSync(0, "utf8"));
 if (typeof release.version !== "string" || !/^v\d+\.\d+\.\d+$/.test(release.version)) {
@@ -24,10 +27,21 @@ console.log(`${release.version} ${release.sourceRef}`);
 '
   )
   git fetch origin "refs/tags/$previous_tag:refs/tags/$previous_tag"
-  git merge-base --is-ancestor "$previous_tag" "$previous_source_ref"
-  git merge-base --is-ancestor "$previous_source_ref" refs/remotes/origin/docs/stable
-  git checkout -B docs-update "$tag"
-  merge_args=(--write-tree --name-only --merge-base "$previous_source_ref" "$tag" refs/remotes/origin/docs/stable)
+  previous_release=$(git rev-parse "$previous_tag^{commit}")
+  git merge-base --is-ancestor "$previous_release" "$previous_source_ref"
+  git merge-base --is-ancestor "$previous_source_ref" "$docs_parent"
+  previous_base=$previous_source_ref
+  # New metadata records the released product tree. Its delta against the docs
+  # tip includes corrections carried through earlier publications, not only the
+  # corrections made since the last merge. Legacy metadata keeps its old base.
+  if [[ "$previous_tag" == "$tag" ]]; then
+    # Keep corrections made after publication, including the old two-commit form.
+    git checkout -B docs-update "$docs_parent" >&2
+    printf '%s\n' "$docs_parent"
+    exit 0
+  fi
+  git checkout -B docs-update "$release_parent" >&2
+  merge_args=(--write-tree --name-only --merge-base "$previous_base" "$release_parent" "$docs_parent")
   if merge_output=$(git merge-tree "${merge_args[@]}"); then
     merge_tree=$(printf '%s\n' "$merge_output" | head -n 1)
   else
@@ -36,18 +50,16 @@ console.log(`${release.version} ${release.sourceRef}`);
       printf '%s\n' "$merge_output" >&2
       exit 1
     fi
-    merge_tree=$(git merge-tree --write-tree --name-only --merge-base "$previous_source_ref" -X ours "$tag" refs/remotes/origin/docs/stable | head -n 1)
+    merge_tree=$(git merge-tree --write-tree --name-only --merge-base "$previous_base" -X ours "$release_parent" "$docs_parent" | head -n 1)
   fi
-  release_parent=$(git rev-parse "$tag^{commit}")
-  docs_parent=$(git rev-parse refs/remotes/origin/docs/stable)
-  merge_commit=$(printf 'Merge docs/stable into %s\n' "$tag" | git commit-tree "$merge_tree" -p "$release_parent" -p "$docs_parent")
-  git reset --hard "$merge_commit"
+  git read-tree --reset -u "$merge_tree"
+  parents+=(-p "$docs_parent")
 else
   test "$bootstrap" = "true" || {
-    echo "docs/stable does not exist; run the manual workflow with bootstrap=true" >&2
+    echo "docs/stable does not exist; prepare it with reconcile-docs-branch.sh <stable-tag> true <site-support-commit>" >&2
     exit 1
   }
-  git checkout -B docs-bootstrap "$tag"
+  git checkout -B docs-bootstrap "$release_parent" >&2
   git checkout "$source_sha" -- \
     .github/workflows/docs.yml .gitignore \
     docs/user-documentation/index.md docs-site scripts/public-docs.ts scripts/check-public-docs.ts \
@@ -56,10 +68,6 @@ else
     scripts/verify-docs-source.ts
 fi
 
-if ! git diff --cached --quiet; then
-  git commit -m "docs: prepare $tag"
-fi
-source_ref=$(git rev-parse HEAD)
 bun -e '
 const [tag, sourceRef] = process.argv.slice(1);
 const path = "docs-site/release.json";
@@ -68,10 +76,10 @@ release.version = tag;
 release.sourceRef = sourceRef;
 release.releaseUrl = `https://github.com/gandazgul/runwield/releases/tag/${encodeURIComponent(tag)}`;
 await Bun.write(path, `${JSON.stringify(release, null, 2)}\n`);
-' "$tag" "$source_ref"
+' "$tag" "$release_parent"
 
 git add docs-site/release.json
-if ! git diff --cached --quiet; then
-  git commit -m "docs: publish $tag manual"
-fi
-git push origin HEAD:docs/stable
+publication_tree=$(git write-tree)
+publication_commit=$(printf 'docs: publish %s manual\n' "$tag" | git commit-tree "$publication_tree" "${parents[@]}")
+git reset --hard "$publication_commit" >&2
+printf '%s\n' "$publication_commit"

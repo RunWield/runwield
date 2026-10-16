@@ -23,7 +23,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/release-aligned-docs-artifact-publication"
-status: "in_progress"
+status: "implemented"
 ---
 
 # Release Stable Docs as a Release Artifact
