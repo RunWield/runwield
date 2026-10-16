@@ -64,6 +64,7 @@ import { CollaborationStyles, resolveExecutionOwner } from "./execution-collabor
 import { ensureRunWieldOwnedGitignoreBlock } from "../runwield-owned-paths.ts";
 import { emitSystemStatus } from "../session/session-runtime-events.js";
 import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { resolvePrimaryCheckoutRoot } from "../primary-checkout.ts";
 
 export function normalizeExecutionTargetBranch(value) {
@@ -233,6 +234,7 @@ export async function startActiveExecutionWorkflow({
 }) {
     if (!hostedSession) throw new Error("startActiveExecutionWorkflow: hostedSession is required");
     const projectRoot = resolvePrimaryCheckoutRoot(hostedSession.cwd);
+    await prepareSessionPlanningWorktree(projectRoot, planName);
     const sourceLocation = await resolveWorkflowPlanLocation(projectRoot, planName);
     if (sourceLocation.archived) {
         throw new Error(`This Plan is archived. Run wld plans archive restore ${planName} before executing it.`);
@@ -240,6 +242,16 @@ export async function startActiveExecutionWorkflow({
     if (sourceLocation.plan) {
         triageMeta = sourceLocation.plan.attrs;
         currentStatus = sourceLocation.plan.attrs.status;
+    }
+    if (currentStatus === "approved") {
+        triageMeta = await recordPlanEvent({
+            cwd: sourceLocation.documentRoot,
+            planName,
+            event: "readiness_passed",
+            currentStatus,
+            details: { triageMeta },
+        });
+        currentStatus = triageMeta.status;
     }
     const findReusable = ports.findReusableWorktree;
     // Worktree policy and the Plan restore are RunWield's own: they stay imported so a

@@ -15,7 +15,8 @@ import { archivePlan, getPlanDocumentRoot, listPlans } from "../../plan-store.js
 import { listEntries, updateEntry } from "../worktree-registry.js";
 import { enterProjectRuntime } from "../project-runtime-layout.ts";
 import { loadControllerView } from "./controller-registry.ts";
-import { resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { PlanningNotStartedError, resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
 import { findTargetBranchPlansByParent, preparePlanningWorktreeForPlan } from "./planning-worktree.ts";
 
 type PlanFixtureAttribute = string | number | boolean | string[];
@@ -39,39 +40,54 @@ async function writePlan(cwd: string, name: string, attrs: PlanFixtureAttributes
 
 const fixture = defineGitFixture(async (repo) => {
     await fsWriteFile(join(repo, "README.md"), "base\n");
-    await writePlan(repo, "epic", {
-        planId: "plan-epic",
-        classification: "PROJECT",
-        complexity: "HIGH",
-        status: "ready_for_work",
-        targetBranch: "epic-target",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Epic\n");
-    await writePlan(repo, "epic/01-child", {
-        planId: "plan-child-01",
-        classification: "FEATURE",
-        complexity: "MEDIUM",
-        status: "draft",
-        parentPlan: "epic",
-        targetBranch: "epic-target",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Child\n\nPRIMARY STALE MARKER\n");
+    await writePlan(
+        repo,
+        "epic",
+        {
+            planId: "plan-epic",
+            classification: "PROJECT",
+            complexity: "HIGH",
+            status: "ready_for_work",
+            targetBranch: "epic-target",
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Epic\n",
+    );
+    await writePlan(
+        repo,
+        "epic/01-child",
+        {
+            planId: "plan-child-01",
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            status: "draft",
+            parentPlan: "epic",
+            targetBranch: "epic-target",
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Child\n\nPRIMARY STALE MARKER\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "main stale plans"]);
     await git(repo, ["switch", "-c", "epic-target"]);
     await fsWriteFile(join(repo, "src-target-only.js"), "export const targetOnly = true;\n");
-    await writePlan(repo, "epic/01-child", {
-        planId: "plan-child-01",
-        classification: "FEATURE",
-        complexity: "MEDIUM",
-        status: "draft",
-        parentPlan: "epic",
-        targetBranch: "epic-target",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Child\n\nTARGET PLAN BODY\n");
+    await writePlan(
+        repo,
+        "epic/01-child",
+        {
+            planId: "plan-child-01",
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            status: "draft",
+            parentPlan: "epic",
+            targetBranch: "epic-target",
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Child\n\nTARGET PLAN BODY\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "target delivered context"]);
     await git(repo, ["switch", "main"]);
@@ -112,10 +128,7 @@ test("planning worktree resume reuses saved Plan edits", async () => {
         targetBranch: "epic-target",
     });
     const planPath = join(first.entry.path, "docs", "plans", "epic", "01-child.md");
-    await fsWriteFile(
-        planPath,
-        (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"),
-    );
+    await fsWriteFile(planPath, (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"));
 
     const second = await preparePlanningWorktreeForPlan(repo, "epic/01-child", {
         planId: "plan-child-01",
@@ -181,7 +194,8 @@ test("reused child planning imports remote publication and preserves its saved P
     const planPath = join(first.entry.path, "docs/plans/epic/01-child.md");
     await fsWriteFile(
         planPath,
-        (await fsReadFile(planPath, "utf8")).replace('status: "draft"', 'status: "approved"')
+        (await fsReadFile(planPath, "utf8"))
+            .replace('status: "draft"', 'status: "approved"')
             .replace("TARGET PLAN BODY", "SAVED PLANNER EDIT"),
     );
     const parentPath = join(first.entry.path, "docs/plans/epic.md");
@@ -323,10 +337,7 @@ test("target child catalog uses saved planning documents over target branch copi
         targetBranch: "epic-target",
     });
     const planPath = join(planning.entry.path, "docs", "plans", "epic", "01-child.md");
-    await fsWriteFile(
-        planPath,
-        (await fsReadFile(planPath, "utf8")).replace('status: "draft"', 'status: "approved"'),
-    );
+    await fsWriteFile(planPath, (await fsReadFile(planPath, "utf8")).replace('status: "draft"', 'status: "approved"'));
 
     const children = await findTargetBranchPlansByParent(repo, "epic-target", "epic");
 
@@ -338,6 +349,9 @@ test("target child catalog uses saved planning documents over target branch copi
 test("target document is selected before stale primary copy", async () => {
     const repo = await fixture.checkout();
 
+    await assertRejects(() => resolveWorkflowPlanLocation(repo, "epic/01-child"), PlanningNotStartedError);
+    assertEquals(await listEntries(repo), []);
+    await prepareSessionPlanningWorktree(repo, "epic/01-child");
     const location = await resolveWorkflowPlanLocation(repo, "epic/01-child");
 
     assertStringIncludes(location.plan?.markdown || "", "TARGET PLAN BODY");
@@ -351,10 +365,7 @@ test("planning document is selected by load and catalog", async () => {
         targetBranch: "epic-target",
     });
     const planPath = join(planning.entry.path, "docs", "plans", "epic", "01-child.md");
-    await fsWriteFile(
-        planPath,
-        (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED CATALOG BODY"),
-    );
+    await fsWriteFile(planPath, (await fsReadFile(planPath, "utf8")).replace("TARGET PLAN BODY", "SAVED CATALOG BODY"));
 
     const location = await resolveWorkflowPlanLocation(repo, "epic/01-child");
     const plans = await listPlans(repo);
@@ -386,25 +397,26 @@ test("planning preparation stops when target fetch fails", async () => {
 test("target discovery errors stop the catalog before stale overlays", async () => {
     const repo = await fixture.checkout();
     await git(repo, ["switch", "epic-target"]);
-    await writePlan(repo, "epic/01-child", {
-        planId: "different-child-id",
-        classification: "FEATURE",
-        complexity: "MEDIUM",
-        status: "draft",
-        parentPlan: "epic",
-        targetBranch: "epic-target",
-        affectedPaths: [],
-        createdAt: "2026-01-01T00:00:00.000Z",
-    }, "# Child\n");
+    await writePlan(
+        repo,
+        "epic/01-child",
+        {
+            planId: "different-child-id",
+            classification: "FEATURE",
+            complexity: "MEDIUM",
+            status: "draft",
+            parentPlan: "epic",
+            targetBranch: "epic-target",
+            affectedPaths: [],
+            createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        "# Child\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "break target identity"]);
     await git(repo, ["switch", "main"]);
 
-    await assertRejects(
-        () => listPlans(repo),
-        Error,
-        "Target Plan epic/01-child has a different Plan ID",
-    );
+    await assertRejects(() => listPlans(repo), Error, "Target Plan epic/01-child has a different Plan ID");
 });
 
 test("planning preparation serializes duplicate callers", async () => {
@@ -445,23 +457,33 @@ test("planning preparation returns live execution instead of registering twice",
 });
 
 const standaloneLandingFixture = defineGitFixture(async (repo) => {
-    await writePlan(repo, "standalone", {
-        planId: "standalone-recovery",
-        classification: "PLANNED_CHANGE",
-        status: "draft",
-        targetBranch: "main",
-        deliveryBranch: "plan/standalone",
-    }, "# Standalone\n\nPRIMARY BODY\n");
+    await writePlan(
+        repo,
+        "standalone",
+        {
+            planId: "standalone-recovery",
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            targetBranch: "main",
+            deliveryBranch: "plan/standalone",
+        },
+        "# Standalone\n\nPRIMARY BODY\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "primary plan"]);
     await git(repo, ["switch", "-c", "plan/standalone"]);
-    await writePlan(repo, "standalone", {
-        planId: "standalone-recovery",
-        classification: "PLANNED_CHANGE",
-        status: "draft",
-        targetBranch: "main",
-        deliveryBranch: "plan/standalone",
-    }, "# Standalone\n\nLANDING BODY\n");
+    await writePlan(
+        repo,
+        "standalone",
+        {
+            planId: "standalone-recovery",
+            classification: "PLANNED_CHANGE",
+            status: "draft",
+            targetBranch: "main",
+            deliveryBranch: "plan/standalone",
+        },
+        "# Standalone\n\nLANDING BODY\n",
+    );
     await fsWriteFile(join(repo, "landing-only.txt"), "landing context\n");
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "unfinished landing"]);
@@ -475,7 +497,10 @@ test("unfinished standalone without an attempt recovers planning from its record
     const readOnly = await resolveWorkflowPlanLocation(repo, "standalone", { readOnly: true });
     assertEquals(readOnly.plan?.path, path);
     assertEquals(await listEntries(repo), []);
-    const recovered = await resolveWorkflowPlanLocation(repo, "standalone");
+    assertEquals(readOnly.planningNotStarted, true);
+    await assertRejects(() => resolveWorkflowPlanLocation(repo, "standalone"), PlanningNotStartedError);
+    assertEquals(await listEntries(repo), []);
+    const recovered = await prepareSessionPlanningWorktree(repo, "standalone");
     assertEquals((await listEntries(repo))[0].baseBranch, "plan/standalone");
     assertEquals((await listEntries(repo))[0].status, "planning");
     assertEquals(recovered.plan?.attrs.targetBranch, "main");
@@ -489,13 +514,18 @@ test("unfinished standalone without an attempt recovers planning from its record
 test("published-only read snapshots cannot be used as archive document paths", async () => {
     const repo = await fixture.checkout();
     await git(repo, ["switch", "epic-target"]);
-    await writePlan(repo, "epic/01-child", {
-        planId: "plan-child-01",
-        classification: "FEATURE",
-        status: "user_verified",
-        parentPlan: "epic",
-        targetBranch: "epic-target",
-    }, "# Published child\n");
+    await writePlan(
+        repo,
+        "epic/01-child",
+        {
+            planId: "plan-child-01",
+            classification: "FEATURE",
+            status: "user_verified",
+            parentPlan: "epic",
+            targetBranch: "epic-target",
+        },
+        "# Published child\n",
+    );
     await git(repo, ["add", "."]);
     await git(repo, ["commit", "-m", "published child"]);
     await git(repo, ["switch", "main"]);
@@ -507,6 +537,11 @@ test("published-only read snapshots cannot be used as archive document paths", a
     assertThrows(() => getPlanDocumentRoot(snapshot.plan?.path || ""), Error, "not a writable document path");
     assertEquals(await listEntries(repo), []);
     await assertRejects(() => archivePlan(repo, "epic/01-child"), Error, "published read snapshot");
-    assertEquals(await fsStat(path).then(() => true).catch(() => false), false);
+    assertEquals(
+        await fsStat(path)
+            .then(() => true)
+            .catch(() => false),
+        false,
+    );
     assertEquals(await listEntries(repo), []);
 });

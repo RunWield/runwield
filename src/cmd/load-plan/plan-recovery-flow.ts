@@ -114,6 +114,7 @@ export async function handlePlanRecovery(
     try {
         const { plan: refreshed } = await resolveWorkflowPlanLocation(projectRoot, plan.planName, {
             migrateRegistry: false,
+            readOnly: true,
         });
         if (refreshed) {
             plan.path = refreshed.path;

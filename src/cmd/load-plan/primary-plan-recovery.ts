@@ -54,7 +54,10 @@ async function normalizePlanArgument(projectRoot: string, planArg: string): Prom
     // even when that primary file is absent. Only genuinely external files bypass
     // controller selection.
     for (const root of [projectRoot, resolvePrimaryCheckoutRoot(projectRoot)]) {
-        const storedPath = relative(await canonicalFilePath(resolve(root, "docs/plans")), pathArgument).replaceAll("\\", "/");
+        const storedPath = relative(await canonicalFilePath(resolve(root, "docs/plans")), pathArgument).replaceAll(
+            "\\",
+            "/",
+        );
         if (!isAbsolute(storedPath) && storedPath !== ".." && !storedPath.startsWith("../")) {
             planArg = storedPath;
             break;
@@ -72,9 +75,15 @@ async function repairRetiredPlanStatus(
     const canonicalStatus = canonicalPlanStatus(declaredStatus);
     if (!declaredStatus || !canonicalStatus || declaredStatus === canonicalStatus) return { plan };
 
-    await updatePlanFrontMatter(documentRoot, planName, { status: canonicalStatus }, {}, {
-        expectedRevision: plan.revision,
-    });
+    await updatePlanFrontMatter(
+        documentRoot,
+        planName,
+        { status: canonicalStatus },
+        {},
+        {
+            expectedRevision: plan.revision,
+        },
+    );
     const repaired = await loadPlan(documentRoot, planName);
     if (!repaired) throw new Error(`Plan not found after repairing its retired status: ${planName}`);
     return {
@@ -90,8 +99,9 @@ export async function resumePlanPublicationCleanup(
 ): Promise<PublicationCleanupNotice[]> {
     const registryRoot = resolvePrimaryCheckoutRoot(projectRoot);
     const planName = canonicalizeStoredPlanName(await normalizePlanArgument(projectRoot, planArg)).name;
-    const entries = (await listEntries(registryRoot, { migrate: false }))
-        .filter((entry) => entry.status !== "abandoned" && entry.planName === planName);
+    const entries = (await listEntries(registryRoot, { migrate: false })).filter(
+        (entry) => entry.status !== "abandoned" && entry.planName === planName,
+    );
     if (entries.some((entry) => entries.filter((candidate) => candidate.planName === entry.planName).length > 1)) {
         throw new Error(
             "More than one execution attempt owns this Plan. Inspect the saved worktree records before cleanup.",
@@ -129,11 +139,12 @@ export async function resolvePlanWithPrimaryRecovery(
     } catch {
         return { plan: await resolvePlan(projectRoot, planArg) };
     }
-    const location = await resolveWorkflowPlanLocation(projectRoot, name, { migrateRegistry: false });
+    const location = await resolveWorkflowPlanLocation(projectRoot, name, { migrateRegistry: false, readOnly: true });
     if (location.archived) {
         throw new Error(`This Plan is archived. Run wld plans archive restore ${name} before continuing it.`);
     }
     const resolvedPlan = location.plan ? { ...location.plan, planName: name } : await resolvePlan(projectRoot, planArg);
+    if (location.planningNotStarted) return { plan: resolvedPlan };
     const repaired = await repairRetiredPlanStatus(location.documentRoot, name, resolvedPlan);
     return { ...repaired, recoveredWorktree: location.recoveredWorktree };
 }

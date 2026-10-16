@@ -1,4 +1,4 @@
-import { assertEquals } from "../../testing/assertions.ts";
+import { assertEquals, assertRejects } from "../../testing/assertions.ts";
 import { runtimeSourceArgs } from "../../testing/runtime-source-args.ts";
 import { captureForegroundProcess } from "../captured-process.ts";
 import { getCwd } from "../../constants.js";
@@ -33,14 +33,17 @@ import { findById, getWorktreeRegistryPath, pruneEntry } from "../worktree-regis
 import { addEntry } from "../worktree-registry.js";
 import { createExecutionStartPorts, startActiveExecutionWorkflow } from "./execution-start.ts";
 import { recordPlanEvent } from "./plan-lifecycle.js";
-import { recoverMissingExecutionWorktreesForPlanLoading, resolveWorkflowPlanLocation } from "./plan-location.ts";
+import { prepareSessionPlanningWorktree } from "./session-planning-worktree.ts";
+import { resolveWorkflowPlanLocation } from "./plan-location.ts";
 import { applySharedPlanReviewDecision } from "./plan-review-actions.ts";
 import { executePlanAction, loadPlanActionEvidence } from "./plan-actions.ts";
 
 const fixture = defineCommittedGitFixture({ ".gitignore": ".wld/\n", "app.ts": "// application\n" });
 
 async function pathExists(path: string): Promise<boolean> {
-    return await fsStat(path).then(() => true).catch(() => false);
+    return await fsStat(path)
+        .then(() => true)
+        .catch(() => false);
 }
 
 function selectedInternalLockPath(root: string, name: string): string {
@@ -86,9 +89,13 @@ test("Plan locks stay in the linked checkout while primary locks remain independ
         assertEquals((await findById(root, "selected-entry"))?.path, selected);
         await fsLstat(primaryRegistryPath);
         assertEquals(await pathExists(selectedRegistryPath), false);
-        await writeControllerState(selected, { planName: "demo", planId: "plan-demo" }, {
-            failureReason: "primary proof",
-        });
+        await writeControllerState(
+            selected,
+            { planName: "demo", planId: "plan-demo" },
+            {
+                failureReason: "primary proof",
+            },
+        );
         assertEquals(
             (await readControllerRecord(root, { planName: "demo", planId: "plan-demo" }))?.state.failureReason,
             "primary proof",
@@ -96,8 +103,8 @@ test("Plan locks stay in the linked checkout while primary locks remain independ
         const planEntries: string[] = [];
         let releaseFirstPlan = () => {};
         let signalFirstPlan = () => {};
-        const firstPlanMayFinish = new Promise<void>((resolve) => releaseFirstPlan = resolve);
-        const firstPlanEntered = new Promise<void>((resolve) => signalFirstPlan = resolve);
+        const firstPlanMayFinish = new Promise<void>((resolve) => (releaseFirstPlan = resolve));
+        const firstPlanEntered = new Promise<void>((resolve) => (signalFirstPlan = resolve));
         const firstPlan = withPlanLock(selected, "demo", async () => {
             planEntries.push("selected-first");
             await fsLstat(selectedLock);
@@ -107,10 +114,8 @@ test("Plan locks stay in the linked checkout while primary locks remain independ
             await firstPlanMayFinish;
         });
         await firstPlanEntered;
-        const selectedSecondPlan = withPlanLock(
-            selected,
-            "demo",
-            () => Promise.resolve(planEntries.push("selected-second")),
+        const selectedSecondPlan = withPlanLock(selected, "demo", () =>
+            Promise.resolve(planEntries.push("selected-second")),
         );
         await new Promise((resolve) => setTimeout(resolve, 75));
         assertEquals(planEntries, ["selected-first"]);
@@ -127,8 +132,8 @@ test("Plan locks stay in the linked checkout while primary locks remain independ
         const catalogEntries: string[] = [];
         let releaseFirstCatalog = () => {};
         let signalFirstCatalog = () => {};
-        const firstCatalogMayFinish = new Promise<void>((resolve) => releaseFirstCatalog = resolve);
-        const firstCatalogEntered = new Promise<void>((resolve) => signalFirstCatalog = resolve);
+        const firstCatalogMayFinish = new Promise<void>((resolve) => (releaseFirstCatalog = resolve));
+        const firstCatalogEntered = new Promise<void>((resolve) => (signalFirstCatalog = resolve));
         const firstCatalog = withPlanCatalogLock(selected, async () => {
             catalogEntries.push("selected-first");
             await fsLstat(selectedCatalog);
@@ -138,9 +143,8 @@ test("Plan locks stay in the linked checkout while primary locks remain independ
             await firstCatalogMayFinish;
         });
         await firstCatalogEntered;
-        const selectedSecondCatalog = withPlanCatalogLock(
-            selected,
-            () => Promise.resolve(catalogEntries.push("selected-second")),
+        const selectedSecondCatalog = withPlanCatalogLock(selected, () =>
+            Promise.resolve(catalogEntries.push("selected-second")),
         );
         await new Promise((resolve) => setTimeout(resolve, 75));
         assertEquals(catalogEntries, ["selected-first"]);
@@ -160,7 +164,7 @@ test("Plan locks stay in the linked checkout while primary locks remain independ
     }
 });
 
-test("load-plan rebuilds a missing execution worktree from one rescued branch", async () => {
+test("session start rebuilds a missing execution worktree from one rescued branch", async () => {
     const root = await fixture.checkout({ prefix: "rw-rescued-execution-" });
     const container = await fsMkdtemp(join(tmpdir(), "rw-rescued-execution-tree-"));
     const executionPath = `${container}/execution`;
@@ -209,10 +213,9 @@ test("load-plan rebuilds a missing execution worktree from one rescued branch", 
             updatedAt: new Date().toISOString(),
         });
 
-        assertEquals(await recoverMissingExecutionWorktreesForPlanLoading(root), [{
-            planName: "demo",
-            branch: "worktree/demo-missing",
-        }]);
+        await assertRejects(() => resolveWorkflowPlanLocation(root, "demo"), Error, "execution Plan is missing");
+        const prepared = await prepareSessionPlanningWorktree(root, "demo");
+        assertEquals(prepared.documentRoot, executionPath);
         const listed = await listPlans(root);
 
         assertEquals(listed.find((item) => item.name === "demo")?.attrs.status, "implemented");
@@ -338,7 +341,7 @@ for (const surface of ["primary", "execution"]) {
             assert((await loadPlan(result.executionCwd, "demo"))?.body.includes("The revised approved definition."));
             assertEquals(await fsReadFile(initial.path, "utf8"), primaryBytes);
             assertEquals(
-                await git(root, ["show-ref", "--verify", "--hash", `refs/heads/${started.worktreeBranch}`]) !== "",
+                (await git(root, ["show-ref", "--verify", "--hash", `refs/heads/${started.worktreeBranch}`])) !== "",
                 true,
             );
             await pruneEntry(root, result.worktreeId);
