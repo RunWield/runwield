@@ -7,7 +7,7 @@ affectedPaths:
     - "src/shared/worktree.js"
     - "src/shared/worktree-guards.test.ts"
     - "src/shared/workflow/execution-context.ts"
-    - "src/shared/workflow/execution-context.test.js"
+    - "src/shared/workflow/execution-context.test.ts"
     - "src/cmd/load-plan/plan-recovery-actions.ts"
     - "src/cmd/load-plan/plan-recovery-reset.ts"
     - "src/cmd/load-plan/plan-hold.ts"
@@ -82,7 +82,7 @@ shifts, migration or compatibility risk grows, or the Verification Plan no longe
 - `src/shared/worktree-guards.test.ts` — prove cleanup rules with real repositories and linked worktrees.
 - `src/shared/workflow/execution-context.ts` — prevent recovery from selecting primary as an execution directory or
   creating an execution branch there.
-- `src/shared/workflow/execution-context.test.js` — prove primary rejection without losing valid linked-worktree repair.
+- `src/shared/workflow/execution-context.test.ts` — prove primary rejection without losing valid linked-worktree repair.
 - `src/cmd/load-plan/plan-recovery-actions.ts` — settle abandon metadata only after a safe cleanup result.
 - `src/cmd/load-plan/plan-recovery-reset.ts` — validate recreation inputs before old-attempt mutation and use the shared
   cleanup result.
@@ -129,7 +129,7 @@ No Work Record is superseded. This Plan repairs current behavior without replaci
 ## Verification Plan
 
 - Automated: run
-  `deno run -A scripts/run-tests.js src/shared/worktree-guards.test.ts src/shared/workflow/execution-context.test.js src/cmd/load-plan/plan-recovery-flow.test.ts`
+  `deno run -A scripts/run-tests.js src/shared/worktree-guards.test.ts src/shared/workflow/execution-context.test.ts src/cmd/load-plan/plan-recovery-flow.test.ts`
   plus any new focused integration test file.
 - Automated: run `deno task seams:check` and `deno task ci`.
 - Real-Git regression: record primary as the attempt path with the branch missing. Resolution must block, stay on
