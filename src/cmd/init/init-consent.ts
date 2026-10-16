@@ -3,7 +3,7 @@ import type { UiAPI } from "../../ui/tui/types.js";
 
 export const INIT_FILE_CONFIRMATION = `Init will create or update these project files:
 
-- .wld/settings.json — project settings, including the verification command you choose.
+- .wld/settings.json — project settings, including the verification and worktree setup commands you choose.
 - docs/domain-language.md — a glossary of the project's current terms and concepts.
 - .gitignore — RunWield's managed rules for keeping its internal runtime state out of Git; existing unrelated rules are preserved.
 
