@@ -618,7 +618,9 @@ feedback, approves for later, or approves and runs the current Plan:
 Only Approve & Run authorizes execution, and only for the current Session; approval gives no other Session permission
 to run the Plan. If the Plan changed after the owner opened it, Workspace shows the
 changed content before it accepts approval. A decision on a review that the TUI or an ACP client opened uses the
-originally reviewed document. A repeated delivery of the same click runs the action once.
+originally reviewed document. A repeated delivery of the same click runs the action once. If a review request supplies
+an approval value, it must be a boolean; malformed approval values leave the Plan and live review unchanged. Feedback
+and review chat may omit approval.
 
 **Requirement: Full-window review.** Plan and Code Review replace the Workspace shell with the full-window review
 layout: their own toolbar, Contents or Files on the left, and Annotations or chat on the right. Left sidebars use square
@@ -699,6 +701,8 @@ every action stays available.
   failed decision stays in review.
 - Given a Plan changed since the review opened, approval shows the changed content first.
 - Given the same approval click delivered twice, the action runs once; Approve for Later starts no execution.
+- Given a live review receives a nonboolean approval value, the request fails without changing the Plan or consuming the
+  review; a subsequent valid decision still succeeds.
 - Given a saved Epic in review, two message-and-reply rounds with Architect stay on the page, and explicit review
   actions still decide the review.
 - Given Unified selected, a reload keeps Unified with Annotations closed; the first note opens Annotations and a later
