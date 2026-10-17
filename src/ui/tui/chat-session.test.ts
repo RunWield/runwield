@@ -1,3 +1,6 @@
+import { readdirSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+
 import { stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { test } from "node:test";
 import process from "node:process";
@@ -44,7 +47,7 @@ test("startup replays history only when continuing a persisted session", () => {
 
 test("resolveTemplateModel validates provider/id lookup and auth", () => {
     const registry = {
-        find: (provider: string, id: string) => provider === "test" && id === "model" ? { provider, id } : null,
+        find: (provider: string, id: string) => (provider === "test" && id === "model" ? { provider, id } : null),
         hasConfiguredAuth: (model: { provider: string; id: string } | null) => Boolean(model),
     };
     assertEquals(resolveTemplateModel("not-strict", registry), { ok: false });
@@ -133,58 +136,58 @@ test("TUI resume preserves the Session thinking choice over the global default",
 });
 
 test("TUI resume asks before restoring saved tutorial guidance", async () => {
-    await withRuntimeCommandFixture(
-        "chat-session-resume-tutorial-",
-        async ({ projectRoot, setModelResponse }) => {
-            process.chdir(projectRoot);
-            setModelResponse("Choose a small change.");
-            const runtime = createSessionRuntime();
-            let resumeSessionId = "";
-            try {
-                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
-                await runtime.promptUserTurn(created.sessionId, {
-                    initialRequest: "Start tutorial",
-                    initialImages: [],
-                    agentName: "planner",
-                    initialTutorialContext: {
-                        version: 1,
-                        guidanceEnabled: true,
-                        shownExplanationIds: ["choose-improvement"],
-                        recapShown: false,
-                        planId: null,
-                    },
-                });
-                resumeSessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
-            } finally {
-                await runtime.closeAllSessionsWhenIdle();
-            }
-
-            const prompts: string[] = [];
-            const composition = await createInteractiveTuiComposition(null, {
-                browser: NO_OPEN_BROWSER_PORT,
-                terminal: new VirtualTerminal({ columns: 100, rows: 30 }),
-                skipModelWelcome: true,
-                sessionStartMode: "continue",
-                resumeSessionId,
-                configureUiAPI: (uiAPI) => {
-                    uiAPI.promptSelect = (title) => {
-                        prompts.push(title);
-                        return Promise.resolve(title.includes("Resume tutorial guidance") ? "without" : null);
-                    };
+    await withRuntimeCommandFixture("chat-session-resume-tutorial-", async ({ projectRoot, setModelResponse }) => {
+        process.chdir(projectRoot);
+        setModelResponse("Choose a small change.");
+        const runtime = createSessionRuntime();
+        let resumeSessionId = "";
+        try {
+            const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+            await runtime.promptUserTurn(created.sessionId, {
+                initialRequest: "Start tutorial",
+                initialImages: [],
+                agentName: "planner",
+                initialTutorialContext: {
+                    version: 1,
+                    guidanceEnabled: true,
+                    shownExplanationIds: ["choose-improvement"],
+                    recapShown: false,
+                    planId: null,
                 },
             });
-            try {
-                await composition.waitForIdle();
-                assertEquals(prompts.some((title) => title.includes("Resume tutorial guidance")), true);
-                assertEquals(
-                    composition.runtime.getSessionSnapshot(composition.sessionId)?.tutorialContext?.guidanceEnabled,
-                    false,
-                );
-            } finally {
-                await composition.dispose();
-            }
-        },
-    );
+            resumeSessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+        }
+
+        const prompts: string[] = [];
+        const composition = await createInteractiveTuiComposition(null, {
+            browser: NO_OPEN_BROWSER_PORT,
+            terminal: new VirtualTerminal({ columns: 100, rows: 30 }),
+            skipModelWelcome: true,
+            sessionStartMode: "continue",
+            resumeSessionId,
+            configureUiAPI: (uiAPI) => {
+                uiAPI.promptSelect = (title) => {
+                    prompts.push(title);
+                    return Promise.resolve(title.includes("Resume tutorial guidance") ? "without" : null);
+                };
+            },
+        });
+        try {
+            await composition.waitForIdle();
+            assertEquals(
+                prompts.some((title) => title.includes("Resume tutorial guidance")),
+                true,
+            );
+            assertEquals(
+                composition.runtime.getSessionSnapshot(composition.sessionId)?.tutorialContext?.guidanceEnabled,
+                false,
+            );
+        } finally {
+            await composition.dispose();
+        }
+    });
 });
 
 test("chat session starts a real composed TUI through the public composition interface", async () => {
@@ -253,12 +256,7 @@ test("chat session startup does not show busy or thinking output before a turn",
         let thinkingBlocks = 0;
         let clearMessages = 0;
         process.chdir(projectRoot);
-        await setCustomSetting(
-            ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY,
-            true,
-            "global",
-            projectRoot,
-        );
+        await setCustomSetting(ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY, true, "global", projectRoot);
         const composition = await createInteractiveTuiComposition(null, {
             browser: NO_OPEN_BROWSER_PORT,
             terminal,
@@ -294,12 +292,14 @@ test("chat session startup does not show busy or thinking output before a turn",
                 const originalStartToolExecution = uiAPI.startToolExecution?.bind(uiAPI);
                 uiAPI.startToolExecution = (id, toolName, title) => {
                     transientEvents.push(`tool:${toolName}`);
-                    return originalStartToolExecution?.(id, toolName, title) || {
-                        bodyText: "",
-                        startTime: Date.now(),
-                        setOutput: () => {},
-                        endExecution: () => {},
-                    };
+                    return (
+                        originalStartToolExecution?.(id, toolName, title) || {
+                            bodyText: "",
+                            startTime: Date.now(),
+                            setOutput: () => {},
+                            endExecution: () => {},
+                        }
+                    );
                 };
             },
         });
@@ -406,7 +406,10 @@ test("automatic onboarding Skip persists globally and creates no managed Session
                 },
             });
             try {
-                assertEquals(prompts.some((title) => title.includes(ONBOARDING_WARNING)), true);
+                assertEquals(
+                    prompts.some((title) => title.includes(ONBOARDING_WARNING)),
+                    true,
+                );
                 assertStringIncludes(prompts.find((title) => title.includes(ONBOARDING_WARNING)) || "", projectRoot);
                 assertEquals(first.runtime.getSessionSnapshot(first.sessionId)?.managed, null);
                 assertEquals(
@@ -592,3 +595,318 @@ test("explicit onboarding shows consent before model setup or Init", async () =>
         { providerState: "none" },
     );
 });
+
+// Capture real storage and project artifacts, including transcript bytes and continuation metadata.
+function startupFiles(root: string): Record<string, number[]> {
+    const files: Record<string, number[]> = {};
+    function visit(path: string) {
+        for (const entry of readdirSync(path, { withFileTypes: true })) {
+            const child = `${path}/${entry.name}`;
+            if (entry.isDirectory()) {
+                files[`${child}/`] = [];
+                visit(child);
+            } else if (entry.isFile()) files[child] = [...readFileSync(child)];
+        }
+    }
+    visit(root);
+    return files;
+}
+
+for (const cancel of ["quit", "escape", "ctrl-c", "end-input"]) {
+    test(`home startup ${cancel} stops before Session creation`, async () => {
+        await withRuntimeCommandFixture("home-startup-cancel-", async ({ homeDir }) => {
+            process.chdir(homeDir); // Runtime fixture holds the process-global lock.
+            const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+            if (cancel === "quit") {
+                const runtime = createSessionRuntime();
+                try {
+                    const created = await runtime.createInteractiveSession({ cwd: homeDir, mode: "new" });
+                    await runtime.switchAgent(created.sessionId, { agentName: "operator" });
+                } finally {
+                    await runtime.closeAllSessionsWhenIdle();
+                }
+            }
+            const before = startupFiles(homeDir);
+            let sessionReady = false;
+            let lifecycleReady = false;
+            const pending = createInteractiveTuiComposition("do not submit", {
+                browser: NO_OPEN_BROWSER_PORT,
+                terminal,
+                sessionStartMode: cancel === "quit" ? "continue" : "new",
+                onLifecycleReady: () => {
+                    lifecycleReady = true;
+                },
+                onSessionReady: () => {
+                    sessionReady = true;
+                },
+            });
+            // Attach the rejection handler before driving the selector.
+            const rejected = assertRejects(() => pending, Error, "Project startup canceled");
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            await terminal.flush();
+            assertStringIncludes(terminal.getScreenText(), "System or home folder detected. Continue?");
+            assertEquals(sessionReady, false);
+            const pendingLifecycleReady = lifecycleReady;
+            const pendingFiles = startupFiles(homeDir);
+            if (cancel === "escape") terminal.pressEscape();
+            else if (cancel === "ctrl-c") terminal.pressCtrlC();
+            else if (cancel === "end-input") terminal.input("\x04");
+            else terminal.pressEnter();
+            await rejected;
+            assertEquals(pendingLifecycleReady, false);
+            assertEquals(pendingFiles, before);
+            assertEquals(lifecycleReady, false);
+            assertEquals(startupFiles(homeDir), before);
+            assertEquals(sessionReady, false);
+            assertEquals(terminal.stopped, true);
+        });
+    });
+}
+test("continued home suppresses automatic offers without persisting decisions and asks once", async () => {
+    await withRuntimeCommandFixture(
+        "home-startup-continue-",
+        async ({ homeDir }) => {
+            process.chdir(homeDir);
+            const before = getCustomSetting(ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY, "global", homeDir);
+            const { isInitOffered } = await import("../../cmd/init/init-state.ts");
+            const offeredBefore = await isInitOffered();
+            const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+            const prompts: string[] = [];
+            let ready = false;
+            const pending = createInteractiveTuiComposition(null, {
+                browser: NO_OPEN_BROWSER_PORT,
+                terminal,
+                onSessionReady: () => {
+                    ready = true;
+                },
+                configureUiAPI: (uiAPI) => {
+                    uiAPI.promptSelect = (title) => {
+                        prompts.push(title);
+                        return Promise.resolve(null);
+                    };
+                },
+            });
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            assertEquals(ready, false);
+            terminal.input("\x1b[B");
+            terminal.pressEnter();
+            const composition = await pending;
+            try {
+                await composition.waitForIdle(10_000);
+                assertEquals(prompts, []);
+                assertEquals(await isInitOffered(), offeredBefore);
+                assertEquals(
+                    getCustomSetting(ONBOARDING_TUTORIAL_OFFER_HANDLED_SETTING_KEY, "global", homeDir),
+                    before,
+                );
+                assertEquals(terminal.getScreenText().includes("Empty Project Directory"), false);
+                const { confirmProjectDirectory } = await import("./directory-warning.ts");
+                assertEquals(await confirmProjectDirectory(homeDir), true);
+            } finally {
+                await composition.dispose();
+            }
+        },
+        { offerTutorial: true },
+    );
+});
+
+test("home initial request reaches the real runtime only after Continue", async () => {
+    await withRuntimeCommandFixture("home-startup-request-", async ({ homeDir, setModelResponse }) => {
+        process.chdir(homeDir);
+        setModelResponse("Confirmed folder request received.");
+        const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+        let ready = false;
+        const pending = createInteractiveTuiComposition("Read this request after consent", {
+            browser: NO_OPEN_BROWSER_PORT,
+            terminal,
+            initialAgentName: "operator",
+            onSessionReady: () => {
+                ready = true;
+            },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assertEquals(ready, false);
+        terminal.input("\x1b[B");
+        terminal.pressEnter();
+        const composition = await pending;
+        try {
+            await composition.waitForIdle(10_000);
+            assertStringIncludes(terminal.getScreenText(), "Confirmed folder request received.");
+        } finally {
+            await composition.dispose();
+        }
+    });
+});
+
+for (const explicit of ["init", "onboard"]) {
+    test(`continued home keeps explicit ${explicit} operation consent`, async () => {
+        await withRuntimeCommandFixture(
+            `home-explicit-${explicit}-`,
+            async ({ homeDir }) => {
+                process.chdir(homeDir);
+                await writeFile(`${homeDir}/README.md`, "Temporary test project.\n");
+                const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+                const prompts: string[] = [];
+                const pending = createInteractiveTuiComposition(explicit === "init" ? "/init" : null, {
+                    browser: NO_OPEN_BROWSER_PORT,
+                    terminal,
+                    ...(explicit === "onboard" ? { startupIntent: "onboard" as const } : {}),
+                    configureUiAPI: (uiAPI) => {
+                        uiAPI.promptSelect = (title) => {
+                            prompts.push(title);
+                            return Promise.resolve(null);
+                        };
+                    },
+                });
+                await new Promise((resolve) => setTimeout(resolve, 30));
+                terminal.input("\x1b[B");
+                terminal.pressEnter();
+                const composition = await pending;
+                try {
+                    await composition.waitForIdle(10_000);
+                    assertEquals(prompts.length, 1);
+                    if (explicit === "onboard") assertStringIncludes(prompts[0], ONBOARDING_WARNING);
+                    else assertStringIncludes(prompts[0], "Init");
+                } finally {
+                    await composition.dispose();
+                }
+            },
+            { offerTutorial: true },
+        );
+    });
+}
+
+test("resuming a home Session from an ordinary cwd requires consent for the selected root", async () => {
+    await withRuntimeCommandFixture("home-resume-selected-root-", async ({ homeDir, projectRoot }) => {
+        const runtime = createSessionRuntime();
+        let resumeSessionId = "";
+        try {
+            const created = await runtime.createInteractiveSession({ cwd: homeDir, mode: "new" });
+            await runtime.switchAgent(created.sessionId, { agentName: "operator" });
+            resumeSessionId = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
+        } finally {
+            await runtime.closeAllSessionsWhenIdle();
+        }
+        assertEquals(Boolean(resumeSessionId), true);
+        process.chdir(projectRoot);
+        const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+        let ready = false;
+        const pending = createInteractiveTuiComposition(null, {
+            browser: NO_OPEN_BROWSER_PORT,
+            terminal,
+            sessionStartMode: "continue",
+            resumeSessionId,
+            onSessionReady: () => {
+                ready = true;
+            },
+        });
+        const rejected = assertRejects(() => pending, Error, "Project startup canceled");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await terminal.flush();
+        assertEquals(ready, false);
+        assertStringIncludes(terminal.getScreenText(), "System or home folder detected. Continue?");
+        terminal.pressEnter();
+        await rejected;
+        assertEquals(terminal.stopped, true);
+    });
+});
+
+for (const explicit of [true, false]) {
+    test(`multisegment ${explicit ? "explicit resume" : "implicit continue"} checks the current segment root`, async () => {
+        await withRuntimeCommandFixture("segment-root-consent-", async ({ homeDir, projectRoot }) => {
+            const { openFileSessionStore } = await import("../../shared/session/file-session-store.ts");
+            const { getRunWieldSessionDir } = await import("../../shared/session/root-session.js");
+            const { join } = await import("node:path");
+            const runtime = createSessionRuntime();
+            let id = "";
+            try {
+                const created = await runtime.createInteractiveSession({ cwd: projectRoot, mode: "new" });
+                await runtime.switchAgent(created.sessionId, { agentName: "operator" });
+                id = runtime.getSessionSnapshot(created.sessionId)?.managed?.runwieldSessionId || "";
+            } finally {
+                await runtime.closeAllSessionsWhenIdle();
+            }
+            const store = openFileSessionStore();
+            try {
+                const saved = store.getSessionById(id)!;
+                const previous = store.getCurrentSessionSegment(id)!;
+                const dir = getRunWieldSessionDir(homeDir);
+                mkdirSync(dir, { recursive: true });
+                const timestamp = new Date().toISOString();
+                const path = join(dir, `${timestamp.replace(/[:.]/g, "-")}_pi-successor.jsonl`);
+                writeText(
+                    path,
+                    JSON.stringify({ type: "session", version: 3, id: "pi-successor", cwd: homeDir, timestamp }) + "\n",
+                );
+                const { readTranscriptEvidence } = await import("../../testing/managed-session-fixture.ts");
+                store.sealSessionTranscriptSegment({
+                    runwieldSessionId: id,
+                    segmentId: previous.segmentId,
+                    evidence: await readTranscriptEvidence(previous.transcriptPath),
+                });
+                await store.appendSessionTranscriptSegment({
+                    runwieldSessionId: id,
+                    projectId: saved.projectId,
+                    piSessionId: "pi-successor",
+                    transcriptPath: path,
+                    transcriptCwd: homeDir,
+                    kind: "execution",
+                });
+                assertEquals(store.getSessionById(id)?.transcriptCwd, projectRoot);
+                assertEquals(store.getCurrentSessionSegment(id)?.transcriptCwd, homeDir);
+            } finally {
+                store.close();
+            }
+            process.chdir(projectRoot);
+            const terminal = new VirtualTerminal({ columns: 100, rows: 30 });
+            let ready = false;
+            const pending = createInteractiveTuiComposition(null, {
+                browser: NO_OPEN_BROWSER_PORT,
+                terminal,
+                sessionStartMode: "continue",
+                ...(explicit ? { resumeSessionId: id } : {}),
+                onSessionReady: () => {
+                    ready = true;
+                },
+            });
+            const rejected = assertRejects(() => pending, Error, "Project startup canceled");
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            await terminal.flush();
+            assertStringIncludes(terminal.getScreenText(), "System or home folder detected. Continue?");
+            terminal.pressEnter();
+            await rejected;
+            assertEquals(ready, false);
+            assertEquals(terminal.stopped, true);
+        });
+    });
+}
+
+test("implicit continuation catalogs and resumes an uncataloged transcript in an ordinary folder", async () => {
+    await withRuntimeCommandFixture("uncataloged-chat-continue-", async ({ projectRoot }) => {
+        process.chdir(projectRoot);
+        const { getRunWieldSessionDir } = await import("../../shared/session/root-session.js");
+        const dir = getRunWieldSessionDir(projectRoot);
+        mkdirSync(dir, { recursive: true });
+        const timestamp = new Date().toISOString();
+        const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+        const path = `${dir}/${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
+        writeText(path, JSON.stringify({ type: "session", version: 3, id, cwd: projectRoot, timestamp }) + "\n");
+        const composition = await createInteractiveTuiComposition(null, {
+            browser: NO_OPEN_BROWSER_PORT,
+            terminal: new VirtualTerminal({ columns: 100, rows: 30 }),
+            sessionStartMode: "continue",
+        });
+        try {
+            await composition.waitForIdle(10_000);
+            const snapshot = composition.runtime.getSessionSnapshot(composition.sessionId);
+            assertEquals(snapshot?.sessionManagerId, id);
+            assertEquals(Boolean(snapshot?.managed?.runwieldSessionId), true);
+        } finally {
+            await composition.dispose();
+        }
+    });
+});
+
+function writeText(path: string, text: string): void {
+    writeFileSync(path, text);
+}

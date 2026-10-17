@@ -1,4 +1,9 @@
 import process from "node:process";
+import {
+    confirmMissingManagedProjectDirectory,
+    confirmProjectDirectory,
+    DirectoryStartupCanceled,
+} from "../../ui/tui/directory-warning.ts";
 import { isEpicPlan, projectPlanType } from "../../shared/project-plan.ts";
 /**
  * @module cmd/load-plan
@@ -58,7 +63,11 @@ import { loadPlanActionEvidence } from "../../shared/workflow/plan-actions.ts";
 import { printCommandHelp } from "../help/index.js";
 import { startInteractiveSession } from "../../ui/tui/chat-session.ts";
 import { SYSTEM_BROWSER_PORT } from "../../shared/browser-port.ts";
-import { resolvePlanWithPrimaryRecovery, resumePlanPublicationCleanup } from "./primary-plan-recovery.ts";
+import {
+    discoverPlanDocumentRoot,
+    resolvePlanWithPrimaryRecovery,
+    resumePlanPublicationCleanup,
+} from "./primary-plan-recovery.ts";
 import {
     needsSessionPlanningWorktree,
     PlanningNotStartedError,
@@ -163,12 +172,23 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
 
     if (!uiAPI) {
         const startupProjectRoot = getCwd();
+        if (!(await confirmProjectDirectory(startupProjectRoot))) return;
+        if (!(await confirmProjectDirectory(resolvePrimaryCheckoutRoot(startupProjectRoot)))) return;
+        const discovered = await discoverPlanDocumentRoot(startupProjectRoot, planArg);
+        if (
+            !(await (discovered.missingExecutionCheckout
+                ? confirmMissingManagedProjectDirectory(discovered.path)
+                : confirmProjectDirectory(discovered.path)))
+        )
+            return;
         const startupResolved = await resolvePlanWithPrimaryRecovery(startupProjectRoot, planArg);
+        if (!discovered.missingExecutionCheckout && !(await confirmProjectDirectory(discovered.path))) return;
         let startupPlan = startupResolved.plan;
         if (!startupPlan.attrs.planId) {
             const location = await resolveWorkflowPlanLocation(startupProjectRoot, startupPlan.planName, {
                 migrateRegistry: false,
             });
+            if (!(await confirmProjectDirectory(location.documentRoot))) return;
             const identified = await ensurePlanIdentity(location.documentRoot, startupPlan.planName);
             startupPlan = { ...startupPlan, attrs: identified.attrs };
         }
@@ -251,7 +271,17 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
     let unresolvedLifecycleRecords: TransitionRecoveryRecord[] = [];
 
     try {
+        const discovered = options.slashSurface === "acp" ? null : await discoverPlanDocumentRoot(projectRoot, planArg);
+        if (
+            discovered &&
+            !(await (discovered.missingExecutionCheckout
+                ? confirmMissingManagedProjectDirectory(discovered.path)
+                : confirmProjectDirectory(discovered.path)))
+        )
+            return;
         const resolved = await resolvePlanWithPrimaryRecovery(projectRoot, planArg);
+        if (discovered && !discovered.missingExecutionCheckout && !(await confirmProjectDirectory(discovered.path)))
+            return;
         const plan = resolved.plan;
         if (resolved.recoveredWorktree?.recovered) {
             uiAPI.appendSystemMessage(
@@ -371,6 +401,9 @@ export async function runLoadPlanCommand(argv: string[], options: CommandContext
         const planId = typeof plan.attrs.planId === "string" ? plan.attrs.planId : "";
         const prepareSession = async () => {
             const location = await prepareSessionPlanningWorktree(projectRoot, plan.planName);
+            if (options.slashSurface !== "acp" && !(await confirmProjectDirectory(location.documentRoot))) {
+                throw new DirectoryStartupCanceled("Project startup canceled");
+            }
             planDocumentRoot = location.documentRoot;
             if (location.plan) Object.assign(plan, location.plan);
             await session.activateForPlan(plan.planName);

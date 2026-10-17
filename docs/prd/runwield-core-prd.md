@@ -538,6 +538,11 @@ attempt when it cannot get a positive answer about that item. An empty, unreadab
 result means "could not tell". It does not mean "dead", "finished", "clean", or "passed". RunWield never releases,
 reaps, takes over, or retries an item because a query was empty or failed. It never reports success on that basis.
 
+**Requirement: Test success requires current execution evidence.** RunWield's own isolated test runner counts a file
+as passing only after a successful process exit and a fresh report of executed tests. Missing or empty evidence fails
+validation; explicitly skipped tests remain skipped. Reusing a report directory cannot reuse evidence from an earlier
+invocation, including for files that fail-fast leaves unexecuted.
+
 **Requirement: Ask only for an outcome-level decision or a genuine external prerequisite.** When the user must act,
 RunWield explains what happened, what it is protecting, what is missing, the action the user can take, what Retry will
 continue, and what each choice means. It offers deliberate abandonment with work preserved at the safest recoverable
@@ -551,6 +556,9 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   continues.
 - Given a freshness or status check whose fetch fails or times out, RunWield does not report the checkout as current
   and does not act on that result.
+- Given a previously passing test file replaced by an early successful exit or no tests, the next test run fails
+  and does not retain the previous passing report.
+- Given a file containing only explicitly skipped tests, the runner reports it as skipped rather than passed.
 - Given exhausted automatic attempts, the same workflow stays open and recoverable.
 - Given a genuine external prerequisite, the user receives a specific action plus Retry and abandonment choices; Retry
   continues the preserved workflow.
@@ -660,12 +668,18 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+runtime and cannot report success without running the Astro checker.
+
 **Requirement: Validation progress is accurate.** Interrupted validation shows as paused and keeps its continuation.
 Passed checks are recorded, so a restart resumes at the next phase; a code repair runs the checks again. The final
 progress display comes from the confirmed validation and publication results of the current attempt.
 
 **Acceptance scenarios:**
 
+- Given a missing or unloadable Workspace checker dependency, `workspace:check` exits nonzero with a recovery message.
+- Given an intentional Astro type error, `workspace:check` executes checking and exits nonzero with its diagnostic.
 - Given no configured command, validation asks once; repair and resumed validation reuse the saved command, and the
   project keeps it after worktree removal.
 - Given a managed repair, after the Agent's focused checks, RunWield runs the full command against the repair checkout;
@@ -1035,6 +1049,31 @@ theme activates only its theme content. See the [theme reference](../user-docume
 **Scope and maturity:** Current baseline. A compressed Project Brief and further code-intelligence improvements are
 target scope.
 
+**Requirement: Confirm home and system folder use.**
+
+Before local project CLI dispatch or direct TUI startup, RunWield warns “System or home folder detected. Continue?” with
+the selected path and Continue/Quit choices. Quit is the default; cancellation stops before project work or Session
+creation. The policy matches the current account home, filesystem roots, and a fixed cross-platform system-directory
+list by exact normalized or canonical equality. Symlink aliases match; ordinary descendants and similarly named folders
+do not. Consent applies only to the same inspected directory in this invocation, not a persistent trusted-folder
+setting.
+
+Noninteractive project commands refuse with nonzero status and stderr guidance unless a leading
+`--allow-system-directory` flag acknowledges the directory. This flag does not consume piped request input, change
+`--continue`, or bypass Init's file consent. Help, version, global commands, Workspace services, ACP, MCP, and remote
+connections retain their existing behavior. This warning is consent, not a security sandbox or universal unsafe-path
+detector.
+
+**Acceptance scenarios:**
+
+- Given an exact home or listed system directory, when project startup begins, no project work starts before Continue.
+  Quit, Escape, Ctrl-C, and cancellation stop startup. A later process asks again.
+- Given Continue, automatic Init, Tutorial, and empty-folder starter offers are absent and their stored markers are
+  unchanged. Explicit Init and Onboard remain available with their normal consent.
+- Given an ordinary descendant such as `~/projects/app`, `/opt/app`, or `/tmp/app`, startup keeps its normal offers.
+- Given piped `guided-review` input at home, startup refuses before reading it unless the leading acknowledgement is
+  supplied.
+
 **Requirement: Preserve useful project facts and retrieve relevant context.**
 
 - **Mnemoteca:** project and global persistent memory for preferences, project facts, and critical context.
@@ -1101,6 +1140,8 @@ change impact.
 ### Tutorial
 
 **Scope and maturity:** Current TUI baseline. Workspace-native Tutorial controls are deferred.
+
+Home and classified system folders are not eligible for automatic offers, even after Continue.
 
 **Requirement: Offer an optional guided first change.** On one eligible new TUI Session, RunWield offers a Tutorial
 after model setup and the Init decision. The offer shows the current project and states that starting makes a real

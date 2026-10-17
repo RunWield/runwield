@@ -173,3 +173,19 @@ Records, set [`workRecords.autoGenerateOnPlanCompletion`](settings.md#workrecord
 | RunWield's own project state | `.wld/internal/`                           |
 
 The first time RunWield runs, it copies some Pi configuration files into `~/.wld/` if RunWield's copies don't exist yet.
+
+## Home and system folders
+
+Project commands and terminal startup warn before work in your home, a filesystem root, or an exact listed system
+folder. Choose **Continue** or **Quit** (the default). Symlink aliases match; ordinary descendants such as
+`~/projects/app` do not. Continue suppresses automatic Init, Tutorial, and empty-folder starter hints for that Session.
+Explicit `wld init`, `/init`, `wld onboard`, and `/onboard` remain available with their own consent.
+
+Without terminal input, use a leading invocation-only acknowledgement if the folder is intentional:
+
+```sh
+wld --allow-system-directory plans
+```
+
+This does not create a trusted-folder setting or a security sandbox. Help, version, global commands, Workspace services,
+ACP, MCP, and remote connections are not gated by this local startup warning.

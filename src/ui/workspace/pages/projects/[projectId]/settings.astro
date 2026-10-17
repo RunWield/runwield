@@ -1,4 +1,5 @@
 ---
+import ProjectRootForm from "../../../islands/ProjectRootForm.tsx";
 import ArchivedSessions from "../../../islands/ArchivedSessions.tsx";
 import SettingsLayout from "../../../layouts/SettingsLayout.astro";
 import { loadOwnerProjects } from "../../../server/astro-owner-data.js";
@@ -22,10 +23,7 @@ if (!project) Astro.response.status = 404;
             {archived ? <ArchivedSessions projectId={projectId} client:load /> : <>
             <section class="owner-card project-settings-card">
                 <h2>Project root</h2>
-                <form class="owner-form project-relink-form" data-project-relink={project.projectId}>
-                    <label>Relink Project root <input name="newRoot" placeholder="New absolute path" /></label>
-                    <button class="secondary-action" type="submit">Relink</button>
-                </form>
+                <ProjectRootForm projectId={project.projectId} client:load />
             </section>
             <section class="owner-card project-settings-card">
                 <h2>Maintenance</h2>
@@ -34,6 +32,7 @@ if (!project) Astro.response.status = 404;
                     <button type="button" class="secondary-action" data-project-action={project.projectId} data-action="rescan">Full Session rescan</button>
                     <button type="button" class="danger-action" data-project-action={project.projectId} data-action="remove">Remove</button>
                 </div>
+                <p class="muted" data-project-action-status role="status"></p>
                 <pre class="project-diagnostics" data-project-diagnostics={project.projectId} hidden></pre>
             </section>
             </>}
@@ -41,8 +40,50 @@ if (!project) Astro.response.status = 404;
                 function rwSettingsOwnerCookie(name){return document.cookie.split('; ').find(v=>v.startsWith(name+'='))?.split('=').slice(1).join('=')||'';}
                 async function rwSettingsOwnerFetch(url,options={}){options.headers=Object.assign({'content-type':'application/json','x-runwield-csrf':decodeURIComponent(rwSettingsOwnerCookie('rw_owner_csrf'))},options.headers||{});return await fetch(url,options);}
                 function rwSettingsNavigate(href){const event=new CustomEvent('runwield:workspace-navigate',{cancelable:true,detail:{href,history:'replace'}});if(document.dispatchEvent(event))location.replace(href);}
-                document.querySelectorAll('[data-project-action]').forEach((button)=>{if(button.dataset.workspaceBound==='true')return;button.dataset.workspaceBound='true';button.addEventListener('click',async()=>{if(button.dataset.action==='remove'&&!confirm('Remove this Project from Workspace? Repository files are not deleted.'))return;const response=await rwSettingsOwnerFetch('/api/owner/projects/'+encodeURIComponent(button.dataset.projectAction)+'/action',{method:'POST',body:JSON.stringify({action:button.dataset.action})});const data=await response.json().catch(()=>({}));if(response.ok){if(button.dataset.action==='rescan'){const diagnostics=document.querySelector('[data-project-diagnostics="'+CSS.escape(button.dataset.projectAction)+'"]');if(diagnostics){diagnostics.hidden=false;diagnostics.textContent=(data.diagnostics||[]).length?JSON.stringify(data.diagnostics,null,2):'Full Session catalog rescan completed with no diagnostics.';}return;}rwSettingsNavigate(button.dataset.action==='remove'?'/projects':location.pathname+location.search);} else alert(data.error); });});
-                document.querySelectorAll('[data-project-relink]').forEach((relinkForm)=>{if(relinkForm.dataset.workspaceBound==='true')return;relinkForm.dataset.workspaceBound='true';relinkForm.addEventListener('submit',async(event)=>{event.preventDefault();const formData=new FormData(relinkForm);const response=await rwSettingsOwnerFetch('/api/owner/projects/'+encodeURIComponent(relinkForm.dataset.projectRelink)+'/action',{method:'POST',body:JSON.stringify({action:'relink',newRoot:formData.get('newRoot')})});if(response.ok) rwSettingsNavigate(location.pathname+location.search); else alert((await response.json()).error);});});
+                document.querySelectorAll('[data-project-action]').forEach((button) => {
+                    if (button.dataset.workspaceBound === 'true') return;
+                    button.dataset.workspaceBound = 'true';
+                    const card = button.closest('.project-settings-card');
+                    const status = card?.querySelector('[data-project-action-status]');
+                    button.addEventListener('click', async () => {
+                        if (button.disabled) return;
+                        if (button.dataset.action === 'remove' && !confirm('Remove this Project from Workspace? Repository files are not deleted.')) return;
+                        const buttons = card?.querySelectorAll('[data-project-action]') || [button];
+                        buttons.forEach((control) => { control.disabled = true; });
+                        if (status) {
+                            const loading = document.createElement('span');
+                            loading.className = 'rw-thinking-glyph';
+                            loading.setAttribute('aria-hidden', 'true');
+                            status.replaceChildren(loading, document.createTextNode(' Updating Project...'));
+                        }
+                        const diagnostics = card?.querySelector('[data-project-diagnostics]');
+                        if (diagnostics) diagnostics.hidden = true;
+                        try {
+                            const response = await rwSettingsOwnerFetch('/api/owner/projects/' + encodeURIComponent(button.dataset.projectAction) + '/action', {
+                                method: 'POST',
+                                body: JSON.stringify({ action: button.dataset.action }),
+                            });
+                            const data = response.ok ? await response.json() : await response.json().catch(() => ({}));
+                            if (!response.ok) {
+                                if (status) status.textContent = data.error || 'Project action failed.';
+                                return;
+                            }
+                            if (status) status.textContent = '';
+                            if (button.dataset.action === 'rescan') {
+                                if (diagnostics) {
+                                    diagnostics.hidden = false;
+                                    diagnostics.textContent = (data.diagnostics || []).length ? JSON.stringify(data.diagnostics, null, 2) : 'Full Session catalog rescan completed with no diagnostics.';
+                                }
+                                return;
+                            }
+                            rwSettingsNavigate(button.dataset.action === 'remove' ? '/projects' : location.pathname + location.search);
+                        } catch {
+                            if (status) status.textContent = 'Project action could not be confirmed. Check your connection and try again.';
+                        } finally {
+                            buttons.forEach((control) => { control.disabled = false; });
+                        }
+                    });
+                });
             </script>
         </>
     ) : (

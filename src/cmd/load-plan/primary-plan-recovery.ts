@@ -152,3 +152,29 @@ export async function resolvePlanWithPrimaryRecovery(
     const repaired = await repairRetiredPlanStatus(location.documentRoot, name, resolvedPlan);
     return { ...repaired, recoveredWorktree: location.recoveredWorktree };
 }
+
+export interface PlanDocumentTarget {
+    path: string;
+    missingExecutionCheckout?: boolean;
+}
+
+/** Select document authority without recovery, status repair, or activation. */
+export async function discoverPlanDocumentRoot(projectRoot: string, planArg: string): Promise<PlanDocumentTarget> {
+    if (isPlanIdArgument(planArg)) {
+        const plan = await findPlanEvidenceById(projectRoot, planArg);
+        return { path: resolve(plan.path, ...plan.relativePath.split("/").map(() => "..")) };
+    }
+    planArg = await normalizePlanArgument(projectRoot, planArg);
+    let name: string;
+    try {
+        name = canonicalizeStoredPlanName(planArg).name;
+    } catch {
+        const plan = await resolvePlan(projectRoot, planArg);
+        return { path: dirname(plan.path) };
+    }
+    const location = await resolveWorkflowPlanLocation(projectRoot, name, { migrateRegistry: false, readOnly: true });
+    return {
+        path: location.documentRoot,
+        missingExecutionCheckout: location.missingExecutionCheckout,
+    };
+}

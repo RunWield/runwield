@@ -217,9 +217,15 @@ function safeArtifactReviewReference(request) {
 function readPlanReviewDecisionMeta(response) {
     if (!response || typeof response !== "object") return {};
     const source = /** @type {Record<string, unknown>} */ (response);
-    return source._meta && typeof source._meta === "object"
-        ? /** @type {Record<string, unknown>} */ (source._meta)
-        : source;
+    const decision =
+        source._meta && typeof source._meta === "object"
+            ? /** @type {Record<string, unknown>} */ (source._meta)
+            : source;
+    // Feedback and review chat may omit approved, but an explicit decision must be boolean.
+    if (Object.hasOwn(decision, "approved") && typeof decision.approved !== "boolean") {
+        throw new Error("Plan review approved must be a boolean.");
+    }
+    return decision;
 }
 
 /** @param {unknown} response @returns {import("../../../shared/session/session-runtime-interactions.js").RuntimeInteractionResponse} */

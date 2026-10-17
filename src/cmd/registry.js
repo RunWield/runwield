@@ -977,3 +977,26 @@ export function getSlashCommandDefinition(commandName, slashSurface = "tui") {
     if (!command || !hasCommandSurface(command, "slash", slashSurface)) return undefined;
     return command;
 }
+
+/** Project-directory policy stays beside the CLI registry and alias resolution.
+ * @param {string | undefined} name
+ * @param {string[]} args
+ */
+export function requiresProjectDirectoryConsent(name, args = []) {
+    if (name === "guided-review") return true;
+    const command = getCommandDefinition(name);
+    if (!command) return true;
+    if (!hasCommandSurface(command, "cli")) return false;
+    if (command.name === COMMAND_NAMES.AGENT) return args.length > 0;
+    return [
+        COMMAND_NAMES.ROUTER,
+        COMMAND_NAMES.ONBOARD,
+        COMMAND_NAMES.LOAD_PLAN,
+        COMMAND_NAMES.REVIEW,
+        COMMAND_NAMES.RESUME,
+        COMMAND_NAMES.PLANS,
+        COMMAND_NAMES.WR,
+        COMMAND_NAMES.SLEEP,
+        COMMAND_NAMES.INIT,
+    ].includes(command.name);
+}

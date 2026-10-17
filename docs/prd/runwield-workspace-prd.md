@@ -298,6 +298,26 @@ Dashboard refreshes automatically while visible.
 
 **Scope and maturity:** Current.
 
+**Requirement: Confirm home and system Project roots.**
+
+Add and relink inspect the submitted root on the server using Core's
+[exact directory policy](runwield-core-prd.md#project-context-and-initialization). A classified root requires explicit
+Continue/Quit consent before the registration transaction writes Project records or root evidence. The server returns
+HTTP 409 `directory_confirmation_required` with warning text and an opaque acknowledgement bound to the submitted and
+canonical root. Retry rechecks that binding. Responses do not disclose the server home or resolved absolute paths.
+
+Both forms use the same accessible modal, initially focused on Quit, with keyboard containment, Escape dismissal, and
+focus return. Quit keeps the entered form values and makes no registration change. Pending requests prevent duplicate
+submission. Ordinary roots retain their existing one-request success contract. Existing Projects are not revoked.
+
+**Acceptance scenarios:**
+
+- Given an exact server home or a symlink to a listed root, add or relink returns confirmation-required with no writes.
+  Continue registers or relinks once; Quit or Escape keeps the form and existing Project unchanged.
+- Given a changed submitted root or retargeted symlink, an earlier acknowledgement cannot authorize the new target.
+  Existing authentication, request-forgery protection, deduplication, and retarget conflicts still apply.
+- Given an ordinary descendant of a listed root, add and relink need no folder acknowledgement.
+
 **Requirement: Workspace reaches registered Projects.** For each registered Project, Workspace shows:
 
 - registration and RunWield initialization health;
@@ -314,6 +334,11 @@ Records, Session history, branches, and RunWield worktrees stay as they are.
 can relink, disable, or remove a Project whose root is missing or disabled. Disabling is reversible. Remove deletes the
 registration completely and returns to Projects; adding the directory again creates a new registration and rediscovers
 its Sessions and artifacts. Repository content becomes available when the Project is enabled and its root exists.
+
+**Requirement: Recover from failed Project requests.** Linking, relinking, and maintenance actions show pending and
+failure feedback beside their controls. A rejected network request clears pending feedback, preserves entered paths,
+and restores the controls for an explicit retry. Failures never navigate or claim completion, and a later successful
+attempt replaces the failure message. Pending requests prevent duplicate submission of the same action.
 
 **Requirement: Restore archived Sessions from Project settings.** Project settings has General and Archived Sessions
 tabs. Archived Sessions lists archived names in pages, links to their conversations, and offers Unarchive. Unarchive
@@ -346,6 +371,9 @@ and slide the highlight; sidebars open and close with subtle motion. Reduced-mot
   worktrees remain. A removed Project leaves Projects, the sidebar, and the Dashboard, and its old settings URL stops
   resolving; adding its directory again rediscovers its Sessions.
 - Given a missing Project root, its settings page opens and offers relink, disable, and remove.
+- When a link, relink, enable, disable, remove, or rescan request loses its connection, the page shows a visible
+  failure, retains entered values, and permits retry without automatic resubmission or navigation. HTTP errors retain
+  the server explanation; successful retries navigate or show rescan diagnostics as usual.
 - Given an archived Session, Archived Sessions lists it with paging and opens its conversation; Unarchive returns the
   same Session to ordinary history.
 - Given a foreign Session or an unauthorized Project, an Archive or Unarchive request fails and the Session stays as
@@ -624,7 +652,9 @@ feedback, approves for later, or approves and runs the current Plan:
 Only Approve & Run authorizes execution, and only for the current Session; approval gives no other Session permission
 to run the Plan. If the Plan changed after the owner opened it, Workspace shows the
 changed content before it accepts approval. A decision on a review that the TUI or an ACP client opened uses the
-originally reviewed document. A repeated delivery of the same click runs the action once.
+originally reviewed document. A repeated delivery of the same click runs the action once. If a review request supplies
+an approval value, it must be a boolean; malformed approval values leave the Plan and live review unchanged. Feedback
+and review chat may omit approval.
 
 **Requirement: Full-window review.** Plan and Code Review replace the Workspace shell with the full-window review
 layout: their own toolbar, Contents or Files on the left, and Annotations or chat on the right. Left sidebars use square
@@ -640,6 +670,11 @@ in Code Review, and Contents and Annotations in Plan Review, start collapsed; ea
 workbench below the header, and opening one closes the other. The compact Plan Review header keeps the title, approval,
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
 screen with its actions reachable, and the Code Review diff stays readable below its file list.
+
+**Requirement: Contained working-file reads.** Code Review validates the OS-resolved path of the opened file before
+reading response bytes from that same file object. A concurrent directory replacement cannot redirect the read outside
+the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
+or change access controls.
 
 **Requirement: Chat in the review.** Plan and Code Review chats accept attached annotations without a typed message:
 attaching annotations enables Send and its keyboard shortcut. The Agent receives the notes as review context, and the
@@ -723,8 +758,13 @@ every action stays available.
 
 - Given a Workspace Plan or Code Review, submitting approval or feedback returns to its Session in the same tab; a
   failed decision stays in review.
+- Given an inside-Project working file, Code Review returns its content. A static outside-Project symlink is rejected.
+- Given concurrent directory changes during a working-file read, Code Review returns only contained content or refuses
+  the read; outside files stay unchanged.
 - Given a Plan changed since the review opened, approval shows the changed content first.
 - Given the same approval click delivered twice, the action runs once; Approve for Later starts no execution.
+- Given a live review receives a nonboolean approval value, the request fails without changing the Plan or consuming the
+  review; a subsequent valid decision still succeeds.
 - Given a saved Epic in review, two message-and-reply rounds with Architect stay on the page, and explicit review
   actions still decide the review.
 - Given Unified selected, a reload keeps Unified with Annotations closed; the first note opens Annotations and a later
