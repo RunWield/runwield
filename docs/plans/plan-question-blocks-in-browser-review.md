@@ -21,6 +21,12 @@ userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/plan-question-blocks-in-browser-review"
 status: "reviewed"
+validatedCommit: "3800342ca0c30776d48238eff02e3ff6c1af27f7"
+workRecord:
+    status: "generated"
+    recordId: "bcbed9cb-70b9-44c3-8cee-77fdffaf0a23"
+    path: "docs/work-records/2026-10-17-inline-plan-questions-in-browser-review.md"
+    lastAttemptAt: "2026-10-17T16:49:35.237Z"
 ---
 
 # Answer Planner questions inside the browser Plan review
