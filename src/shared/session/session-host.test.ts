@@ -5,11 +5,7 @@ import { McpIntegration } from "../mcp/integration.ts";
 import { HostedSession } from "./hosted-session.js";
 import { SessionHost } from "./session-host.ts";
 
-/**
- * @param {string} id
- * @param {string} cwd
- */
-function makeSessionManager(id, cwd = `/work/${id}`) {
+function makeSessionManager(id: string, cwd = `/work/${id}`) {
     return {
         getSessionId: () => id,
         getCwd: () => cwd,
@@ -68,7 +64,10 @@ test("SessionHost prefers explicit internal ids and otherwise reuses SessionMana
     assertEquals(first.id, "one");
     assertEquals(second.id, "provided-two");
     assertEquals(idFactoryCalls, 0);
-    assertEquals(host.listSessions().map((session) => session.id), ["one", "provided-two"]);
+    assertEquals(
+        host.listSessions().map((session) => session.id),
+        ["one", "provided-two"],
+    );
 });
 
 test("SessionHost falls back to provided or generated ids when SessionManager has none", () => {
@@ -80,18 +79,17 @@ test("SessionHost falls back to provided or generated ids when SessionManager ha
 
     assertEquals(first.id, "provided");
     assertEquals(second.id, "generated-1");
-    assertEquals(host.listSessions().map((session) => session.id), ["provided", "generated-1"]);
+    assertEquals(
+        host.listSessions().map((session) => session.id),
+        ["provided", "generated-1"],
+    );
 });
 
 test("SessionHost requireSession fails clearly when the session is missing", () => {
     const host = new SessionHost();
 
     assertEquals(host.getSession("missing"), null);
-    assertThrows(
-        () => host.requireSession("missing"),
-        Error,
-        'HostedSession "missing" was not found',
-    );
+    assertThrows(() => host.requireSession("missing"), Error, 'HostedSession "missing" was not found');
 });
 
 test("SessionHost rejects duplicate ids for created or adopted sessions", () => {
@@ -144,8 +142,7 @@ test("SessionHost disposeSession removes and disposes only the target HostedSess
     assertEquals(await host.disposeSession("missing"), false);
 });
 
-/** @param {string} id @param {string} runwieldSessionId */
-function makeManagedOptions(id, runwieldSessionId) {
+function makeManagedOptions(id: string, runwieldSessionId: string) {
     return {
         id,
         cwd: `/repo/${id}`,

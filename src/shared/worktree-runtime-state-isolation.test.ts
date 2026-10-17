@@ -15,11 +15,7 @@ const repo = defineGitFixture(async (repoPath) => {
     await git(repoPath, ["commit", "-m", "base"]);
 });
 
-/**
- * @param {string} cwd
- * @param {string} branch
- */
-async function makeWorktree(cwd, branch) {
+async function makeWorktree(cwd: string, branch: string) {
     const worktreePath = `${cwd}-${branch}`;
     await git(cwd, ["worktree", "add", "-b", branch, worktreePath, "main"]);
     return worktreePath;

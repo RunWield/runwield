@@ -24,7 +24,7 @@ affectedPaths:
 createdAt: "2026-08-14T00:11:43-04:00"
 origin: "internal"
 userVerifiedAt: null
-status: "ready_for_work"
+status: "draft"
 ---
 
 # Plan Packages and Independent Validation

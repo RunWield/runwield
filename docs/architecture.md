@@ -1016,7 +1016,7 @@ The current layout is:
 | `src/ui/review/`                     | Browser review interaction implementation                   | UI/review infrastructure; Core does not import it             |
 | `src/cmd/`                           | CLI/TUI command consumers                                   | Runtime public surface; no hosted/root/handler internals      |
 
-`src/shared/session/architecture-boundary.test.js` makes these rules executable in CI. It scans production files and
+`src/shared/session/architecture-boundary.test.ts` makes these rules executable in CI. It scans production files and
 fails on consumer vocabulary/imports in Core, internal session imports in consumers, host/object escape hatches,
 consumer event publication, and removed compatibility files returning.
 
@@ -1028,7 +1028,7 @@ dependency guard are what prevent this seam from silently returning.
 
 | Invariant                                              | Principal coverage                                                                  |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Core knows no consumers; consumers use only Runtime    | `src/shared/session/architecture-boundary.test.js`                                  |
+| Core knows no consumers; consumers use only Runtime    | `src/shared/session/architecture-boundary.test.ts`                                  |
 | Opaque IDs and private internals                       | `src/shared/session/session-runtime.test.js`                                        |
 | One ordered turn lifecycle and error settlement        | `src/shared/session/session-runtime.test.js`                                        |
 | One Pi text/thinking/tool translation                  | `src/shared/session/session-subscribers.test.js`                                    |
@@ -1050,7 +1050,7 @@ Git behavior.
 
 | Core area                    | Principal test suites                                                                                                                 | Existing emphasis                                                                               |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Hosted state and registry    | `hosted-session.test.js`, `session-host.test.js`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
+| Hosted state and registry    | `hosted-session.test.js`, `session-host.test.ts`                                                                                      | Ownership, isolation, disposal, active turn and interaction state                               |
 | Runtime lifecycle            | `session-runtime.test.js`, `root-session.test.js`, `active-agent-session.test.js`, `workflow-context-session.test.js`                 | Create/load/replay, prompt serialization, handoffs, close/cancel, persisted markers             |
 | Agent/Pi bridge              | `session-prompt.test.js`, `session-subscribers.test.js`, `agent-switching.test.js`, `session-catalog.test.js`                         | Root reuse/rebuild, event translation, prompt assembly, project-root catalog isolation          |
 | Agent workflow handler       | `agent-handler.test.js`, `orchestrator.test.js`, `decisions.test.js`, `workflow-results` coverage inside workflow tests               | Current-turn outcome extraction, routing, dispatch, completion gates, semantic decisions        |
@@ -1059,7 +1059,7 @@ Git behavior.
 | Git worktrees                | `worktree.test.js`, `worktree-registry.test.js`, `git.test.js`                                                                        | Real/temp Git operations, branch targets, merge safety, recovery metadata, non-Git behavior     |
 | Configuration and policy     | `settings.test.js`, `model-registry.test.js`, `model-validation.test.js`, `runtime-preflight.test.js`, `session-tools-policy.test.js` | Layering, migration, locking, model discovery, protected-tool and binary policy                 |
 | Collaboration primitives     | Tests under `src/shared/collaboration/`                                                                                               | Crypto, capabilities, protocol normalization, locks, secrets, client behavior                   |
-| Adapter/boundary conformance | `src/shared/session/architecture-boundary.test.js`, ACP tests, TUI runtime-adapter tests, Workspace tests                             | Dependency direction, protocol mapping, single event consumption, interactions, Plan projection |
+| Adapter/boundary conformance | `src/shared/session/architecture-boundary.test.ts`, ACP tests, TUI runtime-adapter tests, Workspace tests                             | Dependency direction, protocol mapping, single event consumption, interactions, Plan projection |
 
 The highest-value cross-boundary paths for later confidence analysis are visible in the diagrams above:
 

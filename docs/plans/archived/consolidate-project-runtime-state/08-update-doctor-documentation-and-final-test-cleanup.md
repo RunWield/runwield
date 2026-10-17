@@ -289,7 +289,7 @@ Re-express their still-valid outcomes against the new layout rather than deletin
 - Diagnostic dependency regressions:
   `deno run -A scripts/run-tests.js src/plan-store.test.js src/shared/workflow/transition-recovery.test.ts src/shared/workflow/planning-worktree.test.ts src/shared/isolated-publication.test.ts`.
 - Cross-store and surface coverage:
-  `deno run -A scripts/run-tests.js src/shared/worktree-runtime-state-isolation.test.js src/shared/worktree-registry.test.js src/shared/workflow/controller-registry.integration.test.ts src/shared/workflow/state-transition.test.js src/shared/work-records/supersession.test.ts src/shared/collaboration/secrets.test.js src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/session/session-runtime.test.js src/acp/server.test.js src/cmd/init/index.test.ts src/cmd/plans/collaboration-commands.integration.test.ts`.
+  `deno run -A scripts/run-tests.js src/shared/worktree-runtime-state-isolation.test.ts src/shared/worktree-registry.test.js src/shared/workflow/controller-registry.integration.test.ts src/shared/workflow/state-transition.test.js src/shared/work-records/supersession.test.ts src/shared/collaboration/secrets.test.js src/shared/workflow/publication-machine.failure-matrix.test.ts src/shared/session/session-runtime.test.js src/acp/server.test.js src/cmd/init/index.test.ts src/cmd/plans/collaboration-commands.integration.test.ts`.
 - Review test history from the Epic branch point through all eight children, not only the final diff or comments naming
   the Epic. Record each disabled/deleted/weakened case and its final disposition. Inspect test-runner exclusions too. No
   Epic-specific skip, early return, empty test, or reduced assertion may stand in for working behavior.

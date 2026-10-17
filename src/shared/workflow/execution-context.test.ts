@@ -474,11 +474,7 @@ test("resolveValidationExecutionContext makes registry identity authoritative ov
         const entry = await findById(projectRoot, "wt-1");
         assertEquals(entry?.planId, "plan-p");
         const canonical = await loadPlan(projectRoot, "p");
-        assertEquals(
-            canonical?.attrs.planId,
-            "canonical-plan-id",
-            "the canonical Plan is never rewritten from a copy",
-        );
+        assertEquals(canonical?.attrs.planId, "canonical-plan-id", "the canonical Plan is never rewritten from a copy");
     } finally {
         await fsRm(projectRoot, { recursive: true }).catch(() => {});
         await fsRm(parent, { recursive: true }).catch(() => {});
@@ -498,7 +494,7 @@ test("a damaged worktree registry blocks with commands instead of a stack trace"
         // The damage this covers arrives the other way: a hand-edited file or a branch
         // merge that concatenated two registries.
         const baseCommit = await git(projectRoot, ["rev-parse", "HEAD"]);
-        const attempt = (/** @type {string} */ id, /** @type {string} */ status) => ({
+        const attempt = (id: string, status: string) => ({
             id,
             planName: "p",
             planId: "plan-ambiguous",

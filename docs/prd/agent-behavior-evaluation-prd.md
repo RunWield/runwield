@@ -1,235 +1,250 @@
-# Product Requirements Document: Agent Behavior Evaluation
+# Product Requirements Document: Agent Evaluation and Benchmark Harness
 
-Last updated: 2026-08-30 14:02 EDT
+**Status:** Proposed. The existing Router golden-set work is a starting point, not delivery of this shared capability.
+This PRD combines the Agent scorecards, support policy, and benchmark-running experience in one proposal.
 
 ## Objective
 
-Create a repeatable, privacy-safe evaluation capability that measures whether a RunWield Agent/model configuration
-fulfills its role contract and completes the surrounding workflow reliably.
-
-Evaluation should let RunWield compare models, prompts, tools, extensions, and Model Adaptation Profiles using evidence
-rather than intuition. The [benchmark harness PRD](end-to-end-benchmark-harness-prd.md) describes the evaluation-running
-experience.
+Let RunWield maintainers compare Agent and model configurations through repeatable, privacy-safe evaluations of the
+actual product. Measure both the Agent's role contract and the surrounding workflow, then use that evidence to decide
+which models, prompts, tools, extensions, and Model Adaptation Profiles to support.
 
 ## Problem Statement
 
-RunWield's quality depends on the coupled system of Agent Definition, model, prompt, tools, Runtime behavior, workflow
-orchestration, and validation. Mechanical tests can prove that code paths behave correctly, but they do not prove that a
-model will perform Triage, stop discovery, call a required Custom Tool, edit safely, recover from a failed tool, or
-complete an execution workflow.
+Automated source tests establish code behavior, but they cannot establish whether a model stops discovery, routes a
+request correctly, calls its required completion tool, edits safely, or recovers from a failed tool. A plausible final
+answer can still leave the workflow unfinished.
 
-The existing Router golden-set work demonstrates both the value and the limitations of behavioral evaluation. Agreement
-on scored rows is useful, but timeouts, missing `triage_report` calls, repeated Bash attempts, excessive discovery, and
-unscored rows are equally important. Other Agents currently lack an equivalent contract-oriented evaluation surface.
+The Router golden set shows why decision accuracy alone is insufficient. Timeouts, missing completion calls, repeated
+commands, discovery cost, and unscored rows matter too. Other Agents need their own scorecards, and complete workflows
+need a shared way to run and compare them.
 
-Selective local-model support and model-facing runtime interventions should not become product promises until RunWield
-can show that they improve the target Agent contract without causing unacceptable regressions elsewhere.
+## Audience and Product Principles
 
-## Resolved Assumptions
+The initial users are RunWield maintainers evaluating product changes and experimental Agent/model combinations.
+Evaluation is deliberate and local; normal RunWield use remains independent of benchmark dependencies.
 
-### Evaluate Agent Contracts, Not Generic Intelligence
+- **Evaluate role contracts.** Router, Engineer, Operator, Reviewer, and planning Agents need different scorecards.
+- **Measure the workflow outcome.** Mechanical and Workflow Validation are stronger evidence than model self-report.
+- **Separate facts from judgment.** Deterministic checks establish hard outcomes. Model judges assess other dimensions,
+  and human review calibrates ambiguous quality judgments and new fixtures.
+- **Make severe failures visible.** Report correctness, safety, workflow completion, costs, and uncertainty separately.
+- **Exercise the real product.** Use the effective Agent configuration and normal tools, interactions, and validation.
+- **Protect private content.** Detailed evaluation reports are deliberate local artifacts, separate from passive metrics.
 
-- Each Agent has a distinct role contract and therefore a distinct scorecard.
-- Router evaluation emphasizes bounded discovery, correct Routing Intent, terminal-tool compliance, and restraint.
-- Engineer evaluation emphasizes scoped implementation, safe tool use, Task Completion, validation outcome, repair
-  behavior, and absence of unrequested changes.
-- Operator evaluation emphasizes task completion, self-verification, scope discipline, and correct Scope Escalation.
-- Future planning-role evaluation should assess decision quality, evidence use, collaboration, and artifact quality
-  without reducing nuanced work to one mechanical score.
+## Capability Requirements
 
-### Workflow Outcomes Matter
+### Agent scorecards and support decisions
 
-- A plausible final answer is insufficient when the Agent contract requires a Custom Tool or lifecycle transition.
-- Evaluation should include whether the surrounding Runtime and workflow reached the expected semantic outcome.
-- Mechanical Validation and Workflow Validation are stronger execution verdicts than model self-report.
-- Time, token use, context pressure, intervention count, and user-attention requests are product costs, not merely
-  diagnostics.
+**Scope and maturity:** Target.
 
-### Mechanical Scoring First, Judgement Where Necessary
+**Requirement: Score each Agent against its role.** Each run measures the applicable scorecard and expected workflow
+outcome. Deterministic scoring covers tool and lifecycle events, timeout, retries, changed-file scope, and validation.
+Judge and human assessments stay separate. Reports expose time, tokens, context pressure, interventions, and requests
+for user attention as product costs.
 
-- Prefer deterministic scoring for tool calls, timeouts, retries, file scope, lifecycle outcomes, validation, and event
-  contracts.
-- Use model judges only for dimensions that cannot be scored mechanically, and keep their verdict separate from hard
-  pass/fail facts.
-- Human review remains the calibration authority for ambiguous quality dimensions and new benchmark sets.
-- One composite score must not hide a severe contract failure.
+**Requirement: Graduate support through evidence.** Provider compatibility and Agent-level support are separate claims.
+A Model Adaptation Profile starts experimental. It becomes supported after improving an agreed baseline on its target
+contract while preserving safety and workflow correctness. Reports state limitations and unsupported combinations.
 
-### Evaluation Data Is Curated and Reviewable
+#### Router
 
-- Evaluation scenarios should be versioned fixtures with expected outcomes or explicit human labels.
-- Real historical requests may seed fixtures only after private or identifying content is removed.
-- Fixtures must not be discoverable by the evaluated Agent through normal project tools.
-- Synthetic scenarios should test known failure modes without pretending to represent real-world prevalence.
-- Baselines should record model/provider version, Agent Definition revision, effective Model Adaptation Profile, and
-  relevant Runtime configuration.
+Measure agreement on labeled rows, unscored and timeout rates, exactly one `triage_report`, discovery cost and duration,
+tool calls before triage, and repeated or forbidden tool attempts.
 
-### Metrics and Evaluation Are Different Surfaces
+#### Semantic Reviewer
 
-- The existing opt-in workflow metrics stream may provide aggregate, content-free operational observations.
-- Benchmark fixtures and detailed evaluation outputs belong to a deliberate evaluation run, not passive user telemetry.
-- Raw User Requests, prompts, code, diffs, tool arguments/results, credentials, and private source content must not be
-  copied into workflow metrics.
-- No analytics sync is required; local evaluation is the initial product surface.
-
-### Support Claims Require Evidence
-
-- A model may be provider-compatible without being a supported choice for every Agent.
-- A Model Adaptation Profile graduates from experimental to supported only after it beats an agreed baseline on its
-  target contract and does not regress safety or workflow correctness.
-- RunWield should publish limitations and unsupported Agent/model combinations plainly rather than infer quality from
-  parameter count or provider identity.
-
-### Reuse External Machinery Deliberately
-
-- RunWield should reuse established benchmark datasets, task preparation, deterministic verifiers, retry semantics, and
-  reporting patterns when their licenses and methodology are suitable.
-- Evaluations must exercise the real RunWield Agent configuration, tools, and workflow, including any selected profile.
-- little-coder's Apache-2.0 benchmark code is useful reference material. Directly reused source requires the applicable
-  license, attribution, NOTICE content, and changed-file notices; external benchmark datasets retain their own licenses.
-- Public external benchmarks complement RunWield-native Agent contract evaluation; they do not replace it.
-
-## Proposed Domain Language
-
-**Agent Behavior Evaluation**: A repeatable evaluation of whether an Agent/model configuration fulfills its RunWield
-role contract and reaches the expected workflow outcome. _Avoid_: Generic model benchmark, model leaderboard, unit test
-
-This term remains proposed until the evaluation capability ships.
-
-## Initial Evaluation Portfolio
-
-### WLD-Native End-to-End Workflows
-
-The first milestone should exercise complete RunWield paths with deterministic fixture interactions:
-
-- Router to Guide for read-only inquiry;
-- Router to Engineer to Task Completion and Mechanical Validation;
-- Router to Planner, Review Loop, Engineer, and Workflow Validation;
-- Operator completion and Scope Escalation;
-- cancellation, compaction, resume, and recoverable failure.
-
-These scenarios are the primary product release signal because they measure RunWield's role and workflow semantics, not
-only whether a model can edit code.
-
-### Router
-
-Build on the existing golden set and track at least:
-
-- agreement on labelled rows;
-- unscored and timeout rates;
-- completion with exactly one `triage_report`;
-- tool calls before Triage;
-- repeated or forbidden tool attempts;
-- discovery cost and duration.
-
-### Semantic Reviewer
-
-Evaluate the Semantic Reviewer as a defect-finding and restraint system, not as a prose generator. The first scorecard
-must compare the current discovery prompt with the proposed Review Reconnaissance prompt against the same paired
-fixtures, model configuration, and repository context.
-
-Track at least:
+Measure defect discovery and restraint. Compare the current discovery prompt with the proposed Review Reconnaissance
+prompt on paired fixtures with the same model configuration and repository context. Report:
 
 - distinct known defects found;
-- supported blocking findings versus unsupported or duplicate findings;
-- approval of clean twins that contain similar but correct code;
-- severe-defect recall reported separately from aggregate recall;
-- evidence accuracy and whether the finding identifies the causal behavior rather than only a symptom;
-- completeness when one change contains multiple independent defects;
-- correct defect-state tracking after complete, partial, empty, misleading, or regressive repairs;
+- supported blockers, unsupported findings, and duplicates;
+- approval of clean twins with similar but correct code;
+- severe-defect recall separately from aggregate recall;
+- evidence accuracy and identification of causal behavior rather than symptoms;
+- completeness when a change contains several independent defects;
+- defect-state tracking after complete, partial, empty, misleading, or regressive repairs;
 - advisory noise, protocol completion, diff inspection, cost, and repeated-trial stability.
 
-Do not retain or display risks that the Reviewer rules out. A plausible risk is not a blocking finding until repository
-evidence supports it. Do not collapse recall, precision, clean approval, or severe misses into one release score.
+A blocking finding requires repository evidence. Reports retain supported findings rather than risks ruled out during
+review. Recall, precision, clean approval, and severe misses remain separate measures.
 
-The initial scorecard, fixture contract, and reviewable pilot catalog live in:
+Detailed proposed scorecards and fixtures:
 
 - [Reviewer Benchmark Scorecard](../evaluation/reviewer-benchmark-scorecard.md)
 - [Reviewer Benchmark Fixture Contract](../evaluation/reviewer-benchmark-fixtures.md)
 - [Reviewer Benchmark Pilot Corpus](../evaluation/reviewer-benchmark-pilot-corpus.md)
 
-### Engineer and Operator Pilot
+#### Engineer and Operator
 
-Create bounded scenarios for the first selective execution adaptation work. Track at least:
+The first adaptation pilot measures successful completion, required terminal-tool use, changed-path scope, destructive
+whole-file rewrites, read/edit recovery, repeated or non-progressing calls, interventions and recovery, validation,
+Scope Escalation, context interventions, elapsed time, and token use.
 
-- successful completion and required terminal-tool use;
-- changed-path scope and destructive whole-file rewrites;
-- read/edit recovery behavior;
-- repeated identical or non-progressing tool calls;
-- correction/intervention count and whether recovery succeeded;
-- Mechanical or Workflow Validation outcome;
-- Scope Escalation correctness;
-- context interventions, elapsed time, and token use.
+Engineer is judged on scoped implementation and validation. Operator is judged on task completion, self-verification,
+scope discipline, and Scope Escalation.
 
-### Runtime Reliability
+#### Planning Agents
 
-Use scenario harnesses for cross-Agent Runtime behavior such as:
+Later scorecards assess decision quality, evidence use, collaboration, and artifact quality with human-calibrated
+judgment rather than one mechanical score.
 
-- mid-run context pressure and compaction;
-- cancellation settlement;
-- replay parity;
-- interaction handling;
-- multi-session isolation.
+**Acceptance scenarios:**
 
-These scenarios complement automated source tests; they do not replace them.
+- Given a Router run with a correct routing answer but no required terminal tool, its report keeps accuracy and
+  completion failure separate.
+- Given a Reviewer tested on a defective fixture and its clean twin, the report shows defect recall and unsupported
+  findings separately from clean approval.
+- Given a candidate adaptation and the same unadapted baseline, maintainers can compare validated outcomes, costs,
+  regressions, and variance before deciding support.
 
-### External Benchmark Adapters
+### Repeatable scenario runs
 
-After the WLD-native suite produces trustworthy comparisons:
+**Scope and maturity:** Target.
 
-1. **Aider Polyglot over ACP** is the first external benchmark. Preserve its canonical exercises, verification, and
-   two-attempt methodology while measuring RunWield's actual product behavior. Report any narrower workflow coverage.
-2. **Harbor / Terminal-Bench** follows when RunWield can run representative tasks in the benchmark environment.
+**Requirement: Run one scenario or a resumable batch.** Maintainers select scenarios by name, tag, Agent, workflow,
+model, preset, or profile. They configure repetitions, concurrency, and per-scenario and per-operation timeouts. The run
+checks prerequisites before spending model calls and saves completed results as it proceeds, so an interrupted batch
+can resume.
 
-External source and dataset reuse must respect their licenses and attribution. Fixture-supplied answers must be explicit
-and reproducible; unexpected interactions must not be silently approved or alter normal client behavior.
+**Requirement: Isolate and identify every trial.** Each scenario uses an isolated temporary Project or the benchmark's
+sandbox, separate from the user's saved Project data. Trials begin from equivalent filesystem and Session state unless
+the scenario tests resume or recovery. The run records fixture or repository revision, model/provider identity and
+version, effective Agent Definition revision, preset, profile, and relevant configuration before Agent work starts.
 
-## Functional Requirements
+Fixtures are versioned and reviewable, with expected outcomes or human labels. Historical requests are sanitized before
+becoming fixtures. Synthetic fixtures test known failure modes and are labeled as such. Expected answers, scoring
+fixtures, and oracle solutions stay outside the Agent's available Project tools.
 
-- Run one scenario against a chosen Agent, model, and effective configuration without using the normal user's persisted
-  project data.
-- Capture structured Runtime events, tool/lifecycle outcomes, validation verdicts, duration, usage, and intervention
-  counters.
-- Score deterministic contract dimensions and retain judge/human assessments as separate annotations.
-- Compare a candidate against a fixed baseline and report both improvements and regressions.
-- Support repeated trials where sampling variance matters.
-- Time out and settle failed runs without contaminating later scenarios.
-- Keep evaluated fixtures outside the Agent's searchable working context.
-- Produce human-readable and machine-readable local reports suitable for review and baseline storage.
-- Make unsupported, unscored, interrupted, and infrastructure-failed runs visible rather than dropping them from the
-  denominator.
+**Requirement: Failures stay contained and visible.** Timeouts and cancellation settle the current run and leave later
+runs usable. Reports distinguish Agent, verifier, harness, infrastructure, provider, model-server, sandbox, and dataset
+failures. Interrupted, unsupported, and unscored trials remain visible in results and denominators.
 
-## Delivery
+**Acceptance scenarios:**
 
-Start with curated RunWield workflows and the Agent scorecards above. Use the effective Agent configuration and normal
-product behavior. Keep external infrastructure, dataset, interaction, and Agent failures distinguishable in reports.
+- Given a failed or timed-out trial followed by another scenario, the next scenario starts from its own clean state.
+- Given an interrupted batch, resume keeps completed trials and clearly identifies unfinished ones.
+- Given a missing benchmark prerequisite, the run reports the setup problem before invoking a model.
+- Given an evaluated Agent searching its Project, expected answers and labels remain unavailable.
 
-Detailed evaluation is deliberate and local. External benchmark dependencies must not become requirements for normal
-RunWield use. Implementation choices belong in the implementing Plans; this PRD defines the measurements and support
-claims they need to enable.
+### Production-representative workflows
 
-## Success Criteria
+**Scope and maturity:** Target.
 
-- Router regressions are detected across both decision accuracy and completion discipline.
-- Engineer/Operator adaptation experiments can be compared against an unadapted baseline with repeatable results.
-- Reports expose hard failures, costs, variance, and qualitative judgement separately.
-- A failed or timed-out scenario cannot poison subsequent runs.
-- The evaluated path remains representative of production SessionRuntime and workflow behavior.
-- RunWield can make a documented support decision for at least one execution Agent/model preset based on the results.
+**Requirement: Compare real RunWield entry points.** Maintainers run equivalent scenarios through native RunWield and
+public ACP, including the compiled product. Reports identify the entry point and compare configuration, outcomes,
+failures, usage, and timing. A limited ACP pilot establishes only the workflows it exercises.
 
-## Out of Scope
+Runs use normal Agent Definitions, model resolution, protected tools, extensions, Session behavior, orchestration, and
+validation. Benchmark prompts retain the production system prompt and contain no hidden workflow instructions.
+Explicit benchmark-only tools or controlled inputs are recorded as methodology differences; normal clients keep their
+existing approval, validation, and scope protections.
 
-- A public model leaderboard.
-- General-purpose LLM benchmarking unrelated to RunWield Agent contracts.
-- Uploading user sessions or evaluation results to a hosted analytics service.
-- Treating model-judge output as the sole release gate.
-- Replacing automated unit, integration, architecture-boundary, or validation tests.
-- Guaranteeing that one benchmark predicts every repository or user workflow.
+**Requirement: Supply declared fixture decisions.** A fixture declares answers for interviews, verification-command
+selection, approval, and review. The run records the supplied answers or decision categories and rejects unexpected
+interactions. Unsupported interactions, user cancellation, timeout, protocol failure, process exit, and harness failure
+remain distinct. Planned-change review through ACP uses its production interaction path.
 
-## Dependencies and Sequencing
+**Initial native portfolio:**
 
-The [benchmark harness PRD](end-to-end-benchmark-harness-prd.md) defines how maintainers run and compare these
-evaluations. This PRD remains the measurement and support-policy foundation for
-`docs/prd/selective-execution-model-adaptation-prd.md`.
+- Router to Guide for read-only inquiry;
+- Router to Engineer, Task Completion, and Mechanical Validation;
+- Router to Planner, Plan review, Engineer, and Workflow Validation;
+- Operator completion and Scope Escalation;
+- cancellation during active work;
+- context pressure, mid-run compaction, and continuation;
+- resume and recoverable failure;
+- replay parity, interaction handling, and multi-Session isolation.
 
-Session Context Resilience can develop in parallel, but its long-run scenarios should become part of this shared
-evaluation portfolio.
+Each scenario names its isolated fixture, request, declared interactions, Routing Intent or starting Agent, expected
+terminal tools and outcome, deterministic verification, timeout, cleanup policy, and scorecard. Start with a small suite
+that maintainers can inspect, then expand after failure classification is trustworthy.
+
+**Acceptance scenarios:**
+
+- Given an equivalent supported scenario through native RunWield and compiled ACP, both reach the intended repository
+  and workflow outcomes, with their entry points named in the report.
+- Given a planned workflow that asks an undeclared approval question, the run reports an unexpected interaction rather
+  than selecting an answer.
+- Given a final answer that claims success but failed validation, the report retains the failed workflow verdict.
+
+### Reports and comparison
+
+**Scope and maturity:** Target.
+
+**Requirement: Compare a candidate with a fixed baseline.** Local reports include human-readable summaries and
+machine-readable results. They preserve observed Agent changes, tool outcomes, validation verdicts, final workflow
+status, elapsed time, usage, intervention counts, methodology differences, and enough trajectory detail for diagnosis.
+Comparisons show improvements, regressions, variance, and missing results separately.
+
+Detailed fixtures and outputs belong to the deliberate evaluation run. Passive
+[workflow metrics](runwield-core-prd.md#local-workflow-metrics) remain content-free; private requests, prompts, code,
+diffs, tool arguments and results, and credentials stay out of that stream.
+
+**Acceptance scenarios:**
+
+- Given a candidate with better accuracy but more completion failures, the comparison exposes both outcomes.
+- Given missing or infrastructure-failed trials, the report keeps them visible rather than counting them as Agent
+  success or omitting them.
+- Given a detailed local evaluation, passive metrics still contain no private benchmark content.
+
+### External benchmark adapters
+
+**Scope and maturity:** Target after the native suite.
+
+**Requirement: Preserve canonical benchmark methodology.** Established datasets, task preparation, verification, retry
+semantics, and reporting can be reused when suitable. Reports disclose deviations and narrower workflow coverage.
+External benchmarks complement the RunWield scorecards.
+
+1. **Aider Polyglot over ACP:** Use canonical Aider Polyglot / Exercism exercises through `wld acp`, protected tests,
+   and two attempts: an initial attempt and one retry with test feedback. Reports separate first-pass success, retry
+   success, failure, timeout, and infrastructure error, with usage and elapsed time. Long batches resume with completed
+   results intact. An initial QUICK_FIX/Engineer pilot measures implementation and adaptation, not the complete planned
+   workflow.
+2. **Harbor / Terminal-Bench:** Add longer containerized tasks when RunWield can run representatively in that
+   environment. Keep canonical instructions, verifiers, and result conventions.
+
+Reuse requires the applicable source and dataset licenses, attribution, citations, NOTICE content, and changed-file
+notices. The earlier proposals treated little-coder as Apache-2.0 reference material, not a complete maintained
+six-language runner. Confirm current source and dataset terms before adopting them; prefer canonical upstream fixtures
+and methodology over a copied reference snapshot.
+
+**Acceptance scenarios:**
+
+- Given an Aider exercise that fails its first test attempt, the run supplies test feedback once, records the second
+  outcome separately, and preserves both on batch resume.
+- Given a task requiring changed methodology, its report names the change and limits the comparison claim.
+
+## Delivery and Success Measures
+
+1. Establish repeatable results for one small native workflow and compare it with compiled ACP on a supported path.
+2. Expand to the native portfolio and Agent scorecards. Evaluate
+   [Session Context Resilience](session-context-resilience-prd.md) and
+   [Selective Execution Model Adaptation](selective-execution-model-adaptation-prd.md) against fixed baselines.
+3. Add Aider Polyglot, then Harbor / Terminal-Bench when its environment supports representative product behavior.
+
+Success means maintainers detect routing and completion regressions, attribute failures, compare validated adaptation
+outcomes with costs and variance, resume interrupted batches, and make at least one documented execution Agent/model
+preset support decision from the evidence. Baseline quality thresholds remain to be agreed; no numeric target is invented here.
+
+## Risks and Non-goals
+
+Fixture leakage can invalidate results; keep answers outside Agent reach. Sampling variance can hide regressions; use
+paired comparisons and repeated trials. Infrastructure failures can resemble model failures; keep their causes
+separate. Methodology shortcuts can overstate product coverage; disclose controlled inputs and tested workflow scope.
+
+Out of scope: a public leaderboard, raw-model benchmarking, hosted analytics uploads, model judges as the sole release
+gate, replacing source tests or canonical external verifiers, running full external corpora in normal CI, and claiming
+one benchmark predicts every repository or workflow.
+
+## Proposed Domain Language
+
+**Agent Behavior Evaluation:** A repeatable assessment of whether an Agent/model configuration fulfills its RunWield
+role contract and reaches the expected workflow outcome. _Avoid_: generic model benchmark, model leaderboard, unit test.
+Affected terms: Agent, Model Adaptation Profile, Workflow Validation. The scorecard measures the Agent and workflow;
+provider compatibility alone does not establish support.
+
+**End-to-End Benchmark Harness:** The RunWield-owned evaluation capability for running isolated scenarios, collecting
+outcomes, and comparing configurations through production-representative entry points. _Avoid_: replacement Runtime,
+raw-model runner. It runs the Agent Behavior Evaluation scorecards and preserves the existing Session and workflow
+boundaries.

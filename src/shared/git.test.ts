@@ -34,10 +34,7 @@ test("assertGitRepository throws a typed friendly error outside Git", async () =
         }
         assertInstanceOf(caught, GitRepositoryRequiredError);
         assertEquals(isGitRepositoryRequiredError(caught), true);
-        assertStringIncludes(
-            /** @type {Error} */ (caught).message,
-            "Testing Git-required behavior requires a Git repository",
-        );
+        assertStringIncludes(caught.message, "Testing Git-required behavior requires a Git repository");
     } finally {
         await fsRm(dir, { recursive: true });
     }

@@ -31,7 +31,7 @@ affectedPaths:
     - "src/shared/workflow/validation-*.ts"
     - "src/shared/workflow/validation-test-helpers.js"
     - "src/shared/workflow/validation-*.test.*"
-    - "src/shared/session/architecture-boundary.test.js"
+    - "src/shared/session/architecture-boundary.test.ts"
     - "src/shared/workflow/architecture-boundary.test.ts"
 executionAgent: "engineer"
 collaborationRecommendation: "autonomous"
@@ -224,7 +224,7 @@ compatibility constraint, not a document to revise.
   composition without opening a browser or calling a model.
 - `src/shared/work-records/mnemoteca-port.ts#WorkRecordMnemotecaPort` — shared external Mnemoteca process execution for
   Work Records and Sleep.
-- `src/shared/session/architecture-boundary.test.js` and `src/shared/workflow/architecture-boundary.test.ts` — existing
+- `src/shared/session/architecture-boundary.test.ts` and `src/shared/workflow/architecture-boundary.test.ts` — existing
   import and ownership fences for the validation engine.
 - Existing network, browser, clipboard, CI, process, and model-discovery ports — retain them when their complete member
   set belongs to one external owner.
@@ -289,7 +289,7 @@ session-independent validation extraction rather than replacing their historical
   dispatcher that routes an operation discriminator to both external and RunWield-owned work. They must pass for exact
   cohesive external declarations and ordinary immutable data.
 - Automated focused behavior:
-  `deno run -A scripts/run-tests.js src/shared/git-port.test.ts src/shared/package-resources.test.ts src/shared/extensions/wld-extension-manifest.test.ts src/cmd/load-plan/plan-recovery-flow.test.ts src/cmd/auth/index.test.ts src/cmd/sleep/index.test.ts src/cmd/router/index.test.ts src/cmd/agents/index.test.ts src/cmd/init/index.test.ts src/cmd/init/init-verification-confirmation.integration.test.ts src/cmd/resume/index.test.ts src/ui/theme/theme-discovery.test.ts src/ui/tui/boot-banner.test.ts src/ui/tui/system-notifications.test.ts src/shared/session/architecture-boundary.test.js src/shared/workflow/architecture-boundary.test.ts`.
+  `deno run -A scripts/run-tests.js src/shared/git-port.test.ts src/shared/package-resources.test.ts src/shared/extensions/wld-extension-manifest.test.ts src/cmd/load-plan/plan-recovery-flow.test.ts src/cmd/auth/index.test.ts src/cmd/sleep/index.test.ts src/cmd/router/index.test.ts src/cmd/agents/index.test.ts src/cmd/init/index.test.ts src/cmd/init/init-verification-confirmation.integration.test.ts src/cmd/resume/index.test.ts src/ui/theme/theme-discovery.test.ts src/ui/tui/boot-banner.test.ts src/ui/tui/system-notifications.test.ts src/shared/session/architecture-boundary.test.ts src/shared/workflow/architecture-boundary.test.ts`.
 - Automated execution and validation behavior:
   `deno run -A scripts/run-tests.js src/shared/workflow/workflow.test.js src/shared/workflow/execution-progress.test.ts src/shared/workflow/plan-location.integration.test.ts src/shared/workflow/authority-continuation.integration.test.ts src/shared/workflow/orchestrator.test.ts src/shared/workflow/validation-*.test.*`.
 - Automated repository gates: `deno task seams:check`, then `deno task ci`. The seam check reports zero without changing

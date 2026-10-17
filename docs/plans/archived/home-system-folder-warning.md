@@ -21,16 +21,13 @@ devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-10-11"
 origin: "internal"
+status: "ready_for_work"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/home-system-folder-warning"
-validatedCommit: "d19d13fbbbbc34cb4b70ae8642146c0fc6b77ffc"
-workRecord:
-    status: "generated"
-    recordId: "0f8a6806-e5c2-4ebf-a95c-b371a7ce5ddb"
-    path: "docs/work-records/2026-10-12-home-and-system-folder-consent-across-cli-and-workspace.md"
-    lastAttemptAt: "2026-10-12T14:22:13.205Z"
-status: "verified"
+archivedAt: "2026-10-16T19:04:59.594Z"
+archivedFromStatus: "verified"
+archivedFromPath: "docs/plans/home-system-folder-warning.md"
 ---
 
 # Warn Before Using Home or System Folders
@@ -54,10 +51,10 @@ The user chose these boundaries:
 
 Owning capabilities:
 
-- [Core: Project context and initialization](../prd/runwield-core-prd.md#project-context-and-initialization): add
+- [Core: Project context and initialization](../../prd/runwield-core-prd.md#project-context-and-initialization): add
   **Confirm home and system folder use**; change automatic eligibility under **Offer an optional guided first change**.
   Preserve **Confirm Init's project file changes mechanically**. Folder consent does not replace Init consent.
-- [Workspace: Project access and navigation](../prd/runwield-workspace-prd.md#project-access-and-navigation): add
+- [Workspace: Project access and navigation](../../prd/runwield-workspace-prd.md#project-access-and-navigation): add
   **Confirm home and system Project roots**. Preserve **Limit Workspace reach to registered Projects**, root validation,
   deduplication, and relink safeguards.
 

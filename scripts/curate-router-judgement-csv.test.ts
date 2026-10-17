@@ -22,7 +22,10 @@ test("curateRows collapses duplicate greetings and preserves existing human labe
 
     assertEquals(result.removedGreetings, 1);
     assertEquals(result.seededHumanJudgements, 1);
-    assertEquals(result.rows.map((row) => row.decisionId), ["d1", "d3"]);
+    assertEquals(
+        result.rows.map((row) => row.decisionId),
+        ["d1", "d3"],
+    );
     assertEquals(result.rows[0].humanJudgement, "INQUIRY");
     assertEquals(result.rows[1].humanJudgement, "FEATURE");
     assertEquals(result.rows[1].humanNotes, "manual");
