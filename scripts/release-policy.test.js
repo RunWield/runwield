@@ -166,7 +166,7 @@ test("release workflow runs source, Golden, and binary qualification in parallel
     const build = workflow.slice(workflow.indexOf("    build:"), workflow.indexOf("    assets:"));
     assertStringIncludes(build, "needs: metadata");
     const assets = workflow.slice(workflow.indexOf("    assets:"), workflow.indexOf("    windows-package-check:"));
-    assertStringIncludes(assets, "needs: [metadata, build]");
+    assertStringIncludes(assets, "needs: [metadata, build, docs-artifact]");
     const release = workflow.slice(workflow.indexOf("    release:"), workflow.indexOf("    winget-package:"));
     for (const gate of [
         "ci",
@@ -290,4 +290,22 @@ test("release executables use pinned Bun while native package and Stable channel
     for (const target of ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "windows-x64"]) {
         assertStringIncludes(build, `bun_target: bun-${target}`);
     }
+});
+
+test("Stable policy owns docs artifacts, branch deployment, and CI integration recovery", async () => {
+    const policy = (await fsReadFile("docs/releasing.md", "utf8")).replace(/\s+/g, " ");
+    for (const phrase of [
+        "Stable docs are qualified release artifacts",
+        "Candidates never build or publish docs assets",
+        "exactly one merge commit per Stable release",
+        "CI merges the final remote Release Branch tip into `main`",
+        "CI waits for that deployment",
+        "gh workflow run docs.yml --ref docs/stable -f tag=<stable-tag>",
+        "git merge-base --is-ancestor origin/release/vX.Y.Z origin/main",
+        "Only after the ancestry check succeeds",
+        "Local branch cleanup remains a separate operator step",
+    ])
+        assertStringIncludes(policy, phrase);
+    assertEquals(policy.includes("gh workflow run docs.yml --ref main"), false);
+    assertEquals(policy.includes("merge and branch cleanup are separate operator steps"), false);
 });

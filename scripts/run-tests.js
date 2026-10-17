@@ -5,6 +5,7 @@ import {
     mkdir as fsMkdir,
     mkdtemp as fsMkdtemp,
     readdir as fsReaddir,
+    readFile as fsReadFile,
     rm as fsRm,
     stat as fsStat,
     writeFile as fsWriteFile,
@@ -232,21 +233,56 @@ function isExcluded(file, excludedPaths) {
  * @typedef {Object} SuiteOptions
  * @property {boolean} [failFast]
  * @property {string} [timingsFile]
- * @property {string} [reportDir]
+ * @property {string} reportDir
  * @property {string} [shard]
  * @property {string} [filter]
  */
 
 /**
+ * Read the pinned Bun reporter's summary and require recorded test cases.
+ * Assertions may be zero for node:assert tests, so they are not a completion signal.
+ * @param {string} xml
+ */
+function readBunTestReport(xml) {
+    const markup = xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->/g, "");
+    const summary = /<testsuites\b([^>]*)>/.exec(markup)?.[1];
+    if (!summary || !/<\/testsuites>\s*$/.test(markup)) throw new Error("Incomplete Bun JUnit report.");
+    /** @param {string} name */
+    const count = (name) => {
+        const value = new RegExp(`(?:^|\\s)${name}="(\\d+)"`).exec(summary)?.[1];
+        if (value === undefined) throw new Error(`Missing JUnit ${name} count.`);
+        return Number(value);
+    };
+    const tests = count("tests");
+    const skipped = count("skipped");
+    if (tests === 0 || tests !== [...markup.matchAll(/<testcase\b/g)].length || skipped > tests) {
+        throw new Error("JUnit report contains no tests or inconsistent test counts.");
+    }
+    if (count("failures") > 0) throw new Error("JUnit report contains failing tests.");
+    return { tests, skipped };
+}
+
+/**
  * @param {string} sandboxRoot
- * @param {string[]} [roots]
- * @param {string[]} [excludedPaths]
- * @param {SuiteOptions} [options]
+ * @param {string[]} roots
+ * @param {string[]} excludedPaths
+ * @param {SuiteOptions} options
  * @returns {Promise<number>} process exit code
  */
-async function runIsolatedSuite(sandboxRoot, roots = [REPO_ROOT], excludedPaths = [], options = {}) {
+async function runIsolatedSuite(sandboxRoot, roots, excludedPaths, options) {
     const suiteStart = performance.now();
-    if (options.reportDir) await fsMkdir(options.reportDir, { recursive: true });
+    const reportDir = options.reportDir;
+    await fsMkdir(reportDir, { recursive: true });
+    // This directory represents one invocation, including files never scheduled
+    // after fail-fast. Do not leave a previous run's XML or summary as evidence.
+    for (const entry of await fsReaddir(reportDir, { withFileTypes: true })) {
+        if (
+            entry.isFile() &&
+            (entry.name.endsWith(".xml") || entry.name.endsWith(".xml.log") || entry.name === "run.json")
+        ) {
+            await fsRm(join(reportDir, entry.name));
+        }
+    }
     const discovered = new Set();
     const repositoryFiles = (await listCiFiles(REPO_ROOT)).map((file) => resolve(REPO_ROOT, file));
     for (const root of roots) {
@@ -295,6 +331,7 @@ async function runIsolatedSuite(sandboxRoot, roots = [REPO_ROOT], excludedPaths 
     /** @type {Array<{ file: string, durationMs: number }>} */
     const observedTimings = [];
     let completed = 0;
+    let skippedFiles = 0;
     let stopScheduling = false;
     const startedAt = Date.now();
 
@@ -320,12 +357,11 @@ async function runIsolatedSuite(sandboxRoot, roots = [REPO_ROOT], excludedPaths 
             env.WLD_TEST_SHARD = "";
             if (goldenFixtureRoot) env.WLD_GOLDEN_FIXTURE_ROOT = goldenFixtureRoot;
             slotRuns += 1;
-            const reportArgs = options.reportDir
-                ? [
-                      "--reporter=junit",
-                      `--reporter-outfile=${join(options.reportDir, `${name.replace(/[^a-zA-Z0-9.-]/g, "_")}.xml`)}`,
-                  ]
-                : [];
+            const reportPath = join(reportDir, `${name.replace(/[^a-zA-Z0-9.-]/g, "_")}.xml`);
+            // Each child writes into its fresh sandbox; report files from other
+            // invocations can never satisfy this execution's evidence check.
+            const freshReportPath = join(env.WLD_TEST_SANDBOX_HOME, "junit.xml");
+            const reportArgs = ["--reporter=junit", `--reporter-outfile=${freshReportPath}`];
             const filterArgs =
                 options.filter === undefined
                     ? []
@@ -356,16 +392,34 @@ async function runIsolatedSuite(sandboxRoot, roots = [REPO_ROOT], excludedPaths 
                 failureLabel: `tests (${name})`,
                 timeoutMs: TEST_FILE_TIMEOUT_MS,
             });
+            let evidenceFailure = "";
+            let skipped = false;
+            try {
+                const xml = await fsReadFile(freshReportPath, "utf8");
+                await fsCopyFile(freshReportPath, reportPath);
+                const evidence = readBunTestReport(xml);
+                skipped = evidence.tests === evidence.skipped;
+            } catch (error) {
+                evidenceFailure = `Missing or invalid fresh JUnit test evidence: ${error instanceof Error ? error.message : String(error)}`;
+            }
             const durationMs = Date.now() - fileStartedAt;
             observedTimings.push({ file: name, durationMs });
 
             completed += 1;
-            if (result.code !== 0) {
+            if (result.code !== 0 || evidenceFailure) {
+                if (evidenceFailure) {
+                    const diagnosticPath = `${reportPath}.log`;
+                    await fsWriteFile(diagnosticPath, `${evidenceFailure}\n${result.stdout}${result.stderr}`);
+                    console.error(`${name}: ${evidenceFailure}`);
+                    result.failureLogPath ||= diagnosticPath;
+                }
                 failures.push({
                     file: name,
                     failureLogPath: result.failureLogPath || "failure log unavailable",
                 });
                 if (options.failFast) stopScheduling = true;
+            } else if (skipped) {
+                skippedFiles += 1;
             }
         }
     };
@@ -388,7 +442,8 @@ async function runIsolatedSuite(sandboxRoot, roots = [REPO_ROOT], excludedPaths 
                     shard: options.shard || null,
                     completed,
                     failed: failures.length,
-                    skipped: files.length - completed,
+                    passed: completed - failures.length - skippedFiles,
+                    skipped: files.length - completed + skippedFiles,
                     files: observedTimings,
                 },
                 null,
@@ -398,8 +453,8 @@ async function runIsolatedSuite(sandboxRoot, roots = [REPO_ROOT], excludedPaths 
     }
     const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
     console.log(
-        `\n${failures.length === 0 ? "ok" : "FAILED"} | ${completed - failures.length} files passed | ` +
-            `${failures.length} failed | ${files.length - completed} skipped (${seconds}s, ${concurrency} at a time)`,
+        `\n${failures.length === 0 ? "ok" : "FAILED"} | ${completed - failures.length - skippedFiles} files passed | ` +
+            `${failures.length} failed | ${files.length - completed + skippedFiles} skipped (${seconds}s, ${concurrency} at a time)`,
     );
     return failures.length === 0 ? 0 : 1;
 }

@@ -33,11 +33,9 @@ const testDir = fsMkdtempSync(join(tmpdir(), "runwield-fixture-"));
 const testStatePath = join(testDir, "init-state.json");
 _setTestStatePath(testStatePath);
 
-/**
- * @param {string} name
- * @param {() => Promise<void> | void} fn
- */
-function initStateTest(name, fn) {
+type InitStateTestBody = () => Promise<void> | void;
+
+function initStateTest(name: string, fn: InitStateTestBody) {
     test(name, () => withProcessGlobalTestLock(async () => await fn()));
 }
 

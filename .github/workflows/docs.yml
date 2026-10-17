@@ -1,26 +1,17 @@
 name: publish-docs
+run-name: docs ${{ inputs.tag || 'correction' }} ${{ inputs.request || github.sha }}
 
 on:
-    workflow_call:
-        inputs:
-            tag:
-                required: true
-                type: string
-            bootstrap:
-                required: false
-                default: false
-                type: boolean
     workflow_dispatch:
         inputs:
             tag:
                 description: Stable release to document; leave empty for GitHub latest
                 required: false
                 type: string
-            bootstrap:
-                description: Create docs/stable and backport the site from this revision
+            request:
+                description: Release workflow correlation ID
                 required: false
-                default: false
-                type: boolean
+                type: string
     push:
         branches:
             - docs/stable
@@ -31,8 +22,6 @@ on:
             - "scripts/check-public-docs.ts"
             - "scripts/docs-dev.ts"
             - "scripts/verify-docs-source.ts"
-            - "docs-site/bun.lock"
-            - "docs-site/bunfig.toml"
 
 permissions:
     contents: read
@@ -42,74 +31,8 @@ concurrency:
     cancel-in-progress: false
 
 jobs:
-    sync:
-        if: github.event_name != 'push' || github.ref != 'refs/heads/docs/stable'
-        runs-on: ubuntu-latest
-        permissions:
-            contents: write
-        outputs:
-            tag: ${{ steps.release.outputs.tag }}
-            sha: ${{ steps.source.outputs.sha }}
-            tooling_sha: ${{ steps.tooling.outputs.sha }}
-        steps:
-            - name: Checkout workflow revision
-              uses: actions/checkout@v5
-              with:
-                  fetch-depth: 0
-
-            - name: Record immutable tooling revision
-              id: tooling
-              run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-            - name: Select latest Stable release
-              id: release
-              env:
-                  GH_TOKEN: ${{ github.token }}
-                  REQUESTED_TAG: ${{ inputs.tag }}
-              run: |
-                  set -euo pipefail
-                  latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft --jq 'select(.isPrerelease == false and .isDraft == false) | .tagName')
-                  tag=${REQUESTED_TAG:-$latest}
-                  test -n "$tag"
-                  test "$tag" = "$latest" || { echo "Refusing to replace current docs with $tag; latest is $latest" >&2; exit 1; }
-                  gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft --jq 'select(.isPrerelease == false and .isDraft == false)' >/dev/null
-                  git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
-                  echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-            - name: Setup Bun
-              uses: oven-sh/setup-bun@v2
-              with:
-                  bun-version-file: .bun-version
-
-            - name: Install frozen dependencies
-              run: bun run install:locked
-
-            - name: Verify complete qualified release assets
-              env:
-                  GH_TOKEN: ${{ github.token }}
-                  RELEASE_TAG: ${{ steps.release.outputs.tag }}
-              run: |
-                  set -euo pipefail
-                  gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP/docs-release-assets"
-                  gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/docs-release.json"
-                  bun scripts/release-assets.js \
-                    "$RUNNER_TEMP/docs-release-assets" "$RUNNER_TEMP/verified-docs-release" \
-                    "$RELEASE_TAG" published "$RUNNER_TEMP/docs-release.json"
-
-            - name: Reconcile Stable source and documentation corrections
-              run: >-
-                  bash scripts/reconcile-docs-branch.sh
-                  '${{ steps.release.outputs.tag }}'
-                  '${{ inputs.bootstrap || false }}'
-                  '${{ github.sha }}'
-
-            - name: Record exact documentation source
-              id: source
-              run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
     deploy:
-        if: ${{ !cancelled() && (needs.sync.result == 'success' || needs.sync.result == 'skipped') }}
-        needs: sync
+        if: github.ref == 'refs/heads/docs/stable'
         runs-on: ubuntu-latest
         permissions:
             contents: read
@@ -122,15 +45,14 @@ jobs:
             - name: Checkout exact documentation source
               uses: actions/checkout@v5
               with:
-                  ref: ${{ needs.sync.outputs.sha || github.sha }}
+                  ref: ${{ github.sha }}
                   path: source
                   fetch-depth: 0
 
             - name: Checkout Bun documentation tooling
               uses: actions/checkout@v5
               with:
-                  # Push corrections use the current default-branch toolchain, never old Stable scripts.
-                  ref: ${{ needs.sync.outputs.tooling_sha || github.event.repository.default_branch }}
+                  ref: ${{ github.event.repository.default_branch }}
                   path: tooling
                   persist-credentials: false
 
@@ -143,6 +65,23 @@ jobs:
               working-directory: tooling
               run: bun run install:locked
 
+            - name: Select latest Stable release
+              working-directory: source
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  REQUESTED_TAG: ${{ inputs.tag }}
+              run: |
+                  set -euo pipefail
+                  test "$GITHUB_REF" = refs/heads/docs/stable
+                  latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft --jq 'select(.isPrerelease == false and .isDraft == false) | .tagName')
+                  tag=${REQUESTED_TAG:-$latest}
+                  test -n "$tag"
+                  test "$tag" = "$latest" || { echo "Refusing to replace current docs with $tag; latest is $latest" >&2; exit 1; }
+                  documented=$(bun -e 'console.log(JSON.parse(await Bun.file("docs-site/release.json").text()).version)')
+                  test "$tag" = "$documented"
+                  gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft --jq 'select(.isPrerelease == false and .isDraft == false)' >/dev/null
+                  git fetch origin "refs/tags/$tag:refs/tags/$tag"
+
             - name: Verify documentation source and qualified release
               working-directory: source
               env:
@@ -150,24 +89,49 @@ jobs:
               run: |
                   set -euo pipefail
                   documented=$(bun -e 'console.log(JSON.parse(await Bun.file("docs-site/release.json").text()).version)')
-                  latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft --jq 'select(.isPrerelease == false and .isDraft == false) | .tagName')
-                  test "$documented" = "$latest" || { echo "Documented $documented is stale; latest is $latest" >&2; exit 1; }
                   bun ../tooling/scripts/verify-docs-source.ts "$documented" "$(git rev-parse HEAD)"
                   gh release download "$documented" --dir "$RUNNER_TEMP/docs-release-assets"
                   gh api "repos/$GITHUB_REPOSITORY/releases/tags/$documented" > "$RUNNER_TEMP/docs-release.json"
                   bun ../tooling/scripts/release-assets.js \
                     "$RUNNER_TEMP/docs-release-assets" "$RUNNER_TEMP/verified-docs-release" \
                     "$documented" published "$RUNNER_TEMP/docs-release.json"
-                  source_ref=$(git rev-parse HEAD)
+
+            - name: Select qualified documentation bytes
+              id: asset
+              working-directory: source
+              env:
+                  EVENT_NAME: ${{ github.event_name }}
+              run: |
+                  set -euo pipefail
+                  documented=$(bun -e 'console.log(JSON.parse(await Bun.file("docs-site/release.json").text()).version)')
+                  archive="$RUNNER_TEMP/verified-docs-release/runwield-docs-$documented.tar.gz"
+                  rebuild=true
+                  if [ "$EVENT_NAME" = workflow_dispatch ] && [ -f "$archive" ]; then
+                    mkdir -p dist/docs
+                    tar -xzf "$archive" -C dist/docs
+                    recorded=$(bun -e 'console.log(JSON.parse(await Bun.file("dist/docs/release.json").text()).sourceRef)')
+                    version=$(bun -e 'console.log(JSON.parse(await Bun.file("dist/docs/release.json").text()).version)')
+                    test "$version" = "$documented"
+                    if [ "$recorded" = "$(git rev-parse HEAD)" ]; then rebuild=false; fi
+                  fi
+                  echo "rebuild=$rebuild" >> "$GITHUB_OUTPUT"
+
+            - name: Build and check documentation corrections
+              if: steps.asset.outputs.rebuild == 'true'
+              run: |
+                  set -euo pipefail
+                  # A correction or legacy release uses the current frozen tooling.
+                  # Remove extracted output before rebuilding a changed docs source.
+                  if [ -d source/dist/docs ]; then mv source/dist/docs "$RUNNER_TEMP/previous-docs-asset"; fi
+                  source_ref=$(git -C source rev-parse HEAD)
                   bun -e '
-                    const path = "docs-site/release.json";
+                    const path = "source/docs-site/release.json";
                     const release = JSON.parse(await Bun.file(path).text());
                     release.sourceRef = process.argv[1];
-                    await Bun.write(path, `${JSON.stringify(release, null, 2)}\n`);
+                    await Bun.write(path, JSON.stringify(release, null, 2) + "\n");
                   ' "$source_ref"
-
-            - name: Build and check documentation
-              run: bun tooling/scripts/build-stable-docs.ts source
+                  bun tooling/scripts/build-stable-docs.ts source
+                  cp source/docs-site/release.json source/dist/docs/release.json
 
             - name: Configure Pages
               uses: actions/configure-pages@v5

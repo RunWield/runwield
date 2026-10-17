@@ -1,4 +1,5 @@
 ---
+planId: "52058f1f-2c93-43f8-b725-a08ebf3090ff"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -12,12 +13,14 @@ affectedPaths:
     - "src/shared/workflow/plan-review-actions.ts"
     - "docs/prd/runwield-workspace-prd.md"
     - "docs/domain-language.md"
-devServerCommand: null
-devServerUrl: null
-devServerHmr: null
+executionAgent: "frontend-engineer"
+collaborationRecommendation: "pair"
 createdAt: "2026-10-13"
-status: "draft"
-planId: "52058f1f-2c93-43f8-b725-a08ebf3090ff"
+origin: "internal"
+status: "ready_for_work"
+userVerifiedAt: null
+targetBranch: "main"
+deliveryBranch: "plan/plan-question-blocks-in-browser-review"
 ---
 
 # Answer Planner questions inside the browser Plan review
@@ -74,8 +77,8 @@ A `wld-question` fenced block in a Plan:
 
 ### The block format
 
-A Plan Question uses the same question shape as `user_interview`. It is a fenced code block, so it stays readable in a
-terminal or on GitHub:
+A Plan Question is an embedded `user_interview`: the same question shape, placed in the Plan body instead of the
+conversation. It is a fenced code block, so it stays readable in a terminal or on GitHub:
 
 ````md
 ```wld-question
@@ -247,9 +250,10 @@ Deliberately not changed: the Plannotator submodule, the bundled Planner prompt
 - `docs/prd/runwield-workspace-prd.md` (Browser Plan review and workflow) and `docs/prd/runwield-core-prd.md` (Plan
   review) describe the delivered behavior with acceptance scenarios, and say that no bundled Agent writes question
   blocks yet.
-- `docs/domain-language.md` defines **Plan Question** (a `wld-question` block in a Plan that the owner answers in browser
-  review; resolved into question-and-answer text on approval) and states how it differs from the **User-Interview
-  Tool**.
+- `docs/domain-language.md` defines **Plan Question**: the Plan-surface form of the **User-Interview Tool**, an embedded
+  interview question written as a `wld-question` block in a Plan, answered by the owner in browser review, and resolved
+  into question-and-answer text on approval. The entry states how it differs from the User-Interview Tool (in the Plan
+  body and answered asynchronously, not a blocking tool call in the conversation).
 
 ## Verification Plan
 
@@ -292,5 +296,3 @@ rejection on approval, and single application of a repeated approval click. No e
 - **Sequence reviews.** Question blocks in Sequence child Plans are not resolved by this change; Sequence approval uses a
   different path. Reviewable assumption: not needed for the experiment.
 - **TUI review** shows the raw block. Acceptable while only the local Planner writes blocks.
-- **Assumption: the term "Plan Question"** is the canonical name. The glossary lists "Question" as an avoided alias for
-  the User-Interview Tool, so the new term needs the qualifier.

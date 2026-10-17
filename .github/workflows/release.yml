@@ -476,10 +476,74 @@ jobs:
                       runwield-windows-package.json
                       *.sha256
 
+    docs-artifact:
+        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' }}
+        needs: metadata
+        runs-on: ubuntu-latest
+        outputs:
+            sha: ${{ steps.prepare.outputs.sha }}
+        steps:
+            - name: Checkout release tooling
+              uses: actions/checkout@v5
+              with:
+                  ref: ${{ github.sha }}
+                  fetch-depth: 0
+                  path: tooling
+            - name: Checkout Stable source
+              uses: actions/checkout@v5
+              with:
+                  ref: ${{ needs.metadata.outputs.source_sha }}
+                  fetch-depth: 0
+                  path: source
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: tooling/.bun-version
+            - name: Install frozen dependencies
+              working-directory: tooling
+              run: bun run install:locked
+            - name: Prepare one documentation commit
+              id: prepare
+              working-directory: source
+              env:
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+              run: |
+                  set -euo pipefail
+                  sha=$(bash ../tooling/scripts/reconcile-docs-branch.sh "$RELEASE_TAG")
+                  echo "sha=$sha" >> "$GITHUB_OUTPUT"
+                  git update-ref refs/docs/prepared "$sha"
+                  git bundle create "$RUNNER_TEMP/prepared-docs.bundle" refs/docs/prepared "^$RELEASE_TAG"
+            - name: Build and package qualified documentation
+              if: needs.metadata.outputs.published != 'true'
+              env:
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+                  DOCS_SHA: ${{ steps.prepare.outputs.sha }}
+              run: |
+                  set -euo pipefail
+                  bun -e '
+                    const path = "source/docs-site/release.json";
+                    const release = await Bun.file(path).json();
+                    release.sourceRef = process.env.DOCS_SHA;
+                    await Bun.write(path, JSON.stringify(release, null, 2) + "\n");
+                  '
+                  bun tooling/scripts/build-stable-docs.ts source
+                  cp source/docs-site/release.json source/dist/docs/release.json
+                  mkdir docs-artifact
+                  tar -czf "docs-artifact/runwield-docs-$RELEASE_TAG.tar.gz" -C source/dist/docs .
+                  (cd docs-artifact && shasum -a 256 "runwield-docs-$RELEASE_TAG.tar.gz" > "runwield-docs-$RELEASE_TAG.tar.gz.sha256")
+            - uses: actions/upload-artifact@v5
+              if: needs.metadata.outputs.published != 'true'
+              with:
+                  name: wld-docs
+                  path: docs-artifact/*
+            - uses: actions/upload-artifact@v5
+              with:
+                  name: prepared-docs
+                  path: ${{ runner.temp }}/prepared-docs.bundle
+
     assets:
         runs-on: ubuntu-latest
-        if: ${{ !cancelled() && (needs.build.result == 'success' || needs.metadata.outputs.published == 'true') }}
-        needs: [metadata, build]
+        if: ${{ !cancelled() && (needs.build.result == 'success' || needs.metadata.outputs.published == 'true') && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
+        needs: [metadata, build, docs-artifact]
         steps:
             - name: Checkout release tooling
               uses: actions/checkout@v5
@@ -683,10 +747,11 @@ jobs:
                   bun run package:homebrew:check --tap homebrew-check
 
     release:
-        if: ${{ !cancelled() && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.windows-package-check.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.windows-checks.result == 'success' && needs.containers-checks.result == 'success' }}
+        if: ${{ !cancelled() && needs.ci.result == 'success' && needs.golden.result == 'success' && needs.release-check.result == 'success' && needs.assets.result == 'success' && needs.windows-package-check.result == 'success' && needs.native-package-check.result == 'success' && needs.homebrew-check.result == 'success' && needs.unix-checks.result == 'success' && needs.windows-checks.result == 'success' && needs.containers-checks.result == 'success' && (needs.docs-artifact.result == 'success' || (needs.metadata.outputs.kind == 'candidate' && needs.docs-artifact.result == 'skipped')) }}
         runs-on: ubuntu-latest
         needs:
             - metadata
+            - docs-artifact
             - ci
             - golden
             - release-check
@@ -933,16 +998,81 @@ jobs:
 
     publish-docs:
         if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
-        needs:
-            - metadata
-            - release
-        uses: ./.github/workflows/docs.yml
-        with:
-            tag: ${{ needs.metadata.outputs.tag }}
+        needs: [metadata, release, docs-artifact]
+        runs-on: ubuntu-latest
         permissions:
             contents: write
-            pages: write
-            id-token: write
+            actions: write
+        concurrency:
+            group: stable-docs-publication
+            cancel-in-progress: false
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version-file: .bun-version
+            - uses: actions/download-artifact@v5
+              with:
+                  name: prepared-docs
+                  path: prepared-docs
+            - name: Publish prepared documentation commit
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+                  DOCS_SHA: ${{ needs.docs-artifact.outputs.sha }}
+              run: |
+                  set -euo pipefail
+                  # Keep recovery tooling outside the tree that reconciliation checks out.
+                  cp scripts/reconcile-docs-branch.sh "$RUNNER_TEMP/reconcile-docs-branch.sh"
+                  git fetch prepared-docs/prepared-docs.bundle refs/docs/prepared
+                  for attempt in {1..3}; do
+                    latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+                    test "$RELEASE_TAG" = "$latest"
+                    git fetch origin docs/stable:refs/remotes/origin/docs/stable
+                    tip=$(git rev-parse origin/docs/stable)
+                    if ! git merge-base --is-ancestor "$tip" "$DOCS_SHA"; then
+                      DOCS_SHA=$(bash "$RUNNER_TEMP/reconcile-docs-branch.sh" "$RELEASE_TAG")
+                    fi
+                    if git push origin "$DOCS_SHA:refs/heads/docs/stable"; then exit 0; fi
+                  done
+                  echo "docs/stable kept advancing or rejected publication; retry this job without forcing the branch" >&2
+                  exit 1
+            - name: Dispatch and await documentation deployment
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+              run: |
+                  set -euo pipefail
+                  request="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+                  gh workflow run docs.yml --ref docs/stable -f tag="$RELEASE_TAG" -f request="$request"
+                  for attempt in {1..60}; do
+                    run=$(gh run list --workflow docs.yml --event workflow_dispatch --branch docs/stable --limit 100 \
+                      --json databaseId,displayTitle --jq ".[] | select(.displayTitle == \"docs $RELEASE_TAG $request\") | .databaseId")
+                    if [ -n "$run" ]; then
+                      gh run watch "$run" --exit-status --interval 15
+                      exit 0
+                    fi
+                    sleep 5
+                  done
+                  echo "Could not locate dispatched docs run for $request" >&2
+                  exit 1
+
+    integrate-release-branch:
+        if: ${{ !cancelled() && needs.metadata.outputs.kind == 'stable' && needs.release.result == 'success' }}
+        needs: [metadata, release]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            - name: Integrate and retire the Release Branch
+              env:
+                  RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+              run: bash scripts/integrate-release-branch.sh "$RELEASE_TAG"
 
     ci:
         if: always()

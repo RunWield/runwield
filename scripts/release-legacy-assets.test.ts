@@ -22,9 +22,9 @@ test("published recovery keeps immutable pre-metadata release archives", async (
         await fsMkdir(input);
         const sums = [];
         const assets = [];
-        for (
-            const name of releaseAssetNames(tag).filter((name) => !name.endsWith(".sha256") && name !== "SHA256SUMS")
-        ) {
+        for (const name of releaseAssetNames(tag).filter(
+            (name) => !name.endsWith(".sha256") && name !== "SHA256SUMS",
+        )) {
             const path = join(input, name);
             if (name.endsWith(".tar.gz")) {
                 const binary = join(root, "wld");

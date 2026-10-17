@@ -1,3 +1,4 @@
+import { DirectoryStartupCanceled } from "./directory-warning.ts";
 /** The slow interactive-session boundary used by CLI commands. */
 
 import { startInteractiveSession } from "./chat-session.ts";
@@ -20,6 +21,11 @@ export interface InteractiveSessionPort {
 
 /** Production composition for commands that launch the interactive TUI. */
 export const SYSTEM_INTERACTIVE_SESSION_PORT: InteractiveSessionPort = Object.freeze({
-    startInteractiveSession: (userRequest: string | null, options: InteractiveSessionOptions) =>
-        startInteractiveSession(userRequest, { ...options, browser: SYSTEM_BROWSER_PORT }),
+    startInteractiveSession: async (userRequest: string | null, options: InteractiveSessionOptions) => {
+        try {
+            return await startInteractiveSession(userRequest, { ...options, browser: SYSTEM_BROWSER_PORT });
+        } catch (error) {
+            if (!(error instanceof DirectoryStartupCanceled)) throw error;
+        }
+    },
 });

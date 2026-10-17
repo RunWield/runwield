@@ -3,12 +3,7 @@ import { readFile as fsReadFile } from "node:fs/promises";
 import { test } from "node:test";
 import { ok as assert } from "node:assert/strict";
 
-/**
- * @param {string} source
- * @param {string} marker
- * @returns {string}
- */
-function extractFunctionSource(source, marker) {
+function extractFunctionSource(source: string, marker: string): string {
     const start = source.indexOf(marker);
     assert(start >= 0, `${marker} must exist`);
     const openBrace = source.indexOf("{", start);

@@ -65,30 +65,36 @@ async function withOpenReview(run) {
                 const { operationId } = await opened.json();
                 let review;
                 for (let index = 0; index < 300; index++) {
-                    const live =
-                        await (await app.handler()(new Request(`${sessionBase}/live`, { headers: { cookie } }))).json();
+                    const live = await (
+                        await app.handler()(new Request(`${sessionBase}/live`, { headers: { cookie } }))
+                    ).json();
                     review = live.operation?.liveInteraction?.request;
                     if (review?.reviewUrl) break;
                     if (live.operation?.status === "failed") throw new Error(live.operation.error);
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
-                assert(review?.reviewUrl, "Plan review did not open");
+                assert(
+                    review?.reviewUrl,
+                    `Plan review did not open: ${JSON.stringify(app.sessionContinuation.getOperation(operationId))}`,
+                );
                 const answer = (requestId, response) =>
                     app.handler()(
-                        new Request(
-                            `${base}/session-operations/${operationId}/interactions/${review.id}/answer`,
-                            {
-                                method: "POST",
-                                headers,
-                                body: JSON.stringify({
-                                    runwieldSessionId: fixture.session.runwieldSessionId,
-                                    requestId,
-                                    response,
-                                }),
-                            },
-                        ),
+                        new Request(`${base}/session-operations/${operationId}/interactions/${review.id}/answer`, {
+                            method: "POST",
+                            headers,
+                            body: JSON.stringify({
+                                runwieldSessionId: fixture.session.runwieldSessionId,
+                                requestId,
+                                response,
+                            }),
+                        }),
                     );
-                await run({ fixture, review, operationId, app, answer });
+                let failure;
+                try {
+                    await run({ fixture, review, operationId, app, answer });
+                } catch (error) {
+                    failure = error;
+                }
                 let answeredRetry = false;
                 for (let index = 0; index < 300; index++) {
                     const operation = app.sessionContinuation.getOperation(operationId);
@@ -111,6 +117,7 @@ async function withOpenReview(run) {
                     await new Promise((resolve) => setTimeout(resolve, 10));
                 }
                 assert(app.sessionContinuation.getOperation(operationId).status !== "running", "Review did not settle");
+                if (failure) throw failure;
             } finally {
                 await app?.close();
                 store.close();
@@ -144,28 +151,71 @@ test("Workspace rejects an approval if the reviewed Plan body changes while the 
     });
 });
 
-test("Workspace sends review feedback images to the resumed planning Agent", async () => {
-    await withOpenReview(async ({ fixture, answer, app, operationId }) => {
-        const imagePath = join(fixture.projectRoot, "review.png");
-        const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-        await fsWriteFile(imagePath, Uint8Array.from(atob(png), (char) => char.charCodeAt(0)));
-        const response = await answer("image-feedback", {
-            approved: false,
-            feedback: "Please use this screenshot.",
-            images: [{ path: imagePath, name: "review.png" }],
+for (const includeApproved of [true, false]) {
+    test(`Workspace sends review feedback images to the resumed planning Agent (explicit false: ${includeApproved})`, async () => {
+        await withOpenReview(async ({ fixture, answer, app, operationId }) => {
+            const imagePath = join(fixture.projectRoot, "review.png");
+            const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+            await fsWriteFile(
+                imagePath,
+                Uint8Array.from(atob(png), (char) => char.charCodeAt(0)),
+            );
+            const response = await answer("image-feedback", {
+                ...(includeApproved ? { approved: false } : {}),
+                feedback: "Please use this screenshot.",
+                images: [{ path: imagePath, name: "review.png" }],
+            });
+            assertEquals(response.status, 202, await response.clone().text());
+            const deadline = performance.now() + 15_000;
+            while (!fixture.modelRequests.length && performance.now() < deadline) {
+                const operation = app.sessionContinuation.getOperation(operationId);
+                if (operation.status !== "running") break;
+                await new Promise((resolve) => setTimeout(resolve, 25));
+            }
+            assert(
+                fixture.modelRequests.length > 0,
+                `Planning Agent did not receive the feedback: ${JSON.stringify(app.sessionContinuation.getOperation(operationId))}`,
+            );
+            assertStringIncludes(fixture.modelRequests[0].messages, "Please use this screenshot.");
+            assertStringIncludes(fixture.modelRequests[0].messages, "image/png");
         });
-        assertEquals(response.status, 202, await response.clone().text());
-        const deadline = performance.now() + 15_000;
-        while (!fixture.modelRequests.length && performance.now() < deadline) {
-            const operation = app.sessionContinuation.getOperation(operationId);
-            if (operation.status !== "running") break;
-            await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-        assert(
-            fixture.modelRequests.length > 0,
-            `Planning Agent did not receive the feedback: ${JSON.stringify(app.sessionContinuation.getOperation(operationId))}`,
-        );
-        assertStringIncludes(fixture.modelRequests[0].messages, "Please use this screenshot.");
-        assertStringIncludes(fixture.modelRequests[0].messages, "image/png");
     });
-});
+}
+
+for (const approved of ["false", "true", 1, {}, [], null]) {
+    test(`Workspace rejects malformed Plan approval ${JSON.stringify(approved)} without consuming the review`, async () => {
+        await withOpenReview(async ({ fixture, answer, app, operationId, review }) => {
+            const before = await loadPlan(fixture.projectRoot, "saved");
+            const response = await answer("malformed-approval", { approved, approvalAction: "run" });
+            const nested = await answer("malformed-nested-approval", {
+                outcome: "accepted",
+                _meta: { approved, approvalAction: "run" },
+            });
+            const after = await loadPlan(fixture.projectRoot, "saved");
+            assertEquals(
+                response.status,
+                409,
+                JSON.stringify({
+                    approved,
+                    response: await response.clone().text(),
+                    beforeStatus: before.attrs.status,
+                    afterStatus: after.attrs.status,
+                    modelRequests: fixture.modelRequests.length,
+                }),
+            );
+            assertEquals(nested.status, 409, await nested.clone().text());
+            assertStringIncludes(await response.text(), "approved must be a boolean");
+            assertEquals(after.revision, before.revision);
+            assertEquals(after.attrs, before.attrs);
+            assertEquals(fixture.modelRequests.length, 0);
+            assertEquals(app.sessionContinuation.getOperation(operationId).liveInteraction.request.id, review.id);
+            const valid = await answer("valid-approval", {
+                approved: true,
+                approvalAction: "later",
+                executionAgent: "engineer",
+                collaborationRecommendation: "autonomous",
+            });
+            assertEquals(valid.status, 202, await valid.clone().text());
+        });
+    });
+}

@@ -298,6 +298,26 @@ Dashboard refreshes automatically while visible.
 
 **Scope and maturity:** Current.
 
+**Requirement: Confirm home and system Project roots.**
+
+Add and relink inspect the submitted root on the server using Core's
+[exact directory policy](runwield-core-prd.md#project-context-and-initialization). A classified root requires explicit
+Continue/Quit consent before the registration transaction writes Project records or root evidence. The server returns
+HTTP 409 `directory_confirmation_required` with warning text and an opaque acknowledgement bound to the submitted and
+canonical root. Retry rechecks that binding. Responses do not disclose the server home or resolved absolute paths.
+
+Both forms use the same accessible modal, initially focused on Quit, with keyboard containment, Escape dismissal, and
+focus return. Quit keeps the entered form values and makes no registration change. Pending requests prevent duplicate
+submission. Ordinary roots retain their existing one-request success contract. Existing Projects are not revoked.
+
+**Acceptance scenarios:**
+
+- Given an exact server home or a symlink to a listed root, add or relink returns confirmation-required with no writes.
+  Continue registers or relinks once; Quit or Escape keeps the form and existing Project unchanged.
+- Given a changed submitted root or retargeted symlink, an earlier acknowledgement cannot authorize the new target.
+  Existing authentication, request-forgery protection, deduplication, and retarget conflicts still apply.
+- Given an ordinary descendant of a listed root, add and relink need no folder acknowledgement.
+
 **Requirement: Workspace reaches registered Projects.** For each registered Project, Workspace shows:
 
 - registration and RunWield initialization health;
@@ -470,6 +490,10 @@ shows the latest saved conversation and current work, and the owner continues wh
 Replayed task results stay history. [Pair execution](runwield-core-prd.md#frontend-engineering-and-pair-execution)
 uses the same timeline and composer; a pending checkpoint survives refresh.
 
+**Requirement: Server shutdown cancels local work before waiting.** Stopping the Workspace server cancels its active
+Session turns and pending browser interactions before it waits for accepted operations to settle. The coordination
+store stays open until settlement finishes. Shutdown does not wait for a browser answer.
+
 **Requirement: Workspace stays current through repeated use.** Repeated visits to Sessions, Plans, reviews, and
 questions show current content without a restart, and memory from completed work does not accumulate per visit. A slow
 or disconnected observer receives the latest state when it catches up, and live work continues. This is not a
@@ -484,6 +508,8 @@ universal process-memory limit; memory use of live observation remains a targete
 - Given an attachment the backend cannot accept, the request is rejected with the draft intact, for new and resumed
   Sessions.
 - Given a running Session and an empty composer, the primary action stops the work; typing turns it into Send or Steer.
+- Given an active model turn or an unanswered browser question, stopping the Workspace server cancels the wait and
+  settles accepted work before it closes the coordination store.
 - Given a phone, the composer stays visible above the keyboard and the draft and history position survive closing it.
 - Given a Session switched from Ideator to Planner, the sidebar follows the new Plan as `plan_written` attaches it,
   without a reload, on local and attached browsers.
@@ -626,7 +652,9 @@ feedback, approves for later, or approves and runs the current Plan:
 Only Approve & Run authorizes execution, and only for the current Session; approval gives no other Session permission
 to run the Plan. If the Plan changed after the owner opened it, Workspace shows the
 changed content before it accepts approval. A decision on a review that the TUI or an ACP client opened uses the
-originally reviewed document. A repeated delivery of the same click runs the action once.
+originally reviewed document. A repeated delivery of the same click runs the action once. If a review request supplies
+an approval value, it must be a boolean; malformed approval values leave the Plan and live review unchanged. Feedback
+and review chat may omit approval.
 
 **Requirement: Full-window review.** Plan and Code Review replace the Workspace shell with the full-window review
 layout: their own toolbar, Contents or Files on the left, and Annotations or chat on the right. Left sidebars use square
@@ -642,6 +670,11 @@ in Code Review, and Contents and Annotations in Plan Review, start collapsed; ea
 workbench below the header, and opening one closes the other. The compact Plan Review header keeps the title, approval,
 and the View, Edit, and Changes controls, with execution and annotation tools in menus. On a phone, the Plan fits the
 screen with its actions reachable, and the Code Review diff stays readable below its file list.
+
+**Requirement: Contained working-file reads.** Code Review validates the OS-resolved path of the opened file before
+reading response bytes from that same file object. A concurrent directory replacement cannot redirect the read outside
+the Project. If the host cannot verify the opened object's containment, it refuses the read. Reads do not modify files
+or change access controls.
 
 **Requirement: Chat in the review.** Plan and Code Review chats accept attached annotations without a typed message:
 attaching annotations enables Send and its keyboard shortcut. The Agent receives the notes as review context, and the
@@ -705,8 +738,13 @@ every action stays available.
 
 - Given a Workspace Plan or Code Review, submitting approval or feedback returns to its Session in the same tab; a
   failed decision stays in review.
+- Given an inside-Project working file, Code Review returns its content. A static outside-Project symlink is rejected.
+- Given concurrent directory changes during a working-file read, Code Review returns only contained content or refuses
+  the read; outside files stay unchanged.
 - Given a Plan changed since the review opened, approval shows the changed content first.
 - Given the same approval click delivered twice, the action runs once; Approve for Later starts no execution.
+- Given a live review receives a nonboolean approval value, the request fails without changing the Plan or consuming the
+  review; a subsequent valid decision still succeeds.
 - Given a saved Epic in review, two message-and-reply rounds with Architect stay on the page, and explicit review
   actions still decide the review.
 - Given Unified selected, a reload keeps Unified with Annotations closed; the first note opens Annotations and a later
