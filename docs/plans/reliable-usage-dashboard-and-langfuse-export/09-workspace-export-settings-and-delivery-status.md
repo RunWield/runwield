@@ -4,12 +4,12 @@ classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
 affectedPaths:
-    - "src/ui/workspace/pages/"
-    - "src/ui/workspace/routes/owner-api.js"
-    - "src/ui/workspace/server/"
-    - "src/ui/design-system/"
-    - "docs/prd/runwield-workspace-prd.md"
-    - "docs/design-system.md"
+  - "src/ui/workspace/pages/"
+  - "src/ui/workspace/routes/owner-api.js"
+  - "src/ui/workspace/server/"
+  - "src/ui/design-system/"
+  - "docs/prd/runwield-workspace-prd.md"
+  - "docs/design-system.md"
 executionAgent: "frontend-engineer"
 collaborationRecommendation: "pair"
 devServerCommand: "bun run workspace:dev"
@@ -21,7 +21,7 @@ origin: "internal"
 parentPlan: "reliable-usage-dashboard-and-langfuse-export"
 order: 9
 dependencies:
-    - "08-langfuse-exporter-package"
+  - "08-langfuse-exporter-package"
 userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
 ---
