@@ -156,6 +156,13 @@ Plan and Code Review share `ReviewCompletion` for successful decisions. Workspac
 Session in the same tab; standalone reviews retain the completion overlay and its auto-close preference. Workspace must
 never mount the standalone auto-close behavior.
 
+### Embedded Plan Questions
+
+Each Plan Question uses one `.rw-question-card` around a `.rw-question-field` fieldset. The prompt is its legend.
+Inside `.rw-plan-question-mounted`, radio options are borderless rows, not separate cards. The Other text field has no
+border or nested surface; its focus outline stays visible. Use the shared `--rw-*` surface, text, border, and accent
+tokens.
+
 ### Delivery evidence card
 
 Completed workflow evidence appears within the owning Session timeline as `.rw-delivery-report`, using semantic surface,

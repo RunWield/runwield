@@ -178,11 +178,10 @@ const INITIAL_PLAN_FIXTURE = DENSE_PLAN_FIXTURE.replace(
     'summary: "Initial fixture plan before review feedback"',
 );
 
-const SECOND_PLAN_FIXTURE = PLAN_FIXTURE
-    .replace(
-        'summary: "Fixture test plan for exercising every Plan Review UI interaction"',
-        'summary: "Second fixture Plan revision after the first review round"',
-    )
+const SECOND_PLAN_FIXTURE = PLAN_FIXTURE.replace(
+    'summary: "Fixture test plan for exercising every Plan Review UI interaction"',
+    'summary: "Second fixture Plan revision after the first review round"',
+)
     .replace(
         "- [ ] Step 6: Plan Review shows the current name after following an old link.",
         "- [ ] Step 6: Verify the redirect in a browser.",
@@ -198,15 +197,13 @@ const SECOND_PLAN_FIXTURE = PLAN_FIXTURE
         "",
     );
 
-const PLANNER_REVISED_PLAN_FIXTURE = PLAN_FIXTURE
-    .replace(
-        "- Manual: Rename a Plan, then open its old link from a Session.",
-        "- Manual: Rename a Plan twice, then open both old links from a Session.",
-    )
-    .replace(
-        "- Expected: The old link opens the renamed Plan, and the address bar shows the new name.",
-        "- Expected: Both old links open the renamed Plan, and the address bar shows the current name.",
-    );
+const PLANNER_REVISED_PLAN_FIXTURE = PLAN_FIXTURE.replace(
+    "- Manual: Rename a Plan, then open its old link from a Session.",
+    "- Manual: Rename a Plan twice, then open both old links from a Session.",
+).replace(
+    "- Expected: The old link opens the renamed Plan, and the address bar shows the new name.",
+    "- Expected: Both old links open the renamed Plan, and the address bar shows the current name.",
+);
 
 const DEV_LINKED_FILES = {
     "src/ui/workspace/react/PlanReviewSurface.tsx": `export function PlanReviewSurface({ payload }) {
@@ -225,8 +222,7 @@ const DEV_LINKED_FILES = {
 `,
 };
 
-const PROJECT_PLAN_FIXTURE = PLAN_FIXTURE
-    .replace('classification: "FEATURE"', 'classification: "PROJECT"')
+const PROJECT_PLAN_FIXTURE = PLAN_FIXTURE.replace('classification: "FEATURE"', 'classification: "PROJECT"')
     .replace(
         'summary: "Fixture test plan for exercising every Plan Review UI interaction"',
         'summary: "Fixture PROJECT Epic for exercising approval and Slicer review actions"',
@@ -580,8 +576,7 @@ index 0000000..456abcd
 const GUIDED_REVIEW_FIXTURE = {
     schemaVersion: "1.0",
     title: "Review feedback flow explainer",
-    intent:
-        "Review feedback previously flattened annotations into text, losing their context. This change preserves inline locations, approval state, and images through the feedback handoff.",
+    intent: "Review feedback previously flattened annotations into text, losing their context. This change preserves inline locations, approval state, and images through the feedback handoff.",
     sections: [
         {
             title: "Core implementation",
@@ -602,8 +597,7 @@ const GUIDED_REVIEW_FIXTURE = {
                     type: "mermaid",
                     title: "Feedback data flow",
                     description: "How annotations move into the review payload.",
-                    source:
-                        "flowchart TD\n    A[Annotations] --> B[createFeedback]\n    A --> C[collectImages]\n    B --> D[submitFeedback payload]\n    C --> D",
+                    source: "flowchart TD\n    A[Annotations] --> B[createFeedback]\n    A --> C[collectImages]\n    B --> D[submitFeedback payload]\n    C --> D",
                 },
                 {
                     type: "diff",
@@ -628,8 +622,7 @@ const GUIDED_REVIEW_FIXTURE = {
                     entry: "index.html",
                     title: "Toolbar layout sandbox",
                     reason: "A tiny local-only widget demonstrates why the sticky toolbar needs more breathing room.",
-                    html:
-                        '<!doctype html><link rel="stylesheet" href="widget.css"><section class="demo"><button id="toggle">Toggle cramped state</button><div id="panel">Toolbar has room for review actions.</div></section><script src="widget.js"></script>',
+                    html: '<!doctype html><link rel="stylesheet" href="widget.css"><section class="demo"><button id="toggle">Toggle cramped state</button><div id="panel">Toolbar has room for review actions.</div></section><script src="widget.js"></script>',
                     assets: [
                         {
                             name: "widget.css",
@@ -689,10 +682,7 @@ const GUIDED_REVIEW_FIXTURE = {
             ],
         },
     ],
-    everythingElse: [
-        { file: "src/review/image-attachments.js" },
-        { file: "docs/code-review-fixture.md" },
-    ],
+    everythingElse: [{ file: "src/review/image-attachments.js" }, { file: "docs/code-review-fixture.md" }],
     widgetAssets: [],
 };
 
@@ -705,14 +695,26 @@ const GUIDE_DEV_VARIANTS = [
     { id: "long-title", label: "Long title" },
 ];
 
-const PLAN_DEV_VARIANTS = [
-    "feature",
-    "dense",
-    "project",
-    "sequence",
-    "stale",
-    "read-only",
-];
+const QUESTION_PLAN_FIXTURE = PLAN_FIXTURE.replace(
+    "## Approach",
+    `## Questions
+
+\`\`\`wld-question
+{"id":"scope","type":"multiple_choice","prompt":"Which accounts can use saved links?","choices":[{"value":"admins","label":"Admins only"},{"value":"all","label":"All members"}],"default":"admins"}
+\`\`\`
+
+\`\`\`wld-question
+{"id":"redirect","type":"yes_no","prompt":"Keep redirects for old links?","default":true}
+\`\`\`
+
+\`\`\`wld-question
+{"id":"message","type":"text","prompt":"What should the redirect message say?","default":"Opening the renamed Plan."}
+\`\`\`
+
+## Approach`,
+);
+
+const PLAN_DEV_VARIANTS = ["questions", "feature", "dense", "project", "sequence", "stale", "read-only"];
 
 function buildCodeReviewDevPayload(variant) {
     const base = {
@@ -724,19 +726,16 @@ function buildCodeReviewDevPayload(variant) {
         gitRef: "Fixture Code Review",
         agentCwd: "workspace-dev/fixture-code-review",
         planName: "fixture-code-review",
-        planTitle: variant === "long-title"
-            ? "Review a Very Long Code Review Plan Title That Must Stay Readable Without Pushing Approval Controls Out of the Toolbar"
-            : "Fixture Code Review Plan",
+        planTitle:
+            variant === "long-title"
+                ? "Review a Very Long Code Review Plan Title That Must Stay Readable Without Pushing Approval Controls Out of the Toolbar"
+                : "Fixture Code Review Plan",
         token: `dev-code-review-${variant}`,
         mode: "dev",
         guidedReview: { mode: "auto", autoStart: false, manualAvailable: true, reasons: ["dev fixture"] },
         reviewStatus: {
             stagedFiles: ["src/review/feedback.test.js", "src/review/image-attachments.js"],
-            unstagedFiles: [
-                "docs/code-review-fixture.md",
-                "src/review/feedback.js",
-                "src/ui/review.css",
-            ],
+            unstagedFiles: ["docs/code-review-fixture.md", "src/review/feedback.js", "src/ui/review.css"],
             untrackedFiles: [
                 "src/review/fixture-config.js",
                 "src/ui/components/ReviewBadge.tsx",
@@ -845,80 +844,87 @@ export function ReviewDevSurface({ surface, presentation = "standalone", variant
     const isPlan = surface === "plan";
     const [guideVariant, setGuideVariant] = React.useState("ready");
     const planVariant = PLAN_DEV_VARIANTS.includes(variant) ? variant : "feature";
-    const planNotice = planVariant === "stale"
-        ? {
-            state: "stale",
-            title: "Refresh Plan required",
-            message: "The Plan changed while this review was open. Refresh the Plan before you submit a new decision.",
-            actionLabel: "Refresh Plan",
-            actionHref: "/dev/plan-review",
-        }
-        : null;
-    const planPayload = planVariant === "project"
-        ? {
-            plan: PROJECT_PLAN_FIXTURE,
-            token: `dev-plan-review-${planVariant}`,
-            mode: "dev",
-            agentLabel: "Architect",
-            classification: "PROJECT",
-            frontmatter: { classification: "PROJECT" },
-            plannerConversation: {
-                enabled: true,
-                revisedPlan: PROJECT_PLAN_FIXTURE.replace(
-                    "Old Plan links open the renamed Plan, and new links use the new name.",
-                    "Old Plan links open the renamed Plan, and the Epic identifies which saved links need checking.",
-                ),
-                reply: "I clarified the saved-link checks in the Epic.",
-            },
-            reviewNotice: planNotice,
-        }
-        : {
-            plan: planVariant === "dense" ? DENSE_PLAN_FIXTURE : PLAN_FIXTURE,
-            previousPlan: SECOND_PLAN_FIXTURE,
-            planVersions: [
-                { plan: INITIAL_PLAN_FIXTURE, timestamp: "2026-07-13T14:00:00.000Z" },
-                { plan: SECOND_PLAN_FIXTURE, timestamp: "2026-07-13T15:00:00.000Z" },
-                { plan: PLAN_FIXTURE, timestamp: "2026-07-13T16:00:00.000Z" },
-            ],
-            linkedFiles: DEV_LINKED_FILES,
-            token: `dev-plan-review-${planVariant}`,
-            mode: "dev",
-            agentLabel: "Planner",
-            classification: "FEATURE",
-            frontmatter: {
-                classification: "FEATURE",
-                executionAgent: "frontend-engineer",
-                collaborationRecommendation: "autonomous",
-            },
-            executionPolicy: {
-                executionAgent: "frontend-engineer",
-                collaborationRecommendation: "autonomous",
-                source: "canonical",
-            },
-            reviewContext: {
-                projectLabel: "Personal Remote Workspace",
-                sessionLabel: "Planner Session",
-                sessionHref: "/projects/dev/sessions/planner-fixture",
-                planLabel: "Keep Saved Plan Links Working After Rename",
-                actingSession: "Planner Session",
-                planStatus: "draft",
-                live: true,
-            },
-            plannerConversation: {
-                enabled: true,
-                revisedPlan: PLANNER_REVISED_PLAN_FIXTURE,
-                reply: "I made the manual check cover a Plan that was renamed twice.",
-            },
-            reviewNotice: planNotice,
-        };
+    const planNotice =
+        planVariant === "stale"
+            ? {
+                  state: "stale",
+                  title: "Refresh Plan required",
+                  message:
+                      "The Plan changed while this review was open. Refresh the Plan before you submit a new decision.",
+                  actionLabel: "Refresh Plan",
+                  actionHref: "/dev/plan-review",
+              }
+            : null;
+    const planPayload =
+        planVariant === "project"
+            ? {
+                  plan: PROJECT_PLAN_FIXTURE,
+                  token: `dev-plan-review-${planVariant}`,
+                  mode: "dev",
+                  agentLabel: "Architect",
+                  classification: "PROJECT",
+                  frontmatter: { classification: "PROJECT" },
+                  plannerConversation: {
+                      enabled: true,
+                      revisedPlan: PROJECT_PLAN_FIXTURE.replace(
+                          "Old Plan links open the renamed Plan, and new links use the new name.",
+                          "Old Plan links open the renamed Plan, and the Epic identifies which saved links need checking.",
+                      ),
+                      reply: "I clarified the saved-link checks in the Epic.",
+                  },
+                  reviewNotice: planNotice,
+              }
+            : {
+                  plan:
+                      planVariant === "questions"
+                          ? QUESTION_PLAN_FIXTURE
+                          : planVariant === "dense"
+                            ? DENSE_PLAN_FIXTURE
+                            : PLAN_FIXTURE,
+                  previousPlan: SECOND_PLAN_FIXTURE,
+                  planVersions: [
+                      { plan: INITIAL_PLAN_FIXTURE, timestamp: "2026-07-13T14:00:00.000Z" },
+                      { plan: SECOND_PLAN_FIXTURE, timestamp: "2026-07-13T15:00:00.000Z" },
+                      { plan: PLAN_FIXTURE, timestamp: "2026-07-13T16:00:00.000Z" },
+                  ],
+                  linkedFiles: DEV_LINKED_FILES,
+                  token: `dev-plan-review-${planVariant}`,
+                  mode: "dev",
+                  agentLabel: "Planner",
+                  classification: "FEATURE",
+                  frontmatter: {
+                      classification: "FEATURE",
+                      executionAgent: "frontend-engineer",
+                      collaborationRecommendation: "autonomous",
+                  },
+                  executionPolicy: {
+                      executionAgent: "frontend-engineer",
+                      collaborationRecommendation: "autonomous",
+                      source: "canonical",
+                  },
+                  reviewContext: {
+                      projectLabel: "Personal Remote Workspace",
+                      sessionLabel: "Planner Session",
+                      sessionHref: "/projects/dev/sessions/planner-fixture",
+                      planLabel: "Keep Saved Plan Links Working After Rename",
+                      actingSession: "Planner Session",
+                      planStatus: "draft",
+                      live: true,
+                  },
+                  plannerConversation: {
+                      enabled: true,
+                      revisedPlan: PLANNER_REVISED_PLAN_FIXTURE,
+                      reply: "I made the manual check cover a Plan that was renamed twice.",
+                  },
+                  reviewNotice: planNotice,
+              };
     if (planVariant === "sequence") {
         planPayload.sequenceDocuments = [
             {
                 planId: "sequence-demo",
                 planName: "review-improvements",
                 planPath: "review-improvements.md",
-                plan:
-                    "# Review improvements\n\n## Context\n\nKeep related changes together.\n\n## Objective\n\nImprove review in two ordered Plans.\n\n## Children\n\n1. Build review controls.\n2. Connect feedback after the controls are ready.",
+                plan: "# Review improvements\n\n## Context\n\nKeep related changes together.\n\n## Objective\n\nImprove review in two ordered Plans.\n\n## Children\n\n1. Build review controls.\n2. Connect feedback after the controls are ready.",
                 frontmatter: { classification: "PROJECT", type: "sequence" },
             },
             {
@@ -958,20 +964,22 @@ export function ReviewDevSurface({ surface, presentation = "standalone", variant
         notices: [],
     };
     const codePayload = buildCodeReviewDevPayload(guideVariant);
-    const payload = isPlan ? planPayload : {
-        ...codePayload,
-        ...(presentation === "workspace" && {
-            reviewContext: {
-                projectLabel: "RunWield Dev Project",
-                sessionHref: "/projects/dev-project/sessions/choose-terraform-folder-name",
-                sessionLabel: "Choose Terraform folder name",
-                actingSession: "Choose Terraform folder name",
-                artifactLabel: codePayload.planTitle,
-                statusLabel: "Human code review",
-                live: true,
-            },
-        }),
-    };
+    const payload = isPlan
+        ? planPayload
+        : {
+              ...codePayload,
+              ...(presentation === "workspace" && {
+                  reviewContext: {
+                      projectLabel: "RunWield Dev Project",
+                      sessionHref: "/projects/dev-project/sessions/choose-terraform-folder-name",
+                      sessionLabel: "Choose Terraform folder name",
+                      actingSession: "Choose Terraform folder name",
+                      artifactLabel: codePayload.planTitle,
+                      statusLabel: "Human code review",
+                      live: true,
+                  },
+              }),
+          };
 
     if (isPlan) {
         return React.createElement(
@@ -980,10 +988,10 @@ export function ReviewDevSurface({ surface, presentation = "standalone", variant
             readPayload
                 ? React.createElement(ArtifactReadSurface, { key: planVariant, payload: readPayload })
                 : React.createElement(PlanReviewSurface, {
-                    key: planVariant,
-                    payload,
-                    presentation,
-                }),
+                      key: planVariant,
+                      payload,
+                      presentation,
+                  }),
         );
     }
 
@@ -1003,7 +1011,7 @@ export function ReviewDevSurface({ surface, presentation = "standalone", variant
                         onClick: () => setGuideVariant(variant.id),
                     },
                     variant.label,
-                )
+                ),
             ),
         ),
         React.createElement(CodeReviewSurface, { key: guideVariant, payload, presentation }),

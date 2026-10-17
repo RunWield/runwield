@@ -1,3 +1,4 @@
+import { resolvePlanQuestions, type PlanQuestionAnswer } from "../plan-questions.ts";
 import { projectPlanType } from "../project-plan.ts";
 import { resolve } from "node:path";
 import { Marked } from "marked";
@@ -25,6 +26,7 @@ import type { PlanWorktreeExpectation } from "./plan-actions.ts";
 
 export interface SharedPlanReviewDecision {
     approved?: boolean;
+    questionAnswers?: PlanQuestionAnswer[];
     feedback?: string;
     approvalAction?: PlanApprovalAction;
     plan?: string;
@@ -105,10 +107,10 @@ export function reviewSourceStillMatches(
 ): boolean {
     const canonicalAttrs = (attrs: PlanFrontMatter) =>
         planDocumentMarkdown(injectFrontMatter("", stripRuntimeFields(attrs)));
-    const bodyMatches = current.body === originalBody ||
+    const bodyMatches =
+        current.body === originalBody ||
         reviewMarkdown.parse(current.body, { async: false }) === reviewMarkdown.parse(originalBody, { async: false });
-    return bodyMatches &&
-        canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs);
+    return bodyMatches && canonicalAttrs(current.attrs) === canonicalAttrs(originalAttrs);
 }
 
 function validatedClassification(
@@ -209,8 +211,10 @@ export async function applySharedPlanReviewDecision({
     }
     const approvedPolicy = readApprovedExecutionPolicy(decision);
     if (
-        approved && decision.approvalAction === PLAN_APPROVAL_ACTIONS.RUN &&
-        canonicalClassification === "PLANNED_CHANGE" && !approvedPolicy
+        approved &&
+        decision.approvalAction === PLAN_APPROVAL_ACTIONS.RUN &&
+        canonicalClassification === "PLANNED_CHANGE" &&
+        !approvedPolicy
     ) {
         return reviewRejected("Plan review execution policy is not valid.");
     }
@@ -218,6 +222,7 @@ export async function applySharedPlanReviewDecision({
     if (evidenceIssue) return evidenceIssue;
 
     let reviewedPlan = typeof decision.plan === "string" ? decision.plan : planWithFrontMatter;
+    if (approved) reviewedPlan = resolvePlanQuestions(reviewedPlan, decision.questionAnswers);
     const canonicalReviewOverrides = {
         classification: canonicalClassification,
         type: originalAttrs.type,
@@ -245,7 +250,7 @@ export async function applySharedPlanReviewDecision({
     if (resolve(canonicalPlanPath) === resolve(planPath)) {
         const reopenWorktreeId = isPlanReviewableWithoutReopen(originalAttrs.status)
             ? undefined
-            : originalAttrs.worktreeId ?? undefined;
+            : (originalAttrs.worktreeId ?? undefined);
         const reviewTransition = await runPlanReviewDecisionTransition({
             projectRoot: cwd,
             planName,
@@ -299,8 +304,8 @@ export async function applySharedPlanReviewDecision({
         if (reviewTransition.status !== "committed") {
             return {
                 approved: false,
-                feedback: reviewTransition.message ||
-                    "Plan changed while review was open. Reload the Plan and review again.",
+                feedback:
+                    reviewTransition.message || "Plan changed while review was open. Reload the Plan and review again.",
                 cancellationReason: "stale_plan_review",
             };
         }

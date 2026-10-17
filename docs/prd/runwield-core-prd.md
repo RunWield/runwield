@@ -252,6 +252,14 @@ conversation for revision. Approval leads to a readiness check; a Plan that need
 Formatting-only changes during review keep the decision valid. Changes to Plan meaning, code, execution policy, or
 workflow evidence require review of the current Plan.
 
+**Requirement: Settle embedded Plan Questions on approval.** Browser approval replaces each valid `wld-question`
+block in the reviewed Plan with its question and answer in place. An owner answer is marked “answered in review”. An
+unanswered question uses its recommended default, marked “recommended; not answered in review”. Without a default, it
+records “Not answered. Engineer decides.” This happens before the approved Plan is saved, for both approval actions.
+Feedback leaves question blocks available for the planning conversation. Invalid blocks stay unchanged. The bundled
+Agents do not write these blocks; local Planner instructions can opt in. Sequence child Plans use a separate approval
+path and do not resolve these blocks.
+
 **Requirement: Discuss an Epic with Architect during review.** While an Epic is open for review, the user can chat with
 Architect on the review page across several rounds in the same live Session. Architect can revise the Epic and publish
 the next review round on the same page. Only explicit review actions (Send Annotations, cancel, Approve for Later,
@@ -274,6 +282,11 @@ stays light, terminal animations pause during human input, and the decision cont
 - Given an Epic open for review, the user exchanges two messages with Architect and both replies stay on the review
   page; the review stays open until an explicit review action.
 - Given a saved Plan, when the user submits feedback, the planning conversation receives it and can revise the Plan.
+- Given two valid Plan Questions, one answered and one open with a default, browser approval saves the owner answer and
+  the recommended answer with their labels, with no raw question fences. Approval still rejects a changed Plan and
+  applies a repeated decision only once.
+- Given a Plan Question without an owner answer or default, approval records that Engineer decides. Feedback instead
+  keeps the block in the saved Plan.
 - When the user approves for later, the Plan waits; when they approve and run, readiness is checked first.
 - Given an open review, when a commit hook reformats the Plan, the decision still applies; a change to instructions,
   code, links, or execution policy requires a new decision.
