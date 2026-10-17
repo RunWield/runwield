@@ -176,6 +176,11 @@ Timing does not require verbose output. Reports under `.ci-cache/` contain:
 - `*-report/run.json`: file durations, prewarm time, worker count, and pass/fail/skip totals for the latest run.
 - `*-report/*.xml`: the isolated runner's JUnit results with each test's name, duration, failure, and ignored status.
 
+Every launched file must exit successfully and produce a fresh JUnit report containing registered tests. Comment-only
+files and early successful exits fail the gate. Files containing only explicit skips are reported as skipped, never
+as passing. The report directory belongs to one invocation: old XML and `run.json` are removed before scheduling,
+including reports for files skipped by fail-fast. Remove obsolete empty test files from discovery and the Bun inventory.
+
 Use `--report-dir <directory>` for separate benchmark runs and `--timings-file <file>` for an explicit history. CI
 uploads these reports even on failure. Timing history starts slow files first from the first observation. Dependency
 caches can be reused with `WLD_TEST_DENO_DIR`; mutable RunWield state remains isolated per file. `bun run ci` collects

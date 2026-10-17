@@ -525,6 +525,11 @@ attempt when it cannot get a positive answer about that item. An empty, unreadab
 result means "could not tell". It does not mean "dead", "finished", "clean", or "passed". RunWield never releases,
 reaps, takes over, or retries an item because a query was empty or failed. It never reports success on that basis.
 
+**Requirement: Test success requires current execution evidence.** RunWield's own isolated test runner counts a file
+as passing only after a successful process exit and a fresh report of executed tests. Missing or empty evidence fails
+validation; explicitly skipped tests remain skipped. Reusing a report directory cannot reuse evidence from an earlier
+invocation, including for files that fail-fast leaves unexecuted.
+
 **Requirement: Ask only for an outcome-level decision or a genuine external prerequisite.** When the user must act,
 RunWield explains what happened, what it is protecting, what is missing, the action the user can take, what Retry will
 continue, and what each choice means. It offers deliberate abandonment with work preserved at the safest recoverable
@@ -538,6 +543,9 @@ point. Commands are copy-ready with real values. Waiting for the user's action s
   continues.
 - Given a freshness or status check whose fetch fails or times out, RunWield does not report the checkout as current
   and does not act on that result.
+- Given a previously passing test file replaced by an early successful exit or no tests, the next test run fails
+  and does not retain the previous passing report.
+- Given a file containing only explicitly skipped tests, the runner reports it as skipped rather than passed.
 - Given exhausted automatic attempts, the same workflow stays open and recoverable.
 - Given a genuine external prerequisite, the user receives a specific action plus Retry and abandonment choices; Retry
   continues the preserved workflow.
