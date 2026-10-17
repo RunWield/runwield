@@ -25,8 +25,8 @@ dependencies:
     - "05-keep-memory-and-integrations-on-their-owning-machine"
 targetBranch: "epic/remote-ssh-development"
 userVerifiedAt: null
-status: "reviewed"
 validatedCommit: "87ea3ab6e393315e2030863aaa77bf417e28e84a"
+status: "verified"
 ---
 
 # Forward Personal MCP Tools from the Laptop
