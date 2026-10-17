@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { RunWieldThinkingDots } from "../../design-system/components/react/RunWieldPrimitives.tsx";
 import { RunWieldConfirmationDialog } from "../../design-system/components/react/RunWieldConfirmationDialog.tsx";
 
 export interface ProjectRootFormProps {
@@ -34,12 +35,16 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
         if (inFlight.current) return;
         inFlight.current = true;
         setPending(true);
-        setStatus(projectId ? "Relinking Project..." : "Linking Project...");
+        setStatus("");
         setConfirmation(null);
         try {
-            const csrf = document.cookie.split("; ").find((cookie) =>
-                cookie.startsWith("rw_owner_csrf=")
-            )?.split("=").slice(1).join("=") || "";
+            const csrf =
+                document.cookie
+                    .split("; ")
+                    .find((cookie) => cookie.startsWith("rw_owner_csrf="))
+                    ?.split("=")
+                    .slice(1)
+                    .join("=") || "";
             const response = await fetch(
                 projectId ? `/api/owner/projects/${encodeURIComponent(projectId)}/action` : "/api/owner/projects",
                 {
@@ -51,7 +56,7 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                     }),
                 },
             );
-            const data: RootResponse = await response.json();
+            const data: RootResponse = await response.json().catch(() => ({}));
             if (response.status === 409 && data.code === "directory_confirmation_required" && data.confirmation) {
                 setStatus("");
                 setConfirmation({
@@ -62,8 +67,12 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
             } else if (!response.ok) setStatus(data.error || "Project operation failed.");
             else if (projectId) navigate(location.pathname + location.search, "replace");
             else if (data.project) navigate(`/projects/${encodeURIComponent(data.project.projectId)}/settings`, "push");
-        } catch (error) {
-            setStatus(error instanceof Error ? error.message : "Project operation failed.");
+        } catch {
+            setStatus(
+                projectId
+                    ? "Project relink could not be confirmed. Check your connection and try again."
+                    : "Project link could not be confirmed. Check your connection and try again.",
+            );
         } finally {
             inFlight.current = false;
             setPending(false);
@@ -94,7 +103,8 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                 </label>
                 {!projectId && (
                     <label>
-                        Display name<input
+                        Display name
+                        <input
                             name="displayName"
                             value={displayName}
                             disabled={pending}
@@ -109,10 +119,18 @@ export default function ProjectRootForm({ projectId }: ProjectRootFormProps) {
                     className={projectId ? "secondary-action" : "primary-action"}
                     disabled={pending}
                 >
-                    {projectId ? "Relink" : "Link Project"}
+                    {pending ? (
+                        <RunWieldThinkingDots label={projectId ? "Relinking Project" : "Linking Project"} />
+                    ) : projectId ? (
+                        "Relink"
+                    ) : (
+                        "Link Project"
+                    )}
                 </button>
             </form>
-            <p className="muted" role="status">{status}</p>
+            <p className="muted" role="status">
+                {status}
+            </p>
             {confirmation && (
                 <RunWieldConfirmationDialog
                     returnFocus={submitButton}

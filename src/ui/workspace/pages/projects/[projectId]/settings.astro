@@ -50,7 +50,12 @@ if (!project) Astro.response.status = 404;
                         if (button.dataset.action === 'remove' && !confirm('Remove this Project from Workspace? Repository files are not deleted.')) return;
                         const buttons = card?.querySelectorAll('[data-project-action]') || [button];
                         buttons.forEach((control) => { control.disabled = true; });
-                        if (status) status.textContent = 'Updating Project...';
+                        if (status) {
+                            const loading = document.createElement('span');
+                            loading.className = 'rw-thinking-glyph';
+                            loading.setAttribute('aria-hidden', 'true');
+                            status.replaceChildren(loading, document.createTextNode(' Updating Project...'));
+                        }
                         const diagnostics = card?.querySelector('[data-project-diagnostics]');
                         if (diagnostics) diagnostics.hidden = true;
                         try {

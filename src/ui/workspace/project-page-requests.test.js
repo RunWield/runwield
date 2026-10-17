@@ -3,31 +3,17 @@ import { test } from "node:test";
 import { Window } from "happy-dom";
 import { assertEquals, assertStringIncludes } from "../../testing/assertions.ts";
 
-const projectPage = await readFile(new URL("./pages/projects/index.astro", import.meta.url), "utf8");
 const settingsPage = await readFile(new URL("./pages/projects/[projectId]/settings.astro", import.meta.url), "utf8");
-const operations = ["link", "relink", "disable", "enable", "remove", "rescan"];
+const operations = ["disable", "enable", "remove", "rescan"];
 
 function mount(operation) {
     const window = new Window({ url: "http://workspace.test/projects/project/settings?tab=general" });
-    const isLink = operation === "link";
-    const isForm = isLink || operation === "relink";
-    // Execute the page's real inline script against the browser boundary's minimal DOM.
-    window.document.body.innerHTML = isLink
-        ? `<section class="project-link-card"><form data-project-register>
-            <input name="root" value="/synthetic/project"><input name="displayName" value="Example">
-            <button type="submit">Link Project</button></form>
-            <p data-project-register-status role="status"></p></section>`
-        : `<section class="project-settings-card"><form data-project-relink="project">
-            <input name="newRoot" value="/synthetic/new-root"><button type="submit">Relink</button></form>
-            <p data-project-relink-status role="status"></p></section>
-            <section class="project-settings-card"><button data-project-action="project" data-action="${operation}">Action</button>
-            <button data-project-action="project" data-action="rescan">Rescan</button>
-            <p data-project-action-status role="status"></p><pre data-project-diagnostics="project" hidden></pre></section>`;
-    const target = window.document.querySelector(isLink ? "form" : isForm ? "form" : "[data-project-action]");
-    let listener;
-    target.addEventListener = (_type, callback) => {
-        listener = callback;
-    };
+    // Execute the page's real inline script with native event registration.
+    window.document.body.innerHTML = `<section class="project-settings-card">
+        <button data-project-action="project" data-action="${operation}">Action</button>
+        <button data-project-action="project" data-action="rescan">Rescan</button>
+        <p data-project-action-status role="status"></p><pre data-project-diagnostics="project" hidden></pre></section>`;
+    const target = window.document.querySelector("[data-project-action]");
     const notices = [];
     const navigations = [];
     window.alert = (message) => notices.push(message);
@@ -36,18 +22,19 @@ function mount(operation) {
         event.preventDefault();
         navigations.push(event.detail.href);
     });
-    const script = (isLink ? projectPage : settingsPage).match(
-        /<script is:inline data-astro-rerun>([\s\S]*?)<\/script>/,
-    )?.[1];
+    const script = settingsPage.match(/<script is:inline data-astro-rerun>([\s\S]*?)<\/script>/)?.[1];
     if (!script) throw new Error("Project page script missing");
     window.eval(script);
+    assertEquals(window.document.querySelector(".rw-thinking-glyph"), null);
     return {
         window,
         target,
         notices,
         navigations,
         async act() {
-            return await listener(new window.Event(isForm ? "submit" : "click", { cancelable: true }));
+            target.dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
+            // Native dispatch does not await the async handler. Drain its fetch/JSON microtasks.
+            await new Promise((resolve) => setImmediate(resolve));
         },
         visibleFeedback() {
             return [
@@ -70,18 +57,16 @@ for (const operation of operations) {
             const result = await Promise.allSettled([page.act()]);
             assertEquals(result[0].status, "fulfilled");
             assertStringIncludes(page.visibleFeedback(), "Check your connection and try again.");
+            assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
             assertEquals(page.navigations, []);
             assertEquals(requests, 1);
-            assertEquals(page.target.querySelector("button")?.disabled ?? page.target.disabled, false);
-            if (operation === "link")
-                assertEquals(page.target.querySelector('[name="root"]').value, "/synthetic/project");
-            if (operation === "relink")
-                assertEquals(page.target.querySelector('[name="newRoot"]').value, "/synthetic/new-root");
+            assertEquals(page.target.disabled, false);
             page.window.fetch = () => {
                 requests++;
                 return Promise.resolve(Response.json({ project: { projectId: "linked" } }));
             };
             await page.act();
+            assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
             assertEquals(requests, 2);
             assertEquals(page.visibleFeedback().includes("Check your connection"), false);
             if (operation !== "rescan") assertEquals(page.navigations.length, 1);
@@ -102,18 +87,24 @@ for (const operation of operations) {
                 });
             };
             const pending = page.act();
-            assertEquals(page.target.querySelector("button")?.disabled ?? page.target.disabled, true);
+            assertEquals(page.target.disabled, true);
+            const glyph = page.window.document.querySelector("[data-project-action-status] .rw-thinking-glyph");
+            assertEquals(glyph?.getAttribute("aria-hidden"), "true");
+            assertStringIncludes(page.visibleFeedback(), "Updating Project...");
             for (const control of page.window.document.querySelectorAll("[data-project-action]")) {
-                if (operation !== "relink") assertEquals(control.disabled, true);
+                assertEquals(control.disabled, true);
             }
             await page.act();
+            page.window.document.querySelectorAll("[data-project-action]")[1].click();
             assertEquals(requests, 1);
             complete(Response.json({ project: { projectId: "linked" } }));
             await pending;
+            await new Promise((resolve) => setImmediate(resolve));
+            assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
             for (const control of page.window.document.querySelectorAll("[data-project-action]")) {
                 assertEquals(control.disabled, false);
             }
-            assertEquals(page.target.querySelector("button")?.disabled ?? page.target.disabled, false);
+            assertEquals(page.target.disabled, false);
         } finally {
             await page.window.happyDOM.close();
         }
@@ -126,6 +117,7 @@ for (const operation of operations) {
                 Promise.resolve(Response.json({ error: "Synthetic server rejection" }, { status: 409 }));
             await page.act();
             assertStringIncludes(page.visibleFeedback(), "Synthetic server rejection");
+            assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
             assertEquals(page.navigations, []);
         } finally {
             await page.window.happyDOM.close();
@@ -140,18 +132,16 @@ for (const operation of operations) {
                     Response.json({ project: { projectId: "linked" }, diagnostics: ["synthetic diagnostic"] }),
                 );
             await page.act();
+            assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
             if (operation === "rescan") {
                 const diagnostics = page.window.document.querySelector("[data-project-diagnostics]");
                 assertEquals(diagnostics.hidden, false);
                 assertStringIncludes(diagnostics.textContent, "synthetic diagnostic");
+                assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
                 assertEquals(page.navigations, []);
             } else {
                 assertEquals(page.navigations, [
-                    operation === "link"
-                        ? "/projects/linked/settings"
-                        : operation === "remove"
-                          ? "/projects"
-                          : "/projects/project/settings?tab=general",
+                    operation === "remove" ? "/projects" : "/projects/project/settings?tab=general",
                 ]);
             }
         } finally {
