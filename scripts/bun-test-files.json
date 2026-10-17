@@ -7,7 +7,7 @@
     "scripts/build-workspace-runtime.test.js",
     "scripts/bun-lint.test.ts",
     "scripts/bun-remote-runtime.test.ts",
-    "scripts/check-doc-links.test.js",
+    "scripts/check-doc-links.test.ts",
     "scripts/check-injection-seams.test.js",
     "scripts/check-owned-runtime.test.ts",
     "scripts/check-skill-sync.test.ts",

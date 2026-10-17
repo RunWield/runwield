@@ -2,18 +2,13 @@ import { assertEquals } from "../src/testing/assertions.ts";
 import { test } from "node:test";
 import { extractRelativeLinks, findBrokenLinks, headingSlug, headingSlugs } from "./check-doc-links.js";
 
-/**
- * @param {Record<string, string>} files
- */
-function fakeRepo(files) {
+function fakeRepo(files: Record<string, string>) {
     return {
-        /** @param {string} path */
-        readTextFile: (path) => {
+        readTextFile: (path: string) => {
             if (!(path in files)) throw Object.assign(new Error(path), { code: "ENOENT" });
             return Promise.resolve(files[path]);
         },
-        /** @param {string} path */
-        pathExists: (path) => Promise.resolve(path in files),
+        pathExists: (path: string) => Promise.resolve(path in files),
     };
 }
 
@@ -41,16 +36,9 @@ test("headingSlug matches GitHub-style anchors", () => {
 });
 
 test("headingSlugs skips front matter, fenced code, and disambiguates duplicates", () => {
-    const slugs = headingSlugs([
-        "---",
-        'summary: "# Not A Heading"',
-        "---",
-        "# Title",
-        "```",
-        "# Not A Heading",
-        "```",
-        "## Title",
-    ].join("\n"));
+    const slugs = headingSlugs(
+        ["---", 'summary: "# Not A Heading"', "---", "# Title", "```", "# Not A Heading", "```", "## Title"].join("\n"),
+    );
     assertEquals([...slugs], ["title", "title-1"]);
 });
 
@@ -78,10 +66,7 @@ test("findBrokenLinks accepts a correctly resolved sibling link", async () => {
 test("findBrokenLinks ignores tracked files deleted from the working tree", async () => {
     const repo = fakeRepo({ "docs/present.md": "# Present" });
 
-    assertEquals(
-        await findBrokenLinks(["docs/deleted.md", "docs/present.md"], repo.readTextFile, repo.pathExists),
-        [],
-    );
+    assertEquals(await findBrokenLinks(["docs/deleted.md", "docs/present.md"], repo.readTextFile, repo.pathExists), []);
 });
 
 test("findBrokenLinks rejects a fragment with no matching heading", async () => {
