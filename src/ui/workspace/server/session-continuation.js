@@ -391,6 +391,9 @@ export class WorkspaceSessionContinuationService {
     close() {
         if (this.closing) return this.closing;
         this.closing = (async () => {
+            // Accepted operations can wait for a model or a browser answer. Cancel
+            // those waits before draining them, while their store is still open.
+            for (const session of this.runtime.listSessions()) this.runtime.cancelSession(session.id);
             while (this.backgroundOperations.size) await Promise.all(this.backgroundOperations);
             await Promise.all(this.closingRetainedSessions.values());
             await this.runtime.closeAllSessionsWhenIdle();

@@ -462,6 +462,10 @@ shows the latest saved conversation and current work, and the owner continues wh
 Replayed task results stay history. [Pair execution](runwield-core-prd.md#frontend-engineering-and-pair-execution)
 uses the same timeline and composer; a pending checkpoint survives refresh.
 
+**Requirement: Server shutdown cancels local work before waiting.** Stopping the Workspace server cancels its active
+Session turns and pending browser interactions before it waits for accepted operations to settle. The coordination
+store stays open until settlement finishes. Shutdown does not wait for a browser answer.
+
 **Requirement: Workspace stays current through repeated use.** Repeated visits to Sessions, Plans, reviews, and
 questions show current content without a restart, and memory from completed work does not accumulate per visit. A slow
 or disconnected observer receives the latest state when it catches up, and live work continues. This is not a
@@ -476,6 +480,8 @@ universal process-memory limit; memory use of live observation remains a targete
 - Given an attachment the backend cannot accept, the request is rejected with the draft intact, for new and resumed
   Sessions.
 - Given a running Session and an empty composer, the primary action stops the work; typing turns it into Send or Steer.
+- Given an active model turn or an unanswered browser question, stopping the Workspace server cancels the wait and
+  settles accepted work before it closes the coordination store.
 - Given a phone, the composer stays visible above the keyboard and the draft and history position survive closing it.
 - Given a Session switched from Ideator to Planner, the sidebar follows the new Plan as `plan_written` attaches it,
   without a reload, on local and attached browsers.
