@@ -615,7 +615,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                         initialPayload.plannerConversation?.reply ||
                         "I tightened the Plan and added a clearer verification step.",
                     agentMessageId,
-                    clearAttachedContext: Boolean(attachedFeedback),
+                    clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
                 });
                 return;
             }
@@ -626,7 +626,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                     previousRevision: conversationRevision,
                     eventStartIndex,
                     agentMessageId,
-                    clearAttachedContext: Boolean(attachedFeedback),
+                    clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
                 });
                 return;
             }
@@ -636,7 +636,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                 previousInteractionId: activeInteractionId,
                 eventStartIndex,
                 agentMessageId,
-                clearAttachedContext: Boolean(attachedFeedback),
+                clearAttachedContext: Boolean(attachedFeedback) && conversationContextAttached,
             });
         } catch (caught) {
             setPlannerError(caught instanceof Error ? caught.message : String(caught));
@@ -1438,6 +1438,7 @@ function PlanReviewDocument({ payload, presentation = "standalone", reviewGroup,
                                                 {!reviewGroup && (
                                                     <PlanQuestionBlocks
                                                         containerRef={reviewRef}
+                                                        markdown={plan}
                                                         blocks={parsed.blocks}
                                                         questions={questions}
                                                         answers={questionAnswers}

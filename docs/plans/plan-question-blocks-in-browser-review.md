@@ -20,7 +20,7 @@ origin: "internal"
 userVerifiedAt: null
 targetBranch: "main"
 deliveryBranch: "plan/plan-question-blocks-in-browser-review"
-status: "implemented"
+status: "reviewed"
 ---
 
 # Answer Planner questions inside the browser Plan review

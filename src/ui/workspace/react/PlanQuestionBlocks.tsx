@@ -5,6 +5,7 @@ import type { PlanQuestionAnswer, PlanQuestionBlock } from "../../../shared/plan
 
 interface PlanQuestionBlocksProps {
     containerRef: RefObject<HTMLElement | null>;
+    markdown: string;
     blocks: Block[];
     questions: PlanQuestionBlock[];
     answers: PlanQuestionAnswer[];
@@ -16,14 +17,22 @@ interface QuestionMount {
 }
 
 /** Mount beside the upstream code block, and restore its source on unmount. */
-export function PlanQuestionBlocks({ containerRef, blocks, questions, answers, onAnswer }: PlanQuestionBlocksProps) {
+export function PlanQuestionBlocks({
+    containerRef,
+    markdown,
+    blocks,
+    questions,
+    answers,
+    onAnswer,
+}: PlanQuestionBlocksProps) {
     const [mounts, setMounts] = useState<QuestionMount[]>([]);
     useEffect(() => {
         const codeBlocks = blocks.filter((block) => block.type === "code" && block.language === "wld-question");
         const cleanups: (() => void)[] = [];
         const next: QuestionMount[] = [];
-        questions.forEach((question, index) => {
-            const block = codeBlocks[index];
+        questions.forEach((question) => {
+            const startLine = markdown.slice(0, question.start).split("\n").length;
+            const block = codeBlocks.find((candidate) => candidate.startLine === startLine);
             if (!block) return;
             const element = Array.from(
                 containerRef.current?.querySelectorAll<HTMLElement>("[data-block-id]") || [],
@@ -45,7 +54,7 @@ export function PlanQuestionBlocks({ containerRef, blocks, questions, answers, o
         });
         setMounts(next);
         return () => cleanups.forEach((cleanup) => cleanup());
-    }, [blocks, questions, containerRef]);
+    }, [blocks, questions, containerRef, markdown]);
     return mounts.map(({ question: block, target }, index) =>
         createPortal(
             block.error ? (

@@ -145,7 +145,7 @@ async function withReview(verify, reviewedPlan = plan) {
         };
         const mount = async () => {
             root = createRoot(container);
-            await act(async () => root.render(<PlanReviewSurface payload={payload} />));
+            await act(() => root.render(<PlanReviewSurface payload={payload} />));
         };
         const button = (text) =>
             [...container.querySelectorAll("button")].find(
@@ -215,7 +215,7 @@ test("chat Send carries answers and removing the context chip excludes them", as
     await withReview(async ({ browser, container, button, radio, openChat, submitted }) => {
         await act(() => radio("All members").click());
         await openChat();
-        await act(async () => button("Send to Planner").click());
+        await act(() => button("Send to Planner").click());
         assertStringIncludes(submitted[0].feedback, "### Question answers");
         assertStringIncludes(submitted[0].feedback, "All members");
         await act(() => container.querySelector('[aria-label="Remove attached annotations"]').click());
@@ -227,7 +227,7 @@ test("chat Send carries answers and removing the context chip excludes them", as
             );
             composer.dispatchEvent(new browser.Event("input", { bubbles: true }));
         });
-        await act(async () => button("Send to Planner").click());
+        await act(() => button("Send to Planner").click());
         assertEquals(submitted[1].feedback.includes("### Question answers"), false);
     });
 });
@@ -235,17 +235,17 @@ test("chat Send carries answers and removing the context chip excludes them", as
 test("approval warns about open questions, cancel stays open, and confirm sends structured answers", async () => {
     await withReview(async ({ button, radio, submitted, confirmations, confirm }) => {
         await act(() => radio("All members").click());
-        await act(async () => button("Approve & Run").click());
+        await act(() => button("Approve & Run").click());
         assertEquals(submitted.length, 0);
         assertStringIncludes(confirmations[0], "1 question is not answered. The recommended answers will be used.");
         confirm(true);
-        await act(async () => button("Approve & Run").click());
+        await act(() => button("Approve & Run").click());
         assertEquals(submitted[0].questionAnswers, [{ id: "scope", value: "all" }]);
     });
 });
 
 test("invalid questions keep the real Viewer code block with a visible parse error", async () => {
-    await withReview(async ({ container }) => {
+    await withReview(({ container }) => {
         assertEquals(container.querySelectorAll(".rw-question-card").length, 0);
         assertEquals(container.querySelector("pre").hidden, false);
         assertStringIncludes(container.querySelector('[role="note"]').textContent, "Question needs an id.");
@@ -274,12 +274,12 @@ test("a Planner revision drops answers for removed question ids", async () => {
         await act(() => radio("All members").click());
         await openChat();
         revise(plan.replace(/```wld-question[\s\S]*?```\n\n/, "Audience: All members.\n\n"));
-        await act(async () => button("Send to Planner").click());
+        await act(() => button("Send to Planner").click());
         assertEquals(Boolean(container.querySelector(".rw-artifact-conversation-context")), false);
         await act(() => button("View").click());
         assertEquals(container.querySelectorAll(".rw-question-card").length, 1);
         confirm(true);
-        await act(async () => button("Approve & Run").click());
+        await act(() => button("Approve & Run").click());
         assertEquals(submitted[1].questionAnswers, []);
     });
 });
@@ -304,7 +304,7 @@ test("question answers combine with attached notes and annotation-only Send stay
         assertEquals(button("Send to Planner").disabled, false);
         await act(() => radio("All members").click());
         assertStringIncludes(container.textContent, "1 review note and 1 question answer attached");
-        await act(async () => button("Send to Planner").click());
+        await act(() => button("Send to Planner").click());
         assertStringIncludes(submitted[0].feedback, "Clarify the link rules.");
         assertStringIncludes(submitted[0].feedback, "### Question answers");
     });
@@ -314,8 +314,62 @@ test("Send Annotations includes answered questions without a chat message", asyn
     await withReview(async ({ container, button, radio, submitted }) => {
         await act(() => radio("All members").click());
         await act(() => container.querySelector('[aria-label="Open annotations sidebar"]').click());
-        await act(async () => button("Send Annotations").click());
+        await act(() => button("Send Annotations").click());
         assertStringIncludes(submitted[0].feedback, "### Question answers");
         assertStringIncludes(submitted[0].feedback, "All members");
     });
 });
+
+test("question forms mount at their source location after an indented example", async () => {
+    const example = '    ```wld-question\n    {"id":"scope","type":"text","prompt":"Example only"}\n    ```\n\n';
+    await withReview(
+        ({ container }) => {
+            const codeBlocks = [...container.querySelectorAll("[data-block-id]")].filter((element) =>
+                element.querySelector("pre"),
+            );
+            assertEquals(codeBlocks.length, 3);
+            assertEquals(codeBlocks[0].querySelector("pre").hidden, false);
+            assertEquals(codeBlocks[0].querySelector(".rw-question-card"), null);
+            assertStringIncludes(codeBlocks[1].querySelector(".rw-question-card").textContent, "Who can use links?");
+            assertStringIncludes(codeBlocks[2].querySelector(".rw-question-card").textContent, "Keep old links?");
+        },
+        "---\ntitle: Review\n---\n\n" + example + plan,
+    );
+});
+
+for (const detach of [false, true]) {
+    test(`answer-only chat preserves ${detach ? "detached" : "unattached"} notes and their saved draft`, async () => {
+        await withReview(async ({ browser, container, button, radio, submitted, reload }) => {
+            await act(() => button("Global comment").click());
+            const note = browser.document.querySelector('textarea[placeholder="Add a global comment..."]');
+            await act(() => {
+                Object.getOwnPropertyDescriptor(browser.HTMLTextAreaElement.prototype, "value").set.call(
+                    note,
+                    "Keep this review note.",
+                );
+                note.dispatchEvent(new browser.Event("input", { bubbles: true }));
+            });
+            await act(() =>
+                [...browser.document.querySelectorAll("button")]
+                    .find((element) => element.textContent.trim() === "Add")
+                    .click(),
+            );
+            if (detach) {
+                await act(() => button("Add to Planner chat").click());
+                await act(() => container.querySelector('[aria-label="Remove attached annotations"]').click());
+            } else {
+                await act(() => container.querySelector('button[role="tab"][title="Planner"]').click());
+            }
+            await act(() => radio("All members").click());
+            await act(() => button("Send to Planner").click());
+            assertEquals(submitted[0].feedback.includes("Keep this review note."), false);
+            assertStringIncludes(submitted[0].feedback, "### Question answers");
+            await act(() => container.querySelector('button[role="tab"][title="Annotations"]').click());
+            assertStringIncludes(container.textContent, "Keep this review note.");
+            await act(async () => await new Promise((resolve) => setTimeout(resolve, 550)));
+            await reload();
+            await act(() => button("Restore draft").click());
+            assertStringIncludes(container.textContent, "Keep this review note.");
+        });
+    });
+}
