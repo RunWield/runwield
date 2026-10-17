@@ -5,7 +5,7 @@ import { acknowledgeTaskCompletion, claimPendingTaskCompletion } from "../sessio
 import { updateEntry as updateWorktreeRegistryEntry } from "../worktree-registry.js";
 import { isInValidation, recordPlanEvent } from "./plan-lifecycle.js";
 import { restoreExecutionPlanFromBaseline } from "./execution-plan-file.js";
-import { recordWorkflowMetric } from "./metrics.js";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { runImplementationCheckpointTransition } from "./state-transition.ts";
 
 interface FinalizePlanImplementationOptions {
@@ -37,9 +37,10 @@ export async function finalizePlanImplementation({
         throw new Error(`Cannot complete ${planName}: durable execution context is missing.`);
     }
 
-    const planCwd = executionContext.executionMode === "worktree" && executionContext.executionCwd
-        ? executionContext.executionCwd
-        : projectRoot;
+    const planCwd =
+        executionContext.executionMode === "worktree" && executionContext.executionCwd
+            ? executionContext.executionCwd
+            : projectRoot;
     let currentPlan = await (async () => {
         try {
             return await loadPlan(planCwd, planName);
@@ -163,18 +164,18 @@ export async function finalizePlanImplementation({
         throw new Error(transition.message || `Implementation checkpoint did not commit for ${planName}.`);
     }
     acknowledgeImplementationCompletion(hostedSession);
-    const transitionValue = /** @type {{ value?: { implementationCommit?: string } }} */ (transition.value);
+    const transitionValue = /** @type {{ value?: { implementationCommit?: string } }} */ transition.value;
     const implementationCommit = transitionValue.value?.implementationCommit;
-    await recordWorkflowMetric({
+    await recordWorkflowOutcome(projectRoot, {
         category: "execution",
         event: "implementation_finished",
+        operationId: transition.transitionId,
+        transitionId: transition.transitionId,
+        attemptId: executionContext.worktreeId,
         planName,
-        details: {
-            classification: triageMeta.classification,
-            executionMode: executionContext.executionMode,
-            checkpointCommitted: Boolean(implementationCommit),
-        },
-    }, projectRoot);
+        outcome: "succeeded",
+        session: hostedSession?.getManagedMetadata(),
+    });
     return implementationCommit ? { implementationCommit } : {};
 }
 

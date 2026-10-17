@@ -178,7 +178,7 @@ status, elapsed time, usage, intervention counts, methodology differences, and e
 Comparisons show improvements, regressions, variance, and missing results separately.
 
 Detailed fixtures and outputs belong to the deliberate evaluation run. Passive
-[workflow metrics](runwield-core-prd.md#local-workflow-metrics) remain content-free; private requests, prompts, code,
+[workflow metrics](runwield-core-prd.md#usage-measurement-and-export) remain content-free; private requests, prompts, code,
 diffs, tool arguments and results, and credentials stay out of that stream.
 
 **Acceptance scenarios:**

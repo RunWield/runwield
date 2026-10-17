@@ -10,6 +10,7 @@
 
 import { extractYaml } from "../front-matter.ts";
 import { AGENTS } from "../../constants.js";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { recordPlanEvent } from "./plan-lifecycle.js";
 import { resolveValidationExecutionContext } from "./execution-context.ts";
@@ -81,12 +82,12 @@ export async function resolvePhaseContext(
         validationContinuation: true,
         ...(context.executionMode === "worktree"
             ? {
-                executionMode: "worktree",
-                baselineTree: context.baselineTree,
-                worktreeId: context.worktreeId,
-                worktreeBranch: context.worktreeBranch,
-                ...(context.worktreeBaseBranch ? { worktreeBaseBranch: context.worktreeBaseBranch } : {}),
-            }
+                  executionMode: "worktree",
+                  baselineTree: context.baselineTree,
+                  worktreeId: context.worktreeId,
+                  worktreeBranch: context.worktreeBranch,
+                  ...(context.worktreeBaseBranch ? { worktreeBaseBranch: context.worktreeBaseBranch } : {}),
+              }
             : { executionMode: "non_git_in_place", nonGitInPlace: true }),
     };
     return {
@@ -115,10 +116,22 @@ export function getProjectRoot(args: ValidationLoopArgs): string {
 }
 
 export async function recordMetric(
-    _args: ValidationLoopArgs,
+    args: ValidationLoopArgs,
     cwd: string,
     metric: Parameters<typeof recordWorkflowMetric>[0],
 ): Promise<void> {
+    if (metric.event === "operational_recovery") {
+        await recordWorkflowOutcome(cwd, {
+            category: "recovery",
+            event: "operational_recovery",
+            operationId: crypto.randomUUID(),
+            planName: args.planName,
+            attemptId: args.session.getActiveWorkflow()?.worktreeId,
+            session: args.session.metricsSession,
+            outcome: "ongoing",
+        });
+        return;
+    }
     await recordWorkflowMetric(metric, cwd);
 }
 
@@ -136,9 +149,7 @@ export function readSemanticRound(meta: Partial<PlanFrontMatter>): number {
 
 export function readSemanticRoundState(args: ValidationLoopArgs, context: PhaseContext): SemanticRoundState {
     const activeWorkflow = context.workflowBase;
-    const durableReview = readValidationReviewState(
-        args.validationCheckpoint || args.triageMeta.validationCheckpoint,
-    );
+    const durableReview = readValidationReviewState(args.validationCheckpoint || args.triageMeta.validationCheckpoint);
     if (durableReview) {
         return {
             semanticRound: durableReview.semanticRound,
@@ -150,16 +161,18 @@ export function readSemanticRoundState(args: ValidationLoopArgs, context: PhaseC
     return {
         semanticRound: readSemanticRound(args.triageMeta),
         reviewLedger: normalizeLedger(activeWorkflow.reviewLedger),
-        repairBaselineTree: typeof activeWorkflow.repairBaselineTree === "string"
-            ? activeWorkflow.repairBaselineTree
-            : "",
+        repairBaselineTree:
+            typeof activeWorkflow.repairBaselineTree === "string" ? activeWorkflow.repairBaselineTree : "",
         lastRepairReport: typeof activeWorkflow.lastRepairReport === "string" ? activeWorkflow.lastRepairReport : "",
     };
 }
 
 export function hasFinalHumanReviewDecision(meta: Partial<PlanFrontMatter>): boolean {
-    return meta.humanReviewDecision === "approved" || meta.humanReviewDecision === "skipped" ||
-        meta.humanReviewDecision === "not_required";
+    return (
+        meta.humanReviewDecision === "approved" ||
+        meta.humanReviewDecision === "skipped" ||
+        meta.humanReviewDecision === "not_required"
+    );
 }
 
 export function preserveValidationContinuationState(args: ValidationLoopArgs, context: PhaseContext): void {
@@ -189,11 +202,12 @@ export async function recordLifecycleEvent(
     extraDetails: Partial<RecordPlanEventArgs["details"]> = {},
 ): Promise<RecordPlanEventResult> {
     const activeWorkflow = args.session.getActiveWorkflow();
-    const lifecycleCwd = activeWorkflow?.executionMode === "worktree" && activeWorkflow.executionCwd
-        ? activeWorkflow.executionCwd
-        : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
-        ? args.executionContext.executionCwd
-        : projectRoot;
+    const lifecycleCwd =
+        activeWorkflow?.executionMode === "worktree" && activeWorkflow.executionCwd
+            ? activeWorkflow.executionCwd
+            : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
+              ? args.executionContext.executionCwd
+              : projectRoot;
     const result = await recordPlanEvent({
         cwd: lifecycleCwd,
         planName: args.planName,

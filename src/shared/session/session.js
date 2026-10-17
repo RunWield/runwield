@@ -2261,6 +2261,19 @@ export async function buildAgentSession({
                 cwd: sessionCwd,
                 sessionManager: effectiveSessionManager,
                 completeSimpleFn: completeSimple,
+                onModelUsage: (observation) => {
+                    const recorder =
+                        executionMetricsForSession.get(session) ||
+                        new ExecutionMetricsRecorder({
+                            projectRoot: sessionCwd,
+                            sessionId: effectiveSessionManager.getSessionId(),
+                            managedSessionId: targetHostedSession?.getManagedMetadata()?.runwieldSessionId,
+                            segmentId: targetHostedSession?.getManagedMetadata()?.currentSegmentId,
+                            commandId: targetHostedSession?.activeCommandInvocationId || undefined,
+                            agentName,
+                        });
+                    return recorder.recordModelUsage(observation);
+                },
             }),
         );
     }
@@ -3295,6 +3308,9 @@ function attachSessionMetricsObserver(session, hostedSession, projection) {
                     });
                     summarizationRetryAttempt = null;
                 }
+                break;
+            case "message_end":
+                if (event.message.role === "assistant") recorder.recordPiAssistantMessageEnd(event.message);
                 break;
             case "message_update":
                 void recorder.recordResponseLatency("first_response");
@@ -4613,6 +4629,8 @@ export async function runRootTurn({
             ...(targetHostedSession.generatedTaskTurnId ? { taskId: targetHostedSession.generatedTaskTurnId } : {}),
             backend,
         });
+        const userInitiated = targetHostedSession.metricsHumanInputPending && !targetHostedSession.generatedTaskTurnId;
+        targetHostedSession.metricsHumanInputPending = false;
         meta.rootTurnCount += 1;
         const finalRequest =
             dispatch.promptMode === "continuation"
@@ -4638,6 +4656,7 @@ export async function runRootTurn({
                 attemptId: dispatch.attemptId,
                 dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
                 executionKind: "root",
+                userInitiated,
                 mode: "foreground",
                 sourceSurface:
                     targetHostedSession.localInputSurface || targetHostedSession.notificationSurface || "cli",
@@ -4659,6 +4678,7 @@ export async function runRootTurn({
                 backend: "pi",
                 dispatchKind: targetHostedSession.generatedTaskTurnId ? "background_task_result" : dispatchKind,
                 executionKind: "root",
+                userInitiated,
                 mode: "foreground",
                 sourceSurface:
                     targetHostedSession.localInputSurface || targetHostedSession.notificationSurface || "cli",

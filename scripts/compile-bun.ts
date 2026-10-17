@@ -209,7 +209,11 @@ export async function compileBun(
         // https://bun.com/docs/bundler/executables#embed-directories
         await mkdir(dirname(outfile), { recursive: true });
         await build({
-            entrypoints: [entry, join(ROOT, "src/utils/image-resize-worker.ts")],
+            entrypoints: [
+                entry,
+                join(ROOT, "src/utils/image-resize-worker.ts"),
+                join(ROOT, "src/shared/workflow/metrics-exporter-worker.ts"),
+            ],
             root: ROOT,
             target: "bun",
             format: "esm",

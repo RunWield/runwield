@@ -8,7 +8,6 @@ import { git } from "../git-test-fixture.ts";
 import { withWorkflowMetricsFixture } from "../../testing/workflow-metrics-fixture.ts";
 import {
     classifyToolSubUsage,
-    drainWorkflowMetrics,
     getWorkflowMetricsFilePath,
     isWorkflowMetricsEnabled,
     recordToolCallFinished,
@@ -52,12 +51,12 @@ test("recordWorkflowMetric writes worktree events under the primary project", as
             await setCustomSetting("workflowMetrics", true, "project", primaryRoot);
             await recordWorkflowMetric({ category: "execution", event: "task_completed" }, worktreePath);
 
-            await drainWorkflowMetrics();
             const contents = await fsReadFile(getWorkflowMetricsFilePath(primaryRoot), "utf8");
             const metrics = contents
                 .trim()
                 .split("\n")
-                .map((line) => JSON.parse(line));
+                .map((line) => JSON.parse(line))
+                .filter((record) => record.event !== "collection_epoch");
             assertEquals(metrics.length, 1);
             assertEquals(metrics[0].category, "execution");
         } finally {
@@ -99,7 +98,7 @@ test("recordWorkflowMetric writes sanitized JSONL when enabled", async () => {
     });
 });
 
-test("recordWorkflowMetric swallows write failures", async () => {
+test("recordWorkflowMetric reports write failures without throwing", async () => {
     await withWorkflowMetricsFixture(async ({ homeDir, projectRoot, readMetrics }) => {
         const runwieldPath = join(homeDir, ".wld");
         await fsRm(runwieldPath, { recursive: true }).catch(() => {});
@@ -110,7 +109,8 @@ test("recordWorkflowMetric swallows write failures", async () => {
             projectRoot,
         );
 
-        assertExists(record);
+        assertEquals(record.persisted, false);
+        assertEquals(record.reason, "storage_failure");
         assertEquals(await readMetrics(), []);
     });
 });

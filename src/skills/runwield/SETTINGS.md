@@ -114,6 +114,18 @@ Session model. Use `/status` to show configured providers and available models. 
 `~/.wld/models.json` is the model registry for custom or self-hosted models such as Ollama, LM Studio, vLLM, API
 proxies, or OpenAI-compatible servers. Explicit settings use `provider/model_id` values from that registry.
 
+## `metricsExport` (global scope only)
+
+`metricsExport.destinations` holds Core Export grants: approved exporter identity, endpoint, external project, explicit
+Project allowlist, and each Project's start position. Project-scope values are ignored. A grant sends only eligible
+observations collected after its start boundary. Endpoint changes and re-enablement start new consent; credential
+rotation keeps the boundary. No Project is added automatically.
+
+This key holds no secrets. Credentials live separately in `~/.wld/metrics-export/credentials.json` with owner-only
+permissions; status shows only configured or not configured. Exporter package approval and local `workflowMetrics`
+collection opt-in are separate permissions. Core functions manage grants; Workspace controls and Langfuse remain planned
+capabilities. Do not advise a command-line setup flow.
+
 ## Other user-facing keys
 
 - `defaultProvider`, `defaultModel`, and `defaultThinkingLevel`: base model defaults.

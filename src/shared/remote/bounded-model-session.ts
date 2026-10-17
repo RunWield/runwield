@@ -21,6 +21,7 @@ import { parseProviderModel } from "../models/model-validation.ts";
 import { modelSupportsImageInput, resolveVisionFallbackModel } from "../session/image-attachments.ts";
 import { getResolvedVisionFallbackModelSetting, getSettingsManager } from "../settings.js";
 import { createSeeImageTool } from "../../tools/see-image.ts";
+import { ExecutionMetricsRecorder } from "../workflow/execution-metrics.ts";
 import {
     getPackagePromptTemplatePaths,
     mappedRemotePackageSettings,
@@ -69,14 +70,7 @@ export async function resolveBoundedRemoteModelSelection(
         systemPrompt: "",
     };
     const override = selection.provider ? `${selection.provider}/${selection.modelId}` : selection.modelOverride;
-    const model: RunWieldModel = await resolveModel(
-        override,
-        agentDef,
-        agentName,
-        registry,
-        undefined,
-        selection.cwd,
-    );
+    const model: RunWieldModel = await resolveModel(override, agentDef, agentName, registry, undefined, selection.cwd);
     assertModelExecutionBackendSupported(model, true);
     // Never replace a saved selection with another catalog entry.
     if (selection.provider && (model.provider !== selection.provider || model.id !== selection.modelId)) {
@@ -104,8 +98,11 @@ export async function createBoundedRemoteModelSession(options: {
 }): Promise<{ session: AgentSession; registry: RunWieldModelRegistry }> {
     if (remotePersonalResourcesActive()) throw new Error("Remote personal resources are already configured");
     if (
-        !isAbsolute(options.cwd) || !options.mount.globalRoot || !Number.isInteger(options.connection.port) ||
-        options.connection.port < 1 || options.connection.port > 65535 ||
+        !isAbsolute(options.cwd) ||
+        !options.mount.globalRoot ||
+        !Number.isInteger(options.connection.port) ||
+        options.connection.port < 1 ||
+        options.connection.port > 65535 ||
         !/^[a-f0-9]{64}$/.test(options.connection.credential)
     ) {
         throw new Error("Remote model session requires verified mount and control connection");
@@ -133,21 +130,32 @@ export async function createBoundedRemoteModelSession(options: {
     const runtime = await createRemoteModelRuntime({ ...options.connection, callbackPolicy: "no-extensions" }, catalog);
     const registry = new RunWieldModelRegistry({ remote: true, runtime, configDir: personalGlobalRoot() });
     const agentName = options.agentName ?? "engineer";
-    const agentDef = options.agentDef ?? await loadAgentDef(agentName, options.cwd);
+    const agentDef = options.agentDef ?? (await loadAgentDef(agentName, options.cwd));
     const model = await resolveBoundedRemoteModelSelection(registry, { ...options, agentDef });
-    const customTools = [...options.customTools ?? []];
+    const customTools = [...(options.customTools ?? [])];
+    const sessionManager = SessionManager.inMemory(options.cwd);
+    // The verification turn itself stays unrecorded. Only auxiliary vision requests use this recorder.
+    const visionMetrics = new ExecutionMetricsRecorder({
+        projectRoot: options.cwd,
+        sessionId: sessionManager.getSessionId(),
+        agentName,
+    });
     if (
-        !modelSupportsImageInput(model) && getResolvedVisionFallbackModelSetting(options.cwd) &&
+        !modelSupportsImageInput(model) &&
+        getResolvedVisionFallbackModelSetting(options.cwd) &&
         !customTools.some((tool) => tool.name === "see_image")
     ) {
         const fallback = await resolveVisionFallbackModel(registry, SYSTEM_MODEL_DISCOVERY_NETWORK, options.cwd);
         if (fallback) {
-            customTools.push(createSeeImageTool({
-                cwd: options.cwd,
-                remoteModel: fallback.model,
-                completeSimpleFn: (model, context, streamOptions) =>
-                    runtime.streamSimple(model, context, streamOptions).result(),
-            }));
+            customTools.push(
+                createSeeImageTool({
+                    cwd: options.cwd,
+                    remoteModel: fallback.model,
+                    completeSimpleFn: (model, context, streamOptions) =>
+                        runtime.streamSimple(model, context, streamOptions).result(),
+                    onModelUsage: (observation) => visionMetrics.recordModelUsage(observation),
+                }),
+            );
         }
     }
     const systemPrompt = await assembleFinalSystemPrompt(
@@ -169,7 +177,7 @@ export async function createBoundedRemoteModelSession(options: {
             throw error;
         });
         if (!stat?.isDirectory()) continue;
-        for await (const entry of (await opendir(path))) {
+        for await (const entry of await opendir(path)) {
             if ((entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md")) {
                 await assertPersonalResourcePath(join(path, entry.name), "prompt template");
             }
@@ -195,14 +203,11 @@ export async function createBoundedRemoteModelSession(options: {
         model,
         settingsManager,
         resourceLoader: loader,
-        sessionManager: SessionManager.inMemory(options.cwd),
+        sessionManager,
         tools: customTools.map((tool) => tool.name),
         customTools,
         ...(customTools.length ? {} : { noTools: "all" }),
     });
-    applySessionTemperature(
-        session,
-        getConfiguredAgentTemperature(agentName, options.cwd) ?? agentDef.temperature,
-    );
+    applySessionTemperature(session, getConfiguredAgentTemperature(agentName, options.cwd) ?? agentDef.temperature);
     return { session, registry };
 }

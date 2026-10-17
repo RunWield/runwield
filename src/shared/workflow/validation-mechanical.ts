@@ -4,6 +4,7 @@ import { recordDeliveryEvidence } from "./delivery-evidence.ts";
  * Repository CI and the repair loop that returns failures to the execution Agent.
  */
 
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { AGENTS } from "../../constants.js";
 import { loadPlan } from "../../plan-store.js";
 import type { AgentTurnOutcome, ValidationLocalCIResult } from "./validation-ports.ts";
@@ -12,9 +13,7 @@ import {
     getProjectRoot,
     preserveValidationContinuationState,
     readCiAttempts,
-    readSemanticRound,
     recordLifecycleEvent,
-    recordMetric,
     resolvePhaseContext,
 } from "./validation-context.ts";
 import { CI_REPAIR_CYCLES, type UserActionOption } from "./validation-types.ts";
@@ -110,11 +109,12 @@ async function continueLastRepairSession(args: ValidationLoopArgs, prompt: strin
 async function reloadValidationPlanSnapshot(args: ValidationLoopArgs): Promise<ValidationPhaseResult | null> {
     const projectRoot = getProjectRoot(args);
     const activeWorkflow = args.session.getActiveWorkflow();
-    const planCwd = activeWorkflow?.executionMode === "worktree" && activeWorkflow.executionCwd
-        ? activeWorkflow.executionCwd
-        : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
-        ? args.executionContext.executionCwd
-        : projectRoot;
+    const planCwd =
+        activeWorkflow?.executionMode === "worktree" && activeWorkflow.executionCwd
+            ? activeWorkflow.executionCwd
+            : args.executionContext?.executionMode === "worktree" && args.executionContext.executionCwd
+              ? args.executionContext.executionCwd
+              : projectRoot;
     const plan = await loadPlan(planCwd, args.planName);
     if (!plan) {
         const message = buildValidationUserMessage({
@@ -153,6 +153,7 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
                 checks: { ci: "running" },
             },
         );
+        const operationId = crypto.randomUUID();
         const ciResult = await args.localCI.run({ cwd: phase.context.executionCwd });
         await recordDeliveryEvidence(
             phase.context.projectRoot,
@@ -162,6 +163,24 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
             ciResult.kind === "completed" ? `Exit ${ciResult.exitCode}` : ciResult.kind,
             ciResult.output ? "````text\n" + ciResult.output + "\n````" : "No command output recorded.",
         );
+        await recordWorkflowOutcome(phase.context.projectRoot, {
+            category: "validation",
+            event: "validation_attempt",
+            operationId,
+            attemptId: phase.context.worktreeId,
+            planName: args.planName,
+            attempt: ciAttempts + 1,
+            phase: "mechanical",
+            outcome:
+                ciResult.kind === "operational_failure"
+                    ? "incomplete"
+                    : ciResult.kind === "canceled"
+                      ? "interrupted"
+                      : ciResult.kind === "completed" && ciResult.exitCode === 0
+                        ? "succeeded"
+                        : "failed",
+            session: args.session.metricsSession,
+        });
         if (ciResult.kind === "operational_failure") {
             operationalAttempts += 1;
             const recovery = await handleMechanicalOperationalFailure(
@@ -174,26 +193,14 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
             return recovery.result;
         }
         operationalAttempts = 0;
-        await recordMetric(args, phase.context.projectRoot, {
-            category: "validation",
-            event: "ci_attempt",
-            planName: args.planName,
-            details: {
-                semanticRound: readSemanticRound(args.triageMeta) + 1,
-                mechanicalAttempt: ciAttempts + 1,
-                exitCode: ciResult.kind === "completed" ? ciResult.exitCode : 130,
-                passed: ciResult.kind === "completed" && ciResult.exitCode === 0,
-                canceled: ciResult.kind === "canceled",
-            },
-        });
 
         if (ciResult.kind === "canceled") {
             const pause: UserActionPause = {
-                whatHappened:
-                    `The tests for "${args.planName}" were stopped before they finished, so RunWield cannot tell yet whether the work is good.`,
-                doThis: `Pick Engineer follow-up to return to the ${
-                    args.session.getAgentDisplayName(phase.context.executionAgent, phase.context.projectRoot)
-                } session, Retry to run them again now, or Stop to come back to this later.`,
+                whatHappened: `The tests for "${args.planName}" were stopped before they finished, so RunWield cannot tell yet whether the work is good.`,
+                doThis: `Pick Engineer follow-up to return to the ${args.session.getAgentDisplayName(
+                    phase.context.executionAgent,
+                    phase.context.projectRoot,
+                )} session, Retry to run them again now, or Stop to come back to this later.`,
                 options: ENGINEER_FOLLOW_UP_OPTIONS,
             };
             const action = await pauseForUserAction(args, pause);
@@ -223,11 +230,11 @@ export async function runMechanicalValidationPhase(args: ValidationLoopArgs): Pr
         const failureReason = getCiFailureReason(ciResult);
         if (ciAttempts >= CI_REPAIR_CYCLES) {
             const pause: UserActionPause = {
-                whatHappened: `The tests for "${args.planName}" are still failing. ${
-                    args.session.getAgentDisplayName(AGENTS.REVIEWER_FEEDBACK_ENGINEER, phase.context.projectRoot)
-                } tried ${CI_REPAIR_CYCLES} times and could not get them passing.`,
-                doThis:
-                    "Pick Engineer follow-up to reopen the last repair session, Retry only after you fixed the tests outside RunWield, or Stop to come back to this later.",
+                whatHappened: `The tests for "${args.planName}" are still failing. ${args.session.getAgentDisplayName(
+                    AGENTS.REVIEWER_FEEDBACK_ENGINEER,
+                    phase.context.projectRoot,
+                )} tried ${CI_REPAIR_CYCLES} times and could not get them passing.`,
+                doThis: "Pick Engineer follow-up to reopen the last repair session, Retry only after you fixed the tests outside RunWield, or Stop to come back to this later.",
                 details: [failureReason],
                 options: ENGINEER_FOLLOW_UP_OPTIONS,
             };
@@ -305,9 +312,10 @@ function pauseForEngineerFollowUp(
         kind: "paused",
         planName: args.planName,
         projectRoot: context.projectRoot,
-        reason: `Mechanical Validation paused for ${
-            args.session.getAgentDisplayName(context.executionAgent, context.projectRoot)
-        } follow-up. ${reason}`,
+        reason: `Mechanical Validation paused for ${args.session.getAgentDisplayName(
+            context.executionAgent,
+            context.projectRoot,
+        )} follow-up. ${reason}`,
         awaitingTaskCompletion: true,
     };
 }

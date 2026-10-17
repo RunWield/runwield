@@ -320,47 +320,49 @@ test("Agy parser handles byte splits, display-only tool info, metadata, and matc
 test("Agy parser streams native tool steps from Antigravity 1.2 without inventing completions", async () => {
     const tools: AgyCliToolStep[] = [];
     await parseAgyCliStream(
-        streamFromText([
-            JSON.stringify({
-                event: "init",
-                conversation_id: "conversation-1",
-                init: { agent: "runwield-real-shape" },
-            }),
-            JSON.stringify({
-                event: "step_update",
-                step_update: {
+        streamFromText(
+            [
+                JSON.stringify({
+                    event: "init",
                     conversation_id: "conversation-1",
-                    step_index: 2,
-                    state: "ACTIVE",
-                    step_type: "tool",
-                    tool_name: "run_command",
-                    tool_info: { name: "run_command", parameters: { CommandLine: "pwd" } },
-                },
-            }),
-            JSON.stringify({
-                event: "step_update",
-                step_update: {
-                    conversation_id: "conversation-1",
-                    step_index: 2,
-                    state: "DONE",
-                    step_type: "tool",
-                    tool_name: "run_command",
-                    duration_seconds: 0.05,
-                    tool_info: { name: "run_command", parameters: { CommandLine: "pwd" }, output: "/project" },
-                },
-            }),
-            JSON.stringify({
-                event: "step_update",
-                step_update: {
-                    step_index: 3,
-                    state: "ACTIVE",
-                    step_type: "tool",
-                    tool_name: "view_file",
-                    tool_info: { name: "view_file", parameters: { AbsolutePath: "/project/readme" } },
-                },
-            }),
-            JSON.stringify({ event: "result", result: { response: "done" } }),
-        ].join("\n")),
+                    init: { agent: "runwield-real-shape" },
+                }),
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: {
+                        conversation_id: "conversation-1",
+                        step_index: 2,
+                        state: "ACTIVE",
+                        step_type: "tool",
+                        tool_name: "run_command",
+                        tool_info: { name: "run_command", parameters: { CommandLine: "pwd" } },
+                    },
+                }),
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: {
+                        conversation_id: "conversation-1",
+                        step_index: 2,
+                        state: "DONE",
+                        step_type: "tool",
+                        tool_name: "run_command",
+                        duration_seconds: 0.05,
+                        tool_info: { name: "run_command", parameters: { CommandLine: "pwd" }, output: "/project" },
+                    },
+                }),
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: {
+                        step_index: 3,
+                        state: "ACTIVE",
+                        step_type: "tool",
+                        tool_name: "view_file",
+                        tool_info: { name: "view_file", parameters: { AbsolutePath: "/project/readme" } },
+                    },
+                }),
+                JSON.stringify({ event: "result", result: { response: "done" } }),
+            ].join("\n"),
+        ),
         { onTool: (tool) => tools.push(tool) },
     );
     assertEquals(tools, [
@@ -378,25 +380,33 @@ test("Agy parser streams native tool steps from Antigravity 1.2 without inventin
 });
 
 test("Agy parser handles real Antigravity 1.1 stream-json shape", async () => {
-    const result = await parseAgyCliStream(streamFromText([
-        JSON.stringify({ event: "init", conversation_id: "conversation-1", init: { agent: "runwield-real-shape" } }),
-        JSON.stringify({
-            event: "step_update",
-            step_update: { step_type: "agent_response", text_delta: "AGENT-MARKER-real" },
-        }),
-        JSON.stringify({
-            event: "step_update",
-            step_update: { step_type: "agent_response", text_delta: "\n", usage: { input_tokens: 3 } },
-        }),
-        JSON.stringify({
-            event: "result",
-            result: {
-                conversation_id: "conversation-1",
-                response: "AGENT-MARKER-real\n",
-                usage: { input_tokens: 5, output_tokens: 7 },
-            },
-        }),
-    ].join("\n")));
+    const result = await parseAgyCliStream(
+        streamFromText(
+            [
+                JSON.stringify({
+                    event: "init",
+                    conversation_id: "conversation-1",
+                    init: { agent: "runwield-real-shape" },
+                }),
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: { step_type: "agent_response", text_delta: "AGENT-MARKER-real" },
+                }),
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: { step_type: "agent_response", text_delta: "\n", usage: { input_tokens: 3 } },
+                }),
+                JSON.stringify({
+                    event: "result",
+                    result: {
+                        conversation_id: "conversation-1",
+                        response: "AGENT-MARKER-real\n",
+                        usage: { input_tokens: 5, output_tokens: 7 },
+                    },
+                }),
+            ].join("\n"),
+        ),
+    );
     assertEquals(result.rawResultText, "AGENT-MARKER-real\n");
     assertEquals(result.text, "AGENT-MARKER-real\n");
     assertEquals(result.metadata.agent, "runwield-real-shape");
@@ -453,31 +463,42 @@ test("Agy parser rejects malformed, empty, missing-result, and mismatched stream
     );
     await assertRejects(
         () =>
-            parseAgyCliStream(streamFromText([
-                JSON.stringify({ type: "step_update", update_type: "text_delta", text: "hello" }),
-                JSON.stringify({ type: "result", result: "goodbye" }),
-            ].join("\n"))),
+            parseAgyCliStream(
+                streamFromText(
+                    [
+                        JSON.stringify({ type: "step_update", update_type: "text_delta", text: "hello" }),
+                        JSON.stringify({ type: "result", result: "goodbye" }),
+                    ].join("\n"),
+                ),
+            ),
         AgyCliStreamError,
         "did not match",
     );
 });
 
 test("Agy parser reports non-success, permission, and MCP evidence without raw tool payloads", async () => {
-    const result = await parseAgyCliStream(streamFromText([
-        JSON.stringify({ event: "init", init: { agent: "runwield-parser-agent", model: "fixture-model" } }),
-        JSON.stringify({ event: "step_update", step_update: { update_type: "tool_info", command: "raw secret" } }),
-        JSON.stringify({
-            event: "step_update",
-            step_update: { step_type: "agent_response", text_delta: "Permission denied." },
-        }),
-        JSON.stringify({
-            event: "result",
-            status: "failed",
-            denied_actions: [{ command: "cat token" }],
-            error: "MCP tool server failed because permission denied",
-            result: { response: "Permission denied.", usage: { input_tokens: 2, output_tokens: 3 } },
-        }),
-    ].join("\n")));
+    const result = await parseAgyCliStream(
+        streamFromText(
+            [
+                JSON.stringify({ event: "init", init: { agent: "runwield-parser-agent", model: "fixture-model" } }),
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: { update_type: "tool_info", command: "raw secret" },
+                }),
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: { step_type: "agent_response", text_delta: "Permission denied." },
+                }),
+                JSON.stringify({
+                    event: "result",
+                    status: "failed",
+                    denied_actions: [{ command: "cat token" }],
+                    error: "MCP tool server failed because permission denied",
+                    result: { response: "Permission denied.", usage: { input_tokens: 2, output_tokens: 3 } },
+                }),
+            ].join("\n"),
+        ),
+    );
 
     assertEquals(result.metadata.status, "failed");
     assertEquals(result.metadata.permissionDenied, true);
@@ -488,31 +509,35 @@ test("Agy parser reports non-success, permission, and MCP evidence without raw t
 });
 
 test("Agy parser preserves safe denial details for an empty successful result", async () => {
-    const result = await parseAgyCliStream(streamFromText([
-        JSON.stringify({ event: "init", conversation_id: "denied-read", init: { model: "fixture-model" } }),
-        JSON.stringify({
-            event: "step_update",
-            step_update: {
-                step_type: "tool",
-                state: "ERROR",
-                tool_name: "view_file",
-                tool_info: {
-                    name: "view_file",
-                    parameters: { AbsolutePath: "/project/scripts/check.test.js" },
-                    error: { type: "TOOL_ERROR", message: "permission check failed for read_file" },
-                    output: "private file contents",
-                },
-            },
-        }),
-        JSON.stringify({
-            event: "result",
-            result: {
-                status: "SUCCESS",
-                response: "",
-                denied_actions: [{ action: "read_file", display_name: "ViewFile" }],
-            },
-        }),
-    ].join("\n")));
+    const result = await parseAgyCliStream(
+        streamFromText(
+            [
+                JSON.stringify({ event: "init", conversation_id: "denied-read", init: { model: "fixture-model" } }),
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: {
+                        step_type: "tool",
+                        state: "ERROR",
+                        tool_name: "view_file",
+                        tool_info: {
+                            name: "view_file",
+                            parameters: { AbsolutePath: "/project/scripts/check.test.js" },
+                            error: { type: "TOOL_ERROR", message: "permission check failed for read_file" },
+                            output: "private file contents",
+                        },
+                    },
+                }),
+                JSON.stringify({
+                    event: "result",
+                    result: {
+                        status: "SUCCESS",
+                        response: "",
+                        denied_actions: [{ action: "read_file", display_name: "ViewFile" }],
+                    },
+                }),
+            ].join("\n"),
+        ),
+    );
     assertEquals(result.text, "");
     assertEquals(result.metadata.permissionDenied, true);
     assertEquals(result.metadata.permissionDetails, ["view_file: /project/scripts/check.test.js"]);
@@ -521,49 +546,59 @@ test("Agy parser preserves safe denial details for an empty successful result", 
 });
 
 test("Agy parser retains action names without exposing command arguments", async () => {
-    const result = await parseAgyCliStream(streamFromText([
-        JSON.stringify({
-            event: "step_update",
-            step_update: {
-                step_type: "tool",
-                tool_info: {
-                    name: "run_command",
-                    parameters: { CommandLine: "curl --token private-value" },
-                    error: { message: "permission denied: curl --token private-value" },
-                },
-            },
-        }),
-        JSON.stringify({
-            event: "result",
-            result: {
-                status: "SUCCESS",
-                response: "",
-                denied_actions: [{ action: "command", command: "private-value" }],
-            },
-        }),
-    ].join("\n")));
+    const result = await parseAgyCliStream(
+        streamFromText(
+            [
+                JSON.stringify({
+                    event: "step_update",
+                    step_update: {
+                        step_type: "tool",
+                        tool_info: {
+                            name: "run_command",
+                            parameters: { CommandLine: "curl --token private-value" },
+                            error: { message: "permission denied: curl --token private-value" },
+                        },
+                    },
+                }),
+                JSON.stringify({
+                    event: "result",
+                    result: {
+                        status: "SUCCESS",
+                        response: "",
+                        denied_actions: [{ action: "command", command: "private-value" }],
+                    },
+                }),
+            ].join("\n"),
+        ),
+    );
     assertEquals(result.metadata.permissionDetails, ["run_command"]);
     assertEquals(JSON.stringify(result.metadata).includes("private-value"), false);
 
-    const namesOnly = await parseAgyCliStream(streamFromText(JSON.stringify({
-        event: "result",
-        result: {
-            status: "SUCCESS",
-            response: "",
-            denied_actions: [{ action: "read_file", display_name: "ViewFile" }],
-        },
-    })));
+    const namesOnly = await parseAgyCliStream(
+        streamFromText(
+            JSON.stringify({
+                event: "result",
+                result: {
+                    status: "SUCCESS",
+                    response: "",
+                    denied_actions: [{ action: "read_file", display_name: "ViewFile" }],
+                },
+            }),
+        ),
+    );
     assertEquals(namesOnly.metadata.permissionDetails, ["read_file"]);
 });
 
 test("Agy parser ignores empty denied-action lists", async () => {
-    const result = await parseAgyCliStream(streamFromText(
-        JSON.stringify({
-            event: "result",
-            denied_actions: [],
-            result: { response: "completed", status: "success" },
-        }) + "\n",
-    ));
+    const result = await parseAgyCliStream(
+        streamFromText(
+            JSON.stringify({
+                event: "result",
+                denied_actions: [],
+                result: { response: "completed", status: "success" },
+            }) + "\n",
+        ),
+    );
 
     assertEquals(result.text, "completed");
     assertEquals(result.metadata.permissionDenied, false);
@@ -587,7 +622,8 @@ test("Agy backend status covers all closed kinds and sanitizes persisted message
         "canceled",
         "cleanup_failed",
     ] as const;
-    const raw = "Bearer abc123\nHOME=/secret/path TOKEN=value\nhttps://example.test/private runwield-guide-secret " +
+    const raw =
+        "Bearer abc123\nHOME=/secret/path TOKEN=value\nhttps://example.test/private runwield-guide-secret " +
         "x".repeat(2000);
 
     for (const kind of kinds) {
@@ -618,14 +654,8 @@ test("Agy backend status covers all closed kinds and sanitizes persisted message
         sanitizeAgyStatusMessage("USER_NAME=alice FEATURE_VALUE=private visible", "non_zero_exit"),
         "[redacted] [redacted] visible",
     );
-    assertEquals(
-        sanitizeAgyStatusMessage("feature_value=private next", "non_zero_exit"),
-        "[redacted] next",
-    );
-    assertEquals(
-        sanitizeAgyStatusMessage("FEATURE_VALUE='private text' next", "non_zero_exit"),
-        "[redacted] next",
-    );
+    assertEquals(sanitizeAgyStatusMessage("feature_value=private next", "non_zero_exit"), "[redacted] next");
+    assertEquals(sanitizeAgyStatusMessage("FEATURE_VALUE='private text' next", "non_zero_exit"), "[redacted] next");
 });
 
 test("Agy subprocess proof reads the selected sandboxed agent and keeps Agent Definition out of user text", async () => {
@@ -651,14 +681,13 @@ test("Agy subprocess proof reads the selected sandboxed agent and keeps Agent De
             Error,
             "ENOENT",
         );
-        await assertRejects(
-            () => fsStat(join(home, ".gemini", "config", "agents", agentName)),
-            Error,
-            "ENOENT",
-        );
+        await assertRejects(() => fsStat(join(home, ".gemini", "config", "agents", agentName)), Error, "ENOENT");
 
         const logText = await fsReadFile(logPath, "utf8");
-        const calls = logText.trim().split("\n").map((line) => JSON.parse(line) as { args: string[] });
+        const calls = logText
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line) as { args: string[] });
         assertEquals(calls.length, 2);
         assertEquals(calls[0].args, ["-p", "/agents", "--output-format", "json"]);
         assertEquals(calls[1].args.includes("--agent"), true);
@@ -685,11 +714,7 @@ test("Agy subprocess proof rejects Agent marker with surrounding terminal text",
             Error,
             "did not win",
         );
-        await assertRejects(
-            () => fsStat(join(home, ".gemini", "config", "agents", agentName)),
-            Error,
-            "ENOENT",
-        );
+        await assertRejects(() => fsStat(join(home, ".gemini", "config", "agents", agentName)), Error, "ENOENT");
     });
 });
 
@@ -722,10 +747,16 @@ test("Agy CLI supported base models are selectable and executable through backen
     const model = registry.find("agy-cli", "gemini-3.8-flash");
     assert(model);
     assertEquals(
-        registry.getSelectable().filter((entry) => entry.provider === "agy-cli").map((entry) => entry.id),
+        registry
+            .getSelectable()
+            .filter((entry) => entry.provider === "agy-cli")
+            .map((entry) => entry.id),
         ["gemini-3.8-flash", "gemini-3.1-pro"],
     );
-    assertEquals(registry.getAvailable().some((entry) => entry.provider === "agy-cli"), false);
+    assertEquals(
+        registry.getAvailable().some((entry) => entry.provider === "agy-cli"),
+        false,
+    );
     assertEquals(registry.find("agy-cli", "runwield-spike-test-agent"), undefined);
     assertEquals(model.executionBackend, "agy-cli");
     assertModelExecutionBackendSupported(model);
@@ -738,16 +769,9 @@ test("resolveAgyNativeTools maps declared agent tools to permitted native tools"
         "replace_file_content",
         "view_file",
     ]);
-    assertEquals(resolveAgyNativeTools(["read", "grep", "find", "ls", "bash"]), [
-        "run_command",
-        "view_file",
-    ]);
-    assertEquals(resolveAgyNativeTools(["read", "grep", "find", "ls"]), [
-        "view_file",
-    ]);
-    assertEquals(resolveAgyNativeTools([]), [
-        "view_file",
-    ]);
+    assertEquals(resolveAgyNativeTools(["read", "grep", "find", "ls", "bash"]), ["run_command", "view_file"]);
+    assertEquals(resolveAgyNativeTools(["read", "grep", "find", "ls"]), ["view_file"]);
+    assertEquals(resolveAgyNativeTools([]), ["view_file"]);
     assertEquals(resolveAgyNativeTools(undefined), [
         "run_command",
         "write_to_file",
@@ -765,24 +789,46 @@ test("Agy terminal usage remains observable after malformed or mismatched stream
             usage: { input_tokens: 9, output_tokens: 0, cache_read_tokens: 7 },
         },
     });
-    for (
-        const prefix of [
-            "{bad json}\n",
-            JSON.stringify({
-                event: "step_update",
-                step_update: {
-                    step_type: "agent_response",
-                    text_delta: "original",
-                },
-            }) + "\n",
-        ]
-    ) {
+    for (const prefix of [
+        "{bad json}\n",
+        JSON.stringify({
+            event: "step_update",
+            step_update: {
+                step_type: "agent_response",
+                text_delta: "original",
+            },
+        }) + "\n",
+    ]) {
         const observations: Array<{ inputTokens: number | null; cacheReadTokens: number | null }> = [];
-        await assertRejects(() =>
-            parseAgyCliStream(streamFromText(prefix + result + "\n"), {
-                onUsage: (usage) => observations.push(usage),
-            }), AgyCliStreamError);
+        await assertRejects(
+            () =>
+                parseAgyCliStream(streamFromText(prefix + result + "\n"), {
+                    onUsage: (usage) => observations.push(usage),
+                }),
+            AgyCliStreamError,
+        );
         assertEquals(observations.at(-1)?.inputTokens, 9);
         assertEquals(observations.at(-1)?.cacheReadTokens, 7);
+    }
+});
+
+test("Agy vendor reasoning remains the measured subset of the aggregate output", async () => {
+    const text = await fsReadFile(
+        new URL("./fixtures/agy-1.2.12-model-read-tool-stream.jsonl", import.meta.url),
+        "utf8",
+    );
+    const result = await parseAgyCliStream(new Blob([text]).stream());
+    assertEquals(result.metadata.usage.thinkingTokens, 205 + 51);
+    assertEquals(result.metadata.usage.outputTokens, 320);
+});
+
+test("Agy absent thinking and reported zero thinking remain distinct", async () => {
+    for (const [usage, expected] of [
+        [{}, null],
+        [{ thinking_tokens: 0 }, 0],
+    ] as const) {
+        const text = JSON.stringify({ type: "result", result: "reply", usage });
+        const result = await parseAgyCliStream(new Blob([text]).stream());
+        assertEquals(result.metadata.usage.thinkingTokens, expected);
     }
 });

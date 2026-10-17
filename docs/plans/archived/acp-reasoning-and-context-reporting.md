@@ -196,7 +196,7 @@ No Work Record supersession is proposed.
   an unchanged active setting.
 - Automated context discrimination: set the live Runtime snapshot to
   `contextUsage: { tokens: 48000, contextWindow:
-  128000 }` while the latest usage event reports a different input
+128000 }` while the latest usage event reports a different input
   count and nonzero cache counts. Assert the wire frame is `used: 48000, size: 128000`; assert missing capacity or
   `tokens: null` emits no `usage_update` frame rather than `used === size`; restore exact usage and assert a later
   update uses the restored values.

@@ -22,7 +22,7 @@ const projectPath = currentUrl.pathname.match(/^\/projects\/[^/]+/)?.[0];
 
 function linkWithToken(path: string) {
     const ownerRoute = currentUrl.pathname === "/projects" || currentUrl.pathname.startsWith("/projects/") ||
-        currentUrl.pathname === "/devices" || currentUrl.pathname === "/pair";
+        currentUrl.pathname === "/devices" || currentUrl.pathname === "/pair" || currentUrl.pathname === "/usage";
     const token = ownerRoute ? "" : currentUrl.searchParams.get(PLAN_UI_TOKEN_QUERY) || "";
     const query = currentUrl.searchParams.get(PLAN_SEARCH_QUERY_PARAM) || "";
     const next = new URL(path, currentUrl);
@@ -97,6 +97,7 @@ function linkWithToken(path: string) {
                         </a>
                     </div>
                     <a class="workspace-sidebar-home" href="/">Dashboard</a>
+                    <a class="workspace-sidebar-home" href="/usage" aria-current={currentUrl.pathname === "/usage" ? "page" : undefined}>Usage</a>
                     <a class="workspace-sidebar-new" href={projectPath ? `${projectPath}/sessions/new` : "/projects"}>
                         <span class="workspace-sidebar-plus" aria-hidden="true">+</span><span>New Session</span>
                     </a>

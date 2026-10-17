@@ -1,4 +1,5 @@
 ---
+planId: "f323ab7f-e2de-4d65-9beb-4cb29cb76c10"
 classification: "PLANNED_CHANGE"
 workKind: "FEATURE"
 complexity: "MEDIUM"
@@ -11,7 +12,7 @@ affectedPaths:
     - "docs/design-system.md"
 executionAgent: "frontend-engineer"
 collaborationRecommendation: "pair"
-devServerCommand: "deno task workspace:dev"
+devServerCommand: "bun run workspace:dev"
 devServerUrl: "http://127.0.0.1:5173"
 devServerHmr: true
 createdAt: "2026-09-21T19:28:55.399Z"
@@ -21,16 +22,17 @@ parentPlan: "reliable-usage-dashboard-and-langfuse-export"
 order: 9
 dependencies:
     - "08-langfuse-exporter-package"
+userVerifiedAt: null
 targetBranch: "epic/reliable-usage-dashboard-and-langfuse-export"
-planId: "f323ab7f-e2de-4d65-9beb-4cb29cb76c10"
 ---
 
 # Workspace Export Settings and Delivery Status
 
 ## Context
 
-Child 05 shipped `/usage` showing local recording on and export off. Children 06–08 made export real. The owner now
-needs to see and control it from the browser.
+Child 05 shipped `/usage` showing local measurements with coverage notes from the report. Children 06–08 made export
+real. The owner now needs to see and control recording and export from the browser — including the effective local
+recording-state indicator and the Settings affordance on `/usage` that this child adds.
 
 The Epic bounds this surface deliberately: local collection state, installed exporter status, destination URL,
 host-secret references, approved Projects, and delivery status. No extension marketplace and no browser package
@@ -104,10 +106,14 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
 - Destination configuration shows endpoint and external project identity, with HTTPS enforced and an explicit local
   development exception surfaced as such.
 - Approved Projects are listed, and a new Project is visibly not included by default.
+- The owner can create, update, and revoke a destination grant and add or remove Projects. Each action calls child 07's
+  Core grant functions (`metrics-export-grants.ts`); the browser computes no grant, start position, or eligibility.
 - Credentials display only as configured or not configured; no secret value appears in a response payload, browser
   storage, rendered markup, log, or diagnostic.
-- A credential entered through the browser goes through an authenticated same-origin mutation route and returns only
-  configured/not-configured state.
+- A credential entered through the browser goes through an authenticated same-origin mutation route that writes child
+  07's Core credentials file (`~/.wld/metrics-export/credentials.json`, mode `0600`), never `settings.json`, and returns
+  only configured/not-configured state.
+- Delivery status comes from child 07's `readMetricsExportStatus()` and adds **Confirmed** to the states shown.
 - Delivery status shows accepted, pending, unconfirmed, and rejected counts with their reasons, and unconfirmed is
   explained as an exporter status rather than a workflow failure.
 - Browser Project removal is explained as restricting browser access only, distinctly from revoking a separate export
@@ -127,9 +133,9 @@ Boundaries with evidence, not an allowlist. Verify the real footprint during imp
 
 ## Verification Plan
 
-- Automated: `deno task workspace:test`, `deno task workspace:check`, `deno task workspace:build`, then `deno task ci`
-  and `deno task doc-links:check`.
-- Headed browser checks are mandatory. Run `deno task workspace:dev` and open `http://127.0.0.1:5173/usage`, then
+- Automated: `bun run workspace:test`, `bun run workspace:check`, `bun run workspace:build`, then `bun run ci`
+  and `bun run doc-links:check`.
+- Headed browser checks are mandatory. Run `bun run workspace:dev` and open `http://127.0.0.1:5173/usage`, then
   navigate to Settings.
 - With no exporter installed, the surface shows not installed and no destination controls; install and leave unapproved,
   and status changes without any send becoming possible.

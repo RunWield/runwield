@@ -10,7 +10,7 @@ import { fileURLToPath as fromFileUrl } from "node:url";
 import { listCiFiles } from "./ci-files.ts";
 
 const REPO_ROOT = dirname(dirname(fromFileUrl(import.meta.url)));
-const SOURCE_ROOTS = ["src", "scripts"];
+const SOURCE_ROOTS = ["src", "scripts", "packages"];
 
 /**
  * Directories that are not ours to check: vendored code, build output, and caches.
@@ -18,14 +18,7 @@ const SOURCE_ROOTS = ["src", "scripts"];
  * `src/ui/workspace` is excluded because it is an Astro project with its own
  * `bun run workspace:check`, which understands `.astro` files and its own tsconfig.
  */
-const SKIP_DIRS = new Set([
-    ".astro",
-    ".vite",
-    "_fresh",
-    "coverage",
-    "dist",
-    "node_modules",
-]);
+const SKIP_DIRS = new Set([".astro", ".vite", "_fresh", "coverage", "dist", "node_modules"]);
 
 const SKIP_PATHS = new Set(["src/ui/workspace"]);
 

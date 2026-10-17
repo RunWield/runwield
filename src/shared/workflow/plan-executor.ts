@@ -18,6 +18,7 @@ import {
     requestRecoverablePlanReview,
     SESSION_COMPLETE_GUIDANCE,
 } from "./plan-review-recovery.js";
+import { recordWorkflowOutcome } from "./outcome-observations.ts";
 import { recordWorkflowMetric } from "./metrics.js";
 import { CollaborationStyles, selectRuntimeCollaborationStyle } from "./execution-collaboration.ts";
 import { finalizePlanImplementation } from "./implementation-checkpoint.ts";
@@ -439,19 +440,15 @@ export async function executePlan({
         prepareSegmentHandoff,
     });
     if (!result.executionComplete) {
-        await recordWorkflowMetric(
-            {
-                category: "execution",
-                event: "plan_execution_result",
-                planName,
-                details: {
-                    executionComplete: false,
-                    repairRequired: result.repairRequired,
-                    hasError: Boolean(result.error),
-                },
-            },
-            projectRoot,
-        );
+        await recordWorkflowOutcome(projectRoot, {
+            category: "execution",
+            event: "plan_execution_result",
+            operationId: crypto.randomUUID(),
+            planName,
+            outcome: "ongoing",
+            attemptId: result.executionContext?.worktreeId,
+            session: hostedSession?.getManagedMetadata(),
+        });
         return result;
     }
 
@@ -468,18 +465,15 @@ export async function executePlan({
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         try {
-            await recordWorkflowMetric(
-                {
-                    category: "execution",
-                    event: "implementation_checkpoint_failed",
-                    planName,
-                    details: {
-                        executionMode: executionContext?.executionMode,
-                        hasExecutionContext: Boolean(executionContext),
-                    },
-                },
-                projectRoot,
-            );
+            await recordWorkflowOutcome(projectRoot, {
+                category: "execution",
+                event: "implementation_checkpoint_failed",
+                operationId: crypto.randomUUID(),
+                planName,
+                outcome: "ongoing",
+                attemptId: result.executionContext?.worktreeId,
+                session: hostedSession?.getManagedMetadata(),
+            });
         } catch {
             // The checkpoint failure remains the authoritative error.
         }
@@ -496,15 +490,15 @@ export async function executePlan({
             ...(result.completionReport ? { completionReport: result.completionReport } : {}),
         };
     }
-    await recordWorkflowMetric(
-        {
-            category: "execution",
-            event: "plan_execution_result",
-            planName,
-            details: { executionComplete: true, repairRequired: false },
-        },
-        projectRoot,
-    );
+    await recordWorkflowOutcome(projectRoot, {
+        category: "execution",
+        event: "plan_execution_result",
+        operationId: crypto.randomUUID(),
+        planName,
+        outcome: "succeeded",
+        attemptId: result.executionContext?.worktreeId,
+        session: hostedSession?.getManagedMetadata(),
+    });
 
     emitSystemStatus(hostedSession, `✅ Plan implementation complete and checkpointed: ${planName}`, {
         header: "RunWield",

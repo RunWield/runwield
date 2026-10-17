@@ -11,7 +11,13 @@ import { assertRuntimeEvent, assertsGoldenCoverage } from "../testing/portfolio-
 
 /** @typedef {import('../testing/scenario-runner.js').GoldenScenarioResult} GoldenScenarioResult */
 /** @typedef {{ shownExplanationIds?: string[], recapShown?: boolean }} TutorialContextSnapshot */
-/** @typedef {{ runtimeSnapshot?: { tutorialContext?: TutorialContextSnapshot } }} TutorialCapturedState */
+/** @typedef {{ status?: string }} TutorialPlanAttributes */
+/** @typedef {{ attrs?: TutorialPlanAttributes }} TutorialCapturedPlan */
+/**
+ * @typedef {Object} TutorialCapturedState
+ * @property {{ tutorialContext?: TutorialContextSnapshot }} [runtimeSnapshot]
+ * @property {TutorialCapturedPlan[]} [plans]
+ */
 /** @typedef {{ remoteHead?: string, remotePlanStatus?: string, deliveredText?: string }} TutorialPublicationState */
 /**
  * @typedef {object} TutorialScenarioState
@@ -470,6 +476,9 @@ export const onboardingTutorialDeliveryScenario = {
         { type: "select", promptIncludes: "were stopped before they finished", value: "stop" },
         { type: "select", promptIncludes: "Resume tutorial guidance", value: "resume" },
         { type: "select", promptIncludes: "Plan recovery", value: "validate" },
+        { type: "select", promptIncludes: "were stopped before they finished", value: "stop" },
+        { type: "select", promptIncludes: "Resume tutorial guidance", value: "resume" },
+        { type: "select", promptIncludes: "Plan recovery", value: "validate" },
     ],
     script: [
         {
@@ -524,7 +533,7 @@ export const onboardingTutorialDeliveryScenario = {
         { type: "type", text: "Use the documentation clarification and submit it for Plan Review" },
         { type: "enter" },
         { type: "waitForEvent", event: "runtime:tool:start:task_completed", timeoutMs: 60000 },
-        { type: "waitForScreen", text: "Running the tests in", timeoutMs: 60000 },
+        { type: "waitForEventCount", event: "runtime:validation-ci:started", count: 1, timeoutMs: 60000 },
         { type: "escape" },
         { type: "waitForIdle", timeoutMs: 60000 },
         { type: "captureProjectState", planNames: ["plan"], key: "tutorialPausedState" },
@@ -532,8 +541,9 @@ export const onboardingTutorialDeliveryScenario = {
         { type: "type", text: "/load-plan plan" },
         { type: "enter" },
         { type: "enter" },
-        { type: "waitForEventCount", event: "runtime:tool:end:task_completed", count: 2, timeoutMs: 240000 },
-        { type: "waitForEventCount", event: "runtime:turn_end", count: 9, timeoutMs: 60000 },
+        // Stop the CI run after semantic repair, not an Agent turn that can end
+        // before workflow settlement or tutorial presentation.
+        { type: "waitForEventCount", event: "runtime:validation-ci:started", count: 3, timeoutMs: 240000 },
         { type: "escape" },
         { type: "waitForIdle", timeoutMs: 60000 },
         { type: "captureProjectState", planNames: ["plan"], key: "tutorialRepairedState" },
@@ -603,6 +613,16 @@ export const onboardingTutorialDeliveryScenario = {
             assert(
                 repairedContext?.shownExplanationIds?.includes("ai-review"),
                 "Semantic repair teaching must persist before its reload.",
+            );
+            assertEquals(
+                repairedContext?.recapShown,
+                false,
+                "Repair must pause before verified delivery and its recap.",
+            );
+            assertEquals(
+                tutorialState.tutorialRepairedState?.plans?.[0]?.attrs?.status,
+                "implemented",
+                "Repair must reload before validation and publication finish.",
             );
             assertEquals(completedContext?.recapShown, true, "Verified recap must persist after it is displayed.");
             assertEquals(reloadedContext?.recapShown, true, "Verified recap must remain complete after reload.");

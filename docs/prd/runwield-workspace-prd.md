@@ -125,6 +125,7 @@ Each capability owns its browser requirements and links to Core for shared behav
 - [Local Plan management](#local-plan-management)
 - [Shared Plan collaboration](#shared-plan-collaboration)
 - [Attention dashboard](#attention-dashboard)
+- [Personal usage and outcomes](#personal-usage-and-outcomes)
 - [Project access and navigation](#project-access-and-navigation)
 - [Installable app and alerts](#installable-app-and-alerts)
 - [Browser Sessions](#browser-sessions)
@@ -293,6 +294,52 @@ Dashboard refreshes automatically while visible.
 - Given more than five items, the five newest appear; reversing the sort and expanding survive refresh.
 - Given a Project with thousands of archived Sessions, the Dashboard and sidebar open promptly and reflect newly
   completed work on refresh.
+
+### Personal usage and outcomes
+
+**Scope and maturity:** Personal owner Workspace reporting. Core owns the
+[measurement and reporting rules](runwield-core-prd.md#usage-measurement-and-export).
+
+**Requirement: Keep usage separate from attention and Sessions.** `/usage` is an owner-only sidebar destination. It does
+not replace the [Attention dashboard](#attention-dashboard) or Session navigation. The report shows active days,
+reported tokens, estimated USD cost, published changes, validation attempts, repair rounds, ongoing delivery, and
+abandoned delivery, with Project, model, and backend breakdowns.
+
+**Requirement: Report only authorized Project histories.** Each request resolves registered, enabled, available
+Projects, then uses one Core query over their roots. Disabled, removed, unavailable, and unregistered Projects cannot
+contribute totals or be queried by a crafted ID. Excluded registrations are named. Worktree aliases share one history
+and one set of totals, with both registration labels visible. Filtering either alias reads the same history.
+
+**Requirement: Make data completeness visible beside measurements.** Period presets cover 7, 30, and 90 local days; a
+custom range has an inclusive start and exclusive end. The server supplies the host time zone and recorded-through
+marker. Summary figures show exclusion counts and partial-day counts. A gap breaks the daily token trend; a covered zero
+draws a baseline point. The readable daily table shows tokens, estimated USD cost, and **Data Complete** as **Complete**
+or **Partial**, with gap reasons. Partial costs show a known subtotal or a dash, not a fabricated zero. Reported cost
+stays separate from estimated cost, and neither claims to be a billing total. Pending measurements do not become final
+spend; ongoing delivery is labeled as of the latest observation.
+
+**Requirement: Link measurements only to verified destinations.** Project rows link to existing authorized Session and
+Plan surfaces using Workspace registration IDs and durable Session/Plan IDs. Repeated event links share one readable
+destination. Missing or deleted targets leave totals readable without fabricated links. The page does not show a raw
+event list, recording controls, Settings controls, or export controls.
+
+**Acceptance scenarios:**
+
+- Given an unpaired device, opening `/usage` leads to pairing and its API refuses the request.
+- Given two enabled Projects with known usage, a period or Project filter returns Core's exact totals and daily buckets;
+  the displayed zone and dates agree on desktop and phone.
+- Given primary and worktree registrations, the report names both and counts their shared history once.
+- Given disabled, removed, or unavailable Projects, their totals stay excluded; a crafted filter cannot read them.
+- Given a covered zero day and a gap day, the trend and daily table distinguish them. The gap row says Partial and its
+  cost is a known subtotal or a dash. Missing cost observations carry exclusion counts.
+- Given active operations, their count appears as pending measurement without settled spend. Missing history has a
+  readable empty state; loading is announced and request errors offer Retry.
+- Given valid Session and Plan attribution, the Project row opens the authorized surfaces. Deleted or foreign targets
+  have no link, and the measurements remain readable.
+- Given a phone or keyboard-only user, filters and table disclosures are operable, wide tables scroll within the page,
+  and home and Session navigation remain available.
+
+<a id="63-project-experience"></a>
 
 ### Project access and navigation
 

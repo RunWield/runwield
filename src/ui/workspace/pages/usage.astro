@@ -1,0 +1,7 @@
+---
+import WorkspaceLayout from "../layouts/WorkspaceLayout.astro";
+import { UsageReport } from "../react/UsageReport.tsx";
+---
+<WorkspaceLayout title="Usage · RunWield Workspace" surfaceTitle="Usage">
+    <UsageReport client:load />
+</WorkspaceLayout>

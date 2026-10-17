@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { RuntimeUsageTotals } from "../../shared/session/runtime-usage-totals.ts";
+import type { RuntimeUsage } from "../../shared/session/session-runtime-events.js";
 import type { SessionRuntime } from "../../shared/session/session-runtime.ts";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "../theme/theme.js";
@@ -34,13 +36,6 @@ export interface FooterLocationOptions {
     home?: string;
     resolveBranch?: (cwd: string) => string | undefined;
 }
-export interface FooterRuntimeUsage {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-    cost: number;
-}
 export interface FooterRuntimeSnapshot extends FooterLocationSnapshot {
     activeModel: { model?: string; provider?: string };
     thinkingLevel: string;
@@ -52,13 +47,7 @@ export interface FooterRuntimeSnapshot extends FooterLocationSnapshot {
 }
 export interface FooterUsageEvent {
     type: string;
-    usage: {
-        inputTokens: number;
-        outputTokens: number;
-        cacheReadTokens: number;
-        cacheWriteTokens: number;
-        costUsd: number;
-    };
+    usage: RuntimeUsage;
 }
 export type FooterRuntimeEvent = FooterUsageEvent | { type: string };
 export interface ChatFooterController {
@@ -84,9 +73,10 @@ function formatTokens(count: number): string {
 
 export function renderUpdateNoticeLine(latestVersion: string, themeImpl: FooterTheme = theme): string {
     const command = readRunWieldPackageInstallSync()?.updateCommand || "wld update";
-    return `New version available: ${
-        themeImpl.fg("routingQuickFix" as ThemeColor, latestVersion)
-    }. Run \`${command}\` to install it`;
+    return `New version available: ${themeImpl.fg(
+        "routingQuickFix" as ThemeColor,
+        latestVersion,
+    )}. Run \`${command}\` to install it`;
 }
 
 export function buildFooterContextStat(
@@ -138,9 +128,8 @@ export function buildFooterWorkflowLabelParts(
     workflowContext: { routingIntent?: string; complexity?: string; planName?: string } | null | undefined,
     maxWidth = Infinity,
 ): FooterWorkflowPart[] {
-    const agentName = typeof agentInfo?.displayName === "string" && agentInfo.displayName.trim()
-        ? agentInfo.displayName.trim()
-        : "";
+    const agentName =
+        typeof agentInfo?.displayName === "string" && agentInfo.displayName.trim() ? agentInfo.displayName.trim() : "";
     const width = Number.isFinite(maxWidth) ? Math.max(0, Math.floor(maxWidth)) : Infinity;
     if (!agentName || width <= 0) return [];
     const routeMeta = FOOTER_ROUTING_META.get(String(workflowContext?.routingIntent || ""));
@@ -150,9 +139,11 @@ export function buildFooterWorkflowLabelParts(
     const showRouting = Boolean(showContext && routeMeta && complexityMeta);
     const showPlan = showContext && Boolean(planName);
     if (!showRouting && !showPlan) return [{ text: truncateToWidth(agentName, width), token: "accent" }];
-    function compose(
-        options: { includeComplexity: boolean; includePlan: boolean; planText?: string },
-    ): FooterWorkflowPart[] {
+    function compose(options: {
+        includeComplexity: boolean;
+        includePlan: boolean;
+        planText?: string;
+    }): FooterWorkflowPart[] {
         const parts: FooterWorkflowPart[] = [{ text: agentName, token: "accent" }];
         if (showRouting && routeMeta && complexityMeta) {
             parts.push({ text: " - ", token: "dim" });
@@ -197,17 +188,24 @@ export function renderFooterWorkflowLabelParts(parts: FooterWorkflowPart[], them
 
 function readGitBranchSync(cwd: string): string | undefined {
     try {
-        return execFileSync("git", ["branch", "--show-current"], {
-            cwd,
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "ignore"],
-        }).trim() || undefined;
+        return (
+            execFileSync("git", ["branch", "--show-current"], {
+                cwd,
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "ignore"],
+            }).trim() || undefined
+        );
     } catch {
         return undefined;
     }
 }
 function lastPathSegment(path: string): string {
-    return path.split(/[\\/]+/).filter(Boolean).at(-1) || "";
+    return (
+        path
+            .split(/[\\/]+/)
+            .filter(Boolean)
+            .at(-1) || ""
+    );
 }
 function projectLabelFromEncodedWorktreeParent(encodedProjectCwd: string): string {
     return encodedProjectCwd.replace(/^--/, "").replace(/--$/, "").split("-").filter(Boolean).at(-1) || "";
@@ -269,7 +267,7 @@ function isUsageEvent(event: FooterRuntimeEvent): event is FooterUsageEvent {
 }
 
 export function createChatFooterController(options: CreateChatFooterControllerOptions): ChatFooterController {
-    const runtimeUsage: FooterRuntimeUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+    let runtimeUsage = new RuntimeUsageTotals();
     let unsubscribeRuntimeTelemetry = () => {};
     let ctrlCPendingExit = false;
     let ctrlCPendingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -283,23 +281,18 @@ export function createChatFooterController(options: CreateChatFooterControllerOp
     };
     function attachRuntimeTelemetry(sessionId: string): void {
         unsubscribeRuntimeTelemetry();
-        runtimeUsage.input = 0;
-        runtimeUsage.output = 0;
-        runtimeUsage.cacheRead = 0;
-        runtimeUsage.cacheWrite = 0;
-        runtimeUsage.cost = 0;
+        runtimeUsage = new RuntimeUsageTotals();
         unsubscribeRuntimeTelemetry = options.runtime.subscribeSessionEvents(sessionId, (event) => {
             if (!isUsageEvent(event)) return;
-            runtimeUsage.input += event.usage.inputTokens;
-            runtimeUsage.output += event.usage.outputTokens;
-            runtimeUsage.cacheRead += event.usage.cacheReadTokens;
-            runtimeUsage.cacheWrite += event.usage.cacheWriteTokens;
-            runtimeUsage.cost += event.usage.costUsd;
+            runtimeUsage.add(event.usage);
         });
     }
-    function getModelAndProvider(
-        snapshot: FooterRuntimeSnapshot,
-    ): { model: string; provider: string; thinkingLevel: string } {
+
+    function getModelAndProvider(snapshot: FooterRuntimeSnapshot): {
+        model: string;
+        provider: string;
+        thinkingLevel: string;
+    } {
         const settingsManager = getSettingsManager(snapshot.cwd);
         let model = settingsManager.getDefaultModel() ?? "";
         let provider = settingsManager.getDefaultProvider() ?? "";
@@ -323,14 +316,15 @@ export function createChatFooterController(options: CreateChatFooterControllerOp
             if (!snapshot) return ["", ctrlCPendingExit ? theme.fg("warning", "Ctrl+C - Press again to exit") : ""];
             const { model, provider, thinkingLevel } = getModelAndProvider(snapshot);
             const modelStr = model
-                ? provider && !model.startsWith(`${provider}/`) ? `${provider}/${model}` : model
+                ? provider && !model.startsWith(`${provider}/`)
+                    ? `${provider}/${model}`
+                    : model
                 : "";
             const rootAgentName = snapshot.activeAgent || "";
-            const activeAgentInfo = snapshot.activeAgentInfo ||
-                {
-                    displayName: rootAgentName ? getAgentDisplayName(rootAgentName, snapshot.cwd) : "",
-                    agentName: rootAgentName,
-                };
+            const activeAgentInfo = snapshot.activeAgentInfo || {
+                displayName: rootAgentName ? getAgentDisplayName(rootAgentName, snapshot.cwd) : "",
+                agentName: rootAgentName,
+            };
             const line1LeftRaw = buildFooterLocationText(snapshot, { resolveBranch: getCachedFooterBranch });
             const { left: line1Left, rightParts: line1RightParts } = buildFooterLine1Parts(
                 activeAgentInfo,
@@ -339,16 +333,18 @@ export function createChatFooterController(options: CreateChatFooterControllerOp
                 w,
             );
             const line1RightText = getFooterWorkflowLabelText(line1RightParts);
-            const line1 = theme.fg("dim", line1Left) +
+            const line1 =
+                theme.fg("dim", line1Left) +
                 " ".repeat(Math.max(1, w - visibleWidth(line1Left) - visibleWidth(line1RightText))) +
                 renderFooterWorkflowLabelParts(line1RightParts);
             const contextStat = buildFooterContextStat(snapshot.contextUsage, snapshot.autoCompactionEnabled);
             const statsParts: string[] = [];
-            if (runtimeUsage.input > 0) statsParts.push(`↑${formatTokens(runtimeUsage.input)}`);
-            if (runtimeUsage.output > 0) statsParts.push(`↓${formatTokens(runtimeUsage.output)}`);
-            if (runtimeUsage.cacheRead > 0) statsParts.push(`R${formatTokens(runtimeUsage.cacheRead)}`);
-            if (runtimeUsage.cacheWrite > 0) statsParts.push(`W${formatTokens(runtimeUsage.cacheWrite)}`);
-            if (runtimeUsage.cost > 0) statsParts.push(`$${runtimeUsage.cost.toFixed(3)}`);
+            const usage = runtimeUsage.usage;
+            statsParts.push(`↑${usage.inputTokens === null ? "—" : formatTokens(usage.inputTokens)}`);
+            statsParts.push(`↓${usage.outputTokens === null ? "—" : formatTokens(usage.outputTokens)}`);
+            statsParts.push(`R${usage.cacheReadTokens === null ? "—" : formatTokens(usage.cacheReadTokens)}`);
+            statsParts.push(`W${usage.cacheWriteTokens === null ? "—" : formatTokens(usage.cacheWriteTokens)}`);
+            statsParts.push(usage.costUsd === null ? "$—" : `$${usage.costUsd.toFixed(3)}`);
             if (contextStat) statsParts.push(theme.fg(contextStat.token, contextStat.text));
             const showThinkingLevel = shouldShowFooterThinkingLevel(modelStr, thinkingLevel);
             const thinkingStr = `(${thinkingLevel})`;
@@ -358,7 +354,8 @@ export function createChatFooterController(options: CreateChatFooterControllerOp
             const line2LeftStyled = ctrlCPendingExit
                 ? theme.fg("warning", line2LeftTrunc)
                 : theme.fg("dim", line2LeftTrunc);
-            const line2 = line2LeftStyled +
+            const line2 =
+                line2LeftStyled +
                 " ".repeat(Math.max(1, w - visibleWidth(line2LeftTrunc) - line2RightWidth)) +
                 theme.fg("dim", modelStr) +
                 (showThinkingLevel

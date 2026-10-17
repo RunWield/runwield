@@ -223,7 +223,9 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     const result = await resumed.json();
                     assertEquals(resumed.status, 202, JSON.stringify(result));
                     assertExists(result.operationId);
-                    for (let i = 0; i < 3000; i++) {
+                    // Real worktree and checkpoint I/O can exceed ten seconds under CI contention.
+                    const resumeDeadline = Date.now() + 60_000;
+                    while (Date.now() < resumeDeadline) {
                         const operation = service.getOperation(result.operationId);
                         if (operation.liveInteraction || operation.status !== "running") break;
                         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -237,11 +239,17 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                     );
                     assertStringIncludes(resumedOperation.liveInteraction.request.prompt.toLowerCase(), "command");
                     const hosted = service.operations.get(result.operationId);
-                    const workflow =
-                        service.runtime.getSessionSnapshot(hosted.runtimeSessionId).activeExecutionWorkflow;
+                    const workflow = service.runtime.getSessionSnapshot(
+                        hosted.runtimeSessionId,
+                    ).activeExecutionWorkflow;
                     assertExists(workflow?.executionCwd);
                     assertEquals(await fsReadFile(`${workflow.executionCwd}/continued.txt`, "utf8"), "continued");
-                    assertEquals(await fsStat(`${root}/continued.txt`).then(() => true).catch(() => false), false);
+                    assertEquals(
+                        await fsStat(`${root}/continued.txt`)
+                            .then(() => true)
+                            .catch(() => false),
+                        false,
+                    );
                     assertEquals((await loadPlan(workflow.executionCwd, "saved-plan")).attrs.status, "implemented");
                     await service.cancelOperation({ operationId: result.operationId });
                     for (let i = 0; i < 500 && service.getOperation(result.operationId).status === "running"; i++) {
@@ -275,8 +283,8 @@ for (const resumeStatus of ["in_progress", "failed"]) {
                                 action: "review_plan",
                                 planId: "saved-plan-id",
                                 requestId: crypto.randomUUID(),
-                                expectedGeneration:
-                                    store.inspectSessionActivation(managed.runwieldSessionId).generation.generation,
+                                expectedGeneration: store.inspectSessionActivation(managed.runwieldSessionId).generation
+                                    .generation,
                             }),
                         }),
                         params: { projectId: project.projectId, runwieldSessionId: managed.runwieldSessionId },

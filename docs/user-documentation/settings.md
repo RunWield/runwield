@@ -635,6 +635,38 @@ Each `model_usage` row identifies its transcript entry or source observation wit
 **Cost.** `costAmount` is in `costCurrency` (currently USD). `costSource` says whether the provider reported the cost,
 RunWield calculated it from rates, or it is unavailable. Treat it as a measurement, not an invoice.
 
+Completed `see_image` vision fallbacks record request-basis usage, including remote calls. Guided Review uses runtime
+observations for `wld guided-review` without another job total; external guide commands record one turn-basis aggregate.
+A command that supplies no measurements records unavailable usage. Guide generation outcomes remain separate events. The
+explicit remote model proof turn is not recorded, but its vision fallback calls are. agy CLI cost remains unavailable.
+Replay shows compaction usage separately from assistant totals. Historical zero-filled CLI transcripts cannot
+distinguish missing measurements from measured zeros.
+
+An external Guided Review command can report measurements on stderr with a line that starts with
+`RUNWIELD_GUIDED_REVIEW_EVENT` followed by a version-2 JSON usage frame. Keep the review JSON on stdout. Each usage
+frame requires `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, and `costUsd`; each value is a
+nonnegative number or `null`. `contextWindow` is optional. For example:
+
+```text
+RUNWIELD_GUIDED_REVIEW_EVENT {"version":2,"type":"usage","usage":{"inputTokens":12,"outputTokens":0,"cacheReadTokens":null,"cacheWriteTokens":null,"costUsd":null}}
+```
+
+Other custom-command stderr remains diagnostic text, including legacy version-1 look-alike lines. The default `wld`
+command rejects stale usage frames. Legacy frames do not contribute new measurements.
+
+#### Recording and history
+
+Set `workflowMetrics` to `false` to stop recording new measurements. Existing measurements stay on your device until you
+delete them. Re-enabling records new activity only; RunWield does not fill gaps from past activity or Session
+Transcripts. An empty period means no measurements were recorded, not zero usage.
+
+Recording failures do not stop your work. Measurements can be skipped if storage is unavailable, another process is
+writing, or history recovery is in progress. Skipped measurements are not retried. RunWield repairs incomplete writes
+and marks damaged records as measurement gaps, so saved history can still be incomplete.
+
+Metrics are not uploaded. Dashboards, usage reports, and export to services such as Langfuse are not available in this
+release.
+
 #### Reliability
 
 Recording is best effort. Rows can be lost if RunWield is interrupted, a write fails, or you turn metrics off while work
@@ -840,6 +872,7 @@ These keys come from the upstream `@earendil-works/pi-coding-agent` settings sch
 | `enableAnalytics`           | boolean      | default `false`                                                              | Opt-in analytics data sharing.                                                                                                |
 | `trackingId`                | string       | generated when analytics is enabled                                          | Analytics tracking identifier.                                                                                                |
 | `packages`                  | array        | default `[]`                                                                 | Installed npm/git/local package sources. RunWield registers theme resources and package prompt templates from these packages. |
+| `metricsExporterApprovals`  | array        | default `[]`; global only                                                    | Saved exporter approvals, bound to ID, configured source, real installed path, and package version.                           |
 | `extensions`                | string array | default `[]`                                                                 | Local extension file paths or directories.                                                                                    |
 | `skills`                    | string array | default `[]`                                                                 | Ignored by RunWield. Use project or home `.wld/skills` or `.agents/skills`.                                                   |
 | `prompts`                   | string array | default `[]`                                                                 | Local prompt template file paths or directories.                                                                              |
@@ -998,8 +1031,47 @@ only loads package code extensions when both conditions are met:
    alter prompts, intercept tool calls, read project/session data, call external services, leak data, run unwanted
    commands, or cause other issues.
 
-If the user declines extension loading, RunWield keeps passive resources from the package but persists the package with
-`extensions: []` so code extension paths are skipped. Theme package behavior is covered in [themes.md](themes.md).
+For a new package, `wld install` saves `extensions: []` before it asks for consent. Refusal, empty input, EOF, an
+interrupted prompt, or an interrupted install keeps code disabled. Acceptance saves a filter for exactly the compatible
+extensions before reporting success. Passive themes and prompts stay available. A failed settings save reports an
+installation failure, not enabled code. Reinstalling a registered source keeps its existing extension and resource
+filters, including earlier enabled or disabled choices. It does not ask for code-extension consent again. Theme package
+behavior is covered in [themes.md](themes.md).
+
+### Metrics exporter packages
+
+A metrics exporter is separate from a Pi Agent extension. Declare it in the top-level `wld` block of `package.json`,
+next to `pi` if present:
+
+```json
+{
+    "name": "example-metrics-exporter",
+    "version": "1.0.0",
+    "wld": {
+        "metricsExporter": { "contract": 1, "id": "example", "entry": "./dist/exporter.js" }
+    }
+}
+```
+
+`contract` must be `1`; `id` must be a non-empty string. The entry must be a relative file path that stays inside the
+package after symlinks are resolved. It cannot also be a Pi extension resource, including an auto-discovered file in
+`extensions/`. A package can declare both kinds with separate files.
+
+`wld install <source>` asks a separate, default-no exporter approval question. Only `y` or `yes` grants approval.
+Approving extensions does not approve the exporter, and approving the exporter does not enable extensions. Exporter code
+is not loaded during Session startup. Core can list installed exporters and resolve approved entry files; export
+delivery remains target behavior.
+
+Approvals are host-global. `metricsExporterApprovals` is saved only in global settings and binds approval to the
+exporter ID, configured user-scope source, real installed path, and package version. Each record also contains an ISO
+`approvedAt` timestamp. Project packages and Project approval settings cannot replace or approve the user's exporter.
+Changing any bound field makes the exporter unapproved. Editing local files without changing the version keeps approval;
+this is not content-hash validation.
+
+To approve a declined exporter or a changed version, run `wld install <source>` again. `wld remove <source>` deletes its
+approvals. There is no separate exporter approval command. Existing code-extension settings are not treated as
+historical exporter approval. Approval is not a sandbox and does not control npm lifecycle scripts during installation.
+Package update trust policy and historical code-extension consent reconciliation remain deferred.
 
 ## Legacy Migrations
 

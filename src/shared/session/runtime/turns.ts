@@ -17,7 +17,7 @@ import {
     SessionTurnInProgressError,
 } from "./support.ts";
 import { isManagedOperationFailure } from "./types.ts";
-import type { PromptSessionOptions, PromptTurnContext } from "./types.ts";
+import type { PromptSessionOptions, PromptTurnContext, RuntimeSteeringResult } from "./types.ts";
 import { SlashCommandMetricsTracker } from "../../workflow/command-metrics.ts";
 
 interface TaskTranscriptEntry {
@@ -128,14 +128,7 @@ export class RuntimeTurns {
     private turnSettlements = new Map<string, Promise<void>>();
     private resultDrains = new Map<string, Promise<void>>();
     private resultAcquisitions = new Set<string>();
-    private steeringResults = new Map<string, {
-        taskId: string;
-        text: string;
-        target: import("@earendil-works/pi-coding-agent").AgentSession;
-        queueIndex: number | null;
-        queueLength: number;
-        unsubscribe: () => void;
-    }>();
+    private steeringResults = new Map<string, RuntimeSteeringResult>();
     private steeringInFlight = new Map<
         string,
         Promise<import("@earendil-works/pi-coding-agent").AgentSession | null>
@@ -156,9 +149,11 @@ export class RuntimeTurns {
             this.steeringResults.delete(session.id);
         })();
         this.steeringCleanup.set(session.id, cleanup);
-        void cleanup.finally(() => {
-            if (this.steeringCleanup.get(session.id) === cleanup) this.steeringCleanup.delete(session.id);
-        }).catch(() => {});
+        void cleanup
+            .finally(() => {
+                if (this.steeringCleanup.get(session.id) === cleanup) this.steeringCleanup.delete(session.id);
+            })
+            .catch(() => {});
         return cleanup;
     }
 
@@ -191,12 +186,14 @@ export class RuntimeTurns {
         if (!steering) return;
         const manager = session.getRootSessionManager();
         const entries = (manager?.getEntries?.() || []) as TaskTranscriptEntry[];
-        const recorded = entries.some((entry) =>
-            entry.type === "message" && entry.message?.role === "user" &&
-            (typeof entry.message.content === "string"
-                ? entry.message.content === steering.text
-                : Array.isArray(entry.message.content) &&
-                    entry.message.content.some((block) => block.type === "text" && block.text === steering.text))
+        const recorded = entries.some(
+            (entry) =>
+                entry.type === "message" &&
+                entry.message?.role === "user" &&
+                (typeof entry.message.content === "string"
+                    ? entry.message.content === steering.text
+                    : Array.isArray(entry.message.content) &&
+                      entry.message.content.some((block) => block.type === "text" && block.text === steering.text)),
         );
         if (recorded && steering.queueIndex !== null && steering.queueIndex < 0) {
             session.backgroundTasks.acknowledge(steering.taskId);
@@ -304,7 +301,9 @@ export class RuntimeTurns {
         });
         if (namedInvocation.kind === "prompt_template") {
             const pending = hostedSession.getPendingManagedTurnIntent();
-            const selectedAgent = pending.agentName || hostedSession.getActiveAgentInfo()?.agentName ||
+            const selectedAgent =
+                pending.agentName ||
+                hostedSession.getActiveAgentInfo()?.agentName ||
                 hostedSession.getManagedMetadata()?.activeAgent;
             if (!namedInvocation.agentName || namedInvocation.agentName === selectedAgent) {
                 namedInvocation.thinkingLevel ||= pending.thinkingLevel;
@@ -377,7 +376,11 @@ export class RuntimeTurns {
             await this.sync.synchronizeManagedSession(sessionId);
             managed = hostedSession.getManagedMetadata() || managed;
         }
-        options = { ...options, inputSurface: options.inputSurface || this.services.ownerProcessKind };
+        options = {
+            ...options,
+            metricsUserInitiated: true,
+            inputSurface: options.inputSurface || this.services.ownerProcessKind,
+        };
         let cleanupTurnStart: (() => void) | undefined;
         // Keep surface subscriptions alive across a user-approved Session change.
         const onTurnStarted = (context: PromptTurnContext) => {
@@ -386,17 +389,15 @@ export class RuntimeTurns {
         };
         const requestOptions = deferredFirstTurnId
             ? {
-                ...options,
-                onTurnStarted,
-                initialRequest: displayRequest,
-                preparedModelOverride,
-                turnId: deferredFirstTurnId,
-                emitInitialEvents: deferredBusyStarted ? false : undefined,
-            }
+                  ...options,
+                  onTurnStarted,
+                  initialRequest: displayRequest,
+                  preparedModelOverride,
+                  turnId: deferredFirstTurnId,
+                  emitInitialEvents: deferredBusyStarted ? false : undefined,
+              }
             : { ...options, onTurnStarted, initialRequest: displayRequest, preparedModelOverride };
-        const buildResult = (
-            result: PromptSessionResult,
-        ) => ({
+        const buildResult = (result: PromptSessionResult) => ({
             ...result,
             managed: true,
             submittedRequest,
@@ -409,7 +410,7 @@ export class RuntimeTurns {
         let commandTracker: SlashCommandMetricsTracker | null = null;
         if (!parentCommandTracker && (namedInvocation.kind === "prompt_template" || namedInvocation.kind === "skill")) {
             const rawSurface = options.inputSurface || this.services.ownerProcessKind || "cli";
-            const surface = rawSurface === "acp" ? "acp" : (rawSurface === "workspace" ? "workspace" : "tui");
+            const surface = rawSurface === "acp" ? "acp" : rawSurface === "workspace" ? "workspace" : "tui";
             commandTracker = new SlashCommandMetricsTracker({
                 command: namedInvocation.name,
                 alias: (namedInvocation as { alias?: string }).alias || undefined,
@@ -430,10 +431,10 @@ export class RuntimeTurns {
                 expectedGeneration,
                 ...(namedInvocation.kind !== "ordinary"
                     ? {
-                        modelRequest: namedInvocation.expandedRequest,
-                        namedInvocationPayload: namedInvocation.payload,
-                        ...(namedInvocation.kind === "prompt_template" ? { promptTemplate: namedInvocation } : {}),
-                    }
+                          modelRequest: namedInvocation.expandedRequest,
+                          namedInvocationPayload: namedInvocation.payload,
+                          ...(namedInvocation.kind === "prompt_template" ? { promptTemplate: namedInvocation } : {}),
+                      }
                     : {}),
             });
             if (!result.ok) {
@@ -458,11 +459,15 @@ export class RuntimeTurns {
                     reason: "prompt_template",
                     templateName: namedInvocation.name,
                 });
-                const nextResult = await this.promptUserTurnWithCommand(next.id, {
-                    initialRequest: submittedRequest,
-                    initialImages: options.initialImages,
-                    inputSurface: options.inputSurface,
-                }, commandTracker);
+                const nextResult = await this.promptUserTurnWithCommand(
+                    next.id,
+                    {
+                        initialRequest: submittedRequest,
+                        initialImages: options.initialImages,
+                        inputSurface: options.inputSurface,
+                    },
+                    commandTracker,
+                );
                 if (!nextResult.ok) {
                     commandOutcome = nextResult.error === "Prompt canceled." ? "canceled" : "failed";
                     commandErrorReason = commandOutcome;
@@ -503,9 +508,8 @@ export class RuntimeTurns {
             if (!imagePreflight.ok) throw new Error(imagePreflight.message);
             operationOptions = {
                 ...options,
-                preparedModelOverride: "preparedModelOverride" in imagePreflight
-                    ? imagePreflight.preparedModelOverride
-                    : undefined,
+                preparedModelOverride:
+                    "preparedModelOverride" in imagePreflight ? imagePreflight.preparedModelOverride : undefined,
             };
         }
         const result = await this.managedOperations.runManagedOperation(
@@ -513,9 +517,8 @@ export class RuntimeTurns {
             {
                 name: "prompt",
                 options: operationOptions,
-                emitPromptEvents: operationOptions.promptTemplate || operationOptions.emitInitialEvents === false
-                    ? false
-                    : undefined,
+                emitPromptEvents:
+                    operationOptions.promptTemplate || operationOptions.emitInitialEvents === false ? false : undefined,
                 activateAgent: operationOptions.promptTemplate ? false : undefined,
             },
             async ({ acceptedTurnId, hasPendingImages, capability }) => {
@@ -531,9 +534,10 @@ export class RuntimeTurns {
                             hostedSession,
                             {
                                 type: RuntimeInteractionTypes.SELECT,
-                                prompt: `/${template.name} requires ${
-                                    getAgentDisplayName(profile.agentName, hostedSession.cwd)
-                                }. This session has ${conflict}.`,
+                                prompt: `/${template.name} requires ${getAgentDisplayName(
+                                    profile.agentName,
+                                    hostedSession.cwd,
+                                )}. This session has ${conflict}.`,
                                 options: [
                                     { value: "new_session", label: "Open in new session" },
                                     { value: "cancel", label: "Cancel" },
@@ -594,18 +598,22 @@ export class RuntimeTurns {
                         thinkingLevel: profile.thinkingLevel,
                     };
                 }
-                const result = await this.promptSession(sessionId, {
-                    ...operationOptions,
-                    turnId: acceptedTurnId,
-                    onTurnStarted: undefined,
-                    emitInitialEvents: template
-                        ? true
-                        : operationOptions.emitInitialEvents === false
-                        ? false
-                        : hasPendingImages,
-                    suppressEpicContinuation: true,
-                    signal: capability.signal,
-                }, capability);
+                const result = await this.promptSession(
+                    sessionId,
+                    {
+                        ...operationOptions,
+                        turnId: acceptedTurnId,
+                        onTurnStarted: undefined,
+                        emitInitialEvents: template
+                            ? true
+                            : operationOptions.emitInitialEvents === false
+                              ? false
+                              : hasPendingImages,
+                        suppressEpicContinuation: true,
+                        signal: capability.signal,
+                    },
+                    capability,
+                );
                 if (template) {
                     result.namedInvocation = {
                         kind: template.kind,
@@ -621,7 +629,8 @@ export class RuntimeTurns {
         if (isManagedOperationFailure(result)) return { ...result, turns: result.turns ?? 0 };
         const validationResult = result._validationResult;
         if (
-            result.ok && validationResult?.kind === "semantic_repair_handoff" &&
+            result.ok &&
+            validationResult?.kind === "semantic_repair_handoff" &&
             validationResult.semanticRepairHandoff
         ) {
             const workflow = hostedSession.getActiveExecutionWorkflow?.() || null;
@@ -680,17 +689,18 @@ export class RuntimeTurns {
     cancelSession(sessionId: string) {
         const session = this.services.sessionHost.getSession(sessionId);
         if (!session) return { ok: false, aborted: false, error: "not_found" };
-        const hasBackgroundWork = session.backgroundTasks.activeCount > 0 ||
-            session.backgroundTasks.pendingCompletions().length > 0;
+        const hasBackgroundWork =
+            session.backgroundTasks.activeCount > 0 || session.backgroundTasks.pendingCompletions().length > 0;
         void session.backgroundTasks.cancelAllAndSuppress();
         session.resetBackgroundCompletionWarning();
         this.steeringResults.get(session.id)?.unsubscribe();
         this.steeringResults.delete(session.id);
         const currentOperation = this.managedOperations.currentCapability(session.id);
         const activeInteractions = session.getActiveInteractions?.() || new Map();
-        const onlyPlanReviewInteraction = activeInteractions.size > 0 &&
-            [...activeInteractions.values()].every((record) =>
-                record.request?.type === RuntimeInteractionTypes.PLAN_REVIEW
+        const onlyPlanReviewInteraction =
+            activeInteractions.size > 0 &&
+            [...activeInteractions.values()].every(
+                (record) => record.request?.type === RuntimeInteractionTypes.PLAN_REVIEW,
             );
         if (currentOperation) {
             let aborted = false;
@@ -723,9 +733,9 @@ export class RuntimeTurns {
                     reason: "session_cancel",
                     ...(aborted
                         ? {
-                            scope: operationCanceled ? "operation" : "agent",
-                            message: operationCanceled ? "Operation canceled." : "Agent run canceled.",
-                        }
+                              scope: operationCanceled ? "operation" : "agent",
+                              message: operationCanceled ? "Operation canceled." : "Agent run canceled.",
+                          }
                         : {}),
                 });
             }
@@ -765,9 +775,9 @@ export class RuntimeTurns {
                 reason: "session_cancel",
                 ...(aborted
                     ? {
-                        scope: operationCanceled ? "operation" : "agent",
-                        message: operationCanceled ? "Operation canceled." : "Agent run canceled.",
-                    }
+                          scope: operationCanceled ? "operation" : "agent",
+                          message: operationCanceled ? "Operation canceled." : "Agent run canceled.",
+                      }
                     : {}),
             });
         }
@@ -832,10 +842,11 @@ export class RuntimeTurns {
             if (!imagePreflight.ok) throw new Error(imagePreflight.message);
             if (!options.generatedTaskId) {
                 hostedSession.localInputSurface = this.services.ownerProcessKind;
-                hostedSession.notificationSurface = options.inputSurface || hostedSession.notificationSurface ||
-                    this.services.ownerProcessKind;
+                hostedSession.notificationSurface =
+                    options.inputSurface || hostedSession.notificationSurface || this.services.ownerProcessKind;
             }
             hostedSession.generatedTaskTurnId = options.generatedTaskId || null;
+            hostedSession.metricsHumanInputPending = !options.generatedTaskId && options.metricsUserInitiated === true;
             const cleanup = options.onTurnStarted?.({ turnId });
             if (typeof cleanup === "function") cleanupTurn = cleanup;
             images = await this.images.persistPendingPromptImages(hostedSession, images);
@@ -912,13 +923,14 @@ export class RuntimeTurns {
                     rootSessionManager || undefined,
                     options.signal || managedCapability?.signal,
                 );
-            const turnResult = options.namedInvocationPayload && rootSessionManager
-                ? await withNamedInvocationDisplayMessage(
-                    rootSessionManager,
-                    options.namedInvocationPayload,
-                    runHandler,
-                )
-                : await runHandler();
+            const turnResult =
+                options.namedInvocationPayload && rootSessionManager
+                    ? await withNamedInvocationDisplayMessage(
+                          rootSessionManager,
+                          options.namedInvocationPayload,
+                          runHandler,
+                      )
+                    : await runHandler();
             turns++;
             validationResult = turnResult?.validationResult || null;
             ok = true;
@@ -956,6 +968,7 @@ export class RuntimeTurns {
             });
             hostedSession.endTurn(turnId);
             hostedSession.generatedTaskTurnId = null;
+            hostedSession.metricsHumanInputPending = false;
             if (busyStarted) this.events.endBusyOperation(hostedSession.id, turnId);
             try {
                 cleanupTurn();

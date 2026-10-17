@@ -30,7 +30,7 @@ for (const approved of [true, false]) {
             const metrics = await readMetrics();
             assertEquals(metrics.length, 1);
             assertEquals(metrics[0].event, "review_complete");
-            assertEquals(metrics[0].details?.outcome, approved ? "approved" : "feedback");
+            assertEquals(metrics[0].outcome, approved ? "approved" : "feedback");
         });
     });
 }
@@ -89,4 +89,25 @@ test("review_complete refuses to approve while a finding is unresolved", async (
     assertEquals(result.terminate, false, "an inconsistent result must not end the review");
     assertEquals(result.details.outcome, "rejected");
     assertEquals(result.details.reason, "approved_with_open_findings");
+});
+
+test("review observations keep reused tool-call identities distinct across Sessions", async () => {
+    await withWorkflowMetricsFixture(async ({ projectRoot, readMetrics }) => {
+        for (const id of ["first-review-session", "second-review-session"]) {
+            const hostedSession = new HostedSession({ id, cwd: projectRoot });
+            try {
+                const tool = createReviewCompletedTool({ hostedSession, agentName: "reviewer" });
+                await Reflect.apply(tool.execute, tool, ["same-call", { approved: true }]);
+            } finally {
+                hostedSession.dispose();
+            }
+        }
+        const rows = await readMetrics();
+        assertEquals(rows.length, 2);
+        assertEquals(new Set(rows.map((row) => row.eventId)).size, 2);
+        assertEquals(
+            rows.map((row) => row.outcome),
+            ["approved", "approved"],
+        );
+    });
 });
