@@ -22,7 +22,7 @@
         "lint:bun": "bun run lint",
         "check": "bun scripts/write-version.js && bun scripts/check-bun-types.ts",
         "lint": "bun scripts/run-bun-lint.ts",
-        "workspace:check": "bun node_modules/astro/bin/astro.mjs check --root src/ui/workspace --tsconfig tsconfig.json",
+        "workspace:check": "bun scripts/check-workspace.ts",
         "workspace:build": "bun scripts/check-bun-runtime.ts && bun scripts/write-version.js && bun node_modules/astro/bin/astro.mjs build --config src/ui/workspace/astro.config.mjs",
         "docs:stage": "bun scripts/public-docs.ts",
         "docs:dev": "bun scripts/docs-dev.ts",

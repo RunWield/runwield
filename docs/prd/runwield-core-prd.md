@@ -647,12 +647,18 @@ repair. Diagnosis and explicit user requests can call for earlier full runs. Sta
 validation. Reports separate completed focused checks from pending full validation. Only the runtime gate permits
 publication.
 
+**Requirement: Required checks fail closed.** A required check returns failure when its checker or prerequisites cannot
+load, as well as when diagnostics fail. Workspace checking resolves its project root consistently under the pinned Bun
+runtime and cannot report success without running the Astro checker.
+
 **Requirement: Validation progress is accurate.** Interrupted validation shows as paused and keeps its continuation.
 Passed checks are recorded, so a restart resumes at the next phase; a code repair runs the checks again. The final
 progress display comes from the confirmed validation and publication results of the current attempt.
 
 **Acceptance scenarios:**
 
+- Given a missing or unloadable Workspace checker dependency, `workspace:check` exits nonzero with a recovery message.
+- Given an intentional Astro type error, `workspace:check` executes checking and exits nonzero with its diagnostic.
 - Given no configured command, validation asks once; repair and resumed validation reuse the saved command, and the
   project keeps it after worktree removal.
 - Given a managed repair, after the Agent's focused checks, RunWield runs the full command against the repair checkout;

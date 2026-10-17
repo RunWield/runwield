@@ -11,6 +11,7 @@
     "scripts/check-injection-seams.test.js",
     "scripts/check-owned-runtime.test.ts",
     "scripts/check-skill-sync.test.ts",
+    "scripts/check-workspace.test.ts",
     "scripts/ci-files.test.ts",
     "scripts/ci-policy.test.ts",
     "scripts/compile-bun.test.ts",
