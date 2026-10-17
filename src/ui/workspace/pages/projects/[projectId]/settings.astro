@@ -63,7 +63,7 @@ if (!project) Astro.response.status = 404;
                                 method: 'POST',
                                 body: JSON.stringify({ action: button.dataset.action }),
                             });
-                            const data = await response.json().catch(() => ({}));
+                            const data = response.ok ? await response.json() : await response.json().catch(() => ({}));
                             if (!response.ok) {
                                 if (status) status.textContent = data.error || 'Project action failed.';
                                 return;

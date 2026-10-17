@@ -124,6 +124,31 @@ for (const operation of operations) {
         }
     });
 
+    test(`Project ${operation}: interrupted successful response stays retryable without claiming completion`, async () => {
+        const page = mount(operation);
+        try {
+            page.window.fetch = () =>
+                Promise.resolve(
+                    new Response(
+                        new ReadableStream({
+                            start(controller) {
+                                controller.error(new TypeError("Connection lost while reading response"));
+                            },
+                        }),
+                        { status: 200 },
+                    ),
+                );
+            await page.act();
+            assertStringIncludes(page.visibleFeedback(), "Check your connection and try again.");
+            assertEquals(page.navigations, []);
+            assertEquals(page.target.disabled, false);
+            assertEquals(page.window.document.querySelector(".rw-thinking-glyph"), null);
+            assertEquals(page.window.document.querySelector("[data-project-diagnostics]").hidden, true);
+        } finally {
+            await page.window.happyDOM.close();
+        }
+    });
+
     test(`Project ${operation}: success keeps its established result`, async () => {
         const page = mount(operation);
         try {
