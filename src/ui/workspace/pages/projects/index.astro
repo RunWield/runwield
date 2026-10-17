@@ -39,6 +39,35 @@ const projects = await loadOwnerProjects();
         function rwProjectOwnerCookie(name){return document.cookie.split('; ').find(v=>v.startsWith(name+'='))?.split('=').slice(1).join('=')||'';}
         async function rwProjectOwnerFetch(url,options={}){options.headers=Object.assign({'content-type':'application/json','x-runwield-csrf':decodeURIComponent(rwProjectOwnerCookie('rw_owner_csrf'))},options.headers||{});return await fetch(url,options);}
         function rwProjectNavigate(href){const event=new CustomEvent('runwield:workspace-navigate',{cancelable:true,detail:{href,history:'push'}});if(document.dispatchEvent(event))location.assign(href);}
-        document.querySelectorAll('[data-project-register]').forEach((registerForm)=>{if(registerForm.dataset.workspaceBound==='true')return;registerForm.dataset.workspaceBound='true';const status=registerForm.closest('.project-link-card')?.querySelector('[data-project-register-status]')||document.querySelector('[data-project-register-status]');registerForm.addEventListener('submit',async(event)=>{event.preventDefault();const formData=new FormData(registerForm);if(status)status.textContent='Linking Project...';const response=await rwProjectOwnerFetch('/api/owner/projects',{method:'POST',body:JSON.stringify({root:formData.get('root'),displayName:formData.get('displayName')})});const data=await response.json().catch(()=>({}));if(response.ok&&data.project?.projectId){rwProjectNavigate('/projects/'+encodeURIComponent(data.project.projectId)+'/settings');return;}if(status)status.textContent=data.error||'Project link failed.';});});
+        document.querySelectorAll('[data-project-register]').forEach((registerForm) => {
+            if (registerForm.dataset.workspaceBound === 'true') return;
+            registerForm.dataset.workspaceBound = 'true';
+            const status = registerForm.closest('.project-link-card')?.querySelector('[data-project-register-status]') || document.querySelector('[data-project-register-status]');
+            const button = registerForm.querySelector('button[type="submit"]');
+            registerForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                if (button?.disabled) return;
+                if (button) button.disabled = true;
+                if (status) status.textContent = 'Linking Project...';
+                try {
+                    const formData = new FormData(registerForm);
+                    const response = await rwProjectOwnerFetch('/api/owner/projects', {
+                        method: 'POST',
+                        body: JSON.stringify({ root: formData.get('root'), displayName: formData.get('displayName') }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (response.ok && data.project?.projectId) {
+                        if (status) status.textContent = '';
+                        rwProjectNavigate('/projects/' + encodeURIComponent(data.project.projectId) + '/settings');
+                        return;
+                    }
+                    if (status) status.textContent = data.error || 'Project link failed.';
+                } catch {
+                    if (status) status.textContent = 'Project link could not be confirmed. Check your connection and try again.';
+                } finally {
+                    if (button) button.disabled = false;
+                }
+            });
+        });
     </script>
 </SettingsLayout>

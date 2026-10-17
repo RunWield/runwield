@@ -639,6 +639,7 @@
     "src/ui/workspace/plan-workflow-resume.integration.test.js",
     "src/ui/workspace/plan-workflow-review.integration.test.js",
     "src/ui/workspace/plan-workflow-saved-actions.integration.test.js",
+    "src/ui/workspace/project-page-requests.test.js",
     "src/ui/workspace/react/artifact-conversation-sidebar.test.tsx",
     "src/ui/workspace/react/artifact-conversation.test.ts",
     "src/ui/workspace/react/code-review-edit-suggestions.test.ts",

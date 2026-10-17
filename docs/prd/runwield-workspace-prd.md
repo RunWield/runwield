@@ -315,6 +315,11 @@ can relink, disable, or remove a Project whose root is missing or disabled. Disa
 registration completely and returns to Projects; adding the directory again creates a new registration and rediscovers
 its Sessions and artifacts. Repository content becomes available when the Project is enabled and its root exists.
 
+**Requirement: Recover from failed Project requests.** Linking, relinking, and maintenance actions show pending and
+failure feedback beside their controls. A rejected network request clears pending feedback, preserves entered paths,
+and restores the controls for an explicit retry. Failures never navigate or claim completion, and a later successful
+attempt replaces the failure message. Pending requests prevent duplicate submission of the same action.
+
 **Requirement: Restore archived Sessions from Project settings.** Project settings has General and Archived Sessions
 tabs. Archived Sessions lists archived names in pages, links to their conversations, and offers Unarchive. Unarchive
 returns the same Session ID, transcript, and Plan Associations to ordinary history. Opening an archived Session keeps it
@@ -346,6 +351,9 @@ and slide the highlight; sidebars open and close with subtle motion. Reduced-mot
   worktrees remain. A removed Project leaves Projects, the sidebar, and the Dashboard, and its old settings URL stops
   resolving; adding its directory again rediscovers its Sessions.
 - Given a missing Project root, its settings page opens and offers relink, disable, and remove.
+- When a link, relink, enable, disable, remove, or rescan request loses its connection, the page shows a visible
+  failure, retains entered values, and permits retry without automatic resubmission or navigation. HTTP errors retain
+  the server explanation; successful retries navigate or show rescan diagnostics as usual.
 - Given an archived Session, Archived Sessions lists it with paging and opens its conversation; Unarchive returns the
   same Session to ordinary history.
 - Given a foreign Session or an unauthorized Project, an Archive or Unarchive request fails and the Session stays as
