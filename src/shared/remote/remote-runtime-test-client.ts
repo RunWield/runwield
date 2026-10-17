@@ -1,4 +1,7 @@
 /** Separate remote process: all Session, tool and save behavior is production code. */
+import { writeFile, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { Type } from "@earendil-works/pi-ai";
 import { createMnemotecaTools, type MemoryParams } from "../../extensions/mnemoteca/tools.ts";
 import { denoHelperBinaryExec } from "../../extensions/helper-binary-exec.ts";
 import { assembleFinalSystemPrompt } from "../session/session.js";
@@ -11,10 +14,11 @@ import { configureRemotePersonalResources } from "./personal-resources.ts";
 import { configureRemoteModelConnection } from "../models/model-registry.ts";
 import { configureRemoteMemoryConnection } from "./memory-bridge.ts";
 import { configureRemoteSettingsConnection } from "./settings-bridge.ts";
+import { configureRemoteMcpConnection } from "./mcp-bridge.ts";
 import { RemoteSessionControl, type RemoteSessionControlConnection } from "./session-control-client.ts";
 import { createSessionRuntime } from "../session/session-runtime.ts";
 import { HostedSession } from "../session/hosted-session.js";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildAgentSession } from "../session/session.js";
 import { createRemoteRootSessionManager, getRemoteSessionSaveBridge } from "../session/root-session.js";
 import { readImageRef } from "../session/image-attachments.ts";
@@ -32,7 +36,12 @@ export interface RuntimeClientCommand {
         | "core-prompt"
         | "sleep"
         | "mcp"
+        | "handoff"
+        | "reload"
+        | "blocker"
         | "turn"
+        | "turn-start"
+        | "cancel"
         | "load"
         | "close"
         | "guard"
@@ -78,6 +87,7 @@ const lines = processLines(stdinStream());
 const input: RuntimeClientInput = JSON.parse((await lines.read()).value || "{}");
 configureRemotePersonalResources({ globalRoot: input.resources });
 configureRemoteSettingsConnection(input.connection);
+const clearMcp = configureRemoteMcpConnection(input.connection);
 const clearMemory = configureRemoteMemoryConnection({ ...input.connection, collection: input.memoryCollection });
 const clearModels = await configureRemoteModelConnection(input.connection);
 const control = new RemoteSessionControl(input.connection);
@@ -98,6 +108,7 @@ const report = (kind: string, ok?: boolean, error?: string) => {
     );
 };
 const pending: Promise<void>[] = [];
+let turnTools: ToolDefinition[] | undefined;
 try {
     report("ready");
     while (true) {
@@ -106,7 +117,24 @@ try {
         const command: RuntimeClientCommand = JSON.parse(next.value);
         if (command.kind === "close") break;
         try {
-            if (command.kind === "memory") {
+            if (command.kind === "turn-start") {
+                pending.push(
+                    runtime
+                        .promptUserTurn(sessionId, {
+                            initialRequest: command.text || "Call the slow MCP tool.",
+                            agentName: "remote-runtime",
+                            customTools: turnTools,
+                        })
+                        .then(
+                            (result) => report("turn", result.ok, result.error),
+                            (error: Error) => report("turn", false, String(error)),
+                        ),
+                );
+                report("turn-started", true);
+            } else if (command.kind === "cancel") {
+                const result = runtime.cancelSession(sessionId);
+                report("cancel", result.ok);
+            } else if (command.kind === "memory") {
                 if (!command.memory) throw new Error("Missing Memory operation");
                 const [tool] = createMnemotecaTools({ cwd: input.cwd, exec: denoHelperBinaryExec });
                 const result = await tool.execute(
@@ -142,11 +170,40 @@ try {
                         activeAgent: runtime.getSessionSnapshot(sessionId)?.activeAgent,
                     }),
                 );
+            } else if (command.kind === "blocker") {
+                turnTools = [
+                    {
+                        name: "fixture_blocker",
+                        label: "Fixture blocker",
+                        description: "Wait for external release",
+                        parameters: Type.Object({}),
+                        executionMode: "sequential",
+                        async execute() {
+                            await writeFile(join(input.cwd, "block-started"), "started");
+                            while (
+                                !(await stat(join(input.cwd, "block-release")).then(
+                                    () => true,
+                                    () => false,
+                                ))
+                            ) {
+                                await new Promise((resolve) => setTimeout(resolve, 5));
+                            }
+                            return { content: [{ type: "text", text: "Released" }], details: {} };
+                        },
+                    },
+                ];
+                report("blocker", true);
+            } else if (command.kind === "handoff") {
+                const result = await runtime.switchAgent(sessionId, { agentName: command.text || "remote-runtime" });
+                report("handoff", result.ok, result.error);
+            } else if (command.kind === "reload") {
+                const result = await runtime.reloadSession(sessionId);
+                report("reload", result.ok, result.error);
             } else if (command.kind === "mcp") {
                 console.log(
                     JSON.stringify({
                         kind: "mcp",
-                        notices: (await runtime.runMcpCommand(sessionId, "")).notifications.map(
+                        notices: (await runtime.runMcpCommand(sessionId, command.text || "")).notifications.map(
                             (notice) => notice.message,
                         ),
                     }),
@@ -311,6 +368,7 @@ try {
 } finally {
     await Promise.all(pending);
     await runtime.closeAllSessionsWhenIdle();
+    await clearMcp();
     clearModels();
     clearMemory();
     await lines.cancel();

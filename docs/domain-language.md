@@ -118,7 +118,9 @@ requests. It is distinct from the terminal window or tab title. _Avoid_: Tab tit
 **Remote SSH connection**: A connected-only Core interaction started with `wld remote` for an existing directory on a
 remote Linux host. It prepares a matching runtime, mounts laptop personal files, and opens the normal remote TUI for
 conversation turns with Agents, core project tools, and laptop models. It can create and continue a saved Session whose
-history stays on the laptop; the first submitted message creates history, not connection alone. `wld remote sessions`
+history stays on the laptop; the first submitted message creates history, not connection alone. Personal MCP servers
+run on the laptop through native transport forwarding while project servers run remotely. MCP roots and paths are not
+rewritten, and connection cleanup stops owned processes without replaying uncertain effects. `wld remote sessions`
 reads that history offline in the normal renderer without a composer and with a reconnect footer. Connected `/resume`
 continues only this target's Sessions; local TUI, ACP, Workspace, and `/load-plan` lists hide remote Sessions. This
 journey passed on matching-identity compiled macOS/Linux `sct` runtimes with an authenticated synthetic streaming
@@ -738,6 +740,9 @@ web search, local docs grep, package install lookup
 
 **MCP Server Configuration**: A trusted server declaration in `~/.wld/mcp.json`, project `.wld/mcp.json`, or an ACP
 Session request. RunWield starts stdio MCP servers from this configuration and exposes their tools to root Agents only.
+In a Remote SSH connection, personal servers run on the laptop with home cwd; project servers run remotely with the
+Session execution cwd. Project replacement/disable rules select entries before startup. One remote Pi integration
+handles both origins through native transports; Memory collection sharing does not map files or change cwd.
 _Avoid_: settings key, Custom Tool definition
 
 **MCP Tool**: A tool discovered from a trusted MCP server. Pi gives it a stable `mcp__<server>__<tool>` name and keeps

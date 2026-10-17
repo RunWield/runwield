@@ -599,6 +599,8 @@ export class RuntimeAgentSettings {
             ? { ...options, mcpRootTools: mcpIntegration.getTools(), mcpIntegration }
             : options;
         try {
+            const capability = options.managedOperationCapability || hostedSession.getManagedOperationCapability();
+            capability?.signal?.throwIfAborted();
             if (!pendingCreation) {
                 const result = await switchActiveAgent(hostedSession, activationOptions);
                 if (mcpIntegration) await hostedSession.setMcpIntegration(mcpIntegration);

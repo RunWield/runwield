@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { getSettingsDir, getSettingsManager } from "../settings.js";
 import { getModelRegistry } from "../models/model-registry.ts";
 import type { McpServerDefinition, McpWarning } from "./config.ts";
+import { RemoteMcpTransport } from "../remote/mcp-bridge.ts";
 
 interface McpIntegrationStartOptions {
     cwd: string;
@@ -112,9 +113,7 @@ export class McpIntegration {
         const locations: McpNotification[] = this.servers
             .filter((server) => server.location)
             .map((server) => ({
-                message: `${server.name}: ${server.location}${
-                    server.location === "laptop" ? " — not started remotely" : ""
-                }`,
+                message: `${server.name}: ${server.location}`,
                 level: "info",
             }));
         if (!runner || !command) {
@@ -149,7 +148,7 @@ export class McpIntegration {
 
 export async function startMcpIntegration(options: McpIntegrationStartOptions): Promise<McpIntegrationStartResult> {
     const integration = new McpIntegration(options.servers);
-    const activeServers = options.servers.filter((server) => server.location !== "laptop");
+    const activeServers = options.servers;
     const warnings: McpWarning[] = [];
     if (activeServers.length === 0) return { integration, warnings };
     const config: LoadedMcpConfig = {
@@ -166,6 +165,9 @@ export async function startMcpIntegration(options: McpIntegrationStartOptions): 
         loadConfig: () => config,
         logPath: join(getSettingsDir("global"), "mcp.log"),
         createTransport: (entry, cwd) => {
+            if (activeServers.find((server) => server.name === entry.name)?.location === "laptop") {
+                return new RemoteMcpTransport(entry.name);
+            }
             if (!("command" in entry.config)) throw new Error("RunWield MCP configuration requires stdio.");
             return new StdioTransport({
                 command: entry.config.command,
